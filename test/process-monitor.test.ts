@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diffProcs, parsePsLine, parseWindowsPsOutput } from '../src/main/services/process-monitor'
+import { diffProcs, parsePsLine, parseWindowsPsOutput, isIgnoredCommand, leadingToken } from '../src/main/services/process-monitor'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Unit tests for the process-monitor pid-diff algorithm + ps line parser.
@@ -168,5 +168,56 @@ describe('process-monitor / parseWindowsPsOutput', () => {
     expect(rows).toHaveLength(5)
     expect(rows[0].pid).toBe(4)
     expect(rows[4].command).toContain('chrome.exe --type=renderer')
+  })
+})
+
+// A two-minute session on a real Windows desktop produced 500 process events,
+// the great majority of them OS plumbing - conhost.exe per console, service
+// hosts, browser renderers - carried with their full command lines, which
+// also brought paths from outside the engagement into the record. The
+// operator's actual work in that session was 24 shell commands, buried.
+describe('process monitor ignores what is never engagement evidence', () => {
+  const CHROME = String.raw`"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=renderer`
+
+  it('drops OS and desktop plumbing by default', () => {
+    for (const cmd of [
+      'conhost.exe 0x4',
+      String.raw`C:\WINDOWS\system32\svchost.exe -k netsvcs`,
+      'RuntimeBroker.exe',
+      '/usr/libexec/mdworker_shared -s mdworker',
+      '/usr/lib/systemd/systemd-journald'
+    ]) {
+      expect(isIgnoredCommand(cmd)).toBe(true)
+    }
+  })
+
+  it('keeps anything the operator might have run', () => {
+    for (const cmd of [
+      'nmap -sV 10.0.0.5',
+      String.raw`C:\Windows\System32\cmd.exe /c whoami`,
+      'powershell.exe -NoProfile -Command Get-Process',
+      '/usr/bin/python3 exploit.py',
+      String.raw`"C:\Program Files\Git\usr\bin\bash.exe" -lc id`
+    ]) {
+      expect(isIgnoredCommand(cmd)).toBe(false)
+    }
+  })
+
+  // The leading token was taken by splitting on whitespace, which is wrong on
+  // Windows precisely where it matters: the path is quoted BECAUSE it holds
+  // spaces. So an operator's `ignoreCommands: ['chrome.exe']` silently did
+  // nothing for every program installed under Program Files.
+  it('reads a quoted executable path as one token', () => {
+    expect(leadingToken(CHROME)).toBe(String.raw`C:\Program Files\Google\Chrome\Application\chrome.exe`)
+    expect(leadingToken('/usr/bin/nmap -sV host')).toBe('/usr/bin/nmap')
+    expect(leadingToken('  nmap')).toBe('nmap')
+    expect(leadingToken('')).toBe('')
+    // An unterminated quote must not swallow the whole line.
+    expect(leadingToken(String.raw`"C:\broken\path --flag`)).toBe(String.raw`"C:\broken\path`)
+  })
+
+  it('honours an operator own ignore entry through a quoted path', () => {
+    expect(isIgnoredCommand(CHROME)).toBe(false)
+    expect(isIgnoredCommand(CHROME, ['chrome.exe'])).toBe(true)
   })
 })
