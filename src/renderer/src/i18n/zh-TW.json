@@ -1294,5 +1294,11 @@
   "legacyHook.done": "hook 已更新。請開啟新的終端——hook 只會在新的 shell 中載入。",
   "legacyHook.backup": "舊設定檔的備份：",
   "legacyHook.failed": "更新失敗：",
-  "legacyHook.dismiss": "關閉"
+  "legacyHook.dismiss": "關閉",
+  "filter.from": "起",
+  "filter.to": "訖",
+  "filter.localTime": "本地時間",
+  "filter.presetIsSnapshot": "取一段到現在為止的固定區間 —— 不會持續滾動",
+  "filter.timeRangeInvalid": "結束時間不晚於開始時間，不會有任何事件符合。",
+  "filter.around": "這筆前後的事件"
 }

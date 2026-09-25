@@ -1294,5 +1294,11 @@
   "legacyHook.done": "Hook updated. Open a new terminal — the hook loads in new shells.",
   "legacyHook.backup": "Backup of your old profile:",
   "legacyHook.failed": "Update failed:",
-  "legacyHook.dismiss": "Dismiss"
+  "legacyHook.dismiss": "Dismiss",
+  "filter.from": "From",
+  "filter.to": "To",
+  "filter.localTime": "local",
+  "filter.presetIsSnapshot": "Takes a fixed window ending now — it does not keep sliding",
+  "filter.timeRangeInvalid": "The end is at or before the start, so nothing can match.",
+  "filter.around": "Events around this one"
 }
