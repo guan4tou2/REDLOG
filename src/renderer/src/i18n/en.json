@@ -1294,5 +1294,9 @@
   "legacyHook.done": "Hook updated. Open a new terminal — the hook loads in new shells.",
   "legacyHook.backup": "Backup of your old profile:",
   "legacyHook.failed": "Update failed:",
-  "legacyHook.dismiss": "Dismiss"
+  "legacyHook.dismiss": "Dismiss",
+  "settings.save.saving": "Saving…",
+  "settings.save.saved": "Config saved to this project",
+  "settings.save.failed": "Could not save. Your changes are still here.",
+  "settings.save.retry": "Retry"
 }

@@ -1294,5 +1294,9 @@
   "legacyHook.done": "hook 已更新。請開啟新的終端——hook 只會在新的 shell 中載入。",
   "legacyHook.backup": "舊設定檔的備份：",
   "legacyHook.failed": "更新失敗：",
-  "legacyHook.dismiss": "關閉"
+  "legacyHook.dismiss": "關閉",
+  "settings.save.saving": "儲存中…",
+  "settings.save.saved": "設定已存入這個專案",
+  "settings.save.failed": "儲存失敗，你的修改還在。",
+  "settings.save.retry": "重試"
 }
