@@ -1294,5 +1294,7 @@
   "legacyHook.done": "Hook updated. Open a new terminal — the hook loads in new shells.",
   "legacyHook.backup": "Backup of your old profile:",
   "legacyHook.failed": "Update failed:",
-  "legacyHook.dismiss": "Dismiss"
+  "legacyHook.dismiss": "Dismiss",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }
