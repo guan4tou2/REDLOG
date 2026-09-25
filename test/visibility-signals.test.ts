@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { isEvidence } from '../src/renderer/src/lib/housekeeping'
+import type { RedLogEvent } from '../src/core/db/events'
 
 // docs/UIUX-STANDARD.md §22, the main-process half. The pure model is tested in
 // visibility.test.ts; what only a database can settle is whether each signal
@@ -24,6 +26,10 @@ try {
 
 const available = events !== null
 const IDS = { engagementId: 'eng', operatorId: 'op' }
+const asEvent = (agentType: string, data: Record<string, unknown>): RedLogEvent => ({
+  id: 'e1', timestamp: 1, engagementId: 'eng', sessionId: 's', operatorId: 'op',
+  agentType, hostname: 'h', sourceIP: null, targetId: null, data, createdAt: 1
+})
 
 describe.skipIf(!available)('visibility signals', () => {
   let dir: string
@@ -65,6 +71,26 @@ describe.skipIf(!available)('visibility signals', () => {
     it('counts a real command', () => {
       ins('shell', { subtype: 'command_start', command: 'nmap -sV 10.0.0.5' })
       expect(sig().evidenceSeen).toBe(true)
+    })
+
+    // The ingest stores a missing data.subtype as NULL (event-write.ts), as for
+    // an event from the local API or a plugin, and in SQL `NOT (subtype IN
+    // (…))` is then NULL rather than true: the row was not evidence, and the
+    // first-run screen stayed up after the operator had run something. Same for
+    // a command row with no `command`, through the hook-source LIKEs. The
+    // renderer's twin, isEvidence, already counted both.
+    it('counts a command stored with no subtype', () => {
+      const data = { command: 'nmap -sV 10.0.0.5' }
+      ins('shell', data)
+      expect(sig().evidenceSeen).toBe(true)
+      expect(isEvidence(asEvent('shell', data))).toBe(true)
+    })
+
+    it('counts a command row with no command', () => {
+      const data = { subtype: 'command_end', exit_code: 0 }
+      ins('shell', data)
+      expect(sig().evidenceSeen).toBe(true)
+      expect(isEvidence(asEvent('shell', data))).toBe(true)
     })
 
     it('counts anything in the logged tier — that table holds only capture', () => {
