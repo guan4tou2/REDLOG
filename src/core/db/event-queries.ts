@@ -157,6 +157,14 @@ export const EVIDENCE_SQL = `
  *  row and is NOT one of these. */
 export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
 
+// Ingest now drops RedLog's own plumbing before it is written at all
+// (src/core/capture-plumbing.ts), which is the real fix — a chained row
+// cannot be removed from an export without breaking the chain. This filter
+// stays for projects recorded before that landed, and picks up the two
+// patterns the old list missed: the POSIX adapter's own prompt function, and
+// reloading the PowerShell profile (`. $PROFILE`, which is literally what the
+// install flow tells the operator to run).
+//
 // Null-safe on purpose: the ingest stores a missing subtype as NULL, and
 // `NOT (NULL)` is NULL, which a WHERE drops. Without the COALESCEs, a shell,
 // system or terminal row with no subtype, or a command row with no command,
@@ -166,7 +174,7 @@ export const HOUSEKEEPING_SQL = `
     (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
     OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
-    OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%'))
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%tlogger_prompt_command%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%Microsoft.PowerShell_profile.ps1%'))
   )
 `
 
