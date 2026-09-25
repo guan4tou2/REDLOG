@@ -433,6 +433,7 @@ interface RuntimePreflight {
     neededFor: string[]
     /** copyable install command, present when missing */
     remediation?: string
+    remediationRequires?: { command: string; url: string }
   }>
   legacyHooks: LegacyHookRef[]
 }
