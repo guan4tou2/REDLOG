@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -37,12 +37,17 @@ const expectIds = (keep: (r: FixtureRow) => boolean): string[] =>
 // find no DNS at all.
 describeDB('the Timeline page query is complete for every shared-filter condition', () => {
   const START = 1_700_000_000_000
-  beforeEach(() => {
+  // Seeded once for the file, not once per test. 1250 rows is a real write,
+  // and re-seeding for each of these read-only tests pushed the file to ~22s
+  // on a loaded Windows runner against a 15s per-test timeout - which is what
+  // made it fail in CI, intermittently and on a different case each time,
+  // while passing every time locally. Nothing here mutates the fixture.
+  beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-complete-'))
     db.initDB(dir)
     fx = seedTimelineFixture({ total: 1250, newestShell: 200, start: START })
   })
-  afterEach(() => {
+  afterAll(() => {
     db.closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })

@@ -8,7 +8,8 @@ import { agentTypeLabel } from '../lib/timelineDomain'
 
 export function FilterBar(): JSX.Element | null {
   const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains,
+    listsStatus, scopeStatus, retryLists } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   // Named beside the inputs, because a wall-clock field with no zone is
@@ -106,6 +107,23 @@ export function FilterBar(): JSX.Element | null {
 
       {expanded && (
         <div className="px-3 pb-2 flex flex-wrap gap-3">
+          {/* An empty menu and a menu that failed to load look identical, and
+              the difference matters: one says this project has no targets, the
+              other says we do not know. Whatever loaded before is kept and
+              labelled stale rather than blanked. */}
+          {(listsStatus === 'error' || scopeStatus === 'error') && (
+            <div
+              data-testid="filter-lists-error"
+              role="status"
+              className="w-full rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center gap-3"
+            >
+              <span className="flex-1">{t('filter.listsFailed')}</span>
+              <button
+                onClick={retryLists}
+                className="px-2 py-0.5 rounded border border-amber-500/40 hover:bg-amber-500/20"
+              >{t('filter.listsRetry')}</button>
+            </div>
+          )}
           {/* Target selector */}
           <FilterSelect
             label={t('filter.target')}

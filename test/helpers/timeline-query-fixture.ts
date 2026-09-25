@@ -97,7 +97,11 @@ export function seedTimelineFixture(opts: {
   ]
 
   rows.push(...housekeeping, marker, amendment, ...hostOnly)
-  for (const row of rows) insertFixtureRow(row)
+  // One transaction, not 1250. Each bare INSERT is its own implicit
+  // transaction with its own commit, which on a loaded Windows runner took
+  // the seeding past the 15s hook timeout and failed the file — while
+  // passing in about a second locally.
+  getDB().transaction(() => { for (const row of rows) insertFixtureRow(row) })()
   const byNewest = [...rows].sort((a, b) => b.timestamp - a.timestamp)
   return { rows, byNewest, housekeeping, marker, amendment, hostOnly }
 }
