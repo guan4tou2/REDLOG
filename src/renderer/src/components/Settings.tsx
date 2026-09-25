@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import type { ConfigState, HookInfo } from './settings/SettingsShared'
@@ -45,7 +45,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
     el.classList.add('ring-1', 'ring-redlog-accent', 'rounded')
     setTimeout(() => el.classList.remove('ring-1', 'ring-redlog-accent', 'rounded'), 1600)
   }, [findText, tab])
-  const [saved, setSaved] = useState(false)
+  // Three states, not one flag. The bar used to show only "saved", so a write
+  // in flight and a write that had failed both looked like nothing had
+  // happened.
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [hooks, setHooks] = useState<HookInfo[]>([])
   const [hookLoading, setHookLoading] = useState<string | null>(null)
   const { t } = useI18n()
@@ -60,20 +63,53 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // fetch is skipped by tracking whether we've seen a user-driven change.
   const dirty = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // What the debounce is holding. Cleared once it has been handed to main.
+  const pending = useRef<ConfigState | null>(null)
+  const live = useRef(true)
+
+  const writeConfig = useCallback((next: ConfigState): void => {
+    pending.current = null
+    if (live.current) setSaveState('saving')
+    // The project this form was loaded from. `engagement.id` is the project
+    // id — main treats it as the durable attribution boundary — so passing it
+    // back lets main refuse a write aimed at a project the operator has since
+    // switched away from, rather than applying a stale form to a new
+    // engagement.
+    window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
+      .then((ok) => {
+        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
+        if (!live.current) return
+        setSaveState(ok === false ? 'failed' : 'saved')
+        if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
+      })
+      .catch(() => {
+        if (live.current) setSaveState('failed')
+        toast(t('toast.saveFailed'), 'error')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (!config) return
     if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => {
-      window.redlog.config.save(config).then(() => {
-        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1500)
-      }).catch(() => toast(t('toast.saveFailed'), 'error'))
-    }, 350)
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+    pending.current = config
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; writeConfig(config) }, 350)
+    return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
+
+  // Settings is unmounted by navigating away — App renders it as
+  // `view === 'settings' && <Settings/>`. The debounce's cleanup cancelled the
+  // pending write, so a change made within 350ms of leaving the page was
+  // dropped with nothing said. Flush it instead: the IPC completes in main
+  // whether or not this component is still on screen.
+  useEffect(() => () => {
+    live.current = false
+    const unsaved = pending.current
+    if (unsaved) writeConfig(unsaved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!config) return <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
 
@@ -184,9 +220,21 @@ export default function Settings({ request = null }: { request?: { page: Setting
             </div>
           )}
         </div>
-        {saved && (
-          <p className="px-3 py-2 text-xs text-emerald-400 border-t border-redlog-border">
-            {t('settings.saved')}
+        {saveState !== 'idle' && (
+          <p
+            data-testid={`settings-save-${saveState}`}
+            role="status"
+            className={`px-3 py-2 text-xs border-t border-redlog-border ${
+              saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'
+            }`}
+          >
+            {t(`settings.save.${saveState}`)}
+            {saveState === 'failed' && (
+              <button
+                onClick={() => { if (config) writeConfig(config) }}
+                className="ml-2 underline hover:text-red-300"
+              >{t('settings.save.retry')}</button>
+            )}
           </p>
         )}
       </nav>
