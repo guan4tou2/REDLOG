@@ -1302,5 +1302,9 @@
   "firstRun.preflightFailedWhy": "在它跑起來之前，無法判斷缺少哪些相依套件。",
   "firstRun.remediationNeeds": "這個指令需要先有 {{tool}}：",
   "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
-  "filter.listsRetry": "重試"
+  "filter.listsRetry": "重試",
+  "settings.save.saving": "儲存中…",
+  "settings.save.saved": "設定已存入這個專案",
+  "settings.save.failed": "儲存失敗，你的修改還在。",
+  "settings.save.retry": "重試"
 }

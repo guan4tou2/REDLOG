@@ -1302,5 +1302,9 @@
   "firstRun.preflightFailedWhy": "Missing dependencies cannot be reported until it does.",
   "firstRun.remediationNeeds": "Needs {{tool}} first:",
   "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
-  "filter.listsRetry": "Retry"
+  "filter.listsRetry": "Retry",
+  "settings.save.saving": "Saving…",
+  "settings.save.saved": "Config saved to this project",
+  "settings.save.failed": "Could not save. Your changes are still here.",
+  "settings.save.retry": "Retry"
 }
