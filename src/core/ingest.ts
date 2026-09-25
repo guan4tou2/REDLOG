@@ -18,6 +18,7 @@
 
 import { insertEvent, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { eventBus } from './event-bus'
+import { isCapturePlumbing } from './capture-plumbing'
 import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
 import { socketCausesFor, noteCommandPid } from './socket-attribution'
 import { scopeSignalFor } from './alert/scope-signal'
@@ -94,8 +95,9 @@ export interface IngestResult {
   /** The row that landed, or null when nothing was written. */
   event: RedLogEvent | null
   /** Why nothing was written. `paused` = recording is paused and this type is
-   *  not exempt; `dedup` = insertEvent's 2 s duplicate window. */
-  skipped?: 'paused' | 'dedup'
+   *  not exempt; `dedup` = insertEvent's 2 s duplicate window; `plumbing` =
+   *  RedLog's own shell wiring, which never becomes evidence. */
+  skipped?: 'paused' | 'dedup' | 'plumbing'
   /** Companion rows written because of this one (pivot, cleanup, loot…). */
   companions: RedLogEvent[]
 }
@@ -129,6 +131,15 @@ export function ingest(input: IngestInput): IngestResult {
   //    never recorded. insertEvent has the same gate; this one is earlier.
   if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !input.bypassPause && eventBus.paused) {
     return { event: null, skipped: 'paused', companions: [] }
+  }
+
+  // 1b. RedLog's own plumbing never enters the record. The shell adapters
+  //    report every command their shell runs, including the one that sourced
+  //    the adapter — dropping it here rather than at display time is what
+  //    keeps it out of the hash chain, and therefore out of the bundle the
+  //    client reads (the export must walk every chained row; it cannot skip).
+  if (agentType === 'shell' && isCapturePlumbing(data.command)) {
+    return { event: null, skipped: 'plumbing', companions: [] }
   }
 
   // 2. Causal links from fields the producer already sent (flow_id,
