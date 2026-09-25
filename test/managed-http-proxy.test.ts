@@ -4,7 +4,10 @@ import {
   ManagedHttpProxy,
   buildManagedProxyArgs
 } from '../src/main/services/managed-http-proxy'
-import { isManagedLoopbackProxy, followCapturePort } from '../src/core/managed-proxy-url'
+import {
+  isManagedLoopbackProxy, followCapturePort, isManagedProxy, followCaptureEndpoint,
+  managedProxyUrl, isLoopbackHost
+} from '../src/core/managed-proxy-url'
 
 class FakeStream extends EventEmitter {}
 
@@ -157,5 +160,52 @@ describe('managed HTTP proxy', () => {
     child.emit('exit', 2, null)
     expect(proxy.status()).toMatchObject({ state: 'failed', url: null })
     expect(proxy.status().error).toMatch(/fatal runtime error/)
+  })
+})
+
+// The capture endpoint is host AND port. It was port alone, with 127.0.0.1
+// written into the mitmdump args, the advertised URL and the matcher, so the
+// proxy could only ever be reached from the machine RedLog runs on — which
+// rules out a victim VM, a phone, a container, and (on Windows) a NAT'd WSL
+// distro, while RedLog offers WSL shells in its own picker.
+describe('the capture endpoint is host and port', () => {
+  it('binds the host it was given, and advertises that address', async () => {
+    expect(buildManagedProxyArgs('/a.py', 9090, '0.0.0.0')).toEqual([
+      '--listen-host', '0.0.0.0', '--listen-port', '9090',
+      '--set', 'block_global=false', '-s', '/a.py'
+    ])
+    expect(managedProxyUrl({ host: '10.0.0.2', port: 9090 })).toBe('http://10.0.0.2:9090')
+    // A bare IPv6 address needs brackets to be a URL at all.
+    expect(managedProxyUrl({ host: '::1', port: 9090 })).toBe('http://[::1]:9090')
+  })
+
+  it('still defaults to loopback when no host is given', () => {
+    expect(buildManagedProxyArgs('/a.py', 9090)).toContain('127.0.0.1')
+  })
+
+  it('knows its own proxy at a non-loopback address', () => {
+    const lan = { host: '10.0.0.2', port: 9090 }
+    expect(isManagedProxy('http://10.0.0.2:9090', lan)).toBe(true)
+    expect(isManagedProxy('http://127.0.0.1:9090', lan)).toBe(false)
+    // Loopback spellings stay interchangeable.
+    expect(isManagedProxy('http://localhost:9090', { host: '127.0.0.1', port: 9090 })).toBe(true)
+  })
+
+  it('moves the browser proxy when the host moves, and leaves the operator\'s own alone', () => {
+    const from = { host: '127.0.0.1', port: 9090 }
+    const to = { host: '10.0.0.2', port: 9090 }
+    expect(followCaptureEndpoint('http://127.0.0.1:9090', from, to)).toBe('http://10.0.0.2:9090')
+    expect(followCaptureEndpoint('http://localhost:9090', from, to)).toBe('http://10.0.0.2:9090')
+    // Someone else's proxy — Burp, a remote one — is used as typed.
+    expect(followCaptureEndpoint('http://127.0.0.1:8080', from, to)).toBe('http://127.0.0.1:8080')
+  })
+
+  it('tells loopback from an address the engagement network can reach', () => {
+    for (const h of ['127.0.0.1', 'localhost', '::1', '[::1]', ' LOCALHOST ']) {
+      expect(isLoopbackHost(h)).toBe(true)
+    }
+    for (const h of ['0.0.0.0', '10.0.0.2', '192.168.1.5', 'redlog.local']) {
+      expect(isLoopbackHost(h)).toBe(false)
+    }
   })
 })

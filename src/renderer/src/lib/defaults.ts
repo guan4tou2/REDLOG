@@ -13,5 +13,11 @@
 // has arrived yet.
 
 import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
+import { DEFAULT_CONFIG } from '../../../core/config'
 
 export const DEFAULT_CDP_PORT = DEFAULT_BROWSER.cdpPort
+
+// Same reason, for the capture endpoint: the panel used to hardcode 8080 as
+// its own fallback, so it drifted from DEFAULT_CONFIG the moment that moved.
+export const DEFAULT_CAPTURE_PORT = DEFAULT_CONFIG.httpCapture.port
+export const DEFAULT_CAPTURE_HOST = DEFAULT_CONFIG.httpCapture.listenHost
