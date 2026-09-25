@@ -50,11 +50,6 @@ export function isManagedProxy(proxyUrl: string, endpoint: CaptureEndpoint): boo
   }
 }
 
-/** Back-compat shim for callers that only know about the port. */
-export function isManagedLoopbackProxy(proxyUrl: string, port: number): boolean {
-  return isManagedProxy(proxyUrl, { host: '127.0.0.1', port })
-}
-
 // FR-008: the capture endpoint is the one source of truth, so moving it moves
 // a browser proxy that pointed at the old managed endpoint. Anything else
 // stays as the operator typed it.
@@ -77,9 +72,4 @@ export function followCaptureEndpoint(
     } catch { /* fall through to a rebuild */ }
   }
   return managedProxyUrl(to)
-}
-
-/** Back-compat shim: move the port, keeping loopback. */
-export function followCapturePort(proxyUrl: string, from: number, to: number): string {
-  return followCaptureEndpoint(proxyUrl, { host: '127.0.0.1', port: from }, { host: '127.0.0.1', port: to })
 }

@@ -5,7 +5,7 @@ import {
   buildManagedProxyArgs
 } from '../src/main/services/managed-http-proxy'
 import {
-  isManagedLoopbackProxy, followCapturePort, isManagedProxy, followCaptureEndpoint,
+  isManagedProxy, followCaptureEndpoint,
   managedProxyUrl, isLoopbackHost
 } from '../src/core/managed-proxy-url'
 
@@ -34,27 +34,27 @@ describe('managed HTTP proxy', () => {
   })
 
   it('only claims ownership of matching loopback proxy URLs', () => {
-    expect(isManagedLoopbackProxy('http://127.0.0.1:8080', 8080)).toBe(true)
-    expect(isManagedLoopbackProxy('http://localhost:8080', 8080)).toBe(true)
-    expect(isManagedLoopbackProxy('http://127.0.0.1:9090', 8080)).toBe(false)
-    expect(isManagedLoopbackProxy('http://10.0.0.2:8080', 8080)).toBe(false)
-    expect(isManagedLoopbackProxy('socks5://127.0.0.1:8080', 8080)).toBe(false)
+    expect(isManagedProxy('http://127.0.0.1:8080', { host: '127.0.0.1', port: 8080 })).toBe(true)
+    expect(isManagedProxy('http://localhost:8080', { host: '127.0.0.1', port: 8080 })).toBe(true)
+    expect(isManagedProxy('http://127.0.0.1:9090', { host: '127.0.0.1', port: 8080 })).toBe(false)
+    expect(isManagedProxy('http://10.0.0.2:8080', { host: '127.0.0.1', port: 8080 })).toBe(false)
+    expect(isManagedProxy('socks5://127.0.0.1:8080', { host: '127.0.0.1', port: 8080 })).toBe(false)
   })
 
   // Spec 019 FR-007. browser:launch swaps the browser's proxy for the managed one
   // only under this rule; Burp on 127.0.0.1:8081 is the operator's. It used a
   // separate any-loopback-port rule, which claimed Burp too.
   it('leaves a loopback proxy on another port to the operator', () => {
-    expect(isManagedLoopbackProxy('http://127.0.0.1:8081', 8080)).toBe(false)
+    expect(isManagedProxy('http://127.0.0.1:8081', { host: '127.0.0.1', port: 8080 })).toBe(false)
   })
 
   // FR-008: moving the capture port moves a browser proxy that pointed at it.
   it('moves only a browser proxy that pointed at the old capture port', () => {
-    expect(followCapturePort('http://127.0.0.1:8080', 8080, 9090)).toBe('http://127.0.0.1:9090')
-    expect(followCapturePort('http://localhost:8080', 8080, 9090)).toBe('http://localhost:9090')
-    expect(followCapturePort('http://127.0.0.1:8081', 8080, 9090)).toBe('http://127.0.0.1:8081')
-    expect(followCapturePort('http://10.0.0.2:8080', 8080, 9090)).toBe('http://10.0.0.2:8080')
-    expect(followCapturePort('', 8080, 9090)).toBe('')
+    expect(followCaptureEndpoint('http://127.0.0.1:8080', { host: '127.0.0.1', port: 8080 }, { host: '127.0.0.1', port: 9090 })).toBe('http://127.0.0.1:9090')
+    expect(followCaptureEndpoint('http://localhost:8080', { host: '127.0.0.1', port: 8080 }, { host: '127.0.0.1', port: 9090 })).toBe('http://localhost:9090')
+    expect(followCaptureEndpoint('http://127.0.0.1:8081', { host: '127.0.0.1', port: 8080 }, { host: '127.0.0.1', port: 9090 })).toBe('http://127.0.0.1:8081')
+    expect(followCaptureEndpoint('http://10.0.0.2:8080', { host: '127.0.0.1', port: 8080 }, { host: '127.0.0.1', port: 9090 })).toBe('http://10.0.0.2:8080')
+    expect(followCaptureEndpoint('', { host: '127.0.0.1', port: 8080 }, { host: '127.0.0.1', port: 9090 })).toBe('')
   })
 
   it('reports CA readiness without changing the trust store', async () => {
