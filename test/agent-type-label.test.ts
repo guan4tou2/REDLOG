@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import { agentTypeLabel, LANES, LANE_LABEL_KEYS } from '../src/renderer/src/lib/timelineDomain'
+import { conditionLabels } from '../src/renderer/src/lib/FilterContext'
 import en from '../src/renderer/src/i18n/en.json'
 import zh from '../src/renderer/src/i18n/zh-TW.json'
 
@@ -25,7 +26,11 @@ describe('agentTypeLabel', () => {
 
   it('is what the filter bar shows for the type chip and options', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src/renderer/src/components/FilterBar.tsx'), 'utf8')
-    expect(src).toMatch(/agentTypeLabel\(filter\.agentType, t\)/)
+    // The chip shows the shared condition label (spec 038), the one every view
+    // that names its conditions uses, and that label names the type this way.
+    expect(src).toMatch(/label=\{labels\.type/)
+    const base = { targetId: null, timeRange: null, inScopeOnly: false, hidePersonal: false, tier: 'all' as const }
+    expect(conditionLabels({ ...base, agentType: 'http_navigation' }, tr(en)).type).toBe('Type: HTTP')
     expect(src).toMatch(/label: agentTypeLabel\(at, t\)/)
     expect(src).not.toMatch(/label: at \}/)
   })

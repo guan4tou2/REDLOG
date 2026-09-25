@@ -24,69 +24,102 @@ export interface EventFilter {
   scope?: ScopePolicy
   hidePersonal?: boolean
   personalDomains?: string[]
+  /** Spec 038: `chained` reads the chained tier only; absent reads both. */
+  tier?: 'chained'
 }
 
-function inScopeTargetIds(filter: EventFilter): string[] | null {
-  if (!filter.inScopeOnly || !filter.scope) return null
-  const { targets, excludeTargets } = filter.scope
-  if (targets.length === 0 && excludeTargets.length === 0) return null
+const scopeActive = (filter: EventFilter): boolean =>
+  !!filter.inScopeOnly && !!filter.scope && (filter.scope.targets.length > 0 || filter.scope.excludeTargets.length > 0)
+const personalActive = (filter: EventFilter): boolean =>
+  !!filter.hidePersonal && !!filter.personalDomains?.length
+
+/** The targets the scope and personal predicates decide over: every target
+ *  in the project, or only those of `ids` when the rows are already named.
+ *  Each target's decision is the same either way, so the answer for those
+ *  rows is too. Spec 038: a check of 100 live rows scanned every target of
+ *  the project, once per tier arm, which a busy second of batches could not
+ *  afford (research R10). */
+function candidateTargets(ids?: string[]): string[] {
   const db = getReadonlyDB()
+  const named = ids ? ' AND id IN (SELECT value FROM json_each(?))' : ''
+  const params = ids ? [JSON.stringify(ids), JSON.stringify(ids)] : []
   const rows = db.prepare(`
-    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
+    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''${named}
     UNION
-    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
-  `).all() as Array<{ target_id: string }>
-  return rows
-    .map((row) => row.target_id)
-    .filter((target) => {
-      const decision = evaluateScope(target, { targets, excludeTargets })
-      return decision.status === 'in-scope' || decision.status === 'no-scope'
-    })
+    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''${named}
+  `).all(...params) as Array<{ target_id: string }>
+  return rows.map((row) => row.target_id)
 }
 
-function personalTargetIds(filter: EventFilter): string[] | null {
-  if (!filter.hidePersonal || !filter.personalDomains?.length) return null
-  const db = getReadonlyDB()
-  const rows = db.prepare(`
-    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
-    UNION
-    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
-  `).all() as Array<{ target_id: string }>
-  return rows
-    .map((row) => row.target_id)
-    .filter((target) => evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+function inScopeTargetIds(filter: EventFilter, candidates: string[]): string[] {
+  const { targets, excludeTargets } = filter.scope ?? { targets: [], excludeTargets: [] }
+  return candidates.filter((target) => {
+    const decision = evaluateScope(target, { targets, excludeTargets })
+    return decision.status === 'in-scope' || decision.status === 'no-scope'
+  })
 }
 
-function appendEventFilter(
-  filter: EventFilter,
-  conditions: string[],
-  params: unknown[],
-  alias = ''
+function personalTargetIds(filter: EventFilter, candidates: string[]): string[] {
+  return candidates.filter((target) =>
+    evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+}
+
+/** Scope and personal traffic over a target column: untargeted rows always
+ *  pass. The tier arms apply it to rows, the HTTP flow page to flow heads. */
+function appendTargetPolicy(
+  filter: EventFilter, column: string, conditions: string[], params: unknown[], ids?: string[]
 ): void {
-  const col = (name: string): string => alias ? `${alias}.${name}` : name
-  if (filter.agentType) { conditions.push(`${col('agent_type')} = ?`); params.push(filter.agentType) }
-  if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
-  if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
-  if (filter.targetId) { conditions.push(`${col('target_id')} = ?`); params.push(filter.targetId) }
-  const allowed = inScopeTargetIds(filter)
-  if (allowed !== null) {
-    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} IN (SELECT value FROM json_each(?)))`)
-    params.push(JSON.stringify(allowed))
+  const byScope = scopeActive(filter)
+  const byPersonal = personalActive(filter)
+  if (!byScope && !byPersonal) return
+  const candidates = candidateTargets(ids)
+  if (byScope) {
+    conditions.push(`(${column} IS NULL OR ${column} = '' OR ${column} IN (SELECT value FROM json_each(?)))`)
+    params.push(JSON.stringify(inScopeTargetIds(filter, candidates)))
   }
-  const personal = personalTargetIds(filter)
-  if (personal?.length) {
-    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} NOT IN (SELECT value FROM json_each(?)))`)
+  const personal = byPersonal ? personalTargetIds(filter, candidates) : []
+  if (personal.length) {
+    conditions.push(`(${column} IS NULL OR ${column} = '' OR ${column} NOT IN (SELECT value FROM json_each(?)))`)
     params.push(JSON.stringify(personal))
   }
 }
 
-// SQL predicate that matches the renderer-side `isHousekeeping()` filter in
-// Timeline.tsx. Kept in sync manually — both hide RedLog plumbing rows that
-// still land in the chain (for audit integrity) but must not show up in the
-// operator's view. Pushing this filter into SQL fixes the Load-More pager,
-// which was fetching 200 rows and filtering to ~30 client-side, then setting
-// `allLoaded=true` because <200 came back — operators saw an empty timeline
-// with more history they couldn't reach.
+/** Target identity is `target_id`, compared lowercased (SPEC-target-identity):
+ *  the Targets page groups `LOWER(target)`, so every filter has to match a
+ *  target in any casing or the two counts part. NOCASE folds ASCII, which is
+ *  what hostnames (IDN as punycode) and addresses are. The one place a target
+ *  is compared, so no reader can compare it another way. */
+export function targetPredicate(column: string): string {
+  return `${column} = ? COLLATE NOCASE`
+}
+
+/** The one evaluator of the shared filter. `arm` is the tier whose SQL this
+ *  is: a filter can exclude a whole tier, so a caller building both arms from
+ *  one call could not express it. Required so that a new caller cannot forget.
+ *  `ids`: the caller's WHERE already restricts the rows to these. */
+function appendEventFilter(
+  filter: EventFilter,
+  conditions: string[],
+  params: unknown[],
+  arm: 'chained' | 'logged',
+  alias = '',
+  ids?: string[]
+): void {
+  const col = (name: string): string => alias ? `${alias}.${name}` : name
+  // "Chained only" leaves the logged arm nothing. It is a predicate like the
+  // rest, so the arm still runs and its count is an honest 0.
+  if (filter.tier === 'chained' && arm === 'logged') conditions.push('0 = 1')
+  if (filter.agentType) { conditions.push(`${col('agent_type')} = ?`); params.push(filter.agentType) }
+  if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
+  if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
+  if (filter.targetId) { conditions.push(targetPredicate(col('target_id'))); params.push(filter.targetId) }
+  appendTargetPolicy(filter, col('target_id'), conditions, params, ids)
+}
+
+// HOUSEKEEPING_SQL (below) hides RedLog's plumbing rows, which still land in
+// the chain for audit integrity but are not the operator's activity. It is the
+// one housekeeping rule: the Timeline's pages, counts and live admission all
+// apply it here (spec 038), so no renderer copy can drift from it.
 /**
  * What counts as the operator having DONE something, as opposed to the app
  * talking to itself.
@@ -124,16 +157,22 @@ export const EVIDENCE_SQL = `
  *  row and is NOT one of these. */
 export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
 
-const HOUSEKEEPING_SQL = `
+// Null-safe on purpose: the ingest stores a missing subtype as NULL, and
+// `NOT (NULL)` is NULL, which a WHERE drops. Without the COALESCEs, a shell,
+// system or terminal row with no subtype, or a command row with no command,
+// was hidden as though it were housekeeping.
+export const HOUSEKEEPING_SQL = `
   NOT (
-    (agent_type = 'system' AND subtype IN ('api_started','session_start'))
-    OR (agent_type = 'shell' AND subtype = 'session_start')
-    OR (agent_type = 'terminal' AND subtype = 'session_start')
-    OR (agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-bash-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-zsh-hook.zsh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
+    (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
+    OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%'))
   )
 `
 
-export interface EventQueryOptions extends EventFilter {
+/** `tier` here picks which arms run, a wider choice than the shared filter's
+ *  "chained only", so it replaces that field rather than extending it. */
+export interface EventQueryOptions extends Omit<EventFilter, 'tier'> {
   limit?: number
   since?: number
   // Time-range upper bound: return events strictly older than this wall-clock
@@ -184,24 +223,18 @@ function decodeHttpFlowCursor(value?: string | null): { startTs: number; flowId:
  * predicates apply to the request start (or earliest surviving flow row when
  * capture began mid-flow); all request/response rows for selected flows return. */
 export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?: string | null }): HttpFlowPage {
+  // Flows are recorded in the logged tier only, so "chained only" leaves
+  // this view nothing by construction (spec 038 FR-012); the panel says so.
+  if (opts.tier === 'chained') return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
   const db = getReadonlyDB()
   const limit = Math.max(1, opts.limit ?? 200)
   const cursor = decodeHttpFlowCursor(opts.cursor)
   const where: string[] = []
   const params: unknown[] = []
-  if (opts.targetId) { where.push('target_id = ?'); params.push(opts.targetId) }
+  if (opts.targetId) { where.push(targetPredicate('target_id')); params.push(opts.targetId) }
   if (opts.since != null) { where.push('start_ts >= ?'); params.push(opts.since) }
   if (opts.before != null) { where.push('start_ts <= ?'); params.push(opts.before) }
-  const allowed = inScopeTargetIds(opts)
-  if (allowed !== null) {
-    where.push("(target_id IS NULL OR target_id = '' OR target_id IN (SELECT value FROM json_each(?)))")
-    params.push(JSON.stringify(allowed))
-  }
-  const personal = personalTargetIds(opts)
-  if (personal?.length) {
-    where.push("(target_id IS NULL OR target_id = '' OR target_id NOT IN (SELECT value FROM json_each(?)))")
-    params.push(JSON.stringify(personal))
-  }
+  appendTargetPolicy(opts, 'target_id', where, params)
   if (cursor) {
     where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))')
     params.push(cursor.startTs, cursor.startTs, cursor.flowId)
@@ -254,7 +287,6 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   const conditions: string[] = []
   const params: unknown[] = []
 
-  appendEventFilter(opts, conditions, params)
   if (opts.beforeCreatedAt) {
     conditions.push('created_at < ?')
     params.push(opts.beforeCreatedAt)
@@ -267,12 +299,20 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   const tier = opts.tier ?? 'all'
   const snap = opts.snapshot
 
-  // Per-arm WHERE: shared conditions plus an optional rowid upper bound
-  // from ExportSnapshot — ensures preview and execute see the same dataset.
-  const chainedConds = [...conditions]
-  const chainedParams = [...params]
-  const loggedConds = [...conditions]
-  const loggedParams = [...params]
+  // Per-arm WHERE: the shared filter for that tier, the shared conditions,
+  // and an optional rowid upper bound from ExportSnapshot — ensures preview
+  // and execute see the same dataset.
+  const chainedConds: string[] = []
+  const chainedParams: unknown[] = []
+  const loggedConds: string[] = []
+  const loggedParams: unknown[] = []
+  const { tier: _arms, ...filterOpts } = opts
+  appendEventFilter(filterOpts, chainedConds, chainedParams, 'chained')
+  appendEventFilter(filterOpts, loggedConds, loggedParams, 'logged')
+  chainedConds.push(...conditions)
+  chainedParams.push(...params)
+  loggedConds.push(...conditions)
+  loggedParams.push(...params)
   if (snap) {
     chainedConds.push('rowid <= ?')
     chainedParams.push(snap.chainedMaxRowId)
@@ -320,63 +360,124 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   return rows.map(rowToEvent)
 }
 
-export function queryEventsPage(opts: EventFilter & {
-  limit?: number
-  cursor?: string | null
-}): QueryPage<RedLogEvent> {
-  const db = getReadonlyDB()
-  const limit = opts.limit ?? 200
-  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
-  const chainedConds: string[] = []
-  const loggedConds: string[] = []
-  const chainedParams: unknown[] = []
-  const loggedParams: unknown[] = []
+/** What a parsed query contributes to each tier's WHERE. Prepared once and
+ *  shared by the page, the count and the id match, so none of them can read
+ *  one query a second way. */
+interface PreparedQuery {
+  conditions: QueryCondition[]
+  /** FTS MATCH expression for the free text, or null when there is none. */
+  match: string | null
+  /** Event ids whose indexed HTTP body matches the text, as JSON. */
+  bodyIdsJson: string | null
+  toolSession?: ToolSessionResolution
+}
 
-  appendEventFilter(opts, chainedConds, chainedParams)
-  appendEventFilter(opts, loggedConds, loggedParams)
+const isEmptyQuery = (parsed: ParsedQuery): boolean =>
+  parsed.conditions.length === 0 && parsed.text.trim() === ''
 
-  if (cursor) {
-    const chainedCursor = buildPerArmCursorWhere(cursor, 'chained')
-    chainedConds.push(chainedCursor.sql)
-    chainedParams.push(...chainedCursor.params)
-    const loggedCursor = buildPerArmCursorWhere(cursor, 'logged')
-    loggedConds.push(loggedCursor.sql)
-    loggedParams.push(...loggedCursor.params)
+function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery): PreparedQuery {
+  // A bare tool-use condition has to choose a session, because the id is
+  // unique only within one. Choosing silently would let pair completion join
+  // a call from one session to a result from another, so the choice and the
+  // sessions not chosen both travel back with the page.
+  let conditions = parsed.conditions
+  let toolSession: ToolSessionResolution | undefined
+  const tool = conditions.find((c) => c.field === 'tool')
+  if (tool && !conditions.some((c) => c.field === 'session')) {
+    const sessions = sessionsForToolUse(db, tool.value)
+    if (sessions.length > 0) {
+      const [chosen, ...others] = sessions
+      toolSession = { toolUseId: tool.value, sessionId: chosen, otherSessionIds: others }
+      conditions = [...conditions, { field: 'session', value: chosen }]
+    }
   }
+  const match = parsed.text.trim() ? toFtsMatch(parsed.text) : null
+  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(parsed.text)) : null
+  return { conditions, match, bodyIdsJson, ...(toolSession ? { toolSession } : {}) }
+}
 
-  const chainedWhere = chainedConds.length ? `WHERE ${chainedConds.join(' AND ')}` : ''
-  const loggedWhere = loggedConds.length ? `WHERE ${loggedConds.join(' AND ')}` : ''
+interface TierWhereInput {
+  query?: PreparedQuery
+  filter?: EventFilter
+  cursor?: CursorKey | null
+  excludeHousekeeping?: boolean
+  /** Restrict evaluation to these event ids. */
+  ids?: string[]
+}
+
+/** One tier's WHERE over the alias `e`, for every read that pages, counts or
+ *  checks events against the shared filter and a query. */
+function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { where: string; params: unknown[] } {
+  const parts: string[] = []
+  const params: unknown[] = []
+  const q = input.query
+  if (q?.match) {
+    const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
+    parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
+                 OR e.id IN (SELECT value FROM json_each(?)))`)
+    params.push(q.match, q.bodyIdsJson)
+  }
+  if (q) appendConditions(q.conditions, parts, params, tier)
+  appendEventFilter(input.filter ?? {}, parts, params, tier, 'e', input.ids)
+  if (input.excludeHousekeeping) parts.push(HOUSEKEEPING_SQL)
+  if (input.ids) {
+    parts.push('e.id IN (SELECT value FROM json_each(?))')
+    params.push(JSON.stringify(input.ids))
+  }
+  if (input.cursor) {
+    const c = buildPerArmCursorWhere(input.cursor, tier)
+    parts.push(c.sql.replace(/\browid\b/g, 'e.rowid'))
+    params.push(...c.params)
+  }
+  return { where: parts.length ? 'WHERE ' + parts.join(' AND ') : '', params }
+}
+
+/** Both tiers' rows through their own WHERE and per-arm limit, merged in
+ *  canonical order and cut at `limit + 1` for `hasMore`. */
+function queryTierPage(
+  db: ReturnType<typeof getReadonlyDB>,
+  chained: { where: string; params: unknown[] },
+  logged: { where: string; params: unknown[] },
+  limit: number
+): QueryPage<RedLogEvent> {
   const perArmLimit = limit + 1
   const sql = `
     SELECT * FROM (
       SELECT * FROM (
-        SELECT rowid AS _row,
-               id, timestamp, engagement_id, session_id, operator_id, agent_type,
-               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-               monotonic_ns, ntp_offset_ms, signature,
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+               e.monotonic_ns, e.ntp_offset_ms, e.signature,
                'chained' AS tier, ${TIER_RANK_CHAINED}
-        FROM events ${chainedWhere}
-        ORDER BY timestamp DESC, rowid DESC
+        FROM events e
+        ${chained.where}
+        ORDER BY e.timestamp DESC, e.rowid DESC
         LIMIT ?
       )
       UNION ALL
       SELECT * FROM (
-        SELECT rowid AS _row,
-               id, timestamp, engagement_id, session_id, operator_id, agent_type,
-               hostname, source_ip, target_id, data,
-               NULL AS hash, NULL AS prev_hash, created_at,
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data,
+               NULL AS hash, NULL AS prev_hash, e.created_at,
                NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
                'logged' AS tier, ${TIER_RANK_LOGGED}
-        FROM events_logged ${loggedWhere}
-        ORDER BY timestamp DESC, rowid DESC
+        FROM events_logged e
+        ${logged.where}
+        ORDER BY e.timestamp DESC, e.rowid DESC
         LIMIT ?
       )
     ) ${CANONICAL_ORDER}
     LIMIT ?`
 
+  // No catch. The query paths this replaced returned an empty page when their
+  // statement threw, which made a failed query indistinguishable from an
+  // engagement in which nothing matched — and only the second licenses "this
+  // did not happen". The caller renders the failure; it is not this layer's
+  // to hide.
   const rows = db.prepare(sql).all(
-    ...chainedParams, perArmLimit,
-    ...loggedParams, perArmLimit,
+    ...chained.params, perArmLimit,
+    ...logged.params, perArmLimit,
     limit + 1
   ) as Array<Record<string, unknown>>
   const page = toQueryPage(rows, limit, (row) => ({
@@ -385,6 +486,94 @@ export function queryEventsPage(opts: EventFilter & {
     tier: row.tier as 'chained' | 'logged'
   }))
   return { ...page, items: page.items.map(rowToEvent) }
+}
+
+export function queryEventsPage(opts: EventFilter & {
+  limit?: number
+  cursor?: string | null
+  /** Drop RedLog's own plumbing rows (`HOUSEKEEPING_SQL`), as the Timeline does. */
+  excludeHousekeeping?: boolean
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const limit = opts.limit ?? 200
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+  const input: TierWhereInput = { filter: opts, cursor, excludeHousekeeping: opts.excludeHousekeeping }
+  return queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
+}
+
+export interface EventCountRequest {
+  /** Omitted: count what the filter admits, as `queryEventsPage` pages it. */
+  parsed?: ParsedQuery
+  filter?: EventFilter
+  /** Count strictly past this position, which is where the next page starts. */
+  cursor?: string | null
+  excludeHousekeeping?: boolean
+}
+
+/** How many rows the page query or the event query walks from `cursor` to
+ *  the end, over the same predicates, so "N of M" and "K earlier" can never
+ *  disagree with the rows they describe. */
+export function countEvents(req: EventCountRequest): number {
+  if (req.parsed && isEmptyQuery(req.parsed)) return 0
+  const db = getReadonlyDB()
+  let cursor: CursorKey | null = null
+  if (req.cursor) {
+    cursor = decodeCursor(req.cursor)
+    // Counting from the start instead would report every row as "earlier".
+    if (!cursor) throw new Error('countEvents: unreadable cursor')
+  }
+  const input: TierWhereInput = {
+    query: req.parsed ? prepareQuery(db, req.parsed) : undefined,
+    filter: req.filter,
+    cursor,
+    excludeHousekeeping: req.excludeHousekeeping
+  }
+  const chained = buildTierWhere('chained', input)
+  const logged = buildTierWhere('logged', input)
+  const row = db.prepare(`
+    SELECT (SELECT COUNT(*) FROM events e ${chained.where})
+         + (SELECT COUNT(*) FROM events_logged e ${logged.where}) AS n
+  `).get(...chained.params, ...logged.params) as { n: number }
+  return row.n
+}
+
+export const MATCH_EVENT_IDS_MAX = 1000
+
+export interface EventMatchRequest {
+  ids: string[]
+  /** Omitted: check the filter only. */
+  parsed?: ParsedQuery
+  filter?: EventFilter
+  excludeHousekeeping?: boolean
+}
+
+/** Which of `ids` the filter admits and, with `parsed`, the query matches, in
+ *  input order. For surfaces that already hold rows and must dim or admit
+ *  them by the same predicates a page would apply. */
+export function matchEventIds(req: EventMatchRequest): string[] {
+  // Refused, not truncated: a silently shortened answer would dim, or drop,
+  // rows the caller never learns were not checked.
+  if (req.ids.length > MATCH_EVENT_IDS_MAX) {
+    throw new Error(`matchEventIds takes at most ${MATCH_EVENT_IDS_MAX} ids`)
+  }
+  if (req.ids.length === 0) return []
+  if (req.parsed && isEmptyQuery(req.parsed)) return []
+  const db = getReadonlyDB()
+  const input: TierWhereInput = {
+    query: req.parsed ? prepareQuery(db, req.parsed) : undefined,
+    filter: req.filter,
+    excludeHousekeeping: req.excludeHousekeeping,
+    ids: req.ids
+  }
+  const chained = buildTierWhere('chained', input)
+  const logged = buildTierWhere('logged', input)
+  const rows = db.prepare(`
+    SELECT e.id FROM events e ${chained.where}
+    UNION
+    SELECT e.id FROM events_logged e ${logged.where}
+  `).all(...chained.params, ...logged.params) as Array<{ id: string }>
+  const hit = new Set(rows.map((r) => r.id))
+  return req.ids.filter((id) => hit.has(id))
 }
 
 export function queryScreenshotPage(opts: {
@@ -747,6 +936,8 @@ export interface EventQueryRequest {
   filter?: EventFilter
   limit?: number
   cursor?: string | null
+  /** Drop RedLog's own plumbing rows, as the Timeline's pages do. */
+  excludeHousekeeping?: boolean
 }
 
 /**
@@ -797,6 +988,10 @@ function appendConditions(
         sqlParts.push("json_extract(e.data, '$.tool_use_id') = ?")
         params.push(c.value)
         break
+      case 'operator':
+        sqlParts.push('e.operator_id = ?')
+        params.push(c.value)
+        break
     }
   }
 }
@@ -826,98 +1021,14 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
     return { items: [], hasMore: false, nextCursor: null }
   }
   const db = getReadonlyDB()
-  const filter = request.filter ?? {}
   const limit = request.limit ?? 100
   const cursor: CursorKey | null = request.cursor ? decodeCursor(request.cursor) : null
-
-  // A bare tool-use condition has to choose a session, because the id is
-  // unique only within one. Choosing silently would let pair completion join
-  // a call from one session to a result from another, so the choice and the
-  // sessions not chosen both travel back with the page.
-  let conditions = request.parsed.conditions
-  let toolSession: ToolSessionResolution | undefined
-  const tool = conditions.find((c) => c.field === 'tool')
-  if (tool && !conditions.some((c) => c.field === 'session')) {
-    const sessions = sessionsForToolUse(db, tool.value)
-    if (sessions.length > 0) {
-      const [chosen, ...others] = sessions
-      toolSession = { toolUseId: tool.value, sessionId: chosen, otherSessionIds: others }
-      conditions = [...conditions, { field: 'session', value: chosen }]
-    }
+  const query = prepareQuery(db, request.parsed)
+  const input: TierWhereInput = {
+    query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping
   }
-
-  const match = request.parsed.text.trim() ? toFtsMatch(request.parsed.text) : null
-  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(request.parsed.text)) : null
-
-  const build = (tier: 'chained' | 'logged'): { where: string; params: unknown[] } => {
-    const parts: string[] = []
-    const params: unknown[] = []
-    if (match) {
-      const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
-      parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
-                   OR e.id IN (SELECT value FROM json_each(?)))`)
-      params.push(match, bodyIdsJson)
-    }
-    appendConditions(conditions, parts, params, tier)
-    appendEventFilter(filter, parts, params, 'e')
-    if (cursor) {
-      const c = buildPerArmCursorWhere(cursor, tier)
-      parts.push(c.sql.replace(/\browid\b/g, 'e.rowid'))
-      params.push(...c.params)
-    }
-    return { where: parts.length ? 'WHERE ' + parts.join(' AND ') : '', params }
-  }
-
-  const chained = build('chained')
-  const logged = build('logged')
-  const perArmLimit = limit + 1
-
-  const sql = `
-    SELECT * FROM (
-      SELECT * FROM (
-        SELECT e.rowid AS _row,
-               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
-               e.monotonic_ns, e.ntp_offset_ms, e.signature,
-               'chained' AS tier, ${TIER_RANK_CHAINED}
-        FROM events e
-        ${chained.where}
-        ORDER BY e.timestamp DESC, e.rowid DESC
-        LIMIT ?
-      )
-      UNION ALL
-      SELECT * FROM (
-        SELECT e.rowid AS _row,
-               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-               e.hostname, e.source_ip, e.target_id, e.data,
-               NULL AS hash, NULL AS prev_hash, e.created_at,
-               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
-               'logged' AS tier, ${TIER_RANK_LOGGED}
-        FROM events_logged e
-        ${logged.where}
-        ORDER BY e.timestamp DESC, e.rowid DESC
-        LIMIT ?
-      )
-    ) ${CANONICAL_ORDER}
-    LIMIT ?`
-
-  // No catch. The query paths this replaced returned an empty page when their
-  // statement threw, which made a failed query indistinguishable from an
-  // engagement in which nothing matched — and only the second licenses "this
-  // did not happen". The caller renders the failure; it is not this layer's
-  // to hide.
-  const rows = db.prepare(sql).all(
-    ...chained.params, perArmLimit,
-    ...logged.params, perArmLimit,
-    limit + 1
-  ) as Array<Record<string, unknown>>
-
-  const page = toQueryPage(rows, limit, (row) => ({
-    ts: row.timestamp as number,
-    row: row._row as number,
-    tier: row.tier as 'chained' | 'logged'
-  }))
-  return { ...page, items: page.items.map(rowToEvent), ...(toolSession ? { toolSession } : {}) }
+  const page = queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
+  return { ...page, ...(query.toolSession ? { toolSession: query.toolSession } : {}) }
 }
 
 /** Identifies one tool exchange. Unique only as a pair; see ToolSessionResolution. */

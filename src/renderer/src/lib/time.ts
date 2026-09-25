@@ -13,44 +13,126 @@
 //
 //   Exports are ISO 8601. Whatever reads them next is not a person.
 //
-// The Timeline's timezone-aware formatter lives here too. It used to be a
-// private function inside Timeline.tsx, and the two implementations happened
-// to agree — which is the dangerous state, not the safe one, because nothing
-// would have said so when they stopped. It is the same structure that let the
-// shortcut table drift once already. Worse, the zone branch (audit mode pins
-// UTC) existed only in the Timeline, so this module did not know that
-// timestamps could have a zone at all.
+// The display zone lives here too (spec 038). The Timeline kept its own
+// Local / UTC / Project picker and its own formatter, so one event could read
+// 15:04 on the Timeline and 07:04Z nowhere else, and this module did not know
+// timestamps could have a zone at all. Now one zone, chosen in Settings ▸
+// General, is read by the only event-time printers, the three below. A UTC
+// time carries `Z`, because a UTC time that does not say so is a time you
+// have to ask someone about; a local time is unmarked.
+
+import { useSyncExternalStore } from 'react'
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 
-/** `15:04`, or `15:04:05` with seconds. */
+// ── Display zone ─────────────────────────────────────────────────────────────
+//
+// A per-machine viewing preference, not project evidence: exports stay ISO
+// 8601 whatever it is. Held in memory after the first read, because every row
+// of every list prints through here.
+
+export type DisplayZone = 'local' | 'utc'
+
+const ZONE_KEY = 'redlog-display-zone'
+/** The Timeline's own picker, before the zone was app-wide. */
+const TIMELINE_TZ_KEY = 'redlog-timeline-tz'
+
+let zone: DisplayZone | null = null
+const listeners = new Set<() => void>()
+
+function readZone(): DisplayZone {
+  try {
+    const stored = localStorage.getItem(ZONE_KEY)
+    if (stored === 'local' || stored === 'utc') return stored
+    // First read: the Timeline's choice carries over. Its "project" zone
+    // could never be set, so it always printed Local.
+    const legacy = localStorage.getItem(TIMELINE_TZ_KEY)
+    if (legacy !== null) {
+      const carried: DisplayZone = legacy === 'utc' ? 'utc' : 'local'
+      localStorage.setItem(ZONE_KEY, carried)
+      return carried
+    }
+  } catch { /* storage unavailable: Local */ }
+  return 'local'
+}
+
+function changeZone(next: DisplayZone): void {
+  if (zone === next) return
+  zone = next
+  for (const listener of listeners) listener()
+}
+
+export function getDisplayZone(): DisplayZone {
+  if (zone === null) zone = readZone()
+  return zone
+}
+
+export function setDisplayZone(next: DisplayZone): void {
+  try { localStorage.setItem(ZONE_KEY, next) } catch { /* this window still follows it */ }
+  changeZone(next)
+}
+
+// The HUD is another window. `storage` fires there, never in the window that
+// wrote, so the one that changed it has already heard through setDisplayZone.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === null || e.key === ZONE_KEY) changeZone(readZone())
+  })
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+/** The zone, for a surface that stays mounted while it changes: the caller
+ *  re-renders, and so reprints, when it does. */
+export function useDisplayZone(): DisplayZone {
+  return useSyncExternalStore(subscribe, getDisplayZone, getDisplayZone)
+}
+
+interface Clock { utc: boolean; y: number; mo: number; d: number; h: number; mi: number; s: number }
+
+/** The wall-clock fields of `ms` in the display zone. */
+function clock(ms: number): Clock {
+  const t = new Date(ms)
+  return getDisplayZone() === 'utc'
+    ? { utc: true, y: t.getUTCFullYear(), mo: t.getUTCMonth() + 1, d: t.getUTCDate(), h: t.getUTCHours(), mi: t.getUTCMinutes(), s: t.getUTCSeconds() }
+    : { utc: false, y: t.getFullYear(), mo: t.getMonth() + 1, d: t.getDate(), h: t.getHours(), mi: t.getMinutes(), s: t.getSeconds() }
+}
+
+const hm = (c: Clock, seconds?: boolean): string => `${pad(c.h)}:${pad(c.mi)}${seconds ? `:${pad(c.s)}` : ''}`
+const ymd = (c: Clock, year = true): string => `${year ? `${c.y}-` : ''}${pad(c.mo)}-${pad(c.d)}`
+const mark = (c: Clock): string => (c.utc ? 'Z' : '')
+
+/** `15:04`, or `15:04:05` with seconds. `07:04Z` in UTC. */
 export function formatTime(ms: number, opts: { seconds?: boolean } = {}): string {
   if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  const base = `${pad(d.getHours())}:${pad(d.getMinutes())}`
-  return opts.seconds ? `${base}:${pad(d.getSeconds())}` : base
+  const c = clock(ms)
+  return `${hm(c, opts.seconds)}${mark(c)}`
 }
 
-/** `2026-08-20` — date only, for compact display. */
+/** `2026-08-20` — date only, for compact display. `2026-08-20Z` in UTC: the
+ *  day is UTC's, which is not the local one near midnight. */
 export function formatDate(ms: number): string {
   if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const c = clock(ms)
+  return `${ymd(c)}${mark(c)}`
 }
 
-/** `2026-08-20 15:04`, or with seconds. Sortable as text, which the
- *  locale-ordered forms are not. */
-export function formatDateTime(ms: number, opts: { seconds?: boolean } = {}): string {
+/** `2026-08-20 15:04`, or with seconds. `2026-08-20 07:04Z` in UTC. Sortable
+ *  as text, which the locale-ordered forms are not. `year: false` is for an
+ *  axis tick, `08-20 15:04`. */
+export function formatDateTime(ms: number, opts: { seconds?: boolean; year?: boolean } = {}): string {
   if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  return `${date} ${formatTime(ms, opts)}`
+  const c = clock(ms)
+  return `${ymd(c, opts.year !== false)} ${hm(c, opts.seconds)}${mark(c)}`
 }
 
 /**
  * Age, for freshness fields only. Everything else takes an absolute time.
- * `t` is passed in rather than imported so the strings stay translatable and
- * this module stays free of React.
+ * `t` is passed in rather than imported, so the strings stay translatable
+ * without this module reaching into the i18n context.
  */
 export function formatFreshness(
   ms: number,
@@ -75,46 +157,4 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
-
-// ── Timezone-aware formatting ────────────────────────────────────────────────
-//
-// The Timeline lets an operator read every timestamp in Local, UTC, or the
-// project's configured zone; audit mode pins UTC, because a report read by
-// someone in another country must not depend on where it was written.
-
-export type TzMode = 'local' | 'utc' | 'project'
-export type TsStyle = 'time' | 'timeSec' | 'full'
-
-/**
- * A timestamp in the operator's chosen zone. Still 24-hour — the zone changes
- * which wall clock is used, never how it is written.
- *
- * An unrecognised IANA name falls back to Local rather than throwing: a typo
- * in `project.timezone` must not wipe every label on the panel.
- */
-export function formatTs(
-  ms: number,
-  tz: TzMode,
-  projectTz: string | null,
-  style: TsStyle = 'time'
-): string {
-  if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  if (tz === 'utc') {
-    // Suffixed `Z`, because a UTC time that does not say so is a time you have
-    // to ask someone about.
-    if (style === 'time') return `${d.toISOString().slice(11, 16)}Z`
-    if (style === 'timeSec') return `${d.toISOString().slice(11, 19)}Z`
-    return d.toISOString().replace('T', ' ')
-  }
-  const timeZone = tz === 'project' && projectTz ? projectTz : undefined
-  const base: Intl.DateTimeFormatOptions = { hour12: false }
-  const withZone = timeZone ? { ...base, timeZone } : base
-  const render = (opts: Intl.DateTimeFormatOptions): string => {
-    if (style === 'time') return d.toLocaleTimeString([], { ...opts, hour: '2-digit', minute: '2-digit' })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { ...opts, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    return d.toLocaleString([], opts)
-  }
-  try { return render(withZone) } catch { return render(base) }
 }

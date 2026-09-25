@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useI18n } from '../i18n'
-import { formatTs, type TzMode } from '../lib/time'
+import { formatTime, formatDateTime } from '../lib/time'
 import { Button } from './Button'
 import {
   MARKER_SEVERITIES, AMENDABLE_FIELDS, amendedFields, isMarkerAmendment,
@@ -26,8 +26,6 @@ export interface MarkerDetailProps {
   fold: MarkerFold | undefined
   /** Screenshot events that name this marker as their cause. */
   linkedScreenshots: RedLogEvent[]
-  tz: TzMode
-  projectTz: string | null
   operatorLabel: (id: string) => string
   onAmend: (markerId: string, changes: Partial<MarkerValues>) => void
   onSelect: (e: RedLogEvent) => void
@@ -172,7 +170,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
             {fold.history.map((h) => (
               <li key={h.event.id} data-testid="marker-history-row" className="flex items-baseline gap-2 text-xs">
                 <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
-                  {formatTs(h.event.timestamp, props.tz, props.projectTz, 'timeSec')}
+                  {formatTime(h.event.timestamp, { seconds: true })}
                 </span>
                 <span className="text-redlog-text-dim shrink-0 max-w-[100px] truncate" title={h.event.operatorId}>
                   {props.operatorLabel(h.event.operatorId)}
@@ -213,17 +211,17 @@ function changeText(changes: MarkerFold['history'][number]['changes'], t: Transl
 /** What an amendment cannot touch, and one line each on why. Rows appear only
  *  when the field is actually present, so a marker dropped without a URL shows
  *  no URL row rather than an empty one. */
-function ImmutableBlock({ event, linkedScreenshots, tz, projectTz, operatorLabel }: MarkerDetailProps): JSX.Element {
+function ImmutableBlock({ event, linkedScreenshots, operatorLabel }: MarkerDetailProps): JSX.Element {
   const { t } = useI18n()
   const data = d(event)
   const at = data.atTimestamp
   const causes = Array.isArray(data._causes) ? (data._causes as unknown[]).filter((c) => typeof c === 'string') : []
 
   const rows: Array<{ label: string; why: string; value: string }> = [
-    { label: t('marker.readonly.recordedAt'), why: t('marker.readonly.recordedAtWhy'), value: formatTs(event.timestamp, tz, projectTz, 'full') }
+    { label: t('marker.readonly.recordedAt'), why: t('marker.readonly.recordedAtWhy'), value: formatDateTime(event.timestamp, { seconds: true }) }
   ]
   if (typeof at === 'number' && at > 0) {
-    rows.push({ label: t('marker.readonly.atTimestamp'), why: t('marker.readonly.atTimestampWhy'), value: formatTs(at, tz, projectTz, 'full') })
+    rows.push({ label: t('marker.readonly.atTimestamp'), why: t('marker.readonly.atTimestampWhy'), value: formatDateTime(at, { seconds: true }) })
   }
   if (typeof data.url === 'string' && data.url) {
     rows.push({ label: t('marker.readonly.url'), why: t('marker.readonly.urlWhy'), value: data.url })

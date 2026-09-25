@@ -1,6 +1,8 @@
 # Query Completeness Inventory
 
 > Snapshot 2026-09-19. No production code changed — analysis only.
+> Updated 2026-09-24: §1 Timeline, its comparison row and Batch 3 describe the
+> Timeline after Spec 038. The rest is still the 2026-09-19 snapshot.
 
 ## Executive summary
 
@@ -26,21 +28,21 @@ invisible to the user, and still has no total indicator.
 
 | Field | Value |
 |-------|-------|
-| **Source tables** | `events` + `events_logged` (UNION ALL, tier=all) |
-| **WHERE** | `excludeHousekeeping` (drops session_start, api_started, hook-source) |
-| **ORDER BY** | `timestamp DESC, _row DESC` |
-| **LIMIT** | 200 per fetch |
-| **Cursor** | Keyset on `created_at` (monotonic insertion time, not wall-clock) — auto-triggered at scroll edge |
-| **Total count** | Never computed |
-| **Tier handling** | UNION ALL, per-arm LIMIT + outer LIMIT |
-| **Renderer post-filter** | housekeeping belt-and-suspenders, command-pair collapse, agent-turn collapse, auditor-view (drops logged tier), viewport windowing (50 events), scope/target/chain dimming |
+| **Source tables** | `events` + `events_logged` through `queryEventsPage` with the shared filter (Spec 038) |
+| **WHERE** | The shared filter, `appendEventFilter`: type, time, target, scope, personal traffic, tier. Plus `excludeHousekeeping` (`HOUSEKEEPING_SQL`, the one rule) |
+| **ORDER BY** | `timestamp DESC, _row DESC, tier_rank DESC` |
+| **LIMIT** | 200 per page; load-back to an event reads 1,000 at a time |
+| **Cursor** | Keyset `(timestamp, rowid, tier)`, the shared primitive in `query-page.ts` |
+| **Total count** | `countEvents`, with the page's predicates |
+| **Tier handling** | UNION ALL, per-arm LIMIT + outer LIMIT. "Chained only" is a shared-filter predicate |
+| **Renderer post-filter** | Display folding only (command pairs, agent turns, marker amendments) and viewport windowing. The `/` box dims through `matchEventIds` and removes nothing. Live rows are admitted through `matchEventIds` |
 | **Dedup** | `eventsMapRef` Map by event id |
-| **Completeness visible?** | **NO** — no "N of M", no visible load-more button. `allLoaded` flag exists but is not surfaced. Event list panel capped at 50. |
+| **Completeness visible?** | **YES** — "N of M"; a pending or failed total says so; earlier text matches are counted and reachable |
 
 **Notes:**
-- Cursor column (`created_at`) differs from sort column (`timestamp`) — works
-  because `created_at` is monotonically increasing per insertion.
-- Only surface with any form of DB-level pagination.
+- Spec 038 replaced the `created_at` cursor and the renderer filters: the
+  housekeeping copy, the auditor view, and scope, target and personal-traffic
+  matching over loaded rows.
 
 ### 2. Target
 
@@ -159,7 +161,7 @@ user to distinguish "exactly 200 matches" from "5000 matches, showing 200."
 
 | Surface | DB cap | Cursor | Total count | Cap visible? | Tier |
 |---------|--------|--------|-------------|--------------|------|
-| Timeline | 200/fetch | keyset (created_at) | No | No | all |
+| Timeline (Spec 038) | 200/page | keyset (timestamp, _row, tier) | Yes (`countEvents`) | Yes ("N of M") | all, or chained only |
 | Target aggregate | none | No | Implicit (complete) | n/a | all |
 | Target detail | 500 | No | No | No | all |
 | Loot | 200 | No | No | No | all |
@@ -268,9 +270,10 @@ opaque string travels to the renderer. The domain event model is not polluted.
 - Search is the cleanest SQL pipeline, easy to add cursor
 - Loot's grouping/projection problem is **separate** — don't block pagination on it
 
-### Batch 3: Timeline
-- Already has keyset pagination — migrate to shared primitive
-- Largest renderer post-filter surface, highest risk
+### Batch 3: Timeline — done (Spec 038)
+- Already had keyset pagination — migrated to the shared primitive
+- Largest renderer post-filter surface, highest risk. Its filters moved into
+  the query; the total is `countEvents`
 
 ### Batch 4 (or never): Transcript + HTTP History
 - Transcript's heterogeneous merge may never fit a generic cursor

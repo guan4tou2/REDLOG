@@ -2,12 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fra
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
-import { useSharedFilter } from '../lib/FilterContext'
+import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
-import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
+import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
@@ -15,15 +15,17 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
+import { QueryReadout } from './QueryReadout'
+import { parseQuery } from '../../../core/query/contract'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment,
   AMENDABLE_FIELDS, type MarkerValues
 } from '../lib/markerFold'
 import { MarkerDetail } from './MarkerDetail'
-import { isHookSource, isHousekeeping } from '../lib/housekeeping'
+import { isHookSource } from '../lib/housekeeping'
 import { isMac } from '../lib/platform'
 import { useContributeExport } from '../lib/exportScope'
 import {
@@ -38,7 +40,6 @@ import { TierBadge } from './TierBadge'
 import { ReplayCommand } from './ReplayCommand'
 import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from './TimelineEventDetails'
 import { HttpDetail } from './HttpDetail'
-import { matchesScope } from '../lib/scope'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -76,8 +77,13 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
-  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
+export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
+  // Spec 038: the shared filter is applied where the events are stored, for
+  // every page, count and live row. Nothing below filters on it again.
+  const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains } = useSharedFilter()
+  const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
+  const eventFilterRef = useRef(eventFilter)
+  eventFilterRef.current = eventFilter
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -93,27 +99,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
-  // v0.14 §9.2: auditor-view state hoisted above the `events` useMemo so
-  // the filter can compose in one place. Persistence + per-project scoping
-  // lives further down alongside the other filter state (see below).
-  const [auditorView, setAuditorView] = useState(false)
+  // The tier is not decided here (spec 038): "Chained only" is a shared-filter
+  // condition, so a logged row never reaches rawEvents under it.
   const events = useMemo(
-    () => {
-      const folded = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
-      const base = sharedFilter.hidePersonal && personalDomains.length > 0
-        ? folded.filter((event) => !event.targetId || !personalDomains.some((pattern) => matchesScope(event.targetId ?? '', pattern)))
-        : folded
-      // When auditor view is on, drop logged-tier rows.
-      return auditorView ? base.filter((e) => e.tier !== 'logged') : base
-    },
-    [rawEvents, collapseAgentTurns, auditorView, sharedFilter.hidePersonal, personalDomains]
-  )
-  // Count of logged rows that WOULD be hidden by auditor view — surfaces on
-  // the chip so the operator can see how much the filter is doing. Uses
-  // rawEvents so the number is stable regardless of the agent-turn collapse.
-  const hiddenLoggedCount = useMemo(
-    () => rawEvents.reduce((n, e) => n + (e.tier === 'logged' ? 1 : 0), 0),
-    [rawEvents]
+    () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
+    [rawEvents, collapseAgentTurns]
   )
   // Count of hidden agent turns to surface on the chip so the operator
   // knows the toggle is doing something (else the empty agent lane looks
@@ -138,8 +128,24 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // place entirely. Clicking a dot still opens both; arrows move the ring
   // alone, and Enter opens the panel on whatever the ring is on.
   const [detailOpen, setDetailOpen] = useState(false)
-  const [allLoaded, setAllLoaded] = useState(false)
+  // The one contiguous range the panel draws: every admitted row from the
+  // newest down to `pageCursor`, the keyset position the next page starts at.
+  // A shared-filter change starts a new generation; a reply to an older one
+  // is dropped, so rows for the old filter never land under the new one.
+  const [hasMore, setHasMore] = useState(false)
+  const pageCursorRef = useRef<string | null>(null)
+  // The same cursor as state, for what is computed from it (earlier matches).
+  const [pageCursor, setPageCursorState] = useState<string | null>(null)
+  const setPageCursor = (c: string | null): void => { pageCursorRef.current = c; setPageCursorState(c) }
+  const generationRef = useRef(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // "N of M": M counted over the same predicates as the pages. Pending until
+  // it arrives, failed (with retry) rather than guessed.
+  const [total, setTotal] = useState<{ state: 'pending' } | { state: 'ok'; value: number } | { state: 'failed' }>({ state: 'pending' })
+  const recountRef = useRef(false)
+  const [liveError, setLiveError] = useState<{ ids: RedLogEvent[] } | null>(null)
+  const [outsideFilter, setOutsideFilter] = useState(false)
   // v0.11.6 (V7). Off by default: a compressed axis is not proportional, and
   // for an audit tool that has to be an explicit, visible choice.
   const [compressGaps, setCompressGaps] = useState(false)
@@ -209,7 +215,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // from the module cache on mount and refreshed via a window event.
   const [focusChain, setFocusChain] = useState<Set<string> | null>(null)
   const [focusAnchorId, setFocusAnchorId] = useState<string | null>(null)
-  const [focusMeta, setFocusMeta] = useState<{ loading: boolean; truncated: boolean; unavailable: number; failed: boolean }>({
+  // `excluded`: chain links the shared filter does not admit. They stay out
+  // of the drawn range, like every other excluded row, and the badge says so.
+  const [focusMeta, setFocusMeta] = useState<{ loading: boolean; truncated: boolean; unavailable: number; failed: boolean; excluded?: number }>({
     loading: false, truncated: false, unavailable: 0, failed: false
   })
   // Project state is keyed by project id. The `__global__` sentinel covers
@@ -252,7 +260,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       } catch { /* ignore */ }
     }
     load('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
-    load('redlog-timeline-auditor-view', (s) => s === '1', setAuditorView)
     load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
     load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
     load('redlog-timeline-hidden-lanes', (s) => {
@@ -286,24 +293,13 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
     } catch { /* ignore */ }
   }, [anomalyFilter, projectIdForKeys])
-  useEffect(() => {
-    if (!projectIdForKeys) return
-    try {
-      localStorage.setItem(`redlog-timeline-auditor-view:${projectIdForKeys}`, auditorView ? '1' : '0')
-    } catch { /* ignore */ }
-  }, [auditorView, projectIdForKeys])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
   // filter survives a reload; empty string means "no filter".
-  // Target focus: scope the view to one target's activity, arrived at from
-  // the Targets list. It reuses the filter-dimming pipeline rather than
-  // adding a second axis - the source lanes stay, and everything that did
-  // not touch this target dims away. Matched precisely (id or endpoint), so
-  // 10.0.0.5 does not also light up 10.0.0.50 the way the text filter would.
-  const [targetFocus, setTargetFocus] = useState<string | null>(focusTarget ?? null)
-  useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
-  const effectiveTarget = sharedFilter.targetId ?? targetFocus
+  // The target is not a Timeline control (spec 038): it is the shared
+  // filter's target_id, set by the FilterBar or by the Targets page, and the
+  // pages above never return a row outside it.
 
   const [filterQuery, setFilterQuery] = useState('')
   useEffect(() => {
@@ -340,21 +336,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
   )
 
-  // v0.6.91 S7: timezone picker. `projectTz` is filled from
-  // config.engagement.timezone when the panel mounts; if unset or invalid,
-  // the "Project" option falls back to Local (via formatTs).
-  const [tz, setTz] = usePersistentState<TzMode>(
-    'redlog-timeline-tz', 'local',
-    { parse: (raw) => (raw === 'utc' || raw === 'project' ? raw : 'local') }
-  )
-  const [projectTz, setProjectTz] = useState<string | null>(null)
-  useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const cfg = c as { engagement?: { timezone?: string } } | null | undefined
-      const tzName = cfg?.engagement?.timezone
-      setProjectTz(typeof tzName === 'string' && tzName ? tzName : null)
-    }).catch(() => {})
-  }, [])
+  // The display zone is not a Timeline setting (spec 038): it is chosen in
+  // Settings ▸ General and `lib/time`'s formatters print in it. This view is
+  // unmounted while Settings is open, so it prints the new zone on return.
 
   // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
   // chord this view taught first and there is no reason to take it away — but
@@ -369,18 +353,20 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   }, [])
 
   // ⌘K → an operator → filter this view to what that person did. The palette
-  // cannot reach into the Timeline's filter state, so it asks by event.
+  // cannot reach into the Timeline's filter state, so it asks by event. The
+  // pick arrives as the recorded operator id and becomes the query contract's
+  // `operator:` condition (spec 038 FR-009); names change, ids do not.
   useEffect(() => {
     const onFilterOperator = (e: Event): void => {
-      const name = (e as CustomEvent<string>).detail
-      if (name) setFilterQuery(name)
+      const id = (e as CustomEvent<string>).detail
+      if (id) setFilterQuery(`operator:${id}`)
     }
     window.addEventListener('redlog:filter-operator', onFilterOperator)
-    // §10: ⌘K host search lands the operator on the Timeline filtered to that
-    // host — the filter box already matches `data.host`, so it's the same path.
+    // §10: ⌘K host search lands the operator on the Timeline with that host
+    // as quoted text: a phrase, so `10.0.0.5:8080` is never read as a field.
     const onFilterHost = (e: Event): void => {
       const host = (e as CustomEvent<string>).detail
-      if (host) setFilterQuery(host)
+      if (host) setFilterQuery(`"${host.replace(/"/g, '')}"`)
     }
     window.addEventListener('redlog:filter-host', onFilterHost)
     return () => {
@@ -388,8 +374,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       window.removeEventListener('redlog:filter-host', onFilterHost)
     }
   }, [])
-  // Overflow for the low-frequency view/audit controls (session dividers,
-  // timezone, auditor view) so the toolbar row groups by effect instead of
+  // Overflow for the low-frequency view controls (session dividers,
+  // timezone) so the toolbar row groups by effect instead of
   // listing eight flat toggles (DESIGN-core-and-capture.md §6).
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -562,58 +548,117 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return Math.max(MIN_LANE_H, Math.floor(available / visibleRows.length))
   }, [containerH, visibleRows.length])
 
-  const loadMore = useCallback(() => {
-    if (loading || allLoaded) return
-    setLoading(true)
-    // Pagination anchor: the oldest event we already have. Prefer `createdAt`
-    // (SQL row insertion order — monotonically increasing under a running
-    // process) over `timestamp` (wall-clock — can regress on NTP correction).
-    //
-    // v0.6.87 audit A1: if wall-clock jumped back mid-session, a new event
-    // could have a `timestamp` older than one already in the map. Old code
-    // used min(timestamp) as anchor and would happily skip that new event
-    // because its timestamp fell inside the "already fetched" window — the
-    // event was in the DB but pager pretended it had already been returned.
-    // Anchoring on `createdAt` (which never regresses in practice — Date.now
-    // for the write instant, but callers can't rewind DB row insertion) means
-    // the pager walks strictly older rows even under wall-clock backwards.
-    // v0.6.95 P1-12: sortedRef is the ground truth for ordering; scan it (or
-    // the map — either works, but the sorted view lets us short-circuit at
-    // the first element instead of walking every row).
-    const sorted = sortedRef.current
-    const before = sorted.length > 0 ? sorted[0].createdAt : undefined
-    window.redlog.events.query({ limit: 200, beforeCreatedAt: before, excludeHousekeeping: true }).then((fetched) => {
-      const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id) && !isHousekeeping(e))
-      if (fetched.length < 200) setAllLoaded(true)
-      if (newOnes.length > 0) {
-        for (const e of newOnes) {
-          eventsMapRef.current.set(e.id, e)
-          binarySearchInsert(sortedRef.current, e)
-        }
-        setEvents([...sortedRef.current])
-      }
-      setLoading(false)
-    })
-  }, [loading, allLoaded])
+  // Spec 038 (research R1): pages come from the shared-filter page query, on
+  // its keyset cursor (timestamp, rowid, tier). The old pager walked
+  // `created_at` so a late row with an older wall-clock could not be skipped;
+  // a keyset never skips a row past its cursor, and a row that lands inside
+  // the drawn range arrives on the live channel below.
+  const PAGE_ROWS = 200
+  const MATCH_CHUNK = 1000
+  const totalRef = useRef(total)
+  totalRef.current = total
+  const selectedRef = useRef<RedLogEvent | null>(null)
+  selectedRef.current = selectedEvent
 
-  useEffect(() => {
-    window.redlog.events.query({ limit: 200, excludeHousekeeping: true }).then((fetched) => {
-      if (fetched.length < 200) setAllLoaded(true)
-      // v0.6.95 P1-12: seed the sortedRef from the initial fetch. If any live
-      // events landed via the batch listener BEFORE the fetch resolved, they
-      // are already in `eventsMapRef` — dedupe against that map so we don't
-      // reset the sorted array to a stale snapshot missing the live rows.
-      // Still worth one full sort because the DB returns rows in DESC order
-      // and we want ASC internally; after this, every incoming update goes
-      // through the sorted-insert path.
-      const clean = fetched.filter((e) => !isHousekeeping(e))
-      for (const e of clean) {
-        if (!eventsMapRef.current.has(e.id)) eventsMapRef.current.set(e.id, e)
-      }
-      sortedRef.current = Array.from(eventsMapRef.current.values()).sort(eventCompare)
-      setEvents([...sortedRef.current])
-      setLoading(false)
+  const mergeRows = (rows: RedLogEvent[]): void => {
+    for (const e of rows) {
+      if (!eventsMapRef.current.has(e.id)) binarySearchInsert(sortedRef.current, e)
+      eventsMapRef.current.set(e.id, e)
+    }
+  }
+
+  // M for "N of M". A live row admitted while this count is in flight may or
+  // may not be in it, so it counts once more instead of guessing.
+  const requestTotal = (gen: number): void => {
+    recountRef.current = false
+    setTotal({ state: 'pending' })
+    window.redlog.events.count({ filter: eventFilterRef.current, excludeHousekeeping: true })
+      .then((n) => {
+        if (gen !== generationRef.current) return
+        if (recountRef.current) { requestTotal(gen); return }
+        setTotal({ state: 'ok', value: n })
+      })
+      .catch(() => { if (gen === generationRef.current) setTotal({ state: 'failed' }) })
+  }
+
+  // A selection the new filter excludes is cleared and said to be excluded,
+  // never left showing as if it matched.
+  const checkSelection = (gen: number): void => {
+    const sel = selectedRef.current
+    if (!sel || eventsMapRef.current.has(sel.id)) return
+    window.redlog.events.matchIds({ ids: [sel.id], filter: eventFilterRef.current, excludeHousekeeping: true })
+      .then((ids) => {
+        if (gen !== generationRef.current || ids.includes(sel.id)) return
+        setSelectedEvent(null)
+        setDetailOpen(false)
+        setOutsideFilter(true)
+      })
+      .catch(() => { if (gen === generationRef.current) setLiveError({ ids: [] }) })
+  }
+
+  const loadFirstPage = useCallback((): void => {
+    const gen = ++generationRef.current
+    eventsMapRef.current = new Map()
+    sortedRef.current = []
+    setPageCursor(null)
+    setEvents([])
+    setHasMore(false)
+    setLoadError(null)
+    setLiveError(null)
+    setOutsideFilter(false)
+    setLoading(true)
+    requestTotal(gen)
+    window.redlog.events.queryPage({ ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS })
+      .then((page) => {
+        if (gen !== generationRef.current) return
+        mergeRows(page.items)
+        setEvents([...sortedRef.current])
+        setHasMore(page.hasMore)
+        setPageCursor(page.nextCursor)
+        setLoading(false)
+        checkSelection(gen)
+      })
+      .catch((err: unknown) => {
+        if (gen !== generationRef.current) return
+        setLoadError(err instanceof Error ? err.message : String(err))
+        setLoading(false)
+      })
+    // Reads only refs and state setters, so one instance serves every generation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const filterKey = JSON.stringify(eventFilter)
+  useEffect(() => { loadFirstPage() }, [filterKey, loadFirstPage])
+
+  const loadMore = useCallback(() => {
+    if (loading || !hasMore || !pageCursorRef.current) return
+    const gen = generationRef.current
+    const from = pageCursorRef.current
+    setLoadError(null)
+    setLoading(true)
+    window.redlog.events.queryPage({
+      ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS, cursor: from
     })
+      .then((page) => {
+        if (gen !== generationRef.current) return
+        // A load-back moved the range past this page while it was in flight;
+        // its rows are already drawn and its cursor would step backwards.
+        if (pageCursorRef.current !== from) { setLoading(false); return }
+        mergeRows(page.items)
+        setEvents([...sortedRef.current])
+        setHasMore(page.hasMore)
+        setPageCursor(page.nextCursor)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (gen !== generationRef.current) return
+        setLoadError(err instanceof Error ? err.message : String(err))
+        setLoading(false)
+      })
+  }, [loading, hasMore])
+
+  const admitLiveRef = useRef<(batch: RedLogEvent[]) => Promise<void>>(async () => {})
+  useEffect(() => {
     // v0.6.95 P0-4c + P1-12: batch listener + sorted-insert. Main sends
     // `events:new-batch` with an Array<RedLogEvent> once per frame per burst;
     // this handler folds them into the sorted array in one shot, then does a
@@ -623,18 +668,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       scheduled = false
       // Shallow copy so React sees a new reference and re-renders.
       setEvents([...sortedRef.current])
-    }
-    const ingest = (event: RedLogEvent): void => {
-      if (isHousekeeping(event)) return
-      if (eventsMapRef.current.has(event.id)) {
-        // Same id arriving again is either a duplicate broadcast (both channels
-        // fire) or an updated payload. Overwrite the map entry but leave the
-        // sorted array position alone — id-based sort tiebreak keeps it stable.
-        eventsMapRef.current.set(event.id, event)
-        return
-      }
-      eventsMapRef.current.set(event.id, event)
-      binarySearchInsert(sortedRef.current, event)
     }
     // v0.11.7 (AUDIT W19): back off from a per-frame flush once the set is big.
     //
@@ -657,10 +690,45 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       if (sortedRef.current.length > BIG_SET) window.setTimeout(flush, SLOW_FLUSH_MS)
       else requestAnimationFrame(flush)
     }
-    const unsubBatch = window.redlog.events.onNewBatch((events) => {
-      if (!events.length) return
-      for (const e of events) ingest(e)
+    // Spec 038 (research R10): every live row is admitted by the persistence
+    // layer, over the shared filter and the housekeeping rule, so the rows
+    // drawn live are the rows the pages would have returned. The renderer's
+    // own housekeeping check is gone: HOUSEKEEPING_SQL is the one rule.
+    const admit = async (batch: RedLogEvent[]): Promise<void> => {
+      const gen = generationRef.current
+      const admitted = new Set<string>()
+      for (let i = 0; i < batch.length; i += MATCH_CHUNK) {
+        const ids = batch.slice(i, i + MATCH_CHUNK).map((e) => e.id)
+        const hit = await window.redlog.events.matchIds({ ids, filter: eventFilterRef.current, excludeHousekeeping: true })
+        for (const id of hit) admitted.add(id)
+      }
+      if (gen !== generationRef.current) return
+      let added = 0
+      for (const e of batch) {
+        if (!admitted.has(e.id)) continue
+        // Same id arriving again is either a duplicate broadcast (both channels
+        // fire) or an updated payload. Overwrite the map entry but leave the
+        // sorted array position alone — id-based sort tiebreak keeps it stable.
+        if (!eventsMapRef.current.has(e.id)) {
+          added++
+          binarySearchInsert(sortedRef.current, e)
+        }
+        eventsMapRef.current.set(e.id, e)
+      }
+      setLiveError(null)
+      if (added === 0) return
+      // Each admitted row is one more of M, so N never passes M.
+      if (totalRef.current.state === 'ok') {
+        setTotal({ state: 'ok', value: totalRef.current.value + added })
+      } else if (totalRef.current.state === 'pending') {
+        recountRef.current = true
+      }
       scheduleFlush()
+    }
+    admitLiveRef.current = admit
+    const unsubBatch = window.redlog.events.onNewBatch((batch) => {
+      if (!batch.length) return
+      admit(batch).catch(() => setLiveError({ ids: batch }))
     })
     return () => {
       unsubBatch()
@@ -709,55 +777,97 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     [events, visibleRows, collapsedBands, pluginTypes]
   )
 
-  // Debounced so a held key or a fast typist does not run the scan per
-  // character. 120 ms sits below the point where the filter feels laggy and
-  // above a burst of keystrokes.
+  // Spec 038 US3: the box is read by the query contract — the same parse,
+  // conditions and text matching as Search — and the persistence layer says
+  // which drawn rows match. Nothing typed here removes a row: the rest stay
+  // drawn, dimmed, so a match keeps its context (FR-004). Debounced so a held
+  // key or a fast typist does not query per character.
   const [filterQueryDebounced, setFilterQueryDebounced] = useState(filterQuery)
   useEffect(() => {
     const id = window.setTimeout(() => setFilterQueryDebounced(filterQuery), 120)
     return () => window.clearTimeout(id)
   }, [filterQuery])
+  const parseOutcome = useMemo(
+    () => (filterQueryDebounced.trim() ? parseQuery(filterQueryDebounced) : null),
+    [filterQueryDebounced]
+  )
+  const parsedQuery = parseOutcome?.ok ? parseOutcome.parsed : null
+  const queryKey = parsedQuery ? `${JSON.stringify(parsedQuery)}|${filterKey}` : null
+
+  // Which loaded rows the query matches, checked by id and cached per query
+  // and filter, so each new page or live row is asked about once.
+  const matchCacheRef = useRef<{ key: string | null; checked: Map<string, boolean> }>({ key: null, checked: new Map() })
+  const [matchedIds, setMatchedIds] = useState<Set<string> | null>(null)
+  const [boxState, setBoxState] = useState<'idle' | 'matching' | 'matched' | 'failed'>('idle')
+  const [boxRetry, setBoxRetry] = useState(0)
+  useEffect(() => {
+    if (!parsedQuery || !queryKey) {
+      matchCacheRef.current = { key: null, checked: new Map() }
+      setMatchedIds(null)
+      setBoxState('idle')
+      return
+    }
+    if (matchCacheRef.current.key !== queryKey) {
+      matchCacheRef.current = { key: queryKey, checked: new Map() }
+      setMatchedIds(null)
+    }
+    const cache = matchCacheRef.current
+    const publish = (): void => {
+      setMatchedIds(new Set([...cache.checked].filter(([, hit]) => hit).map(([id]) => id)))
+      setBoxState('matched')
+    }
+    const unchecked = rawEvents.filter((e) => !cache.checked.has(e.id)).map((e) => e.id)
+    if (unchecked.length === 0) { publish(); return }
+    setBoxState('matching')
+    void (async () => {
+      for (let i = 0; i < unchecked.length; i += MATCH_CHUNK) {
+        const ids = unchecked.slice(i, i + MATCH_CHUNK)
+        const hit = new Set(await window.redlog.events.matchIds({
+          ids, parsed: parsedQuery, filter: eventFilterRef.current, excludeHousekeeping: true
+        }))
+        if (matchCacheRef.current !== cache) return
+        for (const id of ids) cache.checked.set(id, hit.has(id))
+      }
+      if (matchCacheRef.current === cache) publish()
+    })().catch(() => { if (matchCacheRef.current === cache) setBoxState('failed') })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey, rawEvents, boxRetry])
+
+  // How many matches lie past the drawn range, counted from the page cursor
+  // with the same predicates, and the nearest of them to load back to.
+  const [earlier, setEarlier] = useState<
+    { state: 'none' } | { state: 'pending' } | { state: 'ok'; count: number; nearestId: string | null } | { state: 'failed' }
+  >({ state: 'none' })
+  const [earlierRetry, setEarlierRetry] = useState(0)
+  useEffect(() => {
+    if (!parsedQuery || !hasMore || !pageCursor) { setEarlier({ state: 'none' }); return }
+    let stale = false
+    setEarlier({ state: 'pending' })
+    const req = { parsed: parsedQuery, filter: eventFilterRef.current, cursor: pageCursor, excludeHousekeeping: true }
+    Promise.all([window.redlog.events.count(req), window.redlog.events.runQuery({ ...req, limit: 1 })])
+      .then(([count, nearest]) => {
+        if (!stale) setEarlier({ state: 'ok', count, nearestId: nearest.items[0]?.id ?? null })
+      })
+      .catch(() => { if (!stale) setEarlier({ state: 'failed' }) })
+    return () => { stale = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey, hasMore, pageCursor, earlierRetry])
+
+  const boxLit = useMemo(
+    () => (matchedIds ? mapMatchesToDrawn(matchedIds, rawEvents, events) : null),
+    [matchedIds, rawEvents, events]
+  )
+  // Dimming follows only a live answer: an unparsable input, a failed check,
+  // or a query whose first answer has not arrived dims nothing.
+  const filterMatches = parsedQuery && boxState !== 'failed' && boxLit ? boxLit.lit : null
+
+
 
   // v0.6.89.5: reverse-effects index (feature 1) — `effectsById[causeId] =
   // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
   // Also the badges index (feature 3) so every dot render is O(1). The
   // broken-at id from the last full verify (feature 5) participates in the
   // badge set so the `⛓️‍💥` badge lights up on the offending row.
-  // v0.6.91 W1: filter-match set for the `/` search. Case-insensitive substring
-  // over any of: data.command / data.url / data.host / data.title / data.subtype,
-  // eventTitle (which is what the operator actually sees), and operatorId.
-  //
-  // (The original note here said this was "cheap for <= 5k events" and that
-  // the dim path dominated for larger sets. Measured at 131,833: the index
-  // build is 126 ms and dominates everything else on the panel. Hence the
-  // early return below.)
-  // v0.9.8: the searchable text is built once per event set, not once per
-  // keystroke. This used to allocate a nine-element array, join it, lowercase
-  // it and call eventTitle() (which slices and replaces) for EVERY event on
-  // EVERY character typed — the memo listed `filterQuery` in its deps, so a
-  // 100k-event engagement redid all of that between keypresses. Now typing
-  // only walks an array of prebuilt strings.
-  const searchIndex = useMemo(
-    () => buildSearchIndex(events, operatorNames, filterQueryDebounced),
-    [events, operatorNames, filterQueryDebounced]
-  )
-
-
-  const filterMatches = useMemo(
-    () => computeFilterMatches(searchIndex, filterQueryDebounced),
-    [searchIndex, filterQueryDebounced]
-  )
-
-  const targetMatches = useMemo(
-    () => computeTargetMatches(events, effectiveTarget),
-    [events, effectiveTarget]
-  )
-
-  const scopeMatches = useMemo(
-    () => computeScopeMatches(events, scopeTargets, scopeExcludeTargets, sharedFilter.inScopeOnly),
-    [events, scopeTargets, scopeExcludeTargets, sharedFilter.inScopeOnly]
-  )
-
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => buildEffectsIndex(events), [events])
   // ── What each marker says now (design turn 8b) ─────────────────────────
@@ -765,8 +875,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // TDZ contract, and it is not theoretical — the e2e has caught this exact
   // mistake twice in this file (see the `collapsedBands` note above). A hook's
   // dependency array evaluates during render, so nothing ABOVE this point may
-  // name `foldById` or `titleOf`; every consumer is below. `searchIndex` sits
-  // higher and deliberately does its own inline pass instead.
+  // name `foldById` or `titleOf`; every consumer is below.
   //
   // One walk of `events`, whose body is a type test — the marker lane is a
   // rounding error next to a scan's traffic, and this memo runs on every flush.
@@ -823,16 +932,26 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     let cancelled = false
     setFocusChain(null)
     setFocusMeta({ loading: true, truncated: false, unavailable: 0, failed: false })
-    void window.redlog.events.causalChain(focusAnchorId).then((result) => {
+    void window.redlog.events.causalChain(focusAnchorId).then(async (result) => {
       if (cancelled) return
       if (!result.anchorFound) {
         setFocusChain(null)
         setFocusMeta({ loading: false, truncated: false, unavailable: 0, failed: true })
         return
       }
+      // The chain spans the project; only the links the shared filter admits
+      // join the drawn range (spec 038 FR-004).
+      const fresh = result.events.filter((event) => !eventsMapRef.current.has(event.id))
+      const admitted = new Set<string>()
+      for (let i = 0; i < fresh.length; i += MATCH_CHUNK) {
+        const ids = fresh.slice(i, i + MATCH_CHUNK).map((event) => event.id)
+        const hit = await window.redlog.events.matchIds({ ids, filter: eventFilterRef.current, excludeHousekeeping: true })
+        for (const id of hit) admitted.add(id)
+      }
+      if (cancelled) return
       let changed = false
-      for (const event of result.events) {
-        if (isHousekeeping(event) || eventsMapRef.current.has(event.id)) continue
+      for (const event of fresh) {
+        if (!admitted.has(event.id)) continue
         eventsMapRef.current.set(event.id, event)
         binarySearchInsert(sortedRef.current, event)
         changed = true
@@ -843,7 +962,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         loading: false,
         truncated: result.truncated,
         unavailable: result.unavailableCauseIds.length,
-        failed: false
+        failed: false,
+        excluded: fresh.length - admitted.size
       })
     }).catch(() => {
       if (cancelled) return
@@ -991,8 +1111,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // click-driven with a "load more" chip; users hitting the left edge with
     // more history to pull would just see empty space and not realise there
     // was a button.
-    if (!allLoaded && !loading && el.scrollLeft < 80) loadMore()
-  }, [TRACK_W, allLoaded, loading, loadMore])
+    if (hasMore && !loading && el.scrollLeft < 80) loadMore()
+  }, [TRACK_W, hasMore, loading, loadMore])
 
   // v0.6.91 W2: follow mode auto-scroll. When enabled AND the operator was
   // at the right edge, snap to the new right edge whenever fresh events land
@@ -1067,13 +1187,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
   }), [fromX, view.left, view.width, TRACK_W])
 
+  // FR-016: the export is the time range, every event in it. While the shared
+  // filter hides some of them here, the label says the filter is not applied,
+  // and the drawn count is not offered as the export's size.
   useContributeExport(
     events.length > 0
-      ? {
-          label: t('timeline.exportSlice'),
-          request: sliceExportRequest,
-          count: sliceCount
-        }
+      ? filterActiveCount > 0
+        ? { label: t('timeline.exportSliceUnfiltered'), request: sliceExportRequest }
+        : { label: t('timeline.exportSlice'), request: sliceExportRequest, count: sliceCount }
       : null
   )
 
@@ -1393,21 +1514,153 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const resolveReferencedEvent = useCallback(async (eventId: string) => {
     const known = eventsMapRef.current.get(eventId)
     if (known) { setSelectedEvent(known); setDetailOpen(true); scrollToEvent(known); return }
-    const [fetched] = (await window.redlog.events.getById([eventId])) ?? []
-    if (fetched) {
+    try {
+      const [fetched] = (await window.redlog.events.getById([eventId])) ?? []
+      if (!fetched) return
+      // A referenced row the shared filter excludes (an amended marker older
+      // than the time range, say) opens in the detail panel but is never
+      // drawn: the track holds admitted rows only (spec 038 FR-004).
+      const admitted = await window.redlog.events.matchIds({
+        ids: [fetched.id], filter: eventFilterRef.current, excludeHousekeeping: true
+      })
+      setSelectedEvent(fetched)
+      setDetailOpen(true)
+      if (!admitted.includes(fetched.id)) { setOutsideFilter(true); return }
       eventsMapRef.current.set(fetched.id, fetched)
       binarySearchInsert(sortedRef.current, fetched)
       setEvents([...sortedRef.current])
-      setSelectedEvent(fetched)
-      setDetailOpen(true)
       requestAnimationFrame(() => scrollToEvent(fetched))
+    } catch (err) {
+      toast(t('timeline.referenceFailed'), {
+        type: 'error',
+        detail: err instanceof Error ? err.message : String(err),
+        action: { label: t('common.retry'), onClick: () => { void resolveReferencedEvent(eventId) } }
+      })
     }
+  }, [scrollToEvent, t])
+
+  // Spec 038 (research R6): reach an admitted event older than the drawn
+  // range by paging back to it, 1,000 rows a request, keeping the one
+  // contiguous range the axis and minimap assume. It checks admission first,
+  // so an event the filter excludes is said to be excluded instead of paged
+  // for; it shows how far it has come, and Esc stops it, keeping what loaded.
+  const [loadBack, setLoadBack] = useState<
+    { state: 'loading'; loaded: number } | { state: 'cancelled' } | { state: 'failed'; eventId: string } | null
+  >(null)
+  const loadBackCancelRef = useRef(false)
+  const loadBackTo = useCallback(async (eventId: string): Promise<void> => {
+    const select = (evt: RedLogEvent): void => {
+      setSelectedEvent(evt)
+      setDetailOpen(true)
+      requestAnimationFrame(() => scrollToEvent(evt))
+    }
+    const known = eventsMapRef.current.get(eventId)
+    if (known) { select(known); return }
+    const gen = generationRef.current
+    const filter = eventFilterRef.current
+    loadBackCancelRef.current = false
+    setLoadBack({ state: 'loading', loaded: 0 })
+    let loaded = 0
+    try {
+      const admitted = await window.redlog.events.matchIds({ ids: [eventId], filter, excludeHousekeeping: true })
+      if (!admitted.includes(eventId)) { setLoadBack(null); setOutsideFilter(true); return }
+      while (!eventsMapRef.current.has(eventId) && pageCursorRef.current) {
+        const from = pageCursorRef.current
+        const page = await window.redlog.events.queryPage({ ...filter, excludeHousekeeping: true, limit: 1000, cursor: from })
+        if (loadBackCancelRef.current) return
+        if (gen !== generationRef.current) { setLoadBack(null); return }
+        // Another page landed first; ask again from where the range now ends.
+        if (pageCursorRef.current !== from) continue
+        mergeRows(page.items)
+        loaded += page.items.length
+        setEvents([...sortedRef.current])
+        setHasMore(page.hasMore)
+        setPageCursor(page.nextCursor)
+        setLoadBack({ state: 'loading', loaded })
+        if (!page.hasMore) break
+      }
+      setLoadBack(null)
+      const evt = eventsMapRef.current.get(eventId)
+      if (evt) select(evt)
+    } catch {
+      if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack({ state: 'failed', eventId })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToEvent])
+
+  useEffect(() => {
+    if (loadBack?.state !== 'loading') return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.stopImmediatePropagation()
+      loadBackCancelRef.current = true
+      setLoadBack({ state: 'cancelled' })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [loadBack?.state])
+
+  // "Open in Timeline" from Search, Loot or the Transcript names an event;
+  // one older than the drawn range is loaded back to rather than missed.
+  const focusLoadBackRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusEventId || loading || focusLoadBackRef.current === focusEventId) return
+    focusLoadBackRef.current = focusEventId
+    if (!eventsMapRef.current.has(focusEventId)) void loadBackTo(focusEventId)
+  }, [focusEventId, loading, loadBackTo])
 
   if (loading && events.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <LoadingSpinner label={t('common.loading')} />
+      </div>
+    )
+  }
+
+  // A read that failed is a failure, never an empty timeline (FR-010).
+  if (loadError && rawEvents.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div data-testid="timeline-load-failed" role="alert" className="flex flex-col items-center gap-2 text-center px-8 max-w-md">
+          <p className="text-sm text-red-300">{t('timeline.loadFailed')}</p>
+          <p className="text-xs text-redlog-text-faint font-mono break-all">{loadError}</p>
+          <button onClick={() => loadFirstPage()} className="text-xs text-red-300 underline hover:text-red-200">
+            {t('common.retry')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Rows are held but the agent-turn collapse hides every one (FR-015): they
+  // are events, folded out of view, not a project that recorded nothing.
+  if (rawEvents.length > 0 && events.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div data-testid="timeline-all-folded" role="status" className="flex flex-col items-center gap-2 text-center px-8">
+          <p className="text-sm text-redlog-text-dim">{t('timeline.allFolded', { count: hiddenAgentTurnCount })}</p>
+          <button onClick={() => setCollapseAgentTurns(false)} className="text-xs text-redlog-text-dim underline hover:text-redlog-text">
+            {t('timeline.showAgentTurns')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Nothing admitted by the filter is not the same as an empty project: say
+  // which conditions are narrowing it. Personal traffic is one of them once
+  // personal domains are set, though FilterContext's badge count leaves it
+  // out (Constitution II).
+  const activeConditions = describeActiveConditions(sharedFilter, t, { personalDomains })
+  if (events.length === 0 && activeConditions.length > 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div data-testid="timeline-empty-filtered" className="flex flex-col items-center gap-2 text-center px-8">
+          <p className="text-sm text-redlog-text-dim">{t('timeline.emptyFiltered')}</p>
+          <ul className="text-xs text-redlog-text-faint font-mono">
+            {activeConditions.map((label) => <li key={label}>{label}</li>)}
+          </ul>
+        </div>
       </div>
     )
   }
@@ -1473,6 +1726,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             {!focusMeta.loading && !focusMeta.failed && focusMeta.truncated
               ? ` · ${t('timeline.focusChain.truncated')}`
               : ''}
+            {!focusMeta.loading && !focusMeta.failed && (focusMeta.excluded ?? 0) > 0
+              ? ` · ${t('timeline.focusChain.outsideFilter', { count: focusMeta.excluded ?? 0 })}`
+              : ''}
           </span>
           <button
             onClick={() => setFocusAnchorId(null)}
@@ -1482,33 +1738,34 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >×</button>
         </div>
       )}
-      {effectiveTarget && (
-        <div
-          data-testid="timeline-target-focus-badge"
-          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
-          style={{ top: (focusChain || focusMeta.loading || focusMeta.failed) ? 36 : 6, right: 8 }}
-        >
-          <span className="text-redlog-accent">
-            {t('timeline.targetFocus.badge', { target: effectiveTarget, count: targetMatches?.size ?? 0 })}
-          </span>
-          <button
-            onClick={() => { setTargetFocus(null) }}
-            className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-            title={t('timeline.targetFocus.exit')}
-            aria-label={t('timeline.targetFocus.exit')}
-          >×</button>
-        </div>
-      )}
       {/* Header. `flex-wrap` so that on a narrow window the controls drop to
           a second row instead of squeezing: without it the title broke into
           three lines and the lane chips on the right were clipped at 1440px,
           which is a common laptop width. Title and count never shrink. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-redlog-border/80 shrink-0">
         <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('timeline.title')}</span>
-        <span className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 whitespace-nowrap">
-          {t('timeline.events', { count: events.length })}
+        {/* FR-003: while older admitted rows exist, the line says how many
+            are drawn of how many there are. N counts the rows held, M the
+            rows the same filter admits; a total that failed says so. */}
+        <span data-testid="timeline-range-status" className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 whitespace-nowrap">
+          {!hasMore
+            ? t('timeline.events', { count: rawEvents.length })
+            : total.state === 'ok'
+              ? t('timeline.rangeOfTotal', { shown: rawEvents.length, total: total.value })
+              : total.state === 'pending'
+                ? t('timeline.rangeTotalPending', { shown: rawEvents.length })
+                : (
+                  <>
+                    {t('timeline.totalUnavailable', { shown: rawEvents.length })}{' '}
+                    <button
+                      data-testid="timeline-total-retry"
+                      onClick={() => requestTotal(generationRef.current)}
+                      className="underline hover:text-redlog-text"
+                    >{t('common.retry')}</button>
+                  </>
+                )}
         </span>
-        {!allLoaded && (
+        {hasMore && (
           <button onClick={loadMore} className="text-xs text-redlog-text-faint hover:text-redlog-text ml-1 transition-colors">
             {t('timeline.loadMore')}
           </button>
@@ -1695,31 +1952,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                     <span>⋮ {t('timeline.boundaries.toggle')}</span>
                     <span className={sessionDividers ? 'text-indigo-300' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
                   </button>
-                  <button
-                    role="menuitemcheckbox"
-                    data-testid="timeline-auditor-view-chip"
-                    aria-checked={auditorView}
-                    disabled={hiddenLoggedCount === 0 && !auditorView}
-                    onClick={() => { if (hiddenLoggedCount === 0 && !auditorView) return; setAuditorView((v) => !v) }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5 disabled:opacity-40 disabled:cursor-default"
-                    title={t('timeline.auditorView.tooltip')}
-                  >
-                    <span>{t('timeline.auditorView.chip', { count: hiddenLoggedCount })}</span>
-                    <span className={auditorView ? 'text-emerald-300' : 'text-redlog-text-faint'}>{auditorView ? '✓' : ''}</span>
-                  </button>
-                  <div className="flex items-center gap-2 px-3 py-1.5">
-                    <span className="text-xs font-mono text-redlog-text-dim">{t('timeline.tz.tooltip')}</span>
-                    <select
-                      data-testid="timeline-tz-select"
-                      value={tz}
-                      onChange={(e) => setTz(e.target.value as TzMode)}
-                      className="ml-auto text-xs px-1 py-0.5 rounded font-mono bg-redlog-elevated/60 text-redlog-text border border-redlog-border focus:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-                    >
-                      <option value="local">{t('timeline.tz.local')}</option>
-                      <option value="utc">{t('timeline.tz.utc')}</option>
-                      <option value="project" disabled={!projectTz}>{t('timeline.tz.project')}{projectTz ? ` (${projectTz})` : ''}</option>
-                    </select>
-                  </div>
                 </div>
               </>
             )}
@@ -1767,6 +1999,101 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           })}
         </div>
       </div>
+
+      {/* Spec 038: what the panel could not do, said where the operator is
+          looking. A failed read is never shown as fewer rows (FR-010), and a
+          row the filter excludes is never shown as if it matched (FR-004). */}
+      {((loadError && rawEvents.length > 0) || liveError || outsideFilter || parseOutcome || loadBack) && (
+        <div className="px-4 py-1 border-b border-redlog-border/80 flex flex-col gap-0.5 text-xs shrink-0">
+          {/* The filter box (spec 038 US3): how the input was read, whether it
+              is still being checked, whether the check failed, and how many
+              matches lie past what is drawn. */}
+          <QueryReadout outcome={parseOutcome} testId="timeline-query" unparsableTitle={t('timeline.queryUnparsable')} />
+          {parsedQuery && boxState === 'matching' && (
+            <span data-testid="timeline-query-matching" role="status" className="text-redlog-text-faint">{t('timeline.matching')}</span>
+          )}
+          {parsedQuery && boxState === 'failed' && (
+            <div role="alert" data-testid="timeline-query-failed" className="text-red-300">
+              {t('timeline.queryFailed')}{' '}
+              <button
+                onClick={() => { matchCacheRef.current = { key: null, checked: new Map() }; setBoxRetry((n) => n + 1) }}
+                className="underline hover:text-red-200"
+              >{t('common.retry')}</button>
+            </div>
+          )}
+          {parsedQuery && boxState === 'matched' && (
+            <span data-testid="timeline-match-count" className="sr-only" aria-live="polite">
+              {t('timeline.matchCount', { count: matchedIds?.size ?? 0 })}
+            </span>
+          )}
+          {parsedQuery && (boxLit?.hiddenByCollapse ?? 0) > 0 && (
+            <span className="text-redlog-text-faint">{t('timeline.hiddenByCollapse', { count: boxLit?.hiddenByCollapse ?? 0 })}</span>
+          )}
+          {parsedQuery && earlier.state === 'ok' && earlier.count > 0 && earlier.nearestId && !loadBack && (
+            <button
+              data-testid="timeline-earlier-matches"
+              onClick={() => { if (earlier.nearestId) void loadBackTo(earlier.nearestId) }}
+              className="self-start text-cyan-300 underline decoration-dotted hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70 rounded"
+            >{t('timeline.earlierMatches', { count: earlier.count })}</button>
+          )}
+          {parsedQuery && earlier.state === 'failed' && (
+            <div role="alert" data-testid="timeline-earlier-failed" className="text-red-300">
+              {t('timeline.earlierFailed')}{' '}
+              <button onClick={() => setEarlierRetry((n) => n + 1)} className="underline hover:text-red-200">{t('common.retry')}</button>
+            </div>
+          )}
+          {loadBack?.state === 'loading' && (
+            <span data-testid="timeline-loadback-progress" role="status" className="text-redlog-text-dim">
+              {t('timeline.loadingBack', { count: loadBack.loaded })}
+            </span>
+          )}
+          {loadBack?.state === 'cancelled' && (
+            <span data-testid="timeline-loadback-cancelled" role="status" className="text-redlog-text-dim flex items-center gap-2">
+              {t('timeline.loadBackCancelled')}
+              <button onClick={() => setLoadBack(null)} aria-label={t('common.cancel')} className="text-redlog-text-faint hover:text-redlog-text leading-none">×</button>
+            </span>
+          )}
+          {loadBack?.state === 'failed' && (
+            <div role="alert" data-testid="timeline-loadback-failed" className="text-red-300">
+              {t('timeline.loadBackFailed')}{' '}
+              <button
+                onClick={() => { const id = loadBack.eventId; setLoadBack(null); void loadBackTo(id) }}
+                className="underline hover:text-red-200"
+              >{t('common.retry')}</button>
+            </div>
+          )}
+          {loadError && rawEvents.length > 0 && (
+            <div role="alert" data-testid="timeline-page-failed" className="text-red-300">
+              {t('timeline.pageFailed')}{' '}
+              <button onClick={loadMore} className="underline hover:text-red-200">{t('common.retry')}</button>
+            </div>
+          )}
+          {liveError && (
+            <div role="alert" data-testid="timeline-live-failed" className="text-amber-300">
+              {t('timeline.liveAdmissionFailed')}{' '}
+              <button
+                onClick={() => {
+                  const batch = liveError.ids
+                  setLiveError(null)
+                  if (batch.length > 0) void admitLiveRef.current(batch).catch(() => setLiveError({ ids: batch }))
+                  else loadFirstPage()
+                }}
+                className="underline hover:text-amber-200"
+              >{t('common.retry')}</button>
+            </div>
+          )}
+          {outsideFilter && (
+            <div role="status" data-testid="timeline-outside-filter" className="text-redlog-text-dim flex items-center gap-2">
+              <span>{t('timeline.outsideFilter')}</span>
+              <button
+                onClick={() => setOutsideFilter(false)}
+                aria-label={t('common.cancel')}
+                className="text-redlog-text-faint hover:text-redlog-text leading-none"
+              >×</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Density minimap — overview of the whole engagement. Drag to zoom to a
           window, click to jump. The bright frame marks the current viewport. */}
@@ -1913,7 +2240,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                         identical "09:11" ticks with nothing to separate them. Once
                         the span crosses a day, the first tick and every tick that
                         lands on a new date carry the date too. */}
-                    {axisLabel(ts, i, ticks, timeSpan, tz, projectTz)}
+                    {axisLabel(ts, i, ticks, timeSpan)}
                   </span>
                 ))}
               </div>
@@ -2035,15 +2362,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
-                  } else if (targetMatches || filterMatches || scopeMatches) {
-                    // Compose: when target focus, text filter, or scope
-                    // filter are active, a cluster stays lit only if it
-                    // has an event satisfying all active conditions.
-                    dimmed = !c.events.some((e) =>
-                      (!targetMatches || targetMatches.has(e.id)) &&
-                      (!filterMatches || filterMatches.has(e.id)) &&
-                      (!scopeMatches || scopeMatches.has(e.id)))
+                  } else if (filterMatches) {
+                    // The shared filter never reaches here: rows it excludes
+                    // are not loaded. Only the filter box dims.
+                    dimmed = !c.events.some((e) => filterMatches.has(e.id))
                   }
+                  // FR-018: a dimmed dot says so to assistive technology too,
+                  // not only by its opacity.
+                  const notMatching = dimmed && !!filterMatches && !focusChain && !anomalyFilter
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
                   const anchorEvt = focusAnchorId ? eventsMapRef.current.get(focusAnchorId) : null
@@ -2084,9 +2410,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       type="button"
                       data-timeline-event
                       tabIndex={isTabStop ? 0 : -1}
-                      aria-label={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
-                        : t('timeline.events', { count: c.events.length })}
+                      aria-label={`${single
+                        ? `${formatTime(evt.timestamp, { seconds: true })} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
+                        : t('timeline.events', { count: c.events.length })}${notMatching ? ` · ${t('timeline.notMatching')}` : ''}`}
+                      aria-disabled={dimmed || undefined}
                       aria-pressed={sel || undefined}
                       className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
                       style={{
@@ -2105,8 +2432,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
-                        : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
+                        ? `${formatTime(evt.timestamp, { seconds: true })} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
+                        : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
                       onClick={() => single ? (sel ? (setSelectedEvent(null), setDetailOpen(false)) : (setSelectedEvent(evt), setDetailOpen(true))) : setCluster({ x: c.x, y: c.y, events: c.events })}
@@ -2244,7 +2571,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
-                          <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
+                          <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTime(evt.timestamp, { seconds: true })}</span>
                           <span title={titleOf(evt)} className="text-redlog-text text-xs truncate">{titleOf(evt)}</span>
                         </button>
                       ))}
@@ -2285,7 +2612,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
                   <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
-                    {formatTs(evt.timestamp, tz, projectTz, 'timeSec')}
+                    {formatTime(evt.timestamp, { seconds: true })}
                   </span>
                   {/* v0.14 §9.1: per-row tier badge. Icon-only in the row so
                    *  the visual density stays low — the full labeled version
@@ -2436,7 +2763,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                           className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
                           title={cid}
                         >
-                          {t('timeline.detail.causeNotLoaded', { time: formatTs(srcTs, tz, projectTz, 'timeSec') })}
+                          {t('timeline.detail.causeNotLoaded', { time: formatTime(srcTs, { seconds: true }) })}
                         </button>
                       )
                     }
@@ -2582,7 +2909,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             <AgentTurnDetail
               data={selectedEvent.data as Record<string, unknown>}
               paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
-              allLoaded={allLoaded}
+              allLoaded={!hasMore}
             />
           )}
           {/* v0.11.2 (T6): scanner and browser events carried their payloads
@@ -2605,8 +2932,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               linkedScreenshots={(effectsById.get(selectedEvent.id) ?? [])
                 .map((id) => eventsMapRef.current.get(id))
                 .filter((e): e is RedLogEvent => !!e && e.agentType === 'screenshot')}
-              tz={tz}
-              projectTz={projectTz}
               operatorLabel={operatorLabel}
               onAmend={(id, changes) => void handleAmend(id, changes)}
               onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}

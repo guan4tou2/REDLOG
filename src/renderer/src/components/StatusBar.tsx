@@ -4,10 +4,13 @@ import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { formatTime, formatDateTime } from '../lib/time'
+import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function StatusBar(): JSX.Element {
+  // Mounted under Settings too, so it reprints the last-event time when the
+  // display zone changes there (spec 038).
+  useDisplayZone()
   const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [loggedCount, setLoggedCount] = useState(0)
@@ -276,8 +279,9 @@ export default function StatusBar(): JSX.Element {
          *  hovering to figure out what the second number is.
          *
          *  A read-out, not a control: it used to toggle the Timeline's
-         *  auditor view, which did nothing on any other page. That toggle
-         *  lives in the Timeline's ⋯ menu.
+         *  auditor view, which did nothing on any other page. The tier is
+         *  now the FilterBar's "Chained only" chip, which every view applies
+         *  (spec 038).
          */}
         {loggedCount > 0 ? (
           <span

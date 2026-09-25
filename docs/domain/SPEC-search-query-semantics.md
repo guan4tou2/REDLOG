@@ -2,7 +2,7 @@
 
 > Domain: Investigation / Evidence
 > Invariant: One query text means one thing wherever it is typed. Its conditions, its text and the shared filter are all evaluated at the persistence layer, across both event tiers, before any limit.
-> Status: Implemented — Search, the Transcript, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026).
+> Status: Implemented — Search, the Transcript, the Timeline, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026, 038).
 
 Terms such as Event Query, Agent Session, Query Intersection and the Chained /
 Logged tiers are defined in [glossary.md](glossary.md). This document states the
@@ -13,15 +13,16 @@ rules those terms obey.
 ```
 typed text
   → parseQuery()                         src/core/query/contract.ts
-      conditions    event:  session:  transcript:  tool:
+      conditions    event:  session:  transcript:  tool:  operator:
       text          every token not read as a condition
       tokens        how each token was read, for display
   → events:runQuery                      main attaches the active scope policy
   → executeEventQuery()                  src/core/db/event-queries.ts
+      countEvents() and matchEventIds() build the same per-tier WHERE
       per tier (events, events_logged), AND-ed inside that tier's own SQL:
         text           FTS MATCH on stored content, or a hit in the HTTP body index
         conditions     exact match on stored fields
-        shared filter  agent type, time range, target, scope, personal traffic
+        shared filter  agent type, time range, target, scope, personal traffic, tier
         cursor         keyset position
       ORDER BY timestamp DESC, rowid DESC  LIMIT n+1
   → UNION ALL  ORDER BY timestamp DESC, _row DESC, tier_rank DESC  LIMIT n+1
@@ -33,8 +34,9 @@ typed text
 1. Input splits on whitespace. A double-quoted run is one token and may contain
    spaces.
 2. A token whose text before its first colon is a recognised field — `event`,
-   `session`, `transcript`, `tool`, in any case — is a condition. The value is
-   everything after that first colon and may itself contain colons.
+   `session`, `transcript`, `tool`, `operator`, in any case — is a condition.
+   The value is everything after that first colon and may itself contain
+   colons.
 3. Any other token is text, so a pasted URL or `host:port` matches as typed.
 4. A quoted token is always text, even when it looks like a condition.
    `session:S1` finds the records that have that agent session;
@@ -51,7 +53,8 @@ typed text
 2. **Conditions match stored fields, never text.** `event:` is the event ID;
    `session:` is the agent session recorded in the event data, not RedLog's
    capture session; `transcript:` is the transcript UUID; `tool:` is the
-   tool-use ID. An ID quoted inside unrelated output does not satisfy a
+   tool-use ID; `operator:` is the recorded operator ID (`operator_id`), never
+   a display name. An ID quoted inside unrelated output does not satisfy a
    condition.
 3. **A tool-use ID is unique only within a session.** Without a `session:`
    condition, `tool:` resolves to the newest session that contains the ID. The
@@ -72,15 +75,19 @@ typed text
    SQL, before that tier's limit. A filter that works only over loaded rows
    (the Transcript's kind chips, HTTP History's local controls) must say so
    where it is offered.
-7. **Both tiers, always.** Chained and logged events are both searched. The
-   logged tier has no transcript UUID column, so the value is read from the
-   event data there.
+7. **Both tiers, unless the filter asks for chained only.** Chained and logged
+   events are both searched unless the shared filter sets the tier (rule 9).
+   The logged tier has no transcript UUID column, so the value is read from
+   the event data there.
 8. **Time range** is inclusive on `timestamp`: `since ≤ timestamp ≤ before`.
 9. **Scope and personal traffic.** `inScopeOnly` keeps events whose target is in
    scope, plus untargeted events. `hidePersonal` drops events whose target is a
    personal domain, keeping untargeted events. The main process attaches the
    active project's scope policy: a filter sent by the renderer can narrow the
-   result, never widen it.
+   result, never widen it. `tier: 'chained'` ("Chained only") excludes the
+   logged tier: its arm still runs, under a predicate that admits nothing, so
+   a count over it is an honest 0. Every event view applies it, as it applies
+   the other shared-filter conditions.
 10. **Order and paging.** Canonical order is `timestamp DESC, _row DESC,
     tier_rank DESC` — chained before logged on an exact tie. The cursor is the
     last row's `(timestamp, rowid, tier)`, versioned and opaque, and is pushed
@@ -97,7 +104,19 @@ typed text
 13. **Every surface says when it shows a subset.** Search and the Transcript
     page with `hasMore`; the palette lists the newest 40 and says when there are
     more; `/api/events/search` returns `hasMore` and `nextCursor` and takes
-    `cursor`.
+    `cursor`. The Timeline pages with `hasMore`, states "N of M" (M from
+    `countEvents`), and states how many text matches lie past what it has
+    drawn.
+14. **Counting.** `countEvents` counts with the same predicates as the page it
+    describes, cursor included, so a total or an "N earlier" and the pages
+    cannot disagree. A cursor it cannot read is refused, never read as "from
+    the start".
+15. **Matching given rows.** `matchEventIds` evaluates the same predicates
+    restricted to given IDs, at most 1,000 per call: more are refused, never
+    truncated. It serves a surface that must dim or admit rows it already
+    holds, such as the Timeline's live rows and its filter box. Scope and
+    personal traffic are decided over those rows' targets only, which gives
+    the same answer for those rows.
 
 ## Coverage
 
@@ -111,6 +130,20 @@ typed text
   never part of a `QueryPage`.
 - The ⌘K palette and `/api/events/search` search the whole project. They apply
   no shared filter.
+- The Timeline joined the contract in Spec 038. Its `/` box is a query: the
+  shared filter removes events, and the box dims those that do not match.
+
+### The Timeline's empty box
+
+The Timeline's filter box with no text is a browse, not a query: it shows every
+event the shared filter admits. Rule 5 still holds for every query; the
+Timeline sends no query while its text is empty.
+
+### Housekeeping
+
+`excludeHousekeeping` drops RedLog's own plumbing rows (`HOUSEKEEPING_SQL` in
+`event-queries.ts`, the one rule). The Timeline sets it on its page, count,
+match and nearest-match requests, and on live admission. Search does not.
 
 ## Scenarios
 
@@ -213,3 +246,6 @@ For every query Q and shared-filter dataset D:
 - 2026-09-23: one FTS translation for all three indexes; recording search
   stopped swallowing failures; the palette and the local API say when a result
   is a subset.
+- Spec 038: the Timeline on the contract and the shared filter. `operator:`
+  joined the conditions, the tier joined the shared filter, and
+  `countEvents` / `matchEventIds` joined the readers.

@@ -3,6 +3,7 @@ import type { IpcContext } from './types'
 import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
+  countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
@@ -14,7 +15,7 @@ import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  const withActiveScope = <T extends EventFilter>(opts: T): T => {
+  const withActiveScope = <T extends Pick<EventFilter, 'inScopeOnly' | 'hidePersonal'>>(opts: T): T => {
     if (!opts.inScopeOnly && !opts.hidePersonal) return opts
     const project = ctx.getActiveProject()
     if (!project) return opts
@@ -53,6 +54,19 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject()
       ? executeEventQuery({ ...req, filter: withActiveScope(req.filter ?? {}) })
       : { items: [], hasMore: false, nextCursor: null })
+
+  // Spec 038. The Timeline's total and "earlier matches", and the check of
+  // rows it already holds, go through the same predicates as its pages. Scope
+  // is attached here as for the pages, so the answers agree with them.
+  ipcMain.handle('events:count', (_e, req: EventCountRequest) =>
+    ctx.getActiveProject()
+      ? countEvents({ ...req, filter: withActiveScope(req?.filter ?? {}) })
+      : 0)
+
+  ipcMain.handle('events:matchIds', (_e, req: EventMatchRequest) =>
+    ctx.getActiveProject()
+      ? matchEventIds({ ...req, ids: req?.ids ?? [], filter: withActiveScope(req?.filter ?? {}) })
+      : [])
 
   ipcMain.handle('events:toolCounterparts', (_e, keys: ToolPairKey[]) =>
     ctx.getActiveProject() ? fetchToolCounterparts(keys ?? []) : [])

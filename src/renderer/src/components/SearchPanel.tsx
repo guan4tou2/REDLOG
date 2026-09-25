@@ -7,6 +7,7 @@ import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
+import { QueryReadout } from './QueryReadout'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -139,7 +140,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     const opts = toEventFilter(sharedFilter)
     if (effectiveTypeFilter) opts.agentType = effectiveTypeFilter
     return opts
-  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const doSearch = useCallback((q: string) => {
     if (q.length < 1) {
@@ -262,7 +263,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)
@@ -287,20 +288,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
-        {parse?.ok && parse.parsed.tokens.length > 0 && (
-          <div data-testid="search-query-parse" className="mb-2 flex items-center gap-1 text-xs">
-            <span className="text-redlog-text-faint">{t('search.queryReadAs')}</span>
-            {parse.parsed.tokens.map((token, index) => (
-              <span key={index} title={t(token.read === 'condition' ? 'search.queryTokenCondition' : 'search.queryTokenText')}
-                className={`font-mono px-1 py-0.5 rounded border ${token.read === 'condition' ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10' : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'}`}>
-                {token.raw}
-              </span>
-            ))}
-          </div>
-        )}
-        {parse && !parse.ok && (
-          <div data-testid="search-query-unparsable" role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            {t('search.queryUnparsable')}
+        {parse && (
+          <div className="mb-2">
+            <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />
           </div>
         )}
         {toolSession && (

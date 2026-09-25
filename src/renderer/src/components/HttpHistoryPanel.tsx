@@ -9,7 +9,7 @@ import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
-import { UnappliedFilterNotice } from './FilterNotice'
+import { UnappliedFilterNotice, EmptyByConstructionNotice } from './FilterNotice'
 
 /** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
 const HTTP_FLOW_AGENT_TYPE = 'scanner'
@@ -467,7 +467,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
@@ -591,6 +591,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   })
 
   const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
+
+  // A shared-filter notice above already says why there are no flows (spec
+  // 033 FR-012). "No HTTP traffic captured yet" beside it would claim what
+  // this view cannot know under that condition, so it is not shown.
+  const emptyExplained = (!!sharedFilter.agentType && sharedFilter.agentType !== HTTP_FLOW_AGENT_TYPE)
+    || sharedFilter.tier === 'chained'
+  const emptyText = flows.length === 0 ? (emptyExplained ? null : t('httpHistory.empty')) : t('httpHistory.noMatch')
 
   const toggleSort = (col: typeof sortCol) => {
     if (sortCol === col) setSortAsc(!sortAsc)
@@ -716,6 +723,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           reason={t('filter.unappliedHttpType')}
         />
       )}
+      {sharedFilter.tier === 'chained' && (
+        <EmptyByConstructionNotice text={t('filter.chainedOnlyHttp')} />
+      )}
 
       <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
         <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>
@@ -737,7 +747,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       {viewMode === 'activity' ? (
         <div className="flex-1 overflow-auto p-2 space-y-1" {...activityNav.containerProps}>
           {activities.length === 0 ? (
-            <p className="text-xs text-redlog-text-faint px-1 py-2">{t('httpHistory.empty')}</p>
+            emptyText && <p className="text-xs text-redlog-text-faint px-1 py-2">{emptyText}</p>
           ) : activities.map((a, i) => (
             <ActivityRow
               key={a.id}
@@ -827,18 +837,20 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               })()}
             </tbody>
           </table>
-          {filtered.length === 0 && (
+          {filtered.length === 0 && emptyText && (
             <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
-              {flows.length === 0 ? t('httpHistory.empty') : t('httpHistory.noMatch')}
+              {emptyText}
             </div>
           )}
         </div>
       ) : (
         <div className="flex-1 overflow-auto py-1">
           {sitemapTree.size === 0 ? (
-            <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
-              {flows.length === 0 ? t('httpHistory.empty') : t('httpHistory.noMatch')}
-            </div>
+            emptyText && (
+              <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
+                {emptyText}
+              </div>
+            )
           ) : (
             Array.from(sitemapTree.values())
               .sort((a, b) => a.name.localeCompare(b.name))

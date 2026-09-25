@@ -663,6 +663,11 @@ Rows already carry chain-broken (`⛓️‍💥`) and sample-broken badges (see 
 
 ### 9.2 The auditor-view filter chip
 
+> **Superseded by Spec 038.** The tier is the FilterBar's "Chained only"
+> chip, a shared-filter condition every event view applies inside each tier's
+> SQL, so its counts cover the whole project. The Timeline switch described
+> here dropped logged rows after loading them.
+
 A new filter chip in the Timeline toolbar: **"Auditor view"**. When active:
 
 - Only chained rows render.

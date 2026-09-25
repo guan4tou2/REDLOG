@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
-import { formatTime } from './lib/time'
+import { formatTime, useDisplayZone } from './lib/time'
 import { hudWindowWidth, hudWindowHeight } from '../../core/overlay-layout'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
@@ -14,6 +14,8 @@ const MUTED = HUD.muted
 const VALUE = HUD.value
 
 export default function OverlayApp(): JSX.Element {
+  // Another window: the display zone reaches it through `storage` (spec 038).
+  useDisplayZone()
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [recording, setRecording] = useState(true)
