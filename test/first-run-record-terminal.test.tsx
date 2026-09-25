@@ -293,8 +293,14 @@ describe('first run: optional HTTP card', () => {
 // Spec 039: "connected" must say what is recorded, and HTTP is verified by the
 // first request that reaches RedLog, not by the proxy process running.
 async function verifyShell(): Promise<HTMLElement> {
+  const before = snapshot()
   fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
   const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
+  // Emitting before the flow has subscribed drops the event on the floor —
+  // `emit` walks whatever listeners exist at that instant — and the flow then
+  // waits for a command that has already been and gone. The subscription is
+  // set up in an effect, so it lands a tick after the click: wait for it.
+  await waitFor(() => expect(arrivalsSince(before)).toBeGreaterThanOrEqual(1))
   emit([{ id: 'v', timestamp: 9, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
   return screen.findByTestId('record-terminal-verified')
 }
