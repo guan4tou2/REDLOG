@@ -21,6 +21,7 @@
 // block the outbound DNS.
 
 import os from 'os'
+import { isIPv4 } from 'net'
 import { Resolver } from 'dns/promises'
 import type { AlertBus, IPChangeSignal } from '../../../core/alert'
 
@@ -60,6 +61,22 @@ async function getExternalIPviaDNS(): Promise<string> {
   throw new Error('All DNS resolvers failed')
 }
 
+/** The address an HTTP echo answered with: `ip`, else `origin`, else the body
+ *  itself when it is a bare JSON string — and only when that is one IPv4
+ *  address. Anything else means that provider failed. A 200 with another JSON
+ *  shape used to become the "address" `[object Object]`, which misses every
+ *  list and, with only a blacklist set, reads presumed_safe: SAFE on screen
+ *  (TESTING.md G-IP2). IPv4 only, as on the DNS path, because the list matcher
+ *  cannot judge an IPv6 range (G-IP1). */
+function addressIn(data: unknown): string | null {
+  const field = data !== null && typeof data === 'object'
+    ? (data as { ip?: unknown }).ip ?? (data as { origin?: unknown }).origin
+    : data
+  if (typeof field !== 'string') return null
+  const address = field.trim()
+  return isIPv4(address) ? address : null
+}
+
 async function getExternalIPviaHTTP(providers: string[]): Promise<string> {
   for (const url of providers) {
     try {
@@ -68,8 +85,8 @@ async function getExternalIPviaHTTP(providers: string[]): Promise<string> {
       const res = await fetch(url, { signal: controller.signal })
       clearTimeout(timeout)
       if (!res.ok) continue
-      const data = await res.json()
-      return data.ip ?? data.origin ?? String(data)
+      const address = addressIn(await res.json())
+      if (address) return address
     } catch { /* try next */ }
   }
   throw new Error('All IP providers failed')
@@ -206,6 +223,12 @@ export class IPSignalProducer {
   private async check(): Promise<void> {
     if (this.checking) return
     this.checking = true
+    // Cleared in a `finally`: a flag left set by a throw would turn every later
+    // check into a no-op, stale marking included (TESTING.md G-IP2).
+    try { await this.read() } finally { this.checking = false }
+  }
+
+  private async read(): Promise<void> {
     let external: string | null = null
     let error: string | null = null
     try {
@@ -213,7 +236,10 @@ export class IPSignalProducer {
     } catch (err) {
       error = err instanceof Error ? err.message : 'unknown IP fetch error'
     }
-    const internal = getInternalIP()
+    // Display only: failing to read the interfaces must not cost the external
+    // read its result.
+    let internal: string | null = null
+    try { internal = getInternalIP() } catch { /* shown as — */ }
     const now = Date.now()
 
     if (error) {
@@ -253,7 +279,6 @@ export class IPSignalProducer {
     // what lets the StatusBar/HUD refresh `lastCheck`/`link` without a
     // separate polling loop.
     this.dispatch()
-    this.checking = false
   }
 
   private dispatch(): void {

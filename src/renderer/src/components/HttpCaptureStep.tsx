@@ -6,14 +6,22 @@
 // its stopped/starting/running/unavailable/failed state) and the existing
 // proxied-browser launch. The CA path stays behind a link: an operator who is
 // only proxying the browser RedLog launches never needs it.
+//
+// Spec 039: a running proxy is not "capturing". While it runs the card listens
+// for the first HTTP event and only then says verified; after 60 s it names the
+// reasons that apply and keeps listening, so a late request still verifies.
 
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
+import { httpTimeoutReasons, isHttpCaptureEvent } from '../lib/httpVerification'
 
 const MITM_INSTALL = 'uv tool install mitmproxy'
+/** Same window as the shell activation: long enough to launch a browser and
+ *  load a page, short enough to be named while the operator is watching. */
+const HTTP_VERIFY_TIMEOUT_MS = 60_000
 
 function listenAddress(url: string | null): string {
   if (!url) return ''
@@ -28,6 +36,19 @@ export function HttpCaptureStep(): JSX.Element | null {
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [showCa, setShowCa] = useState(false)
+  const [verified, setVerified] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
+  const running = status.state === 'running'
+
+  useEffect(() => {
+    if (!running || verified) return
+    setTimedOut(false)
+    const timer = setTimeout(() => setTimedOut(true), HTTP_VERIFY_TIMEOUT_MS)
+    const unsub = window.redlog.events.onNewBatch((evs) => {
+      if (evs.some(isHttpCaptureEvent)) setVerified(true)
+    })
+    return () => { clearTimeout(timer); unsub() }
+  }, [running, verified])
 
   const check = async (): Promise<void> => {
     const [pf, st] = await Promise.all([
@@ -85,7 +106,21 @@ export function HttpCaptureStep(): JSX.Element | null {
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
-          <p className="text-emerald-500">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
+          <p className="text-redlog-text-dim">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
+          {verified ? (
+            <p data-testid="first-run-http-verified" className="text-emerald-500 font-medium">{t('firstRun.http.verified')}</p>
+          ) : timedOut ? (
+            <div data-testid="first-run-http-timeout" className="space-y-1">
+              <p className="text-redlog-text">{t('firstRun.http.timeoutTitle')}</p>
+              <ul className="list-disc pl-4 text-redlog-text-dim space-y-0.5">
+                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals }).map((r) => (
+                  <li key={r}>{t(`firstRun.http.reason.${r}`)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-redlog-text-dim">{t('firstRun.http.waiting')}</p>
+          )}
           <Button level="secondary" onClick={() => void launch()}>{t('firstRun.http.launchBrowser')}</Button>
           <label className="flex items-start gap-2">
             <input
