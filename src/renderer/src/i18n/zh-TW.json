@@ -1300,5 +1300,7 @@
   "filter.localTime": "本地時間",
   "filter.presetIsSnapshot": "取一段到現在為止的固定區間 —— 不會持續滾動",
   "filter.timeRangeInvalid": "結束時間不晚於開始時間，不會有任何事件符合。",
-  "filter.around": "這筆前後的事件"
+  "filter.around": "這筆前後的事件",
+  "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
+  "filter.listsRetry": "重試"
 }

@@ -1300,5 +1300,7 @@
   "filter.localTime": "local",
   "filter.presetIsSnapshot": "Takes a fixed window ending now — it does not keep sliding",
   "filter.timeRangeInvalid": "The end is at or before the start, so nothing can match.",
-  "filter.around": "Events around this one"
+  "filter.around": "Events around this one",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }
