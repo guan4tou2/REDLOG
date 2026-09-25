@@ -172,7 +172,7 @@ interface RedLogAPI {
   }
   config: {
     get: () => Promise<unknown>
-    save: (config: unknown) => Promise<boolean>
+    save: (config: unknown, opts?: { expectProjectId?: string }) => Promise<boolean>
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<unknown | null>
   }
