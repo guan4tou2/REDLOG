@@ -1304,5 +1304,7 @@
   "export.preview.policyScrubPii": "PII scrubbed",
   "export.preview.attachmentsUnsupported": "this format carries none",
   "export.preview.attachmentsMissing": "Attachments missing",
-  "export.preview.attachmentsUnattributed": "Attachments unattributed"
+  "export.preview.attachmentsUnattributed": "Attachments unattributed",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }
