@@ -57,8 +57,11 @@ describe('the PowerShell profile install leaves nothing behind', () => {
     expect(fs.existsSync(path.dirname(wps))).toBe(false)
   })
 
-  it('keeps a profile the operator already had, byte-identical but for our lines', () => {
-    const { pwsh } = profiles()
+  // The Windows PowerShell profile, not the pwsh one: install writes the pwsh
+  // profile only when `pwsh` is on PATH, which it is not on a CI runner, and
+  // this test is about content surviving rather than about which profile.
+  it('keeps a profile the operator already had, minus our lines', () => {
+    const pwsh = profiles().wps
     const original = 'Set-Alias ll Get-ChildItem\r\nfunction prompt { "PS> " }\r\n'
     fs.mkdirSync(path.dirname(pwsh), { recursive: true })
     fs.writeFileSync(pwsh, original)
