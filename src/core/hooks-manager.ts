@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, rmdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
@@ -686,7 +686,23 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
           if (!existsSync(profile)) continue
           const lines = readFileSync(profile, 'utf-8').split(/\r?\n/)
           const kept = lines.filter((l) => !l.includes(needle) && l.trim() !== PS_PROFILE_MARKER)
-          if (kept.length !== lines.length) writeFileSync(profile, kept.join('\r\n'))
+          if (kept.length === lines.length) continue
+          // Install and uninstall must be inverses. Where the operator had no
+          // profile, install created one holding nothing but our two lines —
+          // removing those left a 0-byte file, and its directory, behind. That
+          // is a footprint on the operator's machine, which is exactly the
+          // thing a red-team tool has no business leaving.
+          //
+          // A profile with any content of its own keeps the existing
+          // behaviour: take out our two lines, leave the rest untouched.
+          if (kept.every((l) => l.trim() === '')) {
+            rmSync(profile, { force: true })
+            // And the directory, when install is what created it. `rmdir`
+            // refuses a non-empty directory, which is exactly the check.
+            try { rmdirSync(dirname(profile)) } catch { /* not ours, or not empty */ }
+            continue
+          }
+          writeFileSync(profile, kept.join('\r\n'))
         }
         return { success: true, message: `${plugin.name} hook removed. Open a new PowerShell window.` }
       } catch (e) {
