@@ -160,7 +160,7 @@ interface RedLogAPI {
   }
   config: {
     get: () => Promise<unknown>
-    save: (config: unknown) => Promise<boolean>
+    save: (config: unknown, opts?: { expectProjectId?: string }) => Promise<boolean>
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<unknown | null>
   }
@@ -421,6 +421,7 @@ interface RuntimePreflight {
     neededFor: string[]
     /** copyable install command, present when missing */
     remediation?: string
+    remediationRequires?: { command: string; url: string }
   }>
   legacyHooks: LegacyHookRef[]
 }

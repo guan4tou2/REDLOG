@@ -1306,5 +1306,15 @@
   "export.preview.attachmentsMissing": "附件遺失",
   "export.preview.attachmentsUnattributed": "附件無法歸屬",
   "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
-  "filter.listsRetry": "重試"
+  "filter.listsRetry": "重試",
+  "readiness.checkFailed": "環境檢查無法執行。",
+  "firstRun.readFailedTitle": "讀不到時間軸",
+  "firstRun.readFailedWhy": "這是讀取失敗，不代表沒有記錄 —— 擷取很可能正在運作。",
+  "firstRun.preflightFailedTitle": "環境檢查無法執行",
+  "firstRun.preflightFailedWhy": "在它跑起來之前，無法判斷缺少哪些相依套件。",
+  "firstRun.remediationNeeds": "這個指令需要先有 {{tool}}：",
+  "settings.save.saving": "儲存中…",
+  "settings.save.saved": "設定已存入這個專案",
+  "settings.save.failed": "儲存失敗，你的修改還在。",
+  "settings.save.retry": "重試"
 }
