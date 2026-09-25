@@ -45,6 +45,21 @@ function preflight(over: Partial<Preflight> & { missing?: Array<'python3' | 'cur
   }
 }
 
+// Counting `listeners.length` was racy. Several components on this screen
+// subscribe to the same batch stream, and HttpCaptureStep in particular
+// subscribes only after an async status check resolves — so a subscription
+// unrelated to the assertion could land between reading the count and
+// checking it, and the delta came out wrong. These helpers reason about the
+// subscriptions that existed at a chosen moment, by identity, so another
+// component arriving or leaving cannot change the answer.
+const snapshot = (): Set<(evs: Ev[]) => void> => new Set(listeners)
+/** How many of `taken` are still subscribed. */
+const survivorsOf = (taken: Set<(evs: Ev[]) => void>): number =>
+  listeners.filter((l) => taken.has(l)).length
+/** How many subscriptions have appeared since `taken`. */
+const arrivalsSince = (taken: Set<(evs: Ev[]) => void>): number =>
+  listeners.filter((l) => !taken.has(l)).length
+
 const BUILTIN: Ev = { id: 'b1', timestamp: 1, agentType: 'shell', data: { subtype: 'command_end', source: 'builtin-terminal', command: 'id' } }
 
 let listeners: Array<(evs: Ev[]) => void>
@@ -213,10 +228,12 @@ describe('first run: record my terminal', () => {
     draw()
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
-    const before = listeners.length
+    const before = snapshot()
     emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
     await screen.findByTestId('record-terminal-verified')
-    expect(listeners.length).toBe(before - 1)
+    // The flow dropped its own subscription. Anything else that subscribed
+    // meanwhile is irrelevant to that.
+    await waitFor(() => expect(survivorsOf(before)).toBe(before.size - 1))
   })
 })
 
@@ -309,24 +326,24 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     draw()
     const card = await screen.findByTestId('first-run-http')
     await waitFor(() => expect(card.textContent).toContain('等第一筆 HTTP 請求'))
-    const before = listeners.length
+    const before = snapshot()
     emit([{ id: 's', timestamp: 3, agentType: 'shell', data: { subtype: 'command_end', command: 'curl x' } }])
     emit([{ id: 'n', timestamp: 4, agentType: 'network', data: { subtype: 'connection' } }])
     expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
     emit([HTTP_EVENT])
     expect((await screen.findByTestId('first-run-http-verified')).textContent).toContain('HTTP 擷取已驗證')
-    expect(listeners.length).toBe(before - 1)
+    await waitFor(() => expect(survivorsOf(before)).toBe(before.size - 1))
   })
 
   it('does not listen while the proxy is not running', async () => {
     install({ proxy: { state: 'stopped', url: null } })
     draw()
     await screen.findByTestId('first-run-http')
-    const before = listeners.length
+    const before = snapshot()
     emit([HTTP_EVENT])
     expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
     fireEvent.click(screen.getByText('開始 HTTP 擷取'))
-    await waitFor(() => expect(listeners.length).toBe(before + 1))
+    await waitFor(() => expect(arrivalsSince(before)).toBe(1))
   })
 
   it('after 60 s names concrete reasons and still verifies a late request', async () => {
