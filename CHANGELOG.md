@@ -3,6 +3,16 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## Unreleased
+
+- **Connected says what it records.** A verified terminal now states that it
+  records command, exit code, duration and working directory — not output —
+  and offers `redlog-session` (zsh/bash/WSL) to keep output.
+- **HTTP capture is verified by traffic.** The first-run HTTP card waits for
+  the first request to reach RedLog before saying verified; after 60 s it
+  names the likely reason (browser not proxied, HTTPS certificate, terminal
+  routing).
+
 ## v0.17.1 — 2026-09-24
 
 - **Fixed: exported evidence bundles had no verifier.** Installed builds did
