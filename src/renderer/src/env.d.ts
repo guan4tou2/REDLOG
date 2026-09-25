@@ -447,7 +447,11 @@ interface CaptureSourceInfo {
   /** dotted config path the switch writes */
   configPath?: string
   lastEventAt: number | null
-  state: 'active' | 'idle' | 'absent' | 'off'
+  /** `error` = this source is wired up and its own capture failed; distinct
+   *  from `absent` (nothing installed) and from a DB write failure. */
+  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
+  /** Why the capture failed, while the failure is still live. */
+  lastError?: { at: number; message: string }
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */
