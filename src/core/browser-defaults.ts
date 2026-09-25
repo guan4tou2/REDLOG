@@ -5,7 +5,7 @@
 
 export interface BrowserConfig {
   binary: string        // '' = auto-detect
-  proxy: string         // e.g. http://127.0.0.1:8080 — '' disables the flag
+  proxy: string         // e.g. http://127.0.0.1:6661 — '' disables the flag
   cdpPort: number       // remote debugging port, so Bookmarks can read the tab
   isolateProfile: boolean
   ignoreCertErrors: boolean
@@ -15,7 +15,7 @@ export interface BrowserConfig {
 
 export const DEFAULT_BROWSER: Readonly<BrowserConfig> = Object.freeze({
   binary: '',
-  proxy: 'http://127.0.0.1:8080',
+  proxy: 'http://127.0.0.1:6661',
   cdpPort: 9222,
   isolateProfile: true,
   ignoreCertErrors: true,

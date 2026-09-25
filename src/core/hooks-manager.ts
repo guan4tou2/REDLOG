@@ -417,11 +417,22 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
             : 'which mitmdump'
         },
         {
-          label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement)',
-          command: `mitmdump -s "${hookFile}"`
+          // Both this port and the one in the next step are mitmproxy's own
+          // default, and they must not drift apart: an operator following
+          // these steps ends up proxied at whatever the command above bound.
+          // It is NOT the managed proxy's port (Settings -> Browser), which
+          // RedLog passes explicitly and no longer defaults to 8080 — 8080 is
+          // Burp's default listener and Burp is running on most of these
+          // machines. Name it here so the collision is visible before it
+          // happens.
+          label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement). '
+            + "This binds 127.0.0.1:8080, mitmproxy's default — change it if Burp already has that port.",
+          command: `mitmdump -s "${hookFile}" --listen-host 127.0.0.1 --listen-port 8080`
         },
         {
-          label: 'Route traffic through it — proxy your browser/tools at 127.0.0.1:8080, or use Launch Browser in RedLog which wires the proxy for you'
+          label: 'Route traffic through it — proxy your browser/tools at the address above, '
+            + "or use Launch Browser in RedLog, which starts RedLog's own managed proxy "
+            + '(its address is in Settings → Browser) and wires the browser to it for you'
         }
       ]
     case 'codex':

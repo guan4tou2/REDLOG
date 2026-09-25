@@ -7,7 +7,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -60,7 +60,8 @@ import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk,
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
-import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
+import { isManagedProxy, type CaptureEndpoint } from '../core/managed-proxy-url'
+import { whoHoldsPort } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
@@ -120,8 +121,18 @@ let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
 
 function managedProxyPort(config: RedLogConfig): number {
-  const port = Number(config.httpCapture?.port ?? 8080)
-  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 8080
+  const fallback = DEFAULT_CONFIG.httpCapture.port
+  const port = Number(config.httpCapture?.port ?? fallback)
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : fallback
+}
+
+function managedProxyHost(config: RedLogConfig): string {
+  const host = String(config.httpCapture?.listenHost ?? '').trim()
+  return host === '' ? DEFAULT_CONFIG.httpCapture.listenHost : host
+}
+
+function managedProxyEndpoint(config: RedLogConfig): CaptureEndpoint {
+  return { host: managedProxyHost(config), port: managedProxyPort(config) }
 }
 
 function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_stopped' | 'http_proxy_failed', status: ManagedProxyStatus): void {
@@ -144,9 +155,22 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
   const config = loadConfig(getProjectPath(activeProject))
   const before = managedHttpProxy.status().state
+  const endpoint = managedProxyEndpoint(config)
+  // Say what is holding the port before mitmdump does. Its own message is a
+  // multi-line startup dump that ends in a localised winsock error and a
+  // suggestion to pass `--mode regular@8082` — a mitmproxy flag, not a RedLog
+  // setting — so the operator was told neither what took the port nor that
+  // the port is theirs to change.
+  const holder = await whoHoldsPort(endpoint)
+  if (holder) {
+    const status: ManagedProxyStatus = { state: 'failed', url: null, error: holder }
+    publishManagedProxyEvent('http_proxy_failed', status)
+    return status
+  }
   const status = await managedHttpProxy.start({
     addonPath,
-    port: managedProxyPort(config),
+    port: endpoint.port,
+    listenHost: endpoint.host,
     caPath: path.join(homedir(), '.mitmproxy', 'mitmproxy-ca-cert.pem')
   })
   if (status.state === 'running') {
@@ -1231,7 +1255,10 @@ app.whenReady().then(() => {
     // from, so toggling a source updates the card on the next poll instead of
     // at the next project open.
     configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
-    if (managedProxyPort(oldConfig) !== managedProxyPort(newConfig) && ['running', 'starting'].includes(managedHttpProxy.status().state)) {
+    const oldEndpoint = managedProxyEndpoint(oldConfig)
+    const newEndpoint = managedProxyEndpoint(newConfig)
+    if ((oldEndpoint.port !== newEndpoint.port || oldEndpoint.host !== newEndpoint.host)
+      && ['running', 'starting'].includes(managedHttpProxy.status().state)) {
       stopManagedHttpCapture()
       void startManagedHttpCapture()
     }
@@ -1378,7 +1405,7 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
-    if (isManagedLoopbackProxy(browserCfg.proxy, managedProxyPort(cfg))) {
+    if (isManagedProxy(browserCfg.proxy, managedProxyEndpoint(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
         return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
