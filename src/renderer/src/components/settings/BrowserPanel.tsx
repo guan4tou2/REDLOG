@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
-import { DEFAULT_CDP_PORT } from '../../lib/defaults'
+import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
-import { followCapturePort } from '../../../../core/managed-proxy-url'
+import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-proxy-url'
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
 
 export default function BrowserPanel({
@@ -13,7 +13,9 @@ export default function BrowserPanel({
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
   const b = config.browser ?? { ...DEFAULT_BROWSER, extraArgs: [] }
-  const httpCapture = config.httpCapture ?? { port: 8080 }
+  const httpCapture = config.httpCapture ?? { port: DEFAULT_CAPTURE_PORT, listenHost: DEFAULT_CAPTURE_HOST }
+  const listenHost = (httpCapture.listenHost ?? DEFAULT_CAPTURE_HOST) || DEFAULT_CAPTURE_HOST
+  const exposed = !isLoopbackHost(listenHost)
   const [detected, setDetected] = useState<string | null>(null)
   const [proxyStatus, setProxyStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
 
@@ -38,16 +40,44 @@ export default function BrowserPanel({
         label={t('settings.httpCapturePort')}
         value={String(httpCapture.port)}
         onChange={(v) => {
-          const port = Math.min(65535, Math.max(1024, parseInt(v) || 8080))
+          const port = Math.min(65535, Math.max(1024, parseInt(v) || DEFAULT_CAPTURE_PORT))
           setConfig({
             ...config,
             httpCapture: { ...httpCapture, port },
-            browser: { ...b, proxy: followCapturePort(b.proxy, httpCapture.port, port) }
+            browser: {
+              ...b,
+              proxy: followCaptureEndpoint(b.proxy, { host: listenHost, port: httpCapture.port }, { host: listenHost, port })
+            }
           })
         }}
         type="number"
       />
       <p className="text-xs text-redlog-text-faint">{t('settings.httpCapturePortHint')}</p>
+      <Field
+        label={t('settings.httpCaptureHost')}
+        value={listenHost}
+        onChange={(v) => {
+          const host = v.trim() || DEFAULT_CAPTURE_HOST
+          setConfig({
+            ...config,
+            httpCapture: { ...httpCapture, listenHost: host },
+            browser: {
+              ...b,
+              proxy: followCaptureEndpoint(b.proxy, { host: listenHost, port: httpCapture.port }, { host, port: httpCapture.port })
+            }
+          })
+        }}
+      />
+      <p className="text-xs text-redlog-text-faint">{t('settings.httpCaptureHostHint')}</p>
+      {/* Binding off loopback is a deliberate, sometimes necessary choice — a
+          victim VM or a NAT'd WSL distro cannot reach 127.0.0.1 on this
+          machine — and it is also an open proxy on the engagement network.
+          Say so where the choice is made, not in a doc. */}
+      {exposed && (
+        <p data-testid="http-capture-exposed-warning" className="text-xs text-amber-400">
+          {t('settings.httpCaptureExposedWarning', { host: listenHost })}
+        </p>
+      )}
       <label className="flex items-center gap-2 cursor-pointer">
         <input type="checkbox" checked={httpCapture.routeTerminals === true}
           onChange={(e) => setConfig({ ...config, httpCapture: { ...httpCapture, routeTerminals: e.target.checked } })}

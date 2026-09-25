@@ -139,6 +139,12 @@ export interface RedLogConfig {
   httpCapture: {
     /** Port owned by RedLog's managed regular-mode mitmdump process. */
     port: number
+    /** Address it binds. Loopback by default, so the proxy is reachable only
+     *  from this machine. Widen it (a LAN address, or `0.0.0.0`) to point a
+     *  victim VM, a phone, a container or a NAT'd WSL distro at the capture —
+     *  and read the warning in Settings first: a proxy on the engagement
+     *  network is reachable by anything else on it too. */
+    listenHost: string
     routeTerminals: boolean
   }
   redaction: {
@@ -256,7 +262,7 @@ export interface RedLogConfig {
   }
 }
 
-const DEFAULT_CONFIG: RedLogConfig = {
+export const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
     activeTarget: null
@@ -308,7 +314,12 @@ const DEFAULT_CONFIG: RedLogConfig = {
   browser: { ...DEFAULT_BROWSER, extraArgs: [] },
   httpCapture: {
     routeTerminals: false,
-    port: 8080
+    // Not 8080: that is Burp Suite's default listener, and Burp is running on
+    // most machines this product is installed on, so the old default
+    // guaranteed a bind failure on first use. 6661 sits next to the RedLog
+    // API's 6660. An operator who has already set a port keeps it.
+    port: 6661,
+    listenHost: '127.0.0.1'
   },
   redaction: {
     allowlist: [],

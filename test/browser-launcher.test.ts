@@ -7,7 +7,7 @@ const PROFILE = '/tmp/proj/browser-profile'
 describe('browser launcher args', () => {
   it('routes through the proxy and does not exempt loopback', () => {
     const args = buildArgs(DEFAULT_BROWSER, PROFILE)
-    expect(args).toContain('--proxy-server=http://127.0.0.1:8080')
+    expect(args).toContain('--proxy-server=http://127.0.0.1:6661')
     // Chrome bypasses the proxy for localhost by default, which would hide
     // traffic to a local target from mitmproxy.
     expect(args).toContain('--proxy-bypass-list=<-loopback>')
