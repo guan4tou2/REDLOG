@@ -76,7 +76,10 @@ function remediationFor(cmd: PreflightCommand, platform: NodeJS.Platform): strin
 // be handed a fix it cannot run.
 const UV = { command: 'uv', url: 'https://docs.astral.sh/uv/getting-started/installation/' }
 const BREW = { command: 'brew', url: 'https://brew.sh' }
-function remediationRequiresFor(
+/** Exported for its own test: a PATH cannot be simulated for a foreign
+ *  platform from Windows, because an absolute path there contains the colon
+ *  that a POSIX PATH splits on. */
+export function remediationRequiresFor(
   remediation: string | undefined,
   found: (cmd: string) => boolean
 ): { command: string; url: string } | undefined {
