@@ -291,6 +291,36 @@ describe.skipIf(!available)('running a scope recompute', () => {
       expect(runner!.queryScopeViolationRows(3).truncated).toBe(false)
     })
 
+    // G-S3: every in-scope hit is chained under the same subtype. The window
+    // used to be cut before those rows were dropped, so enough in-scope traffic
+    // after a standing violation left the page empty while the status bar
+    // counted it.
+    it('cuts the window after the in-scope rows are out', () => {
+      const e = shell('evil.example')
+      liveViolation('evil.example', e.id)
+      for (let i = 0; i < 3; i++) {
+        const s = shell('www.target.com', `curl www.target.com/${i}`)
+        liveViolation('www.target.com', s.id, 'in_scope')
+      }
+      expect(runner!.countActiveScopeViolations()).toBe(1)
+      const page = runner!.queryScopeViolationRows(2)
+      expect(page.rows.map((r) => r.target)).toEqual(['evil.example'])
+      expect(page.truncated).toBe(false)
+    })
+
+    it('does not spend the window on records a newer one replaced', () => {
+      // Two records for one source event: the newer replaces the older, and
+      // only it is listed. Counting the older made `truncated` claim a cut
+      // that hid nothing.
+      const a = shell('a.example')
+      liveViolation('a.example', a.id, 'adjacent_domain')
+      liveViolation('a.example', a.id, 'excluded')
+      liveViolation('b.example', shell('b.example').id)
+      const page = runner!.queryScopeViolationRows(2)
+      expect(page.rows.map((r) => [r.target, r.distance])).toEqual([['b.example', 'excluded'], ['a.example', 'excluded']])
+      expect(page.truncated).toBe(false)
+    })
+
     it('returns the newest summary for the banner', async () => {
       expect(runner!.queryLastScopeRecompute()).toBeNull()
       shell('evil.example')
