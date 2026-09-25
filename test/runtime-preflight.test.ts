@@ -219,7 +219,12 @@ describe('PowerShell one-click install (win32)', () => {
     const pwshProfile = path.join(home, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1')
     expect(fs.readFileSync(pwshProfile, 'utf-8')).toContain('.redlog\\shell-hook.ps1')
     expect(hooks.uninstallHook('shell-powershell').success).toBe(true)
-    expect(fs.readFileSync(pwshProfile, 'utf-8')).not.toContain('.redlog\\shell-hook.ps1')
+    // The install created this profile — the operator had none — so uninstall
+    // takes the whole file, not just our line. Leaving a 0-byte profile and
+    // the directory made for it is a footprint, and install/uninstall have to
+    // be inverses. A profile that had content of its own keeps it; that case
+    // is covered in powershell-profile-roundtrip.test.ts.
+    expect(fs.existsSync(pwshProfile)).toBe(false)
     expect(hooks.detectHooks().find((h) => h.id === 'shell-powershell')?.installed).toBe(false)
   })
 })
