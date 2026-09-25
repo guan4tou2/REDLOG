@@ -39,7 +39,21 @@ const post = async (agent_type: string, data: Record<string, unknown>): Promise<
   })
 }
 
+/** Make the amend panel for this marker be open.
+ *
+ *  Clicking a timeline event that is already selected deselects it — and the
+ *  timeline now restores the last selection across a reload, so after one the
+ *  panel is already open and a blind click *closes* the thing this helper
+ *  exists to open. That is what broke `survives a reload`: the click landed on
+ *  the restored selection, the panel went away, and the wait timed out at 10s
+ *  on a selector that had been there a moment earlier.
+ *
+ *  Both call sites in this file name the same marker (it is renamed from
+ *  'original title' to 'amended title' partway through), so "panel open" and
+ *  "panel open on this marker" are the same question here. A third call site
+ *  naming a different marker would need to check which one the panel shows. */
 const selectMarker = async (titleText: string): Promise<void> => {
+  if (await page.locator('[data-testid="marker-amend"]').count() > 0) return
   await page.click(`[data-timeline-event][title*="${titleText}"]`)
   await page.waitForSelector('[data-testid="marker-amend"]', { timeout: 10_000 })
 }
