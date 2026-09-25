@@ -24,6 +24,8 @@ export function FilterBar(): JSX.Element | null {
       <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
         <button
           onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="filter-bar-panel"
           className="flex items-center gap-1 text-redlog-text-dim hover:text-redlog-text transition-colors"
           title={t('filter.title')}
         >
@@ -53,6 +55,7 @@ export function FilterBar(): JSX.Element | null {
         {(scopeTargets.length > 0 || scopeExcludeTargets.length > 0) && (
           <button
             onClick={() => setInScopeOnly(!filter.inScopeOnly)}
+            aria-pressed={filter.inScopeOnly}
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
               filter.inScopeOnly
                 ? 'border-red-500/40 bg-red-500/10 text-red-400'
@@ -81,6 +84,7 @@ export function FilterBar(): JSX.Element | null {
         {personalDomains.length > 0 && (
           <button
             onClick={() => setHidePersonal(!filter.hidePersonal)}
+            aria-pressed={filter.hidePersonal}
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
               filter.hidePersonal
                 ? 'border-amber-500/35 bg-amber-500/10 text-amber-300'
@@ -100,7 +104,7 @@ export function FilterBar(): JSX.Element | null {
       </div>
 
       {expanded && (
-        <div className="px-3 pb-2 flex flex-wrap gap-3">
+        <div id="filter-bar-panel" className="px-3 pb-2 flex flex-wrap gap-3">
           {/* Target selector */}
           <FilterSelect
             label={t('filter.target')}
@@ -161,10 +165,18 @@ export function FilterBar(): JSX.Element | null {
 }
 
 function Chip({ label, title, onClear }: { label: string; title?: string; onClear: () => void }): JSX.Element {
+  const { t } = useI18n()
   return (
     <span title={title} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
       {label}
-      <button onClick={onClear} className="hover:text-red-400 transition-colors" aria-label="Clear">
+      <button
+        onClick={onClear}
+        className="hover:text-red-400 transition-colors"
+        /* Names the condition it removes, and in the operator's language.
+           Every chip used to announce the same untranslated "Clear". */
+        aria-label={t('filter.clearCondition', { condition: label })}
+        title={t('filter.clearCondition', { condition: label })}
+      >
         <X size={10} />
       </button>
     </span>
