@@ -1296,5 +1296,7 @@
   "legacyHook.failed": "更新失敗：",
   "legacyHook.dismiss": "關閉",
   "filter.clearCondition": "清除 {{condition}}",
-  "settings.pageBrowser": "瀏覽器與 HTTP 擷取"
+  "settings.pageBrowser": "瀏覽器與 HTTP 擷取",
+  "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
+  "filter.listsRetry": "重試"
 }
