@@ -45,6 +45,44 @@ export function detectBrowser(): string | null {
   return candidates.find((p) => existsSync(p)) ?? null
 }
 
+// Chrome's own background traffic, kept out of the engagement record.
+//
+// Measured on a FRESH isolated profile, browser launched and then left alone
+// for 25 seconds with nothing navigated to: 47 `scanner.http_request_start`
+// rows (optimizationguide-pa.googleapis.com model downloads, gstatic,
+// clients2.google.com), an 11 MB `http-body-index.db`, and — worst — three
+// chained `credential_use` rows tagged MITRE T1078 (Valid Accounts) for
+// Chrome's GCM registration against android.clients.google.com. None of that
+// is the operator, and all of it ships to the client inside events.jsonl.
+//
+// This profile is RedLog's own, so the fix belongs here rather than in a
+// filter downstream: traffic never generated needs no classifying. Only
+// applied with `isolateProfile`, because an operator pointed at their own
+// profile has chosen their own browser's behaviour and we do not override it.
+const QUIET_ARGS = [
+  // The umbrella switch: variations seed, field trials, GCM/push
+  // registration, the safe-browsing and component update fetches.
+  '--disable-background-networking',
+  // Not covered by the umbrella on every channel, so named too.
+  '--disable-component-update',
+  '--disable-domain-reliability',
+  '--disable-sync',
+  '--disable-features=OptimizationHints,OptimizationGuideModelDownloading,MediaRouter,Translate,'
+    + 'NetworkTimeServiceQuerying,InterestFeedContentSuggestions,CalculateNativeWinOcclusion',
+  // Chrome's own bundled component extensions are what register for GCM
+  // (android.clients.google.com/c2dm) and poll the update service. This does
+  // NOT touch extensions the operator installs — those are often the point of
+  // using a real browser on an engagement.
+  '--disable-component-extensions-with-background-pages',
+  '--disable-default-apps',
+  '--no-pings',
+  // Chrome's first-run and promo fetches.
+  '--disable-client-side-phishing-detection',
+  '--safebrowsing-disable-auto-update',
+  '--metrics-recording-only',
+  '--disable-search-engine-choice-screen'
+]
+
 export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
   const args: string[] = []
   if (cfg.proxy) {
@@ -57,11 +95,20 @@ export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
   if (cfg.isolateProfile) {
     args.push(`--user-data-dir=${profileDir}`)
     args.push('--no-first-run', '--no-default-browser-check')
+    args.push(...QUIET_ARGS)
   }
   if (cfg.ignoreCertErrors) args.push('--ignore-certificate-errors')
   args.push(...cfg.extraArgs.filter(Boolean))
-  if (cfg.startUrl) args.push(cfg.startUrl)
-  return args
+  // With no start URL Chrome opens its New Tab Page, which is a real page
+  // load against google.com — the promos, the OneGoogle bar, the doodle, the
+  // logo from gstatic, the omnibox suggestion prefetch. Through the capture
+  // proxy that is ~40 requests of the operator's browser fetching Google's
+  // homepage furniture, recorded as engagement traffic before the operator
+  // has typed anything. `about:blank` is the honest starting point for a
+  // browser whose whole purpose is to be pointed at a target. Only applied
+  // for RedLog's own profile, and any startUrl the operator sets still wins.
+  args.push(cfg.startUrl || (cfg.isolateProfile ? 'about:blank' : ''))
+  return args.filter(Boolean)
 }
 
 let child: ChildProcess | null = null
