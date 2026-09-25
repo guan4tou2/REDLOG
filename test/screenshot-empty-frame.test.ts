@@ -107,8 +107,14 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     h.jpegBytes = 4096; h.empty = false
     const a = agent()
     a.configure({ diffThreshold: 5 })
-    expect(await a.captureNow('api')).not.toBeNull()
-    expect(await a.captureNow('api')).not.toBeNull()
+    const first = await a.captureNow('api')
+    const second = await a.captureNow('api')
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    // Two frames, two files. They used to collide whenever both landed in the
+    // same millisecond - which is most of the time - and the second silently
+    // overwrote the first.
+    expect(second).not.toBe(first)
     expect(shots()).toHaveLength(2)
 
     // An ambient trigger on the same unchanged screen is still deduped away.

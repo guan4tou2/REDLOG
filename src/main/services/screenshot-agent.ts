@@ -169,8 +169,18 @@ export class ScreenshotAgent {
       const dir = path.join(getProjectDir(), 'screenshots')
       fs.mkdirSync(dir, { recursive: true })
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
-      const filename = `${ts}_${trigger}.jpg`
-      const filepath = path.join(dir, filename)
+      // The name carries milliseconds, which is not enough: two deliberate
+      // captures inside the same millisecond produced the same name and the
+      // second silently overwrote the first. A burst - the operator hitting
+      // the shortcut twice, or an agent posting to /api/screenshot in a loop -
+      // lost frames while every call reported success and every event pointed
+      // at a file that by then held a different picture.
+      let filename = `${ts}_${trigger}.jpg`
+      let filepath = path.join(dir, filename)
+      for (let n = 2; fs.existsSync(filepath); n++) {
+        filename = `${ts}_${trigger}-${n}.jpg`
+        filepath = path.join(dir, filename)
+      }
       // v0.6.97 D: 4K JPEGs at quality=80 land 800KB-1.5MB — writeFileSync
       // blocks the main thread for 5-15ms per shot (measured on APFS SSD).
       // With the 10s periodic timer that's not visible, but a burst (idle
