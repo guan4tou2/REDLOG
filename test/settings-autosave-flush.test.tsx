@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from '../src/renderer/src/components/Settings'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -63,9 +63,12 @@ describe('the settings autosave does not lose a change on the way out', () => {
     saves.length = 0
     saveResult = true
     installBridge()
-    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
-  afterEach(() => { vi.useRealTimers(); cleanup(); vi.restoreAllMocks() })
+  // No fake timers. The debounce is 350ms, so real waits are enough, and
+  // faking the clock here left this file failing at file level under a full
+  // suite run while passing on its own — the component schedules its own
+  // timeouts and the interaction was not worth the speed.
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
   /** Wait for the initial config fetch to land: the form is rendered once it
    *  has, and until then Settings shows only a loading line. */
@@ -89,8 +92,7 @@ describe('the settings autosave does not lose a change on the way out', () => {
   it('binds the write to the project the form was loaded from', async () => {
     mount()
     change(await ready())
-    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
-    await waitFor(() => expect(saves).toHaveLength(1))
+    await waitFor(() => expect(saves).toHaveLength(1), { timeout: 3000 })
     expect(saves[0].opts?.expectProjectId).toBe('proj-a')
   })
 
@@ -98,8 +100,7 @@ describe('the settings autosave does not lose a change on the way out', () => {
     saveResult = false
     mount()
     change(await ready())
-    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
-    expect(await screen.findByTestId('settings-save-failed')).not.toBeNull()
+    expect(await screen.findByTestId('settings-save-failed', {}, { timeout: 3000 })).not.toBeNull()
 
     saveResult = true
     fireEvent.click(screen.getByRole('button', { name: /Retry|重試/ }))
