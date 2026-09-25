@@ -26,6 +26,30 @@ export function configureTerminalProxy(provider: () => string | null): void {
   managedProxyUrlProvider = provider
 }
 
+/** The variables a WSL pane needs on the Linux side, merged into whatever
+ *  WSLENV the operator already has.
+ *
+ *  WSLENV is a colon-separated list of variable NAMES (with optional path
+ *  translation flags, which none of these want - they are a flag, an opaque
+ *  id and URLs). Anything not named here simply does not exist inside the
+ *  distro, however it was set on the Windows side. */
+export const WSL_FORWARDED_ENV = [
+  'REDLOG_TERMINAL',
+  'REDLOG_TERMINAL_ID',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'http_proxy',
+  'https_proxy'
+] as const
+
+export function wslEnvFor(existing: string | undefined): string {
+  const have = (existing ?? '').split(':').filter(Boolean)
+  // Keep the operator's own entries, and their flags, exactly as they set
+  // them: an entry is `NAME` or `NAME/flags`, so compare on the name.
+  const names = new Set(have.map((e) => e.split('/')[0]))
+  return [...have, ...WSL_FORWARDED_ENV.filter((n) => !names.has(n))].join(':')
+}
+
 export function withManagedProxyEnv(
   base: Record<string, string | undefined>,
   proxyUrl: string | null,
@@ -366,7 +390,16 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
       // Terminal id in env so the hook can round-trip it back on command_end
       // events. The api-server needs it to look up which session's stdout
       // buffer to attach (see /api/events terminalCaptureRef.takeCommandOutput).
-      REDLOG_TERMINAL_ID: id
+      REDLOG_TERMINAL_ID: id,
+      // A WSL pane starts `wsl.exe`, and Windows environment variables do NOT
+      // cross that boundary unless they are named in WSLENV. Without it the
+      // adapter inside the distro saw neither REDLOG_TERMINAL - so its events
+      // were never tagged `source: 'builtin-terminal'` and the pane read as
+      // silent on the capture panel - nor REDLOG_TERMINAL_ID, so a command_end
+      // could not be matched to the pane whose stdout it belongs to. The
+      // managed proxy variables have the same problem, which is why a tool
+      // run inside WSL was never proxied.
+      ...(wslDistro ? { WSLENV: wslEnvFor(process.env.WSLENV) } : {})
     } as Record<string, string>
   })
 
