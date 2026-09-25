@@ -333,7 +333,15 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ proxy: { ...RUNNING, certReady: false } })
     draw()
+    // `first-run-http` is the section wrapper and is present in every state,
+    // so finding it says nothing about whether the proxy has been reported as
+    // running yet. The timeout timer is armed by the effect that runs *when*
+    // it is (`if (!running || verified) return`), so advancing the clock
+    // before that arms nothing and the banner never appears — which is what
+    // made this the only red test on main in a full run while the file passed
+    // on its own. Wait for the running state, then advance.
     await screen.findByTestId('first-run-http')
+    await screen.findByText(/正在監聽/)
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const why = await screen.findByTestId('first-run-http-timeout')
     expect(why.textContent).toContain('開啟代理瀏覽器')
