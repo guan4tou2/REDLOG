@@ -51,7 +51,7 @@ import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, listPlugins } from '../core/plugins'
-import { configureIngest, ingestEvent } from '../core/ingest'
+import { configureIngest, ingest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
@@ -731,9 +731,25 @@ function startProject(project: ProjectMeta): void {
     if (!currentEngagementId || !currentOperatorId) return
     if (eventBus.paused) return
     const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
-      const ev = insertEvent(agentType, data, { engagementId: spoolEngagement, operatorId: spoolOperator })
-      if (ev) eventBus.publish(ev)
-      return ev !== null
+      // Through ingest(), like every other producer. This called insertEvent
+      // directly, so an event the hook had spooled because RedLog was
+      // unreachable skipped the entire pipeline: no causal links, no target
+      // extraction, no loot scan, no redaction spans, no scope verdict, and
+      // none of the housekeeping rules. Spooling is not rare — the built-in
+      // terminal sources its adapter into a fresh pty within a second of the
+      // pane opening, which is exactly when the API may not be up yet — so
+      // the events most likely to take this path were the ones arriving with
+      // the least processing.
+      const result = ingest({
+        agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
+        envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
+      })
+      if (result.event) return true
+      // No row, but handled: `plumbing` is deliberately never recorded and
+      // `dedup` means the row is already there. Both mean this file is done —
+      // returning false would keep it on disk and retry it every 30s forever.
+      // A pause is the one case worth keeping for later.
+      return result.skipped !== 'paused'
     }
     const replayed = replaySpoolDirectory(path.join(homedir(), '.redlog', 'pending'), {
       engagementId: currentEngagementId,
