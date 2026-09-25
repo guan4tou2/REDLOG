@@ -19,7 +19,7 @@
 // dismissable step. And when the built-in terminal is silent, preflight says
 // which dependency is missing instead of a timer guessing at it.
 
-import { lazy, Suspense, useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
@@ -56,8 +56,17 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [wsl, setWsl] = useState<WslDistro | null>(null)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
 
+  // "The check failed" is not "everything is fine". Swallowing the rejection
+  // left `preflight` null, and a null preflight reports no missing
+  // dependencies — so a failed environment check looked exactly like a clean
+  // one, on the screen whose whole job is to tell the operator whether RedLog
+  // can record.
+  const [preflightFailed, setPreflightFailed] = useState(false)
   const checkRuntime = (): void => {
-    window.redlog.runtime.preflight().then(setPreflight).catch(() => { /* no preflight, no claims */ })
+    setPreflightFailed(false)
+    window.redlog.runtime.preflight()
+      .then((p) => { setPreflight(p); setPreflightFailed(false) })
+      .catch(() => setPreflightFailed(true))
   }
   useEffect(checkRuntime, [])
 
@@ -70,23 +79,30 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       .catch(() => setWsl(null))
   }, [preflight?.platform])
 
+  // A failed read must never be shown as "nothing has been recorded". That is
+  // the one claim this screen cannot get wrong: an operator who is told
+  // capture is silent will go looking for a capture problem that does not
+  // exist, or worse, conclude the opposite once events appear later.
+  const [rowsFailed, setRowsFailed] = useState(false)
+  const loadRows = useCallback((): void => {
+    void window.redlog.events.query({ limit: 20, excludeHousekeeping: true })
+      // `isEvidence`, not `!isHousekeeping`: an IP verdict lands within
+      // seconds of opening any project and would light this strip before the
+      // operator had done anything.
+      .then((r: RedLogEvent[]) => { setRows((r ?? []).filter(isEvidence).slice(0, 8)); setRowsFailed(false) })
+      .catch(() => setRowsFailed(true))
+  }, [])
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
-    const load = (): void => {
-      void window.redlog.events.query({ limit: 20, excludeHousekeeping: true })
-        // `isEvidence`, not `!isHousekeeping`: an IP verdict lands within
-        // seconds of opening any project and would light this strip before the
-        // operator had done anything.
-        .then((r: RedLogEvent[]) => setRows((r ?? []).filter(isEvidence).slice(0, 8)))
-        .catch(() => { /* the strip simply stays empty */ })
-    }
+    const load = loadRows
     load()
     const unsub = window.redlog.events.onNewBatch(() => {
       if (timer) clearTimeout(timer)
       timer = setTimeout(load, 300)
     })
     return () => { if (timer) clearTimeout(timer); unsub() }
-  }, [])
+  }, [loadRows])
 
   // "Nothing has arrived" and "capture is broken" look identical for the first
   // few seconds and completely different after ten. A missing dependency is
@@ -168,6 +184,20 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
               {recording && <RecordTerminalFlow key={recording.label} target={recording} />}
               <div className="mt-3"><HttpCaptureStep /></div>
             </>
+          ) : rowsFailed ? (
+            // Read failure, not silence. Saying "nothing recorded" here would
+            // send the operator hunting a capture problem that does not exist.
+            <div data-testid="first-run-read-failed" role="status" className="text-xs space-y-2">
+              <p className="font-semibold text-redlog-text">{t('firstRun.readFailedTitle')}</p>
+              <p className="text-redlog-text-dim">{t('firstRun.readFailedWhy')}</p>
+              <Button level="secondary" onClick={loadRows}>{t('firstRun.recheck')}</Button>
+            </div>
+          ) : preflightFailed ? (
+            <div data-testid="first-run-preflight-failed" role="status" className="text-xs space-y-2">
+              <p className="font-semibold text-redlog-text">{t('firstRun.preflightFailedTitle')}</p>
+              <p className="text-redlog-text-dim">{t('firstRun.preflightFailedWhy')}</p>
+              <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+            </div>
           ) : missing.length > 0 ? (
             <div data-testid="first-run-missing-deps" className="text-xs space-y-2">
               <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
