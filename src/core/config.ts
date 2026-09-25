@@ -387,14 +387,21 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
   }
 }
 
+/** A copy of the defaults nobody else holds. A loaded config is its caller's
+ *  to change (targetContext:set assigns `engagement.activeTarget` and saves),
+ *  so it must never be, or contain, DEFAULT_CONFIG's own objects: a shallow
+ *  copy, or a section the file leaves unset, would carry that change into
+ *  every later load in the process. */
+const defaults = (): RedLogConfig => structuredClone(DEFAULT_CONFIG)
+
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
     const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
-    return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
+    return deepMerge(defaults() as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
-    return { ...DEFAULT_CONFIG }
+    return defaults()
   }
 }
 
