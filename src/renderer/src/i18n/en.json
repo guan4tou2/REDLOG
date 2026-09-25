@@ -1298,5 +1298,7 @@
   "settings.save.saving": "Saving…",
   "settings.save.saved": "Config saved to this project",
   "settings.save.failed": "Could not save. Your changes are still here.",
-  "settings.save.retry": "Retry"
+  "settings.save.retry": "Retry",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }

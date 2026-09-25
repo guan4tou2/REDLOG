@@ -1298,5 +1298,7 @@
   "settings.save.saving": "儲存中…",
   "settings.save.saved": "設定已存入這個專案",
   "settings.save.failed": "儲存失敗，你的修改還在。",
-  "settings.save.retry": "重試"
+  "settings.save.retry": "重試",
+  "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
+  "filter.listsRetry": "重試"
 }
