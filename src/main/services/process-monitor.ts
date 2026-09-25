@@ -53,6 +53,19 @@ interface TrackedProc {
 
 const DEFAULT_POLL_MS = 500
 const EMIT_BUDGET_PER_MINUTE = 1000
+// What is never engagement evidence.
+//
+// This list used to hold only RedLog's own processes, so on a real desktop
+// the monitor recorded everything else the operator's machine happened to be
+// doing: one two-minute session produced 500 process events, the great
+// majority of them conhost.exe, service hosts and browser renderers, with
+// their full command lines - which also carried paths from outside the
+// engagement into the record. The operator's actual work in that session was
+// 24 shell commands, buried underneath.
+//
+// Only OS and desktop plumbing is listed. Anything an operator might
+// plausibly have run themselves stays recorded, and `ignoreCommands` is
+// theirs to extend.
 const DEFAULT_IGNORES = [
   'Electron',
   'RedLog',
@@ -60,7 +73,68 @@ const DEFAULT_IGNORES = [
   'redlog Helper',
   'ps',           // our own poll
   'ps -eo',
+  // Windows console and service plumbing. conhost.exe alone is one process
+  // per console that any command opens.
+  'conhost.exe',
+  'svchost.exe',
+  'RuntimeBroker.exe',
+  'backgroundTaskHost.exe',
+  'dllhost.exe',
+  'taskhostw.exe',
+  'sihost.exe',
+  'ctfmon.exe',
+  'SearchProtocolHost.exe',
+  'SearchFilterHost.exe',
+  'SearchIndexer.exe',
+  'WmiPrvSE.exe',
+  'audiodg.exe',
+  'fontdrvhost.exe',
+  'ShellExperienceHost.exe',
+  'StartMenuExperienceHost.exe',
+  'TextInputHost.exe',
+  'SystemSettings.exe',
+  // macOS / Linux desktop equivalents.
+  'mdworker',
+  'mdworker_shared',
+  'mds_stores',
+  'distnoted',
+  'cfprefsd',
+  'gvfsd',
+  'tracker-miner-fs',
+  'systemd-journald',
 ]
+
+/** The executable of a command line: the quoted leading token where there is
+ *  one, else everything up to the first whitespace. */
+/** Is this command line one the monitor should not record? Exported so the
+ *  rule can be tested directly rather than through a diff. */
+export function isIgnoredCommand(cmd: string, ignoreCommands: readonly string[] = []): boolean {
+  for (const ig of [...DEFAULT_IGNORES, ...ignoreCommands]) {
+    if (!ig) continue
+    if (cmd === ig) return true
+    if (cmd.startsWith(ig + ' ')) return true
+    // Match on the leading token, which is the executable's path.
+    //
+    // Splitting on whitespace is wrong on Windows, where that token is
+    // routinely quoted BECAUSE it holds spaces: a Chrome command line split
+    // to `"C:\Program`, which matches no basename, so an operator who added
+    // chrome.exe to ignoreCommands saw it ignored - silently - for every
+    // program installed under a path with a space in it.
+    const first = leadingToken(cmd)
+    if (first === ig) return true
+    if (first.endsWith('/' + ig) || first.endsWith('\\' + ig)) return true
+  }
+  return false
+}
+
+export function leadingToken(cmd: string): string {
+  const trimmed = cmd.trimStart()
+  if (trimmed.startsWith('"')) {
+    const close = trimmed.indexOf('"', 1)
+    if (close > 0) return trimmed.slice(1, close)
+  }
+  return trimmed.split(/\s+/)[0] ?? ''
+}
 
 let cfg: ProcessMonitorConfig = { enabled: false, engagementId: '', operatorId: '' }
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -220,19 +294,7 @@ export function diffProcs(
   next: Map<number, PsRow>,
   ignoreCommands: string[]
 ): { spawns: PsRow[]; exits: TrackedProc[] } {
-  const ignores = [...DEFAULT_IGNORES, ...ignoreCommands]
-  const isIgnored = (cmd: string): boolean => {
-    for (const ig of ignores) {
-      if (!ig) continue
-      if (cmd === ig) return true
-      if (cmd.startsWith(ig + ' ')) return true
-      // substring match on the leading token (path/basename)
-      const first = cmd.split(/\s+/)[0]
-      if (first === ig) return true
-      if (first.endsWith('/' + ig) || first.endsWith('\\' + ig)) return true
-    }
-    return false
-  }
+  const isIgnored = (cmd: string): boolean => isIgnoredCommand(cmd, ignoreCommands)
   const spawns: PsRow[] = []
   for (const [pid, row] of next) {
     if (prev.has(pid)) continue
