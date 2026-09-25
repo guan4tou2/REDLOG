@@ -1222,10 +1222,15 @@ app.whenReady().then(() => {
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
   })
-  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
+  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     const oldConfig = loadConfig(projectDir)
+    // A form is bound to the project it was loaded from. Settings flushes a
+    // pending write when it unmounts, and the operator may have switched
+    // project by the time it lands; applying one engagement's settings to
+    // another is worse than losing the edit.
+    if (opts?.expectProjectId && opts.expectProjectId !== oldConfig.engagement.id) return false
     // The project id is the durable attribution boundary used by spool replay
     // and every Event row. Renderer state, imported profiles and direct IPC
     // calls may update other settings, but cannot rename this identity.
