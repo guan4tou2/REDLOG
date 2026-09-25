@@ -44,6 +44,12 @@ async function loadChokidar(): Promise<ChokidarNS | null> {
 
 let cfg: PowershellTranscriptConfig = { enabled: false, engagementId: '', operatorId: '' }
 let watcher: ChokidarWatcher | null = null
+// Bumped by every restart and stop. The restart awaits the chokidar import
+// before it creates a watcher, and project open configures this twice in one
+// synchronous run (the ids, then applyCapturePacks): without the check, both
+// restarts created a watcher and the first leaked, still following after a
+// switch to a project with the pack off.
+let generation = 0
 /** Per-file count of commands already emitted, so a re-parse emits only the new
  *  ones. Keyed by absolute transcript path. */
 const emitted = new Map<string, number>()
@@ -58,15 +64,20 @@ export function configurePowershellTranscript(next: Partial<PowershellTranscript
 }
 
 export function stopPowershellTranscript(): void {
+  generation++
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
 }
 
 async function restart(): Promise<void> {
+  const run = ++generation
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
   if (!cfg.enabled) return
   const chok = await loadChokidar()
+  // A newer restart or a stop ran while chokidar loaded, and it owns the
+  // watcher now — including when it turned the pack off.
+  if (run !== generation || !cfg.enabled) return
   if (!chok) { console.warn('[powershell-transcript] chokidar not installed; skipping'); return }
 
   const dir = transcriptDir()
@@ -98,7 +109,8 @@ async function restart(): Promise<void> {
 }
 
 function follow(absPath: string): void {
-  if (eventBus.paused) return
+  // Off is checked here too, so no watcher can record after the pack is off.
+  if (!cfg.enabled || eventBus.paused) return
   if (!cfg.engagementId || !cfg.operatorId) return
   let text: string
   try { text = readFileSync(absPath, 'utf-8') } catch { return }
