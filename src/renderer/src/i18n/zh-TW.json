@@ -1326,5 +1326,8 @@
   "settings.save.failed": "儲存失敗，你的修改還在。",
   "settings.save.retry": "重試",
   "settings.hookRun": "在終端機執行",
-  "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。"
+  "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。",
+  "capture.streamsBoth": "HTTP + DNS",
+  "capture.streamsHttpOnly": "只有 HTTP —— DNS 模式沒有在跑",
+  "capture.streamsDnsOnly": "只有 DNS —— HTTP proxy 沒有在跑"
 }
