@@ -36,6 +36,13 @@ export interface CaptureSource {
    *  (`CAPTURE_ERROR_TTL_MS`). Set by `noteCaptureError`; drives `state:
    *  'error'` and gives the panel something to say beyond the colour. */
   lastError?: { at: number; message: string }
+  /** For a source carrying more than one stream: which of them are actually
+   *  feeding. `mitmproxy` is one row for HTTP and DNS — the addon serves both
+   *  — but they are two mitmdump processes in two modes, and one running does
+   *  not mean the other is. A green row said "traffic capture is on" while
+   *  DNS was not running at all, and a DNS-less timeline reads as "the target
+   *  resolved nothing" rather than "this was never switched on". */
+  streams?: Record<string, boolean>
   /** E3: a plugin-contributed capture producer, enumerated from the registry
    *  rather than the hardcoded core list. Informational sources are DISPLAY
    *  ONLY — they are appended after the verdict is computed and never feed
@@ -401,9 +408,19 @@ function computeCaptureHealth(now: number): CaptureHealth {
     mk('shell-hook', shellHookLast, { installed: shellInstalled, hookId: shellHookId }),
     mk('builtin-terminal', builtinLast),
     mk('agent-tailer', tailerLast, { configPath: 'packs.aiAgents' }),
-    mk('mitmproxy', Math.max(mitmLast ?? 0, dnsLast ?? 0) || null, {
-      installed: hookInstalled('mitmproxy'), hookId: 'mitmproxy'
-    }),
+    {
+      // One row, still: a second row for DNS sits permanently grey for
+      // everyone not running DNS mode, which is what v0.9.7 removed. But it
+      // has to say WHICH stream is feeding, because "mitmproxy: active" on
+      // HTTP alone is read as "traffic is captured".
+      ...mk('mitmproxy', Math.max(mitmLast ?? 0, dnsLast ?? 0) || null, {
+        installed: hookInstalled('mitmproxy'), hookId: 'mitmproxy'
+      }),
+      streams: {
+        http: mitmLast !== null && now - mitmLast <= ACTIVE_WINDOW_MS,
+        dns: dnsLast !== null && now - dnsLast <= ACTIVE_WINDOW_MS
+      }
+    },
     mk('browser-console', browserLast),
     mk('connection-monitor', connLast, { configPath: 'packs.hostMonitors' }),
     mk('screenshot', screenshotLast),
