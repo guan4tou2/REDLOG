@@ -18,6 +18,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.hookHideSetup',
     'settings.hookShowSetup',
     'settings.hookCopy',
+    'settings.hookRunHint',
+    'settings.hookRun',
     'settings.hookManualNote',
     'settings.wsl.hookInstalled',
     'settings.wsl.hookInstallFailed',

@@ -1324,5 +1324,7 @@
   "settings.save.saving": "儲存中…",
   "settings.save.saved": "設定已存入這個專案",
   "settings.save.failed": "儲存失敗，你的修改還在。",
-  "settings.save.retry": "重試"
+  "settings.save.retry": "重試",
+  "settings.hookRun": "在終端機執行",
+  "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。"
 }
