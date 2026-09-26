@@ -420,6 +420,21 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     await waitFor(() => expect(survivorsOf(before)).toBeLessThan(before.size))
   })
 
+  it('follows a proxy started from outside the card, and starts listening for it', async () => {
+    // The card is on screen from the first frame, beside the app-wide toggle.
+    // Read once at mount, it kept offering to start a proxy that was running.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install({ rows: [], proxy: { state: 'stopped', url: null } })
+    draw()
+    await screen.findByText('開始 HTTP 擷取')
+    bridge.proxyStatus.mockResolvedValue(RUNNING)
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
+    await screen.findByText(/正在監聽/)
+    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
+    emit([HTTP_EVENT])
+    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
+  })
+
   it('does not listen while the proxy is not running', async () => {
     install({ proxy: { state: 'stopped', url: null } })
     draw()

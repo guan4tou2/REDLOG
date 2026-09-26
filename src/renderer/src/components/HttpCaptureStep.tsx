@@ -110,6 +110,18 @@ export function HttpCaptureStep({ onVerified }: {
     window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
   }, [])
 
+  // The proxy has other controls — the app-wide toggle beside this screen,
+  // Settings — and this card is on screen from the first frame (#217). Read
+  // once at mount, it kept offering "Start HTTP capture" for a proxy the
+  // operator had already started, and never began listening for the first
+  // request. Same cadence as the app-wide toggle.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      window.redlog.httpCapture.status().then(setStatus).catch(() => { /* keep the last known state */ })
+    }, 3_000)
+    return () => clearInterval(timer)
+  }, [])
+
   const start = async (): Promise<void> => {
     setBusy(true)
     try { setStatus(await window.redlog.httpCapture.start()) } catch { /* status stays as it was */ }
