@@ -136,6 +136,40 @@ describe('first run: after the built-in terminal records a command', () => {
     expect(onNavigate).toHaveBeenCalledWith('timeline')
   })
 
+  it('puts HTTP capture above the terminal step once the operator says this is a web engagement', async () => {
+    // The screen led with "connect the terminal you actually work in" for
+    // every engagement, with HTTP beneath it as a dismissable extra. For a web
+    // assessment that is a task the operator may never need placed in front of
+    // the one they came for.
+    install()
+    draw()
+    const terminalFirst = await screen.findByTestId('first-run-record-terminal')
+    const httpFirst = await screen.findByTestId('first-run-http')
+    expect(terminalFirst.compareDocumentPosition(httpFirst) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('first-run-focus-web'))
+    await waitFor(() => {
+      const http = screen.getByTestId('first-run-http')
+      const terminal = screen.getByTestId('first-run-record-terminal')
+      expect(http.compareDocumentPosition(terminal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+    // And the answer is remembered on the project, so it is asked once.
+    await waitFor(() => expect(bridge.configSave).toHaveBeenCalledWith(
+      expect.objectContaining({ engagement: expect.objectContaining({ focus: 'web' }) })
+    ))
+  })
+
+  it('restores the stored focus instead of asking again every time the screen opens', async () => {
+    install()
+    ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
+      async () => ({ httpCapture: { port: 8080, routeTerminals: false }, engagement: { id: 'e1', focus: 'web' } })
+    draw()
+    const http = await screen.findByTestId('first-run-http')
+    const terminal = await screen.findByTestId('first-run-record-terminal')
+    expect(http.compareDocumentPosition(terminal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect((screen.getByTestId('first-run-focus-web')).getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('names PowerShell on Windows and offers a separate WSL button per the existing WSL install path', async () => {
     install({
       pre: preflight({ platform: 'win32', shell: { name: 'powershell', hookId: 'shell-powershell' } }),
