@@ -39,6 +39,9 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
       : status === 'wired' ? { mark: '◐', cls: 'text-amber-500' }
         : { mark: '○', cls: 'text-redlog-text-faint' }
 
+  const core = readiness.groups.filter((g) => g.core)
+  const extra = readiness.groups.filter((g) => !g.core)
+
   const next = readiness.nextStep
   const nextSource = next ? sources.find((s) => s.id === next.id) : undefined
 
@@ -66,36 +69,27 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
       {/* Grouped, and no longer numbered. The numbers described a sequence
           that does not exist — an operator on a proxied assessment starts with
           traffic and may never install a shell hook. What the groups say is
-          what each source captures, which is the choice actually being made. */}
+          what each source captures, which is the choice actually being made.
+
+          The two core groups sit at the first level and the rest fold under one
+          heading below them. A flat list of four headings said Commands and
+          HTTP(S) were worth the same as the clipboard watcher, and the operator
+          who skims it takes the top of the list as the important part — which
+          is how a web assessment ends up recorded with its requests missing. */}
       <div className="space-y-2.5 mb-2.5">
-        {readiness.groups.map((group) => (
-          <div key={group.id}>
-            <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider mb-1">
-              {t(`capture.group.${group.id}`)}
-            </p>
-            <ul className="space-y-1">
-              {group.steps.map((s) => {
-                const g = glyph(s.status)
-                return (
-                  <li key={s.id} className="flex items-center gap-2 text-xs">
-                    <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
-                    <span className={`min-w-0 ${s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}`}>
-                      <span>{STEP_LABEL[s.id] ?? s.id}</span>
-                      {s.id === 'shell-hook' && (
-                        <span className="block text-xs text-redlog-text-faint">
-                          {t('capture.shellHookCapability')}
-                        </span>
-                      )}
-                    </span>
-                    <span className="ml-auto text-xs font-mono text-redlog-text-faint">
-                      {t(`capture.step.${s.status}`)}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+        {core.map((group) => (
+          <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
         ))}
+        {extra.length > 0 && (
+          <div className="pt-2 border-t border-redlog-border/50 space-y-2.5">
+            <p className="text-xs text-redlog-text-faint uppercase tracking-wider">
+              {t('capture.group.additional')}
+            </p>
+            {extra.map((group) => (
+              <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-3">
         {cta && (
@@ -111,6 +105,49 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
           {t('capture.openHooks')}
         </button>
       </div>
+    </div>
+  )
+}
+
+function Group({ group, glyph, t, STEP_LABEL }: {
+  group: ReturnType<typeof computeCaptureReadiness>['groups'][number]
+  glyph: (status: string) => { mark: string; cls: string }
+  t: (key: string) => string
+  STEP_LABEL: Record<string, string>
+}): JSX.Element {
+  return (
+    <div>
+      <p className={`text-xs uppercase tracking-wider mb-1 ${
+        group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint'
+      }`}>
+        {t(`capture.group.${group.id}`)}
+      </p>
+      <ul className="space-y-1">
+        {group.steps.map((s) => {
+          const g = glyph(s.status)
+          return (
+            <li key={s.id} className="flex items-center gap-2 text-xs">
+              <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
+              <span className={`min-w-0 ${s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}`}>
+                <span>{STEP_LABEL[s.id] ?? s.id}</span>
+                {s.id === 'shell-hook' && (
+                  <span className="block text-xs text-redlog-text-faint">
+                    {t('capture.shellHookCapability')}
+                  </span>
+                )}
+                {s.id === 'mitmproxy' && (
+                  <span className="block text-xs text-redlog-text-faint">
+                    {t('capture.mitmproxyCapability')}
+                  </span>
+                )}
+              </span>
+              <span className="ml-auto text-xs font-mono text-redlog-text-faint">
+                {t(`capture.step.${s.status}`)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

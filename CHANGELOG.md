@@ -165,6 +165,14 @@ recording has to say so, and evidence has to be what it claims to be.
   panel sat on a loading line forever when the check threw, and a failed
   timeline read on the first-run screen was shown as "nothing recorded yet" —
   which sends an operator hunting a capture problem that does not exist.
+- **HTTP(S) capture is a core capability, not an optional integration.** It
+  was one line inside a "Traffic" group listed third on the Dashboard, and a
+  row under "Optional integrations" on the readiness panel. An operator who
+  skims that reasonably concludes a report without requests in it is still a
+  complete record; on a web assessment it is the record with the evidence
+  removed. Commands and HTTP(S) now sit at the same level, everything else
+  folds under "Additional sources", and mitmproxy's row says what installing
+  it buys. What is optional is the runtime it needs, not the capability.
 - **Browser and HTTP capture settings moved** out of Network, where they sat
   beside VPN and IP-exposure settings, and in with the other capture sources.
 - **The filter bar reports its own state** to assistive technology: the

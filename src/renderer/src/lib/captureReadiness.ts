@@ -26,20 +26,39 @@
 //
 // And the grouping the ordering hid is the useful part: sources differ by
 // *what they capture*, which is what an operator is actually choosing between.
-// Commands, traffic, artefacts. Within a group the order carries no meaning,
-// so the model no longer implies one.
-export type CaptureGroupId = 'commands' | 'traffic' | 'artifacts'
+// Within a group the order carries no meaning, so the model no longer implies
+// one.
+//
+// The groups are not all equal, though, and pretending otherwise was the next
+// mistake. RedLog exists to answer "what did the operator do to the target",
+// and two kinds of answer carry that on their own: the commands they ran, and
+// the requests they sent. HTTP(S) sat in a "Traffic" bucket beside the browser
+// console and the connection monitor — nice-to-haves that annotate an
+// engagement rather than constitute one — and next to an "optional
+// integrations" heading on the readiness panel. An operator reading that
+// reasonably concludes that a report without requests in it is still a
+// complete record. It is not: on a web assessment it is the record with the
+// evidence removed.
+//
+// So `core` marks the two capabilities RedLog is for. It says nothing about
+// whether a source is installed — mitmproxy needs a runtime that ships with
+// nothing, and that is a dependency problem, not a demotion.
+export type CaptureGroupId = 'commands' | 'http' | 'traffic' | 'artifacts'
 
 export const CAPTURE_GROUPS: ReadonlyArray<{
   id: CaptureGroupId
+  core: boolean
   sources: readonly string[]
 }> = [
   // What was typed, by a person or an agent.
-  { id: 'commands', sources: ['shell-hook', 'agent-tailer', 'builtin-terminal'] },
-  // What went over the wire. mitmproxy carries HTTP and DNS on one addon.
-  { id: 'traffic', sources: ['mitmproxy', 'browser-console', 'connection-monitor'] },
+  { id: 'commands', core: true, sources: ['shell-hook', 'agent-tailer', 'builtin-terminal'] },
+  // What was sent over the wire. mitmproxy carries HTTP and DNS on one addon,
+  // which is why one source stands for the whole capability.
+  { id: 'http', core: true, sources: ['mitmproxy'] },
+  // Network detail that annotates the above rather than standing alone.
+  { id: 'traffic', core: false, sources: ['browser-console', 'connection-monitor'] },
   // What was on screen or on disk.
-  { id: 'artifacts', sources: ['screenshot', 'clipboard', 'file-watcher', 'process-monitor'] }
+  { id: 'artifacts', core: false, sources: ['screenshot', 'clipboard', 'file-watcher', 'process-monitor'] }
 ]
 
 // Minimal structural shape of a capture source. Both the main-process
@@ -48,8 +67,15 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
 // Spec 037: the sources that can finish onboarding — the ones that prove a
 // typed command is recorded. The agent tailer is an opt-in pack (Spec 035): it
 // stays in the commands group for Capture Health, but onboarding never sends
-// anyone to it. HTTP is optional for every engagement, so it can neither
-// complete onboarding nor hold it open.
+// anyone to it.
+//
+// mitmproxy is NOT here, and this is not the old "HTTP is optional" claim
+// wearing a new hat. Onboarding asks one question — is anything I type being
+// written down — and HTTP capture cannot answer it, in either direction. A
+// live proxy does not show that a command was recorded, and a proxy nobody
+// installed does not show that it was not. The onboarding block is hidden the
+// moment ANY source goes active (`level === 'recording'`), so an operator on a
+// pure web engagement is never nagged about a shell hook they do not want.
 const ONBOARDING_SOURCES = ['shell-hook', 'builtin-terminal']
 
 export interface ReadinessSource {
@@ -74,6 +100,8 @@ export interface ReadinessStep {
   id: string
   status: StepStatus
   group: CaptureGroupId
+  /** its group is one of the two core capture capabilities */
+  core: boolean
 }
 
 export type ReadinessLevel =
@@ -84,6 +112,8 @@ export type ReadinessLevel =
 export interface ReadinessGroup {
   id: CaptureGroupId
   steps: ReadinessStep[]
+  /** render at the first level, not under "additional sources" */
+  core: boolean
   /** how many sources in this group are feeding the timeline right now */
   activeCount: number
 }
@@ -132,13 +162,18 @@ export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadine
       // rather than throwing. The health shape drifts across versions and
       // readiness must never be the thing that crashes the card.
       const status: StepStatus = source ? statusFor(source) : 'todo'
-      return { id, status, group: g.id }
+      return { id, status, group: g.id, core: g.core }
     })
   )
 
   const groups: ReadinessGroup[] = CAPTURE_GROUPS.map((g) => {
     const own = steps.filter((s) => s.group === g.id)
-    return { id: g.id, steps: own, activeCount: own.filter((s) => s.status === 'active').length }
+    return {
+      id: g.id,
+      steps: own,
+      core: g.core,
+      activeCount: own.filter((s) => s.status === 'active').length
+    }
   })
 
   const activeCount = steps.filter((s) => s.status === 'active').length
