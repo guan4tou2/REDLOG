@@ -46,6 +46,14 @@ test.describe.serial('the first run', () => {
     await expect(strip).toHaveAttribute('data-first-run-lit', 'false')
   })
 
+  test('shows both core captures from the start, neither waiting on the other (#217)', async () => {
+    await expect(page.locator('[data-testid="first-run-commands"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-http"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-core-ready', 'false')
+  })
+
   test('keeps the ten capture sources one disclosure away', async () => {
     await expect(page.locator('[data-testid="first-run-more-sources"]')).toBeVisible()
     await page.click('[data-testid="first-run-more-sources"]')
@@ -80,7 +88,10 @@ test.describe.serial('the first run', () => {
     await post('shell', { subtype: 'command_start', command: 'nmap -sV 10.0.0.5' })
     await expect(page.locator('[data-testid="first-run-strip"]'))
       .toHaveAttribute('data-first-run-lit', 'true', { timeout: 15_000 })
-    await expect(page.locator('[data-testid="first-run-builtin-only"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('✓ Verified')
+    // A command does not make HTTP(S) any less unverified.
+    await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-later"]')).toBeVisible()
   })
 
   test('hands over to the real dashboard, and does not come back', async () => {

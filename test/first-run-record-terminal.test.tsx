@@ -63,6 +63,8 @@ const survivorsOf = (taken: Set<(evs: Ev[]) => void>): number =>
 const arrivalsSince = (taken: Set<(evs: Ev[]) => void>): number =>
   listeners.filter((l) => !taken.has(l)).length
 
+const RUNNING: ManagedProxyStatus = { state: 'running', url: 'http://127.0.0.1:8080', caPath: '/home/op/.mitmproxy/mitmproxy-ca-cert.pem' }
+const HTTP_EVENT: Ev = { id: 'h1', timestamp: 10, agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f1', url: 'http://example.test/' } }
 const BUILTIN: Ev = { id: 'b1', timestamp: 1, agentType: 'shell', data: { subtype: 'command_end', source: 'builtin-terminal', command: 'id' } }
 
 let listeners: Array<(evs: Ev[]) => void>
@@ -123,51 +125,93 @@ function draw(): { onNavigate: ReturnType<typeof vi.fn> } {
 beforeEach(() => { localStorage.setItem('redlog-locale', 'zh-TW') })
 afterEach(() => { cleanup(); vi.useRealTimers(); localStorage.clear() })
 
-describe('first run: after the built-in terminal records a command', () => {
-  it('says RedLog works and makes "record my <detected shell> terminal" the primary CTA', async () => {
+describe('first run: Commands and HTTP(S) are set up side by side (#217)', () => {
+  it('shows both core captures before any event, each unverified, and asks no "web or hosts" question', async () => {
+    install({ rows: [] })
+    draw()
+    const commands = await screen.findByTestId('first-run-commands')
+    const http = await screen.findByTestId('first-run-http')
+    expect(commands.textContent).toContain('指令與終端')
+    expect(http.textContent).toContain('HTTP(S)')
+    expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    // HTTP is reachable without a shell event having landed first.
+    expect(await screen.findByText('開始 HTTP 擷取')).toBeTruthy()
+    // The connect-your-terminal path is offered from the start too.
+    expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
+    // No engagement-type choice, and HTTP cannot be waved away as optional.
+    expect(screen.queryByTestId('first-run-focus')).toBeNull()
+    expect(screen.queryByText('略過')).toBeNull()
+    expect(screen.getByTestId('first-run-strip').getAttribute('data-core-ready')).toBe('false')
+  })
+
+  it('a missing shell dependency blocks Commands only; HTTP still starts', async () => {
+    install({ rows: [], pre: preflight({ missing: ['python3'] }) })
+    draw()
+    const missing = await screen.findByTestId('first-run-missing-deps')
+    expect(screen.getByTestId('first-run-commands').contains(missing)).toBe(true)
+    fireEvent.click(await screen.findByText('開始 HTTP 擷取'))
+    await waitFor(() => expect(bridge.proxyStart).toHaveBeenCalled())
+  })
+
+  it('verifies HTTP from a request alone, with no shell event, and leaves Commands pending', async () => {
+    install({ rows: [], proxy: RUNNING })
+    draw()
+    await screen.findByText(/正在監聽/)
+    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
+    emit([HTTP_EVENT])
+    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
+    expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
+    expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
+  })
+
+  it('a built-in command verifies Commands and says the own terminal is still not connected', async () => {
     install()
+    draw()
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+    expect(screen.getByTestId('first-run-commands-verified').textContent).toContain('已收到內建終端的指令。')
+    expect(screen.getByTestId('first-run-external-pending').textContent).toBe('你平常用的 Zsh 終端尚未接上。')
+  })
+
+  it('an external command verifies Commands without the own-terminal note', async () => {
+    install({ rows: [{ id: 'e1', timestamp: 1, agentType: 'shell', data: { subtype: 'command_end', command: 'id' } }] })
+    draw()
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+    expect(screen.getByTestId('first-run-commands-verified').textContent).toContain('已收到你自己終端的指令。')
+    expect(screen.queryByTestId('first-run-external-pending')).toBeNull()
+  })
+
+  it('does not count session bookkeeping or HTTP rows as a verified command', async () => {
+    install({ rows: [
+      { id: 's1', timestamp: 1, agentType: 'shell', data: { subtype: 'session_start' } },
+      HTTP_EVENT
+    ] })
+    draw()
+    await screen.findByTestId('first-run-commands')
+    await waitFor(() => expect(bridge.query).toHaveBeenCalled())
+    expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
+  })
+
+  it('says core capture is ready only when both are verified, then offers to start work', async () => {
+    install({ proxy: RUNNING })
     const { onNavigate } = draw()
-    expect(await screen.findByText('✓ 已記下這道指令。RedLog 可以正常記錄。接下來可以連接你平常工作的終端。')).toBeTruthy()
-    const cta = await screen.findByTestId('first-run-record-terminal')
-    expect(cta.textContent).toBe('記我的 Zsh 終端')
-    // The timeline is still reachable, but as the secondary text link.
-    expect(screen.queryByTestId('first-run-open-timeline')).toBeNull()
-    fireEvent.click(screen.getByText('只用 RedLog 內建終端 →'))
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+    expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
+    await screen.findByText(/正在監聽/)
+    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
+    emit([HTTP_EVENT])
+    expect((await screen.findByTestId('first-run-core-ready')).textContent).toBe('✓ 核心擷取已就緒')
+    fireEvent.click(screen.getByTestId('first-run-start-work'))
     expect(onNavigate).toHaveBeenCalledWith('timeline')
   })
 
-  it('puts HTTP capture above the terminal step once the operator says this is a web engagement', async () => {
-    // The screen led with "connect the terminal you actually work in" for
-    // every engagement, with HTTP beneath it as a dismissable extra. For a web
-    // assessment that is a task the operator may never need placed in front of
-    // the one they came for.
-    install()
-    draw()
-    const terminalFirst = await screen.findByTestId('first-run-record-terminal')
-    const httpFirst = await screen.findByTestId('first-run-http')
-    expect(terminalFirst.compareDocumentPosition(httpFirst) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-
-    fireEvent.click(screen.getByTestId('first-run-focus-web'))
-    await waitFor(() => {
-      const http = screen.getByTestId('first-run-http')
-      const terminal = screen.getByTestId('first-run-record-terminal')
-      expect(http.compareDocumentPosition(terminal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    })
-    // And the answer is remembered on the project, so it is asked once.
-    await waitFor(() => expect(bridge.configSave).toHaveBeenCalledWith(
-      expect.objectContaining({ engagement: expect.objectContaining({ focus: 'web' }) })
-    ))
-  })
-
-  it('restores the stored focus instead of asking again every time the screen opens', async () => {
-    install()
-    ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
-      async () => ({ httpCapture: { port: 8080, routeTerminals: false }, engagement: { id: 'e1', focus: 'web' } })
-    draw()
-    const http = await screen.findByTestId('first-run-http')
-    const terminal = await screen.findByTestId('first-run-record-terminal')
-    expect(http.compareDocumentPosition(terminal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect((screen.getByTestId('first-run-focus-web')).getAttribute('aria-pressed')).toBe('true')
+  it('lets the operator leave before both are done, saying the Dashboard keeps flagging it', async () => {
+    install({ rows: [] })
+    const { onNavigate } = draw()
+    const footer = await screen.findByTestId('first-run-core-footer')
+    expect(footer.textContent).toContain('尚未驗證的核心擷取會一直標示在儀表板上')
+    fireEvent.click(screen.getByTestId('first-run-later'))
+    expect(onNavigate).toHaveBeenCalledWith('timeline')
   })
 
   it('names PowerShell on Windows and offers a separate WSL button per the existing WSL install path', async () => {
@@ -289,16 +333,16 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
     draw()
     await waitFor(() => expect(bridge.preflight).toHaveBeenCalled())
     expect(screen.queryByTestId('first-run-missing-deps')).toBeNull()
-    expect(screen.getByText('還沒有任何紀錄')).toBeTruthy()
+    expect(screen.getByTestId('first-run-commands-quick').textContent).toContain('echo redlog-ok')
   })
 })
 
-describe('first run: optional HTTP card', () => {
+describe('first run: HTTP(S) card', () => {
   it('when mitmdump is missing, says so with the copyable install command and a re-check', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()
     const card = await screen.findByTestId('first-run-http')
-    expect(card.textContent).toContain('記錄這場的 HTTP(S) 流量（Web 測試）')
+    expect(card.textContent).toContain('HTTP(S)')
     await waitFor(() => expect(card.textContent).toContain('mitmproxy 尚未安裝'))
     expect(card.textContent).toContain('uv tool install mitmproxy')
     expect(card.textContent).toContain('重新檢查')
@@ -360,8 +404,6 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
   })
 })
 
-const RUNNING: ManagedProxyStatus = { state: 'running', url: 'http://127.0.0.1:8080', caPath: '/home/op/.mitmproxy/mitmproxy-ca-cert.pem' }
-const HTTP_EVENT: Ev = { id: 'h1', timestamp: 10, agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f1', url: 'http://example.test/' } }
 
 describe('first run: HTTP is verified by the first request (Spec 039)', () => {
   it('waits while the proxy runs and verifies only on an HTTP request event, then stops listening', async () => {

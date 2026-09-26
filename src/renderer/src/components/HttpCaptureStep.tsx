@@ -1,6 +1,8 @@
-// Spec 037: the optional HTTP step on the first-run screen. It never gates
-// "done" — a host-only engagement has no web traffic to record — so it sits
-// after the terminal step and can be dismissed.
+// The HTTP(S) half of the first-run screen's core capture (#217). It sits
+// beside the Commands step, not after it, and cannot be dismissed: HTTP(S) is
+// a core capability, and a step that can be waved away reads as optional. The
+// operator can still leave the screen; the Dashboard keeps saying it is not
+// done.
 //
 // It drives the managed proxy the dashboard already owns (httpCapture IPC and
 // its stopped/starting/running/unavailable/failed state) and the existing
@@ -68,9 +70,11 @@ function CaCommand({ label, command, t }: {
   )
 }
 
-export function HttpCaptureStep(): JSX.Element | null {
+export function HttpCaptureStep({ onVerified }: {
+  /** Called once, when the first HTTP event arrives. */
+  onVerified?: () => void
+} = {}): JSX.Element {
   const { t } = useI18n()
-  const [dismissed, setDismissed] = useState(false)
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
   const [mitmMissing, setMitmMissing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -89,6 +93,8 @@ export function HttpCaptureStep(): JSX.Element | null {
     })
     return () => { clearTimeout(timer); unsub() }
   }, [running, verified])
+
+  useEffect(() => { if (verified) onVerified?.() }, [verified, onVerified])
 
   const check = async (): Promise<void> => {
     const [pf, st] = await Promise.all([
@@ -124,16 +130,18 @@ export function HttpCaptureStep(): JSX.Element | null {
     void window.redlog.config.save(next)
   }
 
-  if (dismissed) return null
   const unavailable = mitmMissing || status.state === 'unavailable'
 
   return (
     <section data-testid="first-run-http" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
-        <button onClick={() => setDismissed(true)} className="text-redlog-text-faint hover:text-redlog-text">
-          {t('firstRun.http.skip')}
-        </button>
+        <span
+          data-testid="first-run-http-status"
+          className={verified ? 'text-emerald-500' : 'text-redlog-text-faint'}
+        >
+          {verified ? t('firstRun.core.verified') : t('firstRun.core.pending')}
+        </span>
       </div>
       {unavailable ? (
         <div className="space-y-2">
