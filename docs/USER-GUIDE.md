@@ -45,8 +45,11 @@ RedLog 裝在**你發動攻擊的那台機器**（Kali、筆電），不是裝�
 - **指令**：最快的驗證是在內建終端機打一道指令（例如 `echo redlog-ok`），收到就算
   驗證通過。內建終端機連輸出一起錄（asciinema `.cast`）。也可以直接接上你自己的終端
   （見下一節），那裡的指令同樣算數。
-- **HTTP(S)**：按「開始 HTTP 擷取」，用「開啟代理瀏覽器」打開任一網頁，第一筆請求進來
-  才算驗證通過——代理在跑不等於有流量經過它（見第 4 節）。
+- **HTTP(S)**：按「開始 HTTP 擷取」，再按「用擷取瀏覽器驗證」，或在你實際會用的工具裡跑畫面
+  給的 `curl -x … http(s)://redlog.verify.invalid/<驗證碼>`。只有帶著這次驗證碼的請求才算數，
+  瀏覽器自己的背景流量不算；HTTP 與 HTTPS 分開驗證，並標出是哪個 client 通過的。這個網址由
+  RedLog 的 addon 自己回應、不會連到外部，也不會記進證據。擷取瀏覽器會忽略憑證錯誤，所以它
+  通過 HTTPS 不代表其他工具信任 CA；終端的驗證指令不加 `-k`，通過才表示該工具真的信任。
 
 兩項都通過後顯示「✓ 核心擷取已就緒」。也可以先按「稍後處理」離開；尚未完成的那一項
 會一直標示在儀表板「擷取健康度」卡的「核心擷取」列上。
@@ -62,7 +65,10 @@ python3 與 curl，在 shell 的啟動檔加一行，請你**開一個新的終�
 ### 4. HTTP 擷取
 儀表板「開始 HTTP 擷取」（或 設定 ▸ 瀏覽器與 HTTP 擷取）會啟動一個掛著 RedLog addon 的
 本機 mitmproxy；儀表板「啟動擷取瀏覽器」開的一鍵代理瀏覽器就走它。HTTPS 需要信任 mitmproxy
-的 CA。同一頁的「讓新終端機透過 HTTP 擷取代理」（預設關閉）會替**之後新開的**內建終端機
+的 CA：「HTTPS 憑證」列出 CA 的 SHA-256 指紋，以及信任與移除的指令。移除指令以指紋辨識這張
+CA（Linux 則放在 `redlog-mitmproxy-<指紋>.crt`），不會動到其他工具也叫 mitmproxy 的 CA。每個
+工具有自己的信任庫（Python requests 用 certifi、Node 要 `NODE_EXTRA_CA_CERTS`、Java 用 keystore），
+請在各自的地方信任，不要關掉憑證檢查。同一頁的「讓新終端機透過 HTTP 擷取代理」（預設關閉）會替**之後新開的**內建終端機
 設好 `HTTP_PROXY` / `HTTPS_PROXY`，所以會讀代理變數的 HTTP 工具——curl、wget、Python
 `requests`、Node 的 HTTP client——會經過 mitmproxy；nmap SYN 掃描、原始 TCP、SMB、
 LDAP、RDP 不走 HTTP 代理，這樣擷取不到。

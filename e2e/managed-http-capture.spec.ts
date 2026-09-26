@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
@@ -50,6 +50,32 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
       { timeout: 45_000, message: 'the managed proxy never reported running' })
       .toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
     await expect(toggle).toHaveText('Stop HTTP capture')
+
+    // #220: a capture check is verified only by a report for the nonce the
+    // card is showing, delivered through the real API route and IPC. The
+    // mitmproxy addon sends these; here the test sends them directly, since
+    // the fake mitmdump runs no addon.
+    const verifyReport = async (body: Record<string, unknown>): Promise<number> => {
+      const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+      const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+      const r = await fetch(`${base}/api/http-verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body)
+      })
+      return r.status
+    }
+    const commands = page.getByTestId('first-run-http-verify-commands')
+    await expect(commands).toContainText('redlog.verify.invalid/rv-', { timeout: 15_000 })
+    const nonce = /redlog\.verify\.invalid\/(rv-[a-z0-9]+)/.exec(await commands.innerText())![1]
+    const httpRow = page.getByTestId('first-run-http-check-http')
+    expect(await verifyReport({ scheme: 'http', nonce: 'rv-notthisone0' })).toBe(200)
+    await page.waitForTimeout(500)
+    await expect(httpRow).toHaveAttribute('data-verified', 'false')
+    expect(await verifyReport({ scheme: 'http', nonce, user_agent: 'curl/8.5.0' })).toBe(200)
+    await expect(httpRow).toHaveAttribute('data-verified', 'true')
+    await expect(httpRow).toContainText('curl/8.5.0')
+    await expect(page.getByTestId('first-run-http-check-https')).toHaveAttribute('data-verified', 'false')
 
     const terminalProxy = (id: string) => page.evaluate(async (terminalId) => {
       const api = window.redlog.terminal

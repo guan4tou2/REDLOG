@@ -5,6 +5,24 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **HTTP capture was "verified" by traffic the operator never sent.** Any
+  HTTP event counted, and the capture browser makes its own requests the
+  moment it starts, so the check could pass before the operator's client had
+  sent anything — and it could not tell HTTP from HTTPS. A check is now a
+  request for a per-attempt code on `redlog.verify.invalid`, which the
+  mitmproxy addon answers itself (nothing leaves the machine) and reports to
+  RedLog instead of recording it as evidence. HTTP and HTTPS verify
+  separately and say which client passed; the capture browser, which ignores
+  certificate errors, is flagged as not proving the CA is trusted, and a
+  client that refuses the certificate is named as such. The terminal check
+  commands never use `-k`. (#220)
+- **Removing CA trust could remove someone else's CA.** The untrust command
+  removed "mitmproxy" by name on Windows and macOS, and on Linux RedLog wrote
+  its CA to `mitmproxy.crt` — the name any other mitmproxy setup uses. Trust
+  and removal now go by this CA's fingerprint (`certutil -delstore … <SHA-1>`,
+  `security delete-certificate -Z <SHA-1>`, and a
+  `redlog-mitmproxy-<fingerprint>.crt` file on Linux), and the CA's SHA-256
+  is shown. "CA ready" now says only that the file exists. (#220)
 - **First run no longer makes a web operator prove a shell first.** HTTP(S)
   appeared only after a command had been recorded, and then behind a "Web /
   Hosts / Both" question that turned two core captures into a choice of mode.

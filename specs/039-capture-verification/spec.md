@@ -5,6 +5,14 @@
 **Status**: Verified
 **Input**: After v0.17.0, "connected" still overpromised in two places: a verified shell did not say that output is not recorded, and HTTP counted as working once mitmdump was listening.
 
+> **Superseded HTTP verification (#220):** "the first HTTP event" no longer
+> verifies HTTP — the capture browser's own background requests satisfied it.
+> A check is now a request for a per-attempt nonce on the reserved host
+> `redlog.verify.invalid`, answered by the addon and reported to RedLog, not
+> recorded as traffic. HTTP and HTTPS verify separately and name the client;
+> an HTTPS check from the capture browser, which ignores certificate errors,
+> is shown as not proving CA trust. The shell half of this spec stands.
+
 ## Problems (verified on main `3bcba5f`)
 
 1. The verified shell state read only "✓ Zsh 已連線". The hook records
