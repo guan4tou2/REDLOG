@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
+import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
@@ -181,6 +182,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       : s === 'error' ? 'bg-red-500'
         : s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
+  // `listening` is amber, not green: the proxy is up, which is the part that
+  // tempts a green dot, and nothing has ever come through it, which is the
+  // part that matters.
+  const httpDot = (s: HttpCaptureState): string =>
+    s === 'active' ? 'bg-emerald-500'
+      : s === 'failed' ? 'bg-red-500'
+        : s === 'listening' || s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
+
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
   // one broken row out of a glance — the opposite of what a "is anything
@@ -221,6 +230,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   const healthy = sources.filter((s) => s.state === 'active')
   const shown = manage ? sources : problems
   const hiddenCount = sources.length - problems.length
+
+  // HTTP capture had two vocabularies on this card: the mitmproxy row's
+  // active/idle/absent, and a separate line above it saying the managed proxy
+  // was running. Both could be true at once and neither answered "is HTTP
+  // being recorded". One derived state now drives the row's dot, its word and
+  // its explanation, and the separate line is gone.
+  const http = httpCaptureState(
+    sources.find((s) => s.id === 'mitmproxy'),
+    capture.managedHttpProxy
+  )
 
   const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
     if (!s.configPath) return
@@ -351,20 +370,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             onNavigate={onNavigate}
           />
         )}
-        {capture.managedHttpProxy && (
-          <div className="mb-2 flex items-start gap-2 text-xs">
-            <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${capture.managedHttpProxy.state === 'running' ? 'bg-emerald-500' : capture.managedHttpProxy.state === 'failed' || capture.managedHttpProxy.state === 'unavailable' ? 'bg-red-500' : 'bg-amber-500'}`} />
-            <span className="text-redlog-text-dim">
-              {t(`httpCapture.health.${capture.managedHttpProxy.state}`)}
-              {capture.managedHttpProxy.state === 'running' && ` · ${t('httpCapture.healthTrafficHint')}`}
-              {capture.managedHttpProxy.error && <span className="block text-red-400">{capture.managedHttpProxy.error}</span>}
-            </span>
-          </div>
-        )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
           {shown.map((s) => (
-            <div key={s.id} className="flex items-center gap-2 text-xs">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
+            <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
               <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
                 <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
                   {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
@@ -373,6 +382,19 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                   <span className="block text-xs text-redlog-text-faint">
                     {t('capture.shellHookCapability')}
                   </span>
+                )}
+                {/* A proxy that is up and has never had one request routed
+                    through it is the normal way HTTP capture fails: nothing in
+                    RedLog is misconfigured, the operator's browser or tool is
+                    simply not using it. It used to be indistinguishable from a
+                    healthy quiet proxy. */}
+                {s.id === 'mitmproxy' && http === 'listening' && (
+                  <span data-testid="capture-http-listening" className="block text-amber-400">
+                    {t('capture.http.listeningWhy')}
+                  </span>
+                )}
+                {s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
+                  <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
                 )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
                 {/* Why it failed, not just that it did — the operator cannot
@@ -390,13 +412,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                   </span>
                 )}
               </span>
-              <span className="text-redlog-text-faint text-xs">
-                {s.state === 'off'
-                  ? t('capture.state.off')
-                  // A plugin producer isn't "installed" in the hook sense — it's
-                  // run on demand — so report its live state, not "not installed".
-                  : s.state === 'error' ? stateLabel('error')
-                    : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
+              <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
+                {s.id === 'mitmproxy'
+                  ? t(`capture.http.${http}`)
+                  : s.state === 'off'
+                    ? t('capture.state.off')
+                    // A plugin producer isn't "installed" in the hook sense — it's
+                    // run on demand — so report its live state, not "not installed".
+                    : s.state === 'error' ? stateLabel('error')
+                      : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
                 <span className={`text-xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
