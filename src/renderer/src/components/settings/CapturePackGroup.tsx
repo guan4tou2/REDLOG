@@ -8,6 +8,55 @@ import { FieldGroup, type ConfigState } from './SettingsShared'
 
 export type PackId = 'hostMonitors' | 'aiAgents' | 'windowsOutput'
 
+export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMembers']>>
+
+/** One member of a pack that is on: its own switch, then its tuning.
+ *
+ *  A pack is a preset, not an atom. "Host monitors" bundles four sources and
+ *  the clipboard is not like the other three — it samples whatever the
+ *  operator copies anywhere on the machine, for the length of the engagement.
+ *  All-or-nothing turned "I want process and connection monitoring but not my
+ *  clipboard" into "then have neither". Absent means on, so a project that
+ *  already had the pack on records exactly what it did before. */
+export function PackMember({
+  member, title, hint, warn, config, setConfig, t, children
+}: {
+  member: PackMemberId
+  title: string
+  hint: string
+  /** Shown in amber under the hint: what turning this one on costs. */
+  warn?: string
+  config: ConfigState
+  setConfig: (c: ConfigState) => void
+  t: (key: string, vars?: Record<string, string | number>) => string
+  children?: ReactNode
+}): JSX.Element {
+  const on = config.packMembers?.[member] !== false
+  return (
+    <div className="mt-2">
+      <p className="text-xs font-semibold text-redlog-text-dim">{title}</p>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => setConfig({
+            ...config,
+            packMembers: { ...config.packMembers, [member]: e.target.checked }
+          })}
+          className="accent-red-600"
+          data-testid={`pack-member-${member}`}
+        />
+        <span className="text-xs text-redlog-text">{t('settings.packMemberRecord')}</span>
+      </label>
+      <p className="text-xs text-redlog-text-faint">{hint}</p>
+      {warn && <p className="text-xs text-amber-500/80">{warn}</p>}
+      {/* Tuning for a member that is off would be controls for something that
+          is not running — the same lie the pack switch avoids above. */}
+      {on && children}
+    </div>
+  )
+}
+
 const PLUGIN_OF: Record<PackId, string> = {
   hostMonitors: 'pack-host-monitors',
   aiAgents: 'pack-ai-agents',

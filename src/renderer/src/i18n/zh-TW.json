@@ -1274,6 +1274,8 @@
   "settings.essentialPty": "用 redlog-session 開啟的工作階段的完整終端輸出",
   "settings.essentialTerminal": "RedLog 內建終端裡的一切",
   "settings.packRecord": "在這個專案啟用此 pack",
+  "settings.packMemberRecord": "記錄這一項",
+  "settings.clipboardScopeWarn": "在專案開啟期間，會取樣你在這台機器上複製的所有內容 —— 不分是否在範圍內。",
   "settings.packRemoved": "此 pack 已在 Plugins 停用，任何專案都不會記錄。要使用請到 Plugins 啟用。",
   "settings.packHostMonitors": "Pack：主機監看",
   "settings.packHostMonitorsHint": "執行過的程式、它們的連線、變動的檔案與複製的內容——行程、連線、檔案與剪貼簿監看。預設關閉。",

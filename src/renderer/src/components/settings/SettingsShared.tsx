@@ -20,6 +20,16 @@ export interface ConfigState {
   connectionMonitor?: { pollMs?: number }
   // Optional capture packs (Spec 035); mirrors RedLogConfig['packs'].
   packs?: { hostMonitors?: boolean; aiAgents?: boolean; windowsOutput?: boolean }
+  // Per-member opt-outs inside a pack that is on. Absent means on: the pack
+  // switch is the preset, this records where the operator departed from it.
+  packMembers?: {
+    processMonitor?: boolean
+    connectionMonitor?: boolean
+    fileWatcher?: boolean
+    clipboard?: boolean
+    agentTailer?: boolean
+    powershellTranscript?: boolean
+  }
   browser?: {
     binary: string
     proxy: string
