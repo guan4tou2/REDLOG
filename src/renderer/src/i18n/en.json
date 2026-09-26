@@ -1367,5 +1367,8 @@
   "firstRun.http.verifyNoInsecure": "No -k / --insecure: HTTPS passes only if this tool trusts RedLog’s CA. Turning certificate checks off would prove nothing.",
   "firstRun.http.reason.caRejected": "A client refused RedLog’s certificate: it does not trust the CA yet — see “HTTPS certificate” below.",
   "httpCapture.caTrustStores": "Each tool has its own proxy setting and its own trust store: curl and wget read the system store; Python requests uses certifi (REQUESTS_CA_BUNDLE); Node needs NODE_EXTRA_CA_CERTS; Java uses its keystore; Firefox keeps its own. Trust it where each tool looks — do not switch certificate checks off.",
-  "settings.packMemberOptIn": "Not recorded until you tick it. Turning the pack on does not turn this on."
+  "settings.packMemberOptIn": "Not recorded until you tick it. Turning the pack on does not turn this on.",
+  "app.closeSaveFailed": "A settings change could not be saved to this project, so it was not closed. Check the settings and try again.",
+  "settings.loadFailedTitle": "Settings could not be read",
+  "settings.loadFailedWhy": "The project’s configuration did not load, so nothing here can be shown or changed yet."
 }

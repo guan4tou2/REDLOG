@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { registerPendingSave } from '../lib/pendingSaves'
 import { toast } from './Toast'
 import type { ConfigState, HookInfo } from './settings/SettingsShared'
 import { isWindows } from './settings/SettingsShared'
@@ -53,7 +54,8 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.config.get().then((c) => setConfig(c as ConfigState))
+    loadConfig()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Auto-save on every change so toggles apply live to the HUD / event pipeline
@@ -65,26 +67,50 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // What the debounce is holding. Cleared once it has been handed to main.
   const pending = useRef<ConfigState | null>(null)
   const live = useRef(true)
+  const inFlight = useRef<Promise<boolean> | null>(null)
 
-  const writeConfig = useCallback((next: ConfigState): void => {
+  // A failed first read used to leave "Loading…" on screen for good: the
+  // rejection was not handled, so nothing ever said the settings could not be
+  // read or offered to try again (#223).
+  const [loadFailed, setLoadFailed] = useState(false)
+  const loadConfig = (): void => {
+    setLoadFailed(false)
+    window.redlog.config.get()
+      .then((c) => { if (live.current) setConfig(c as ConfigState) })
+      .catch(() => { if (live.current) setLoadFailed(true) })
+  }
+
+  const writeConfig = useCallback((next: ConfigState): Promise<boolean> => {
     pending.current = null
     if (live.current) setSaveState('saving')
+    // A write that did not land is put back, so the next flush — closing the
+    // project, leaving the page — tries it again instead of finding nothing
+    // pending and reporting success.
+    const keep = (): void => { if (pending.current === null) pending.current = next }
     // The project this form was loaded from. `engagement.id` is the project
     // id — main treats it as the durable attribution boundary — so passing it
     // back lets main refuse a write aimed at a project the operator has since
     // switched away from, rather than applying a stale form to a new
     // engagement.
-    window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
+    const write = window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
       .then((ok) => {
         window.dispatchEvent(new CustomEvent('redlog:config-saved'))
-        if (!live.current) return
-        setSaveState(ok === false ? 'failed' : 'saved')
-        if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
+        if (ok === false) keep()
+        if (live.current) {
+          setSaveState(ok === false ? 'failed' : 'saved')
+          if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
+        }
+        return ok !== false
       })
       .catch(() => {
+        keep()
         if (live.current) setSaveState('failed')
         toast(t('toast.saveFailed'), 'error')
+        return false
       })
+      .finally(() => { if (inFlight.current === write) inFlight.current = null })
+    inFlight.current = write
+    return write
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -93,7 +119,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
     if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
     if (saveTimer.current) clearTimeout(saveTimer.current)
     pending.current = config
-    saveTimer.current = setTimeout(() => { saveTimer.current = null; writeConfig(config) }, 350)
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void writeConfig(config) }, 350)
     return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
@@ -103,14 +129,44 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // pending write, so a change made within 350ms of leaving the page was
   // dropped with nothing said. Flush it instead: the IPC completes in main
   // whether or not this component is still on screen.
-  useEffect(() => () => {
-    live.current = false
-    const unsaved = pending.current
-    if (unsaved) writeConfig(unsaved)
+  //
+  // `live` is re-armed in setup: React.StrictMode mounts, cleans up and mounts
+  // again in development, and a ref that only ever went false left the form
+  // unable to show any save state after the first cleanup (#223).
+  useEffect(() => {
+    live.current = true
+    return () => {
+      live.current = false
+      const unsaved = pending.current
+      if (unsaved) void writeConfig(unsaved)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!config) return <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
+  // Closing the project must not outrun this form (#223): App flushes every
+  // registered save before it calls project.close(), and stops if one fails.
+  useEffect(() => registerPendingSave(async () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    // A write already on its way is waited for; if it fails it puts its change
+    // back, and that is tried once more here.
+    if (inFlight.current) await inFlight.current
+    const unsaved = pending.current
+    return unsaved ? writeConfig(unsaved) : true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [])
+
+  if (!config) {
+    return loadFailed ? (
+      <div data-testid="settings-load-failed" role="status" className="p-4 text-xs space-y-2">
+        <p className="font-semibold text-redlog-text">{t('settings.loadFailedTitle')}</p>
+        <p className="text-redlog-text-dim">{t('settings.loadFailedWhy')}</p>
+        <button
+          onClick={loadConfig}
+          className="px-2 py-0.5 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text"
+        >{t('firstRun.recheck')}</button>
+      </div>
+    ) : <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
+  }
 
   // v0.9.10: left sidebar with grouped pages, ordered by the question the
   // operator is actually asking rather than by when each feature was added.

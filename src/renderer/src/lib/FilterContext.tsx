@@ -121,7 +121,7 @@ interface FilterContextValue {
   listsStatus: ListsStatus
   /** Of the scope lists, which drive the in-scope and personal switches. */
   scopeStatus: ListsStatus
-  /** Load the menus again, for the retry the operator is offered. */
+  /** Load the menus and the scope again, for the retry the operator is offered. */
   retryLists: () => void
 }
 
@@ -162,8 +162,15 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   // A late reply must not write into a provider that has gone away — the
   // provider unmounts when the project closes, so a reply in flight then
   // belongs to a project that is no longer open.
+  //
+  // Re-armed in setup, not only cleared in cleanup: React.StrictMode runs
+  // mount → cleanup → mount in development, and a ref that only ever goes
+  // false left every later reply dropped — filters that never loaded (#223).
   const live = useRef(true)
-  useEffect(() => () => { live.current = false }, [])
+  useEffect(() => {
+    live.current = true
+    return () => { live.current = false }
+  }, [])
 
   const refreshLists = useCallback(() => {
     // A failure keeps whatever loaded before rather than blanking the menus:
@@ -182,19 +189,22 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     })
   }, [])
 
-  useEffect(() => {
-    const refreshScope = (): void => { window.redlog.config.get().then((c) => {
+  const refreshScope = useCallback((): void => {
+    window.redlog.config.get().then((c) => {
       if (!live.current) return
       const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[]; personalDomains?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
       setScopeExcludeTargets(cfg?.scope?.excludeTargets ?? [])
       setPersonalDomains(cfg?.scope?.personalDomains ?? [])
       setScopeStatus('ready')
-    }).catch(() => { if (live.current) setScopeStatus('error') }) }
+    }).catch(() => { if (live.current) setScopeStatus('error') })
+  }, [])
+
+  useEffect(() => {
     refreshScope()
     window.addEventListener('redlog:config-saved', refreshScope)
     return () => window.removeEventListener('redlog:config-saved', refreshScope)
-  }, [])
+  }, [refreshScope])
 
   useEffect(() => {
     refreshLists()
@@ -237,7 +247,15 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     + (filter.inScopeOnly ? 1 : 0)
     + (filter.tier === 'chained' ? 1 : 0)
 
-  const retryLists = useCallback(() => { setListsStatus('loading'); refreshLists() }, [refreshLists])
+  // The one retry the operator is offered, so it retries everything that can
+  // fail behind it. It used to reload only the menus: a failed scope read
+  // stayed failed however often the button was pressed (#223).
+  const retryLists = useCallback(() => {
+    setListsStatus('loading')
+    setScopeStatus('loading')
+    refreshLists()
+    refreshScope()
+  }, [refreshLists, refreshScope])
 
   const value = useMemo(() => ({
     filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,

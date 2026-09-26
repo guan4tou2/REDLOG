@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FilterBar } from '../src/renderer/src/components/FilterBar'
@@ -84,6 +85,37 @@ describe('the filter menus say when they could not load', () => {
     await waitFor(() => expect(api.scopeStatus).toBe('error'))
     await expand()
     expect(await screen.findByTestId('filter-lists-error')).not.toBeNull()
+  })
+
+  // #223: the retry button only reloaded the menus, so a failed scope read
+  // stayed failed however often it was pressed.
+  it('retries the scope read too, and recovers it', async () => {
+    const cfg = (window as unknown as { redlog: { config: Record<string, unknown> } }).redlog.config
+    let fail = true
+    cfg.get = vi.fn(async () => {
+      if (fail) throw new Error('no config')
+      return { scope: { targets: ['10.10.11.0/24'], excludeTargets: [], personalDomains: [] } }
+    })
+    mount()
+    await waitFor(() => expect(api.scopeStatus).toBe('error'))
+    await expand()
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: /Retry/i }))
+    await waitFor(() => expect(api.scopeStatus).toBe('ready'))
+    expect(api.scopeTargets).toEqual(['10.10.11.0/24'])
+    await waitFor(() => expect(screen.queryByTestId('filter-lists-error')).toBeNull())
+  })
+
+  // #223: under React.StrictMode (development) the provider is mounted,
+  // cleaned up and mounted again. The live flag only ever went false, so
+  // every reply after that was dropped and the filters never loaded.
+  it('loads under React.StrictMode', async () => {
+    const events = (window as unknown as { redlog: { events: Record<string, unknown> } }).redlog.events
+    events.aggregateTargets = vi.fn(async () => [{ target: '10.0.0.5', eventCount: 3 }])
+    render(<StrictMode><I18nProvider><FilterProvider><Probe /><FilterBar /></FilterProvider></I18nProvider></StrictMode>)
+    await waitFor(() => expect(api.listsStatus).toBe('ready'))
+    await waitFor(() => expect(api.scopeStatus).toBe('ready'))
+    expect(api.knownTargets).toEqual([{ target: '10.0.0.5', eventCount: 3 }])
   })
 
   it('is ready, not failed, when the project genuinely has nothing yet', async () => {
