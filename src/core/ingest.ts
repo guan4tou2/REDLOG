@@ -401,6 +401,30 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
   return plan
 }
 
+// The HTTP auth schemes RedLog can name. A `credential_use` row is tagged
+// T1078 — MITRE's Valid Accounts — and written to the CHAINED tier, which is
+// the layer that reaches the client in `events.jsonl`. That is a statement
+// about what the operator did during the engagement, so RedLog makes it only
+// about schemes it actually recognises.
+//
+// #182: it did not. Any token before the first space became a credential_use,
+// so Chrome's own device registration — `Authorization: AidLogin …` to
+// `android.clients.google.com/c2dm/register3`, which a brand-new profile sends
+// on its own, before the operator has navigated anywhere — was delivered to
+// the client as "the operator used valid accounts against Google". Three of
+// them, in the hash chain, from opening the capture browser.
+//
+// Nothing is lost by dropping the unknown ones. The request is still recorded
+// in full in the logged tier with its headers; what goes is only the claim
+// RedLog could not support.
+const KNOWN_AUTH_SCHEMES: Record<string, { method: string; detail: string }> = {
+  basic: { method: 'basic_auth', detail: 'Basic auth header' },
+  bearer: { method: 'bearer_token', detail: 'Bearer token' },
+  ntlm: { method: 'ntlm', detail: 'NTLM auth' },
+  negotiate: { method: 'negotiate', detail: 'Kerberos/Negotiate' },
+  digest: { method: 'digest', detail: 'Digest auth' }
+}
+
 function detectHttpCredential(data: Record<string, unknown>): Plan['httpCred'] {
   const host = String(data.host ?? '')
   const reqHeaders = data.request_headers as string[][] | Record<string, string> | undefined
@@ -412,11 +436,11 @@ function detectHttpCredential(data: Record<string, unknown>): Plan['httpCred'] {
     const ln = name.toLowerCase()
     if (ln === 'authorization') {
       const scheme = (value as string).split(' ')[0]?.toLowerCase() ?? ''
-      if (scheme === 'basic') found = { method: 'basic_auth', target: host, detail: 'Basic auth header' }
-      else if (scheme === 'bearer') found = { method: 'bearer_token', target: host, detail: 'Bearer token' }
-      else if (scheme === 'ntlm') found = { method: 'ntlm', target: host, detail: 'NTLM auth' }
-      else if (scheme === 'negotiate') found = { method: 'negotiate', target: host, detail: 'Kerberos/Negotiate' }
-      else found = { method: scheme || 'auth_header', target: host, detail: `Authorization: ${scheme}` }
+      const known = KNOWN_AUTH_SCHEMES[scheme]
+      // An unrecognised scheme stops the scan either way: the header was an
+      // Authorization header, so the weaker cookie/api-key heuristics below
+      // would be describing the same request less accurately.
+      if (known) found = { method: known.method, target: host, detail: known.detail }
       break
     }
     if (ln === 'cookie' && /(?:session|token|auth|jwt|sid)[\s]*=/i.test(value as string)) {
