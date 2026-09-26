@@ -51,7 +51,7 @@ python3 與 curl，在 shell 的啟動檔加一行，請你**開一個新的終�
 `redlog-run`，或用 `redlog-session` 開一個錄製中的 shell。
 
 ### 4. （選用）開始 HTTP 擷取
-儀表板「開始 HTTP 擷取」（或 設定 ▸ 代理與瀏覽器）會啟動一個掛著 RedLog addon 的
+儀表板「開始 HTTP 擷取」（或 設定 ▸ 瀏覽器與 HTTP 擷取）會啟動一個掛著 RedLog addon 的
 本機 mitmproxy；儀表板「啟動擷取瀏覽器」開的一鍵代理瀏覽器就走它。HTTPS 需要信任 mitmproxy
 的 CA。同一頁的「讓新終端機透過 HTTP 擷取代理」（預設關閉）會替**之後新開的**內建終端機
 設好 `HTTP_PROXY` / `HTTPS_PROXY`，所以會讀代理變數的 HTTP 工具——curl、wget、Python

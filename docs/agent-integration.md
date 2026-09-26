@@ -370,7 +370,7 @@ The Dashboard's **Launch capture browser** button starts a Chromium-based browse
 
 Launching logs a `system` event with `subtype: browser_launched` recording the binary, proxy, CDP port, and pid — so the report shows exactly which browser instance produced the captured traffic. The browser is terminated when RedLog quits.
 
-Configure under Settings ▸ Proxy & browser, or in `config.yaml`:
+Configure under Settings ▸ Browser & HTTP capture, or in `config.yaml`:
 
 ```yaml
 browser:
