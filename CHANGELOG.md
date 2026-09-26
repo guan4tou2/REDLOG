@@ -5,9 +5,9 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-Nothing yet. Everything below shipped in v0.18.0.
+Nothing yet.
 
-## v0.18.0 — unreleased
+## v0.18.0 — 2026-09-27
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
