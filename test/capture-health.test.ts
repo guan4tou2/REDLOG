@@ -319,3 +319,50 @@ describeDB('capture-health tells the truth about live sources', () => {
     expect(getCaptureHealth().sources.find((s) => s.id === 'screenshot')?.state).not.toBe('error')
   })
 })
+
+// HTTP and DNS share one `mitmproxy` row — the addon serves both — but they
+// are two mitmdump processes in two modes, and an operator who started the
+// proxy assumes DNS came with it. The row went green on HTTP traffic alone,
+// and a DNS-less timeline reads as "the target resolved nothing".
+describeDB('the mitmproxy row says which stream is feeding it', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-streams-')); initDB(tmp)
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+    )
+    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+  })
+  afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
+
+  const mitm = () => getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
+
+  it('reports HTTP alone as HTTP alone', () => {
+    ins('scanner', { subtype: 'http_request_start', url: 'https://example.com/', method: 'GET' })
+    expect(mitm()?.state).toBe('active')
+    expect(mitm()?.streams).toEqual({ http: true, dns: false })
+  })
+
+  it('reports DNS alone as DNS alone', () => {
+    ins('dns', { subtype: 'dns_query', query_name: 'example.com' })
+    expect(mitm()?.streams).toEqual({ http: false, dns: true })
+  })
+
+  it('reports both when both are running', () => {
+    ins('scanner', { subtype: 'http_response', url: 'https://example.com/', status_code: 200 })
+    ins('dns', { subtype: 'dns_response', query_name: 'example.com' })
+    expect(mitm()?.streams).toEqual({ http: true, dns: true })
+  })
+
+  it('claims no stream when nothing has fed it', () => {
+    expect(mitm()?.streams).toEqual({ http: false, dns: false })
+  })
+
+  // The connection monitor also writes agent_type='scanner'; it must not light
+  // the HTTP stream.
+  it('does not read a socket-table row as HTTP traffic', () => {
+    ins('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' })
+    expect(mitm()?.streams).toEqual({ http: false, dns: false })
+  })
+})
