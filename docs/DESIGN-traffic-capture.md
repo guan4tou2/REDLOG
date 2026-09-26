@@ -14,7 +14,8 @@ request()        ─POST─>   /api/events                  events_logged (SQLit
 response()       ─POST─>     ├─ extractBodyToSidecar()   http-bodies/<sha256>.body
 websocket_message()          ├─ credential detection      (sidecar, >4KB)
 tcp_message()                ├─ redaction scan
-dns_message()                ├─ scope signal dispatch
+dns_request()                ├─ scope signal dispatch
+dns_response()               │
 error()                      └─ insertEvent()
 ```
 
@@ -170,10 +171,17 @@ Extracted from mitmproxy's `server_conn.timestamp_*` and
 
 | Hook | Subtype | Tier | Fields |
 |------|---------|------|--------|
-| `dns_message()` → `_dns_query()` | `dns_query` | logged | query_name, query_type, query_id, transport, source_addr |
-| `dns_message()` → `_dns_response()` | `dns_response` | logged | response_code, answers, duration_ms, _causes → query event |
+| `dns_request()` → `_dns_query()` | `dns_query` | logged | query_name, query_type, query_id, transport, source_addr |
+| `dns_response()` → `_dns_response()` | `dns_response` | logged | response_code, answers, duration_ms, _causes → query event |
 
-Requires mitmproxy DNS mode (`--mode dns@53`).
+Requires mitmproxy DNS mode (`--mode dns@53`), and a SECOND mitmdump
+process: DNS mode and regular HTTP mode cannot share one instance.
+
+The addon used to implement `dns_message`, which mitmproxy does not
+dispatch - its DNS layer declares `dns_request`, `dns_response` and
+`dns_error` and nothing else. The proxy answered queries correctly the
+whole time, so the only symptom was an empty timeline, which reads as
+"the target made no lookups".
 
 ## Body Storage Pipeline
 

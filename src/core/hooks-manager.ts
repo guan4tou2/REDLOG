@@ -39,6 +39,44 @@ export interface ManualStep {
   command?: string
 }
 
+// How to undo a source RedLog cannot uninstall for you.
+//
+// `uninstallHook` answered `Manual removal required for <name>` and stopped
+// there — seven of the eleven sources said only that. For a tool that asks
+// operators to care what they leave on a machine, and that tracks cleanup as
+// evidence, "you figure it out" is the wrong half of the install to skip.
+export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
+  switch (pluginId) {
+    case 'mitmproxy':
+      return [
+        { label: 'Stop the mitmdump process (Ctrl-C in the terminal running it, or kill it by port)',
+          command: process.platform === 'win32'
+            ? 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :8080 ^| findstr LISTENING\') do taskkill /PID %a /F'
+            : "pkill -f 'mitmdump -s .*mitmproxy-addon.py'" },
+        { label: 'Stop the DNS instance too, if you started one',
+          command: process.platform === 'win32'
+            ? 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :5353\') do taskkill /PID %a /F'
+            : "pkill -f 'mitmdump -s .*--mode dns'" },
+        { label: 'Point your browser and tools back off the proxy' },
+        { label: 'Optional — remove the CA RedLog told you to trust, and the tool itself',
+          command: 'uv tool uninstall mitmproxy' }
+      ]
+    case 'codex':
+      return [
+        { label: 'Stop launching the agent through the wrapper — run it the way you did before' },
+        { label: 'Nothing was written outside RedLog\'s own directory; the wrapper lives there' }
+      ]
+    case 'shell-wsl':
+      return [
+        { label: 'Remove the RedLog line from the shell rc inside the distro',
+          command: "wsl -- sed -i '/redlog/d' ~/.bashrc ~/.zshrc 2>/dev/null" },
+        { label: 'Open a new WSL shell so the change takes effect' }
+      ]
+    default:
+      return undefined
+  }
+}
+
 export interface PluginInfo {
   id: string
   name: string
@@ -52,6 +90,8 @@ export interface PluginInfo {
   hookFile: string
   /** for installMethod 'manual' (and the powershell-profile fallback): ordered, copy-paste setup steps */
   manualSteps?: ManualStep[]
+  /** how to undo a source RedLog cannot uninstall itself */
+  removalSteps?: ManualStep[]
 }
 
 const HOOKS_DIR = join(__dirname, '../../../hooks')
@@ -433,6 +473,21 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
           label: 'Route traffic through it — proxy your browser/tools at the address above, '
             + "or use Launch Browser in RedLog, which starts RedLog's own managed proxy "
             + '(its address is in Settings → Browser) and wires the browser to it for you'
+        },
+        {
+          // DNS needs its own mitmdump: one instance serves one mode. The
+          // addon has handled DNS all along and nothing said how to turn it
+          // on, so it was capture nobody could reach.
+          label: 'Optional — capture DNS as well. This is a SECOND mitmdump: one instance '
+            + 'serves one mode, so it runs alongside the HTTP one above. Port 53 needs '
+            + 'admin rights, so this uses 5353; point the target resolver at it.',
+          command: `mitmdump -s "${hookFile}" --mode dns@5353`
+        },
+        {
+          label: 'Then send lookups to it, e.g. to check the capture is live',
+          command: process.platform === 'win32'
+            ? 'nslookup -port=5353 example.com 127.0.0.1'
+            : 'dig @127.0.0.1 -p 5353 example.com'
         }
       ]
     case 'codex':
@@ -508,7 +563,8 @@ export function detectHooks(): PluginInfo[] {
       available: checkAvailable(plugin),
       installMethod: plugin.installMethod,
       hookFile,
-      manualSteps
+      manualSteps,
+      removalSteps: buildRemovalSteps(plugin.id)
     }
   })
 }
@@ -532,7 +588,8 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       available: await checkAvailableAsync(plugin),
       installMethod: plugin.installMethod,
       hookFile,
-      manualSteps
+      manualSteps,
+      removalSteps: buildRemovalSteps(plugin.id)
     }
   }))
   _detectCache = results
@@ -650,7 +707,9 @@ export function installHook(pluginId: string): { success: boolean; message: stri
   }
 }
 
-export function uninstallHook(pluginId: string): { success: boolean; message: string } {
+/** `steps` is present when RedLog cannot do the removal itself: the operator
+ *  needs to know what to undo, not just that it is their job. */
+export function uninstallHook(pluginId: string): { success: boolean; message: string; steps?: ManualStep[] } {
   const plugin = allManifests().find((p) => p.id === pluginId)
   if (!plugin) return { success: false, message: `Unknown plugin: ${pluginId}` }
 
@@ -720,7 +779,15 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         return { success: false, message: `Failed: ${e}` }
       }
     }
-    case 'manual':
-      return { success: false, message: `Manual removal required for ${plugin.name}` }
+    case 'manual': {
+      const steps = buildRemovalSteps(plugin.id)
+      return {
+        success: false,
+        message: steps
+          ? `${plugin.name} must be removed by hand — the steps are on its card.`
+          : `Manual removal required for ${plugin.name}`,
+        steps
+      }
+    }
   }
 }

@@ -1324,5 +1324,7 @@
   "settings.save.saving": "Saving…",
   "settings.save.saved": "Config saved to this project",
   "settings.save.failed": "Could not save. Your changes are still here.",
-  "settings.save.retry": "Retry"
+  "settings.save.retry": "Retry",
+  "settings.hookRun": "Run in terminal",
+  "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command."
 }

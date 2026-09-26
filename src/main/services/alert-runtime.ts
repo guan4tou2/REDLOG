@@ -116,7 +116,7 @@ export class AlertRuntime {
   }
 
   /** Fire a scope-check for one observed target. Shell command_start,
-   *  http_request_start, dns_message, agent tool call — all funnel here
+   *  http_request_start, dns_query, agent tool call — all funnel here
    *  and hand the runtime a TargetHitSignal. */
   dispatchTargetHit(input: {
     target: string
