@@ -192,6 +192,27 @@ export interface RedLogConfig {
     aiAgents?: boolean
     windowsOutput?: boolean
   }
+  /** Per-member opt-outs inside a pack that is on. A pack is a PRESET, not an
+   *  atom: "Host monitors" bundles four sources, and the clipboard is not like
+   *  the other three. It samples whatever the operator copies anywhere on the
+   *  machine for the length of the engagement — a password out of their own
+   *  vault, a colleague's message, a client's data that was never in scope —
+   *  and the other three are why an operator turns the pack on. Making that
+   *  all-or-nothing means the answer to "I want process and connection
+   *  monitoring but not my clipboard" is "then have neither", and an operator
+   *  who wants the three takes the fourth without meaning to.
+   *
+   *  ABSENT MEANS ON. The pack's switch is the preset; this only records where
+   *  the operator has departed from it, so turning a pack on still means what
+   *  it has always meant and no existing project changes behaviour. */
+  packMembers?: {
+    processMonitor?: boolean
+    connectionMonitor?: boolean
+    fileWatcher?: boolean
+    clipboard?: boolean
+    agentTailer?: boolean
+    powershellTranscript?: boolean
+  }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
    *  per-turn `agent.*` events into the hash chain. Off by default because
