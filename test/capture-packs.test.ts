@@ -80,16 +80,34 @@ describe('capture packs: isPackMemberOn', async () => {
     expect(isPackMemberOn(cfg, 'fileWatcher', active)).toBe(true)
   })
 
-  it('treats an absent switch as on, so the pack keeps the meaning it always had', () => {
-    // An existing project has no `packMembers` at all and must record exactly
-    // what it recorded before this key existed.
-    expect(isPackMemberOn({ packs: { hostMonitors: true } }, 'clipboard', active)).toBe(true)
-    expect(isPackMemberOn({ packs: { hostMonitors: true }, packMembers: {} }, 'clipboard', active)).toBe(true)
+  it('turns the ordinary members on with the pack, and never the clipboard (#224)', () => {
+    // An unset switch follows the member's default. The pack stays a preset
+    // for process, connection and file monitoring; the clipboard samples
+    // whatever the operator copies anywhere on the machine, so it records
+    // only when ticked — turning the pack on is not deciding to collect it.
+    for (const cfg of [{ packs: { hostMonitors: true } }, { packs: { hostMonitors: true }, packMembers: {} }]) {
+      expect(isPackMemberOn(cfg, 'clipboard', active)).toBe(false)
+      expect(isPackMemberOn(cfg, 'processMonitor', active)).toBe(true)
+      expect(isPackMemberOn(cfg, 'connectionMonitor', active)).toBe(true)
+      expect(isPackMemberOn(cfg, 'fileWatcher', active)).toBe(true)
+    }
+  })
+
+  it('keeps an explicit choice either way, with no migration', () => {
+    const pack = { hostMonitors: true }
+    expect(isPackMemberOn({ packs: pack, packMembers: { clipboard: true } }, 'clipboard', active)).toBe(true)
+    expect(isPackMemberOn({ packs: pack, packMembers: { clipboard: false } }, 'clipboard', active)).toBe(false)
+    expect(isPackMemberOn({ packs: pack, packMembers: { fileWatcher: false } }, 'fileWatcher', active)).toBe(false)
+  })
+
+  it('leaves AI agents off until their pack is turned on', () => {
+    expect(isPackMemberOn({}, 'agentTailer', active)).toBe(false)
+    expect(isPackMemberOn({ packs: { aiAgents: true } }, 'agentTailer', active)).toBe(true)
   })
 
   it('never runs a member whose pack is off, or whose plugin is gone', () => {
-    // The member switch is an opt-OUT. It cannot opt into a pack the operator
-    // has not turned on, or one whose plugin was disabled in Plugins.
+    // A member switch cannot opt into a pack the operator has not turned on,
+    // or one whose plugin was disabled in Plugins.
     expect(isPackMemberOn({ packs: { hostMonitors: false }, packMembers: { clipboard: true } }, 'clipboard', active)).toBe(false)
     expect(isPackMemberOn({ packs: { hostMonitors: true }, packMembers: { clipboard: true } }, 'clipboard', [])).toBe(false)
   })
@@ -152,11 +170,20 @@ describeDB('capture packs: health', () => {
     }
   })
 
-  it('treats an absent member switch as on, so an existing project records what it did before', () => {
+  it('reports the clipboard off until ticked, and the rest of the pack on (#224)', () => {
+    // Capture Health must read the same rule the runtime uses, or the card
+    // says "on" for a source that is not running.
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(allPacks)
     ch.configureCaptureHealth({ packs: { hostMonitors: true }, packMembers: {} })
     ch.invalidateHooksCache()
-    const rows = ch.getCaptureHealth().sources
+    let rows = ch.getCaptureHealth().sources
+    expect(rows.find((s) => s.id === 'clipboard')).toMatchObject({ enabled: false, state: 'off' })
+    for (const on of ['process-monitor', 'connection-monitor', 'file-watcher']) {
+      expect(rows.find((s) => s.id === on), on).toMatchObject({ enabled: true })
+    }
+    ch.configureCaptureHealth({ packs: { hostMonitors: true }, packMembers: { clipboard: true } })
+    ch.invalidateHooksCache()
+    rows = ch.getCaptureHealth().sources
     expect(rows.find((s) => s.id === 'clipboard')).toMatchObject({ enabled: true })
   })
 

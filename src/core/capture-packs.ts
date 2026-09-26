@@ -69,21 +69,39 @@ export function packOfMember(member: PackMemberId): CapturePackId {
   return found
 }
 
-/** A member runs when its pack runs and the operator has not opted out of it.
+/** Members that never ride along with their pack (#224). The clipboard
+ *  samples whatever the operator copies anywhere on the machine, for as long
+ *  as the project is open — on a shared or personal laptop, material that was
+ *  never in scope. Turning on "host monitors" to watch processes and
+ *  connections must not also start collecting that. It runs only when the
+ *  operator has ticked it themselves. */
+export const OPT_IN_MEMBERS: ReadonlySet<PackMemberId> = new Set<PackMemberId>(['clipboard'])
+
+/** Whether the operator's member switches select this member. An unset
+ *  switch follows the member's default: on for an ordinary member, so the
+ *  pack stays a preset; off for an opt-in one, which needs an explicit yes.
+ *  No migration: a project that never ticked the clipboard stops sampling it,
+ *  and one that did keeps it. */
+export function isMemberSelected(
+  packMembers: PackConfig['packMembers'],
+  member: PackMemberId
+): boolean {
+  const v = packMembers?.[member]
+  return OPT_IN_MEMBERS.has(member) ? v === true : v !== false
+}
+
+/** A member runs when its pack runs and the operator's switches select it.
  *
  *  A pack is a preset, not an atom. "Host monitors" bundles four sources and
- *  the clipboard is not like the other three: it samples whatever the operator
- *  copies anywhere on the machine, which on a shared or personal laptop means
- *  material that was never in scope. All-or-nothing turns "I want process and
- *  connection monitoring but not my clipboard" into "then have neither" — and
- *  an operator who wants the three takes the fourth without deciding to.
- *
- *  Absent means on, so the pack switch keeps its existing meaning. */
+ *  the clipboard is not like the other three. All-or-nothing turned "I want
+ *  process and connection monitoring but not my clipboard" into "then have
+ *  neither" — and an operator who wanted the three took the fourth without
+ *  deciding to. */
 export function isPackMemberOn(
   config: PackConfig,
   member: PackMemberId,
   plugins: readonly LoadedPlugin[]
 ): boolean {
-  if (config.packMembers?.[member] === false) return false
+  if (!isMemberSelected(config.packMembers, member)) return false
   return isPackOn(config, packOfMember(member), plugins)
 }
