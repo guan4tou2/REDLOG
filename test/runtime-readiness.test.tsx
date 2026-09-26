@@ -67,7 +67,15 @@ describe('first-launch readiness', () => {
     mount(<RuntimeReadinessHost firstLaunch />)
     await screen.findByText('RedLog 準備狀態')
     expect(screen.getByText('sudo apt install python3')).toBeTruthy()
-    expect(screen.getByText(/RedLog 內建終端仍可記錄；要記錄你自己的終端需要 python3 與 curl/)).toBeTruthy()
+    // This used to pin the claim that the built-in terminal still records.
+    // It does not record COMMANDS: it sources the same POSIX adapter an
+    // external shell does, and that adapter needs python3 and curl. What it
+    // must say now is what stops working, and that the built-in terminal is
+    // not an exception.
+    const note = screen.getByTestId('readiness-runtime-missing').textContent ?? ''
+    expect(note).toContain('時間軸')
+    expect(note).toContain('adapter')
+    expect(note).not.toContain('內建終端仍可記錄')
     // re-check probes again
     fireEvent.click(screen.getByRole('button', { name: '重新檢查' }))
     await waitFor(() => expect(pf).toHaveBeenCalledTimes(2))
