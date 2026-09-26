@@ -246,17 +246,26 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     setBusy(s.id)
     try {
       const cfg = await window.redlog.config.get() as Record<string, unknown>
-      const parts = s.configPath.split('.')
-      // Clone only the branch we touch — config:save replaces the whole doc,
-      // so mutating the fetched object in place would be fine, but a copy
-      // keeps this honest if the bridge ever starts caching.
+      // config:save replaces the whole doc, so mutating the fetched object in
+      // place would be fine — a copy of only the branch we touch keeps this
+      // honest if the bridge ever starts caching.
       const next = { ...cfg }
-      let cur = next as Record<string, unknown>
-      for (const p of parts.slice(0, -1)) {
-        cur[p] = { ...(cur[p] as Record<string, unknown> ?? {}) }
-        cur = cur[p] as Record<string, unknown>
+      const writeFlag = (path: string, value: boolean): void => {
+        const parts = path.split('.')
+        let cur = next as Record<string, unknown>
+        for (const p of parts.slice(0, -1)) {
+          cur[p] = { ...(cur[p] as Record<string, unknown> ?? {}) }
+          cur = cur[p] as Record<string, unknown>
+        }
+        cur[parts[parts.length - 1]] = value
       }
-      cur[parts[parts.length - 1]] = on
+      writeFlag(s.configPath, on)
+      // A pack member is only on when its pack is too. Writing the member
+      // alone would leave the operator flipping a switch and watching the row
+      // stay `off` — a control reporting the opposite of what it just did.
+      // Turning one OFF never touches the pack: the other members are not the
+      // operator's to lose.
+      if (on && s.packPath) writeFlag(s.packPath, true)
       await window.redlog.config.save(next)
       onRefresh()
     } finally { setBusy(null) }

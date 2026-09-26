@@ -27,8 +27,12 @@ export interface CaptureSource {
   hookId?: string
   /** Config switch state. `undefined` = always on, no switch to offer. */
   enabled?: boolean
-  /** Dotted config path the switch writes, e.g. `packs.hostMonitors`. */
+  /** Dotted config path the switch writes, e.g. `packMembers.clipboard`. */
   configPath?: string
+  /** For a pack member: the pack's own path. Turning the member ON has to turn
+   *  its pack on too, or the operator flips a switch and the row stays `off` —
+   *  a control that reports the opposite of what it did. */
+  packPath?: string
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
   state: SourceState
@@ -381,12 +385,20 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const mk = (
     id: string,
     last: number | null,
-    opts: { installed?: boolean; hookId?: string; configPath?: string } = {}
+    opts: { installed?: boolean; hookId?: string; configPath?: string; packPath?: string } = {}
   ): CaptureSource => {
     // A pack that is not set is off (Spec 035), not "unknown".
-    const enabled = opts.configPath
-      ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
-      : undefined
+    //
+    // A pack MEMBER is on when its pack is on and the operator has not opted
+    // out of it, so both halves are read. Absent means on for the member and
+    // off for the pack, which is how a preset behaves: turning the pack on
+    // still turns on everything the operator has not explicitly excluded.
+    const packOn = opts.packPath ? cfgFlag(opts.packPath) === true : undefined
+    const enabled = opts.packPath
+      ? packOn === true && cfgFlag(opts.configPath as string) !== false
+      : opts.configPath
+        ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
+        : undefined
     const lastError = getLiveCaptureError(id, now)
     const state = stateFrom(opts.installed, last, now, enabled)
     return {
@@ -395,6 +407,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       hookId: opts.hookId,
       enabled,
       configPath: opts.configPath,
+      ...(opts.packPath ? { packPath: opts.packPath } : {}),
       lastEventAt: last,
       // A live capture failure outranks `idle`/`absent` — the source tried and
       // could not — but not `off`, which is the operator's own choice, nor
@@ -407,7 +420,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const sources: CaptureSource[] = [
     mk('shell-hook', shellHookLast, { installed: shellInstalled, hookId: shellHookId }),
     mk('builtin-terminal', builtinLast),
-    mk('agent-tailer', tailerLast, { configPath: 'packs.aiAgents' }),
+    mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
     {
       // One row, still: a second row for DNS sits permanently grey for
       // everyone not running DNS mode, which is what v0.9.7 removed. But it
@@ -422,15 +435,20 @@ function computeCaptureHealth(now: number): CaptureHealth {
       }
     },
     mk('browser-console', browserLast),
-    mk('connection-monitor', connLast, { configPath: 'packs.hostMonitors' }),
+    mk('connection-monitor', connLast, { configPath: 'packMembers.connectionMonitor', packPath: 'packs.hostMonitors' }),
     mk('screenshot', screenshotLast),
-    mk('clipboard', clipboardLast, { configPath: 'packs.hostMonitors' }),
-    mk('process-monitor', processLast, { configPath: 'packs.hostMonitors' }),
-    mk('file-watcher', fileWatcherLast, { configPath: 'packs.hostMonitors' })
+    mk('clipboard', clipboardLast, { configPath: 'packMembers.clipboard', packPath: 'packs.hostMonitors' }),
+    mk('process-monitor', processLast, { configPath: 'packMembers.processMonitor', packPath: 'packs.hostMonitors' }),
+    mk('file-watcher', fileWatcherLast, { configPath: 'packMembers.fileWatcher', packPath: 'packs.hostMonitors' })
   ].filter((src) => {
     // Spec 035: a pack whose plugin is disabled or missing is removed, not
     // shown as "off" — its sources are not offered at all.
-    const pack = src.configPath?.startsWith('packs.') ? src.configPath.slice(6) as CapturePackId : null
+    //
+    // Read from `packPath`, not `configPath`: a member's own switch now lives
+    // at `packMembers.<member>`, so keying the removal off `configPath` would
+    // have silently stopped removing anything and left every host-monitor row
+    // on the card for a pack whose plugin was gone.
+    const pack = src.packPath?.startsWith('packs.') ? src.packPath.slice(6) as CapturePackId : null
     return !pack || isPackAvailable(pack, listPlugins())
   })
 
