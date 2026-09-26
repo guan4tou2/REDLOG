@@ -1326,5 +1326,8 @@
   "settings.save.failed": "儲存失敗，你的修改還在。",
   "settings.save.retry": "重試",
   "settings.hookRun": "在終端機執行",
-  "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。"
+  "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。",
+  "httpCapture.caTrustWhy": "不信任這張 CA 的話，只有 RedLog 自己啟動的瀏覽器會被擷取 HTTPS。這台機器上其他工具都會拒絕連線。",
+  "httpCapture.caTrust": "在這台機器上信任它",
+  "httpCapture.caUntrust": "交戰結束後移除這份信任"
 }

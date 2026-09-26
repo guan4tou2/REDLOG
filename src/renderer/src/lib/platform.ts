@@ -21,5 +21,10 @@ const platform = (window as { redlog?: { platform?: string } }).redlog?.platform
 /** True only on macOS. Everything else — Windows and Linux — uses Ctrl. */
 export const isMac = platform === 'darwin'
 
+/** True only on Windows. Some features are genuinely OS-specific — a trust
+ *  store command, a WSL distro — and asking here keeps the detection in one
+ *  place rather than letting each caller invent its own comparison. */
+export const isWindows = platform === 'win32'
+
 /** The modifier prefix as this platform writes it: `⌘` or `Ctrl+`. */
 export const MOD = isMac ? '⌘' : 'Ctrl+'

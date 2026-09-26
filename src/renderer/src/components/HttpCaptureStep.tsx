@@ -16,6 +16,8 @@ import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
+import { requestRunInTerminal } from '../lib/terminalRunner'
+import { isMac, isWindows } from '../lib/platform'
 import { httpTimeoutReasons, isHttpCaptureEvent } from '../lib/httpVerification'
 
 const MITM_INSTALL = 'uv tool install mitmproxy'
@@ -26,6 +28,44 @@ const HTTP_VERIFY_TIMEOUT_MS = 60_000
 function listenAddress(url: string | null): string {
   if (!url) return ''
   try { return new URL(url).host } catch { return url }
+}
+
+/** Add the generated mitmproxy CA to this machine's trust store. */
+export type TrustOs = 'win32' | 'darwin' | 'linux'
+export const thisOs = (): TrustOs => (isWindows ? 'win32' : isMac ? 'darwin' : 'linux')
+
+export function caTrustCommand(caPath: string, os: TrustOs = thisOs()): string {
+  if (os === 'win32') return `certutil -addstore -user Root "${caPath}"`
+  if (os === 'darwin') return `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caPath}"`
+  return `sudo cp "${caPath}" /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates`
+}
+
+/** And take it out again. Shown beside the command that put it there: a root
+ *  certificate left behind after an engagement is the longest-lived thing
+ *  RedLog can leave on a machine, and the one nobody remembers. */
+export function caUntrustCommand(os: TrustOs = thisOs()): string {
+  if (os === 'win32') return 'certutil -delstore -user Root mitmproxy'
+  if (os === 'darwin') return 'sudo security delete-certificate -c mitmproxy /Library/Keychains/System.keychain'
+  return 'sudo rm -f /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates --fresh'
+}
+
+function CaCommand({ label, command, t }: {
+  label: string
+  command: string
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-redlog-text-dim">{label}</p>
+      <div className="flex items-center gap-2">
+        <code title={command} className="flex-1 min-w-0 truncate font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">
+          {command}
+        </code>
+        <Button level="quiet" onClick={() => void writeClipboard(command)}>{t('firstRun.copy')}</Button>
+        <Button level="quiet" onClick={() => requestRunInTerminal(command)}>{t('settings.hookRun')}</Button>
+      </div>
+    </div>
+  )
 }
 
 export function HttpCaptureStep(): JSX.Element | null {
@@ -141,11 +181,37 @@ export function HttpCaptureStep(): JSX.Element | null {
                 {t('firstRun.http.caLink')}
               </button>
               {showCa && (
-                <p className="mt-1 font-mono text-redlog-text-faint break-all">
-                  {status.certReady === false
-                    ? t('httpCapture.caMissing', { path: status.caPath })
-                    : t('httpCapture.caReady', { path: status.caPath })}
-                </p>
+                <div className="mt-1 space-y-1.5">
+                  <p className="font-mono text-redlog-text-faint break-all">
+                    {status.certReady === false
+                      ? t('httpCapture.caMissing', { path: status.caPath })
+                      : t('httpCapture.caReady', { path: status.caPath })}
+                  </p>
+                  {/* Without this, HTTPS capture covers only the browser
+                      RedLog launches, which is told to ignore certificate
+                      errors. Every other tool on the machine — curl, a
+                      scanner, an implant — refuses the connection or is not
+                      proxied at all, and the operator reads an HTTP-only
+                      timeline as "the target used no TLS". Trusting a root CA
+                      is a change to the machine, so it is typed into RedLog's
+                      terminal for the operator to read and run, and the
+                      command that undoes it is shown beside it. */}
+                  {status.certReady !== false && (
+                    <>
+                      <p className="text-redlog-text-dim">{t('httpCapture.caTrustWhy')}</p>
+                      <CaCommand
+                        label={t('httpCapture.caTrust')}
+                        command={caTrustCommand(status.caPath)}
+                        t={t}
+                      />
+                      <CaCommand
+                        label={t('httpCapture.caUntrust')}
+                        command={caUntrustCommand()}
+                        t={t}
+                      />
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}

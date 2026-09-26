@@ -1326,5 +1326,8 @@
   "settings.save.failed": "Could not save. Your changes are still here.",
   "settings.save.retry": "Retry",
   "settings.hookRun": "Run in terminal",
-  "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command."
+  "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command.",
+  "httpCapture.caTrustWhy": "Without trusting this CA, HTTPS is captured only from the browser RedLog launches. Every other tool on this machine will refuse the connection.",
+  "httpCapture.caTrust": "Trust it on this machine",
+  "httpCapture.caUntrust": "And remove that trust when the engagement ends"
 }
