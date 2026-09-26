@@ -58,7 +58,21 @@ export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
             ? 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :5353\') do taskkill /PID %a /F'
             : "pkill -f 'mitmdump -s .*--mode dns'" },
         { label: 'Point your browser and tools back off the proxy' },
-        { label: 'Optional — remove the CA RedLog told you to trust, and the tool itself',
+        // If RedLog told the operator to trust a CA, RedLog owes them the
+        // way to stop trusting it. A root certificate left in the store
+        // after an engagement is the longest-lived thing this product can
+        // leave on a machine, and it is the one nobody remembers.
+        { label: 'Stop trusting the mitmproxy CA, if you added it to the system store',
+          command: process.platform === 'win32'
+            ? 'certutil -delstore -user Root mitmproxy'
+            : process.platform === 'darwin'
+              ? 'sudo security delete-certificate -c mitmproxy /Library/Keychains/System.keychain'
+              : 'sudo rm -f /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates --fresh' },
+        { label: 'Remove the generated CA and its key from your home directory',
+          command: process.platform === 'win32'
+            ? 'rmdir /s /q "%USERPROFILE%\\.mitmproxy"'
+            : 'rm -rf ~/.mitmproxy' },
+        { label: 'Optional - remove the tool itself',
           command: 'uv tool uninstall mitmproxy' }
       ]
     case 'codex':
