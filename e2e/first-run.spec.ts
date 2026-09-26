@@ -59,10 +59,20 @@ test.describe.serial('the first run', () => {
     await page.click('[data-testid="first-run-more-sources"]')
     await page.getByRole('button', { name: /all sources/ }).click()
     await page.getByRole('button', { name: 'install', exact: true }).first().click()
-    await expect.poll(() => existsSync(join(tmpHome, '.redlog', 'shell-common.sh'))).toBe(true)
-    const adapterInstalled = existsSync(join(tmpHome, '.redlog', 'shell-hook.zsh')) ||
-      existsSync(join(tmpHome, '.redlog', 'shell-bash-hook.sh'))
-    expect(adapterInstalled).toBe(true)
+    // Which adapter "the first available source" is depends on the platform,
+    // and so does what it installs. The POSIX adapters are `available: false`
+    // on Windows — they need python3 and curl — so the first install there is
+    // PowerShell, which copies its own hook and no POSIX shared runtime.
+    // Asserting shell-common.sh unconditionally made this a POSIX-only test
+    // that simply failed on a Windows runner.
+    if (process.platform === 'win32') {
+      await expect.poll(() => existsSync(join(tmpHome, '.redlog', 'shell-hook.ps1'))).toBe(true)
+    } else {
+      await expect.poll(() => existsSync(join(tmpHome, '.redlog', 'shell-common.sh'))).toBe(true)
+      const adapterInstalled = existsSync(join(tmpHome, '.redlog', 'shell-hook.zsh')) ||
+        existsSync(join(tmpHome, '.redlog', 'shell-bash-hook.sh'))
+      expect(adapterInstalled).toBe(true)
+    }
     await page.click('[data-testid="first-run-more-sources"]')
   })
 
