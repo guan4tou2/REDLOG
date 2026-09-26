@@ -75,6 +75,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.packHostMonitorsHint',
     'settings.clipboardGroup',
     'settings.clipboardEnableHint',
+    'settings.clipboardScopeWarn',
     'settings.clipboardStorePreview',
     'settings.clipboardStorePreviewHint',
     'settings.fileWatcherGroup',
