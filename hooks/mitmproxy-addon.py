@@ -770,9 +770,38 @@ class RedLogAddon:
 
     # ─── DNS mode (mitmproxy --mode dns) ────────────────────────────────────
 
-    def dns_message(self, flow):  # type: (Any) -> None  (mitmproxy.dns.DNSFlow)
+    # mitmproxy dispatches DNS through `dns_request` / `dns_response`; there is
+    # no `dns_message` hook, so the handler below was never called and DNS
+    # capture recorded nothing at all. Verified against mitmproxy 12.2.3, whose
+    # DNS layer declares exactly three hooks:
+    #
+    #     DnsRequestHook  -> dns_request
+    #     DnsResponseHook -> dns_response
+    #     DnsErrorHook    -> dns_error
+    #
+    # The proxy itself worked the whole time — a query sent to `--mode dns@N`
+    # was resolved and answered — so nothing surfaced as broken except an
+    # empty timeline, which reads as "the target made no lookups".
+
+    def dns_request(self, flow):  # type: (Any) -> None  (mitmproxy.dns.DNSFlow)
+        self._dns_query(flow)
+
+    def dns_response(self, flow):  # type: (Any) -> None
+        self._dns_response(flow)
+
+    def dns_error(self, flow):  # type: (Any) -> None
+        # A failed lookup is evidence too: a target that could not resolve is
+        # not a target that was never asked about.
+        if VERBOSE:
+            try:
+                ctx.log.info(f"[redlog] DNS error on flow {flow.id}")
+            except Exception:
+                pass
+
+    def dns_message(self, flow):  # type: (Any) -> None
+        """Kept for any mitmproxy that dispatches a single message hook."""
         try:
-            request = flow.request
+            flow.request
         except AttributeError:
             return
         if getattr(flow, 'response', None) is None:
