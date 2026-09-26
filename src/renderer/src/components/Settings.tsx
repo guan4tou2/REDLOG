@@ -20,10 +20,8 @@ import { searchSettings } from '../lib/settingsSearch'
 // is a compile error rather than a page that silently never renders.
 export type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl' | 'browser'
-  | 'scope' | 'network'
-  | 'integrity'
-  | 'plugins'
-  | 'general' | 'hud'
+  | 'scope' | 'network' | 'integrity'
+  | 'general' | 'hud' | 'plugins'
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
@@ -134,26 +132,20 @@ export default function Settings({ request = null }: { request?: { page: Setting
       heading: t('settings.groupScope'),
       pages: [
         { id: 'scope', label: t('settings.pageScope') },
-        { id: 'network', label: t('settings.pageNetwork') }
-      ]
-    },
-    {
-      heading: t('settings.groupEvidence'),
-      pages: [
+        { id: 'network', label: t('settings.pageNetwork') },
+        // Chain verification is the other half of "can this record be handed
+        // over": what was in bounds, and whether the record is intact. It used
+        // to be the only page under its own heading, as Plugins was — a heading
+        // over one entry groups nothing and costs a row of scanning.
         { id: 'integrity', label: t('settings.pageIntegrity') }
-      ]
-    },
-    {
-      heading: t('settings.groupCollab'),
-      pages: [
-        { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     },
     {
       heading: t('settings.groupApp'),
       pages: [
         { id: 'general', label: t('settings.pageGeneral') },
-        { id: 'hud', label: t('settings.pageHud') }
+        { id: 'hud', label: t('settings.pageHud') },
+        { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     }
   ]

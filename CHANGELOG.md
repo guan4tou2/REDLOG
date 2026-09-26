@@ -5,7 +5,20 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-Nothing yet.
+- **First run no longer makes a web operator prove a shell first.** HTTP(S)
+  appeared only after a command had been recorded, and then behind a "Web /
+  Hosts / Both" question that turned two core captures into a choice of mode.
+  Commands and HTTP(S) now sit side by side from the first frame, each with
+  its own verification; a missing python3 or curl blocks only Commands, and
+  the HTTP card can no longer be dismissed. "Core capture is ready" needs
+  both. The operator can leave early, and the Dashboard's capture card keeps a
+  Core capture line naming whichever is unfinished. The engagement-focus
+  choice is removed. (#217)
+- **Settings named a page for what it no longer held.** "Proxy & browser"
+  held only IP safety and RedLog's own traffic after the browser moved out; it
+  is now "IP exposure & own traffic". The two headings with a single page each
+  are folded into their neighbours, and the IA test that let the browser page
+  go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
 

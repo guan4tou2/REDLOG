@@ -37,7 +37,11 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     })
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    await page.getByRole('button', { name: 'Start HTTP capture' }).click()
+    // The app-wide toggle, not the first-run card's button: a fresh project
+    // opens on first run, where both are on screen (#217).
+    const toggle = page.getByTestId('http-capture-toggle')
+    await expect(toggle).toHaveText('Start HTTP capture')
+    await toggle.click()
     // Starting the proxy spawns mitmdump, an external Python process, and
     // waits for it to announce that it is listening. A cold start takes well
     // over `expect.poll`'s 5s default on a real machine, which is why this
@@ -45,7 +49,7 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
       { timeout: 45_000, message: 'the managed proxy never reported running' })
       .toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
-    await expect(page.getByRole('button', { name: 'Stop HTTP capture' })).toBeVisible()
+    await expect(toggle).toHaveText('Stop HTTP capture')
 
     const terminalProxy = (id: string) => page.evaluate(async (terminalId) => {
       const api = window.redlog.terminal
@@ -82,10 +86,10 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     expect(await terminalProxy('routing-on')).toBe('http://127.0.0.1:8081')
 
 
-    await page.getByRole('button', { name: 'Stop HTTP capture' }).click()
+    await toggle.click()
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    await expect(page.getByRole('button', { name: 'Start HTTP capture' })).toBeVisible()
+    await expect(toggle).toHaveText('Start HTTP capture')
   } finally {
     await app.close()
   }

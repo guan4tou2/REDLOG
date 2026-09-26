@@ -5,6 +5,15 @@
 **Status**: Verified
 **Input**: Spec 036 made the machine ready. This spec covers the next ten minutes: create the engagement with its scope, record the operator's own terminal, optionally start HTTP capture — without AI or host monitors pretending to be required.
 
+> **Superseded HTTP decision (#217):** HTTP(S) is no longer optional on first
+> run. Commands and HTTP(S) are both core capture and are shown side by side
+> from the first frame; neither waits on the other, a missing shell dependency
+> blocks only Commands, and the HTTP card cannot be dismissed. "Core capture
+> ready" means both are verified by an arriving event; the operator may leave
+> before that, and the Dashboard keeps naming the unfinished one. This replaces
+> the clarification on HTTP and onboarding completion and User Story 4 below;
+> the rest of this spec stands.
+
 ## Problems (verified on the 036 branch before this spec)
 
 1. **Scope was hidden.** Scope and excluded targets lived under Advanced Setup
