@@ -67,7 +67,15 @@ describe('first-launch readiness', () => {
     mount(<RuntimeReadinessHost firstLaunch />)
     await screen.findByText('RedLog 準備狀態')
     expect(screen.getByText('sudo apt install python3')).toBeTruthy()
-    expect(screen.getByText(/RedLog 內建終端仍可記錄；要記錄你自己的終端需要 python3 與 curl/)).toBeTruthy()
+    // This used to pin the claim that the built-in terminal still records.
+    // It does not record COMMANDS: it sources the same POSIX adapter an
+    // external shell does, and that adapter needs python3 and curl. What it
+    // must say now is what stops working, and that the built-in terminal is
+    // not an exception.
+    const note = screen.getByTestId('readiness-runtime-missing').textContent ?? ''
+    expect(note).toContain('時間軸')
+    expect(note).toContain('adapter')
+    expect(note).not.toContain('內建終端仍可記錄')
     // re-check probes again
     fireEvent.click(screen.getByRole('button', { name: '重新檢查' }))
     await waitFor(() => expect(pf).toHaveBeenCalledTimes(2))
@@ -88,7 +96,12 @@ describe('first-launch readiness', () => {
       ]
     }))
     mount(<RuntimeReadinessHost firstLaunch />)
-    await screen.findByText(/Web 流量擷取需要 mitmproxy，可稍後安裝/)
+    // HTTP(S) capture is a core capability with an optional runtime, not an
+    // optional integration: it sits in its own named group beside command
+    // capture, and the copy that goes with it says when it is needed rather
+    // than that it is secondary.
+    await screen.findByText(/HTTP\(S\) 擷取/)
+    await screen.findByText(/做 Web 測試時需要/)
     expect(screen.queryByText(/要記錄你自己的終端需要 python3 與 curl/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /uv tool install mitmproxy/ }))
     await waitFor(() => expect(copy).toHaveBeenCalledWith('uv tool install mitmproxy'))

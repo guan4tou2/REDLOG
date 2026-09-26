@@ -1329,5 +1329,15 @@
   "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。",
   "httpCapture.caTrustWhy": "不信任這張 CA 的話，只有 RedLog 自己啟動的瀏覽器會被擷取 HTTPS。這台機器上其他工具都會拒絕連線。",
   "httpCapture.caTrust": "在這台機器上信任它",
-  "httpCapture.caUntrust": "交戰結束後移除這份信任"
+  "httpCapture.caUntrust": "交戰結束後移除這份信任",
+  "readiness.coreReady": "這台機器可以記錄 shell 指令。",
+  "readiness.optionalHeading": "選用整合",
+  "readiness.commandsHeading": "指令擷取",
+  "readiness.httpHeading": "HTTP(S) 擷取",
+  "readiness.httpReady": "這台機器可以擷取 HTTP 與 HTTPS。",
+  "readiness.mitmNotYet": "尚未安裝",
+  "readiness.mitmWhen": "做 Web 測試時需要。這場沒有 Web 就略過 —— 其他功能都不依賴它。",
+  "capture.streamsBoth": "HTTP + DNS",
+  "capture.streamsHttpOnly": "只有 HTTP —— DNS 模式沒有在跑",
+  "capture.streamsDnsOnly": "只有 DNS —— HTTP proxy 沒有在跑"
 }

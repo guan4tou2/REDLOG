@@ -82,6 +82,33 @@ linux:
       arch:
         - x64
   category: Development
+deb:
+  # python3 and curl are not optional on POSIX: the shell adapter builds every
+  # event with python3 and posts it with curl, and the BUILT-IN terminal
+  # sources that same adapter. Without them a Kali install opens, records the
+  # screen, and puts no command on the Timeline — which the first-run screen
+  # cannot distinguish from an operator who has not typed anything yet.
+  #
+  # Declaring them makes `apt install ./redlog_*.deb` leave a machine where
+  # command capture is guaranteed to work, instead of one that needs a
+  # remediation step nobody reads. mitmproxy stays optional — it is for web
+  # work and a hard dependency would drag in a Python toolchain for operators
+  # who never proxy anything.
+  # `depends` REPLACES electron-builder's default list rather than extending
+  # it, so the Electron runtime's own libraries are repeated here. Keep them
+  # in sync with getDefaultDepends('deb') in app-builder-lib when upgrading.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - python3
+    - curl
 publish:
   provider: github
   releaseType: release
