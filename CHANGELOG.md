@@ -5,6 +5,14 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Turning on "Host monitors" no longer starts clipboard sampling.** The
+  clipboard had its own switch, but an unset switch counted as on, so
+  enabling the pack to watch processes and connections also sampled
+  everything copied on the machine. The clipboard now records only when it
+  is ticked; process, connection and file monitoring still come on with the
+  pack. The runtime, Capture Health and Settings read the same rule. **No
+  migration:** a project that relied on the pack alone stops sampling the
+  clipboard until it is ticked; one that ticked it keeps it. (#224)
 - **HTTP capture was "verified" by traffic the operator never sent.** Any
   HTTP event counted, and the capture browser makes its own requests the
   moment it starts, so the check could pass before the operator's client had

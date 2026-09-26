@@ -78,7 +78,7 @@ LDAP、RDP 不走 HTTP 代理，這樣擷取不到。
 
 | Pack | 記什麼 |
 |---|---|
-| 主機監看 | 執行過的程式、連線、變動的檔案、剪貼簿 |
+| 主機監看 | 執行過的程式、連線、變動的檔案；剪貼簿要在 pack 內另外勾選，開 pack 不會順帶開啟 |
 | AI agent | Claude Code / Codex / OpenCode 的逐字稿（每一輪對話與工具呼叫） |
 | Windows 終端輸出 | PowerShell 的終端輸出 |
 

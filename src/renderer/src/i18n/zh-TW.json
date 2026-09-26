@@ -1270,7 +1270,7 @@
   "settings.clipboardScopeWarn": "在專案開啟期間，會取樣你在這台機器上複製的所有內容 —— 不分是否在範圍內。",
   "settings.packRemoved": "此 pack 已在 Plugins 停用，任何專案都不會記錄。要使用請到 Plugins 啟用。",
   "settings.packHostMonitors": "Pack：主機監看",
-  "settings.packHostMonitorsHint": "執行過的程式、它們的連線、變動的檔案與複製的內容——行程、連線、檔案與剪貼簿監看。預設關閉。",
+  "settings.packHostMonitorsHint": "包含行程、連線與檔案監看：執行過的程式、它們的連線、變動的檔案。剪貼簿也屬於這個 pack，但不會隨 pack 一起開啟——要在下方另外勾選才會記錄。預設關閉。",
   "settings.packAiAgents": "Pack：AI agent",
   "settings.packAiAgentsHint": "Claude Code、Codex、OpenCode 的逐回合紀錄。紀錄可能含無關的工作，所以要你開啟才會記錄。細部設定在 AI Agent 頁。",
   "settings.packWindowsOutput": "Pack：Windows 終端輸出",
@@ -1366,5 +1366,6 @@
   "firstRun.http.verifyFromTool": "或用你實際會用的工具驗證：",
   "firstRun.http.verifyNoInsecure": "不加 -k / --insecure：只有這個工具信任 RedLog 的 CA 時 HTTPS 才會通過。關掉憑證檢查就什麼也證明不了。",
   "firstRun.http.reason.caRejected": "有 client 拒絕了 RedLog 的憑證：它還沒信任這張 CA——見下方「HTTPS 憑證」。",
-  "httpCapture.caTrustStores": "每個工具有自己的代理設定和信任庫：curl、wget 讀系統信任庫；Python requests 用 certifi（REQUESTS_CA_BUNDLE）；Node 要設 NODE_EXTRA_CA_CERTS；Java 用自己的 keystore；Firefox 也有自己的。請在各工具會讀的地方信任它——不要關掉憑證檢查。"
+  "httpCapture.caTrustStores": "每個工具有自己的代理設定和信任庫：curl、wget 讀系統信任庫；Python requests 用 certifi（REQUESTS_CA_BUNDLE）；Node 要設 NODE_EXTRA_CA_CERTS；Java 用自己的 keystore；Firefox 也有自己的。請在各工具會讀的地方信任它——不要關掉憑證檢查。",
+  "settings.packMemberOptIn": "勾選前不會記錄。開啟 pack 不會順帶開啟這一項。"
 }

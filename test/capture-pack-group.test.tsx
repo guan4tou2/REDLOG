@@ -29,11 +29,10 @@ describe('CapturePackGroup', () => {
     expect(screen.getByText('member tuning')).toBeTruthy()
   })
 
-  it('lets a member be dropped without losing the pack, and hides its tuning when it is', () => {
-    // A pack is a preset, not an atom. The clipboard is the case: it samples
-    // whatever the operator copies anywhere on the machine for the length of
-    // the engagement, and an operator who wants the other three host monitors
-    // was taking it without deciding to.
+  it('leaves the clipboard unticked until the operator ticks it (#224)', () => {
+    // A pack is a preset, not an atom. The clipboard samples whatever the
+    // operator copies anywhere on the machine for the length of the
+    // engagement, so turning "host monitors" on must not also start it.
     const seen: ConfigState[] = []
     const { rerender } = render(
       <PackMember member="clipboard" title="Clipboard" hint="hint" warn="in or out of scope"
@@ -41,24 +40,39 @@ describe('CapturePackGroup', () => {
         <p>clipboard tuning</p>
       </PackMember>
     )
-    // Absent means on: an existing project records what it always did.
-    expect((screen.getByTestId('pack-member-clipboard') as HTMLInputElement).checked).toBe(true)
-    expect(screen.getByText('clipboard tuning')).toBeTruthy()
-    // And what it costs is said where it is turned on.
-    expect(screen.getByText('in or out of scope')).toBeTruthy()
-
-    fireEvent.click(screen.getByTestId('pack-member-clipboard'))
-    expect(seen.at(-1)!.packMembers).toEqual({ clipboard: false })
-
-    rerender(
-      <PackMember member="clipboard" title="Clipboard" hint="hint"
-        config={{ packMembers: { clipboard: false } } as unknown as ConfigState} setConfig={() => {}} t={t}>
-        <p>clipboard tuning</p>
-      </PackMember>
-    )
+    expect((screen.getByTestId('pack-member-clipboard') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByTestId('pack-member-optin-clipboard')).toBeTruthy()
     // Tuning for something that is not running is the same lie the pack
     // switch already avoids.
     expect(screen.queryByText('clipboard tuning')).toBeNull()
+    // What it costs is said where it is turned on.
+    expect(screen.getByText('in or out of scope')).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId('pack-member-clipboard'))
+    expect(seen.at(-1)!.packMembers).toEqual({ clipboard: true })
+
+    rerender(
+      <PackMember member="clipboard" title="Clipboard" hint="hint"
+        config={{ packMembers: { clipboard: true } } as unknown as ConfigState} setConfig={() => {}} t={t}>
+        <p>clipboard tuning</p>
+      </PackMember>
+    )
+    expect(screen.getByText('clipboard tuning')).toBeTruthy()
+    expect(screen.queryByTestId('pack-member-optin-clipboard')).toBeNull()
+  })
+
+  it('lets an ordinary member be dropped without losing the pack', () => {
+    const seen: ConfigState[] = []
+    render(
+      <PackMember member="processMonitor" title="Processes" hint="hint"
+        config={{ packMembers: {} } as unknown as ConfigState} setConfig={(c) => seen.push(c)} t={t}>
+        <p>process tuning</p>
+      </PackMember>
+    )
+    expect((screen.getByTestId('pack-member-processMonitor') as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByText('process tuning')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('pack-member-processMonitor'))
+    expect(seen.at(-1)!.packMembers).toEqual({ processMonitor: false })
   })
 
   it('says a pack disabled in Plugins is removed, instead of offering a switch', () => {
