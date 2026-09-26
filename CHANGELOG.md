@@ -24,6 +24,17 @@ recording has to say so, and evidence has to be what it claims to be.
 
 ### Evidence that was not what it claimed
 
+- **Opening the capture browser put three "the operator used valid accounts"
+  rows in the client's evidence bundle** (#182). Any token before the first
+  space of an `Authorization` header became a `credential_use` tagged T1078
+  — MITRE's Valid Accounts — in the chained tier. Chrome registers itself
+  for push with `Authorization: AidLogin …` on a brand-new profile, before
+  the operator has navigated anywhere, so a client reading `events.jsonl`
+  was told the operator authenticated to Google during the engagement.
+  RedLog now makes that claim only for auth schemes it can name (Basic,
+  Bearer, NTLM, Negotiate, Digest). The requests themselves are still
+  recorded in full in the logged tier; what went is the claim RedLog could
+  not support.
 - **A blank screenshot became evidence.** On Windows 11 / Chromium 152 every
   screen thumbnail comes back empty — 0×0, zero bytes, at every requested
   size, while window capture on the same machine works. Nothing downstream
