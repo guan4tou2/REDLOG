@@ -19,7 +19,7 @@
 <!-- Unit tests and typecheck cannot show that a capture source records, that
      a packaged build ships what it needs, or that an external API still
      dispatches the hook we implement. Two of the worst defects found so far
-     passed every gate above:
+     passed every gate below:
 
        - exported bundles shipped without `redlog-verify.py`, because the
          packaged build did not carry it and nothing exercised a packaged build;
@@ -28,18 +28,21 @@
          `dns_response`. The proxy answered queries correctly, so the only
          symptom was an empty timeline.
 
-     Neither crashed. Both looked healthy. Tick only what was actually done,
-     and name the evidence. -->
+     Neither crashed. Both looked healthy.
+
+     `docs/RELEASE-SMOKE-TEST.md` already holds the procedure, so do not copy
+     its steps here. Name the sections that were run and what they showed. -->
 
 Risk surface: capture / packaging / external integration / none
 
-- [ ] packaged build exercised
-- [ ] real external dependency exercised (the actual binary, the actual version)
-- [ ] first real event observed reaching the evidence store
-- [ ] install / setup exercised
-- [ ] uninstall / cleanup exercised, leaving nothing behind
+Sections of RELEASE-SMOKE-TEST.md run, and the result:
 
-Not applicable: <reason — e.g. "renderer-only visual change">
+<!-- e.g. "INSTALL, EXTERNAL SHELL, HTTP passed on a clean Kali VM with the
+     packaged .deb; first real event observed on the Timeline at 14:02." -->
+
+Not required: <reason — e.g. "renderer-only visual change">
+
+<!-- A capture source also answers docs/domain/SPEC-capture-source-lifecycle.md. -->
 
 ## Release Impact
 
