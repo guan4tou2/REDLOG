@@ -9,9 +9,12 @@
 // proxied-browser launch. The CA path stays behind a link: an operator who is
 // only proxying the browser RedLog launches never needs it.
 //
-// Spec 039: a running proxy is not "capturing". While it runs the card listens
-// for the first HTTP event and only then says verified; after 60 s it names the
-// reasons that apply and keeps listening, so a late request still verifies.
+// Spec 039: a running proxy is not "capturing". #220: nor is "some HTTP event
+// arrived" — the capture browser makes its own requests the moment it starts.
+// Each attempt has a nonce; HTTP and HTTPS are verified separately, only by a
+// request for that nonce, and each says which client sent it. After 60 s
+// without HTTP the card names the reasons that apply and keeps listening, so a
+// late request still verifies.
 
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
@@ -20,7 +23,11 @@ import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { requestRunInTerminal } from '../lib/terminalRunner'
 import { isMac, isWindows } from '../lib/platform'
-import { httpTimeoutReasons, isHttpCaptureEvent } from '../lib/httpVerification'
+import {
+  applyVerifyReport, httpTimeoutReasons, httpsProvesTrust, newAttempt, verifyCommand, type VerifyAttempt
+} from '../lib/httpVerification'
+import { clientLabel, newVerifyNonce, type HttpVerifyReport } from '../../../core/http-verify'
+import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
 
 const MITM_INSTALL = 'uv tool install mitmproxy'
 /** Same window as the shell activation: long enough to launch a browser and
@@ -36,19 +43,34 @@ function listenAddress(url: string | null): string {
 export type TrustOs = 'win32' | 'darwin' | 'linux'
 export const thisOs = (): TrustOs => (isWindows ? 'win32' : isMac ? 'darwin' : 'linux')
 
-export function caTrustCommand(caPath: string, os: TrustOs = thisOs()): string {
-  if (os === 'win32') return `certutil -addstore -user Root "${caPath}"`
-  if (os === 'darwin') return `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caPath}"`
-  return `sudo cp "${caPath}" /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates`
+export interface CaFingerprint { sha1: string; sha256: string }
+
+/** The file name RedLog gives the CA in the Linux trust directory. It carries
+ *  the fingerprint so it can never overwrite, or be confused with, another
+ *  tool's `mitmproxy.crt` (#220). */
+export function linuxCaFile(fp: CaFingerprint): string {
+  return `/usr/local/share/ca-certificates/redlog-mitmproxy-${fp.sha1.slice(0, 16).toLowerCase()}.crt`
 }
 
-/** And take it out again. Shown beside the command that put it there: a root
- *  certificate left behind after an engagement is the longest-lived thing
- *  RedLog can leave on a machine, and the one nobody remembers. */
-export function caUntrustCommand(os: TrustOs = thisOs()): string {
-  if (os === 'win32') return 'certutil -delstore -user Root mitmproxy'
-  if (os === 'darwin') return 'sudo security delete-certificate -c mitmproxy /Library/Keychains/System.keychain'
-  return 'sudo rm -f /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates --fresh'
+/** Empty without a fingerprint: RedLog does not offer to trust a CA it could
+ *  not later remove by identity. */
+export function caTrustCommand(caPath: string, fp: CaFingerprint | null | undefined, os: TrustOs = thisOs()): string {
+  if (!fp) return ''
+  if (os === 'win32') return `certutil -addstore -user Root "${caPath}"`
+  if (os === 'darwin') return `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caPath}"`
+  return `sudo cp "${caPath}" ${linuxCaFile(fp)} && sudo update-ca-certificates`
+}
+
+/** And take it out again — this CA, by its fingerprint. Removing by the name
+ *  "mitmproxy" would also remove a CA another tool (a separate mitmproxy
+ *  install, Burp's own setup scripts) had put there for its own use. Shown
+ *  beside the command that added it: a root certificate left behind after an
+ *  engagement is the longest-lived thing RedLog can leave on a machine. */
+export function caUntrustCommand(caPath: string, fp: CaFingerprint | null | undefined, os: TrustOs = thisOs()): string {
+  if (!fp) return ''
+  if (os === 'win32') return `certutil -delstore -user Root ${fp.sha1}`
+  if (os === 'darwin') return `sudo security remove-trusted-cert -d "${caPath}"; sudo security delete-certificate -Z ${fp.sha1} /Library/Keychains/System.keychain`
+  return `sudo rm -f ${linuxCaFile(fp)} && sudo update-ca-certificates --fresh`
 }
 
 function CaCommand({ label, command, t }: {
@@ -70,8 +92,33 @@ function CaCommand({ label, command, t }: {
   )
 }
 
+function VerifyRow({ label, report, caveat, rejected, testId, t }: {
+  label: string
+  report: HttpVerifyReport | null
+  caveat?: string
+  rejected?: boolean
+  testId: string
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  return (
+    <li data-testid={testId} data-verified={report ? 'true' : 'false'} className="flex items-baseline gap-2">
+      <span className="w-12 shrink-0 font-medium text-redlog-text">{label}</span>
+      {report ? (
+        <span className="text-emerald-500">
+          {t('firstRun.http.verifiedVia', { client: clientLabel(report.userAgent) })}
+          {caveat && <span className="block text-amber-400">{caveat}</span>}
+        </span>
+      ) : rejected ? (
+        <span className="text-amber-400">{t('firstRun.http.rejected')}</span>
+      ) : (
+        <span className="text-redlog-text-faint">{t('firstRun.core.pending')}</span>
+      )}
+    </li>
+  )
+}
+
 export function HttpCaptureStep({ onVerified }: {
-  /** Called once, when the first HTTP event arrives. */
+  /** Called once, when HTTP is verified by this card's own nonce. */
   onVerified?: () => void
 } = {}): JSX.Element {
   const { t } = useI18n()
@@ -80,18 +127,24 @@ export function HttpCaptureStep({ onVerified }: {
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [showCa, setShowCa] = useState(false)
-  const [verified, setVerified] = useState(false)
+  const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
   const running = status.state === 'running'
+  const verified = attempt.http !== null
+  const complete = attempt.http !== null && attempt.https !== null
+
+  // Reports arrive for as long as the card is up: HTTPS can verify after
+  // HTTP, and a check from a terminal can land at any time.
+  useEffect(() => {
+    if (!running || complete) return
+    return window.redlog.httpCapture.onVerify((r) => setAttempt((a) => applyVerifyReport(a, r)))
+  }, [running, complete])
 
   useEffect(() => {
     if (!running || verified) return
     setTimedOut(false)
     const timer = setTimeout(() => setTimedOut(true), HTTP_VERIFY_TIMEOUT_MS)
-    const unsub = window.redlog.events.onNewBatch((evs) => {
-      if (evs.some(isHttpCaptureEvent)) setVerified(true)
-    })
-    return () => { clearTimeout(timer); unsub() }
+    return () => clearTimeout(timer)
   }, [running, verified])
 
   useEffect(() => { if (verified) onVerified?.() }, [verified, onVerified])
@@ -128,10 +181,13 @@ export function HttpCaptureStep({ onVerified }: {
     setBusy(false)
   }
 
-  const launch = async (): Promise<void> => {
-    const r = await window.redlog.browser.launch().catch((e) => ({ ok: false, error: String(e) }))
-    toast(r.ok ? t('browser.launched') : (r.error || t('browser.failed')), r.ok ? 'success' : 'error')
+  const verifyInBrowser = async (): Promise<void> => {
+    const r = await window.redlog.httpCapture.verifyInBrowser(attempt.nonce).catch((e) => ({ ok: false, error: String(e) }))
+    if (!r.ok) toast(r.error || t('browser.failed'), 'error')
   }
+
+  // A new nonce: an earlier attempt's requests can no longer count.
+  const retry = (): void => { setAttempt(newAttempt(newVerifyNonce())); setTimedOut(false) }
 
   const httpCapture = (config?.httpCapture ?? {}) as Record<string, unknown>
   const routeTerminals = httpCapture.routeTerminals === true
@@ -143,6 +199,12 @@ export function HttpCaptureStep({ onVerified }: {
   }
 
   const unavailable = mitmMissing || status.state === 'unavailable'
+  const browserCfg = (config?.browser ?? {}) as { ignoreCertErrors?: boolean }
+  const ignoresCertErrors = browserCfg.ignoreCertErrors ?? DEFAULT_BROWSER.ignoreCertErrors
+  const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors)
+    ? t('firstRun.http.captureBrowserCaveat')
+    : undefined
+  const os = thisOs()
 
   return (
     <section data-testid="first-run-http" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
@@ -167,21 +229,46 @@ export function HttpCaptureStep({ onVerified }: {
       ) : status.state === 'running' ? (
         <div className="space-y-2">
           <p className="text-redlog-text-dim">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
-          {verified ? (
-            <p data-testid="first-run-http-verified" className="text-emerald-500 font-medium">{t('firstRun.http.verified')}</p>
-          ) : timedOut ? (
+          <ul data-testid="first-run-http-checks" className="space-y-1">
+            <VerifyRow label="HTTP" report={attempt.http} testId="first-run-http-check-http" t={t} />
+            <VerifyRow
+              label="HTTPS"
+              report={attempt.https}
+              caveat={httpsCaveat}
+              rejected={attempt.rejectedAt !== null}
+              testId="first-run-http-check-https"
+              t={t}
+            />
+          </ul>
+          {verified && <p data-testid="first-run-http-verified" className="text-emerald-500 font-medium">{t('firstRun.http.verified')}</p>}
+          {!verified && timedOut ? (
             <div data-testid="first-run-http-timeout" className="space-y-1">
               <p className="text-redlog-text">{t('firstRun.http.timeoutTitle')}</p>
               <ul className="list-disc pl-4 text-redlog-text-dim space-y-0.5">
-                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals }).map((r) => (
+                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals, rejected: attempt.rejectedAt !== null }).map((r) => (
                   <li key={r}>{t(`firstRun.http.reason.${r}`)}</li>
                 ))}
               </ul>
             </div>
-          ) : (
+          ) : !verified && (
             <p className="text-redlog-text-dim">{t('firstRun.http.waiting')}</p>
           )}
-          <Button level="secondary" onClick={() => void launch()}>{t('firstRun.http.launchBrowser')}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
+              {t('firstRun.http.verifyInBrowser')}
+            </Button>
+            {(attempt.http || attempt.https || attempt.rejectedAt !== null || timedOut) && (
+              <Button level="quiet" onClick={retry} data-testid="first-run-http-retry">{t('firstRun.http.newCheck')}</Button>
+            )}
+          </div>
+          {status.url && (
+            <div data-testid="first-run-http-verify-commands" className="space-y-1">
+              <p className="text-redlog-text-faint">{t('firstRun.http.verifyFromTool')}</p>
+              <CaCommand label="HTTP" command={verifyCommand('http', attempt.nonce, status.url, os)} t={t} />
+              <CaCommand label="HTTPS" command={verifyCommand('https', attempt.nonce, status.url, os)} t={t} />
+              <p className="text-redlog-text-faint">{t('firstRun.http.verifyNoInsecure')}</p>
+            </div>
+          )}
           <label className="flex items-start gap-2">
             <input
               type="checkbox"
@@ -201,12 +288,17 @@ export function HttpCaptureStep({ onVerified }: {
                 {t('firstRun.http.caLink')}
               </button>
               {showCa && (
-                <div className="mt-1 space-y-1.5">
+                <div data-testid="first-run-http-ca" className="mt-1 space-y-1.5">
                   <p className="font-mono text-redlog-text-faint break-all">
                     {status.certReady === false
                       ? t('httpCapture.caMissing', { path: status.caPath })
                       : t('httpCapture.caReady', { path: status.caPath })}
                   </p>
+                  {status.caFingerprint && (
+                    <p data-testid="first-run-http-ca-fingerprint" className="font-mono text-redlog-text-faint break-all">
+                      SHA-256 {status.caFingerprint.sha256}
+                    </p>
+                  )}
                   {/* Without this, HTTPS capture covers only the browser
                       RedLog launches, which is told to ignore certificate
                       errors. Every other tool on the machine — curl, a
@@ -215,18 +307,20 @@ export function HttpCaptureStep({ onVerified }: {
                       timeline as "the target used no TLS". Trusting a root CA
                       is a change to the machine, so it is typed into RedLog's
                       terminal for the operator to read and run, and the
-                      command that undoes it is shown beside it. */}
-                  {status.certReady !== false && (
+                      command that undoes it — this CA, by fingerprint — is
+                      shown beside it. */}
+                  {status.certReady !== false && status.caFingerprint && (
                     <>
                       <p className="text-redlog-text-dim">{t('httpCapture.caTrustWhy')}</p>
+                      <p className="text-redlog-text-dim">{t('httpCapture.caTrustStores')}</p>
                       <CaCommand
                         label={t('httpCapture.caTrust')}
-                        command={caTrustCommand(status.caPath)}
+                        command={caTrustCommand(status.caPath, status.caFingerprint, os)}
                         t={t}
                       />
                       <CaCommand
                         label={t('httpCapture.caUntrust')}
-                        command={caUntrustCommand()}
+                        command={caUntrustCommand(status.caPath, status.caFingerprint, os)}
                         t={t}
                       />
                     </>

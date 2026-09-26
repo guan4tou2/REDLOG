@@ -49,6 +49,15 @@ Environment variables:
     REDLOG_SKIP_STATIC    Skip static assets like .css/.js/.png/.woff
                           (default false — Burp-like full capture by default)
     REDLOG_VERBOSE        Log every request/DNS message to stderr (default false)
+
+Capture verification (#220):
+    Requests to http(s)://redlog.verify.invalid/<nonce> are answered by this
+    addon and never leave the machine (`.invalid` is reserved and does not
+    resolve). Each one is reported to RedLog as a verification, not recorded
+    as traffic, so a check never lands in the engagement's evidence. An HTTPS
+    request only arrives here if the client completed the TLS handshake with
+    RedLog's CA; a client that refuses the certificate is reported as a
+    rejection instead.
 """
 
 import base64
@@ -146,6 +155,63 @@ def _send_to_redlog(payload: dict):
             _spool_payload(payload)
 
     threading.Thread(target=_do_send, daemon=True).start()
+
+
+VERIFY_HOST = "redlog.verify.invalid"
+_NONCE_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
+
+
+def _verify_nonce(path: str) -> str | None:
+    """The first path segment, if it looks like a nonce RedLog issued."""
+    first = path.lstrip("/").split("/", 1)[0].split("?", 1)[0]
+    if 8 <= len(first) <= 64 and set(first) <= _NONCE_OK:
+        return first
+    return None
+
+
+def _report_verification(report: dict):
+    """Tell RedLog a verification request arrived. Not spooled: a check that
+    cannot reach RedLog right now has nothing to prove later."""
+    port, token = _get_redlog_connection()
+    if not port:
+        return
+
+    def _do_send():
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/http-verify",
+                data=json.dumps(report).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=5)
+        except Exception as exc:
+            if VERBOSE:
+                ctx.log.warn(f"[redlog] verification report failed: {exc}")
+
+    threading.Thread(target=_do_send, daemon=True).start()
+
+
+def _verify_page(scheme: str, nonce: str, wants_html: bool) -> tuple[bytes, str]:
+    if not wants_html:
+        return (f"RedLog: {scheme.upper()} capture verified ({nonce})\n".encode("utf-8"), "text/plain; charset=utf-8")
+    # From the HTTP page, the browser also asks for the HTTPS one, so a single
+    # navigation checks both paths.
+    follow = (
+        f'<img alt="" width="1" height="1" src="https://{VERIFY_HOST}/{nonce}/tls">'
+        if scheme == "http" else ""
+    )
+    body = (
+        "<!doctype html><meta charset=utf-8><title>RedLog capture check</title>"
+        "<body style=\"font:14px system-ui;padding:2em\">"
+        f"<p>RedLog received this {scheme.upper()} request through its capture proxy.</p>"
+        "<p>Return to RedLog to see the result. You can close this tab.</p>"
+        f"{follow}</body>"
+    )
+    return body.encode("utf-8"), "text/html; charset=utf-8"
 
 
 def _send_to_redlog_and_get_id(payload: dict):
@@ -599,7 +665,47 @@ class RedLogAddon:
         for fid in stale_dns:
             self._dns_query_events.pop(fid, None)
 
+    def http_connect(self, flow: http.HTTPFlow):
+        # A CONNECT to the verification host is accepted here. Otherwise the
+        # default eager strategy dials the host upstream first, fails to
+        # resolve it, and the client never reaches the TLS handshake that the
+        # HTTPS check exists to test.
+        if flow.request.host == VERIFY_HOST:
+            flow.response = http.Response.make(200)
+
+    def tls_failed_client(self, data: tls.TlsData):
+        # The client refused RedLog's certificate for the verification host:
+        # it does not trust the CA. There is no nonce at this point, only the
+        # fact, and RedLog shows it as a likely reason, not as a result.
+        try:
+            if getattr(data.conn, "sni", None) == VERIFY_HOST:
+                _report_verification({"scheme": "https", "rejected": True})
+        except Exception:
+            pass
+
+    def _answer_verification(self, flow: http.HTTPFlow) -> bool:
+        if flow.request.pretty_host != VERIFY_HOST:
+            return False
+        scheme = flow.request.scheme
+        nonce = _verify_nonce(flow.request.path)
+        wants_html = "text/html" in flow.request.headers.get("accept", "")
+        if nonce:
+            body, ctype = _verify_page(scheme, nonce, wants_html)
+            flow.response = http.Response.make(200, body, {"content-type": ctype, "cache-control": "no-store"})
+            _report_verification({
+                "nonce": nonce,
+                "scheme": scheme,
+                "user_agent": flow.request.headers.get("user-agent", "")[:200],
+            })
+        else:
+            flow.response = http.Response.make(404, b"", {"cache-control": "no-store"})
+        return True
+
     def request(self, flow: http.HTTPFlow):
+        # Verification traffic is answered here and is not engagement
+        # evidence, so it never becomes an http_request_start row.
+        if self._answer_verification(flow):
+            return
         self._sweep_stale()
 
         url = flow.request.pretty_url
@@ -675,6 +781,8 @@ class RedLogAddon:
             ctx.log.info(f"[redlog] → {method} {url}{body_info}")
 
     def response(self, flow: http.HTTPFlow):
+        if flow.request.pretty_host == VERIFY_HOST:
+            return
         self._sweep_stale()
 
         url = flow.request.pretty_url
@@ -1041,6 +1149,8 @@ class RedLogAddon:
         return None
 
     def error(self, flow: http.HTTPFlow):
+        if flow.request.pretty_host == VERIFY_HOST:
+            return
         url = flow.request.pretty_url
         parsed = urlparse(url)
 
