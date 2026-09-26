@@ -88,6 +88,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
     <div className="flex items-center gap-1.5">
     <button
       onClick={toggleProxy}
+      data-testid="http-capture-toggle"
       disabled={proxyBusy || proxy.state === 'starting'}
       title={proxy.error || t('httpCapture.hint')}
       className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
