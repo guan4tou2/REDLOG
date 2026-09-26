@@ -29,6 +29,7 @@ import { Button } from './Button'
 import { RecordTerminalFlow, MissingList, type RecordTarget } from './RecordTerminalFlow'
 import { HttpCaptureStep } from './HttpCaptureStep'
 import { missingDependencies, shellLabel } from '../lib/terminalActivation'
+import { readFocus, stepOrder, ENGAGEMENT_FOCUSES, type EngagementFocus } from '../lib/engagementFocus'
 import { ChevronRight, Terminal as TerminalIcon } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
 
@@ -55,6 +56,27 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
   const [wsl, setWsl] = useState<WslDistro | null>(null)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
+
+  // Which capture this engagement leads with. Stored on the project so the
+  // answer survives a reload and the operator is asked once, not every time
+  // they open the screen. `both` until they say otherwise, which is the order
+  // this screen has always had.
+  const [focus, setFocusState] = useState<EngagementFocus>('both')
+  useEffect(() => {
+    window.redlog.config.get().then((c) => setFocusState(readFocus(c))).catch(() => {})
+  }, [])
+  const setFocus = (next: EngagementFocus): void => {
+    setFocusState(next)
+    void window.redlog.config.get()
+      .then((c) => {
+        const cfg = (c ?? {}) as Record<string, unknown>
+        return window.redlog.config.save({
+          ...cfg,
+          engagement: { ...(cfg.engagement as Record<string, unknown> ?? {}), focus: next }
+        })
+      })
+      .catch(() => { /* the screen still works; only the memory of it is lost */ })
+  }
 
   // "The check failed" is not "everything is fine". Swallowing the rejection
   // left `preflight` null, and a null preflight reports no missing
@@ -162,27 +184,66 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 ))}
               </ul>
               <p className="text-xs text-redlog-text mb-2">{t('firstRun.recordedOk')}</p>
-              <div className="flex flex-wrap gap-2">
-                {hostTarget && (
-                  <Button level="primary" onClick={() => setRecording(hostTarget)} data-testid="first-run-record-terminal">
-                    {t('firstRun.recordMyTerminal', { shell: hostTarget.label })}
-                  </Button>
-                )}
-                {wslTarget && (
-                  <Button level="secondary" onClick={() => setRecording(wslTarget)} data-testid="first-run-record-wsl">
-                    {t('firstRun.recordMyWsl', { distro: wsl?.name ?? '' })}
-                  </Button>
-                )}
+
+              {/* What kind of engagement this is decides which setup step
+                  comes first. A web assessment led through wiring a shell hook
+                  it may never use is told, by the layout, that requests are
+                  the optional part. */}
+              <div className="mb-2" data-testid="first-run-focus">
+                <p className="text-xs text-redlog-text-faint mb-1">{t('firstRun.focusQuestion')}</p>
+                <div className="flex gap-1">
+                  {ENGAGEMENT_FOCUSES.map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFocus(f)}
+                      aria-pressed={focus === f}
+                      data-testid={`first-run-focus-${f}`}
+                      className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                        focus === f
+                          ? 'border-redlog-accent/60 text-redlog-accent bg-redlog-accent/10'
+                          : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+                      }`}
+                    >
+                      {t(`firstRun.focus.${f}`)}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <button
-                onClick={() => onNavigate('timeline')}
-                data-testid="first-run-builtin-only"
-                className="mt-2 text-xs text-redlog-text-dim hover:text-redlog-text underline"
-              >
-                {t('firstRun.builtinOnly')}
-              </button>
-              {recording && <RecordTerminalFlow key={recording.label} target={recording} />}
-              <div className="mt-3"><HttpCaptureStep /></div>
+
+              {stepOrder(focus).map((step) => (
+                <div key={step} className="mb-3 last:mb-0">
+                  {step === 'terminal' ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {hostTarget && (
+                          <Button
+                            level={focus === 'web' ? 'secondary' : 'primary'}
+                            onClick={() => setRecording(hostTarget)}
+                            data-testid="first-run-record-terminal"
+                          >
+                            {t('firstRun.recordMyTerminal', { shell: hostTarget.label })}
+                          </Button>
+                        )}
+                        {wslTarget && (
+                          <Button level="secondary" onClick={() => setRecording(wslTarget)} data-testid="first-run-record-wsl">
+                            {t('firstRun.recordMyWsl', { distro: wsl?.name ?? '' })}
+                          </Button>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => onNavigate('timeline')}
+                        data-testid="first-run-builtin-only"
+                        className="mt-2 text-xs text-redlog-text-dim hover:text-redlog-text underline"
+                      >
+                        {t('firstRun.builtinOnly')}
+                      </button>
+                      {recording && <RecordTerminalFlow key={recording.label} target={recording} />}
+                    </>
+                  ) : (
+                    <HttpCaptureStep />
+                  )}
+                </div>
+              ))}
             </>
           ) : rowsFailed ? (
             // Read failure, not silence. Saying "nothing recorded" here would
