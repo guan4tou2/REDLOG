@@ -7,7 +7,7 @@ silently — leave a `- [~] not applicable this release: <reason>` note.
 ## 0. Static
 
 - [ ] `npm run build` clean
-- [ ] `npm test` → 485/485 (or higher — update this number if suite grew)
+- [ ] `npm test` → 2738/2738 (or higher — update this number if suite grew)
 - [ ] `diff <(jq -r 'keys[]' src/renderer/src/i18n/en.json | sort) <(jq -r 'keys[]' src/renderer/src/i18n/zh-TW.json | sort)` → empty
 - [ ] No mojibake in i18n:
   `grep -P '\xc3\x82|\xc3\x83' src/renderer/src/i18n/*.json` empty
