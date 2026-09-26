@@ -1278,6 +1278,8 @@
   "settings.essentialPty": "Full terminal output of a session started with redlog-session",
   "settings.essentialTerminal": "Everything in RedLog’s built-in terminal",
   "settings.packRecord": "Record with this pack in this project",
+  "settings.packMemberRecord": "Record this",
+  "settings.clipboardScopeWarn": "Samples everything you copy on this machine, in or out of scope, for as long as the engagement is open.",
   "settings.packRemoved": "This pack is disabled in Plugins, so it records nothing in any project. Enable it there to use it.",
   "settings.packHostMonitors": "Pack: Host monitors",
   "settings.packHostMonitorsHint": "Programs that ran, connections they held, files that changed, and what was copied — process, connection, file and clipboard monitors. Off by default.",

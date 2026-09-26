@@ -5,9 +5,15 @@
 // Behaviour is identical to the previous inline versions.
 
 import type { RedLogConfig } from '../core/config'
+import { CAPTURE_PACKS, type CapturePackId, type PackMemberId } from '../core/capture-packs'
 import type { OpsecStateDelta } from './services/opsec-state'
 
 export type ConfigFieldChange = { from: unknown; to: unknown }
+
+/** Every pack member, derived from the pack declarations so a member added to
+ *  a pack cannot be left out of the audit by forgetting a line here. */
+const PACK_MEMBERS: readonly PackMemberId[] = (Object.keys(CAPTURE_PACKS) as CapturePackId[])
+  .flatMap((id) => CAPTURE_PACKS[id].members as readonly PackMemberId[])
 
 /** The security-relevant fields whose change is worth an audit row on
  *  config:save. Cosmetic settings (Dock icon, HUD flash) are deliberately
@@ -37,6 +43,13 @@ export function diffSecurityConfig(
   check('packs.hostMonitors', oldCfg.packs?.hostMonitors, newCfg.packs?.hostMonitors)
   check('packs.aiAgents', oldCfg.packs?.aiAgents, newCfg.packs?.aiAgents)
   check('packs.windowsOutput', oldCfg.packs?.windowsOutput, newCfg.packs?.windowsOutput)
+  // A per-member opt-out changes what the engagement records just as much as
+  // the pack switch does -- switching the clipboard off inside a running Host
+  // monitors pack leaves a gap in the record, and a gap nobody can account for
+  // later is exactly what this audit row exists to prevent.
+  for (const member of PACK_MEMBERS) {
+    check(`packMembers.${member}`, oldCfg.packMembers?.[member], newCfg.packMembers?.[member])
+  }
   check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
   check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
   return changed

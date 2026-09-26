@@ -435,6 +435,9 @@ interface CaptureSourceInfo {
   enabled?: boolean
   /** dotted config path the switch writes */
   configPath?: string
+  /** for a pack member: its pack's path, which turning the member ON must set
+   *  too or the switch reports the opposite of what it did */
+  packPath?: string
   lastEventAt: number | null
   /** `error` = this source is wired up and its own capture failed; distinct
    *  from `absent` (nothing installed) and from a DB write failure. */
