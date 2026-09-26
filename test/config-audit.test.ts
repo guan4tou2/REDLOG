@@ -38,6 +38,27 @@ describe('diffSecurityConfig', () => {
     expect(d['operator.name']).toEqual({ from: 'Op', to: 'Op2' })
   })
 
+  it('records switching a single pack member off, not just the pack', () => {
+    // What the engagement records is part of the audit trail. Dropping the
+    // clipboard out of a running Host monitors pack leaves a gap in the
+    // record, and a gap nobody can account for later is exactly what this row
+    // exists to prevent.
+    const d = diffSecurityConfig(
+      cfg({ packs: { hostMonitors: true } }),
+      cfg({ packs: { hostMonitors: true }, packMembers: { clipboard: false } })
+    )
+    expect(d['packMembers.clipboard']).toEqual({ from: undefined, to: false })
+    expect(d['packs.hostMonitors']).toBeUndefined()
+  })
+
+  it('audits every member of every pack, so adding one cannot silently skip it', () => {
+    const members = ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard', 'agentTailer', 'powershellTranscript']
+    for (const m of members) {
+      const d = diffSecurityConfig(cfg(), cfg({ packMembers: { [m]: false } }))
+      expect({ m, row: d[`packMembers.${m}`] }).toEqual({ m, row: { from: undefined, to: false } })
+    }
+  })
+
   it('ignores cosmetic changes (only the audited fields are compared)', () => {
     // A field not in the audited set (e.g. overlay opacity) must not appear.
     const d = diffSecurityConfig(cfg({ overlay: { scale: 1 } }), cfg({ overlay: { scale: 2 } }))

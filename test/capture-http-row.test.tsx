@@ -7,7 +7,7 @@
 // proxy up, nothing ever captured — is on screen and explained.
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { render, cleanup, fireEvent, within } from '@testing-library/react'
+import { render, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
 

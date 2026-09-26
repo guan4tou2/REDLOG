@@ -1,6 +1,6 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
 import LootRulesGroup from './LootRulesGroup'
-import CapturePackGroup, { usePackAvailability } from './CapturePackGroup'
+import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
 
 export default function CaptureControlPage({
   config, setConfig, t
@@ -28,50 +28,69 @@ export default function CaptureControlPage({
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t}
       >
-        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.clipboardGroup')}</p>
-        <p className="text-xs text-redlog-text-faint">{t('settings.clipboardEnableHint')}</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.clipboard?.storePreview === true}
-            onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: e.target.checked } })}
-            className="accent-red-600"
+        {/* Each member carries its own switch now. The clipboard is the
+            reason: it samples whatever the operator copies anywhere on the
+            machine for the length of the engagement, and bundling it with
+            three host monitors meant an operator who wanted those three took
+            it without deciding to. */}
+        <PackMember
+          member="clipboard" title={t('settings.clipboardGroup')}
+          hint={t('settings.clipboardEnableHint')} warn={t('settings.clipboardScopeWarn')}
+          config={config} setConfig={setConfig} t={t}
+        >
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.clipboard?.storePreview === true}
+              onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: e.target.checked } })}
+              className="accent-red-600"
+            />
+            <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
+          </label>
+          <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
+        </PackMember>
+
+        <PackMember
+          member="fileWatcher" title={t('settings.fileWatcherGroup')}
+          hint={t('settings.fileWatcherEnableHint')}
+          config={config} setConfig={setConfig} t={t}
+        >
+          <ListField
+            label={t('settings.fileWatcherPaths')}
+            items={config.fileWatcher?.watchPaths ?? []}
+            onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, watchPaths: items } })}
+            placeholder={t('settings.fileWatcherPathsPlaceholder')}
           />
-          <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
+          <ListField
+            label={t('settings.fileWatcherIgnore')}
+            items={config.fileWatcher?.ignorePatterns ?? []}
+            onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, ignorePatterns: items } })}
+            placeholder={t('settings.fileWatcherIgnorePlaceholder')}
+          />
+          <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
+        </PackMember>
 
-        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.fileWatcherGroup')}</p>
-        <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherEnableHint')}</p>
-        <ListField
-          label={t('settings.fileWatcherPaths')}
-          items={config.fileWatcher?.watchPaths ?? []}
-          onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, watchPaths: items } })}
-          placeholder={t('settings.fileWatcherPathsPlaceholder')}
-        />
-        <ListField
-          label={t('settings.fileWatcherIgnore')}
-          items={config.fileWatcher?.ignorePatterns ?? []}
-          onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, ignorePatterns: items } })}
-          placeholder={t('settings.fileWatcherIgnorePlaceholder')}
-        />
-        <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
+        <PackMember
+          member="processMonitor" title={t('settings.processMonitorGroup')}
+          hint={t('settings.processMonitorEnableHint')}
+          config={config} setConfig={setConfig} t={t}
+        >
+          <ListField
+            label={t('settings.processMonitorIgnore')}
+            items={config.processMonitor?.ignoreCommands ?? []}
+            onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, ignoreCommands: items } })}
+            placeholder={t('settings.processMonitorIgnorePlaceholder')}
+          />
+          <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
+        </PackMember>
 
-        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.processMonitorGroup')}</p>
-        <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorEnableHint')}</p>
-        <ListField
-          label={t('settings.processMonitorIgnore')}
-          items={config.processMonitor?.ignoreCommands ?? []}
-          onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, ignoreCommands: items } })}
-          placeholder={t('settings.processMonitorIgnorePlaceholder')}
-        />
-        <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
-
-        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.connectionMonitorGroup')}</p>
-        <p className="text-xs text-redlog-text-faint">{t('settings.connectionMonitorEnableHint')}</p>
         {/* The blind spot, stated where the operator turns it on — not
             only in a system event they might scroll past. */}
-        <p className="text-xs text-amber-500/80">{t('settings.connectionMonitorSynNote')}</p>
+        <PackMember
+          member="connectionMonitor" title={t('settings.connectionMonitorGroup')}
+          hint={t('settings.connectionMonitorEnableHint')} warn={t('settings.connectionMonitorSynNote')}
+          config={config} setConfig={setConfig} t={t}
+        />
       </CapturePackGroup>
 
       <CapturePackGroup
