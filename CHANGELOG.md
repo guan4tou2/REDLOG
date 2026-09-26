@@ -9,7 +9,7 @@ Nothing yet. Everything below shipped in v0.18.0.
 
 ## v0.18.0 — unreleased
 
-122 commits since v0.17.1, most of them found by installing RedLog from
+147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
 the constitution calls Surface Truthfulness: a capture source that is not
 recording has to say so, and evidence has to be what it claims to be.
