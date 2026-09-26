@@ -47,6 +47,56 @@ describeDB('ingest', () => {
   const base = { operatorId: '', engagementId: 'eng-1' }
   beforeAll(() => { base.operatorId = opId })
 
+  // #182 — the capture browser opened, the operator navigated nowhere, and
+  // three `credential_use` rows tagged T1078 (MITRE Valid Accounts) landed in
+  // the CHAINED tier: the layer that reaches the client in `events.jsonl`.
+  // They were Chrome registering itself for push, which a brand-new profile
+  // does on its own. Read by a client, they said the operator used valid
+  // accounts against Google during the engagement.
+  const httpReq = (headers: [string, string][], host = 'target.example') => ({
+    ...base, agentType: 'scanner',
+    data: {
+      subtype: 'http_request_start', host, url: `https://${host}/`,
+      request_headers: headers
+    }
+  })
+  const creds = (r: { companions: Array<{ agentType: string; data: Record<string, unknown> }> }) =>
+    r.companions.filter((c) => c.agentType === 'credential_use')
+
+  it('does not claim valid-account use from an Authorization scheme it cannot name', () => {
+    const r = ingestMod.ingest(httpReq(
+      [['Authorization', 'AidLogin aidtoken']], 'android.clients.google.com'
+    ))
+    expect(creds(r)).toHaveLength(0)
+  })
+
+  it('still records the auth schemes it can name', () => {
+    for (const [header, method] of [
+      ['Basic dXNlcjpwdw==', 'basic_auth'],
+      ['Bearer eyJhbGciOi', 'bearer_token'],
+      ['NTLM TlRMTVNTUA==', 'ntlm'],
+      ['Negotiate YIIF', 'negotiate'],
+      ['Digest username="admin"', 'digest']
+    ] as const) {
+      const r = ingestMod.ingest(httpReq([['Authorization', header]]))
+      const found = creds(r)
+      expect({ header, n: found.length }).toEqual({ header, n: 1 })
+      expect(found[0].data).toMatchObject({ subtype: method, mitre_ttp: 'T1078' })
+    }
+  })
+
+  it('an unnameable Authorization header does not fall through to the weaker heuristics', () => {
+    // The request carried an Authorization header, so a `session_cookie` or
+    // `api_key` verdict from the headers beside it would describe the same
+    // request less accurately, not more.
+    const r = ingestMod.ingest(httpReq([
+      ['Authorization', 'AidLogin aidtoken'],
+      ['Cookie', 'session=abc123'],
+      ['X-API-Key', 'k'.repeat(20)]
+    ], 'android.clients.google.com'))
+    expect(creds(r)).toHaveLength(0)
+  })
+
   it('a shell command_start derives its companion pivot exactly once', () => {
     const r = ingestMod.ingest({
       ...base, agentType: 'shell',
