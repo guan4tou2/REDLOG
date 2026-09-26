@@ -68,6 +68,8 @@ const HTTP_EVENT: Ev = { id: 'h1', timestamp: 10, agentType: 'scanner', data: { 
 const BUILTIN: Ev = { id: 'b1', timestamp: 1, agentType: 'shell', data: { subtype: 'command_end', source: 'builtin-terminal', command: 'id' } }
 
 let listeners: Array<(evs: Ev[]) => void>
+type Report = { scheme: 'http' | 'https'; nonce?: string; userAgent?: string; rejected?: boolean; receivedAt: number }
+let verifyListeners: Array<(r: Report) => void>
 let bridge: {
   preflight: ReturnType<typeof vi.fn>
   install: ReturnType<typeof vi.fn>
@@ -75,6 +77,7 @@ let bridge: {
   proxyStatus: ReturnType<typeof vi.fn>
   proxyStart: ReturnType<typeof vi.fn>
   launch: ReturnType<typeof vi.fn>
+  verifyInBrowser: ReturnType<typeof vi.fn>
   configSave: ReturnType<typeof vi.fn>
   listDistros: ReturnType<typeof vi.fn>
   wslInstall: ReturnType<typeof vi.fn>
@@ -82,6 +85,7 @@ let bridge: {
 
 function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatus; distros?: WslDistro[] } = {}): void {
   listeners = []
+  verifyListeners = []
   bridge = {
     preflight: vi.fn(async () => opts.pre ?? preflight()),
     install: vi.fn(async () => ({ success: true, message: 'ok' })),
@@ -89,6 +93,7 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
     proxyStatus: vi.fn(async () => opts.proxy ?? { state: 'stopped', url: null }),
     proxyStart: vi.fn(async () => ({ state: 'running', url: 'http://127.0.0.1:8080' })),
     launch: vi.fn(async () => ({ ok: true })),
+    verifyInBrowser: vi.fn(async () => ({ ok: true })),
     configSave: vi.fn(async () => true),
     listDistros: vi.fn(async () => opts.distros ?? []),
     wslInstall: vi.fn(async () => ({ success: true, message: 'ok' }))
@@ -100,7 +105,13 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
     },
     runtime: { preflight: bridge.preflight },
     hooks: { install: bridge.install },
-    httpCapture: { status: bridge.proxyStatus, start: bridge.proxyStart, stop: vi.fn(async () => ({ state: 'stopped', url: null })) },
+    httpCapture: {
+      status: bridge.proxyStatus,
+      start: bridge.proxyStart,
+      stop: vi.fn(async () => ({ state: 'stopped', url: null })),
+      verifyInBrowser: bridge.verifyInBrowser,
+      onVerify: (cb: (r: Report) => void) => { verifyListeners.push(cb); return () => { verifyListeners = verifyListeners.filter((l) => l !== cb) } }
+    },
     browser: { launch: bridge.launch },
     config: { get: async () => ({ httpCapture: { port: 8080, routeTerminals: false } }), save: bridge.configSave },
     clipboard: { writeText: vi.fn(async () => true), readText: async () => '' },
@@ -110,6 +121,20 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
 
 function emit(evs: Ev[]): void {
   act(() => { for (const l of listeners) l(evs) })
+}
+
+/** The nonce the card is showing in its terminal check command. */
+async function shownNonce(): Promise<string> {
+  const cmds = await screen.findByTestId('first-run-http-verify-commands')
+  const m = /redlog\.verify\.invalid\/(rv-[a-z0-9]+)/.exec(cmds.textContent ?? '')
+  expect(m, 'no verification command on screen').not.toBeNull()
+  return m![1]
+}
+
+/** What the mitmproxy addon reports when a check request reaches it. */
+async function report(r: Omit<Report, 'receivedAt'>): Promise<void> {
+  await waitFor(() => expect(verifyListeners.length).toBeGreaterThan(0))
+  act(() => { for (const l of verifyListeners) l({ ...r, receivedAt: Date.now() }) })
 }
 
 function draw(): { onNavigate: ReturnType<typeof vi.fn> } {
@@ -158,8 +183,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     install({ rows: [], proxy: RUNNING })
     draw()
     await screen.findByText(/正在監聽/)
-    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
-    emit([HTTP_EVENT])
+    await report({ scheme: 'http', nonce: await shownNonce(), userAgent: 'curl/8.5.0' })
     expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
@@ -198,8 +222,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
     await screen.findByText(/正在監聽/)
-    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
-    emit([HTTP_EVENT])
+    await report({ scheme: 'http', nonce: await shownNonce() })
     expect((await screen.findByTestId('first-run-core-ready')).textContent).toBe('✓ 核心擷取已就緒')
     fireEvent.click(screen.getByTestId('first-run-start-work'))
     expect(onNavigate).toHaveBeenCalledWith('timeline')
@@ -348,7 +371,7 @@ describe('first run: HTTP(S) card', () => {
     expect(card.textContent).toContain('重新檢查')
   })
 
-  it('when running, shows the listen address, the browser launch, and the accurate routeTerminals limit', async () => {
+  it('when running, shows the listen address, the browser check, and the accurate routeTerminals limit', async () => {
     install({ proxy: { state: 'running', url: 'http://127.0.0.1:8080', caPath: '/home/op/.mitmproxy/mitmproxy-ca-cert.pem' } })
     draw()
     const card = await screen.findByTestId('first-run-http')
@@ -359,8 +382,9 @@ describe('first run: HTTP(S) card', () => {
     fireEvent.click(screen.getByText('HTTPS 憑證'))
     expect(card.textContent).toContain('/home/op/.mitmproxy/mitmproxy-ca-cert.pem')
 
-    fireEvent.click(screen.getByText('開啟代理瀏覽器'))
-    await waitFor(() => expect(bridge.launch).toHaveBeenCalled())
+    const nonce = await shownNonce()
+    fireEvent.click(screen.getByTestId('first-run-http-verify-browser'))
+    await waitFor(() => expect(bridge.verifyInBrowser).toHaveBeenCalledWith(nonce))
     fireEvent.click(screen.getByTestId('first-run-route-terminals'))
     await waitFor(() => expect(bridge.configSave).toHaveBeenCalledWith(
       expect.objectContaining({ httpCapture: expect.objectContaining({ routeTerminals: true }) })
@@ -405,19 +429,73 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
 })
 
 
-describe('first run: HTTP is verified by the first request (Spec 039)', () => {
-  it('waits while the proxy runs and verifies only on an HTTP request event, then stops listening', async () => {
+describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039, #220)', () => {
+  it('ignores ordinary traffic and other checks; verifies only its own nonce, then stops listening', async () => {
     install({ proxy: RUNNING })
     draw()
     const card = await screen.findByTestId('first-run-http')
-    await waitFor(() => expect(card.textContent).toContain('等第一筆 HTTP 請求'))
-    const before = snapshot()
-    emit([{ id: 's', timestamp: 3, agentType: 'shell', data: { subtype: 'command_end', command: 'curl x' } }])
-    emit([{ id: 'n', timestamp: 4, agentType: 'network', data: { subtype: 'connection' } }])
-    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    await waitFor(() => expect(card.textContent).toContain('只有帶著這次驗證碼的請求才算數'))
+    const nonce = await shownNonce()
+    // The capture browser's own background traffic, and a check from another
+    // attempt, prove nothing about this one.
     emit([HTTP_EVENT])
+    await report({ scheme: 'http', nonce: 'rv-000000000000' })
+    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+
+    await report({ scheme: 'http', nonce, userAgent: 'curl/8.5.0' })
     expect((await screen.findByTestId('first-run-http-verified')).textContent).toContain('HTTP 擷取已驗證')
-    await waitFor(() => expect(survivorsOf(before)).toBeLessThan(before.size))
+    expect(screen.getByTestId('first-run-http-check-http').textContent).toContain('curl/8.5.0')
+    expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('false')
+    await report({ scheme: 'https', nonce, userAgent: 'curl/8.5.0' })
+    await waitFor(() => expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('true'))
+    await waitFor(() => expect(verifyListeners.length).toBe(0))
+  })
+
+  it('shows HTTPS from the capture browser with the caveat that it ignores certificate errors', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    const nonce = await shownNonce()
+    await report({ scheme: 'https', nonce, userAgent: 'Mozilla/5.0 (X11) AppleWebKit/537.36 Chrome/140.0 Safari/537.36' })
+    const https = await screen.findByTestId('first-run-http-check-https')
+    await waitFor(() => expect(https.textContent).toContain('Chromium'))
+    expect(https.textContent).toContain('忽略憑證錯誤')
+    // HTTPS alone is not HTTP: the core step is still open.
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+  })
+
+  it('says when a client refused the certificate', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    await shownNonce()
+    await report({ scheme: 'https', rejected: true })
+    await waitFor(() => expect(screen.getByTestId('first-run-http-check-https').textContent).toContain('拒絕了 RedLog 的憑證'))
+  })
+
+  it('offers terminal checks that never skip certificate verification', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    const nonce = await shownNonce()
+    const codes = [...screen.getByTestId('first-run-http-verify-commands').querySelectorAll('code')].map((c) => c.textContent ?? '')
+    expect(codes).toEqual([
+      expect.stringContaining(`-x http://127.0.0.1:8080 http://redlog.verify.invalid/${nonce}`),
+      expect.stringContaining(`-x http://127.0.0.1:8080 https://redlog.verify.invalid/${nonce}`)
+    ])
+    for (const c of codes) expect(c).not.toMatch(/\s-k\b|--insecure/)
+  })
+
+  it('a new check gets a new nonce, and the old one no longer counts', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    const first = await shownNonce()
+    await report({ scheme: 'https', rejected: true })
+    fireEvent.click(await screen.findByTestId('first-run-http-retry'))
+    const second = await shownNonce()
+    expect(second).not.toBe(first)
+    await report({ scheme: 'http', nonce: first })
+    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    await report({ scheme: 'http', nonce: second })
+    expect(await screen.findByTestId('first-run-http-verified')).toBeTruthy()
   })
 
   it('follows a proxy started from outside the card, and starts listening for it', async () => {
@@ -430,8 +508,7 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     bridge.proxyStatus.mockResolvedValue(RUNNING)
     await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
     await screen.findByText(/正在監聽/)
-    await waitFor(() => expect(listeners.length).toBeGreaterThan(0))
-    emit([HTTP_EVENT])
+    await report({ scheme: 'http', nonce: await shownNonce() })
     expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
   })
 
@@ -439,11 +516,10 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     install({ proxy: { state: 'stopped', url: null } })
     draw()
     await screen.findByTestId('first-run-http')
-    const before = snapshot()
-    emit([HTTP_EVENT])
-    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
+    expect(verifyListeners.length).toBe(0)
     fireEvent.click(screen.getByText('開始 HTTP 擷取'))
-    await waitFor(() => expect(arrivalsSince(before)).toBeGreaterThanOrEqual(1))
+    await waitFor(() => expect(verifyListeners.length).toBeGreaterThanOrEqual(1))
   })
 
   it('after 60 s names concrete reasons and still verifies a late request', async () => {
@@ -454,17 +530,16 @@ describe('first run: HTTP is verified by the first request (Spec 039)', () => {
     // so finding it says nothing about whether the proxy has been reported as
     // running yet. The timeout timer is armed by the effect that runs *when*
     // it is (`if (!running || verified) return`), so advancing the clock
-    // before that arms nothing and the banner never appears — which is what
-    // made this the only red test on main in a full run while the file passed
-    // on its own. Wait for the running state, then advance.
+    // before that arms nothing and the banner never appears. Wait for the
+    // running state, then advance.
     await screen.findByTestId('first-run-http')
     await screen.findByText(/正在監聽/)
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const why = await screen.findByTestId('first-run-http-timeout')
-    expect(why.textContent).toContain('開啟代理瀏覽器')
+    expect(why.textContent).toContain('用擷取瀏覽器驗證')
     expect(why.textContent).toContain('HTTPS')
     expect(why.textContent).toContain('預設關閉')
-    emit([HTTP_EVENT])
+    await report({ scheme: 'http', nonce: await shownNonce() })
     expect(await screen.findByTestId('first-run-http-verified')).toBeTruthy()
     expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
   })

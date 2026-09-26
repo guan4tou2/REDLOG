@@ -4,6 +4,7 @@ import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { extractTargetWithProvenance } from '../../core/target-extractor'
+import { isVerifyUrl } from '../../core/http-verify'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CDP connector — v0.6.92 W-project browser producer
@@ -89,7 +90,24 @@ const DEDUP_WINDOW_MS = 500
 function isNoisyUrl(u: string): boolean {
   if (!u) return true
   if (u === 'about:blank' || u === 'about:newtab') return true
+  // A capture check (#220) is RedLog talking to itself, not a navigation the
+  // operator made.
+  if (isVerifyUrl(u)) return true
   return /^(chrome|edge|brave|about|devtools|view-source|chrome-extension):/i.test(u)
+}
+
+/** Open `url` in a new tab of the running RedLog browser. Chrome's DevTools
+ *  HTTP endpoint takes PUT for /json/new since 111; GET is refused. */
+export function openBrowserTab(url: string, timeout = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(`http://127.0.0.1:${cdpPort}/json/new?${url}`, { method: 'PUT', timeout }, (res) => {
+      res.resume()
+      resolve((res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300)
+    })
+    req.on('error', () => resolve(false))
+    req.on('timeout', () => { req.destroy(); resolve(false) })
+    req.end()
+  })
 }
 
 export function setCdpPort(port: number): void {

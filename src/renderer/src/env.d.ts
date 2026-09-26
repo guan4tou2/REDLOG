@@ -289,6 +289,10 @@ interface RedLogAPI {
     status: () => Promise<ManagedProxyStatus>
     start: () => Promise<ManagedProxyStatus>
     stop: () => Promise<ManagedProxyStatus>
+    /** Load the #220 verification page for `nonce` in the capture browser. */
+    verifyInBrowser: (nonce: string) => Promise<{ ok: boolean; error?: string }>
+    /** Capture checks reported by the mitmproxy addon. */
+    onVerify: (cb: (report: import('../../core/http-verify').HttpVerifyReport) => void) => () => void
   }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
@@ -483,7 +487,9 @@ interface ManagedProxyStatus {
   pid?: number
   error?: string
   caPath?: string
+  /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
+  caFingerprint?: { sha1: string; sha256: string }
 }
 
 interface OperatorInfo {

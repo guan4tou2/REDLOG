@@ -81,11 +81,15 @@
 
 - [ ] **沒裝 mitmproxy**：首次畫面的 HTTP 卡顯示「mitmproxy 尚未安裝」和 `uv tool install mitmproxy`；裝好後按重新檢查，就能啟動。
 - [ ] **按「開始 HTTP 擷取」**，顯示正在監聽 `127.0.0.1:<port>`。
-- [ ] **（#159 合併後）** 什麼都不做 60 秒：
+- [ ] **背景流量不會讓驗證通過（#220）**：啟動擷取瀏覽器但不按驗證，等 30 秒——HTTP、HTTPS 都仍是「○ 尚未驗證」。
+- [ ] 什麼都不做 60 秒：
   - 列出原因：瀏覽器、HTTPS 憑證（未就緒時才出現）、終端代理選項；
-  - 之後再開一個網頁，仍然會變成「✓ HTTP 擷取已驗證」。
-- [ ] **按「開啟代理瀏覽器」**，打開一個 HTTP 網站，HTTP 頁出現這筆往返（有 request 和 response）。
-- [ ] **HTTPS 網站**：能正常瀏覽；或者失敗時，畫面上找得到「HTTPS 憑證」與 CA 路徑。記下 Friction。
+  - 之後再驗證一次，仍然會變成「✓ HTTP 擷取已驗證」。
+- [ ] **按「用擷取瀏覽器驗證」**：HTTP、HTTPS 都顯示「✓ 已驗證（Chromium）」，HTTPS 附帶「擷取瀏覽器會忽略憑證錯誤」的提醒；時間軸與 HTTP 頁**沒有** `redlog.verify.invalid` 的紀錄。
+- [ ] **終端驗證（CA 未信任）**：在內建終端跑畫面上的 HTTPS 指令 → curl 失敗，HTTPS 列顯示「有 client 拒絕了 RedLog 的憑證」。
+- [ ] **信任後再驗證**：跑「HTTPS 憑證」裡的信任指令，按「重新驗證」後再跑 HTTPS 指令 → 「✓ 已驗證（curl/…）」，沒有提醒。
+- [ ] **移除信任**：跑移除指令，確認它以指紋（Windows／macOS）或 `redlog-mitmproxy-<指紋>.crt`（Linux）移除；另一個工具的 mitmproxy CA（若有）仍在。重新驗證 HTTPS 指令應再次失敗。
+- [ ] **打開一個 HTTP 網站**，HTTP 頁出現這筆往返（有 request 和 response）。
 - [ ] **終端走代理的選項**：
   - 關閉時：內建終端的 `curl http://example.com` 不進 HTTP 頁；
   - 打開後**新開**內建終端，再 `curl` 一次：會進 HTTP 頁；
