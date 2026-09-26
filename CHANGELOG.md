@@ -5,13 +5,171 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-- **Connected says what it records.** A verified terminal now states that it
-  records command, exit code, duration and working directory — not output —
-  and offers `redlog-session` (zsh/bash/WSL) to keep output.
-- **HTTP capture is verified by traffic.** The first-run HTTP card waits for
-  the first request to reach RedLog before saying verified; after 60 s it
-  names the likely reason (browser not proxied, HTTPS certificate, terminal
-  routing).
+Nothing yet. Everything below shipped in v0.18.0.
+
+## v0.18.0 — unreleased
+
+122 commits since v0.17.1, most of them found by installing RedLog from
+scratch on Windows and working an engagement through it. The theme is the one
+the constitution calls Surface Truthfulness: a capture source that is not
+recording has to say so, and evidence has to be what it claims to be.
+
+**Upgrading — read first.**
+
+- **The HTTP capture port default moved from 8080 to 6661.** 8080 is Burp
+  Suite's default listener, and Burp is running on most machines this ships
+  to, so the old default guaranteed a bind failure on first use. A project
+  that already has a port set keeps it. RedLog now also names what is holding
+  a port instead of printing mitmdump's startup dump.
+
+### Evidence that was not what it claimed
+
+- **A blank screenshot became evidence.** On Windows 11 / Chromium 152 every
+  screen thumbnail comes back empty — 0×0, zero bytes, at every requested
+  size, while window capture on the same machine works. Nothing downstream
+  noticed, because the sha256 of zero bytes is a perfectly good hash: RedLog
+  wrote a 0-byte `.jpg`, recorded a screenshot event for it, showed it in the
+  Screenshots grid, and exported it into the evidence bundle where the
+  verifier confirmed its digest and reported the file verified. An empty
+  frame is now a failure: no file, no event, and a reason.
+- **Two screenshots in the same millisecond overwrote each other.** The
+  filename carried milliseconds and nothing else, so a burst lost frames while
+  every call reported success.
+- **DNS capture never worked.** The mitmproxy addon implemented `dns_message`,
+  which mitmproxy does not dispatch — its DNS layer declares `dns_request`,
+  `dns_response` and `dns_error`. The proxy answered queries correctly the
+  whole time, so the only symptom was an empty timeline, and an empty DNS
+  timeline reads as "the target resolved nothing".
+- **RedLog's own plumbing reached the client.** `HOUSEKEEPING_SQL` hid the
+  lines where RedLog sources its own shell adapter from the Timeline, but the
+  export walks the chain row by row — it has to, since the verifier rejects
+  any gap in `prev_hash` — so they shipped inside `events.jsonl` anyway. In
+  one real bundle, 10 of 24 shell commands were this. It is now dropped at
+  ingest, so it never takes a slot in the chain.
+- **Spooled events skipped the entire pipeline.** An event the shell hook had
+  spooled because RedLog was unreachable was written straight into the table:
+  no causal links, no target extraction, no loot scan, no redaction spans, no
+  scope verdict. The built-in terminal sources its adapter within a second of
+  a pane opening, which is exactly when the API may not be listening, so the
+  events most likely to take that route arrived with the least processing.
+- **The export preview showed numbers RedLog had made up.** `hasScope` was
+  hardcoded false, `screenshotEvents` hardcoded 0, the snapshot all zeros, and
+  "in scope" was `included - maskedOutOfScope`, which is arithmetic, not a
+  scope classification. The preview now renders the resolved plan: the real
+  counts, the scope the plan was resolved against, the subset's actual dates
+  and target, each policy decision named, and three distinct answers for
+  attachments instead of one "0".
+
+### Capture Health stopped lying
+
+- **A live source was reported absent.** `shellInstalled` short-circuited on
+  the first candidate — `shell-zsh`, never installed on Windows — so the row
+  read "not installed" whatever was wired up. Separately, a source with a
+  `lastEventAt` from seconds earlier could still be shown as `absent`, which
+  also hit mitmproxy, where the managed proxy runs the addon directly rather
+  than installing the standalone hook. Evidence now beats detection.
+- **A failed screenshot took the whole verdict dark.** It reported through the
+  path meant for "evidence cannot be written". A camera that cannot see the
+  screen is not a dark log, and spending that signal on it teaches operators
+  to ignore the one indicator that must never be ignored. A capture failure
+  now marks its own source, carries its reason to the card, and tips the
+  verdict amber.
+- **HTTP and DNS shared one green light.** They are two mitmdump processes in
+  two modes; the row said "active" on HTTP traffic alone. It now says
+  HTTP + DNS, HTTP only, or DNS only.
+
+### Capture that was missing or wrong
+
+- **bash recorded only the first command of a line.** `nmap -sV host &&
+  loot.sh` was stored as `nmap -sV host`, with that text and the whole line's
+  exit code. Red-team work is full of `x && y`, and losing y makes the log
+  read "did A" when the operator did "A then B" — worse than recording
+  nothing, because it still looks complete. zsh never had this; bash now reads
+  the line from history with `$BASH_COMMAND` as the fallback.
+- **A WSL pane recorded nothing attributable.** `wsl.exe` does not inherit
+  Windows environment variables unless they are named in `WSLENV`, so the
+  adapter inside the distro never saw the terminal id or the flag that tags an
+  event `source: 'builtin-terminal'`. The pane reported itself connected and
+  then produced nothing the capture panel could attribute to it. The managed
+  proxy variables were lost the same way, which is why a tool run inside WSL
+  was never proxied.
+- **The process monitor recorded the operator's desktop.** Its ignore list
+  held only RedLog's own processes, so a two-minute session produced 500
+  events — mostly `conhost.exe`, service hosts and browser renderers, with
+  their full command lines, carrying paths from outside the engagement into
+  the record. The operator's actual work in that session was 24 shell
+  commands. Same session after: 86 events. `ignoreCommands` also did nothing
+  for any program installed under a path with a space in it, because the
+  executable was read by splitting on whitespace.
+- **The capture browser recorded Chrome's own homepage.** Launched and left
+  alone for 30 seconds it produced 47 requests and an 11 MB body index, almost
+  all of it the New Tab Page fetching google.com furniture. It opens
+  `about:blank` now: 23 requests, and the body index empty.
+- **The HTTP capture endpoint is a host and a port.** The bind address was
+  hardcoded to loopback in three places, which rules out a victim VM, a phone,
+  a container, and — on Windows — a NAT'd WSL distro, while RedLog offers WSL
+  shells in its own picker. `httpCapture.listenHost` is a setting, still
+  loopback by default, and Settings warns plainly when it is widened.
+- **Uninstalling the PowerShell hook left a 0-byte profile** where the
+  operator had none, along with the directory made for it.
+- **Lifecycle fixes across the host monitors:** clipboard, file watcher,
+  process monitor and connection monitor no longer act on a late read after a
+  restart or a stop, the clipboard seeds on resume instead of capturing the
+  paused window, and the PowerShell transcript follower stops on a project
+  switch.
+
+### Setting capture up
+
+- **DNS has instructions.** The addon handled DNS all along and nothing said
+  how to turn it on. The steps now cover the second mitmdump, that port 53
+  wants admin rights so 5353 is offered, and a query to prove it is live.
+- **Manual sources can be undone.** Uninstall answered "Manual removal
+  required" and stopped there for seven of the eleven sources. They carry
+  removal steps now.
+- **A setup command can be sent to RedLog's own terminal.** Every manual step
+  used to hand over a command to paste somewhere else, which made setting
+  capture up the one part of an engagement RedLog did not record. It is typed,
+  not executed — some of these start long-running processes and some kill them
+  by PID — and the shell hook records it like any other command.
+- **An install command that cannot run says so.** `uv tool install mitmproxy`
+  and `brew install …` assume a tool the machine may not have; a check now
+  names the missing installer and links its official instructions.
+
+### Reading the record
+
+- **The Timeline reads through the shared filter** (Spec 038), and Type and
+  Time filter the whole database rather than the newest page.
+- **An absolute time range.** "Events on the 14th between 09:00 and 11:00"
+  could not be expressed: the bar offered only rolling presets, each of which
+  wrote a fixed `since` at the moment it was clicked and then went on calling
+  itself "last 1h". Start and end are inputs now, in the displayed zone, and
+  every label names the absolute window the query holds. An event's detail
+  opens a five-minute window either side.
+- **"Chained only" is a shared condition** every view applies, not a Timeline
+  display switch.
+- **One display zone**, Local or UTC, for every event time.
+- **An empty Timeline says why it is empty** — hidden by personal-traffic or
+  agent collapse — rather than implying nothing was recorded.
+- **The filter menus say when they failed to load.** Three rejections were
+  swallowed, so an empty target menu and a menu whose load had failed looked
+  identical.
+
+### Settings and onboarding
+
+- **A settings change made within 350 ms of leaving the page was lost.**
+  Navigating away unmounts Settings and the autosave debounce cancelled its
+  pending write — silently, after the operator had watched the control move.
+  It flushes now, reports saving / saved / failed with a retry, and a write is
+  bound to the project the form was loaded from.
+- **A failed environment check no longer reads as a clean one.** The readiness
+  panel sat on a loading line forever when the check threw, and a failed
+  timeline read on the first-run screen was shown as "nothing recorded yet" —
+  which sends an operator hunting a capture problem that does not exist.
+- **Browser and HTTP capture settings moved** out of Network, where they sat
+  beside VPN and IP-exposure settings, and in with the other capture sources.
+- **The filter bar reports its own state** to assistive technology: the
+  expander says whether its panel is open, every toggle reports pressed, and a
+  chip's clear button names the condition it removes.
 
 ## v0.17.1 — 2026-09-24
 
