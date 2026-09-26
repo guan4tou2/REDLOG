@@ -29,6 +29,11 @@ export interface RedLogConfig {
   engagement: {
     id: string
     activeTarget?: string | null
+    /** Which capture the first-run screen leads with: a host engagement wires
+     *  a shell hook first, a web one wires the proxy first. `both` (the
+     *  default, and anything unset) keeps the order the screen has always had,
+     *  so nobody is made to answer before they have done anything. */
+    focus?: 'terminal' | 'web' | 'both'
   }
   operator: {
     id: string

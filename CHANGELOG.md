@@ -165,6 +165,15 @@ recording has to say so, and evidence has to be what it claims to be.
   panel sat on a loading line forever when the check threw, and a failed
   timeline read on the first-run screen was shown as "nothing recorded yet" —
   which sends an operator hunting a capture problem that does not exist.
+- **The first-run screen led every engagement with the terminal.** Once the
+  built-in terminal had proved RedLog records, the next step was always
+  "connect the terminal you actually work in", with HTTP capture beneath it
+  as a dismissable extra. For a web assessment that puts a task the operator
+  may never need in front of the one they came for, and says in the layout
+  that requests are the optional part. The screen asks which kind of
+  engagement this is and orders the two steps accordingly; the answer is
+  remembered on the project, and ignoring the question gives the order the
+  screen has always had.
 - **The Dashboard said two different things about HTTP at once.** A line
   reading "Managed HTTP proxy is listening" sat above a mitmproxy row
   reading "idle" — one describing a process, the other describing whether
