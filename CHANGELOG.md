@@ -165,6 +165,14 @@ recording has to say so, and evidence has to be what it claims to be.
   panel sat on a loading line forever when the check threw, and a failed
   timeline read on the first-run screen was shown as "nothing recorded yet" —
   which sends an operator hunting a capture problem that does not exist.
+- **The Dashboard said two different things about HTTP at once.** A line
+  reading "Managed HTTP proxy is listening" sat above a mitmproxy row
+  reading "idle" — one describing a process, the other describing whether
+  an event had landed. Both were true and neither answered "is HTTP being
+  recorded". There is one state now, and it can express the case neither
+  line could: a proxy that is up and has never had a single request routed
+  through it, which is the normal way HTTP capture fails. It is amber, it
+  says so, and it names what to check.
 - **HTTP(S) capture is a core capability, not an optional integration.** It
   was one line inside a "Traffic" group listed third on the Dashboard, and a
   row under "Optional integrations" on the readiness panel. An operator who
