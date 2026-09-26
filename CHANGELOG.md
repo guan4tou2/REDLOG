@@ -5,6 +5,21 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Closing a project could drop the last settings change.** The close
+  button awaited `project.close()` and only then unmounted Settings, so the
+  pending autosave reached main with no project open, was refused, and
+  nothing said so. Pending saves are now written to the project before it
+  closes; if one fails, the project stays open with the change on screen to
+  retry. (#223)
+- **Filter retry did not retry the scope.** The one retry button reloaded
+  only the target and type menus, so a failed scope read stayed failed. It
+  now re-reads the scope too. (#223)
+- **Settings and filters under React.StrictMode (development).** Their
+  "still mounted" flag was cleared on cleanup and never set again, so after
+  StrictMode's mount–cleanup–mount the filters never loaded and saves never
+  showed their state. The packaged app is unaffected. (#223)
+- **A failed first read of Settings said "Loading…" forever.** It now says
+  the settings could not be read and offers to try again. (#223)
 - **Turning on "Host monitors" no longer starts clipboard sampling.** The
   clipboard had its own switch, but an unset switch counted as on, so
   enabling the pack to watch processes and connections also sampled

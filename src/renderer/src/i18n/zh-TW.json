@@ -1367,5 +1367,8 @@
   "firstRun.http.verifyNoInsecure": "不加 -k / --insecure：只有這個工具信任 RedLog 的 CA 時 HTTPS 才會通過。關掉憑證檢查就什麼也證明不了。",
   "firstRun.http.reason.caRejected": "有 client 拒絕了 RedLog 的憑證：它還沒信任這張 CA——見下方「HTTPS 憑證」。",
   "httpCapture.caTrustStores": "每個工具有自己的代理設定和信任庫：curl、wget 讀系統信任庫；Python requests 用 certifi（REQUESTS_CA_BUNDLE）；Node 要設 NODE_EXTRA_CA_CERTS；Java 用自己的 keystore；Firefox 也有自己的。請在各工具會讀的地方信任它——不要關掉憑證檢查。",
-  "settings.packMemberOptIn": "勾選前不會記錄。開啟 pack 不會順帶開啟這一項。"
+  "settings.packMemberOptIn": "勾選前不會記錄。開啟 pack 不會順帶開啟這一項。",
+  "app.closeSaveFailed": "有一項設定變更沒能存進這個專案，所以沒有關閉專案。請檢查設定後再試一次。",
+  "settings.loadFailedTitle": "讀不到設定",
+  "settings.loadFailedWhy": "這個專案的設定沒有載入，所以這裡暫時無法顯示或修改。"
 }
