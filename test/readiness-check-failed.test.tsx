@@ -63,3 +63,54 @@ describe('the readiness panel says when the check itself failed', () => {
     expect(screen.queryByTestId('readiness-check-failed')).toBeNull()
   })
 })
+
+// The panel used to say the RedLog terminal still records when python3 or
+// curl was missing. It does not record COMMANDS: the built-in terminal
+// sources the same POSIX adapter an external shell does, and that adapter
+// builds each event with python3 and posts it with curl. The pane opens and
+// its screen output is captured, but no command row reaches the Timeline —
+// and the first-run screen ignores session rows, so the operator is told to
+// run a command and nothing ever happens.
+describe('the readiness panel says what a missing runtime actually costs', () => {
+  beforeEach(() => { fail = false; installBridge() })
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  const withChecks = (checks: Array<{ id: string; found: boolean; neededFor: string[] }>): void => {
+    const redlog = (window as unknown as { redlog: { runtime: { preflight: unknown } } }).redlog
+    redlog.runtime.preflight = vi.fn(async () => ({ ...PREFLIGHT, checks }))
+    try { localStorage.clear() } catch { /* ignore */ }
+    render(<I18nProvider><RuntimeReadinessHost firstLaunch /></I18nProvider>)
+  }
+
+  it('does not claim the built-in terminal still records commands', async () => {
+    withChecks([
+      { id: 'python3', found: false, neededFor: ['shell-zsh'] },
+      { id: 'curl', found: true, neededFor: ['shell-zsh'] },
+      { id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }
+    ])
+    const note = await screen.findByTestId('readiness-runtime-missing')
+    expect(note.textContent).toMatch(/Timeline/)
+    expect(note.textContent).not.toMatch(/still records/)
+  })
+
+  it('says the machine is ready when the runtime is there', async () => {
+    withChecks([
+      { id: 'python3', found: true, neededFor: ['shell-zsh'] },
+      { id: 'curl', found: true, neededFor: ['shell-zsh'] },
+      { id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }
+    ])
+    expect(await screen.findByTestId('readiness-core-ok')).not.toBeNull()
+    expect(screen.queryByTestId('readiness-runtime-missing')).toBeNull()
+  })
+
+  // A missing optional integration must not read as an unfinished install.
+  it('keeps a ready verdict when only mitmproxy is absent', async () => {
+    withChecks([
+      { id: 'python3', found: true, neededFor: ['shell-zsh'] },
+      { id: 'curl', found: true, neededFor: ['shell-zsh'] },
+      { id: 'mitmdump', found: false, neededFor: ['mitmproxy'] }
+    ])
+    expect(await screen.findByTestId('readiness-core-ok')).not.toBeNull()
+    expect(screen.getByText(/Optional integrations|選用整合/)).not.toBeNull()
+  })
+})
