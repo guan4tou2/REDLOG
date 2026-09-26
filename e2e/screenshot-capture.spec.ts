@@ -46,11 +46,22 @@ test('an empty screen-source list is reported, not swallowed', async () => {
   console.log('API_SHOT ' + JSON.stringify(r))
 
   const after = await health()
+  const shot = (after.sources as Array<{ id: string; state: string; lastError?: { message: string } }>)
+    .find((s) => s.id === 'screenshot')
+  console.log('AFTER screenshot source=' + JSON.stringify(shot))
   console.log('AFTER lastDbError=' + JSON.stringify(after.lastDbError ?? null))
-  console.log('AFTER dbErrorTotal=' + JSON.stringify(after.dbErrorTotal))
 
   expect(r.captured).toBe(false)
-  expect((after.lastDbError as { source?: string } | undefined)?.source).toBe('screenshot')
-  expect(String((after.lastDbError as { message?: string }).message)).toContain('no screen sources')
+  // The endpoint says why, rather than a bare `captured: false` that an
+  // operator could not tell from "the screen had not changed".
+  expect(String(r.error)).toContain('no screen sources')
+  // The failure is marked on the source that failed, and it tips the verdict
+  // amber rather than dark: a camera that cannot see the screen is not a dark
+  // log, and spending that signal here teaches operators to ignore it.
+  expect(shot?.state).toBe('error')
+  expect(String(shot?.lastError?.message)).toContain('no screen sources')
+  expect(after.verdict).not.toBe('dark')
+  // `lastDbError` means evidence cannot be written at all. This is not that.
+  expect(after.lastDbError).toBeUndefined()
   await app.close()
 })

@@ -38,7 +38,12 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
     await page.getByRole('button', { name: 'Start HTTP capture' }).click()
-    await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
+    // Starting the proxy spawns mitmdump, an external Python process, and
+    // waits for it to announce that it is listening. A cold start takes well
+    // over `expect.poll`'s 5s default on a real machine, which is why this
+    // assertion failed even when the proxy came up perfectly.
+    await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
+      { timeout: 45_000, message: 'the managed proxy never reported running' })
       .toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
     await expect(page.getByRole('button', { name: 'Stop HTTP capture' })).toBeVisible()
 
@@ -46,15 +51,27 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
       const api = window.redlog.terminal
       let output = ''
       const result = new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => { off(); api.kill(terminalId); reject(new Error(`No terminal environment response: ${JSON.stringify(output)}`)) }, 5000)
+        const timeout = setTimeout(() => { off(); api.kill(terminalId); reject(new Error(`No terminal environment response: ${JSON.stringify(output)}`)) }, 15000)
         const off = api.onData(terminalId, chunk => {
           output += chunk
-          const match = output.match(/\r?\nROUTE_VALUE=([^\r\n]*)/)
+          // The pty does not always reach the marker with a newline: on a
+          // wrapped line it repositions the cursor instead, so the bytes
+          // arrive as `\u001b[5;1HROUTE_VALUE=`. Match the marker itself,
+          // not whatever happens to precede it.
+          const match = output.match(/ROUTE_VALUE=([^\r\n\u001b]*)/)
           if (match) { clearTimeout(timeout); off(); api.kill(terminalId); resolve(match[1]) }
         })
       })
       await api.spawn(terminalId, 80, 24)
-      api.write(terminalId, `printf '\\nROUTE_VALUE=%s\\n' "$HTTP_PROXY"\r`)
+      // The built-in terminal sources the adapter into the fresh pty 600ms
+      // after spawn and clears the screen. Writing into that window races
+      // it, and the printf's output is wiped by the `clear` that follows.
+      await new Promise((r) => setTimeout(r, 1500))
+      // The marker is assembled BY printf, so the shell echo of the typed
+      // line contains `ROUTE_%s=` while only the OUTPUT contains
+      // `ROUTE_VALUE=`. A preceding newline used to do that job, but the
+      // pty reaches a wrapped line with a cursor move instead.
+      api.write(terminalId, `printf '\\nROUTE_%s=%s\\n' VALUE "$HTTP_PROXY"\r`)
       return result
     }, id)
     expect(await terminalProxy('routing-off')).toBe('')

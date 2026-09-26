@@ -46,7 +46,17 @@ test.describe.serial('command I/O capture', () => {
       const t = (window as unknown as { redlog: { terminal: TermBridge } }).redlog.terminal
       await t.spawn('io-test', 80, 24)
     })
-    await page.waitForTimeout(2500)
+    // Wait for the shell to be READY, not for a fixed 2.5s. The built-in
+    // terminal auto-sources the adapter into the fresh pty 600ms after spawn
+    // and clears the screen; writing into that window loses characters - this
+    // suite has seen `echo` arrive as `cho` under a full-suite load, which
+    // then fails a byte-range assertion that has nothing to do with the race.
+    // A session_start over HTTP proves the hook is loaded and the prompt is live.
+    await expect.poll(
+      async () => (await events()).some((e) => e.data?.subtype === 'session_start'),
+      { timeout: 20_000, message: 'the built-in terminal never reported session_start' }
+    ).toBe(true)
+    await page.waitForTimeout(800)
     await page.evaluate(() => {
       const t = (window as unknown as { redlog: { terminal: TermBridge } }).redlog.terminal
       t.resize('io-test', 120, 40)
@@ -54,7 +64,12 @@ test.describe.serial('command I/O capture', () => {
       t.resize('io-test', 0, 0)
       t.write('io-test', 'echo REDLOG_IO_MARKER_OUTPUT\r')
     })
-    await page.waitForTimeout(3000)
+    // And wait for the command itself to land rather than guessing at 3s.
+    await expect.poll(
+      async () => (await events()).some((e) =>
+        e.data?.subtype === 'command_end' && String(e.data?.command ?? '').includes('REDLOG_IO_MARKER_OUTPUT')),
+      { timeout: 20_000, message: 'the marker command never reached the chain' }
+    ).toBe(true)
   })
 
   test.afterAll(async () => {
