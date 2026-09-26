@@ -15,7 +15,8 @@ import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEven
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
-import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
+import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
+import { isVerifyNonce, verifyUrl } from '../core/http-verify'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -867,7 +868,10 @@ function startProject(project: ProjectMeta): void {
         } catch { return false }
       },
       listPaths: (): string[] => readHookConfig().watchPaths
-    }
+    },
+    // #220: capture checks go to the screen that asked for them, not to the
+    // record.
+    httpVerifySink: (report) => send(mainWindow, 'httpCapture:verify', report)
   })
   onApiProjectOpen()
 
@@ -1425,11 +1429,22 @@ app.whenReady().then(() => {
   ipcMain.handle('httpCapture:stop', () => stopManagedHttpCapture())
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
-  ipcMain.handle('browser:launch', async () => {
+  ipcMain.handle('browser:launch', () => launchCaptureBrowser())
+  // #220: load the verification page in the capture browser — a new tab if
+  // it is already open, which a second launch would refuse.
+  ipcMain.handle('httpCapture:verifyInBrowser', async (_e, nonce: unknown) => {
+    if (!isVerifyNonce(nonce)) return { ok: false, error: 'invalid verification nonce' }
+    const url = verifyUrl('http', nonce)
+    if (isBrowserRunning()) {
+      return (await openBrowserTab(url)) ? { ok: true } : { ok: false, error: 'Could not open a tab in the RedLog browser' }
+    }
+    return launchCaptureBrowser(url)
+  })
+  async function launchCaptureBrowser(startUrl?: string): Promise<{ ok: boolean; error?: string }> {
     if (!activeProject) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
-    const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
+    const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
     if (isManagedProxy(browserCfg.proxy, managedProxyEndpoint(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
@@ -1460,7 +1475,7 @@ app.whenReady().then(() => {
       if (event) eventBus.publish(event)
     }
     return result
-  })
+  }
   ipcMain.handle('browser:stop', () => { stopCdpMonitor(); return { stopped: stopBrowser() } })
 
   // --- CDP ---

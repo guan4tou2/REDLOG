@@ -129,6 +129,28 @@ describeDB('api-server', () => {
     expect((await fetch(`${base}/api/quickmarks`, { headers: authHeaders })).status).toBe(404)
   })
 
+  // #220: a capture check from the mitmproxy addon is handed to the screen
+  // that asked for it. It is not engagement traffic and must not be recorded.
+  it('hands a capture check to the sink without recording it', async () => {
+    const got: unknown[] = []
+    api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', httpVerifySink: (r) => got.push(r) })
+    const before = getEventCount()
+    const post = (body: unknown, headers: Record<string, string> = authHeaders): Promise<Response> =>
+      fetch(`${base}/api/http-verify`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+
+    expect((await post({ scheme: 'http', nonce: 'rv-abcdefgh1234' }, {})).status).toBe(401)
+    expect((await post({ scheme: 'http', nonce: 'x' })).status).toBe(400)
+    expect((await post({ scheme: 'ftp', nonce: 'rv-abcdefgh1234' })).status).toBe(400)
+    expect((await post({ scheme: 'https', nonce: 'rv-abcdefgh1234', user_agent: 'curl/8.5.0' })).status).toBe(200)
+    expect((await post({ scheme: 'https', rejected: true })).status).toBe(200)
+
+    expect(got).toEqual([
+      expect.objectContaining({ scheme: 'https', nonce: 'rv-abcdefgh1234', userAgent: 'curl/8.5.0' }),
+      expect.objectContaining({ scheme: 'https', rejected: true })
+    ])
+    expect(getEventCount()).toBe(before)
+  })
+
   it('serves /api/health without auth', async () => {
     const r = await fetch(`${base}/api/health`)
     expect(r.status).toBe(200)

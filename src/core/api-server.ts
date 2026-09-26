@@ -29,6 +29,7 @@ import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
+import { parseVerifyReport, type HttpVerifyReport } from './http-verify'
 import { exportHar } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
@@ -92,6 +93,10 @@ interface AlertRuntimeSlice {
 }
 let alertRuntimeRef: AlertRuntimeSlice | null = null
 
+/** Where the mitmproxy addon's capture checks go (#220). Main forwards them
+ *  to the renderer; nothing here writes them to the record. */
+let httpVerifySinkRef: ((report: HttpVerifyReport) => void) | null = null
+
 /** Shape a scope-check signal from an incoming event by (agentType, subtype).
  *  Returns null when the event doesn't carry a checkable target — most
  *  agent types don't (marker, session_start, capture_health, …), and even
@@ -121,6 +126,7 @@ export function configureApi(opts: {
   alertRuntime?: AlertRuntimeSlice
   sessionRegistry?: typeof sessionRegistryRef
   watchPathManager?: typeof watchPathManagerRef
+  httpVerifySink?: typeof httpVerifySinkRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -131,6 +137,7 @@ export function configureApi(opts: {
   if (opts.alertRuntime) alertRuntimeRef = opts.alertRuntime
   if (opts.sessionRegistry) sessionRegistryRef = opts.sessionRegistry
   if (opts.watchPathManager) watchPathManagerRef = opts.watchPathManager
+  if (opts.httpVerifySink) httpVerifySinkRef = opts.httpVerifySink
 }
 
 function writePrimaryToken(): string {
@@ -477,6 +484,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
       const findings = lootDetectorRef.scan(String(body.text ?? ''), body.targetId as string | undefined, body.source as string | undefined)
       json(res, 200, { findings })
+      return
+    }
+
+    // A capture check from the mitmproxy addon. It is a report about the
+    // proxy path, not engagement traffic, so it is validated and handed on
+    // and never ingested.
+    if (route === '/api/http-verify' && req.method === 'POST') {
+      let body: unknown
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const report = parseVerifyReport(body)
+      if (!report) { json(res, 400, { error: 'Not a verification report' }); return }
+      httpVerifySinkRef?.(report)
+      json(res, 200, { ok: true })
       return
     }
 

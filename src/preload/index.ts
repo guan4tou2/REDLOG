@@ -181,7 +181,13 @@ const api: RedLogAPI = {
   httpCapture: {
     status: () => ipcRenderer.invoke('httpCapture:status'),
     start: () => ipcRenderer.invoke('httpCapture:start'),
-    stop: () => ipcRenderer.invoke('httpCapture:stop')
+    stop: () => ipcRenderer.invoke('httpCapture:stop'),
+    verifyInBrowser: (nonce: string) => ipcRenderer.invoke('httpCapture:verifyInBrowser', nonce),
+    onVerify: (cb: (report: import('../core/http-verify').HttpVerifyReport) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, report: import('../core/http-verify').HttpVerifyReport) => cb(report)
+      ipcRenderer.on('httpCapture:verify', handler)
+      return () => ipcRenderer.removeListener('httpCapture:verify', handler)
+    }
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),

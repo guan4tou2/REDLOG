@@ -29,6 +29,24 @@ describe('the mitmproxy addon exposes the hooks mitmproxy actually calls', () =>
     }
   })
 
+  // #220: capture checks. `http_connect` has to accept the CONNECT for the
+  // verification host itself — under the default eager strategy mitmproxy
+  // otherwise dials it upstream, fails to resolve `.invalid`, and the client
+  // never reaches the TLS handshake the HTTPS check exists to test (verified
+  // against mitmdump 11.0.2). `tls_failed_client` is how a refused
+  // certificate is reported.
+  it('answers capture checks itself and keeps them out of the record', () => {
+    expect(defines('http_connect')).toBe(true)
+    expect(defines('tls_failed_client')).toBe(true)
+    expect(ADDON).toContain('VERIFY_HOST = "redlog.verify.invalid"')
+    const body = (name: string): string => ADDON.slice(ADDON.indexOf(`    def ${name}(`), ADDON.indexOf(`    def ${name}(`) + 300)
+    // The check is answered before anything is recorded, and the response and
+    // error hooks drop it.
+    expect(body('request')).toMatch(/_answer_verification\(flow\)[\s\S]*return/)
+    expect(body('response')).toContain('VERIFY_HOST')
+    expect(body('error')).toContain('VERIFY_HOST')
+  })
+
   it('routes a DNS request to the query path and a response to the response path', () => {
     // Cheap structural check: each hook body delegates to the right helper, so
     // a future edit cannot cross them over without this failing.

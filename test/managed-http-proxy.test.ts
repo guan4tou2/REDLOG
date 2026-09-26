@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
+import { join } from 'node:path'
 import {
   ManagedHttpProxy,
-  buildManagedProxyArgs
+  buildManagedProxyArgs,
+  readCaFingerprint
 } from '../src/main/services/managed-http-proxy'
 import {
   isManagedProxy, followCaptureEndpoint,
@@ -65,6 +67,36 @@ describe('managed HTTP proxy', () => {
     child.stderr.emit('data', Buffer.from('proxy server listening'))
     await started
     expect(proxy.status()).toMatchObject({ caPath: '/ca.pem', certReady: true })
+  })
+
+  // #220: trust is removed by the CA's identity, not by the name "mitmproxy"
+  // that other tools' CAs share. The fixture's fingerprints were computed by
+  // `openssl x509 -fingerprint`, independently of the code under test.
+  it('reads the CA fingerprints from the PEM file', () => {
+    expect(readCaFingerprint(join(__dirname, 'fixtures', 'test-ca-cert.pem'))).toEqual({
+      sha1: '290738EC6DDE00236C0455DDAFF5B1DB3FC9EAD1',
+      sha256: '7536FCB49A087CA888846DC8D3D6A1748CF02AC35C30A4E5EC1F68B09B1A96DC'
+    })
+    expect(readCaFingerprint('/definitely/not/here.pem')).toBeNull()
+  })
+
+  it('reports the fingerprint only while the CA file exists', async () => {
+    const child = new FakeChild()
+    let present = true
+    const fp = { sha1: 'AA', sha256: 'BB' }
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => child as never),
+      exists: (p: string) => p === '/addon.py' || (p === '/ca.pem' && present),
+      fingerprint: () => fp,
+      readinessTimeoutMs: 100
+    })
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080, caPath: '/ca.pem' })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    expect(proxy.status()).toMatchObject({ certReady: true, caFingerprint: fp })
+    present = false
+    expect(proxy.status().certReady).toBe(false)
+    expect(proxy.status().caFingerprint).toBeUndefined()
   })
 
   it('notifies listeners when a running proxy exits unexpectedly', async () => {
