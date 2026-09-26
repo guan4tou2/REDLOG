@@ -1329,5 +1329,15 @@
   "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command.",
   "httpCapture.caTrustWhy": "Without trusting this CA, HTTPS is captured only from the browser RedLog launches. Every other tool on this machine will refuse the connection.",
   "httpCapture.caTrust": "Trust it on this machine",
-  "httpCapture.caUntrust": "And remove that trust when the engagement ends"
+  "httpCapture.caUntrust": "And remove that trust when the engagement ends",
+  "readiness.coreReady": "RedLog can record commands on this machine.",
+  "readiness.optionalHeading": "Optional integrations",
+  "readiness.commandsHeading": "Command capture",
+  "readiness.httpHeading": "HTTP(S) capture",
+  "readiness.httpReady": "This machine can capture HTTP and HTTPS.",
+  "readiness.mitmNotYet": "not installed yet",
+  "readiness.mitmWhen": "Needed for web work. Skip it for an engagement that has none — nothing else depends on it.",
+  "capture.streamsBoth": "HTTP + DNS",
+  "capture.streamsHttpOnly": "HTTP only — DNS mode is not running",
+  "capture.streamsDnsOnly": "DNS only — the HTTP proxy is not running"
 }
