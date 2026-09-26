@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
+import { takePendingCommand, onRunInTerminal } from '../lib/terminalRunner'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
 import { usePersistentState } from '../lib/usePersistentState'
@@ -61,7 +62,35 @@ export default function TerminalView(): JSX.Element {
   const [shellMenuOpen, setShellMenuOpen] = useState(false)
   const [preferredShell, setPreferredShell] = usePersistentState<string>(SHELL_KEY, '')
   const paneSearchRefs = useRef<Map<string, SearchAddon>>(new Map())
+  const queued = useRef<string | null>(null)
   const { t } = useI18n()
+
+  // A setup command sent here from Settings. It is typed into the pane, not
+  // executed: some of these start long-running processes and some kill them by
+  // PID, so the operator reads the line and presses Enter. The shell hook then
+  // records it like any other command — which is the point, since setting
+  // capture up used to be the one part of an engagement that left no trace.
+  const deliver = useCallback((command: string) => {
+    const target = activeTab ?? tabs[0]?.id
+    if (!target) return false
+    window.redlog.terminal.write(target, command)
+    setActiveTab(target)
+    return true
+  }, [activeTab, tabs])
+
+  useEffect(() => {
+    const pendingCmd = takePendingCommand()
+    if (pendingCmd && deliver(pendingCmd)) return
+    // Arrived before a pane existed: hold it until one does.
+    if (pendingCmd) queued.current = pendingCmd
+  }, [deliver])
+
+  useEffect(() => onRunInTerminal((command) => { if (!deliver(command)) queued.current = command }), [deliver])
+
+  useEffect(() => {
+    if (!queued.current) return
+    if (deliver(queued.current)) queued.current = null
+  }, [deliver, tabs, activeTab])
 
   const addTab = useCallback((shellId?: string) => {
     const n = ++tabCounter

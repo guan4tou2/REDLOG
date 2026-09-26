@@ -3,6 +3,7 @@ import { toast } from '../Toast'
 import { FieldGroup, type HookInfo } from './SettingsShared'
 import { writeClipboard } from '../../lib/clipboard'
 import { removeHookWithUndo } from '../../lib/hookRemoval'
+import { requestRunInTerminal } from '../../lib/terminalRunner'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -150,6 +151,20 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                               className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
                             >
                               {t('settings.hookCopy')}
+                            </button>
+                            {/* Pasting into some other terminal is the one
+                                part of an engagement RedLog does not record.
+                                This types the line into RedLog's own shell —
+                                without pressing Enter, because some of these
+                                start long-running processes and some kill
+                                them by PID. */}
+                            <button
+                              data-testid="hook-step-run"
+                              onClick={() => requestRunInTerminal(step.command!)}
+                              title={t('settings.hookRunHint')}
+                              className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
+                            >
+                              {t('settings.hookRun')}
                             </button>
                           </div>
                         )}

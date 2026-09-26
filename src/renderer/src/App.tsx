@@ -31,6 +31,7 @@ import { parseTarget } from './lib/navigation'
 import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
+import { onRunInTerminal } from './lib/terminalRunner'
 import { FilterBar } from './components/FilterBar'
 import { ActiveTargetControl } from './components/ActiveTargetControl'
 import { LegacyHookBanner, RuntimeReadinessHost } from './components/RuntimeReadiness'
@@ -49,6 +50,11 @@ type View = SidebarViewId | 'settings'
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
+
+  // A setup command sent from Settings needs the terminal on screen to
+  // receive it. The command itself is held by lib/terminalRunner until the
+  // view mounts, so this only has to do the navigating.
+  useEffect(() => onRunInTerminal(() => setView('terminal')), [])
   // Event to focus when the Timeline opens (set when jumping from Loot); cleared
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
