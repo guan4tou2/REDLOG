@@ -87,7 +87,7 @@ The first engagement, in the order that proves capture works:
    directory. Output is not; for that use the built-in terminal,
    `redlog-run <cmd>`, or a `redlog-session` recorded shell.
 4. **Optionally, start HTTP capture.** **Start HTTP capture** on the Dashboard
-   (or Settings ▸ Proxy & browser) runs a local mitmproxy with RedLog's addon;
+   (or Settings ▸ Browser & HTTP capture) runs a local mitmproxy with RedLog's addon;
    the one-click proxied browser goes through it. Trust the mitmproxy CA for
    HTTPS. *Route new terminals through HTTP capture* (same page, off by
    default) sets `HTTP_PROXY` / `HTTPS_PROXY` for built-in terminals opened
