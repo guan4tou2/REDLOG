@@ -94,36 +94,78 @@ function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element 
       ) : !data ? (
         <p className="text-xs text-redlog-text-dim">{t('common.loading')}</p>
       ) : (
-        <ul className="divide-y divide-redlog-border/50">
-          {runtime.map((c) => (
-            <Row key={c.id} mark={c.found ? '✓' : '✕'} label={c.id}>
-              {!c.found && c.remediation && <CopyCommand command={c.remediation} />}
-            </Row>
-          ))}
-          <Row
-            mark={data.shell && shellFound ? '✓' : '○'}
-            label={t('readiness.shell')}
-            detail={data.shell ? SHELL_LABEL[data.shell.name] ?? data.shell.name : t('readiness.shellNone')}
-          />
-          {mitm && (
-            <Row mark={mitm.found ? '✓' : '○'} label="mitmproxy" detail={mitm.found ? undefined : t('readiness.optional')}>
-              {!mitm.found && (
-                <>
-                  <p className="text-xs text-redlog-text-dim">{t('readiness.mitmOptional')}</p>
-                  {mitm.remediation && <CopyCommand command={mitm.remediation} />}
-                </>
-              )}
-            </Row>
+        <>
+          {/* What command capture needs, and nothing else. An optional
+              integration listed at the same visual weight reads as "something
+              here is not finished installing" on a machine that is in fact
+              ready. */}
+          <p className="text-xs text-redlog-text-faint uppercase tracking-wider mb-1">
+            {t('readiness.commandsHeading')}
+          </p>
+          <ul className="divide-y divide-redlog-border/50">
+            {runtime.map((c) => (
+              <Row key={c.id} mark={c.found ? '✓' : '✕'} label={c.id}>
+                {!c.found && c.remediation && <CopyCommand command={c.remediation} />}
+              </Row>
+            ))}
+            <Row
+              mark={data.shell && shellFound ? '✓' : '○'}
+              label={t('readiness.shell')}
+              detail={data.shell ? SHELL_LABEL[data.shell.name] ?? data.shell.name : t('readiness.shellNone')}
+            />
+            {data.legacyHooks.length > 0 && (
+              <Row
+                mark="!"
+                label={t('readiness.legacy')}
+                detail={t('readiness.legacyFound', { count: data.legacyHooks.length })}
+              />
+            )}
+          </ul>
+          {runtimeMissing.length === 0 && (
+            <p data-testid="readiness-core-ok" className="mt-2 text-xs text-emerald-400">
+              {t('readiness.coreReady')}
+            </p>
           )}
-          <Row
-            mark={data.legacyHooks.length ? '!' : '○'}
-            label={t('readiness.legacy')}
-            detail={data.legacyHooks.length ? t('readiness.legacyFound', { count: data.legacyHooks.length }) : t('readiness.legacyNone')}
-          />
-        </ul>
+          {mitm && (
+            <div className="mt-3 pt-2 border-t border-redlog-border/50">
+              <p className="text-xs text-redlog-text-faint uppercase tracking-wider mb-1">
+                {t('readiness.httpHeading')}
+              </p>
+              <ul className="divide-y divide-redlog-border/50">
+                <Row
+                  mark={mitm.found ? '✓' : '○'}
+                  label="mitmproxy"
+                  detail={mitm.found ? undefined : t('readiness.mitmNotYet')}
+                >
+                  {!mitm.found && (
+                    <>
+                      <p className="text-xs text-redlog-text-dim">{t('readiness.mitmWhen')}</p>
+                      {mitm.remediation && <CopyCommand command={mitm.remediation} />}
+                    </>
+                  )}
+                </Row>
+              </ul>
+              {mitm.found && (
+                <p data-testid="readiness-http-ok" className="mt-1 text-xs text-emerald-400">
+                  {t('readiness.httpReady')}
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
+      {/* This used to say the RedLog terminal still records. It does not
+          record COMMANDS: the built-in terminal sources the same POSIX adapter
+          an external shell does, and that adapter builds each event with
+          python3 and posts it with curl. Without them the pane opens, the
+          screen output is captured to the .cast, and session start/end land —
+          but no command row reaches the Timeline, and the first-run screen
+          deliberately ignores session rows, so the operator is told to run a
+          command and nothing ever happens. */}
       {runtimeMissing.length > 0 && (
-        <p className="mt-2 text-xs text-amber-300">{t('readiness.runtimeMissing')}</p>
+        <p data-testid="readiness-runtime-missing" className="mt-2 text-xs text-amber-300">
+          {t('readiness.runtimeMissing')}
+        </p>
       )}
       <div className="mt-3 flex justify-end gap-2">
         <Button level="quiet" onClick={recheck}>{t('readiness.recheck')}</Button>
