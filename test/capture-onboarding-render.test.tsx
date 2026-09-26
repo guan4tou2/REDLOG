@@ -59,12 +59,31 @@ describe('CaptureHealthCard onboarding', () => {
     expect(el.querySelectorAll('ol').length, 'a numbered list implies a sequence').toBe(0)
     const text = el.textContent ?? ''
     expect(text).toMatch(/Commands/)
-    expect(text).toMatch(/Traffic/)
+    expect(text).toMatch(/HTTP\(S\) requests/)
     expect(text).toMatch(/Screen & files/)
     // The command group still holds the three, in the group's own order.
     const groups = [...el.querySelectorAll('ul')]
     expect(groups.length).toBeGreaterThanOrEqual(3)
     expect(groups[0].textContent).toMatch(/Shell hook/)
+  })
+
+  it('puts HTTP(S) at the same level as Commands, above "Additional sources"', () => {
+    // The whole point of the restructure. HTTP(S) used to be one line inside a
+    // "Traffic" group listed third, beside the browser console — and an
+    // operator who skims the top of a list and starts wiring reads that as
+    // "requests are a nice-to-have". On a web assessment the requests ARE the
+    // engagement record.
+    const text = draw(DARK).textContent ?? ''
+    const commands = text.indexOf('Commands')
+    const http = text.indexOf('HTTP(S) requests')
+    const additional = text.indexOf('Additional sources')
+    const screen = text.indexOf('Screen & files')
+    expect(commands).toBeGreaterThanOrEqual(0)
+    expect(http).toBeGreaterThan(commands)
+    expect(additional).toBeGreaterThan(http)
+    expect(screen).toBeGreaterThan(additional)
+    // And it says what installing it buys, because "mitmproxy" alone does not.
+    expect(text).toMatch(/requests and responses from any proxied tool/)
   })
 
   it('surfaces "Install shell hook" as the primary CTA when nothing is wired', () => {

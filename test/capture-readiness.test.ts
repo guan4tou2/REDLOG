@@ -63,15 +63,20 @@ describe('computeCaptureReadiness', () => {
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
-    expect(r.groups.map((g) => g.id)).toEqual(['commands', 'traffic', 'artifacts'])
+    expect(r.groups.map((g) => g.id)).toEqual(['commands', 'http', 'traffic', 'artifacts'])
     expect(r.groups.find((g) => g.id === 'commands')?.steps.map((s) => s.id).sort())
       .toEqual([...CORE].sort())
     // Traffic and artefacts are in the model now, not excluded from it.
     expect(r.steps.map((s) => s.id)).toContain('mitmproxy')
     expect(r.steps.map((s) => s.id)).toContain('screenshot')
+    // Exactly two groups are core, and HTTP is one of them. The rest annotate
+    // an engagement; these two constitute one.
+    expect(r.groups.filter((g) => g.core).map((g) => g.id)).toEqual(['commands', 'http'])
+    expect(r.steps.find((s) => s.id === 'mitmproxy')?.core).toBe(true)
+    expect(r.steps.find((s) => s.id === 'screenshot')?.core).toBe(false)
   })
 
-  it('is recording when traffic alone is feeding the timeline', () => {
+  it('is recording when HTTP alone is feeding the timeline', () => {
     // The case the ordered model got wrong: events are landing, so the app is
     // not dark, whatever the shell hook is doing.
     const h = health([
@@ -80,7 +85,7 @@ describe('computeCaptureReadiness', () => {
     ], { verdict: 'partial' })
     const r = computeCaptureReadiness(h)
     expect(r.level).toBe('recording')
-    expect(r.groups.find((g) => g.id === 'traffic')?.activeCount).toBe(1)
+    expect(r.groups.find((g) => g.id === 'http')?.activeCount).toBe(1)
   })
 
   it('counts an installed-but-silent hook as wired, and points at the next unset source', () => {
@@ -180,7 +185,7 @@ describe('computeCaptureReadiness', () => {
     expect(r.level).toBe('setup')
     // No core step needs setup any more, so the next step is the first wired
     // source, waiting for activity — the UI copy becomes "run a command".
-    expect(r.steps.filter((s) => s.core).every((s) => s.status === 'wired')).toBe(true)
+    expect(r.steps.filter((s) => s.group === 'commands').every((s) => s.status === 'wired')).toBe(true)
     expect(r.nextStep?.id).toBe('shell-hook')
     expect(r.nextStep?.status).toBe('wired')
   })
