@@ -341,6 +341,17 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                 {/* Why it failed, not just that it did — the operator cannot
                     act on a red dot alone. */}
                 {s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+
+                {/* Which streams this row is actually carrying. `mitmproxy`
+                    covers HTTP and DNS, and they are two processes: an
+                    operator who started the proxy assumes DNS came with it. */}
+                {s.streams && (s.streams.http || s.streams.dns) && (
+                  <span data-testid={`capture-streams-${s.id}`} className="block text-redlog-text-faint">
+                    {s.streams.http && s.streams.dns
+                      ? t('capture.streamsBoth')
+                      : s.streams.http ? t('capture.streamsHttpOnly') : t('capture.streamsDnsOnly')}
+                  </span>
+                )}
               </span>
               <span className="text-redlog-text-faint text-xs">
                 {s.state === 'off'

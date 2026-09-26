@@ -441,6 +441,9 @@ interface CaptureSourceInfo {
   state: 'active' | 'idle' | 'absent' | 'off' | 'error'
   /** Why the capture failed, while the failure is still live. */
   lastError?: { at: number; message: string }
+  /** For a source carrying more than one stream (mitmproxy: HTTP and DNS),
+   *  which of them are actually feeding. */
+  streams?: Record<string, boolean>
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */

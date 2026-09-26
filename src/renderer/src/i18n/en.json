@@ -1333,5 +1333,8 @@
   "readiness.httpHeading": "HTTP(S) capture",
   "readiness.httpReady": "This machine can capture HTTP and HTTPS.",
   "readiness.mitmNotYet": "not installed yet",
-  "readiness.mitmWhen": "Needed for web work. Skip it for an engagement that has none — nothing else depends on it."
+  "readiness.mitmWhen": "Needed for web work. Skip it for an engagement that has none — nothing else depends on it.",
+  "capture.streamsBoth": "HTTP + DNS",
+  "capture.streamsHttpOnly": "HTTP only — DNS mode is not running",
+  "capture.streamsDnsOnly": "DNS only — the HTTP proxy is not running"
 }

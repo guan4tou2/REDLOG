@@ -1333,5 +1333,8 @@
   "readiness.httpHeading": "HTTP(S) 擷取",
   "readiness.httpReady": "這台機器可以擷取 HTTP 與 HTTPS。",
   "readiness.mitmNotYet": "尚未安裝",
-  "readiness.mitmWhen": "做 Web 測試時需要。這場沒有 Web 就略過 —— 其他功能都不依賴它。"
+  "readiness.mitmWhen": "做 Web 測試時需要。這場沒有 Web 就略過 —— 其他功能都不依賴它。",
+  "capture.streamsBoth": "HTTP + DNS",
+  "capture.streamsHttpOnly": "只有 HTTP —— DNS 模式沒有在跑",
+  "capture.streamsDnsOnly": "只有 DNS —— HTTP proxy 沒有在跑"
 }
