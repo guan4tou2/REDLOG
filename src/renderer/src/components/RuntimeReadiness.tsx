@@ -99,6 +99,9 @@ function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element 
               integration listed at the same visual weight reads as "something
               here is not finished installing" on a machine that is in fact
               ready. */}
+          <p className="text-xs text-redlog-text-faint uppercase tracking-wider mb-1">
+            {t('readiness.commandsHeading')}
+          </p>
           <ul className="divide-y divide-redlog-border/50">
             {runtime.map((c) => (
               <Row key={c.id} mark={c.found ? '✓' : '✕'} label={c.id}>
@@ -123,15 +126,30 @@ function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element 
               {t('readiness.coreReady')}
             </p>
           )}
-          {mitm && !mitm.found && (
+          {mitm && (
             <div className="mt-3 pt-2 border-t border-redlog-border/50">
               <p className="text-xs text-redlog-text-faint uppercase tracking-wider mb-1">
-                {t('readiness.optionalHeading')}
+                {t('readiness.httpHeading')}
               </p>
-              <Row mark="○" label="mitmproxy" detail={t('readiness.optional')}>
-                <p className="text-xs text-redlog-text-dim">{t('readiness.mitmOptional')}</p>
-                {mitm.remediation && <CopyCommand command={mitm.remediation} />}
-              </Row>
+              <ul className="divide-y divide-redlog-border/50">
+                <Row
+                  mark={mitm.found ? '✓' : '○'}
+                  label="mitmproxy"
+                  detail={mitm.found ? undefined : t('readiness.mitmNotYet')}
+                >
+                  {!mitm.found && (
+                    <>
+                      <p className="text-xs text-redlog-text-dim">{t('readiness.mitmWhen')}</p>
+                      {mitm.remediation && <CopyCommand command={mitm.remediation} />}
+                    </>
+                  )}
+                </Row>
+              </ul>
+              {mitm.found && (
+                <p data-testid="readiness-http-ok" className="mt-1 text-xs text-emerald-400">
+                  {t('readiness.httpReady')}
+                </p>
+              )}
             </div>
           )}
         </>

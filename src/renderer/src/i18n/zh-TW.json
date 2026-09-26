@@ -1328,5 +1328,10 @@
   "settings.hookRun": "在終端機執行",
   "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。",
   "readiness.coreReady": "這台機器可以記錄 shell 指令。",
-  "readiness.optionalHeading": "選用整合"
+  "readiness.optionalHeading": "選用整合",
+  "readiness.commandsHeading": "指令擷取",
+  "readiness.httpHeading": "HTTP(S) 擷取",
+  "readiness.httpReady": "這台機器可以擷取 HTTP 與 HTTPS。",
+  "readiness.mitmNotYet": "尚未安裝",
+  "readiness.mitmWhen": "做 Web 測試時需要。這場沒有 Web 就略過 —— 其他功能都不依賴它。"
 }

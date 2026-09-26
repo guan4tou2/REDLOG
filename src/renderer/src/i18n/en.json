@@ -1328,5 +1328,10 @@
   "settings.hookRun": "Run in terminal",
   "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command.",
   "readiness.coreReady": "RedLog can record commands on this machine.",
-  "readiness.optionalHeading": "Optional integrations"
+  "readiness.optionalHeading": "Optional integrations",
+  "readiness.commandsHeading": "Command capture",
+  "readiness.httpHeading": "HTTP(S) capture",
+  "readiness.httpReady": "This machine can capture HTTP and HTTPS.",
+  "readiness.mitmNotYet": "not installed yet",
+  "readiness.mitmWhen": "Needed for web work. Skip it for an engagement that has none — nothing else depends on it."
 }

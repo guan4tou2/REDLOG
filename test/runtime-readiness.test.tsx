@@ -96,7 +96,12 @@ describe('first-launch readiness', () => {
       ]
     }))
     mount(<RuntimeReadinessHost firstLaunch />)
-    await screen.findByText(/Web 流量擷取需要 mitmproxy，可稍後安裝/)
+    // HTTP(S) capture is a core capability with an optional runtime, not an
+    // optional integration: it sits in its own named group beside command
+    // capture, and the copy that goes with it says when it is needed rather
+    // than that it is secondary.
+    await screen.findByText(/HTTP\(S\) 擷取/)
+    await screen.findByText(/做 Web 測試時需要/)
     expect(screen.queryByText(/要記錄你自己的終端需要 python3 與 curl/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /uv tool install mitmproxy/ }))
     await waitFor(() => expect(copy).toHaveBeenCalledWith('uv tool install mitmproxy'))

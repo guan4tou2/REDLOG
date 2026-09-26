@@ -111,6 +111,6 @@ describe('the readiness panel says what a missing runtime actually costs', () =>
       { id: 'mitmdump', found: false, neededFor: ['mitmproxy'] }
     ])
     expect(await screen.findByTestId('readiness-core-ok')).not.toBeNull()
-    expect(screen.getByText(/Optional integrations|選用整合/)).not.toBeNull()
+    expect(screen.getByText(/HTTP\(S\) capture|HTTP\(S\) 擷取/)).not.toBeNull()
   })
 })
