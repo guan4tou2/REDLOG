@@ -1270,7 +1270,7 @@
   "settings.clipboardScopeWarn": "Samples everything you copy on this machine, in or out of scope, for as long as the engagement is open.",
   "settings.packRemoved": "This pack is disabled in Plugins, so it records nothing in any project. Enable it there to use it.",
   "settings.packHostMonitors": "Pack: Host monitors",
-  "settings.packHostMonitorsHint": "Programs that ran, connections they held, files that changed, and what was copied — process, connection, file and clipboard monitors. Off by default.",
+  "settings.packHostMonitorsHint": "Includes process, connection and file monitoring: the programs that ran, their connections, and the files that changed. The clipboard is in this pack too, but it is never turned on with it — it records only if you tick it below. Off by default.",
   "settings.packAiAgents": "Pack: AI agents",
   "settings.packAiAgentsHint": "Claude Code, Codex and OpenCode sessions, turn by turn. Transcripts can include unrelated work, so this is off until you turn it on. Tuning is on the Agents page.",
   "settings.packWindowsOutput": "Pack: Windows terminal output",
@@ -1366,5 +1366,9 @@
   "firstRun.http.verifyFromTool": "Or check the tool you will actually use:",
   "firstRun.http.verifyNoInsecure": "No -k / --insecure: HTTPS passes only if this tool trusts RedLog’s CA. Turning certificate checks off would prove nothing.",
   "firstRun.http.reason.caRejected": "A client refused RedLog’s certificate: it does not trust the CA yet — see “HTTPS certificate” below.",
-  "httpCapture.caTrustStores": "Each tool has its own proxy setting and its own trust store: curl and wget read the system store; Python requests uses certifi (REQUESTS_CA_BUNDLE); Node needs NODE_EXTRA_CA_CERTS; Java uses its keystore; Firefox keeps its own. Trust it where each tool looks — do not switch certificate checks off."
+  "httpCapture.caTrustStores": "Each tool has its own proxy setting and its own trust store: curl and wget read the system store; Python requests uses certifi (REQUESTS_CA_BUNDLE); Node needs NODE_EXTRA_CA_CERTS; Java uses its keystore; Firefox keeps its own. Trust it where each tool looks — do not switch certificate checks off.",
+  "settings.packMemberOptIn": "Not recorded until you tick it. Turning the pack on does not turn this on.",
+  "app.closeSaveFailed": "A settings change could not be saved to this project, so it was not closed. Check the settings and try again.",
+  "settings.loadFailedTitle": "Settings could not be read",
+  "settings.loadFailedWhy": "The project’s configuration did not load, so nothing here can be shown or changed yet."
 }

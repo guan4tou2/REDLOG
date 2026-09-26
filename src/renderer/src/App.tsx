@@ -32,6 +32,7 @@ import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { onRunInTerminal } from './lib/terminalRunner'
+import { closeProjectAfterSaves } from './lib/pendingSaves'
 import { FilterBar } from './components/FilterBar'
 import { ActiveTargetControl } from './components/ActiveTargetControl'
 import { LegacyHookBanner, RuntimeReadinessHost } from './components/RuntimeReadiness'
@@ -181,7 +182,14 @@ export default function App(): JSX.Element {
           className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
-            await window.redlog.project.close()
+            // Pending settings go to THIS project before it closes (#223).
+            // Closing first let the flush arrive with no project open, where
+            // it was refused and nothing said so. A failed save keeps the
+            // project open, with the change still on screen to retry.
+            if (!(await closeProjectAfterSaves())) {
+              toast(t('app.closeSaveFailed'), 'error')
+              return
+            }
             setProject(null)
           }}
           title={t('app.closeProject')}
