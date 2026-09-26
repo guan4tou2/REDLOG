@@ -24,15 +24,13 @@ const SRC = R('src/renderer/src/components/Settings.tsx')
 const SETTINGS_DIR = path.join(ROOT, 'src/renderer/src/components/settings')
 
 const PAGES = [
-  'hooks', 'agents', 'captureControl',
-  'scope', 'network',
-  'integrity',
-  'plugins',
-  'general', 'hud'
+  'hooks', 'agents', 'captureControl', 'browser',
+  'scope', 'network', 'integrity',
+  'general', 'hud', 'plugins'
 ]
 
 describe('settings information architecture', () => {
-  it('declares nine pages as a union', () => {
+  it('declares every page in the union', () => {
     // CRLF-safe: .tsx files check out with \r\n on Windows (.gitattributes only
     // pins .sh/.py to LF), so a bare \n\n never matches there — the same
     // line-ending trap the repo hit once before with path.sep.
@@ -53,10 +51,34 @@ describe('settings information architecture', () => {
   it('offers every declared page in the left list', () => {
     // And the reverse: content reachable by no list entry is content nobody
     // finds.
-    const listed = [...SRC.matchAll(/id: '(\w+)' as SettingsPage|\{ id: '(\w+)',/g)]
+    //
+    // No filtering against PAGES first: that let a page missing from this list
+    // (browser, for a whole release) pass unchecked. An entry the list does
+    // not know about has to fail here, so the next page added cannot slip
+    // past the two checks above the same way.
+    const listed = [...SRC.matchAll(/id: '(\w+)' as SettingsPage|\{ id: '(\w+)', label:/g)]
       .map((m) => m[1] ?? m[2])
-      .filter((id) => PAGES.includes(id))
     expect([...new Set(listed)].sort()).toEqual([...PAGES].sort())
+  })
+
+  it('puts no heading over a single page', () => {
+    // A heading with one entry under it groups nothing and costs a row of
+    // scanning. Evidence and Collaboration were both that.
+    const block = /const groups:[\s\S]*?\r?\n  \]\r?\n/.exec(SRC)
+    expect(block, 'settings groups not found').not.toBeNull()
+    const sizes = [...block![0].matchAll(/pages: \[([\s\S]*?)\]/g)]
+      .map((m) => (m[1].match(/\{ id: '/g) ?? []).length)
+    expect(sizes.length).toBeGreaterThan(0)
+    expect(sizes.filter((n) => n < 2)).toEqual([])
+  })
+
+  it('names the network page for what is left on it', () => {
+    // Browser and HTTP capture moved to their own page. A label still
+    // promising them sent operators to the wrong place first.
+    const en = JSON.parse(R('src/renderer/src/i18n/en.json')) as Record<string, string>
+    const zh = JSON.parse(R('src/renderer/src/i18n/zh-TW.json')) as Record<string, string>
+    expect(en['settings.pageNetwork']).not.toMatch(/browser|proxy/i)
+    expect(zh['settings.pageNetwork']).not.toMatch(/瀏覽器|代理/)
   })
 
   it('keeps exporting out of settings', () => {

@@ -110,6 +110,48 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
   )
 }
 
+/** Both core captures, always named, each with its own state. Commands is
+ *  complete when a command source is active; HTTP(S) speaks the single HTTP
+ *  vocabulary from httpCaptureState. */
+function CoreCaptureLine({ readiness, http, t }: {
+  readiness: ReturnType<typeof computeCaptureReadiness>
+  http: HttpCaptureState
+  t: (key: string) => string
+}): JSX.Element {
+  const commands = readiness.groups.find((g) => g.id === 'commands')
+  const cmd: 'active' | 'wired' | 'todo' = !commands ? 'todo'
+    : commands.activeCount > 0 ? 'active'
+      : commands.steps.some((s) => s.status === 'wired') ? 'wired' : 'todo'
+  const mark = (state: 'done' | 'partial' | 'missing' | 'failed'): { mark: string; cls: string } =>
+    state === 'done' ? { mark: '●', cls: 'text-emerald-500' }
+      : state === 'partial' ? { mark: '◐', cls: 'text-amber-500' }
+        : state === 'failed' ? { mark: '!', cls: 'text-red-400' }
+          : { mark: '!', cls: 'text-amber-500' }
+  const cmdMark = mark(cmd === 'active' ? 'done' : cmd === 'wired' ? 'partial' : 'missing')
+  const httpMark = mark(
+    http === 'active' ? 'done'
+      : http === 'idle' || http === 'listening' || http === 'starting' ? 'partial'
+        : http === 'failed' ? 'failed' : 'missing'
+  )
+  return (
+    <div data-testid="capture-core" className="mb-3">
+      <p className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider mb-1">{t('capture.core.heading')}</p>
+      <ul className="space-y-1 text-xs">
+        <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
+          <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
+          <span className="flex-1 text-redlog-text">{t('capture.group.commands')}</span>
+          <span className="text-redlog-text-faint">{t(`capture.core.commands.${cmd}`)}</span>
+        </li>
+        <li data-testid="capture-core-http" data-state={http} className="flex items-center gap-2">
+          <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
+          <span className="flex-1 text-redlog-text">{t('capture.group.http')}</span>
+          <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>
+        </li>
+      </ul>
+    </div>
+  )
+}
+
 function Group({ group, glyph, t, STEP_LABEL }: {
   group: ReturnType<typeof computeCaptureReadiness>['groups'][number]
   glyph: (status: string) => { mark: string; cls: string }
@@ -369,6 +411,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             <span className={`text-xs font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
           </div>
         </div>
+        {/* #217: once anything is recording, the onboarding block below goes
+            away — and with it the only place the two core captures were
+            named. An operator who left first-run with Commands verified and
+            HTTP(S) not set up must keep seeing that, not have it fold into an
+            exception list that only shows sources which were switched on. */}
+        {readiness.level === 'recording' && (
+          <CoreCaptureLine readiness={readiness} http={http} t={t} />
+        )}
         {readiness.level !== 'recording' && (
           <CaptureOnboarding
             readiness={readiness}
