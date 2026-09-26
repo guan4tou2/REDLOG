@@ -1282,7 +1282,7 @@
   "readiness.legacy": "Old RedLog hook",
   "readiness.legacyNone": "none",
   "readiness.legacyFound": "found in {{count}} line(s) — update it from the banner",
-  "readiness.runtimeMissing": "The RedLog terminal still records; recording your own terminal needs python3 and curl.",
+  "readiness.runtimeMissing": "RedLog's terminal still opens and its screen output is still recorded — but no command will reach the Timeline until python3 and curl are installed. The built-in terminal sources the same adapter your own shell does.",
   "readiness.recheck": "Re-check",
   "readiness.start": "Get started",
   "readiness.copy": "copy",
