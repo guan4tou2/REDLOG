@@ -418,6 +418,21 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
     expect(screen.getByTestId('record-terminal-session-command').textContent).toBe('redlog-session')
   })
 
+  // #218: "connected" proves the hook. The output check proves output.
+  it('verifies output only when the canary text arrives in stdout, and says when only metadata did', async () => {
+    install()
+    draw()
+    await verifyShell()
+    const cmd = (await screen.findByTestId('record-terminal-output-command')).textContent ?? ''
+    expect(cmd).toMatch(/^redlog-run printf '%s-%s\\n' redlog-out \S+$/)
+    const nonce = cmd.split(' ').at(-1)!
+    // The plain hook recorded the line, not what it printed.
+    emit([{ id: 'm1', timestamp: 20, agentType: 'shell', data: { subtype: 'command_end', command: `printf '%s-%s\\n' redlog-out ${nonce}`, exit_code: 0 } }])
+    expect((await screen.findByTestId('record-terminal-output-metadata-only')).textContent).toContain('只收到指令本身')
+    emit([{ id: 'o1', timestamp: 21, agentType: 'shell', data: { subtype: 'command_end', command: cmd, stdout: `redlog-out-${nonce}\n`, captured_by: 'redlog-run' } }])
+    expect((await screen.findByTestId('record-terminal-output-verified')).textContent).toContain('redlog-run')
+  })
+
   it('does not offer redlog-session for PowerShell, which has no such command', async () => {
     install({ pre: preflight({ platform: 'win32', shell: { name: 'powershell', hookId: 'shell-powershell' } }) })
     draw()

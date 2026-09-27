@@ -143,4 +143,25 @@ finally:
     expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
     expect(r.events.at(-1)?.pausedBytes).toBeGreaterThan(0)
   })
+
+  // #218: a session inside a session records the same bytes twice. The
+  // recorder refuses unless told the outer one has ended.
+  it('refuses to start a second recorder inside a session, unless --nested', async () => {
+    const run = (args: string[]): Promise<{ code: number | null; stderr: string }> => new Promise((resolve) => {
+      const child = spawn('python3', ['hooks/redlog-session.py', ...args, '--', 'true'], {
+        env: { ...process.env, REDLOG_EXTERNAL_SESSION: '1', HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-nest-')) }
+      })
+      let stderr = ''
+      child.stderr.on('data', (b) => { stderr += b })
+      child.on('close', (code) => resolve({ code, stderr }))
+    })
+    const refused = await run([])
+    expect(refused.code).toBe(2)
+    expect(refused.stderr).toContain('already inside a redlog-session')
+    // With --nested it gets past the guard (and then fails for want of a
+    // RedLog to talk to, which is a different message).
+    const nested = await run(['--nested'])
+    expect(nested.stderr).not.toContain('already inside a redlog-session')
+  })
+
 })

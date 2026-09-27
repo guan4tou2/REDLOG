@@ -1390,5 +1390,9 @@
   "terminal.sessionTargetUnbind": "Follow current target",
   "terminal.sessionTargetBound": "target: {{target}}",
   "terminal.sessionTargetFollows": "follows current target",
-  "terminal.sessionTargetHint": "Bind this terminal to a target. Its commands, markers and screenshots are attributed to it even when the current target changes; a host named in a command still wins. External shells: export REDLOG_TARGET=<host>."
+  "terminal.sessionTargetHint": "Bind this terminal to a target. Its commands, markers and screenshots are attributed to it even when the current target changes; a host named in a command still wins. External shells: export REDLOG_TARGET=<host>.",
+  "firstRun.record.outputCheck": "Check that output is kept — run this in that terminal:",
+  "firstRun.record.outputCheckSession": "Or inside a redlog-session shell run: {{command}}",
+  "firstRun.record.outputVerified": "✓ Output recorded (via {{via}})",
+  "firstRun.record.outputMetadataOnly": "Only the command arrived — its output was not recorded. Run it behind redlog-run, or inside redlog-session."
 }
