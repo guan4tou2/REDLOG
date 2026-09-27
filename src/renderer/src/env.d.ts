@@ -333,6 +333,8 @@ interface RedLogAPI {
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
+    /** Show a finished export in the file manager (paths inside the project only). */
+    revealExport: (target: string) => Promise<boolean>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. */

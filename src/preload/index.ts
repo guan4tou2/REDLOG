@@ -208,7 +208,8 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input)
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    revealExport: (target: string) => ipcRenderer.invoke('data:revealExport', target) as Promise<boolean>
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

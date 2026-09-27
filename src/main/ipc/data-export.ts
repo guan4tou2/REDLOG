@@ -1,4 +1,5 @@
-import type { IpcMain } from 'electron'
+import { shell, type IpcMain } from 'electron'
+import { isInsideDir } from '../../core/paths'
 import path from 'path'
 import fs from 'fs'
 import type { IpcContext } from './types'
@@ -166,6 +167,18 @@ export function registerDataExportIpc(
     } catch (error) {
       return { ok: false as const, error: (error as Error)?.message ?? String(error) }
     }
+  })
+
+  // Show an export the operator just made in the file manager. Only a path
+  // inside the open project's folder — the renderer names the file, it does
+  // not get to open arbitrary locations (UI/UX audit F12).
+  ipcMain.handle('data:revealExport', (_e, target: unknown) => {
+    const project = ctx.getActiveProject()
+    if (!project || typeof target !== 'string') return false
+    const resolved = path.resolve(target)
+    if (!isInsideDir(getProjectPath(project), resolved) || !fs.existsSync(resolved)) return false
+    shell.showItemInFolder(resolved)
+    return true
   })
 
   ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string }) => {

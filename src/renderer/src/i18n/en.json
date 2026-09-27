@@ -1474,5 +1474,9 @@
   "artifacts.dropConfirmYes": "Add as evidence",
   "artifacts.dropHere": "Drop to add as evidence — you will be asked to confirm",
   "app.evidenceShot": "Screenshot (RedLog steps aside for the capture)",
-  "app.evidenceFile": "Add evidence file… (or drop files on the window)"
+  "app.evidenceFile": "Add evidence file… (or drop files on the window)",
+  "export.reveal": "Show in folder",
+  "export.running": "Exporting…",
+  "export.runFailed": "The export did not complete. The preview is kept; nothing was written that you were not shown.",
+  "export.retryResolve": "Recalculate and try again"
 }
