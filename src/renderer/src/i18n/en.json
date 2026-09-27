@@ -1383,5 +1383,12 @@
   "export.attachments.status.included": "included",
   "export.attachments.status.excluded-by-operator": "left out",
   "export.attachments.status.excluded-out-of-scope": "out of scope — dropped",
-  "export.attachments.status.missing": "file missing"
+  "export.attachments.status.missing": "file missing",
+  "terminal.sessionTarget": "This terminal’s target",
+  "terminal.sessionTargetPlaceholder": "10.10.11.5 — empty to follow",
+  "terminal.sessionTargetBind": "Bind",
+  "terminal.sessionTargetUnbind": "Follow current target",
+  "terminal.sessionTargetBound": "target: {{target}}",
+  "terminal.sessionTargetFollows": "follows current target",
+  "terminal.sessionTargetHint": "Bind this terminal to a target. Its commands, markers and screenshots are attributed to it even when the current target changes; a host named in a command still wins. External shells: export REDLOG_TARGET=<host>."
 }

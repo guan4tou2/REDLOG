@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Each terminal can have its own target.** The current target was one
+  global value, so with several panes on several hosts, switching it for one
+  pane re-attributed whatever the others recorded next — a command with no
+  host in it, a marker, a late `command_end`. A built-in terminal tab can now
+  be bound to a target from its toolbar, and an external shell can declare
+  one with `export REDLOG_TARGET=<host>`. Precedence: the event's own target,
+  then a host found in the command, then the session's target, then the
+  global one. Binding and unbinding are recorded as `session_target_changed`
+  events; earlier rows are never rewritten. (#219)
 - **The evidence-bundle preview lists every file, and you can leave any out.**
   It used to give counts only, so there was no way to see which terminal
   recording or screenshot was about to be handed over, or to drop the one

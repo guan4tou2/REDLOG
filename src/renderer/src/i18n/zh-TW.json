@@ -1383,5 +1383,12 @@
   "export.attachments.status.included": "納入",
   "export.attachments.status.excluded-by-operator": "已排除",
   "export.attachments.status.excluded-out-of-scope": "範圍外——不納入",
-  "export.attachments.status.missing": "檔案不見了"
+  "export.attachments.status.missing": "檔案不見了",
+  "terminal.sessionTarget": "這個終端的目標",
+  "terminal.sessionTargetPlaceholder": "10.10.11.5——留空則跟隨",
+  "terminal.sessionTargetBind": "綁定",
+  "terminal.sessionTargetUnbind": "改為跟隨目前目標",
+  "terminal.sessionTargetBound": "目標：{{target}}",
+  "terminal.sessionTargetFollows": "跟隨目前目標",
+  "terminal.sessionTargetHint": "把這個終端綁定到一個目標。之後它的指令、標記與截圖都歸到這個目標，即使切換了目前目標也一樣；指令裡明確寫的主機仍然優先。外部 shell：export REDLOG_TARGET=<主機>。"
 }

@@ -181,6 +181,9 @@ interface RedLogAPI {
   targetContext: {
     get: () => Promise<string | null>
     set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
+    /** #219: a built-in terminal's own target, which outranks the global one. */
+    getSession: (terminalId: string) => Promise<string | null>
+    bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
   }
   hookConfig: {
