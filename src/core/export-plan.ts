@@ -5,7 +5,7 @@ import path from 'path'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
-import { isAttachmentId, type ExportAttachment } from './export-attachments'
+import { isAttachmentId, storedArtifactOf, type ExportAttachment } from './export-attachments'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -82,6 +82,22 @@ export function countReferencedAttachments(events: readonly RedLogEvent[]): numb
 
 /** Resolve the bundle's filesystem attachments from the already-approved,
  * already-redacted Events. Counts files, not Events carrying references. */
+/** Bundle paths of the operator-added artifacts these events carry, minus
+ *  those whose event scope masking drops. */
+export function referencedArtifacts(
+  events: readonly RedLogEvent[],
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean } = {}
+): Set<string> {
+  const out = new Set<string>()
+  for (const event of events) {
+    const stored = storedArtifactOf(event)
+    if (!stored) continue
+    if (options.maskOutOfScope !== false && options.scope && isOutOfScope(event.targetId, options.scope)) continue
+    out.add(stored)
+  }
+  return out
+}
+
 export function countExportAttachments(
   projectDir: string,
   events: readonly RedLogEvent[],
@@ -146,6 +162,12 @@ export function countExportAttachments(
         unattributed++
       }
     }
+  }
+
+  // Operator-added artifacts (#221) travel only with their own event.
+  for (const stored of referencedArtifacts(events, options)) {
+    if (!fs.existsSync(path.join(projectDir, stored))) missing++
+    else if (!dropped(stored)) included++
   }
   return { included, missing, unattributed, excludedByOperator }
 }

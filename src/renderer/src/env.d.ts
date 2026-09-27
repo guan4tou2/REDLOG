@@ -32,13 +32,18 @@ interface ExportRequest {
 /** One file an evidence bundle would carry (core/export-attachments.ts). */
 interface ExportAttachmentRow {
   id: string
-  kind: 'screenshot' | 'cast' | 'httpBody'
+  kind: 'screenshot' | 'cast' | 'httpBody' | 'artifact'
   bytes: number | null
   targets: string[]
   attribution: 'target' | 'cross-target' | 'unattributed'
   status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
   source?: string
 }
+/** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
+type ArtifactAddOutcome =
+  | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
+  | { ok: false; error: 'not-a-file' | 'unreadable' | 'too-large' | 'no-space' | 'copy-failed'; originalPath: string; bytes?: number; detail?: string }
+interface ArtifactAddResponse { canceled: boolean; results: ArtifactAddOutcome[] }
 interface ResolvedExportPlan {
   id: string
   fingerprint: string
@@ -185,6 +190,10 @@ interface RedLogAPI {
     getSession: (terminalId: string) => Promise<string | null>
     bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
+  }
+  /** #221: copy operator-picked local files into the project as evidence. */
+  artifacts: {
+    add: () => Promise<ArtifactAddResponse | null>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>

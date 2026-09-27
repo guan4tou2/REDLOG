@@ -13,7 +13,7 @@ import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSan
 import { BODY_REF_FOR } from './redact-export'
 import { operatorPiiReplacements } from './operator-pii'
 import { getDoNotExportIds } from './db/do-not-export'
-import type { ExportAttachment } from './export-attachments'
+import { isAttachmentId, type ExportAttachment } from './export-attachments'
 
 interface ManifestFile {
   path: string
@@ -53,6 +53,8 @@ interface ManifestPayload {
   attachments?: {
     excludedByOperator: string[]
     casts: Array<{ path: string; targets: string[]; attribution: ExportAttachment['attribution'] }>
+    /** operator-added evidence files (#221) copied into `artifacts/` */
+    artifacts: number
   }
   attachmentScopePolicy?: {
     screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
@@ -264,6 +266,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   const doNotExportIds = getDoNotExportIds()
   const survivingBodyRefs = new Set<string>()
+  // Operator-added artifacts (#221) travel only with an exported event.
+  const survivingArtifacts = new Set<string>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
     if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
@@ -310,6 +314,10 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
           survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
         }
+      }
+      if (agentType === 'file_transfer' && d.subtype === 'artifact_added' && isAttachmentId(d.stored)
+        && d.stored.startsWith('artifacts/') && !(scope && isOutOfScope(row.target_id as string | null, scope))) {
+        survivingArtifacts.add(d.stored)
       }
     } catch { /* parse already failed above; skip */ }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
@@ -514,6 +522,20 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     }
   }
 
+  // 6c. artifacts/ — files the operator added as evidence (#221). Copied
+  // byte-for-byte: the sha256 in the event that added each one must match.
+  let artifactsIncluded = 0
+  for (const id of [...survivingArtifacts].sort()) {
+    if (excluded.has(id)) continue
+    const s = path.join(projectDir, id)
+    if (!fs.existsSync(s) || !fs.statSync(s).isFile()) continue
+    const d = path.join(bundleDir, id)
+    fs.mkdirSync(path.dirname(d), { recursive: true })
+    fs.copyFileSync(s, d)
+    files.push({ path: id, ...sha256File(d) })
+    artifactsIncluded++
+  }
+
   // 6b. agent-transcripts/ — copied ONLY when opts.includeAgentTranscripts.
   // Default-exclude rationale: the raw sidecar `.jsonl` files hold verbatim
   // conversation content (user prompts + assistant responses + tool_use +
@@ -689,7 +711,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       excludedByOperator: [...excluded].sort(),
       casts: (opts.attachments ?? [])
         .filter((a) => a.kind === 'cast' && a.status === 'included')
-        .map((a) => ({ path: a.id, targets: a.targets, attribution: a.attribution }))
+        .map((a) => ({ path: a.id, targets: a.targets, attribution: a.attribution })),
+      artifacts: artifactsIncluded
     },
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
