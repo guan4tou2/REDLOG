@@ -1,24 +1,33 @@
-// Spec 039: what "HTTP capture works" means. A running proxy proves only that
-// mitmdump is listening; the proof is a request the addon delivered to RedLog.
-// The same contract as the shell's nonce: ready → first real event → verified.
-
 import type { RedLogEvent } from '../../../core/db/events'
 
-type HttpCandidate = Pick<RedLogEvent, 'agentType' | 'data'>
-
-export function isHttpCaptureEvent(ev: HttpCandidate): boolean {
-  if (ev.agentType !== 'scanner') return false
-  const sub = ev.data?.subtype
-  return sub === 'http_request_start' || sub === 'http_response'
+export type HttpClient = 'browser' | 'terminal'
+export interface HttpAttempt {
+  client: HttpClient
+  protocol: 'http' | 'https'
+  url: string
+  startedAt: number
 }
 
-export type HttpTimeoutReason = 'browser' | 'ca' | 'terminalsOff' | 'terminalsNew'
+/** One operator-initiated GET probe; never sends traffic or changes trust. */
+export function createHttpAttempt(client: HttpClient, address: string): HttpAttempt {
+  if (address.length > 4096 || /[\x00-\x1f\x7f]/.test(address)) throw new Error('Invalid test URL')
+  const url = new URL(address)
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid test URL')
+  url.hash = ''
+  url.searchParams.set('__redlog_verify', crypto.randomUUID())
+  return { client, protocol: url.protocol === 'https:' ? 'https' : 'http', url: url.href, startedAt: Date.now() }
+}
 
-/** Reasons that apply to this machine's state, most likely first. The browser
- *  is always listed: a browser RedLog did not launch does not use the proxy. */
-export function httpTimeoutReasons(state: { certReady?: boolean; routeTerminals: boolean }): HttpTimeoutReason[] {
-  const reasons: HttpTimeoutReason[] = ['browser']
-  if (state.certReady === false) reasons.push('ca')
-  reasons.push(state.routeTerminals ? 'terminalsNew' : 'terminalsOff')
-  return reasons
+/** A response code proves capture, including HTTP errors; request-only does not. */
+export function matchesHttpAttempt(attempt: HttpAttempt, event: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  return event.agentType === 'scanner' && event.data.subtype === 'http_response' &&
+    event.data.url === attempt.url && Number.isInteger(event.data.status) &&
+    Number(event.data.status) >= 100 && Number(event.data.status) <= 599
+}
+
+export function httpTestCommand(attempt: HttpAttempt, proxy: string, shell: 'posix' | 'powershell'): string {
+  const quote = (s: string): string => "'" + s.replace(/'/g, shell === 'powershell' ? "''" : "'\"'\"'") + "'"
+  // A comma denotes no bypass hosts and survives PowerShell's legacy native
+  // argument handling, which drops an empty quoted argument.
+  return `${shell === 'powershell' ? 'curl.exe' : 'curl'} --proxy ${quote(proxy)} --noproxy ',' --globoff --max-time 30 --url ${quote(attempt.url)}`
 }

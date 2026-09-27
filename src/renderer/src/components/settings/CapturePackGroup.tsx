@@ -1,3 +1,4 @@
+import { isMemberSelected } from '../../../../core/capture-packs'
 import { useEffect, useState, type ReactNode } from 'react'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 
@@ -16,8 +17,8 @@ export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMember
  *  the clipboard is not like the other three — it samples whatever the
  *  operator copies anywhere on the machine, for the length of the engagement.
  *  All-or-nothing turned "I want process and connection monitoring but not my
- *  clipboard" into "then have neither". Absent means on, so a project that
- *  already had the pack on records exactly what it did before. */
+ *  clipboard" into "then have neither". Clipboard now requires explicit
+ *  opt-in; the other members follow the preset. */
 export function PackMember({
   member, title, hint, warn, config, setConfig, t, children
 }: {
@@ -31,7 +32,7 @@ export function PackMember({
   t: (key: string, vars?: Record<string, string | number>) => string
   children?: ReactNode
 }): JSX.Element {
-  const on = config.packMembers?.[member] !== false
+  const on = isMemberSelected(config, member)
   return (
     <div className="mt-2">
       <p className="text-xs font-semibold text-redlog-text-dim">{title}</p>

@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import {
   ExportPlanRegistry,
-  countExportAttachments,
+  resolveExportAttachments,
   countReferencedAttachments,
   createExportPlan,
   normalizeExportRequest,
@@ -104,7 +104,13 @@ describe('ExportPlan domain contract', () => {
       { ...base, id: 'shot-missing', agentType: 'screenshot', data: { filename: 'missing.png' } },
       { ...base, id: 'http', agentType: 'scanner', data: { request_body_ref: { sha256: 'body-ok' }, response_body_ref: { sha256: 'body-missing' } } }
     ]
-    expect(countExportAttachments(dir, events)).toEqual({ included: 4, missing: 2, unattributed: 2 })
+    expect(resolveExportAttachments(dir, events)).toEqual([
+      { path: 'casts/session.cast', bytes: 4, sha256: expect.any(String), unattributed: true },
+      { path: 'http-bodies/body-missing.body', bytes: null, sha256: null, unattributed: false },
+      { path: 'http-bodies/body-ok.body', bytes: 4, sha256: expect.any(String), unattributed: false },
+      { path: 'screenshots/missing.png', bytes: null, sha256: null, unattributed: false },
+      { path: 'screenshots/seen.png', bytes: 5, sha256: expect.any(String), unattributed: false }
+    ])
     expect(countReferencedAttachments(events)).toBe(4)
     fs.rmSync(dir, { recursive: true, force: true })
   })

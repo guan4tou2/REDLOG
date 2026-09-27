@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FilterBar } from '../src/renderer/src/components/FilterBar'
 import { FilterProvider, useSharedFilter, formatTimeRange } from '../src/renderer/src/lib/FilterContext'
 import { toLocalInputValue, fromLocalInputValue, timeRangeError, windowAround } from '../src/renderer/src/lib/timeRangeInput'
@@ -90,8 +90,11 @@ describe('an absolute time range can be asked for', () => {
 // that had become "since 15:03". It names the absolute window now — with the
 // date whenever time-of-day alone would be a puzzle.
 describe('the time chip names the window the query actually holds', () => {
-  beforeEach(() => setDisplayZone('local'))
-  afterEach(() => setDisplayZone('local'))
+  beforeEach(() => {
+    setDisplayZone('local')
+    vi.spyOn(Date, 'now').mockReturnValue(new Date(2026, 8, 27, 12, 0).getTime())
+  })
+  afterEach(() => { setDisplayZone('local'); vi.restoreAllMocks() })
 
   const at = (d: number, h: number, mi = 0): number => new Date(2026, 7, d, h, mi).getTime()
 

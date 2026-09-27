@@ -39,6 +39,24 @@ Removed          uninstalled, with nothing left behind
 established that for the shell hook and HTTP capture; it holds for every
 source. A proxy that is listening has proved nothing about capture.
 
+### HTTP client verification (Spec 040)
+
+The first-run HTTP setup requires an operator-initiated attempt tied to a fresh
+URL identifier, selected client and protocol. Only its complete scanner
+`http_response` with a valid HTTP status verifies that slot. A request event or
+unrelated traffic cannot do so. HTTP errors still prove the response was recorded,
+not that the target operation succeeded. Browser/terminal and HTTP/HTTPS stay
+independent. Retry replaces the token; proxy identity change, unknown status,
+stop and panel unmount invalidate results. A late matching response may complete
+an unreplaced timed-out attempt.
+
+The operator runs the test in the named client; this is not client attestation or
+proof that every tool honors a proxy. A CA file and a captured HTTPS response do
+not establish OS certificate trust. Configured browser certificate bypass must
+be disclosed. Tests never automatically navigate or write into a terminal.
+Certificate metadata must be JSON-compatible, including IP-address SAN values;
+a metadata serialization failure must not silently lose a complete response.
+
 ## Checklist
 
 Any change that adds or alters a capture source answers all of these.

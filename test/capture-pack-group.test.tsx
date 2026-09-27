@@ -37,11 +37,11 @@ describe('CapturePackGroup', () => {
     const seen: ConfigState[] = []
     const { rerender } = render(
       <PackMember member="clipboard" title="Clipboard" hint="hint" warn="in or out of scope"
-        config={{ packMembers: {} } as unknown as ConfigState} setConfig={(c) => seen.push(c)} t={t}>
+        config={{ packMembers: { clipboard: true } } as unknown as ConfigState} setConfig={(c) => seen.push(c)} t={t}>
         <p>clipboard tuning</p>
       </PackMember>
     )
-    // Absent means on: an existing project records what it always did.
+    // Only an explicit clipboard opt-in enables this source.
     expect((screen.getByTestId('pack-member-clipboard') as HTMLInputElement).checked).toBe(true)
     expect(screen.getByText('clipboard tuning')).toBeTruthy()
     // And what it costs is said where it is turned on.
@@ -58,6 +58,16 @@ describe('CapturePackGroup', () => {
     )
     // Tuning for something that is not running is the same lie the pack
     // switch already avoids.
+    expect(screen.queryByText('clipboard tuning')).toBeNull()
+  })
+
+
+  it('shows clipboard off until explicitly selected', () => {
+    render(<PackMember member="clipboard" title="Clipboard" hint="hint"
+      config={{ packMembers: {} } as unknown as ConfigState} setConfig={() => {}} t={t}>
+      <p>clipboard tuning</p>
+    </PackMember>)
+    expect((screen.getByTestId('pack-member-clipboard') as HTMLInputElement).checked).toBe(false)
     expect(screen.queryByText('clipboard tuning')).toBeNull()
   })
 

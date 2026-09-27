@@ -20,6 +20,7 @@
 // which dependency is missing instead of a timer guessing at it.
 
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { toast } from './Toast'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
@@ -62,8 +63,14 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // they open the screen. `both` until they say otherwise, which is the order
   // this screen has always had.
   const [focus, setFocusState] = useState<EngagementFocus>('both')
+  const [focusLoaded, setFocusLoaded] = useState(false)
   useEffect(() => {
-    window.redlog.config.get().then((c) => setFocusState(readFocus(c))).catch(() => {})
+    let current = true
+    window.redlog.config.get()
+      .then(c => { if (current) setFocusState(readFocus(c)) })
+      .catch(() => { if (current) toast(t('settings.loadFailed'), 'error') })
+      .finally(() => { if (current) setFocusLoaded(true) })
+    return () => { current = false }
   }, [])
   const setFocus = (next: EngagementFocus): void => {
     setFocusState(next)
@@ -75,7 +82,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           engagement: { ...(cfg.engagement as Record<string, unknown> ?? {}), focus: next }
         })
       })
-      .catch(() => { /* the screen still works; only the memory of it is lost */ })
+      .then(ok => { if (ok === false) toast(t('toast.saveFailed'), 'error') })
+      .catch(() => toast(t('toast.saveFailed'), 'error'))
   }
 
   // "The check failed" is not "everything is fine". Swallowing the rejection
@@ -152,39 +160,22 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   return (
     <div className="h-full flex flex-col p-4 gap-3 overflow-auto">
       <div>
-        <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-        <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+        <h2 className="text-lg font-semibold text-redlog-text">{t(focus === 'web' ? 'firstRun.webTitle' : 'firstRun.title')}</h2>
+        <p className="text-xs text-redlog-text-dim mt-1">{t(focus === 'web' ? 'firstRun.webHint' : 'firstRun.hint')}</p>
       </div>
 
-      <div className="flex-1 min-h-0 flex gap-3">
-        <div className="flex-1 min-w-0 border border-redlog-border rounded-lg overflow-hidden">
+      <div className="flex flex-col xl:flex-row xl:flex-1 xl:min-h-0 gap-3">
+        {focusLoaded && focus !== 'web' && <div className="h-64 shrink-0 xl:h-auto xl:flex-1 min-w-0 border border-redlog-border rounded-lg overflow-hidden">
           <Suspense fallback={<div className="h-full bg-redlog-surface animate-pulse" />}>
             <TerminalView />
           </Suspense>
-        </div>
+        </div>}
 
         <div
-          className="w-[340px] shrink-0 border border-redlog-border rounded-lg p-3 overflow-auto"
+          className={`${focus === 'web' ? 'flex-1 min-w-0' : 'w-full xl:w-[340px] shrink-0'} border border-redlog-border rounded-lg p-3 overflow-auto`}
           data-testid="first-run-strip"
           data-first-run-lit={lit ? 'true' : 'false'}
         >
-          {lit ? (
-            <>
-              <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
-                {t('firstRun.recording')}
-              </p>
-              <ul className="space-y-1 mb-3">
-                {rows.map((e) => (
-                  <li key={e.id} className="flex items-baseline gap-2 text-xs">
-                    <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
-                      {formatTime(e.timestamp, { seconds: true })}
-                    </span>
-                    <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-redlog-text mb-2">{t('firstRun.recordedOk')}</p>
-
               {/* What kind of engagement this is decides which setup step
                   comes first. A web assessment led through wiring a shell hook
                   it may never use is told, by the layout, that requests are
@@ -196,6 +187,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                     <button
                       key={f}
                       onClick={() => setFocus(f)}
+                      disabled={!focusLoaded}
                       aria-pressed={focus === f}
                       data-testid={`first-run-focus-${f}`}
                       className={`text-xs px-2 py-0.5 rounded border transition-colors ${
@@ -244,6 +236,24 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   )}
                 </div>
               ))}
+          {lit ? (
+            <>
+              <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
+                {t('firstRun.recording')}
+              </p>
+              <ul className="space-y-1 mb-3">
+                {rows.map((e) => (
+                  <li key={e.id} className="flex items-baseline gap-2 text-xs">
+                    <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
+                      {formatTime(e.timestamp, { seconds: true })}
+                    </span>
+                    <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-redlog-text mb-2">{t('firstRun.recordedOk')}</p>
+
+
             </>
           ) : rowsFailed ? (
             // Read failure, not silence. Saying "nothing recorded" here would
@@ -276,8 +286,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           ) : (
             <EmptyState
               icon={TerminalIcon}
-              title={t('firstRun.waitingTitle')}
-              reason={t('firstRun.waitingHint')}
+              title={t(focus === 'web' ? 'firstRun.webWaitingTitle' : 'firstRun.waitingTitle')}
+              reason={t(focus === 'web' ? 'firstRun.webWaitingHint' : 'firstRun.waitingHint')}
             />
           )}
         </div>

@@ -129,12 +129,14 @@ export function exportHar(opts?: {
   scope?: ScopeForSanitize
   doNotExportIds?: Set<string>
   snapshot?: ExportSnapshot
+  /** Already selected and redacted by the approved plan. */
+  events?: readonly RedLogEvent[]
 }): string {
   const rOpts: RedactExportOpts = { scope: opts?.scope, doNotExportIds: opts?.doNotExportIds }
-  const events = redactEventsForExport(queryEvents({
+  const events = opts?.events ?? redactEventsForExport(queryEvents({
     agentType: 'scanner',
     tier: 'logged',
-    limit: opts?.limit ?? 50000,
+    limit: opts?.limit ?? -1,
     since: opts?.since,
     before: opts?.before,
     snapshot: opts?.snapshot,

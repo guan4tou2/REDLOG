@@ -21,24 +21,33 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadError, setLoadError] = useState<'first' | 'more' | null>(null)
+  const generation = useRef(0)
   const triggerFilterRef = useRef(triggerFilter)
   triggerFilterRef.current = triggerFilter
   const { t } = useI18n()
 
   const loadPage = useCallback(async (trigger: string | null) => {
+    const request = ++generation.current
     setLoading(true)
-    const page = await window.redlog.events.queryScreenshotPage({
-      limit: PAGE_SIZE,
-      trigger
-    })
-    setScreenshots(page.items)
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
-    setLoading(false)
+    setLoadingMore(false)
+    setLoadError(null)
+    try {
+      const page = await window.redlog.events.queryScreenshotPage({ limit: PAGE_SIZE, trigger })
+      if (request !== generation.current) return
+      setScreenshots(page.items)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch {
+      if (request === generation.current) setLoadError('first')
+    } finally {
+      if (request === generation.current) setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
     void loadPage(triggerFilter)
+    return () => { generation.current++ }
   }, [triggerFilter, loadPage])
 
   useEffect(() => {
@@ -64,16 +73,25 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
+    const request = generation.current
     setLoadingMore(true)
-    const page = await window.redlog.events.queryScreenshotPage({
-      limit: PAGE_SIZE,
-      cursor: nextCursor,
-      trigger: triggerFilterRef.current
-    })
-    setScreenshots((prev) => [...prev, ...page.items])
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
-    setLoadingMore(false)
+    setLoadError(null)
+    try {
+      const page = await window.redlog.events.queryScreenshotPage({
+        limit: PAGE_SIZE, cursor: nextCursor, trigger: triggerFilterRef.current
+      })
+      if (request !== generation.current) return
+      setScreenshots(prev => {
+        const ids = new Set(prev.map(event => event.id))
+        return [...prev, ...page.items.filter(event => !ids.has(event.id))]
+      })
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch {
+      if (request === generation.current) setLoadError('more')
+    } finally {
+      if (request === generation.current) setLoadingMore(false)
+    }
   }, [nextCursor, loadingMore])
 
   useEffect(() => {
@@ -95,6 +113,14 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
 
   return (
     <div className="p-4 overflow-auto h-full">
+      {loadError && (
+        <div role="alert" data-testid="screenshots-load-failed" className="text-red-400 text-xs mb-3">
+          {t('screenshots.loadFailed')}{' '}
+          <button className="underline" onClick={() => void (loadError === 'more' ? loadMore() : loadPage(triggerFilter))}>
+            {t('settings.save.retry')}
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold text-redlog-text-dim uppercase tracking-wider">
           {t('screenshots.title', { count: screenshots.length })}
@@ -106,7 +132,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           {t('screenshots.captureNow')}
         </button>
       </div>
-      {screenshots.length === 0 && !hasMore ? (
+      {loadError === 'first' ? null : screenshots.length === 0 && !hasMore ? (
         <EmptyState
           icon={Image}
           title={t('screenshots.empty')}

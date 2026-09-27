@@ -10,7 +10,7 @@ import { redactEventForExport, redactEventsForExport, type RedactExportOpts } fr
 import { capabilitiesFor } from '../../core/export-capabilities'
 import {
   ExportPlanRegistry,
-  countExportAttachments,
+  resolveExportAttachments,
   countReferencedAttachments,
   createExportPlan,
   fingerprintValue,
@@ -89,9 +89,14 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     if (request.maskOutOfScope && isOutOfScope(event.targetId, scope)) maskedOutOfScope++
     if (redacted.data !== event.data) sanitized++
   }
-  const attachmentCounts = request.format === 'bundle'
-    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope })
-    : { included: 0, missing: 0, unattributed: 0 }
+  const attachments = request.format === 'bundle'
+    ? resolveExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope })
+    : []
+  const attachmentCounts = {
+    included: attachments.filter(file => file.sha256 !== null).length,
+    missing: attachments.filter(file => file.sha256 === null).length,
+    unattributed: attachments.filter(file => file.sha256 !== null && file.unattributed).length
+  }
   const plan = createExportPlan({
     projectId: project.id,
     request,
@@ -117,6 +122,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents)
     },
     selectedEventIds,
+    attachments,
     selectedEvidenceDigest: fingerprintValue(selectedEvents),
     policyFingerprint: fingerprintValue(cfg)
   })
@@ -180,11 +186,10 @@ export function registerDataExportIpc(
         return { ok: false as const, error: 'policy-changed' }
       }
       if (plan.request.format === 'bundle') {
-        const attachments = countExportAttachments(getProjectPath(project), approvedNow, {
-          scope: plan.scopeSnapshot,
-          maskOutOfScope: plan.request.maskOutOfScope
+        const attachments = resolveExportAttachments(getProjectPath(project), approvedNow, {
+          scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope
         })
-        if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed) {
+        if (fingerprintValue(attachments) !== fingerprintValue(plan.attachments)) {
           return { ok: false as const, error: 'source-unavailable' }
         }
       }
@@ -215,17 +220,12 @@ export function registerDataExportIpc(
           maskOutOfScope: plan.request.maskOutOfScope,
           snapshot: plan.snapshot,
           includeEventIds: new Set(plan.selectedEventIds),
+          attachments: plan.attachments,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts }
         })
         artifactPath = result.outDir
       } else if (plan.request.format === 'har') {
-        const subset = plan.request.subset
-        const content = exportHar({
-          ...(subset.kind === 'time-range' ? { since: subset.since, before: subset.before, targetId: subset.targetId } : {}),
-          snapshot: plan.snapshot,
-          scope: plan.scopeSnapshot,
-          doNotExportIds: new Set()
-        })
+        const content = exportHar({ events: approvedNow })
         const outDir = path.join(getProjectPath(project), 'exports')
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.har`)

@@ -142,7 +142,7 @@ export default function StatusBar(): JSX.Element {
   const pending = issues.filter((i) => i.tier === 'pending')
 
   return (
-    <div className="h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-xs font-mono shrink-0 select-none">
+    <div data-testid="app-statusbar" className="min-h-8 bg-redlog-bg border-t border-redlog-border flex flex-wrap items-center px-3 py-1 gap-x-3 gap-y-1 whitespace-nowrap text-xs font-mono shrink-0 select-none [&>*]:shrink-0">
       {/* §9: persistent faults pinned to the left, split by whether they
           affect the evidence. Attention cannot be dismissed — it clears when
           the condition clears and not before. */}

@@ -80,6 +80,19 @@ function makeResponseEvent(flowId: string, overrides?: Record<string, unknown>):
 }
 
 describe('har-export', () => {
+  it('exports the approved selection without querying the database again', () => {
+    mockQueryEvents.mockClear()
+    const har = JSON.parse(exportHar({ events: [makeRequestEvent('approved')] }))
+    expect(har.log.entries).toHaveLength(1)
+    expect(mockQueryEvents).not.toHaveBeenCalled()
+  })
+
+  it('does not silently cap direct exports at 50,000 events', () => {
+    mockQueryEvents.mockReturnValue([])
+    exportHar()
+    expect(mockQueryEvents).toHaveBeenLastCalledWith(expect.objectContaining({ limit: -1 }))
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockRedactEventsForExport.mockImplementation((events) => events)

@@ -12,6 +12,7 @@ const root = roots.map((p) => path.resolve(p)).find((p) => fs.existsSync(p))
 if (!root) throw new Error(`No unpacked package resources found under dist/ (${roots.join(', ')})`)
 
 const required = [
+  'hooks/mitmproxy-addon.py',
   'hooks/shell-bash-hook.sh',
   'hooks/shell-zsh-hook.zsh',
   'hooks/shell-hook.ps1',

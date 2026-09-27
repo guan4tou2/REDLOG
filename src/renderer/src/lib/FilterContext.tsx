@@ -163,38 +163,45 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   // provider unmounts when the project closes, so a reply in flight then
   // belongs to a project that is no longer open.
   const live = useRef(true)
-  useEffect(() => () => { live.current = false }, [])
+  const listsGeneration = useRef(0)
+  const scopeGeneration = useRef(0)
+  useEffect(() => { live.current = true; return () => { live.current = false } }, [])
 
   const refreshLists = useCallback(() => {
+    const request = ++listsGeneration.current
     // A failure keeps whatever loaded before rather than blanking the menus:
     // stale-and-labelled beats empty-and-silent, which reads as "no data".
     const targets = window.redlog.events.aggregateTargets()
       .then((rows) => {
-        if (live.current) setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount })))
+        if (live.current && request === listsGeneration.current) setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount })))
       })
     const types = (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
       .distinctAgentTypes?.()
-      .then((list) => { if (live.current) setKnownAgentTypes(list ?? []) })
+      .then((list) => { if (live.current && request === listsGeneration.current) setKnownAgentTypes(list ?? []) })
       ?? Promise.resolve()
     void Promise.allSettled([targets, types]).then((results) => {
-      if (!live.current) return
+      if (!live.current || request !== listsGeneration.current) return
       setListsStatus(results.some((r) => r.status === 'rejected') ? 'error' : 'ready')
     })
   }, [])
 
-  useEffect(() => {
-    const refreshScope = (): void => { window.redlog.config.get().then((c) => {
-      if (!live.current) return
+  const refreshScope = useCallback((): void => {
+    const request = ++scopeGeneration.current
+    window.redlog.config.get().then((c) => {
+      if (!live.current || request !== scopeGeneration.current) return
       const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[]; personalDomains?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
       setScopeExcludeTargets(cfg?.scope?.excludeTargets ?? [])
       setPersonalDomains(cfg?.scope?.personalDomains ?? [])
       setScopeStatus('ready')
-    }).catch(() => { if (live.current) setScopeStatus('error') }) }
+    }).catch(() => { if (live.current && request === scopeGeneration.current) setScopeStatus('error') })
+  }, [])
+
+  useEffect(() => {
     refreshScope()
     window.addEventListener('redlog:config-saved', refreshScope)
     return () => window.removeEventListener('redlog:config-saved', refreshScope)
-  }, [])
+  }, [refreshScope])
 
   useEffect(() => {
     refreshLists()
@@ -237,7 +244,12 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     + (filter.inScopeOnly ? 1 : 0)
     + (filter.tier === 'chained' ? 1 : 0)
 
-  const retryLists = useCallback(() => { setListsStatus('loading'); refreshLists() }, [refreshLists])
+  const retryLists = useCallback(() => {
+    setListsStatus('loading')
+    setScopeStatus('loading')
+    refreshLists()
+    refreshScope()
+  }, [refreshLists, refreshScope])
 
   const value = useMemo(() => ({
     filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,

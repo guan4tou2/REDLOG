@@ -1,4 +1,4 @@
-import { isPackAvailable, type CapturePackId } from './capture-packs'
+import { isPackAvailable, isMemberSelected, type PackMemberId, type CapturePackId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
@@ -389,13 +389,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
   ): CaptureSource => {
     // A pack that is not set is off (Spec 035), not "unknown".
     //
-    // A pack MEMBER is on when its pack is on and the operator has not opted
-    // out of it, so both halves are read. Absent means on for the member and
-    // off for the pack, which is how a preset behaves: turning the pack on
-    // still turns on everything the operator has not explicitly excluded.
+    // Health and the producer share the same member selection defaults.
     const packOn = opts.packPath ? cfgFlag(opts.packPath) === true : undefined
     const enabled = opts.packPath
-      ? packOn === true && cfgFlag(opts.configPath as string) !== false
+      ? packOn === true && isMemberSelected(cfgSnapshot, opts.configPath!.slice('packMembers.'.length) as PackMemberId)
       : opts.configPath
         ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
         : undefined

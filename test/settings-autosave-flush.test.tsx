@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
+import { StrictMode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { settingsWrites } from '../src/renderer/src/lib/settingsWriteQueue'
 import Settings from '../src/renderer/src/components/Settings'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
@@ -68,7 +70,12 @@ describe('the settings autosave does not lose a change on the way out', () => {
   // faking the clock here left this file failing at file level under a full
   // suite run while passing on its own — the component schedules its own
   // timeouts and the interaction was not worth the speed.
-  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+  afterEach(async () => {
+    cleanup()
+    saveResult = true
+    await settingsWrites.flush('proj-a')
+    vi.restoreAllMocks()
+  })
 
   /** Wait for the initial config fetch to land: the form is rendered once it
    *  has, and until then Settings shows only a loading line. */
@@ -79,6 +86,36 @@ describe('the settings autosave does not lose a change on the way out', () => {
       return el!
     })
 
+
+  it('recovers an initial read failure through an explicit retry', async () => {
+    vi.spyOn(window.redlog.config, 'get').mockRejectedValueOnce(new Error('unavailable'))
+    mount()
+    expect(await screen.findByTestId('settings-load-failed')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Retry|重試/ }))
+    await ready()
+  })
+
+  it('does not announce a rejected write as config-saved', async () => {
+    const listener = vi.fn()
+    window.addEventListener('redlog:config-saved', listener)
+    try {
+      saveResult = false
+      mount()
+      change(await ready())
+      await screen.findByTestId('settings-save-failed', {}, { timeout: 3000 })
+      expect(listener).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('redlog:config-saved', listener)
+    }
+  })
+
+  it('reports save failures after StrictMode effect replay', async () => {
+    saveResult = false
+    render(<StrictMode><I18nProvider><Settings request={{ page: 'scope' }} /></I18nProvider></StrictMode>)
+    change(await ready())
+    expect(await screen.findByTestId('settings-save-failed', {}, { timeout: 3000 })).not.toBeNull()
+  })
+
   it('flushes a pending write when the page is left inside the debounce', async () => {
     const view = mount()
     const toggle = await ready()
@@ -87,6 +124,33 @@ describe('the settings autosave does not lose a change on the way out', () => {
 
     view.unmount()
     await waitFor(() => expect(saves.length).toBeGreaterThan(0))
+  })
+
+
+  it('flushes before project close without writing again after Settings unmounts', async () => {
+    const view = mount()
+    change(await ready())
+    expect(saves).toHaveLength(0)
+    expect(await settingsWrites.flush('proj-a')).toBe(true)
+    expect(saves).toHaveLength(1)
+    view.unmount()
+    await new Promise(resolve => setTimeout(resolve, 400))
+    expect(saves).toHaveLength(1)
+  })
+
+
+  it('keeps a failed edit visible after leaving and reopening Settings', async () => {
+    saveResult = false
+    const view = mount()
+    change(await ready())
+    await screen.findByTestId('settings-save-failed', {}, { timeout: 3000 })
+    const expected = saves.at(-1)!.config.scope as { warnOnViolation: boolean }
+    view.unmount()
+    mount()
+    const toggle = await ready()
+    expect(toggle.checked).toBe(expected.warnOnViolation)
+    saveResult = true
+    await settingsWrites.flush('proj-a')
   })
 
   it('binds the write to the project the form was loaded from', async () => {

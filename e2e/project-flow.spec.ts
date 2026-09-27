@@ -80,4 +80,23 @@ test.describe.serial('project flow', () => {
     // depend on that internal choice.
     expect(result.brokenAtEventId ?? null).toBeNull()
   })
+  test('saves the last scope edit before returning to the project list', async () => {
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${mod}+9`)
+    await page.locator('[data-settings-page="scope"]').click()
+    const input = page.getByPlaceholder('e.g. 192.168.1.0/24 or *.example.com')
+    await expect(input).toBeVisible()
+    await input.fill('10.77.88.0/24')
+    await input.press('Enter')
+    await page.getByTitle('Back to project list', { exact: true }).click()
+    await expect(page.getByTestId('project-picker')).toBeVisible()
+    const scope = await page.evaluate(async () => {
+      const bridge = (window as any).redlog
+      const [project] = await bridge.project.list()
+      await bridge.project.open(project.id)
+      return (await bridge.config.get()).scope.targets
+    })
+    expect(scope).toContain('10.77.88.0/24')
+  })
+
 })

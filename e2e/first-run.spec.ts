@@ -1,4 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { tmpdir } from 'node:os'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
@@ -44,6 +45,18 @@ test.describe.serial('the first run', () => {
     const strip = page.locator('[data-testid="first-run-strip"]')
     await expect(strip).toBeVisible()
     await expect(strip).toHaveAttribute('data-first-run-lit', 'false')
+  })
+
+
+  test('offers Web capture before requiring a shell command', async () => {
+    await page.getByTestId('first-run-focus-web').click()
+    await expect(page.getByTestId('first-run-focus-web')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('Start recording Web traffic', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('first-run-http')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-first-run-lit', 'false')
+    await expect(page.locator('.xterm')).toHaveCount(0)
+    await page.screenshot({ path: join(tmpdir(), 'redlog-first-run-web.png') })
+    await page.getByTestId('first-run-focus-both').click()
   })
 
   test('keeps the ten capture sources one disclosure away', async () => {

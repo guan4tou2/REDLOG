@@ -144,3 +144,17 @@ Current format semantics:
 
 An unsupported requested protection is an explicit preview failure. It must not
 fall back to a legacy export or produce a success state.
+
+
+### Approved attachment identities
+
+Evidence Bundle plans record each selected attachment's relative path, byte
+length and SHA-256, including explicit missing references. Screenshots and HTTP
+bodies must be referenced by approved surviving events; unrelated screenshots
+are not implicitly approved. Casts remain explicitly disclosed as unattributed
+session attachments, without automatic scope filtering.
+
+Execution rejects changed attachment identities and verifies copied bytes before
+publishing a completed bundle. A changed or newly available attachment requires
+a new preview. HAR consumes the exact approved redacted events without another
+selection query or an implicit 50,000-event cap.

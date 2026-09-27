@@ -14,6 +14,7 @@ import HooksPanel from './settings/HooksPanel'
 import PluginsPanel from './settings/PluginsPanel'
 import IntegrityPanel from './settings/IntegrityPanel'
 import AgentsPanel, { HookWatchPathsPanel } from './settings/AgentsPanel'
+import { settingsWrites } from '../lib/settingsWriteQueue'
 import { searchSettings } from '../lib/settingsSearch'
 
 // The thirteen pages §10 asks for. Declared as a union so a typo in a route
@@ -54,9 +55,21 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [hookLoading, setHookLoading] = useState<string | null>(null)
   const { t } = useI18n()
 
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   useEffect(() => {
-    window.redlog.config.get().then((c) => setConfig(c as ConfigState))
-  }, [])
+    let current = true
+    setLoadFailed(false)
+    window.redlog.config.get().then((c) => {
+      if (!c) throw new Error('No project configuration')
+      if (!current) return
+      const saved = c as ConfigState
+      const unsaved = settingsWrites.peek(saved.engagement.id) as ConfigState | undefined
+      setConfig(unsaved ?? saved)
+      if (unsaved) writeConfig(unsaved)
+    }).catch(() => { if (current) setLoadFailed(true) })
+    return () => { current = false }
+  }, [loadAttempt])
 
   // Auto-save on every change so toggles apply live to the HUD / event pipeline
   // without a manual "save & apply" click. Debounced 350ms so text-input typing
@@ -76,9 +89,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
     // back lets main refuse a write aimed at a project the operator has since
     // switched away from, rather than applying a stale form to a new
     // engagement.
-    window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
+    settingsWrites.flush(next.engagement.id)
       .then((ok) => {
-        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
+        if (ok === false) toast(t('toast.saveFailed'), 'error')
         if (!live.current) return
         setSaveState(ok === false ? 'failed' : 'saved')
         if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
@@ -95,6 +108,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
     if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
     if (saveTimer.current) clearTimeout(saveTimer.current)
     pending.current = config
+    settingsWrites.stage(config.engagement.id, config)
     saveTimer.current = setTimeout(() => { saveTimer.current = null; writeConfig(config) }, 350)
     return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,12 +119,22 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // pending write, so a change made within 350ms of leaving the page was
   // dropped with nothing said. Flush it instead: the IPC completes in main
   // whether or not this component is still on screen.
-  useEffect(() => () => {
-    live.current = false
-    const unsaved = pending.current
-    if (unsaved) writeConfig(unsaved)
+  useEffect(() => {
+    live.current = true
+    return () => {
+      live.current = false
+      const unsaved = pending.current
+      if (unsaved) writeConfig(unsaved)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  if (loadFailed) return (
+    <div className="p-4 text-red-400" role="alert" data-testid="settings-load-failed">
+      {t('settings.loadFailed')}{' '}
+      <button className="underline" onClick={() => setLoadAttempt(n => n + 1)}>{t('settings.save.retry')}</button>
+    </div>
+  )
 
   if (!config) return <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
 

@@ -1,16 +1,5 @@
-// Send a setup command to RedLog's own terminal instead of the clipboard.
-//
-// Every manual capture source hands the operator a command to paste somewhere
-// else. Two things are lost when they do: the terminal they paste into is not
-// the one RedLog records, so setting capture up is the one part of an
-// engagement that leaves no trace; and a copy button cannot tell whether the
-// command was ever run, which is why a source can sit at "not installed"
-// while the operator is sure they did it.
-//
-// The command is TYPED, not executed. Some of these start long-running
-// processes and some kill them by PID; the operator reads the line and presses
-// Enter. RedLog's shell hook then records it like any other command, so the
-// setup is part of the log it was setting up.
+// Open a setup-command draft beside the terminal. It is never written to a
+// running PTY; the operator copies it into the intended local shell.
 
 const EVENT = 'redlog:run-in-terminal'
 

@@ -44,7 +44,7 @@ export function makeTempHome(prefix = 'redlog-e2e-'): string {
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
  * artifact exists so the failure message is actionable.
  */
-export async function launchWithTempHome(): Promise<{
+export async function launchWithTempHome(executablePath?: string): Promise<{
   app: ElectronApplication
   page: Page
   tmpHome: string
@@ -57,7 +57,7 @@ export async function launchWithTempHome(): Promise<{
   }
   const tmpHome = makeTempHome()
   const app = await electron.launch({
-    args: [MAIN_ENTRY],
+    ...(executablePath ? { executablePath } : { args: [MAIN_ENTRY] }),
     cwd: REPO_ROOT,
     env: {
       ...process.env,

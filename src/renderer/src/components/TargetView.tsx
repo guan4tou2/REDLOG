@@ -36,6 +36,11 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [listError, setListError] = useState(false)
+  const [evidenceError, setEvidenceError] = useState(false)
+  const [evidenceLoading, setEvidenceLoading] = useState(false)
+  const evidenceGeneration = useRef(0)
+  const listGeneration = useRef(0)
   // Scope target list from project config — used to compute the inScope column
   // on each target. Empty when config isn't set (in which case every target
   // shows as "in-scope" since there's no rule to violate).
@@ -48,11 +53,21 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // Re-read the selected target's first page, when a live row could not be
   // checked against it. Declared above the effect that calls it.
   const reloadEvidenceRef = useRef(async (target: string): Promise<void> => {
-    const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
-    if (selectedRef.current !== target) return
-    setEvidence(page.items)
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
+    const request = ++evidenceGeneration.current
+    setEvidenceLoading(true)
+    setEvidenceError(false)
+    setLoadingMore(false)
+    try {
+      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
+      if (request !== evidenceGeneration.current || selectedRef.current !== target) return
+      setEvidence(page.items)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch {
+      if (request === evidenceGeneration.current && selectedRef.current === target) setEvidenceError(true)
+    } finally {
+      if (request === evidenceGeneration.current) setEvidenceLoading(false)
+    }
   })
 
   useEffect(() => {
@@ -88,7 +103,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     })
     void window.redlog.targetContext.get().then(setActiveTarget)
     const unsubTarget = window.redlog.targetContext.onChange(setActiveTarget)
-    return () => { unsub(); unsubTarget() }
+    return () => { unsub(); unsubTarget(); evidenceGeneration.current++; listGeneration.current++ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -102,48 +117,66 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     // loot / http_navigation / screenshots, not only shell (audit finding #34).
     // This replaced a client-side rollup over a capped 1000-row window, which
     // dropped targets seen only in older events and truncated every count (§9).
-    const rows = await window.redlog.events.aggregateTargets()
-    // Classify each target as in-scope / out-of-scope from the current scope
-    // config (audit finding #33 — before this the field was null and both
-    // filter chips returned empty). Scope-unset means every target is in-scope
-    // (no rule to violate).
-    const list: TargetEntry[] = rows.map((r) => ({
-      target: r.target,
-      firstSeen: r.firstSeen,
-      lastSeen: r.lastSeen,
-      eventCount: r.eventCount,
-      inScope: hostInScope(r.target, scopeTargets, excludeTargets)
-    }))
-    setTargets(list)
-    setLoading(false)
+    const request = ++listGeneration.current
+    setListError(false)
+    try {
+      const rows = await window.redlog.events.aggregateTargets()
+      if (request !== listGeneration.current) return
+      // Classify each target as in-scope / out-of-scope from the current scope
+      // config (audit finding #33 — before this the field was null and both
+      // filter chips returned empty). Scope-unset means every target is in-scope
+      // (no rule to violate).
+      const list: TargetEntry[] = rows.map((r) => ({
+        target: r.target,
+        firstSeen: r.firstSeen,
+        lastSeen: r.lastSeen,
+        eventCount: r.eventCount,
+        inScope: hostInScope(r.target, scopeTargets, excludeTargets)
+      }))
+      setTargets(list)
+    } catch {
+      if (request === listGeneration.current) setListError(true)
+    } finally {
+      if (request === listGeneration.current) setLoading(false)
+    }
   }
 
   const PAGE_SIZE = 200
 
   const loadEvidence = useCallback(async (target: string) => {
+    evidenceGeneration.current++
+    selectedRef.current = selected === target ? null : target
+    setEvidence([])
+    setHasMore(false)
+    setNextCursor(null)
+    setEvidenceError(false)
     if (selected === target) {
       setSelected(null)
-      setEvidence([])
-      setHasMore(false)
-      setNextCursor(null)
       return
     }
     setSelected(target)
-    // Housekeeping aside, as the count and the Timeline leave it (spec 038 SC-002).
-    const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE })
-    setEvidence(page.items)
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
+    await reloadEvidenceRef.current(target)
   }, [selected])
 
   const loadMore = useCallback(async () => {
     if (!selected || !nextCursor || loadingMore) return
+    const request = evidenceGeneration.current
     setLoadingMore(true)
-    const page = await window.redlog.events.queryPage({ targetId: selected, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
-    setEvidence((prev) => [...prev, ...page.items])
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
-    setLoadingMore(false)
+    setEvidenceError(false)
+    try {
+      const page = await window.redlog.events.queryPage({ targetId: selected, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
+      if (request !== evidenceGeneration.current || selectedRef.current !== selected) return
+      setEvidence(prev => {
+        const ids = new Set(prev.map(event => event.id))
+        return [...prev, ...page.items.filter(event => !ids.has(event.id))]
+      })
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch {
+      if (request === evidenceGeneration.current) setEvidenceError(true)
+    } finally {
+      if (request === evidenceGeneration.current) setLoadingMore(false)
+    }
   }, [selected, nextCursor, loadingMore])
 
   // The filtered target list must be fully built BEFORE the keyboard hook
@@ -207,10 +240,16 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         </div>
       </div>
 
+      {listError && (
+        <div role="alert" data-testid="targets-load-failed" className="text-red-400 text-xs">
+          {t('targets.loadFailed')}{' '}
+          <button className="underline" onClick={() => void loadTargets()}>{t('settings.save.retry')}</button>
+        </div>
+      )}
       {filtered.length === 0 ? (
         // Hold the empty state until the first aggregation resolves — otherwise
         // a project that has targets flashes "no targets" for a frame (m9).
-        loading ? null : (
+        loading || listError ? null : (
           <EmptyState
             icon={Crosshair}
             title={t('targets.empty')}
@@ -298,7 +337,15 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
 
               {selected === tgt.target && (
                 <div className="ml-4 mt-1 border-l-2 border-redlog-border pl-3 space-y-1 py-2">
-                  {evidence.length === 0 ? (
+                  {evidenceError && (
+                    <div role="alert" data-testid="target-evidence-failed" className="text-red-400 text-xs">
+                      {t('targets.evidenceFailed')}{' '}
+                      <button className="underline" onClick={() => void (evidence.length && nextCursor ? loadMore() : reloadEvidenceRef.current(tgt.target))}>
+                        {t('settings.save.retry')}
+                      </button>
+                    </div>
+                  )}
+                  {evidenceLoading ? <p role="status">{t('targets.loading')}</p> : evidenceError && evidence.length === 0 ? null : evidence.length === 0 ? (
                     <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>

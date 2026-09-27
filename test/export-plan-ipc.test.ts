@@ -233,4 +233,42 @@ describe('export plan IPC contract', () => {
     expect(content).toContain('timeline-before')
     expect(content).not.toContain('timeline-after')
   })
+  it('audit: HAR must not restore an event excluded by the approved plan', () => {
+    for (const id of ['allowed-http', 'blocked-http']) {
+      addEvent('events_logged', id, 1000, { agentType: 'scanner', subtype: 'http_request_start', data: {
+        flow_id: id, method: 'GET', url: `https://example.test/${id}`, request_headers: []
+      } })
+    }
+    getDB().prepare('INSERT INTO do_not_export (event_id, created_at) VALUES (?, ?)').run('blocked-http', 1)
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'har' } as never) as any
+    expect(resolved.plan.counts.included).toBe(1)
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as any
+    expect(executed.ok).toBe(true)
+    const har = JSON.parse(fs.readFileSync(executed.artifactPath, 'utf8'))
+    expect(har.log.entries.map((e: any) => e.request.url)).not.toContain('https://example.test/blocked-http')
+  })
+
+  it('audit: bundle must not copy the file of a do-not-export screenshot', () => {
+    addEvent('events', 'allowed-shell', 1000)
+    addEvent('events', 'blocked-shot', 1001, { agentType: 'screenshot', subtype: 'capture', data: { filename: 'blocked.jpg' } })
+    fs.writeFileSync(path.join(dir, 'screenshots', 'blocked.jpg'), 'private-image-fixture')
+    getDB().prepare('INSERT INTO do_not_export (event_id, created_at) VALUES (?, ?)').run('blocked-shot', 1)
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as any
+    expect(resolved.plan.counts.excludedDoNotExport).toBe(1)
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as any
+    expect(executed.ok).toBe(true)
+    expect(fs.existsSync(path.join(executed.artifactPath, 'screenshots', 'blocked.jpg'))).toBe(false)
+  })
+
+  it('audit: attachment content changes after preview must invalidate the plan', () => {
+    addEvent('events', 'approved-shot', 1001, { agentType: 'screenshot', subtype: 'capture', data: { filename: 'approved.jpg' } })
+    const shot = path.join(dir, 'screenshots', 'approved.jpg')
+    fs.writeFileSync(shot, 'original-preview-image')
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as any
+    expect(resolved.ok).toBe(true)
+    fs.writeFileSync(shot, 'different-image-after-preview')
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as any
+    expect(executed.ok).toBe(false)
+  })
+
 })

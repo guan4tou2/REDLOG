@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FilterBar } from '../src/renderer/src/components/FilterBar'
@@ -84,6 +85,23 @@ describe('the filter menus say when they could not load', () => {
     await waitFor(() => expect(api.scopeStatus).toBe('error'))
     await expand()
     expect(await screen.findByTestId('filter-lists-error')).not.toBeNull()
+  })
+
+
+  it('retries a failed scope read using the visible retry action', async () => {
+    const get = vi.spyOn(window.redlog.config, 'get')
+    get.mockRejectedValueOnce(new Error('scope unavailable'))
+    mount()
+    await waitFor(() => expect(api.scopeStatus).toBe('error'))
+    await expand()
+    fireEvent.click(screen.getByRole('button', { name: /Retry/i }))
+    await waitFor(() => expect(api.scopeStatus).toBe('ready'))
+  })
+
+  it('finishes loading after StrictMode effect replay', async () => {
+    render(<StrictMode><I18nProvider><FilterProvider><Probe /></FilterProvider></I18nProvider></StrictMode>)
+    await waitFor(() => expect(api.listsStatus).toBe('ready'))
+    expect(api.scopeStatus).toBe('ready')
   })
 
   it('is ready, not failed, when the project genuinely has nothing yet', async () => {

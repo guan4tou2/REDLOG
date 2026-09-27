@@ -167,7 +167,28 @@ describeDB('evidence bundle export', () => {
     expect(manifest.chainHead?.eventCount).toBeGreaterThanOrEqual(2)
   })
 
+
+  it('does not attach excluded or orphan screenshots in a direct bundle export', () => {
+    const blocked = insertEventRaw('screenshot', { filename: 'blocked.jpg' }, { engagementId: 'eng', operatorId: 'op' })
+    mod.getDB().prepare('INSERT INTO do_not_export (event_id, created_at) VALUES (?, ?)').run(blocked.id, Date.now())
+    seedFile('screenshots', 'blocked.jpg', 'PRIVATE')
+    seedFile('screenshots', 'orphan.jpg', 'UNATTRIBUTED')
+    const { outDir, manifest } = exportBundle('eng', {})
+    expect(fs.existsSync(path.join(outDir, 'screenshots', 'blocked.jpg'))).toBe(false)
+    expect(manifest.files.some(file => file.path === 'screenshots/orphan.jpg')).toBe(false)
+  })
+
+
+  it('refuses a completed bundle when an approved attachment disappears', () => {
+    ins('screenshot', { filename: 'gone.jpg' })
+    expect(() => exportBundle('eng', {
+      attachments: [{ path: 'screenshots/gone.jpg', bytes: 3, sha256: 'approved', unattributed: false }]
+    })).toThrow('Approved attachment unavailable')
+    expect(fs.readdirSync(path.join(dir, 'exports')).every(name => name.includes('.partial-'))).toBe(true)
+  })
+
   it('copies screenshots and casts alongside their hashes', () => {
+    ins('screenshot', { filename: 'shot.jpg' })
     seedFile('screenshots', 'shot.jpg', 'IMG')
     seedFile('casts', 'term.cast', 'CAST')
     const { outDir, manifest } = exportBundle('eng', {})
@@ -246,6 +267,7 @@ describeDB('private bookmarks stay out of the bundle', () => {
   // swapped screenshot passed "chain intact". These two tests pin the fix:
   // an untouched bundle verifies, a tampered evidence file fails.
   it('the python verifier passes a clean bundle and fails a tampered evidence file', () => {
+    ins('screenshot', { filename: 'shot.jpg' })
     seedFile('screenshots', 'shot.jpg', 'REAL-IMAGE-BYTES')
     const { outDir } = exportBundle('eng', {})
     const child = require('node:child_process') as typeof import('node:child_process')

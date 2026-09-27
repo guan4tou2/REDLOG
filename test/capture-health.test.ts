@@ -248,7 +248,7 @@ describeDB('capture-health', () => {
   // readout lags behind the thing it is reporting on.
   it('a config change is visible immediately, not after the cache TTL', () => {
     mockHooks({ 'shell-zsh': false })
-    configureCaptureHealth({ packs: { hostMonitors: true } })
+    configureCaptureHealth({ packs: { hostMonitors: true }, packMembers: { clipboard: true } })
     expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(true)
     configureCaptureHealth({ packs: { hostMonitors: false } })
     expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)

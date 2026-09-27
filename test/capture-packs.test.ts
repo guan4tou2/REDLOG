@@ -80,11 +80,10 @@ describe('capture packs: isPackMemberOn', async () => {
     expect(isPackMemberOn(cfg, 'fileWatcher', active)).toBe(true)
   })
 
-  it('treats an absent switch as on, so the pack keeps the meaning it always had', () => {
-    // An existing project has no `packMembers` at all and must record exactly
-    // what it recorded before this key existed.
-    expect(isPackMemberOn({ packs: { hostMonitors: true } }, 'clipboard', active)).toBe(true)
-    expect(isPackMemberOn({ packs: { hostMonitors: true }, packMembers: {} }, 'clipboard', active)).toBe(true)
+  it('requires a separate explicit opt-in for clipboard capture', () => {
+    // Turning on host monitors must not start collecting copied personal data.
+    expect(isPackMemberOn({ packs: { hostMonitors: true } }, 'clipboard', active)).toBe(false)
+    expect(isPackMemberOn({ packs: { hostMonitors: true }, packMembers: {} }, 'clipboard', active)).toBe(false)
   })
 
   it('never runs a member whose pack is off, or whose plugin is gone', () => {
@@ -152,12 +151,12 @@ describeDB('capture packs: health', () => {
     }
   })
 
-  it('treats an absent member switch as on, so an existing project records what it did before', () => {
+  it('keeps clipboard off when the pack is enabled without a clipboard decision', () => {
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(allPacks)
     ch.configureCaptureHealth({ packs: { hostMonitors: true }, packMembers: {} })
     ch.invalidateHooksCache()
     const rows = ch.getCaptureHealth().sources
-    expect(rows.find((s) => s.id === 'clipboard')).toMatchObject({ enabled: true })
+    expect(rows.find((s) => s.id === 'clipboard')).toMatchObject({ enabled: false })
   })
 
   it('keeps a member off while its pack is off, whatever the member says', () => {

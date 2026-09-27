@@ -5,7 +5,29 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-Nothing yet.
+- HTTP capture verification now uses a fresh test address for each browser or
+  terminal attempt, with separate HTTP/HTTPS outcomes and proxy lifecycle reset.
+  Request-only/unrelated traffic no longer passes; setup/save errors are visible.
+  CA availability and browser TLS bypass are explicitly separate from OS trust.
+- Fixed HTTPS response loss when a certificate contains IPv4/IPv6 SAN values:
+  the addon now serializes those values as text before delivering evidence.
+
+- Export execution now uses the exact HAR event selection approved in preview.
+  Evidence bundles exclude unselected screenshots and unreferenced HTTP bodies;
+  attachment paths, sizes and hashes are pinned to preview and checked at copy.
+  Direct HAR exports no longer silently stop at 50,000 events.
+- Pending Settings edits are flushed before closing a project. Failed writes
+  retain the draft, prevent closing, and can be retried; initial load failures
+  and scope-filter failures also offer working retries.
+- Screenshots and Targets recover from failed queries. Late target responses
+  cannot overwrite the newly selected target's evidence.
+- First-run Web setup is available before the first recorded command. Setup
+  commands open as copyable drafts without sending input to a running terminal.
+- Title/status bars now wrap whole controls at narrow desktop widths; long project
+  names truncate, and first-run terminals stack above setup instead of becoming
+  too narrow to read.
+- Clipboard capture now requires explicit per-source opt-in even when Host
+  monitors are enabled. No compatibility default silently enables it.
 
 ## v0.18.0 — 2026-09-27
 

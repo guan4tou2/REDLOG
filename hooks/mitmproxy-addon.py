@@ -420,7 +420,7 @@ def _extract_tls_info(flow: http.HTTPFlow) -> dict | None:
             san = getattr(leaf, 'altnames', None) or getattr(leaf, 'san', None)
             if san:
                 info["cert_san"] = [
-                    s.value if hasattr(s, 'value') else str(s)
+                    str(s.value) if hasattr(s, 'value') else str(s)
                     for s in list(san)[:20]
                 ]
             serial = getattr(leaf, 'serial', None)

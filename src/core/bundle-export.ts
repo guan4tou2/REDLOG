@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
-import type { ExportCounts, ExportSnapshot } from './export-plan'
+import type { ExportAttachment, ExportCounts, ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
@@ -91,6 +91,7 @@ export interface ExportBundleOpts {
   snapshot?: ExportSnapshot
   /** Exact event selection approved by ExportPlan. When present, later policy
    * changes cannot silently widen or narrow the bundle. */
+  attachments?: readonly ExportAttachment[]
   includeEventIds?: ReadonlySet<string>
   exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
 }
@@ -175,6 +176,19 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   }
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
+  const approvedAttachments = opts.attachments === undefined ? undefined
+    : new Map(opts.attachments.map(file => [file.path, file]))
+  const isApproved = (relative: string): boolean =>
+    approvedAttachments === undefined || approvedAttachments.get(relative)?.sha256 != null
+  const verifyAttachment = (relative: string, file: string): void => {
+    if (!approvedAttachments) return
+    const expected = approvedAttachments.get(relative)
+    const actual = sha256File(file)
+    if (!expected || actual.bytes !== expected.bytes || actual.sha256 !== expected.sha256) {
+      throw new Error('Export attachment changed; preview again')
+    }
+  }
+
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const bundleRoot = outRoot ?? path.join(projectDir, 'exports')
   const baseBundleDir = path.join(bundleRoot, `bundle-${ts}`)
@@ -250,6 +264,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   const doNotExportIds = getDoNotExportIds()
   const survivingBodyRefs = new Set<string>()
+  const survivingScreenshots = new Map<string, string | null>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
     if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
@@ -291,6 +306,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     // Collect surviving body-store refs so http-bodies/ can be scope-filtered.
     try {
       const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      if (row.agent_type === 'screenshot' && typeof d.filename === 'string') {
+        survivingScreenshots.set(d.filename, row.target_id as string | null)
+      }
       for (const refKey of Object.values(BODY_REF_FOR)) {
         const ref = d[refKey]
         if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
@@ -360,6 +378,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     // Collect surviving body-store refs from logged tier too.
     try {
       const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      if (row.agent_type === 'screenshot' && typeof d.filename === 'string') {
+        survivingScreenshots.set(d.filename, row.target_id as string | null)
+      }
       for (const refKey of Object.values(BODY_REF_FOR)) {
         const ref = d[refKey]
         if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
@@ -396,29 +417,20 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // 5. screenshots/  — copy jpegs, scope-filtering when maskOutOfScope is on.
   // Audit 2026-09-18 §2.3: screenshot events carry `data.filename` + `target_id`;
   // when scope masking is active, exclude files whose event target is out of scope.
-  // Files with no matching event or no target are included but counted as unattributed.
+  // Only files referenced by surviving events are eligible; no-target events
+  // are disclosed as unattributed. Orphan files are never implicitly included.
   const srcShots = path.join(projectDir, 'screenshots')
   const dstShots = path.join(bundleDir, 'screenshots')
   let screenshotsIncluded = 0
   let screenshotsExcluded = 0
   let screenshotsUnattributed = 0
   if (fs.existsSync(srcShots)) {
-    const shotFilenameToTarget = new Map<string, string | null>()
-    if (scope) {
-      const shotRows = db.prepare(
-        `SELECT json_extract(data, '$.filename') AS filename, target_id
-         FROM events WHERE agent_type = 'screenshot'`
-      ).all() as Array<{ filename: string | null; target_id: string | null }>
-      for (const r of shotRows) {
-        if (r.filename) shotFilenameToTarget.set(r.filename, r.target_id)
-      }
-    }
     let dirCreated = false
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
-      if (!fs.statSync(s).isFile()) continue
+      if (!survivingScreenshots.has(name) || !isApproved(`screenshots/${name}`) || !fs.lstatSync(s).isFile()) continue
       {
-        const target = shotFilenameToTarget.get(name)
+        const target = survivingScreenshots.get(name)
         if (isPersonalDomain(target ?? null, opts.scope)) {
           screenshotsExcluded++
           continue
@@ -437,6 +449,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       if (!dirCreated) { fs.mkdirSync(dstShots, { recursive: true }); dirCreated = true }
       const d = path.join(dstShots, name)
       fs.copyFileSync(s, d)
+      verifyAttachment(`screenshots/${name}`, d)
       const info = sha256File(d)
       files.push({ path: `screenshots/${name}`, ...info })
       screenshotsIncluded++
@@ -457,8 +470,17 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     for (const name of fs.readdirSync(srcCasts)) {
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
-      if (fs.statSync(s).isFile()) {
-        scrubCast(s, d, piiReps)
+      if (isApproved(`casts/${name}`) && fs.lstatSync(s).isFile()) {
+        // Verify the exact source copy that will be scrubbed, even if recording
+        // continues while the bundle is being built.
+        const staged = `${d}.source`
+        try {
+          fs.copyFileSync(s, staged)
+          verifyAttachment(`casts/${name}`, staged)
+          scrubCast(staged, d, piiReps)
+        } finally {
+          fs.rmSync(staged, { force: true })
+        }
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++
@@ -480,7 +502,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {
-        if (scope) {
+        if (!isApproved(`http-bodies/${name}`)) { httpBodiesExcluded++; continue }
+        {
           const hash = name.replace(/\.body$/, '')
           if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
         }
@@ -490,6 +513,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         if (fs.statSync(s).isFile()) {
           fs.copyFileSync(s, d)
           const info = sha256File(d)
+          verifyAttachment(`http-bodies/${name}`, d)
           files.push({ path: `http-bodies/${name}`, ...info })
           httpBodiesIncluded++
         }
@@ -643,6 +667,15 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     : computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
   const primaryTokenHash = getPrimaryOperatorTokenHash()
+
+  if (approvedAttachments) {
+    const copied = new Set(files.map(file => file.path))
+    for (const attachment of approvedAttachments.values()) {
+      if (attachment.sha256 !== null && !copied.has(attachment.path)) {
+        throw new Error('Approved attachment unavailable; preview again')
+      }
+    }
+  }
 
   const manifest: ManifestPayload = {
     // Current evidence-bundle schema identifier.

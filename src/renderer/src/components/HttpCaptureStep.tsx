@@ -7,24 +7,19 @@
 // proxied-browser launch. The CA path stays behind a link: an operator who is
 // only proxying the browser RedLog launches never needs it.
 //
-// Spec 039: a running proxy is not "capturing". While it runs the card listens
-// for the first HTTP event and only then says verified; after 60 s it names the
-// reasons that apply and keeps listening, so a late request still verifies.
+// Spec 040: a running proxy is not verified. Only a response belonging to an
+// explicit client/protocol attempt verifies that route; lifecycle changes reset it.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { requestRunInTerminal } from '../lib/terminalRunner'
 import { isMac, isWindows } from '../lib/platform'
-import { httpTimeoutReasons, isHttpCaptureEvent } from '../lib/httpVerification'
+import { HttpCaptureVerification } from './HttpCaptureVerification'
 
 const MITM_INSTALL = 'uv tool install mitmproxy'
-/** Same window as the shell activation: long enough to launch a browser and
- *  load a page, short enough to be named while the operator is watching. */
-const HTTP_VERIFY_TIMEOUT_MS = 60_000
-
 function listenAddress(url: string | null): string {
   if (!url) return ''
   try { return new URL(url).host } catch { return url }
@@ -76,38 +71,62 @@ export function HttpCaptureStep(): JSX.Element | null {
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [showCa, setShowCa] = useState(false)
-  const [verified, setVerified] = useState(false)
-  const [timedOut, setTimedOut] = useState(false)
-  const running = status.state === 'running'
-
-  useEffect(() => {
-    if (!running || verified) return
-    setTimedOut(false)
-    const timer = setTimeout(() => setTimedOut(true), HTTP_VERIFY_TIMEOUT_MS)
-    const unsub = window.redlog.events.onNewBatch((evs) => {
-      if (evs.some(isHttpCaptureEvent)) setVerified(true)
-    })
-    return () => { clearTimeout(timer); unsub() }
-  }, [running, verified])
-
-  const check = async (): Promise<void> => {
-    const [pf, st] = await Promise.all([
-      window.redlog.runtime.preflight().catch(() => null),
-      window.redlog.httpCapture.status().catch(() => null)
-    ])
-    if (pf) setMitmMissing(pf.checks.some((c) => c.id === 'mitmdump' && !c.found))
-    if (st) setStatus(st)
-  }
-
-  useEffect(() => {
-    void check()
-    window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
+  const [statusError, setStatusError] = useState('')
+  const [startError, setStartError] = useState('')
+  const [statusLoaded, setStatusLoaded] = useState(false)
+  const [configError, setConfigError] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const live = useRef(false)
+  const statusRequest = useRef(0)
+  const statusInFlight = useRef<Promise<ManagedProxyStatus | null> | null>(null)
+  const readStatus = useCallback((): Promise<ManagedProxyStatus | null> => {
+    if (statusInFlight.current) return statusInFlight.current
+    const request = ++statusRequest.current
+    const pending = window.redlog.httpCapture.status().then((next) => {
+      if (!live.current || request !== statusRequest.current) return null
+      setStatus(next)
+      setStatusLoaded(true)
+      setStatusError('')
+      return next
+    }).catch((error) => {
+      if (live.current && request === statusRequest.current) setStatusError(String(error))
+      return null
+    }).finally(() => { if (statusInFlight.current === pending) statusInFlight.current = null })
+    statusInFlight.current = pending
+    return pending
   }, [])
+
+  const check = useCallback(async (): Promise<void> => {
+    await Promise.all([
+      readStatus(),
+      Promise.all([window.redlog.runtime.preflight(), window.redlog.config.get()]).then(([pf, c]) => {
+        if (!live.current) return
+        setMitmMissing(pf.checks.some((item) => item.id === 'mitmdump' && !item.found))
+        setConfig((c ?? {}) as Record<string, unknown>)
+        setConfigError('')
+      }).catch((error) => { if (live.current) setConfigError(String(error)) })
+    ])
+  }, [readStatus])
+
+  useEffect(() => {
+    if (dismissed) return
+    live.current = true
+    void check()
+    const timer = setInterval(() => void readStatus(), 2000)
+    return () => { live.current = false; ++statusRequest.current; statusInFlight.current = null; clearInterval(timer) }
+  }, [check, readStatus, dismissed])
 
   const start = async (): Promise<void> => {
     setBusy(true)
-    try { setStatus(await window.redlog.httpCapture.start()) } catch { /* status stays as it was */ }
-    setBusy(false)
+    setStartError('')
+    const request = ++statusRequest.current
+    try {
+      const next = await window.redlog.httpCapture.start()
+      if (live.current && request === statusRequest.current) { setStatus(next); setStatusError('') }
+    } catch (error) {
+      if (live.current) setStartError(String(error))
+    } finally { if (live.current) setBusy(false) }
   }
 
   const launch = async (): Promise<void> => {
@@ -117,11 +136,18 @@ export function HttpCaptureStep(): JSX.Element | null {
 
   const httpCapture = (config?.httpCapture ?? {}) as Record<string, unknown>
   const routeTerminals = httpCapture.routeTerminals === true
-  const setRouteTerminals = (on: boolean): void => {
-    if (!config) return
-    const next = { ...config, httpCapture: { ...httpCapture, routeTerminals: on } }
-    setConfig(next)
-    void window.redlog.config.save(next)
+  const setRouteTerminals = async (on: boolean): Promise<void> => {
+    if (!config || saving) return
+    setSaving(true)
+    setSaveError('')
+    try {
+      const current = await window.redlog.config.get() as Record<string, unknown>
+      if (!live.current) return
+      const next = { ...current, httpCapture: { ...((current.httpCapture ?? {}) as Record<string, unknown>), routeTerminals: on } }
+      if (!await window.redlog.config.save(next)) throw new Error(t('httpVerify.saveFailed'))
+      if (live.current) setConfig(next)
+    } catch (error) { if (live.current) setSaveError(String(error)) }
+    finally { if (live.current) setSaving(false) }
   }
 
   if (dismissed) return null
@@ -135,7 +161,11 @@ export function HttpCaptureStep(): JSX.Element | null {
           {t('firstRun.http.skip')}
         </button>
       </div>
-      {unavailable ? (
+      {(statusError || configError || saveError || startError) && <div role="alert" className="text-redlog-red space-y-1">
+        <p>{statusError || configError || saveError || startError}</p>
+        {(statusError || configError) && <Button level="quiet" onClick={() => void check()}>{t('firstRun.recheck')}</Button>}
+      </div>}
+      {statusError ? null : !statusLoaded ? <p>{t('common.loading')}</p> : unavailable ? (
         <div className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
           <div className="flex items-center gap-2">
@@ -147,28 +177,22 @@ export function HttpCaptureStep(): JSX.Element | null {
       ) : status.state === 'running' ? (
         <div className="space-y-2">
           <p className="text-redlog-text-dim">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
-          {verified ? (
-            <p data-testid="first-run-http-verified" className="text-emerald-500 font-medium">{t('firstRun.http.verified')}</p>
-          ) : timedOut ? (
-            <div data-testid="first-run-http-timeout" className="space-y-1">
-              <p className="text-redlog-text">{t('firstRun.http.timeoutTitle')}</p>
-              <ul className="list-disc pl-4 text-redlog-text-dim space-y-0.5">
-                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals }).map((r) => (
-                  <li key={r}>{t(`firstRun.http.reason.${r}`)}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="text-redlog-text-dim">{t('firstRun.http.waiting')}</p>
-          )}
+          {config && !configError && status.url && <HttpCaptureVerification
+            key={`${status.pid}:${status.url}`}
+            status={status}
+            checkStatus={readStatus}
+          />}
+          <p className="text-redlog-text-faint">{t('httpVerify.trustLimit')}</p>
+          {((config?.browser ?? {}) as Record<string, unknown>).ignoreCertErrors === true &&
+            <p className="text-redlog-text-dim">{t('httpVerify.browserBypass')}</p>}
           <Button level="secondary" onClick={() => void launch()}>{t('firstRun.http.launchBrowser')}</Button>
           <label className="flex items-start gap-2">
             <input
               type="checkbox"
               data-testid="first-run-route-terminals"
               checked={routeTerminals}
-              disabled={!config}
-              onChange={(e) => setRouteTerminals(e.target.checked)}
+              disabled={!config || !!configError || saving}
+              onChange={(e) => void setRouteTerminals(e.target.checked)}
             />
             <span>
               <span className="text-redlog-text-dim">{t('firstRun.http.routeTerminals')}</span>
@@ -193,8 +217,8 @@ export function HttpCaptureStep(): JSX.Element | null {
                       scanner, an implant — refuses the connection or is not
                       proxied at all, and the operator reads an HTTP-only
                       timeline as "the target used no TLS". Trusting a root CA
-                      is a change to the machine, so it is typed into RedLog's
-                      terminal for the operator to read and run, and the
+                      is a change to the machine, so it is offered as a draft
+                      beside the terminal for the operator to review and copy, and the
                       command that undoes it is shown beside it. */}
                   {status.certReady !== false && (
                     <>

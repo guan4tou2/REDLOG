@@ -27,6 +27,7 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
+import { settingsWrites } from './lib/settingsWriteQueue'
 import { parseTarget } from './lib/navigation'
 import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
@@ -49,6 +50,7 @@ type View = SidebarViewId | 'settings'
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
+  const [closingProject, setClosingProject] = useState(false)
   const [view, setView] = useState<View>('dashboard')
 
   // A setup command sent from Settings needs the terminal on screen to
@@ -152,7 +154,8 @@ export default function App(): JSX.Element {
     <div className="h-full flex flex-col">
       {/* Title bar */}
       <div
-        className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
+        data-testid="app-titlebar"
+        className="min-h-10 flex flex-wrap items-center gap-y-1 px-4 py-1 whitespace-nowrap select-none shrink-0 border-b border-redlog-border bg-redlog-bg [&>*]:shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
@@ -180,14 +183,26 @@ export default function App(): JSX.Element {
         <button
           className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          disabled={closingProject}
           onClick={async () => {
-            await window.redlog.project.close()
-            setProject(null)
+            setClosingProject(true)
+            try {
+              if (!await settingsWrites.flush(project.id)) {
+                toast(t('toast.saveFailed'), 'error')
+                return
+              }
+              await window.redlog.project.close()
+              setProject(null)
+            } catch {
+              toast(t('app.closeProjectFailed'), 'error')
+            } finally {
+              setClosingProject(false)
+            }
           }}
           title={t('app.closeProject')}
         >
           <span className="text-xs">&#9664;</span>
-          {project.name}
+          <span className="max-w-48 truncate" title={project.name}>{project.name}</span>
         </button>
         <ActiveTargetControl key={project.id} />
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

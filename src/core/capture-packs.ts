@@ -78,12 +78,18 @@ export function packOfMember(member: PackMemberId): CapturePackId {
  *  connection monitoring but not my clipboard" into "then have neither" — and
  *  an operator who wants the three takes the fourth without deciding to.
  *
- *  Absent means on, so the pack switch keeps its existing meaning. */
+ *  Clipboard requires explicit opt-in; other members follow the pack default. */
 export function isPackMemberOn(
   config: PackConfig,
   member: PackMemberId,
   plugins: readonly LoadedPlugin[]
 ): boolean {
-  if (config.packMembers?.[member] === false) return false
+  if (!isMemberSelected(config, member)) return false
   return isPackOn(config, packOfMember(member), plugins)
+}
+
+
+/** The selection shown in Settings and enforced by the capture pipeline. */
+export function isMemberSelected(config: PackConfig, member: PackMemberId): boolean {
+  return config.packMembers?.[member] ?? member !== 'clipboard'
 }
