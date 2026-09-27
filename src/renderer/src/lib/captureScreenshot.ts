@@ -7,7 +7,8 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 /** Resolves the new screenshot's event id, or null when nothing was stored. */
 export async function captureScreenshotWithFeedback(t: Translate): Promise<string | null> {
   try {
-    const id = await window.redlog.screenshot.capture()
+    // RedLog off screen for the grab: the operator wants what is behind it.
+    const id = await window.redlog.screenshot.capture(undefined, { hideOwnWindows: true })
     // null means nothing new was stored: capturing failed or was refused
     // (Capture Health has which).
     if (id) toast(t('palette.screenshotTaken'), 'success')

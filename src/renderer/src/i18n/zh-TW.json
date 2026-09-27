@@ -1468,5 +1468,11 @@
   "transcript.toolInterrupted": "（工具執行中斷）",
   "transcript.toolResultUnpaired": "（找不到對應呼叫的工具結果）",
   "settings.pickFolder": "選擇資料夾",
-  "artifacts.pickerTitle": "加入證據檔案"
+  "artifacts.pickerTitle": "加入證據檔案",
+  "dashboard.screenshotNow": "立即截圖（任何應用程式中皆可）",
+  "artifacts.dropConfirm": "要把拖入的 {{count}} 個檔案加入此專案作為證據嗎？",
+  "artifacts.dropConfirmYes": "加入為證據",
+  "artifacts.dropHere": "放開即可加入為證據（會先請你確認）",
+  "app.evidenceShot": "截圖（擷取時 RedLog 會先隱藏）",
+  "app.evidenceFile": "加入證據檔案…（也可把檔案拖進視窗）"
 }

@@ -4,11 +4,13 @@ import * as path from 'path'
 import glob from 'fast-glob'
 import {
   QUICK_MARK_ACCELERATOR as MAIN_ACCEL,
-  HUD_PASSTHROUGH_ACCELERATOR as MAIN_HUD_ACCEL
+  HUD_PASSTHROUGH_ACCELERATOR as MAIN_HUD_ACCEL,
+  QUICK_SHOT_ACCELERATOR as MAIN_SHOT_ACCEL
 } from '../src/core/shortcuts'
 import {
   QUICK_MARK_ACCELERATOR as RENDERER_ACCEL,
   HUD_PASSTHROUGH_ACCELERATOR as RENDERER_HUD_ACCEL,
+  QUICK_SHOT_ACCELERATOR as RENDERER_SHOT_ACCEL,
   appShortcuts,
   formatAccelerator,
   timelineShortcuts
@@ -32,6 +34,10 @@ describe('shortcut accelerators', () => {
     expect(RENDERER_ACCEL).toBe(MAIN_ACCEL)
   })
 
+  it('main and renderer agree on the screenshot accelerator', () => {
+    expect(RENDERER_SHOT_ACCEL).toBe(MAIN_SHOT_ACCEL)
+  })
+
   it('main and renderer agree on the HUD click-through escape', () => {
     // This one matters more than most: while pass-through is on the HUD cannot
     // be clicked, so a wrong chord in the cheatsheet leaves the operator with
@@ -39,8 +45,8 @@ describe('shortcut accelerators', () => {
     expect(RENDERER_HUD_ACCEL).toBe(MAIN_HUD_ACCEL)
   })
 
-  it('does not let the two global chords collide', () => {
-    expect(MAIN_ACCEL).not.toBe(MAIN_HUD_ACCEL)
+  it('does not let the global chords collide', () => {
+    expect(new Set([MAIN_ACCEL, MAIN_HUD_ACCEL, MAIN_SHOT_ACCEL]).size).toBe(3)
   })
 
   it('draws accelerators the way each platform writes them', () => {
@@ -87,7 +93,7 @@ describe('the cheatsheet table', () => {
   it('documents the app- and terminal-scoped bindings', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true).filter((r) => r.scope !== 'nav')
     expect(rows.map((r) => r.keys)).toEqual([
-      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
+      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧2', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
     ])
   })
 })
