@@ -1,6 +1,7 @@
 /// <reference path="../renderer/src/env.d.ts" />
 import { contextBridge, ipcRenderer } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
+import type { ArtifactAddResponse } from '../core/artifacts'
 
 // Single source of truth: the bridge is typed against the RedLogAPI contract
 // declared in the renderer's env.d.ts. Before this, env.d.ts was a hand-copied
@@ -54,11 +55,17 @@ const api: RedLogAPI = {
   targetContext: {
     get: () => ipcRenderer.invoke('targetContext:get') as Promise<string | null>,
     set: (target: string | null) => ipcRenderer.invoke('targetContext:set', target) as Promise<{ ok: boolean; target: string | null }>,
+    getSession: (terminalId: string) => ipcRenderer.invoke('targetContext:getSession', terminalId) as Promise<string | null>,
+    bindSession: (terminalId: string, target: string | null) =>
+      ipcRenderer.invoke('targetContext:bindSession', terminalId, target) as Promise<{ ok: boolean; target: string | null }>,
     onChange: (cb: (target: string | null) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, target: string | null): void => cb(target)
       ipcRenderer.on('targetContext:changed', handler)
       return () => ipcRenderer.removeListener('targetContext:changed', handler)
     }
+  },
+  artifacts: {
+    add: () => ipcRenderer.invoke('artifacts:add') as Promise<ArtifactAddResponse | null>
   },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,

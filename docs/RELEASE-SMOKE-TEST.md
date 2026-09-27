@@ -33,7 +33,7 @@
   - 列出 python3、curl、你的 shell、mitmproxy（選用）；
   - 缺少的項目附上可複製的安裝指令；
   - 「開始使用」永遠可以按。
-- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端仍可記錄。
+- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
   - 失敗時查：`src/core/runtime-preflight.ts`、`RuntimeReadiness.tsx`。
 - [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app，就緒卡的 mitmproxy 顯示已找到。
   - 失敗時查：`src/main/login-path.ts`。
@@ -71,6 +71,17 @@
   - `redlog-run nmap -sV 127.0.0.1`：有輸出；
   - `redlog-session`，然後跑同一道指令，再 `exit`：有輸出。
   - 記下：你**直覺**以為第一種會不會記到輸出？
+- [ ] **輸出驗證（#218）**：連線後的畫面有「確認輸出有被留下」：
+  - 直接貼 `printf '%s-%s\n' redlog-out <碼>`（不加 redlog-run）→ 顯示「只收到指令本身」；
+  - 貼畫面給的 `redlog-run printf …` → 顯示「✓ 輸出已記錄（經由 redlog-run）」；
+  - 在 `redlog-session` 裡跑同一個 printf → 顯示「經由 redlog-session」，搜尋 `redlog-out-<碼>` 找得到。
+- [ ] **tmux 與長 session（#218，需真機）**。每一項記下 Action / Expected / Actual：
+  - 先 `redlog-session`，裡面開 `tmux`：新 pane 的輸出有被錄到（外層 PTY 看得到整個畫面）；在 pane 裡再跑 `redlog-session` 會被拒絕並說明原因（避免重複錄製）。
+  - 反過來：在 tmux **裡**的每個 pane 各自跑 `redlog-session`：各 pane 分開錄；detach 後 attach 回來，錄製不會中斷或重複。
+  - `ssh`、`nc` 互動 session 在 `redlog-session` 裡：遠端輸出有進時間軸；`Ctrl-C` 中斷前景程式不會結束錄製；`exit` 正常結束時有 `session_end`（含 outputBytes）。
+  - 錄到一半關掉 RedLog 再開：shell 不中斷；`session_end` 或終端上的 `[redlog] omitted N bytes` 說明缺了多少，**不會**假裝補回。
+  - 暫停錄製一段：`pausedBytes` 反映那段；恢復後繼續錄。
+  - 用 `--max-bytes 1000` 跑大量輸出：終端照常，`truncated: true`。
 - [ ] **WSL（Windows）**：「記我的 WSL 終端」流程與上面相同，nonce 能驗證通過。
 - [ ] **破壞測試**：
   - 關掉 RedLog 後打指令：不記錄（這是設計）。重開後，你能不能理解剛才為什麼沒記到？

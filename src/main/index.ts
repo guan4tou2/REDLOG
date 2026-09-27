@@ -17,6 +17,7 @@ import {
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
 import { isVerifyNonce, verifyUrl } from '../core/http-verify'
+import { clearSessionTargets } from '../core/session-targets'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -85,6 +86,7 @@ import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
 import { registerTargetContextIpc } from './ipc/target-context'
+import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -1014,6 +1016,7 @@ function stopProject(): void {
   currentOperatorId = null
   resetCausesResolver()
   configureIngest({ activeTarget: null })
+  clearSessionTargets()
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -1165,6 +1168,7 @@ app.whenReady().then(() => {
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
   registerTargetContextIpc(ipcMain, ipcCtx)
+  registerArtifactsIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())

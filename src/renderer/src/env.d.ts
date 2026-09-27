@@ -26,7 +26,24 @@ interface ExportRequest {
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
+  /** Attachments left out, by bundle-relative path (#222). */
+  excludeAttachments?: string[]
 }
+/** One file an evidence bundle would carry (core/export-attachments.ts). */
+interface ExportAttachmentRow {
+  id: string
+  kind: 'screenshot' | 'cast' | 'httpBody' | 'artifact'
+  bytes: number | null
+  targets: string[]
+  attribution: 'target' | 'cross-target' | 'unattributed'
+  status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
+  source?: string
+}
+/** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
+type ArtifactAddOutcome =
+  | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
+  | { ok: false; error: 'not-a-file' | 'unreadable' | 'too-large' | 'no-space' | 'copy-failed'; originalPath: string; bytes?: number; detail?: string }
+interface ArtifactAddResponse { canceled: boolean; results: ArtifactAddOutcome[] }
 interface ResolvedExportPlan {
   id: string
   fingerprint: string
@@ -54,8 +71,10 @@ interface ResolvedExportPlan {
     attachmentsIncluded: number
     attachmentsMissing: number
     attachmentsUnattributed: number
+    attachmentsExcludedByOperator: number
     unsupported: number
   }
+  attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
 type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
@@ -167,7 +186,14 @@ interface RedLogAPI {
   targetContext: {
     get: () => Promise<string | null>
     set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
+    /** #219: a built-in terminal's own target, which outranks the global one. */
+    getSession: (terminalId: string) => Promise<string | null>
+    bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
+  }
+  /** #221: copy operator-picked local files into the project as evidence. */
+  artifacts: {
+    add: () => Promise<ArtifactAddResponse | null>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>

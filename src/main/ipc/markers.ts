@@ -16,6 +16,12 @@ import type { ScreenshotAgent } from '../services/screenshot-agent'
 
 export const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 
+/** Event ids a marker may cite: strings of a sane length, at most 20. */
+export function markerCauses(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128))].slice(0, 20)
+}
+
 export function registerMarkersIpc(
   ipcMain: IpcMain,
   ctx: IpcContext,
@@ -34,8 +40,14 @@ export function registerMarkersIpc(
       ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {}),
       ...(typeof data.url === 'string' && data.url.trim()
         ? { url: data.url.trim().slice(0, 2048) }
-        : {})
-    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true })
+        : {}),
+      // #225: a step picked in the transcript cites the events it is about.
+      // The marker is a new chained row; the cited events are not touched.
+      ...(markerCauses(data.causes).length > 0 ? { _causes: markerCauses(data.causes) } : {})
+    }, MARKER_TEXT_FIELDS), {
+      engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true,
+      ...(typeof data.targetId === 'string' && data.targetId.trim() ? { targetId: data.targetId.trim().slice(0, 253) } : {})
+    })
     return event
   })
 

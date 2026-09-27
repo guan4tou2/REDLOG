@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
   Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon,
-  Globe
+  Globe, FilePlus
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 import type { HostAggregate } from '../../../core/db/events'
@@ -12,6 +12,7 @@ import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib
 import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
+import { addArtifactsWithFeedback } from '../lib/addArtifacts'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
 
@@ -188,6 +189,12 @@ export function CommandPalette({
             : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
           .catch((err) => toast(t('palette.screenshotNotSaved'), { type: 'error', detail: err instanceof Error ? err.message : String(err) }))
       }
+    })
+
+    out.push({
+      id: 'action:addArtifact', section: 'action', icon: FilePlus,
+      label: t('artifacts.add'),
+      run: () => { void addArtifactsWithFeedback(t) }
     })
 
     const density = resolveDensity(1, storedDensity())
