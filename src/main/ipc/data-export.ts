@@ -24,6 +24,7 @@ import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
 import { exportBundle } from '../../core/bundle-export'
+import { listExportAttachments } from '../../core/export-attachments'
 import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
@@ -89,9 +90,15 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     if (request.maskOutOfScope && isOutOfScope(event.targetId, scope)) maskedOutOfScope++
     if (redacted.data !== event.data) sanitized++
   }
+  const exclude = new Set(request.excludeAttachments)
   const attachmentCounts = request.format === 'bundle'
-    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope })
-    : { included: 0, missing: 0, unattributed: 0 }
+    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
+    : { included: 0, missing: 0, unattributed: 0, excludedByOperator: 0 }
+  // One row per file for the preview, so the operator can see which cast or
+  // screenshot is about to leave and drop any of them (#222).
+  const attachments = request.format === 'bundle'
+    ? listExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
+    : []
   const plan = createExportPlan({
     projectId: project.id,
     request,
@@ -114,8 +121,10 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       attachmentsIncluded: attachmentCounts.included,
       attachmentsMissing: attachmentCounts.missing,
       attachmentsUnattributed: attachmentCounts.unattributed,
+      attachmentsExcludedByOperator: attachmentCounts.excludedByOperator,
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents)
     },
+    attachments,
     selectedEventIds,
     selectedEvidenceDigest: fingerprintValue(selectedEvents),
     policyFingerprint: fingerprintValue(cfg)
@@ -131,8 +140,9 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
 // `selectedEventIds` and the digests stay behind; the renderer confirms by
 // planId and never needs them.
 function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan,
-  'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts' | 'scopeSnapshot'> {
+  'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts' | 'scopeSnapshot' | 'attachments'> {
   return {
+    attachments: plan.attachments,
     id: plan.id,
     fingerprint: plan.fingerprint,
     expiresAt: plan.expiresAt,
@@ -182,9 +192,10 @@ export function registerDataExportIpc(
       if (plan.request.format === 'bundle') {
         const attachments = countExportAttachments(getProjectPath(project), approvedNow, {
           scope: plan.scopeSnapshot,
-          maskOutOfScope: plan.request.maskOutOfScope
+          maskOutOfScope: plan.request.maskOutOfScope,
+          exclude: new Set(plan.request.excludeAttachments)
         })
-        if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed) {
+        if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed || attachments.excludedByOperator !== plan.counts.attachmentsExcludedByOperator) {
           return { ok: false as const, error: 'source-unavailable' }
         }
       }
@@ -215,7 +226,9 @@ export function registerDataExportIpc(
           maskOutOfScope: plan.request.maskOutOfScope,
           snapshot: plan.snapshot,
           includeEventIds: new Set(plan.selectedEventIds),
-          exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts }
+          exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts },
+          excludeAttachments: new Set(plan.request.excludeAttachments),
+          attachments: plan.attachments
         })
         artifactPath = result.outDir
       } else if (plan.request.format === 'har') {

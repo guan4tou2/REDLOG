@@ -26,6 +26,18 @@ interface ExportRequest {
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
+  /** Attachments left out, by bundle-relative path (#222). */
+  excludeAttachments?: string[]
+}
+/** One file an evidence bundle would carry (core/export-attachments.ts). */
+interface ExportAttachmentRow {
+  id: string
+  kind: 'screenshot' | 'cast' | 'httpBody'
+  bytes: number | null
+  targets: string[]
+  attribution: 'target' | 'cross-target' | 'unattributed'
+  status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
+  source?: string
 }
 interface ResolvedExportPlan {
   id: string
@@ -54,8 +66,10 @@ interface ResolvedExportPlan {
     attachmentsIncluded: number
     attachmentsMissing: number
     attachmentsUnattributed: number
+    attachmentsExcludedByOperator: number
     unsupported: number
   }
+  attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
 type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }

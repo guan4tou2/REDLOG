@@ -1371,5 +1371,17 @@
   "app.closeSaveFailed": "A settings change could not be saved to this project, so it was not closed. Check the settings and try again.",
   "settings.loadFailedTitle": "Settings could not be read",
   "settings.loadFailedWhy": "The project’s configuration did not load, so nothing here can be shown or changed yet.",
-  "settings.groupSources": "Other capture sources"
+  "settings.groupSources": "Other capture sources",
+  "export.preview.attachmentsExcludedByOperator": "Left out by you",
+  "export.attachments.title": "Files in the bundle — untick any you do not want to hand over",
+  "export.attachments.castNote": "Terminal recordings (casts) are never trimmed to scope. One that spans several targets, or none, carries everything typed in that terminal.",
+  "export.attachments.unattributed": "no target",
+  "export.attachments.crossTarget": "several targets: {{targets}}",
+  "export.attachments.kind.screenshot": "Screenshot",
+  "export.attachments.kind.cast": "Recording",
+  "export.attachments.kind.httpBody": "HTTP body",
+  "export.attachments.status.included": "included",
+  "export.attachments.status.excluded-by-operator": "left out",
+  "export.attachments.status.excluded-out-of-scope": "out of scope — dropped",
+  "export.attachments.status.missing": "file missing"
 }

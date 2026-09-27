@@ -5,6 +5,7 @@ import path from 'path'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
+import { isAttachmentId, type ExportAttachment } from './export-attachments'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -28,6 +29,8 @@ export interface ExportRequest {
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
+  /** Attachments the operator left out, by bundle-relative path (#222). */
+  excludeAttachments?: string[]
 }
 
 export interface NormalizedExportRequest {
@@ -37,6 +40,7 @@ export interface NormalizedExportRequest {
   maskOutOfScope: boolean
   scopeOnly: boolean
   scrubPii: boolean
+  excludeAttachments: readonly string[]
 }
 
 export interface ExportCounts {
@@ -50,6 +54,8 @@ export interface ExportCounts {
   attachmentsIncluded: number
   attachmentsMissing: number
   attachmentsUnattributed: number
+  /** attachments the operator chose to leave out (#222) */
+  attachmentsExcludedByOperator: number
   unsupported: number
 }
 
@@ -57,6 +63,7 @@ export interface ExportAttachmentCounts {
   included: number
   missing: number
   unattributed: number
+  excludedByOperator: number
 }
 
 export function countReferencedAttachments(events: readonly RedLogEvent[]): number {
@@ -78,11 +85,19 @@ export function countReferencedAttachments(events: readonly RedLogEvent[]): numb
 export function countExportAttachments(
   projectDir: string,
   events: readonly RedLogEvent[],
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean } = {}
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string> } = {}
 ): ExportAttachmentCounts {
   const referencedScreenshots = new Set<string>()
   const bodyHashes = new Set<string>()
+  const exclude = options.exclude ?? new Set<string>()
   let missing = 0
+  let excludedByOperator = 0
+  /** True — and counted — when the operator left this file out. */
+  const dropped = (id: string): boolean => {
+    if (!exclude.has(id)) return false
+    excludedByOperator++
+    return true
+  }
 
   for (const event of events) {
     if (event.agentType === 'screenshot') {
@@ -103,12 +118,13 @@ export function countExportAttachments(
   let unattributed = 0
   const screenshotsDir = path.join(projectDir, 'screenshots')
   for (const filename of referencedScreenshots) {
-    if (fs.existsSync(path.join(screenshotsDir, filename))) included++
-    else missing++
+    if (!fs.existsSync(path.join(screenshotsDir, filename))) missing++
+    else if (!dropped(`screenshots/${filename}`)) included++
   }
   if (fs.existsSync(screenshotsDir)) {
     for (const filename of fs.readdirSync(screenshotsDir)) {
       if (!referencedScreenshots.has(filename) && fs.statSync(path.join(screenshotsDir, filename)).isFile()) {
+        if (dropped(`screenshots/${filename}`)) continue
         included++
         unattributed++
       }
@@ -117,20 +133,21 @@ export function countExportAttachments(
 
   const bodiesDir = path.join(projectDir, 'http-bodies')
   for (const hash of bodyHashes) {
-    if (fs.existsSync(path.join(bodiesDir, `${hash}.body`))) included++
-    else missing++
+    if (!fs.existsSync(path.join(bodiesDir, `${hash}.body`))) missing++
+    else if (!dropped(`http-bodies/${hash}.body`)) included++
   }
 
   const castsDir = path.join(projectDir, 'casts')
   if (fs.existsSync(castsDir)) {
     for (const filename of fs.readdirSync(castsDir)) {
       if (fs.statSync(path.join(castsDir, filename)).isFile()) {
+        if (dropped(`casts/${filename}`)) continue
         included++
         unattributed++
       }
     }
   }
-  return { included, missing, unattributed }
+  return { included, missing, unattributed, excludedByOperator }
 }
 
 export interface ExportScopeSnapshot {
@@ -151,6 +168,8 @@ export interface ExportPlan {
   scopeSnapshot: ExportScopeSnapshot
   capabilities: ExportCapabilities
   counts: ExportCounts
+  /** One row per file the bundle would carry, for the preview (#222). */
+  attachments: readonly ExportAttachment[]
   selectedEventIds: readonly string[]
   selectedEvidenceDigest: string
   policyFingerprint: string
@@ -169,7 +188,8 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
     sharing: request.sharing === true,
     maskOutOfScope: request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
-    scrubPii: request.scrubPii === true || request.sharing === true
+    scrubPii: request.scrubPii === true || request.sharing === true,
+    excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort())
   })
 }
 
@@ -179,6 +199,7 @@ interface CreateExportPlanInput {
   snapshot: ExportSnapshot
   scopeSnapshot: ExportScopeSnapshot
   counts: ExportCounts
+  attachments?: readonly ExportAttachment[]
   selectedEventIds: string[] | readonly string[]
   selectedEvidenceDigest?: string
   policyFingerprint?: string
@@ -223,6 +244,7 @@ export function createExportPlan(
     }),
     capabilities: Object.freeze(capabilitiesFor(input.request.format)),
     counts: Object.freeze({ ...input.counts }),
+    attachments: Object.freeze([...(input.attachments ?? [])]),
     selectedEventIds: Object.freeze(selectedEventIds),
     selectedEvidenceDigest: input.selectedEvidenceDigest ?? '',
     policyFingerprint: input.policyFingerprint ?? '',
