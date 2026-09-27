@@ -561,7 +561,7 @@ throwing loot detector does not lose the event.
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
 | `binary` | `''` | auto-detect per platform (incl. per-user Windows installs) | `browser-launcher` |
-| `proxy` | `http://127.0.0.1:8080` | adds `--proxy-server` **and** `--proxy-bypass-list=<-loopback>`; `''` omits both | `browser-launcher` |
+| `proxy` | `http://127.0.0.1:8080` | adds `--proxy-server` **and** `--proxy-bypass-list=<-loopback>` (RedLog's own profile adds `;*.redlog-offline.invalid`, #182); `''` omits both | `browser-launcher` |
 | `cdpPort` | `9222` | `--remote-debugging-port`; `0` omits it | `browser-launcher` |
 | `isolateProfile` | `true` | `--user-data-dir` + `--no-first-run`; `false` leaves the daily profile alone | `browser-launcher` |
 | `ignoreCertErrors` | `true` | `--ignore-certificate-errors` so the intercepting CA is accepted; `false` restores validation | `browser-launcher` |
