@@ -5,6 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Pick steps in the transcript and copy them with their provenance.** Each
+  transcript step can now be picked as a **key step** or **failed attempt**,
+  which records a marker citing that step's events. The step itself is never
+  edited, and like every marker the pick is append-only. **Picked only** narrows
+  the transcript to those steps, and **Copy as Markdown** then copies just
+  them. Any single step can be copied on its own. Every copied step names its
+  target, local time with UTC offset (plus UTC), event IDs and session, keeps
+  newlines inside a fence its own backticks cannot close, and says whether the
+  output is verbatim, only a preview in the record, clipped in this copy, or
+  was not captured. `marker:create` accepts `causes` and `targetId` for this.
+  No assessment, scoring or report generation is added. (#225)
 - **Add a local file as evidence.** A loot file, a tool report or a pcap
   saved outside the watched folders never reached the record. The command
   palette's **Add evidence file…** copies the files you pick into the
