@@ -99,7 +99,12 @@ finally:
   })
 
   it('preserves terminal geometry and interactive interrupt behavior', async () => {
-    const r = await session(4096, false, ['/bin/sh', '-c', 'stty size; printf READY_FOR_INTERRUPT; sleep 20'], true)
+    // READY is printed only once the process that must take the interrupt is
+    // the one running, with SIGINT at its default. A shell printing READY and
+    // then starting \`sleep\` left a window where ^C reached the shell between
+    // the two and the sleep that followed never saw it.
+    const waiter = 'import signal, sys, time; signal.signal(signal.SIGINT, signal.SIG_DFL); sys.stdout.write("READY_FOR_INTERRUPT"); sys.stdout.flush(); time.sleep(20)'
+    const r = await session(4096, false, ['/bin/sh', '-c', `stty size; exec python3 -c '${waiter}'`], true)
     expect(r.output).toContain('31 95')
     expect(r.code).toBe(130)
     expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: -2 })
