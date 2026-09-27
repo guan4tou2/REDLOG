@@ -1225,11 +1225,11 @@ app.whenReady().then(() => {
   })
   // Native folder picker for the Settings UI — text input is fine but a
   // real picker matches how operators actually pick engagement folders.
-  ipcMain.handle('hookConfig:pickPath', async () => {
+  ipcMain.handle('hookConfig:pickPath', async (_e, title?: unknown) => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
-      title: 'Pick a folder'
+      title: typeof title === 'string' && title.trim() ? title.slice(0, 120) : 'Pick a folder'
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]

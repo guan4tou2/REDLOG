@@ -96,7 +96,7 @@ export default function IPStatusCard(): JSX.Element {
       {safety === 'unknown' && (
         <p className="text-xs text-yellow-500/90 flex items-start gap-1.5">
           <span className="shrink-0">ⓘ</span>
-          <span>{t('ip.safetyHint')}</span>
+          <span>{t('ip.safetyHint', { page: t('settings.pageNetwork') })}</span>
         </p>
       )}
 

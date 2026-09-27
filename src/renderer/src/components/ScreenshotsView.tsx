@@ -8,6 +8,7 @@ import { writeClipboard } from '../lib/clipboard'
 import { formatTime } from '../lib/time'
 import { useI18n } from '../i18n'
 import { settingsTarget } from '../lib/navigation'
+import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 
 const PAGE_SIZE = 100
 
@@ -21,20 +22,28 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const triggerFilterRef = useRef(triggerFilter)
   triggerFilterRef.current = triggerFilter
   const { t } = useI18n()
 
   const loadPage = useCallback(async (trigger: string | null) => {
     setLoading(true)
-    const page = await window.redlog.events.queryScreenshotPage({
-      limit: PAGE_SIZE,
-      trigger
-    })
-    setScreenshots(page.items)
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
-    setLoading(false)
+    try {
+      const page = await window.redlog.events.queryScreenshotPage({
+        limit: PAGE_SIZE,
+        trigger
+      })
+      setScreenshots(page.items)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+      setLoadError(null)
+    } catch (err) {
+      // Not "no screenshots": say the read failed and offer it again.
+      setLoadError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -65,16 +74,21 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
     setLoadingMore(true)
-    const page = await window.redlog.events.queryScreenshotPage({
-      limit: PAGE_SIZE,
-      cursor: nextCursor,
-      trigger: triggerFilterRef.current
-    })
-    setScreenshots((prev) => [...prev, ...page.items])
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
-    setLoadingMore(false)
-  }, [nextCursor, loadingMore])
+    try {
+      const page = await window.redlog.events.queryScreenshotPage({
+        limit: PAGE_SIZE,
+        cursor: nextCursor,
+        trigger: triggerFilterRef.current
+      })
+      setScreenshots((prev) => [...prev, ...page.items])
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch (err) {
+      toast(t('screenshots.loadFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [nextCursor, loadingMore, t])
 
   useEffect(() => {
     screenshots.forEach((s) => {
@@ -100,13 +114,22 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           {t('screenshots.title', { count: screenshots.length })}
         </h2>
         <button
-          onClick={() => window.redlog.screenshot.capture()}
+          onClick={() => { void captureScreenshotWithFeedback(t) }}
           className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
           {t('screenshots.captureNow')}
         </button>
       </div>
-      {screenshots.length === 0 && !hasMore ? (
+      {loadError && (
+        <div data-testid="screenshots-load-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <div>{t('screenshots.loadFailed')}</div>
+          <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
+          <button type="button" onClick={() => void loadPage(triggerFilter)} className="mt-2 text-red-300 underline hover:text-red-200">
+            {t('common.retry')}
+          </button>
+        </div>
+      )}
+      {loadError && screenshots.length === 0 ? null : screenshots.length === 0 && !hasMore ? (
         <EmptyState
           icon={Image}
           title={t('screenshots.empty')}
@@ -145,7 +168,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
               key={s.id}
               role="button"
               tabIndex={0}
-              aria-label={`Screenshot at ${formatTime(s.timestamp, { seconds: true })}`}
+              aria-label={t('screenshots.itemLabel', { time: formatTime(s.timestamp, { seconds: true }) })}
               className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-redlog-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
@@ -202,7 +225,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 </div>
                 {typeof s.data.sha256 === 'string' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string) }}
+                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
                     className="text-xs font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
                     title={`SHA-256: ${s.data.sha256 as string}`}
                   >
@@ -229,7 +252,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Screenshot preview"
+          aria-label={t('screenshots.previewLabel')}
           tabIndex={-1}
           ref={(el) => el?.focus()}
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer outline-none"

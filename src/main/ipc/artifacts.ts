@@ -13,13 +13,14 @@ import { addArtifact, artifactRelatedCommands, type ArtifactAddOutcome, type Art
 const RELATED_WINDOW_MS = 24 * 60 * 60 * 1000
 
 export function registerArtifactsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  ipcMain.handle('artifacts:add', async (): Promise<ArtifactAddResponse | null> => {
+  ipcMain.handle('artifacts:add', async (_e, title?: unknown): Promise<ArtifactAddResponse | null> => {
     const proj = ctx.getActiveProject()
     const win = ctx.getMainWindow()
     if (!proj || !win) return null
     const picked = await dialog.showOpenDialog(win, {
       properties: ['openFile', 'multiSelections'],
-      title: 'Add evidence files'
+      // The renderer passes the title in the operator's language.
+      title: typeof title === 'string' && title.trim() ? title.slice(0, 120) : 'Add evidence files'
     })
     if (picked.canceled || picked.filePaths.length === 0) return { canceled: true, results: [] }
     // The project may have closed while the picker was open.

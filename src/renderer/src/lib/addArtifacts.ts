@@ -51,13 +51,22 @@ export function artifactToast(r: ArtifactAddOutcome, t: Translate): ArtifactToas
 export async function addArtifactsWithFeedback(t: Translate): Promise<void> {
   let res: ArtifactAddResponse | null
   try {
-    res = await window.redlog.artifacts.add()
+    res = await window.redlog.artifacts.add(t('artifacts.pickerTitle'))
   } catch (err) {
     toast(t('artifacts.pickerFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
     return
   }
   if (!res) { toast(t('artifacts.none'), 'warning'); return }
+  // One file: its own toast. Several: one summary for what was added, and a
+  // toast of its own for every file that was not — a failure must never be
+  // folded into a count (UI/UX audit F4).
+  const added = res.results.filter((r) => r.ok && r.eventId !== null)
+  if (res.results.length > 1 && added.length > 0) {
+    toast(t('artifacts.addedMany', { count: added.length, total: res.results.length }),
+      added.length === res.results.length ? 'success' : 'info')
+  }
   for (const r of res.results) {
+    if (res.results.length > 1 && r.ok && r.eventId !== null) continue
     const { message, ...opts } = artifactToast(r, t)
     toast(message, { ...opts, key: `artifact:${r.originalPath}` })
   }

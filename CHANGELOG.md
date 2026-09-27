@@ -5,6 +5,35 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Failures are reported, and a failed read is never shown as safe.** A
+  UI/UX pass over the renderer, first batch:
+  - *New marker*: a failed save used to leave the dialog stuck on "Saving…".
+    It now keeps your draft, says it failed and lets you save again. A saved
+    marker is confirmed, and a failed screenshot is reported on its own. A
+    stray backdrop click no longer throws away a typed title or notes. The
+    severity buttons expose `aria-pressed`, and the fields have labels.
+  - *Scope*: when the violation count or scope configuration cannot be read,
+    the dashboard and status bar show "unknown" with a retry, never a green
+    "scope OK". The Targets page shows scope as unknown when it cannot read
+    the rules, instead of treating every target as in scope.
+  - *Targets and Screenshots*: a failed load shows an error and a retry
+    instead of a blank page or a spinner that never stops. "Load more" can no
+    longer get stuck.
+  - *Setup*: every Copy button now says "Copied". A rejected "Start HTTP
+    capture" shows the reason. A failed save of the terminal proxy setting
+    puts the checkbox back. A failed environment check says so.
+  - *Toasts*: a batch of successes no longer pushes an error off the screen.
+    Adding several evidence files gives one summary plus one toast for each
+    file that failed.
+  - *範圍* appears in the sidebar as soon as a real out-of-scope hit exists,
+    even with only one target.
+  - *Command palette*: the highlighted item stays scrolled into view, and the
+    list is announced as a combobox. Switching project writes pending
+    settings first and reports a failed open instead of reloading anyway.
+  - *Language*: terminal badges, dashboard sampling labels, transcript meta
+    and file-picker titles no longer have hardcoded English. Hints now name
+    settings pages that exist (not "Settings ▸ Data"), and zh-TW uses the
+    fixed glossary terms. A test guards both.
 - **The capture browser is silent when idle.** RedLog's own browser profile
   still sent 8 requests a minute to Google with nothing open:
   `accounts.google.com/ListAccounts` ×5, `android.clients.google.com/checkin`

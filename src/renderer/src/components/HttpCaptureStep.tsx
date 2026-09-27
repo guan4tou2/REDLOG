@@ -19,8 +19,8 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
+import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
-import { writeClipboard } from '../lib/clipboard'
 import { requestRunInTerminal } from '../lib/terminalRunner'
 import { isMac, isWindows } from '../lib/platform'
 import {
@@ -85,7 +85,7 @@ function CaCommand({ label, command, t }: {
         <code title={command} className="flex-1 min-w-0 truncate font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">
           {command}
         </code>
-        <Button level="quiet" onClick={() => void writeClipboard(command)}>{t('firstRun.copy')}</Button>
+        <CopyButton text={command} />
         <Button level="quiet" onClick={() => requestRunInTerminal(command)}>{t('settings.hookRun')}</Button>
       </div>
     </div>
@@ -124,6 +124,7 @@ export function HttpCaptureStep({ onVerified }: {
   const { t } = useI18n()
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
   const [mitmMissing, setMitmMissing] = useState(false)
+  const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
   const [showCa, setShowCa] = useState(false)
@@ -154,6 +155,8 @@ export function HttpCaptureStep({ onVerified }: {
       window.redlog.runtime.preflight().catch(() => null),
       window.redlog.httpCapture.status().catch(() => null)
     ])
+    // A failed environment check is not "mitmproxy is installed".
+    setPreflightFailed(pf === null)
     if (pf) setMitmMissing(pf.checks.some((c) => c.id === 'mitmdump' && !c.found))
     if (st) setStatus(st)
   }
@@ -177,8 +180,15 @@ export function HttpCaptureStep({ onVerified }: {
 
   const start = async (): Promise<void> => {
     setBusy(true)
-    try { setStatus(await window.redlog.httpCapture.start()) } catch { /* status stays as it was */ }
-    setBusy(false)
+    // A rejected start is a failure the operator must see — it used to leave
+    // the button as it was, as if nothing had been pressed.
+    try {
+      setStatus(await window.redlog.httpCapture.start())
+    } catch (err) {
+      setStatus((prev) => ({ ...prev, state: 'failed', error: err instanceof Error ? err.message : String(err) }))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const verifyInBrowser = async (): Promise<void> => {
@@ -193,9 +203,17 @@ export function HttpCaptureStep({ onVerified }: {
   const routeTerminals = httpCapture.routeTerminals === true
   const setRouteTerminals = (on: boolean): void => {
     if (!config) return
+    const prev = config
     const next = { ...config, httpCapture: { ...httpCapture, routeTerminals: on } }
     setConfig(next)
-    void window.redlog.config.save(next)
+    // The box reflects what was saved, not what was clicked.
+    const revert = (detail?: string): void => {
+      setConfig(prev)
+      toast(t('firstRun.http.routeSaveFailed'), { type: 'error', ...(detail ? { detail } : {}) })
+    }
+    window.redlog.config.save(next)
+      .then((ok) => { if (!ok) revert() })
+      .catch((err) => revert(err instanceof Error ? err.message : String(err)))
   }
 
   const unavailable = mitmMissing || status.state === 'unavailable'
@@ -217,12 +235,18 @@ export function HttpCaptureStep({ onVerified }: {
           {verified ? t('firstRun.core.verified') : t('firstRun.core.pending')}
         </span>
       </div>
+      {preflightFailed && (
+        <p data-testid="first-run-http-preflight-failed" role="status" className="text-amber-300">
+          {t('firstRun.http.preflightFailed')}{' '}
+          <button type="button" onClick={() => void check()} className="underline hover:text-amber-200">{t('common.retry')}</button>
+        </p>
+      )}
       {unavailable ? (
         <div className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
           <div className="flex items-center gap-2">
             <code className="font-mono text-redlog-text-dim">{MITM_INSTALL}</code>
-            <Button level="quiet" onClick={() => void writeClipboard(MITM_INSTALL)}>{t('firstRun.copy')}</Button>
+            <CopyButton text={MITM_INSTALL} />
           </div>
           <Button level="secondary" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
         </div>
