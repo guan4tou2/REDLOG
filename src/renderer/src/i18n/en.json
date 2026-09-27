@@ -1480,5 +1480,14 @@
   "export.runFailed": "The export did not complete. The preview is kept; nothing was written that you were not shown.",
   "export.retryResolve": "Recalculate and try again",
   "nav.backTo": "Back to {{view}}",
-  "timeline.search.label": "Highlight events (others are dimmed, not removed)"
+  "timeline.search.label": "Highlight events (others are dimmed, not removed)",
+  "screenshots.prev": "Previous screenshot",
+  "screenshots.next": "Next screenshot",
+  "screenshots.trigger.manual": "manual",
+  "screenshots.trigger.periodic": "periodic",
+  "screenshots.trigger.idle": "idle",
+  "screenshots.trigger.command": "after command",
+  "screenshots.trigger.api": "API",
+  "common.close": "Close",
+  "common.removeItem": "Remove {{item}}"
 }

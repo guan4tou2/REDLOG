@@ -1480,5 +1480,14 @@
   "export.runFailed": "匯出未完成。預覽已保留，沒有寫出任何你沒看過的內容。",
   "export.retryResolve": "重新計算後再試一次",
   "nav.backTo": "返回{{view}}",
-  "timeline.search.label": "標亮事件（其餘變暗，不會移除）"
+  "timeline.search.label": "標亮事件（其餘變暗，不會移除）",
+  "screenshots.prev": "上一張截圖",
+  "screenshots.next": "下一張截圖",
+  "screenshots.trigger.manual": "手動",
+  "screenshots.trigger.periodic": "定時",
+  "screenshots.trigger.idle": "閒置",
+  "screenshots.trigger.command": "指令後",
+  "screenshots.trigger.api": "API",
+  "common.close": "關閉",
+  "common.removeItem": "移除 {{item}}"
 }

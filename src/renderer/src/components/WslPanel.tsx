@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from './Toast'
+import { IconButton } from './IconButton'
 
 interface WslPanelProps {
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -280,12 +281,13 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
             <h4 className="text-xs font-medium text-redlog-text">
               {t('settings.wsl.diagTitle', { distro: diagnostics.distro })}
             </h4>
-            <button
+            <IconButton
+              label={t('common.close')}
               onClick={() => setDiagnostics(null)}
               className="text-xs text-redlog-text-dim hover:text-redlog-text"
             >
               ×
-            </button>
+            </IconButton>
           </div>
           <div className="space-y-1">
             {diagnostics.checks.map((check, i) => (

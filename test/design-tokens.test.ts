@@ -68,6 +68,20 @@ describe('token palette', () => {
     expect(failures).toEqual([])
   })
 
+  it('holds text-faint above 4.5:1 too, hover surface included (UI/UX audit F23)', () => {
+    // text-faint carries section labels, hints and timestamps — text people
+    // read — so it is held to the same line as text-dim, on every surface a
+    // row can be under, including the hover tint.
+    const t = redlogTokens()
+    const failures: string[] = []
+    for (const s of ['bg', 'surface', 'elevated', 'elevated-hover'] as const) {
+      expect(t[s], `token ${s} not found`).toMatch(/^#[0-9a-f]{6}$/i)
+      const ratio = contrast(t['text-faint'], t[s])
+      if (ratio < 4.5) failures.push(`text-faint on ${s}: ${ratio.toFixed(2)}:1`)
+    }
+    expect(failures).toEqual([])
+  })
+
   it('holds non-text elements above 3:1 on every surface', () => {
     // WCAG SC 1.4.11. `lane` is the only thing marking lane membership now
     // that hue is gone, and `border` carries the app's entire depth model.

@@ -8,6 +8,7 @@ import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
+import { IconButton } from './IconButton'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -315,7 +316,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
                 <div className="flex items-center gap-3 pt-1">
                   <div className="flex-1 border-t border-redlog-border" />
-                  <span className="text-xs text-redlog-muted">{t('project.or')}</span>
+                  <span className="text-xs text-redlog-text-faint">{t('project.or')}</span>
                   <div className="flex-1 border-t border-redlog-border" />
                 </div>
 
@@ -451,6 +452,7 @@ function ScopeTextField({ id, label, value, onChange, placeholder, invalid }: {
 function MiniListField({ label, items, onChange, placeholder }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
 }): JSX.Element {
+  const { t } = useI18n()
   const [input, setInput] = useState('')
 
   const addItem = (): void => {
@@ -479,7 +481,7 @@ function MiniListField({ label, items, onChange, placeholder }: {
           {items.map((item, i) => (
             <span key={i} className="inline-flex items-center gap-1 bg-redlog-elevated text-redlog-text-dim text-xs font-mono px-1.5 py-0.5 rounded">
               {item}
-              <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-faint hover:text-red-400">×</button>
+              <IconButton label={t('common.removeItem', { item })} onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-faint hover:text-red-400">×</IconButton>
             </span>
           ))}
         </div>

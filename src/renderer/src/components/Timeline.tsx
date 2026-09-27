@@ -1676,7 +1676,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             <Rows3 size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-sm text-redlog-text-dim">{t('timeline.noEvents')}</p>
-          <p className="text-xs text-redlog-muted">{t('timeline.noEventsDesc')}</p>
+          <p className="text-xs text-redlog-text-faint">{t('timeline.noEventsDesc')}</p>
         </div>
       </div>
     )
