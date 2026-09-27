@@ -43,6 +43,10 @@ describe('what each noun waits for', () => {
     expect(viewsOf(S({ targetCount: 2 }))).toContain('scope')
   })
 
+  it('範圍 as soon as one target is out of scope, without waiting for a second (F9)', () => {
+    expect(viewsOf(S({ targetCount: 1, scopeViolationSeen: true }))).toContain('scope')
+  })
+
   it('戰利品, 截圖, 標記 and HTTP each after their own first row', () => {
     expect(viewsOf(S({ lootSeen: true }))).toContain('loot')
     expect(viewsOf(S({ screenshotSeen: true }))).toContain('screenshots')

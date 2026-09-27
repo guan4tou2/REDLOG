@@ -76,7 +76,7 @@ export function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, s
     await commit(watchPaths.filter((x) => x !== p))
   }
   const pickFolder = async (): Promise<void> => {
-    const p = await window.redlog.hookConfig.pickPath()
+    const p = await window.redlog.hookConfig.pickPath(t('settings.pickFolder'))
     if (p) await addPath(p)
   }
   return (

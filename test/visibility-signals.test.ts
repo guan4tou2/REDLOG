@@ -168,6 +168,16 @@ describe.skipIf(!available)('visibility signals', () => {
     })
   })
 
+  describe('scope violations (UI/UX audit F9)', () => {
+    it('opens on a real out-of-scope hit, not on the in-scope adherence rows', () => {
+      ins('system', { subtype: 'scope_violation', target: 'a.example', distance: 'in_scope' }, 'a.example')
+      expect(sig().scopeViolationSeen).toBe(false)
+      vis!.resetVisibilitySignalsCache()
+      ins('system', { subtype: 'scope_violation', target: 'b.example', distance: 'out_of_scope' }, 'b.example')
+      expect(sig().scopeViolationSeen).toBe(true)
+    })
+  })
+
   describe('the tier distinction', () => {
     it('appears with the first logged row', () => {
       expect(sig().loggedEver).toBe(false)

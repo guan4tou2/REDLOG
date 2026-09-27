@@ -86,6 +86,8 @@ interface Block {
   /** why there is no output, when there isn't one */
   outputNote?: string
   meta?: string
+  /** a finished command's exit code, when known */
+  exitCode?: number | null
   events: Ev[]
 }
 
@@ -134,7 +136,7 @@ const KIND_COLOR: Record<Kind, string> = {
  * incomplete — the command is still running, the response never came — the
  * block renders with the half that exists and says so.
  */
-function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
+function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string, v?: Record<string, string | number>) => string): Block[] {
   const out: Block[] = []
   const pendingTool = new Map<string, Block>()
   const pendingHttp = new Map<string, Block>()
@@ -147,8 +149,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     if (e.agentType === 'shell' && sub === 'session_output') {
       const output = String(d.stdout ?? '')
       out.push({ id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
-        input: `Session ${String(d.terminalId ?? '')} · #${String(d.sequence ?? '')}`,
-        output, outputBytes: output.length, meta: 'PTY · stdout/stderr merged', events: [e] })
+        input: t('transcript.sessionChunk', { terminal: String(d.terminalId ?? ''), seq: String(d.sequence ?? '') }),
+        output, outputBytes: output.length, meta: t('transcript.metaPtyMerged'), events: [e] })
       continue
     }
 
@@ -170,7 +172,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
         output, outputBytes, outputNote,
-        meta: `${exitKnown ? `exit ${exit}` : 'exit unknown'}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        meta: `${exitKnown ? t('transcript.metaExit', { code: String(exit) }) : t('transcript.metaExitUnknown')}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        exitCode: exit,
         events: [e]
       })
       continue
@@ -214,7 +217,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         } else {
           out.push({
             id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
-            input: '(tool interrupted)', outputNote: 'interrupted', events: [e]
+            input: t('transcript.toolInterrupted'), outputNote: 'interrupted', events: [e]
           })
         }
         continue
@@ -232,7 +235,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         } else {
           out.push({
             id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
-            input: '(tool result without a matching call)', output: body, events: [e]
+            input: t('transcript.toolResultUnpaired'), output: body, events: [e]
           })
         }
         continue
@@ -457,7 +460,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   }, [])
   useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
 
-  const blocks = useMemo(() => buildBlocks(events, names), [events, names])
+  const blocks = useMemo(() => buildBlocks(events, names, t), [events, names, t])
   const hasMore = Object.values(bucketPages).some((page) => page.hasMore)
 
   const autoExpandedRef = useRef<Set<string>>(new Set())
@@ -467,10 +470,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
       if (autoExpandedRef.current.has(b.id)) continue
       autoExpandedRef.current.add(b.id)
       if (b.kind === 'loot') { toExpand.push(b.id); continue }
-      if (b.kind === 'shell' && b.meta) {
-        const m = b.meta.match(/^exit (\d+)/)
-        if (m && m[1] !== '0') toExpand.push(b.id)
-      }
+      if (b.kind === 'shell' && typeof b.exitCode === 'number' && b.exitCode !== 0) toExpand.push(b.id)
     }
     if (toExpand.length > 0) {
       setExpanded((prev) => { const next = new Set(prev); for (const id of toExpand) next.add(id); return next })
@@ -682,7 +682,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {t('transcript.receiptTime')} {formatTime(b.events[0]?.createdAt ?? b.ts, { seconds: true })}
                 </span>
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
-                {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
+                {b.meta && (
+                  <span
+                    data-testid="transcript-meta"
+                    className={`text-xs font-mono shrink-0 ${typeof b.exitCode === 'number' && b.exitCode !== 0 ? 'text-amber-400' : 'text-redlog-text-faint'}`}
+                  >{b.meta}</span>
+                )}
                 {hasOutput && (
                   <button
                     // Stable hook: the e2e reached this by matching the ▶ glyph

@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatTime } from '../lib/time'
 import { Button } from './Button'
+import { toast } from './Toast'
 
 const SEVERITIES = ['info', 'important', 'critical'] as const
 const CATEGORIES = [
@@ -54,22 +55,53 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // A draft is worth keeping: a stray click on the backdrop used to throw away
+  // a typed title and notes. With nothing typed it still dismisses.
+  const hasDraft = title.trim() !== '' || notes.trim() !== ''
+
   const handleSave = async () => {
+    if (saving) return
     setSaving(true)
     const ts = formatTime(Date.now(), { seconds: true })
-    const markerEvent = await window.redlog.marker.create({
-      title: title.trim() || t('marker.defaultTitle', { time: ts }),
-      notes, severity, category,
-      ...(url.trim() ? { url: url.trim() } : {}),
-      ...(atTimestamp ? { atTimestamp } : {})
-    })
+    let markerEvent: { id?: string } | null = null
+    try {
+      markerEvent = await window.redlog.marker.create({
+        title: title.trim() || t('marker.defaultTitle', { time: ts }),
+        notes, severity, category,
+        ...(url.trim() ? { url: url.trim() } : {}),
+        ...(atTimestamp ? { atTimestamp } : {})
+      }) as { id?: string } | null
+      if (!markerEvent?.id) throw new Error(t('marker.amendErr.noActiveProject'))
+    } catch (err) {
+      // Keep the dialog and the draft: the marker is the operator's claim,
+      // and losing it silently is worse than asking them to press again.
+      setSaving(false)
+      toast(t('marker.saveFailed'), {
+        type: 'error',
+        why: t('marker.saveFailedWhy'),
+        detail: err instanceof Error ? err.message : String(err)
+      })
+      return
+    }
     // Screenshot is opt-out — if the operator is looking at sensitive UI they
     // shouldn't capture, they can uncheck. Default stays on (matches prior
     // behaviour + is the safer default for evidence). Audit P1 #29.
     // v0.6.89 `_causes`: pass the marker event id so focus chain links
     // marker → screenshot → (later screenshot_deleted).
-    if (withScreenshot) await window.redlog.screenshot.capture(markerEvent?.id)
+    // The marker is already in the chain here, so a failed screenshot is
+    // reported on its own and does not undo or block it.
+    let shotFailed: string | null = null
+    if (withScreenshot) {
+      try {
+        const shot = await window.redlog.screenshot.capture(markerEvent.id)
+        if (!shot) shotFailed = t('palette.screenshotNotSavedWhy')
+      } catch (err) {
+        shotFailed = err instanceof Error ? err.message : String(err)
+      }
+    }
     setSaving(false)
+    toast(t('marker.saved', { time: ts }), 'success')
+    if (shotFailed) toast(t('marker.screenshotFailed'), { type: 'warning', why: shotFailed })
     onClose()
   }
 
@@ -82,7 +114,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 select-text"
-      onClick={onClose}
+      onClick={() => { if (!hasDraft) onClose() }}
       role="presentation"
     >
       <div
@@ -123,10 +155,12 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text font-mono placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
         />
 
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="group" aria-label={t('marker.field.severity')}>
           {SEVERITIES.map((s) => (
             <button
               key={s}
+              type="button"
+              aria-pressed={severity === s}
               onClick={() => setSeverity(s)}
               className={`px-3 py-1 text-xs rounded border transition-colors
                 ${severity === s ? severityColor[s] : 'border-redlog-border text-redlog-text-dim'}`}
@@ -139,7 +173,8 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-1.5 text-xs text-redlog-text focus:outline-none"
+          aria-label={t('marker.field.category')}
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-1.5 text-xs text-redlog-text focus:outline-none focus:border-redlog-accent"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{t(`marker.category.${c}`)}</option>
@@ -151,8 +186,11 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none resize-none"
+          aria-label={t('marker.field.notes')}
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent resize-none"
         />
+
+        <p className="text-xs text-redlog-text-faint">{t('marker.immutableHint')}</p>
 
         <label className="flex items-center gap-2 cursor-pointer text-xs text-redlog-text-dim">
           <input
