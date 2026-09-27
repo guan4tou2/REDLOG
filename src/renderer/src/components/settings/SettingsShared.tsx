@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { useI18n } from '../../i18n'
+import { IconButton } from '../IconButton'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -108,6 +109,7 @@ export function Field({ label, value, onChange, onBlur, type = 'text', readOnly 
 export function ListField({ label, items, onChange, placeholder }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
 }): JSX.Element {
+  const { t } = useI18n()
   const [input, setInput] = useState('')
 
   const addItem = (): void => {
@@ -136,7 +138,7 @@ export function ListField({ label, items, onChange, placeholder }: {
           {items.map((item, i) => (
             <span key={i} className="inline-flex items-center gap-1 bg-redlog-elevated text-redlog-text text-xs font-mono px-2 py-0.5 rounded">
               {item}
-              <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-dim hover:text-red-400">&times;</button>
+              <IconButton label={t('common.removeItem', { item })} onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-dim hover:text-red-400">&times;</IconButton>
             </span>
           ))}
         </div>

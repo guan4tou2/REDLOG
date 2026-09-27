@@ -81,3 +81,43 @@ describe('ExportMenu plan preview', () => {
     expect(screen.getByText('Data snapshot')).toBeTruthy()
   })
 })
+
+// UI/UX audit F12: the preview is a dialog, a failed run keeps it, and a
+// finished export can be shown in its folder.
+describe('ExportMenu as a dialog', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('opens the preview as a modal dialog', async () => {
+    install(async () => ({ ok: true, plan: plan(2) }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+  })
+
+  it('keeps the dialog and its preview when the run fails, and offers to recalculate', async () => {
+    const resolve = vi.fn(async () => ({ ok: true as const, plan: plan(2) }))
+    install(resolve)
+    ;(window as unknown as { redlog: { data: Record<string, unknown> } }).redlog.data.executeExportPlan =
+      vi.fn(async () => ({ ok: false, error: 'disk full' }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    fireEvent.click(await screen.findByTestId('export-confirm'))
+    const err = await screen.findByTestId('export-run-error')
+    expect(err.textContent).toContain('disk full')
+    expect(screen.getByRole('dialog').textContent).toContain('Plan fingerprint')
+    // Confirming again would reuse a spent plan; the way on is to recalculate.
+    expect((screen.getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByText('Recalculate and try again'))
+    await waitFor(() => expect(resolve).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('export-run-error')).toBeNull())
+  })
+
+  it('closes on success', async () => {
+    install(async () => ({ ok: true, plan: plan(2) }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    fireEvent.click(await screen.findByTestId('export-confirm'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+})

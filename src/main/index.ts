@@ -18,7 +18,7 @@ import {
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
 import { isVerifyNonce, verifyUrl } from '../core/http-verify'
 import { clearSessionTargets } from '../core/session-targets'
-import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
+import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -249,9 +249,18 @@ function toggleRecording(): boolean {
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
 // operator is about to type a title and notes.
 function triggerBookmark(): void {
-  send(mainWindow, 'shortcut:marker')
-  mainWindow?.show()
-  mainWindow?.focus()
+  // When the operator is in another app, what they want recorded is on screen
+  // NOW, before RedLog comes forward. Hold that frame; the marker claims it on
+  // save, and an abandoned marker leaves nothing behind (UI/UX audit F2).
+  // From inside RedLog there is nothing worth holding — the save hides
+  // RedLog's windows for its own capture instead.
+  const fromElsewhere = !BrowserWindow.getFocusedWindow()
+  const hold = fromElsewhere ? screenshotAgent.holdFrame().catch(() => null) : Promise.resolve(null)
+  void hold.then((heldFrame) => {
+    send(mainWindow, 'shortcut:marker', heldFrame ? { heldFrame } : {})
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
 }
 
 // v0.9.7: the HUD's instant mark. Drops a timestamped marker straight into the
@@ -329,6 +338,20 @@ function debouncedSaveWindowState(win: BrowserWindow): void {
 // first `openProjectHandler` call via `alertRuntime.configure(...)`.
 const alertRuntime = new AlertRuntime({ engagementId: '', operatorId: '' })
 const screenshotAgent = new ScreenshotAgent()
+// In-app captures must not photograph RedLog (UI/UX audit F2): take every
+// visible RedLog window — main and HUD — off screen for the grab, then put
+// them back without stealing focus from where it was.
+screenshotAgent.setWindowHider(async () => {
+  const shown = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible() && !w.isMinimized())
+  const focused = BrowserWindow.getFocusedWindow()
+  for (const w of shown) w.hide()
+  // Give the compositor a frame or two to take them off the screen.
+  await new Promise((r) => setTimeout(r, 250))
+  return () => {
+    for (const w of shown) if (!w.isDestroyed()) w.showInactive()
+    if (focused && !focused.isDestroyed()) focused.focus()
+  }
+})
 const lootDetector = new LootDetector()
 
 /** Start or stop every optional capture source from the project's packs
@@ -1590,6 +1613,14 @@ app.whenReady().then(() => {
   // the button is behind it — and the only escape is Settings, which the
   // operator has to know exists.
   globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
+  // Screenshot now, from whatever tool the operator is in. RedLog's own
+  // windows (the HUD included) are taken off screen for the grab. A chord
+  // another app already owns is not an error worth refusing to start over;
+  // the palette and the title-bar button still capture.
+  if (!globalShortcut.register(QUICK_SHOT_ACCELERATOR, () => {
+    void screenshotAgent.captureNow('manual', undefined, { hideOwnWindows: true })
+      .then((file) => send(mainWindow, 'screenshot:shortcutResult', { ok: !!file }))
+  })) console.warn(`[shortcuts] ${QUICK_SHOT_ACCELERATOR} is taken by another application`)
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))

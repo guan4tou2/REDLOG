@@ -1,5 +1,5 @@
 /// <reference path="../renderer/src/env.d.ts" />
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
 import type { ArtifactAddResponse } from '../core/artifacts'
 
@@ -65,7 +65,11 @@ const api: RedLogAPI = {
     }
   },
   artifacts: {
-    add: (title?: string) => ipcRenderer.invoke('artifacts:add', title) as Promise<ArtifactAddResponse | null>
+    add: (title?: string) => ipcRenderer.invoke('artifacts:add', title) as Promise<ArtifactAddResponse | null>,
+    // A dropped File's path is only reachable here (contextIsolation); the
+    // main process confirms the list with the operator before reading any.
+    addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) =>
+      ipcRenderer.invoke('artifacts:addDropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean), text) as Promise<ArtifactAddResponse | null>
   },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
@@ -135,14 +139,20 @@ const api: RedLogAPI = {
     amend: (markerId: string, changes: Record<string, unknown>) =>
       ipcRenderer.invoke('marker:amend', markerId, changes),
     amendments: (ids: string[]) => ipcRenderer.invoke('marker:amendments', ids) as Promise<RedLogEvent[]>,
-    onShortcut: (cb: () => void) => {
-      const handler = () => cb()
+    onShortcut: (cb: (info: { heldFrame?: string }) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, info?: { heldFrame?: string }): void => cb(info ?? {})
       ipcRenderer.on('shortcut:marker', handler)
       return () => ipcRenderer.removeListener('shortcut:marker', handler)
     }
   },
   screenshot: {
-    capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
+    capture: (causeEventId?: string, opts?: { heldFrame?: string; hideOwnWindows?: boolean }) =>
+      ipcRenderer.invoke('screenshot:capture', causeEventId, opts),
+    onShortcutResult: (cb: (r: { ok: boolean }) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, r: { ok: boolean }): void => cb(r)
+      ipcRenderer.on('screenshot:shortcutResult', handler)
+      return () => ipcRenderer.removeListener('screenshot:shortcutResult', handler)
+    },
     deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath)
     // v0.6.98 B: `read` IPC dropped. v0.6.97 B moved every renderer call site
     // onto the `redlog-screenshot://` custom protocol (streamed direct from
@@ -198,7 +208,8 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input)
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    revealExport: (target: string) => ipcRenderer.invoke('data:revealExport', target) as Promise<boolean>
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

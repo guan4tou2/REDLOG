@@ -33,7 +33,9 @@ const fakeImage = {
 
 vi.mock('electron', () => ({
   screen: {
-    getPrimaryDisplay: () => ({ size: { width: 1920, height: 1080 } }),
+    getPrimaryDisplay: () => ({ id: 1, size: { width: 1920, height: 1080 } }),
+    getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+    getDisplayNearestPoint: () => ({ id: 1, size: { width: 1920, height: 1080 } }),
     getAllDisplays: () => [{}, {}]
   },
   desktopCapturer: {

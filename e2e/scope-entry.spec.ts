@@ -30,7 +30,7 @@ test.describe.serial('scope entry and project identity', () => {
     await page.keyboard.press(`${mod}+9`)
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings')
     await page.getByRole('button', { name: 'Appearance & language' }).click()
-    const id = page.getByLabel('ID').first()
+    const id = page.getByLabel('ID', { exact: true }).first()
     await expect(id).toHaveValue(config.engagement.id)
     await expect(id).toHaveAttribute('readonly', '')
 
