@@ -59,14 +59,14 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
-| **Agent transcript tailer** *(optional)* | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Off by default. Turn on the **AI agents** capture pack in **Settings ▸ Capture control**; it then watches `~/.claude/projects/` JSONL files. Filter with watch paths in **Settings ▸ AI agent monitoring** (whitelist). | Yes |
+| **Agent transcript tailer** *(optional)* | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Off by default. Turn on the **AI agents** capture pack in **Settings ▸ Packs, screenshots & retention**; it then watches `~/.claude/projects/` JSONL files. Filter with watch paths in **Settings ▸ AI agent monitoring** (whitelist). | Yes |
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd — **not** stdout/stderr | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane, **with output** (asciinema `.cast`) | Built in, always on | — |
 | **Browser console (CDP)** | `console.error`/`warn`/`log` + uncaught exceptions from every open tab | Enabled automatically once you launch Chrome through the Proxied Browser (uses port 9222 by default) | Yes |
-| **File watcher** *(optional)* | File create/modify/delete in operator-defined paths | Part of the **Host monitors** capture pack (Settings ▸ Capture control), off by default; add absolute paths. | Yes |
-| **Process spawn tree** *(optional)* | Every process spawned/exited on the box (macOS + Linux) | Part of the **Host monitors** capture pack (Settings ▸ Capture control), off by default. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
+| **File watcher** *(optional)* | File create/modify/delete in operator-defined paths | Part of the **Host monitors** capture pack (Settings ▸ Packs, screenshots & retention), off by default; add absolute paths. | Yes |
+| **Process spawn tree** *(optional)* | Every process spawned/exited on the box (macOS + Linux) | Part of the **Host monitors** capture pack (Settings ▸ Packs, screenshots & retention), off by default. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
 
 **Three things that trip people up:**
 
@@ -127,7 +127,7 @@ Terminal hooks intercept commands at the shell level. The agent doesn't need to 
 
 The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures the **full** Claude Code session: every tool call (Bash, Read, Write, Edit, Grep, Task, MCP, etc.), user messages, assistant responses, and thinking blocks. It also covers Codex (`~/.codex/sessions/`) and OpenCode (`storage/message/`).
 
-**Setup:** Turn on the **AI agents** capture pack (Settings ▸ Capture control) for the project — it is off by default. No hook wiring needed.
+**Setup:** Turn on the **AI agents** capture pack (Settings ▸ Packs, screenshots & retention) for the project — it is off by default. No hook wiring needed.
 
 **What it captures:**
 

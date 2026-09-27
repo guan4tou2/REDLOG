@@ -174,14 +174,22 @@ export default function Settings({ request = null }: { request?: { page: Setting
     {
       heading: t('settings.groupCapture'),
       pages: [
+        // #228: the two core captures, and nothing else. The product has two
+        // things it is for — commands and HTTP(S) — and the nav used to put
+        // them level with AI transcripts and the pack switches, under a
+        // heading ("What to record") that said nothing about which mattered.
         { id: 'hooks', label: t('settings.pageHooks') },
-        { id: 'agents', label: t('settings.pageAgents') },
-        { id: 'captureControl', label: t('settings.pageCaptureControl') },
         // The browser and its HTTP capture proxy decide what ends up in the
-        // record, so they belong with the other capture sources. They used to
-        // sit on Network, beside the VPN and IP-exposure settings, which
-        // answer a different question entirely.
+        // record. They used to sit on Network, beside the VPN and
+        // IP-exposure settings, which answer a different question entirely.
         { id: 'browser', label: t('settings.pageBrowser') }
+      ]
+    },
+    {
+      heading: t('settings.groupSources'),
+      pages: [
+        { id: 'captureControl', label: t('settings.pageCaptureControl') },
+        { id: 'agents', label: t('settings.pageAgents') }
       ]
     },
     {

@@ -885,12 +885,12 @@
   "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
-  "settings.groupCapture": "What to record",
+  "settings.groupCapture": "Core capture",
   "settings.groupScope": "Scope & evidence",
   "settings.groupApp": "Application",
   "settings.pageHooks": "Commands & terminal",
   "settings.pageAgents": "AI agent monitoring",
-  "settings.pageCaptureControl": "Capture control",
+  "settings.pageCaptureControl": "Packs, screenshots & retention",
   "settings.pageScope": "Scope rules",
   "settings.pageNetwork": "IP exposure & own traffic",
   "settings.pageIntegrity": "Chain verification",
@@ -1370,5 +1370,6 @@
   "settings.packMemberOptIn": "Not recorded until you tick it. Turning the pack on does not turn this on.",
   "app.closeSaveFailed": "A settings change could not be saved to this project, so it was not closed. Check the settings and try again.",
   "settings.loadFailedTitle": "Settings could not be read",
-  "settings.loadFailedWhy": "The project’s configuration did not load, so nothing here can be shown or changed yet."
+  "settings.loadFailedWhy": "The project’s configuration did not load, so nothing here can be shown or changed yet.",
+  "settings.groupSources": "Other capture sources"
 }

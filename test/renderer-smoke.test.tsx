@@ -330,7 +330,7 @@ describe('renderer views render without throwing', () => {
     expect(tags.length).toBeGreaterThan(0)
   })
 
-  // #47: the artifact-rotation eviction budgets live in the "Capture control"
+  // #47: the artifact-rotation eviction budgets live in the "Packs, screenshots & retention"
   // Settings tab. Switching to it must surface the controls.
   it('StatusBar says its clock runs from the project\'s creation, not this session', async () => {
     renderView(<StatusBar />)
@@ -344,13 +344,13 @@ describe('renderer views render without throwing', () => {
     fireEvent.change(box, { target: { value: 'loot detection' } })
     const results = await screen.findByTestId('settings-search-results')
     fireEvent.click(within(results).getByText('Loot detection'))
-    // The Capture control page is open: its Loot detection hint is on screen.
+    // The Packs, screenshots & retention page is open: its Loot detection hint is on screen.
     expect(await screen.findByText(/Rules that are off are not recorded as loot/)).toBeTruthy()
   })
 
-  it('Settings exposes the artifact-rotation budgets under "Capture control"', async () => {
+  it('Settings exposes the artifact-rotation budgets under "Packs, screenshots & retention"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('Capture control')
+    const tab = await screen.findByText('Packs, screenshots & retention')
     fireEvent.click(tab)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()

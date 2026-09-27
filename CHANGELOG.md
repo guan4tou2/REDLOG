@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Settings leads with the two core captures.** The first group was "What
+  to record", with Commands, AI agents, the pack switches and Browser & HTTP
+  side by side. It is now **Core capture** (Commands & terminal, Browser &
+  HTTP capture) followed by **Other capture sources** (packs, screenshots and
+  retention; AI agent monitoring). "Capture control" is renamed for what the
+  page holds. (#228)
+- **The README no longer promises more than RedLog records.** "Passively
+  records everything" and "no manual note-taking required" are replaced by
+  what is actually captured: command metadata from hooked shells, output
+  only through the built-in terminal, `redlog-run` or `redlog-session`,
+  HTTP(S) only through RedLog's proxy, and the optional sources. The
+  first-run steps describe the current screen. (#226)
 - **Closing a project could drop the last settings change.** The close
   button awaited `project.close()` and only then unmounted Settings, so the
   pending autosave reached main with no project open, was refused, and
@@ -62,6 +74,9 @@ for full commit body + generated notes.
   go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
+
+> **Status:** tagged; the GitHub Release and its installers are not published
+> yet. Remove this note when they are.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
