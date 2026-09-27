@@ -63,6 +63,10 @@ export default function App(): JSX.Element {
   // Event to focus when the Timeline opens (set when jumping from Loot); cleared
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
+  // Where a jump to the Timeline came from, so the operator can go back to the
+  // target, finding or search they were reading (UI/UX audit F19, §7). One
+  // level: the Timeline is where these routes lead, not a place to chain from.
+  const [returnTo, setReturnTo] = useState<View | null>(null)
   // A target picked on the Targets page is the shared filter's (spec 038),
   // set there and shown as the FilterBar chip on every view that honours it.
   const [showMarker, setShowMarker] = useState(false)
@@ -84,8 +88,38 @@ export default function App(): JSX.Element {
   const navigate = useCallback((target: string): void => {
     const { view: next, settingsPage } = parseTarget(target)
     setSettingsRequest(settingsPage ? { page: settingsPage } : null)
+    setReturnTo(null)
     setView(next as View)
   }, [])
+
+  const openInTimeline = useCallback((id: string, ts: number): void => {
+    setReturnTo(view === 'timeline' ? null : view)
+    setFocusEvent({ id, ts })
+    setView('timeline')
+  }, [view])
+
+  const goBack = useCallback((): void => {
+    if (!returnTo) return
+    setFocusEvent(null)
+    setView(returnTo)
+    setReturnTo(null)
+  }, [returnTo])
+
+  // Cmd+[ / Alt+Left goes back, as in a browser: only while there is somewhere
+  // to go back to, and never while the operator is typing.
+  useEffect(() => {
+    if (!returnTo || view !== 'timeline') return
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
+      const back = isMac ? (e.metaKey && e.key === '[') : (e.altKey && e.key === 'ArrowLeft')
+      if (!back) return
+      e.preventDefault()
+      goBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [returnTo, view, goBack])
 
   // Visibility / first-run state is fully managed by the extracted hook.
   const { visibility, firstRunActive } = useVisibility(project, view)
@@ -293,6 +327,18 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
+            {view === 'timeline' && returnTo && (
+              <div data-testid="timeline-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="text-cyan-400 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
+                >
+                  ← {t('nav.backTo', { view: t(`sidebar.${returnTo === 'screenshots' ? 'screens' : returnTo}`) })}
+                </button>
+                <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
+              </div>
+            )}
             {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
@@ -307,17 +353,17 @@ export default function App(): JSX.Element {
                   // transcript's arrow button, which is §7's transcript <-> timeline
                   // link and one of the five cross-view routes phase 3 is meant
                   // to be completing.
-                  onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+                  onOpenInTimeline={openInTimeline}
                 />
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'targets' && <TargetView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} /></Suspense>}
+            {view === 'search' && <SearchPanel onOpenInTimeline={openInTimeline} />}
+            {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
+            {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
+            {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
+            {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
             {view === 'settings' && <Suspense fallback={null}><Settings request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>
@@ -333,7 +379,7 @@ export default function App(): JSX.Element {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onNavigate={navigate}
-        onOpenEvent={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+        onOpenEvent={openInTimeline}
         recording={recordingOn}
       />
       <ToastContainer />
