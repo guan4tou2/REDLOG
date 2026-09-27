@@ -50,6 +50,8 @@ export interface VisibilitySignals {
   httpFlowSeen: boolean
   /** The engagement has ever had a logged-tier row. */
   loggedEver: boolean
+  /** A scope violation that is not an in-scope adherence row. */
+  scopeViolationSeen: boolean
 }
 
 export const EMPTY_SIGNALS: VisibilitySignals = {
@@ -60,7 +62,8 @@ export const EMPTY_SIGNALS: VisibilitySignals = {
   screenshotSeen: false,
   bookmarkSeen: false,
   httpFlowSeen: false,
-  loggedEver: false
+  loggedEver: false,
+  scopeViolationSeen: false
 }
 
 /**
@@ -93,7 +96,9 @@ export const UNLOCK: Record<SidebarViewId, (s: VisibilitySignals) => boolean> = 
   search: (s) => s.evidenceSeen,
   transcript: (s) => s.transcriptSeen,
   targets: (s) => s.targetCount >= 1,
-  scope: (s) => s.targetCount >= 2,
+  // Two targets, or sooner if the one target is already out of scope: a
+  // violation is exactly what this page exists to show.
+  scope: (s) => s.targetCount >= 2 || s.scopeViolationSeen,
   loot: (s) => s.lootSeen,
   screenshots: (s) => s.screenshotSeen,
   bookmarks: (s) => s.bookmarkSeen,

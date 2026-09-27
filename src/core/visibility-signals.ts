@@ -29,6 +29,7 @@ export interface VisibilitySignals {
   bookmarkSeen: boolean
   httpFlowSeen: boolean
   loggedEver: boolean
+  scopeViolationSeen: boolean
 }
 
 export const EMPTY_VISIBILITY_SIGNALS: VisibilitySignals = {
@@ -39,7 +40,8 @@ export const EMPTY_VISIBILITY_SIGNALS: VisibilitySignals = {
   screenshotSeen: false,
   bookmarkSeen: false,
   httpFlowSeen: false,
-  loggedEver: false
+  loggedEver: false,
+  scopeViolationSeen: false
 }
 
 let cache: VisibilitySignals = { ...EMPTY_VISIBILITY_SIGNALS }
@@ -129,6 +131,16 @@ export function getVisibilitySignals(): VisibilitySignals {
     // project whose logged tier has been fully pruned still knows it had one.
     next.loggedEver = exists('events_logged')
       || exists(`events WHERE agent_type = 'system' AND subtype = 'retention_pruned_logged'`)
+  }
+
+  if (!next.scopeViolationSeen) {
+    // A real out-of-scope hit, not the adherence rows (`distance: in_scope`)
+    // the evaluator also writes. One target can already be out of scope, and
+    // 範圍 must not wait for a second one to say so (UI/UX audit F9).
+    next.scopeViolationSeen = exists(
+      `events WHERE agent_type = 'system' AND subtype = 'scope_violation'
+       AND COALESCE(json_extract(data, '$.distance'), '') <> 'in_scope'`
+    )
   }
 
   cache = next

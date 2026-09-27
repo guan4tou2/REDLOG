@@ -193,12 +193,14 @@ interface RedLogAPI {
   }
   /** #221: copy operator-picked local files into the project as evidence. */
   artifacts: {
-    add: () => Promise<ArtifactAddResponse | null>
+    /** `title`: the picker's title, already translated */
+    add: (title?: string) => Promise<ArtifactAddResponse | null>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
-    pickPath: () => Promise<string | null>
+    /** `title`: the picker's title, already translated */
+    pickPath: (title?: string) => Promise<string | null>
   }
   events: {
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
@@ -335,6 +337,7 @@ interface RedLogAPI {
       bookmarkSeen: boolean
       httpFlowSeen: boolean
       loggedEver: boolean
+      scopeViolationSeen: boolean
     } | null>
   }
   recording: {

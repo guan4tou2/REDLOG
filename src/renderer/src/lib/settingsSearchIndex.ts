@@ -49,6 +49,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.wsl.diagnose',
     'settings.wsl.diagTitle',
     'settings.hookWatchPaths.saved',
+    'settings.pickFolder',
     'settings.hookWatchPaths.title',
     'settings.hookWatchPaths.hint',
     'settings.hookWatchPaths.empty',

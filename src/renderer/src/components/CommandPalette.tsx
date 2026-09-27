@@ -13,6 +13,8 @@ import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
 import { addArtifactsWithFeedback } from '../lib/addArtifacts'
+import { flushPendingSaves } from '../lib/pendingSaves'
+import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
 
@@ -90,6 +92,21 @@ export interface CommandPaletteProps {
   onNavigate: (view: string) => void
   onOpenEvent: (id: string, ts: number) => void
   recording: boolean
+}
+
+
+// Switching project from the palette has the same obligations as closing one
+// from the title bar (#223): write pending settings to THIS project first,
+// and say so when the switch cannot happen instead of reloading regardless.
+async function switchProject(id: string, t: (k: string, v?: Record<string, string | number>) => string): Promise<void> {
+  if (!(await flushPendingSaves())) { toast(t('app.closeSaveFailed'), 'error'); return }
+  try {
+    const opened = await window.redlog.project.open(id)
+    if (!opened) { toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') }); return }
+    window.location.reload()
+  } catch (err) {
+    toast(t('project.openFailedTitle'), { type: 'error', why: t('project.openFailedWhy'), detail: err instanceof Error ? err.message : String(err) })
+  }
 }
 
 export function CommandPalette({
@@ -180,15 +197,7 @@ export function CommandPalette({
     out.push({
       id: 'action:screenshot', section: 'action', icon: Image,
       label: t('screenshots.captureNow'),
-      run: () => {
-        // null means nothing new was stored: the screen matched the last
-        // capture, or capturing failed (Capture Health has which).
-        void window.redlog.screenshot.capture()
-          .then((id) => id
-            ? toast(t('palette.screenshotTaken'), 'success')
-            : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
-          .catch((err) => toast(t('palette.screenshotNotSaved'), { type: 'error', detail: err instanceof Error ? err.message : String(err) }))
-      }
+      run: () => { void captureScreenshotWithFeedback(t) }
     })
 
     out.push({
@@ -212,7 +221,7 @@ export function CommandPalette({
       out.push({
         id: `project:${p.id}`, section: 'project', icon: FolderOpen,
         label: p.name, hint: formatTime(p.lastOpened),
-        run: () => { void window.redlog.project.open(p.id).then(() => window.location.reload()) }
+        run: () => { void switchProject(p.id, t) }
       })
     }
 
@@ -264,6 +273,12 @@ export function CommandPalette({
   }, [query, events, projects, operators, hosts, recording, t, onNavigate, onOpenEvent])
 
   useEffect(() => { setCursor(0) }, [query])
+  // Keep the keyboard selection on screen: ↓ past the fold used to move an
+  // invisible highlight.
+  useEffect(() => {
+    if (!open) return
+    document.getElementById(`palette-opt-${cursor}`)?.scrollIntoView?.({ block: 'nearest' })
+  }, [cursor, open])
 
   const activate = useCallback((item: Item | undefined) => {
     if (!item) return
@@ -304,13 +319,17 @@ export function CommandPalette({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('palette.placeholder')}
             aria-label={t('palette.placeholder')}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-listbox"
+            aria-activedescendant={items.length > 0 ? `palette-opt-${cursor}` : undefined}
             autoComplete="off"
             spellCheck={false}
             className="flex-1 bg-transparent py-3 text-sm text-redlog-text placeholder-redlog-muted outline-none"
           />
         </div>
 
-        <div role="listbox" aria-label={t('palette.title')} className="max-h-[52vh] overflow-y-auto py-1">
+        <div id="palette-listbox" role="listbox" aria-label={t('palette.title')} className="max-h-[52vh] overflow-y-auto py-1">
           {searchState === 'failed' && (
             <p data-testid="palette-search-failed" role="status" className="px-4 py-3 text-xs text-red-300 text-center">
               {t('palette.searchFailed')}
@@ -342,6 +361,7 @@ export function CommandPalette({
                   </p>
                 )}
                 <button
+                  id={`palette-opt-${i}`}
                   role="option"
                   aria-selected={i === cursor}
                   onMouseMove={() => setCursor(i)}

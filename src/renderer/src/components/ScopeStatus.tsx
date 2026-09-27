@@ -193,7 +193,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               <Ban size={20} strokeWidth={1.5} aria-hidden className="text-redlog-text-faint" />
             </div>
             <p className="text-redlog-text-dim text-xs">
-              {t('scope.hint')}
+              {t('scope.hint', { page: t('settings.pageScope') })}
             </p>
           </div>
         )}

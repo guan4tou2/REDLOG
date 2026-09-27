@@ -392,6 +392,48 @@ describe('first run: HTTP(S) card', () => {
   })
 })
 
+describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)', () => {
+  it('a rejected start shows the failure and offers a retry instead of resetting silently', async () => {
+    install()
+    bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: '開始 HTTP 擷取' }))
+    const card = await screen.findByTestId('first-run-http')
+    await waitFor(() => expect(card.textContent).toContain('port 8080 in use'))
+    expect(screen.getByRole('button', { name: '再試一次' })).not.toBeNull()
+  })
+
+  it('a failed save of the terminal proxy setting puts the box back', async () => {
+    install({ proxy: RUNNING })
+    bridge.configSave.mockResolvedValueOnce(false)
+    draw()
+    const box = await screen.findByTestId('first-run-route-terminals') as HTMLInputElement
+    fireEvent.click(box)
+    await waitFor(() => expect(bridge.configSave).toHaveBeenCalled())
+    await waitFor(() => expect((screen.getByTestId('first-run-route-terminals') as HTMLInputElement).checked).toBe(false))
+  })
+
+  it('a failed environment check says so, rather than reading as installed', async () => {
+    install()
+    bridge.preflight.mockRejectedValue(new Error('spawn failed'))
+    draw()
+    expect(await screen.findByTestId('first-run-http-preflight-failed')).not.toBeNull()
+  })
+
+  it('Copy says it copied', async () => {
+    install({ pre: preflight({ missing: ['mitmdump'] }) })
+    draw()
+    const card = await screen.findByTestId('first-run-http')
+    const copy = await waitFor(() => {
+      const b = [...card.querySelectorAll('button')].find((el) => el.textContent === '複製')
+      expect(b).toBeTruthy()
+      return b as HTMLButtonElement
+    })
+    fireEvent.click(copy)
+    await waitFor(() => expect(copy.textContent).toContain('已複製'))
+  })
+})
+
 // Spec 039: "connected" must say what is recorded, and HTTP is verified by the
 // first request that reaches RedLog, not by the proxy process running.
 async function verifyShell(): Promise<HTMLElement> {
