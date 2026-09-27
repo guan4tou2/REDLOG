@@ -5,6 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **The evidence-bundle preview lists every file, and you can leave any out.**
+  It used to give counts only, so there was no way to see which terminal
+  recording or screenshot was about to be handed over, or to drop the one
+  that held another host's session. Each file is now listed with its size and
+  the targets tied to it. A recording that spans several targets, or none, is
+  labelled as such: casts are never trimmed to scope, and exporting only
+  target A does not make a session that also touched B A-only. Unticking a
+  file resolves the plan again, so the fingerprint covers the choice. The
+  manifest records what was left out and which targets each included cast
+  spans. The source files are never modified. (#222)
 - **Settings leads with the two core captures.** The first group was "What
   to record", with Commands, AI agents, the pack switches and Browser & HTTP
   side by side. It is now **Core capture** (Commands & terminal, Browser &

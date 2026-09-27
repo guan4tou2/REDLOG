@@ -1371,5 +1371,17 @@
   "app.closeSaveFailed": "有一項設定變更沒能存進這個專案，所以沒有關閉專案。請檢查設定後再試一次。",
   "settings.loadFailedTitle": "讀不到設定",
   "settings.loadFailedWhy": "這個專案的設定沒有載入，所以這裡暫時無法顯示或修改。",
-  "settings.groupSources": "其他擷取來源"
+  "settings.groupSources": "其他擷取來源",
+  "export.preview.attachmentsExcludedByOperator": "你排除的",
+  "export.attachments.title": "證據包裡的檔案——取消勾選不要交付的",
+  "export.attachments.castNote": "終端錄影（cast）不會依範圍裁切。跨多個目標或沒有歸屬目標的錄影，會包含該終端裡打過的所有內容。",
+  "export.attachments.unattributed": "沒有歸屬目標",
+  "export.attachments.crossTarget": "跨多個目標：{{targets}}",
+  "export.attachments.kind.screenshot": "截圖",
+  "export.attachments.kind.cast": "錄影",
+  "export.attachments.kind.httpBody": "HTTP 內容",
+  "export.attachments.status.included": "納入",
+  "export.attachments.status.excluded-by-operator": "已排除",
+  "export.attachments.status.excluded-out-of-scope": "範圍外——不納入",
+  "export.attachments.status.missing": "檔案不見了"
 }
