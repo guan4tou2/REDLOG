@@ -605,9 +605,9 @@
   "timeline.anomalies.tooltip": "Show only events with chain-integrity alerts",
   "timeline.brokenChain.banner": "⛓️‍💥 Chain broken at event {{brokenAtId}}… (walked {{walked}}). All events after are unverified.",
   "timeline.brokenChain.dismiss": "Dismiss",
-  "timeline.search.placeholder": "Filter events: text, or session:, tool:, operator:…",
-  "timeline.search.hint": "Press / to filter, Escape to clear. Read the way Search reads it; events that do not match are dimmed, not removed.",
-  "timeline.search.clear": "Clear filter",
+  "timeline.search.placeholder": "Highlight: text, or session:, tool:, operator:…",
+  "timeline.search.hint": "Press / to highlight, Escape to clear. Read the way Search reads it; events that do not match are dimmed, not removed — the filter bar above is what removes events.",
+  "timeline.search.clear": "Clear highlight",
   "timeline.follow.live": "● Live",
   "timeline.follow.behindFmt": "⏸ {{time}} behind",
   "timeline.follow.pauseHint": "Pause auto-scroll",
@@ -1478,5 +1478,7 @@
   "export.reveal": "Show in folder",
   "export.running": "Exporting…",
   "export.runFailed": "The export did not complete. The preview is kept; nothing was written that you were not shown.",
-  "export.retryResolve": "Recalculate and try again"
+  "export.retryResolve": "Recalculate and try again",
+  "nav.backTo": "Back to {{view}}",
+  "timeline.search.label": "Highlight events (others are dimmed, not removed)"
 }

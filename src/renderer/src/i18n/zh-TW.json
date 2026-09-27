@@ -605,9 +605,9 @@
   "timeline.anomalies.tooltip": "只顯示證據鏈有警示的事件",
   "timeline.brokenChain.banner": "⛓️‍💥 證據鏈在事件 {{brokenAtId}}… 之後斷開（走完 {{walked}} 個）。之後的所有事件皆未驗證。",
   "timeline.brokenChain.dismiss": "關閉",
-  "timeline.search.placeholder": "篩選事件：文字，或 session:、tool:、operator:…",
-  "timeline.search.hint": "按 / 開始篩選、Esc 清除。解讀方式與搜尋相同；不符合的事件會變暗，不會被移除。",
-  "timeline.search.clear": "清除篩選",
+  "timeline.search.placeholder": "標亮：文字，或 session:、tool:、operator:…",
+  "timeline.search.hint": "按 / 開始標亮、Esc 清除。解讀方式與搜尋相同；不符合的事件會變暗、不會被移除——要移除事件請用上方的篩選列。",
+  "timeline.search.clear": "清除標亮",
   "timeline.follow.live": "● 即時",
   "timeline.follow.behindFmt": "⏸ 落後 {{time}}",
   "timeline.follow.pauseHint": "暫停自動捲動",
@@ -1478,5 +1478,7 @@
   "export.reveal": "在資料夾中顯示",
   "export.running": "匯出中…",
   "export.runFailed": "匯出未完成。預覽已保留，沒有寫出任何你沒看過的內容。",
-  "export.retryResolve": "重新計算後再試一次"
+  "export.retryResolve": "重新計算後再試一次",
+  "nav.backTo": "返回{{view}}",
+  "timeline.search.label": "標亮事件（其餘變暗，不會移除）"
 }
