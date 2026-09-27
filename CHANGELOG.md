@@ -5,6 +5,35 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Screenshots show what you were looking at, not RedLog.** A UI/UX pass,
+  second batch:
+  - *Capture*: pressing ⌘⇧M in another app used to bring RedLog forward and
+    then photograph the marker dialog. It now takes the frame first, and the
+    marker uses that frame when saved; a cancelled marker writes nothing.
+    Captures started inside RedLog (Screenshots page, palette, title bar)
+    hide RedLog's windows, HUD included, for the moment of the grab. The
+    display under the cursor is captured, not always the primary one.
+  - *Evidence entry points*: the title bar has screenshot and add-file
+    buttons beside + Mark. There is a global ⌘⇧2 / Ctrl+Shift+2
+    screenshot. Files dropped on the window are offered as evidence after a
+    confirmation that lists them, and dropping a file no longer navigates
+    the window away.
+  - *Export*: the preview opens as a dialog instead of a 280px menu. A
+    failed export keeps the preview and offers to recalculate and try again.
+    A finished export offers "Show in folder".
+  - *Navigation*: after jumping to the Timeline from a target, finding,
+    search or bookmark, "← Back to …" (⌘[ / Alt+←) returns you there. The
+    Timeline's `/` box is labelled a highlight, because it dims events and
+    removes none, unlike the filter bar above it.
+  - *Dialogs and accessibility*:
+    - The help dialog, the screenshot viewer and the plugin consent dialog
+      now keep focus inside them and close on Escape.
+    - The plugin consent dialog is a security decision, so a stray click
+      outside no longer dismisses it.
+    - The screenshot viewer shows each shot's time, trigger and SHA, and
+      steps to the previous or next shot.
+    - Icon-only buttons now have accessible names.
+    - `text-faint` is brightened to 4.5:1 on every surface.
 - **Failures are reported, and a failed read is never shown as safe.** A
   UI/UX pass over the renderer, first batch:
   - *New marker*: a failed save used to leave the dialog stuck on "Saving…".

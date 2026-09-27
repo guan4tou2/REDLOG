@@ -530,7 +530,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
                   {!s.configPath && !s.hookId && (
-                    <span className="text-xs font-mono text-redlog-muted">{t('capture.passive')}</span>
+                    <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
                   )}
                 </span>
               )}

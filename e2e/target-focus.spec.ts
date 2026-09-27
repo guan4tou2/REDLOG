@@ -71,4 +71,17 @@ test.describe.serial('target focus on the timeline', () => {
     await openView(page, 'timeline')
     await expect(chip()).toBeVisible()
   })
+
+  test('the Timeline offers the way back to the target it came from', async () => {
+    // UI/UX audit F19 (§7): a jump to the Timeline is a detour, not a new
+    // place to start over from.
+    await arriveFromTarget()
+    const back = page.getByTestId('timeline-return')
+    await expect(back).toBeVisible()
+    await back.getByRole('button').click()
+    await expect(page.locator('[data-testid="view-root"][data-view="targets"]')).toBeVisible()
+    // Arriving by the sidebar is not a detour: no way back is offered.
+    await openView(page, 'timeline')
+    await expect(page.getByTestId('timeline-return')).toHaveCount(0)
+  })
 })

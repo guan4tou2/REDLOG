@@ -6,6 +6,7 @@ import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib
 import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
+import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/TimelineStatusStrips'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
@@ -1675,7 +1676,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             <Rows3 size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-sm text-redlog-text-dim">{t('timeline.noEvents')}</p>
-          <p className="text-xs text-redlog-muted">{t('timeline.noEventsDesc')}</p>
+          <p className="text-xs text-redlog-text-faint">{t('timeline.noEventsDesc')}</p>
         </div>
       </div>
     )
@@ -1687,59 +1688,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           so it can't be missed. Dismiss hides for the current mount only —
           the module cache still holds the result, so re-opening Timeline (or
           another verify producing the same brokenAt) brings it back. */}
-      {verifyResult && verifyResult.brokenAtEventId && !verifyDismissed && (
-        <div
-          data-testid="timeline-broken-chain-banner"
-          className="flex items-center gap-2 px-4 py-1.5 border-b border-red-800 bg-red-950/50 text-xs shrink-0"
-        >
-          <span className="text-red-300 font-mono">
-            {t('timeline.brokenChain.banner', {
-              brokenAtId: verifyResult.brokenAtEventId.slice(0, 8),
-              walked: String(verifyResult.walked ?? 0)
-            })}
-          </span>
-          <button
-            onClick={() => setVerifyDismissed(true)}
-            className="ml-auto text-xs text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded bg-red-900/40 hover:bg-red-900/60 transition-colors"
-          >
-            {t('timeline.brokenChain.dismiss')}
-          </button>
-        </div>
-      )}
+      <BrokenChainBanner result={verifyResult} dismissed={verifyDismissed} onDismiss={() => setVerifyDismissed(true)} t={t} />
       <TimelineHelpModal open={showHelp} onClose={() => setShowHelp(false)} isMac={isMacPlatform} t={t} />
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
-      {(focusChain || focusMeta.loading || focusMeta.failed) && (
-        <div
-          data-testid="timeline-focus-badge"
-          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-cyan-500/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
-          style={{ top: 6, right: 8 }}
-        >
-          <span className="text-cyan-300">
-            {focusMeta.loading
-              ? t('timeline.focusChain.loading')
-              : focusMeta.failed
-                ? t('timeline.focusChain.failed')
-                : t('timeline.focusChain.badge', { count: focusChain?.size ?? 0 })}
-            {!focusMeta.loading && !focusMeta.failed && focusMeta.unavailable > 0
-              ? ` · ${t('timeline.focusChain.unavailable', { count: focusMeta.unavailable })}`
-              : ''}
-            {!focusMeta.loading && !focusMeta.failed && focusMeta.truncated
-              ? ` · ${t('timeline.focusChain.truncated')}`
-              : ''}
-            {!focusMeta.loading && !focusMeta.failed && (focusMeta.excluded ?? 0) > 0
-              ? ` · ${t('timeline.focusChain.outsideFilter', { count: focusMeta.excluded ?? 0 })}`
-              : ''}
-          </span>
-          <button
-            onClick={() => setFocusAnchorId(null)}
-            className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-            title={t('timeline.focusChain.exit')}
-            aria-label={t('timeline.focusChain.exit')}
-          >×</button>
-        </div>
-      )}
+      <FocusChainBadge size={focusChain?.size ?? 0} active={!!focusChain} meta={focusMeta} onExit={() => setFocusAnchorId(null)} t={t} />
       {/* Header. `flex-wrap` so that on a narrow window the controls drop to
           a second row instead of squeezing: without it the title broke into
           three lines and the lane chips on the right were clipped at 1440px,
@@ -1811,32 +1765,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
             operators can see there's a text filter (previously discoverable
             only by shortcut). Icon prefix + clear button on the right. */}
-        <div className="relative flex items-center ml-2">
-          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-redlog-text-faint pointer-events-none font-mono">/</span>
-          <input
-            ref={searchInputRef}
-            data-testid="timeline-search-input"
-            type="text"
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                if (filterQuery) { setFilterQuery(''); e.preventDefault() }
-                else searchInputRef.current?.blur()
-              }
-            }}
-            placeholder={t('timeline.search.placeholder')}
-            title={t('timeline.search.hint')}
-            className="pl-5 pr-6 py-0.5 h-6 w-[220px] text-xs font-mono bg-redlog-surface/70 border border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-border"
-          />
-          {filterQuery && (
-            <button
-              onClick={() => setFilterQuery('')}
-              title={t('timeline.search.clear')}
-              className="absolute right-1 top-1/2 -translate-y-1/2 text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-            >×</button>
-          )}
-        </div>
+        <HighlightInput value={filterQuery} onChange={setFilterQuery} inputRef={searchInputRef} t={t} />
 
         {/* §27.1: merged LIVE/behind toggle. One button: ● 即時 when live,
             ⏸ 落後 N 分 when behind. Click toggles follow; when resuming from

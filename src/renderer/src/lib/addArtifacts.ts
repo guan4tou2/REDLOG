@@ -47,15 +47,9 @@ export function artifactToast(r: ArtifactAddOutcome, t: Translate): ArtifactToas
   }
 }
 
-/** Open the picker (in the main process) and report every picked file. */
-export async function addArtifactsWithFeedback(t: Translate): Promise<void> {
-  let res: ArtifactAddResponse | null
-  try {
-    res = await window.redlog.artifacts.add(t('artifacts.pickerTitle'))
-  } catch (err) {
-    toast(t('artifacts.pickerFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
-    return
-  }
+/** Say what became of each file: one summary for several, a toast of its own
+ *  for every file that was not added. */
+function reportResults(res: ArtifactAddResponse | null, t: Translate): void {
   if (!res) { toast(t('artifacts.none'), 'warning'); return }
   // One file: its own toast. Several: one summary for what was added, and a
   // toast of its own for every file that was not — a failure must never be
@@ -69,5 +63,29 @@ export async function addArtifactsWithFeedback(t: Translate): Promise<void> {
     if (res.results.length > 1 && r.ok && r.eventId !== null) continue
     const { message, ...opts } = artifactToast(r, t)
     toast(message, { ...opts, key: `artifact:${r.originalPath}` })
+  }
+}
+
+/** Open the picker (in the main process) and report every picked file. */
+export async function addArtifactsWithFeedback(t: Translate): Promise<void> {
+  try {
+    reportResults(await window.redlog.artifacts.add(t('artifacts.pickerTitle')), t)
+  } catch (err) {
+    toast(t('artifacts.pickerFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+/** Files dropped on the window: the main process confirms the list first. */
+export async function addDroppedWithFeedback(files: File[], t: Translate): Promise<void> {
+  if (files.length === 0) return
+  try {
+    reportResults(await window.redlog.artifacts.addDropped(files, {
+      title: t('artifacts.pickerTitle'),
+      message: t('artifacts.dropConfirm', { count: files.length }),
+      confirm: t('artifacts.dropConfirmYes'),
+      cancel: t('common.cancel')
+    }), t)
+  } catch (err) {
+    toast(t('artifacts.pickerFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
   }
 }

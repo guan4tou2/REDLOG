@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toast, toastDeferred } from '../Toast'
 import { FieldGroup } from './SettingsShared'
+import { Modal } from '../Modal'
 
 interface PluginView {
   id: string
@@ -178,8 +179,17 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmGrant(null)}>
-          <div className="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+        // A security decision: a real dialog, with focus kept in it, Escape
+        // to back out, and no dismissal by a stray backdrop click.
+        <Modal
+          open
+          alert
+          dismissOnBackdrop={false}
+          onClose={() => setConfirmGrant(null)}
+          label={t('plugins.consentTitle')}
+          testId="plugin-consent-dialog"
+          panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
+        >
             <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
             <p className="text-xs text-redlog-text-dim mb-2">
               {t('plugins.consentBody', { name: confirmGrant.name })}
@@ -200,8 +210,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                 {t('plugins.grantRun')}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </FieldGroup>
   )

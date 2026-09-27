@@ -195,6 +195,8 @@ interface RedLogAPI {
   artifacts: {
     /** `title`: the picker's title, already translated */
     add: (title?: string) => Promise<ArtifactAddResponse | null>
+    /** Files dropped on the window; the main process asks before adding. */
+    addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) => Promise<ArtifactAddResponse | null>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
@@ -263,10 +265,16 @@ interface RedLogAPI {
     amend: (markerId: string, changes: { title?: string; severity?: string; notes?: string }) =>
       Promise<{ ok: true; event: RedLogEvent } | { ok: false; error: string; detail?: string }>
     amendments: (ids: string[]) => Promise<RedLogEvent[]>
-    onShortcut: (cb: () => void) => () => void
+    /** `heldFrame`: a screen frame taken when the shortcut fired, before
+     *  RedLog came forward; pass it to `screenshot.capture` to use it. */
+    onShortcut: (cb: (info: { heldFrame?: string }) => void) => () => void
   }
   screenshot: {
-    capture: (causeEventId?: string) => Promise<string | null>
+    /** `hideOwnWindows` takes RedLog off screen for the grab; `heldFrame`
+     *  claims the frame held by the marker shortcut. */
+    capture: (causeEventId?: string, opts?: { heldFrame?: string; hideOwnWindows?: boolean }) => Promise<string | null>
+    /** The global screenshot chord fired; whether a frame was stored. */
+    onShortcutResult: (cb: (r: { ok: boolean }) => void) => () => void
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
   }
   scope: {
@@ -325,6 +333,8 @@ interface RedLogAPI {
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
+    /** Show a finished export in the file manager (paths inside the project only). */
+    revealExport: (target: string) => Promise<boolean>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. */
