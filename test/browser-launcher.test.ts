@@ -67,6 +67,9 @@ describe('the capture browser does not record Chrome talking to Google', () => {
   it('quiets background networking on RedLog\'s own profile', () => {
     const args = buildArgs(cfg(), '/tmp/profile')
     expect(args).toContain('--disable-background-networking')
+    // #182: measured through the capture proxy — without it, unbranded
+    // Chromium's testing field-trial config prefetches www.google.com.
+    expect(args).toContain('--disable-field-trial-config')
     expect(args).toContain('--disable-component-update')
     expect(args).toContain('--disable-sync')
     expect(args).toContain('--no-pings')

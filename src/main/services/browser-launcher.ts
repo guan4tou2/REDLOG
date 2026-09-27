@@ -80,7 +80,12 @@ const QUIET_ARGS = [
   '--disable-client-side-phishing-detection',
   '--safebrowsing-disable-auto-update',
   '--metrics-recording-only',
-  '--disable-search-engine-choice-screen'
+  '--disable-search-engine-choice-screen',
+  // Unbranded Chromium builds apply a testing field-trial config by default,
+  // and it turns on search preconnect/prefetch: a `www.google.com/warmup.html`
+  // fetch within seconds of launch with nothing typed. Measured through the
+  // capture proxy (#182): gone with this switch. Playwright passes it too.
+  '--disable-field-trial-config'
 ]
 
 export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
