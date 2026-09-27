@@ -5,6 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Add a local file as evidence.** A loot file, a tool report or a pcap
+  saved outside the watched folders never reached the record. The command
+  palette's **Add evidence file…** copies the files you pick into the
+  project's `artifacts/`, hashes the copy, and records a `file_transfer` /
+  `artifact_added` event with the hash, original path, size and mtime. The
+  evidence bundle carries each file only with the event that added it, lists
+  it in the preview so it can be left out, and drops it under scope masking
+  when its target is out of scope. A shell command that ran in the file's
+  folder while it was written is listed as a possible relationship, not as
+  its cause. Too large (over 200 MB), disk full, unreadable and duplicate
+  files are each reported. RedLog reads only the files you pick. (#221)
 - **Connecting your own terminal now checks output, not just the hook.** A
   verified shell hook records commands, never what they print. The connected
   screen now gives a canary, `printf '%s-%s\n' redlog-out <code>`: its

@@ -216,6 +216,29 @@ describe('export plan IPC contract', () => {
     expect(manifest.files.map((f) => f.path)).not.toContain('casts/term-1.cast')
   })
 
+  it('carries an operator-added artifact with its event, and leaves it out when the operator does (#221)', () => {
+    addExportAttachment(dir, 'artifacts/abc-report.xml', '<nmaprun/>')
+    addExportAttachment(dir, 'artifacts/def-stray.txt', 'no event added this')
+    addEvent('events', 'art', 1000, { agentType: 'file_transfer', subtype: 'artifact_added', data: { stored: 'artifacts/abc-report.xml', sha256: 'x' } })
+
+    type Plan = { id: string; attachments: Array<{ id: string; kind: string; status: string }> }
+    const first = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    expect(first.plan.attachments.filter((a) => a.kind === 'artifact')).toEqual([
+      expect.objectContaining({ id: 'artifacts/abc-report.xml', status: 'included' })
+    ])
+    const kept = handlers.get('data:executeExportPlan')?.({}, { planId: first.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(fs.readFileSync(path.join(kept.artifactPath, 'artifacts', 'abc-report.xml'), 'utf8')).toBe('<nmaprun/>')
+    expect(fs.existsSync(path.join(kept.artifactPath, 'artifacts', 'def-stray.txt'))).toBe(false)
+    const manifest = JSON.parse(fs.readFileSync(path.join(kept.artifactPath, 'manifest.json'), 'utf8')) as { attachments: { artifacts: number }; files: Array<{ path: string }> }
+    expect(manifest.attachments.artifacts).toBe(1)
+    expect(manifest.files.map((f) => f.path)).toContain('artifacts/abc-report.xml')
+
+    const second = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['artifacts/abc-report.xml'] } as never) as { ok: true; plan: Plan }
+    const dropped = handlers.get('data:executeExportPlan')?.({}, { planId: second.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(dropped.ok).toBe(true)
+    expect(fs.existsSync(path.join(dropped.artifactPath, 'artifacts', 'abc-report.xml'))).toBe(false)
+  })
+
   it('uses the approved raw out-of-scope policy in both bundle preview and execution', () => {
     fs.writeFileSync(path.join(dir, 'config.yaml'), [
       'engagement:',

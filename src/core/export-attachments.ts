@@ -17,7 +17,7 @@ import path from 'path'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 
-export type ExportAttachmentKind = 'screenshot' | 'cast' | 'httpBody'
+export type ExportAttachmentKind = 'screenshot' | 'cast' | 'httpBody' | 'artifact'
 
 export type ExportAttachmentStatus =
   /** will be copied into the bundle */
@@ -49,11 +49,19 @@ export interface ExportAttachment {
   source?: string
 }
 
-const ID_RE = /^(screenshots|casts|http-bodies)\/[^/\\]+$/
+const ID_RE = /^(screenshots|casts|http-bodies|artifacts)\/[^/\\]+$/
 
 /** Whether `id` names an attachment path a request may exclude. */
 export function isAttachmentId(id: unknown): id is string {
   return typeof id === 'string' && ID_RE.test(id) && !id.includes('..')
+}
+
+/** The bundle path of the file an operator-added artifact event (#221)
+ *  copied into the project, or null for any other event. */
+export function storedArtifactOf(event: RedLogEvent): string | null {
+  if (event.agentType !== 'file_transfer' || event.data.subtype !== 'artifact_added') return null
+  const stored = event.data.stored
+  return isAttachmentId(stored) && stored.startsWith('artifacts/') ? stored : null
 }
 
 function attribution(targets: Set<string>): ExportAttachmentAttribution {
@@ -158,6 +166,26 @@ export function listExportAttachments(
     out.push({
       id, kind: 'httpBody', bytes, targets: [...targets].sort(), attribution: attribution(targets),
       status: bytes === null ? 'missing' : status(id, 'included')
+    })
+  }
+
+  // Operator-added artifacts (#221): the event that added each names it and
+  // its target; one not tied to an exported event does not travel.
+  const artifactTargets = new Map<string, Set<string>>()
+  for (const e of events) {
+    const stored = storedArtifactOf(e)
+    if (!stored) continue
+    const set = artifactTargets.get(stored) ?? new Set<string>()
+    if (e.targetId) set.add(e.targetId)
+    artifactTargets.set(stored, set)
+  }
+  for (const [id, targets] of artifactTargets) {
+    const bytes = sizeOf(path.join(projectDir, id))
+    const outOfScope = options.maskOutOfScope !== false && options.scope && targets.size > 0
+      && [...targets].every((t) => isOutOfScope(t, options.scope as ScopeForSanitize))
+    out.push({
+      id, kind: 'artifact', bytes, targets: [...targets].sort(), attribution: attribution(targets),
+      status: bytes === null ? 'missing' : status(id, outOfScope ? 'excluded-out-of-scope' : 'included')
     })
   }
 
