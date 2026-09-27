@@ -7,7 +7,7 @@ import { Button } from './Button'
 const SEVERITIES = ['info', 'important', 'critical'] as const
 const CATEGORIES = [
   'initial_access', 'privilege_escalation', 'lateral_movement',
-  'exfiltration', 'persistence', 'custom'
+  'exfiltration', 'persistence', 'key_step', 'failed_attempt', 'custom'
 ] as const
 
 interface EventMarkerProps {
