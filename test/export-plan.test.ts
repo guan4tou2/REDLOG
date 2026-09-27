@@ -104,8 +104,11 @@ describe('ExportPlan domain contract', () => {
       { ...base, id: 'shot-missing', agentType: 'screenshot', data: { filename: 'missing.png' } },
       { ...base, id: 'http', agentType: 'scanner', data: { request_body_ref: { sha256: 'body-ok' }, response_body_ref: { sha256: 'body-missing' } } }
     ]
-    expect(countExportAttachments(dir, events)).toEqual({ included: 4, missing: 2, unattributed: 2 })
+    expect(countExportAttachments(dir, events)).toEqual({ included: 4, missing: 2, unattributed: 2, excludedByOperator: 0 })
     expect(countReferencedAttachments(events)).toBe(4)
+    // #222: a file the operator left out is counted as such, not as included.
+    expect(countExportAttachments(dir, events, { exclude: new Set(['casts/session.cast', 'screenshots/seen.png']) }))
+      .toEqual({ included: 2, missing: 2, unattributed: 1, excludedByOperator: 2 })
     fs.rmSync(dir, { recursive: true, force: true })
   })
 })

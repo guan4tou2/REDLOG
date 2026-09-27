@@ -99,7 +99,12 @@ finally:
   })
 
   it('preserves terminal geometry and interactive interrupt behavior', async () => {
-    const r = await session(4096, false, ['/bin/sh', '-c', 'stty size; printf READY_FOR_INTERRUPT; sleep 20'], true)
+    // READY is printed only once the process that must take the interrupt is
+    // the one running, with SIGINT at its default. A shell printing READY and
+    // then starting \`sleep\` left a window where ^C reached the shell between
+    // the two and the sleep that followed never saw it.
+    const waiter = 'import signal, sys, time; signal.signal(signal.SIGINT, signal.SIG_DFL); sys.stdout.write("READY_FOR_INTERRUPT"); sys.stdout.flush(); time.sleep(20)'
+    const r = await session(4096, false, ['/bin/sh', '-c', `stty size; exec python3 -c '${waiter}'`], true)
     expect(r.output).toContain('31 95')
     expect(r.code).toBe(130)
     expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: -2 })
@@ -143,4 +148,25 @@ finally:
     expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
     expect(r.events.at(-1)?.pausedBytes).toBeGreaterThan(0)
   })
+
+  // #218: a session inside a session records the same bytes twice. The
+  // recorder refuses unless told the outer one has ended.
+  it('refuses to start a second recorder inside a session, unless --nested', async () => {
+    const run = (args: string[]): Promise<{ code: number | null; stderr: string }> => new Promise((resolve) => {
+      const child = spawn('python3', ['hooks/redlog-session.py', ...args, '--', 'true'], {
+        env: { ...process.env, REDLOG_EXTERNAL_SESSION: '1', HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-nest-')) }
+      })
+      let stderr = ''
+      child.stderr.on('data', (b) => { stderr += b })
+      child.on('close', (code) => resolve({ code, stderr }))
+    })
+    const refused = await run([])
+    expect(refused.code).toBe(2)
+    expect(refused.stderr).toContain('already inside a redlog-session')
+    // With --nested it gets past the guard (and then fails for want of a
+    // RedLog to talk to, which is a different message).
+    const nested = await run(['--nested'])
+    expect(nested.stderr).not.toContain('already inside a redlog-session')
+  })
+
 })

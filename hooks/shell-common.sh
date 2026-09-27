@@ -87,6 +87,11 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
 tid = os.environ.get('REDLOG_TERMINAL_ID')
 if tid:
     d['data']['terminalId'] = tid
+# #219: this shell's own target. It outranks RedLog's global current target,
+# so another pane switching the global target does not re-attribute this one.
+st = os.environ.get('REDLOG_TARGET', '').strip()
+if st:
+    d['data']['session_target'] = st[:253]
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
 # Embed active project identity so spooled events can be attributed correctly.

@@ -16,6 +16,75 @@ interface PendingExport {
   request: ExportRequest
 }
 
+function fmtBytes(n: number | null): string {
+  if (n === null) return '—'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** Every file the bundle would carry, one row each, with a switch (#222).
+ *
+ *  The counts above say how many; this says which. A terminal recording spans
+ *  every command typed in it and RedLog never trims it, so a cast tied to
+ *  several targets — or to none — is labelled as such and not presented as
+ *  scope-clean. Leaving a row out re-resolves the plan: the exclusion is part
+ *  of the request the fingerprint covers. */
+function AttachmentList({ rows, onToggle, busy, t }: {
+  rows: ExportAttachmentRow[]
+  onToggle: (id: string) => void
+  busy: boolean
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element | null {
+  if (rows.length === 0) return null
+  return (
+    <div data-testid="export-attachments" className="px-3 py-1 border-t border-redlog-border mt-1 text-xs">
+      <p className="text-redlog-text-dim mb-1">{t('export.attachments.title')}</p>
+      <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>
+      <ul className="max-h-48 overflow-auto space-y-0.5">
+        {rows.map((a) => {
+          const selectable = a.status === 'included' || a.status === 'excluded-by-operator'
+          const name = a.id.split('/').slice(1).join('/')
+          const where = a.attribution === 'unattributed'
+            ? t('export.attachments.unattributed')
+            : a.attribution === 'cross-target'
+              ? t('export.attachments.crossTarget', { targets: a.targets.join(', ') })
+              : a.targets[0]
+          const detail = [
+            where,
+            ...(a.source ? [a.source] : []),
+            fmtBytes(a.bytes),
+            ...(a.status !== 'included' ? [t(`export.attachments.status.${a.status}`)] : [])
+          ].join(' · ')
+          return (
+            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                aria-label={a.id}
+                checked={a.status === 'included'}
+                disabled={busy || !selectable}
+                onChange={() => onToggle(a.id)}
+                className="mt-0.5 accent-red-600"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="block truncate font-mono text-redlog-text" title={a.id}>
+                  {t(`export.attachments.kind.${a.kind}`)} · {name}
+                </span>
+                <span
+                  title={detail}
+                  className={`block truncate ${a.kind === 'cast' && a.attribution !== 'target' ? 'text-amber-400' : 'text-redlog-text-faint'}`}
+                >
+                  {detail}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const viewExport = useViewExport()
@@ -63,6 +132,16 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       setPreviewLoading(false)
     }
   }, [t])
+
+  // Leaving an attachment in or out is a different export: the plan is
+  // resolved again, so what is confirmed is what was previewed.
+  const toggleAttachment = (id: string): void => {
+    if (!pending || !resolvedPlan) return
+    const current = new Set(resolvedPlan.request.excludeAttachments ?? [])
+    if (current.has(id)) current.delete(id)
+    else current.add(id)
+    void loadPreview({ ...pending, request: { ...pending.request, excludeAttachments: [...current] } })
+  }
 
   const confirmExport = async (): Promise<void> => {
     if (!pending) return
@@ -262,6 +341,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         <PreviewRow label={t('export.preview.bodyRefs')} value={resolvedPlan.counts.attachmentsIncluded} />
                         <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
                         <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
+                        <PreviewRow label={t('export.preview.attachmentsExcludedByOperator')} value={resolvedPlan.counts.attachmentsExcludedByOperator ?? 0} />
+                        <AttachmentList rows={resolvedPlan.attachments ?? []} onToggle={toggleAttachment} busy={busy} t={t} />
                       </>
                     )}
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />

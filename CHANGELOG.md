@@ -5,6 +5,70 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Pick steps in the transcript and copy them with their provenance.** Each
+  transcript step can now be picked as a **key step** or **failed attempt**,
+  which records a marker citing that step's events. The step itself is never
+  edited, and like every marker the pick is append-only. **Picked only** narrows
+  the transcript to those steps, and **Copy as Markdown** then copies just
+  them. Any single step can be copied on its own. Every copied step names its
+  target, local time with UTC offset (plus UTC), event IDs and session, keeps
+  newlines inside a fence its own backticks cannot close, and says whether the
+  output is verbatim, only a preview in the record, clipped in this copy, or
+  was not captured. `marker:create` accepts `causes` and `targetId` for this.
+  No assessment, scoring or report generation is added. (#225)
+- **Add a local file as evidence.** A loot file, a tool report or a pcap
+  saved outside the watched folders never reached the record. The command
+  palette's **Add evidence file…** copies the files you pick into the
+  project's `artifacts/`, hashes the copy, and records a `file_transfer` /
+  `artifact_added` event with the hash, original path, size and mtime. The
+  evidence bundle carries each file only with the event that added it, lists
+  it in the preview so it can be left out, and drops it under scope masking
+  when its target is out of scope. A shell command that ran in the file's
+  folder while it was written is listed as a possible relationship, not as
+  its cause. Too large (over 200 MB), disk full, unreadable and duplicate
+  files are each reported. RedLog reads only the files you pick. (#221)
+- **Connecting your own terminal now checks output, not just the hook.** A
+  verified shell hook records commands, never what they print. The connected
+  screen now gives a canary, `printf '%s-%s\n' redlog-out <code>`: its
+  output contains text its command line does not. Run through `redlog-run`
+  or inside `redlog-session`, the screen says output was recorded and by
+  which. Run plainly, it says only the command arrived. (#218)
+- **`redlog-session` refuses to record inside another `redlog-session`.** The
+  outer PTY already sees everything drawn inside it, tmux panes included, so
+  a second recorder stored the same bytes twice. It now explains why and
+  exits; `--nested` overrides it for a tmux server that outlived its
+  session. (#218)
+- **Each terminal can have its own target.** The current target was one
+  global value, so with several panes on several hosts, switching it for one
+  pane re-attributed whatever the others recorded next — a command with no
+  host in it, a marker, a late `command_end`. A built-in terminal tab can now
+  be bound to a target from its toolbar, and an external shell can declare
+  one with `export REDLOG_TARGET=<host>`. Precedence: the event's own target,
+  then a host found in the command, then the session's target, then the
+  global one. Binding and unbinding are recorded as `session_target_changed`
+  events; earlier rows are never rewritten. (#219)
+- **The evidence-bundle preview lists every file, and you can leave any out.**
+  It used to give counts only, so there was no way to see which terminal
+  recording or screenshot was about to be handed over, or to drop the one
+  that held another host's session. Each file is now listed with its size and
+  the targets tied to it. A recording that spans several targets, or none, is
+  labelled as such: casts are never trimmed to scope, and exporting only
+  target A does not make a session that also touched B A-only. Unticking a
+  file resolves the plan again, so the fingerprint covers the choice. The
+  manifest records what was left out and which targets each included cast
+  spans. The source files are never modified. (#222)
+- **Settings leads with the two core captures.** The first group was "What
+  to record", with Commands, AI agents, the pack switches and Browser & HTTP
+  side by side. It is now **Core capture** (Commands & terminal, Browser &
+  HTTP capture) followed by **Other capture sources** (packs, screenshots and
+  retention; AI agent monitoring). "Capture control" is renamed for what the
+  page holds. (#228)
+- **The README no longer promises more than RedLog records.** "Passively
+  records everything" and "no manual note-taking required" are replaced by
+  what is actually captured: command metadata from hooked shells, output
+  only through the built-in terminal, `redlog-run` or `redlog-session`,
+  HTTP(S) only through RedLog's proxy, and the optional sources. The
+  first-run steps describe the current screen. (#226)
 - **Closing a project could drop the last settings change.** The close
   button awaited `project.close()` and only then unmounted Settings, so the
   pending autosave reached main with no project open, was refused, and
@@ -62,6 +126,9 @@ for full commit body + generated notes.
   go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
+
+> **Status:** tagged; the GitHub Release and its installers are not published
+> yet. Remove this note when they are.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
