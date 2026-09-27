@@ -33,7 +33,7 @@
   - 列出 python3、curl、你的 shell、mitmproxy（選用）；
   - 缺少的項目附上可複製的安裝指令；
   - 「開始使用」永遠可以按。
-- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端仍可記錄。
+- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
   - 失敗時查：`src/core/runtime-preflight.ts`、`RuntimeReadiness.tsx`。
 - [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app，就緒卡的 mitmproxy 顯示已找到。
   - 失敗時查：`src/main/login-path.ts`。

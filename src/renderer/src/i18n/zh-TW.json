@@ -885,12 +885,12 @@
   "palette.hostHits": "{{count}} 筆",
   "palette.operatorPrimary": "主要",
   "settings.categories": "設定分類",
-  "settings.groupCapture": "記錄什麼",
+  "settings.groupCapture": "核心擷取",
   "settings.groupScope": "範圍與證據",
   "settings.groupApp": "應用程式",
   "settings.pageHooks": "指令與終端",
   "settings.pageAgents": "AI 代理監聽",
-  "settings.pageCaptureControl": "擷取控制",
+  "settings.pageCaptureControl": "擷取 pack、截圖與保留",
   "settings.pageScope": "範圍規則",
   "settings.pageNetwork": "IP 曝光與自身流量",
   "settings.pageIntegrity": "證據鏈驗證",
@@ -1370,5 +1370,6 @@
   "settings.packMemberOptIn": "勾選前不會記錄。開啟 pack 不會順帶開啟這一項。",
   "app.closeSaveFailed": "有一項設定變更沒能存進這個專案，所以沒有關閉專案。請檢查設定後再試一次。",
   "settings.loadFailedTitle": "讀不到設定",
-  "settings.loadFailedWhy": "這個專案的設定沒有載入，所以這裡暫時無法顯示或修改。"
+  "settings.loadFailedWhy": "這個專案的設定沒有載入，所以這裡暫時無法顯示或修改。",
+  "settings.groupSources": "其他擷取來源"
 }
