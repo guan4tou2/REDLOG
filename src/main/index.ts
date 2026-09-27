@@ -17,6 +17,7 @@ import {
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
 import { isVerifyNonce, verifyUrl } from '../core/http-verify'
+import { clearSessionTargets } from '../core/session-targets'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -1014,6 +1015,7 @@ function stopProject(): void {
   currentOperatorId = null
   resetCausesResolver()
   configureIngest({ activeTarget: null })
+  clearSessionTargets()
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each

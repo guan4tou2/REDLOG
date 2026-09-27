@@ -54,6 +54,9 @@ const api: RedLogAPI = {
   targetContext: {
     get: () => ipcRenderer.invoke('targetContext:get') as Promise<string | null>,
     set: (target: string | null) => ipcRenderer.invoke('targetContext:set', target) as Promise<{ ok: boolean; target: string | null }>,
+    getSession: (terminalId: string) => ipcRenderer.invoke('targetContext:getSession', terminalId) as Promise<string | null>,
+    bindSession: (terminalId: string, target: string | null) =>
+      ipcRenderer.invoke('targetContext:bindSession', terminalId, target) as Promise<{ ok: boolean; target: string | null }>,
     onChange: (cb: (target: string | null) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, target: string | null): void => cb(target)
       ipcRenderer.on('targetContext:changed', handler)
