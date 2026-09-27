@@ -1474,5 +1474,9 @@
   "artifacts.dropConfirmYes": "加入為證據",
   "artifacts.dropHere": "放開即可加入為證據（會先請你確認）",
   "app.evidenceShot": "截圖（擷取時 RedLog 會先隱藏）",
-  "app.evidenceFile": "加入證據檔案…（也可把檔案拖進視窗）"
+  "app.evidenceFile": "加入證據檔案…（也可把檔案拖進視窗）",
+  "export.reveal": "在資料夾中顯示",
+  "export.running": "匯出中…",
+  "export.runFailed": "匯出未完成。預覽已保留，沒有寫出任何你沒看過的內容。",
+  "export.retryResolve": "重新計算後再試一次"
 }
