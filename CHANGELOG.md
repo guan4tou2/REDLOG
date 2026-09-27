@@ -5,6 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Connecting your own terminal now checks output, not just the hook.** A
+  verified shell hook records commands, never what they print. The connected
+  screen now gives a canary, `printf '%s-%s\n' redlog-out <code>`: its
+  output contains text its command line does not. Run through `redlog-run`
+  or inside `redlog-session`, the screen says output was recorded and by
+  which. Run plainly, it says only the command arrived. (#218)
+- **`redlog-session` refuses to record inside another `redlog-session`.** The
+  outer PTY already sees everything drawn inside it, tmux panes included, so
+  a second recorder stored the same bytes twice. It now explains why and
+  exits; `--nested` overrides it for a tmux server that outlived its
+  session. (#218)
 - **Each terminal can have its own target.** The current target was one
   global value, so with several panes on several hosts, switching it for one
   pane re-attributed whatever the others recorded next — a command with no
