@@ -121,9 +121,14 @@ def run(command, recorder):
 
     interactive = sys.stdin.isatty()
     saved = termios.tcgetattr(0) if interactive else None
+    # Read the size before forking: the child sets it on its own terminal
+    # before exec, so a command that starts at once (stty, a TUI) never sees
+    # the 0x0 of a PTY the parent has not sized yet.
+    initial_size = fcntl.ioctl(0, termios.TIOCGWINSZ, b'\0' * 8) if interactive else struct.pack('HHHH', 24, 80, 0, 0)
     pid, master = pty.fork()
     if pid == 0:
         try:
+            fcntl.ioctl(0, termios.TIOCSWINSZ, initial_size)
             # The PTY owns capture for this shell. Profile-installed metadata
             # hooks must not re-read another project's credentials mid-session.
             os.environ['REDLOG_EXTERNAL_SESSION'] = '1'
