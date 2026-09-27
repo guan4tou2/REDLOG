@@ -33,6 +33,10 @@ import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { onRunInTerminal } from './lib/terminalRunner'
 import { closeProjectAfterSaves } from './lib/pendingSaves'
+import { addArtifactsWithFeedback, addDroppedWithFeedback } from './lib/addArtifacts'
+import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
+import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
+import { Camera, FilePlus } from 'lucide-react'
 import { FilterBar } from './components/FilterBar'
 import { ActiveTargetControl } from './components/ActiveTargetControl'
 import { LegacyHookBanner, RuntimeReadinessHost } from './components/RuntimeReadiness'
@@ -69,6 +73,8 @@ export default function App(): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
+  const [markerHeldFrame, setMarkerHeldFrame] = useState<string | undefined>(undefined)
+  const [dropping, setDropping] = useState(false)
   // The Settings page a link asked for; see lib/navigation.ts.
   const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage } | null>(null)
   const { t } = useI18n()
@@ -112,8 +118,15 @@ export default function App(): JSX.Element {
   // front (both handlers ran). Renderer only handles Cmd/ and Cmd+1..N which
   // must be scoped to the app window.
   useEffect(() => {
-    return window.redlog.marker.onShortcut(() => setShowMarker(true))
+    return window.redlog.marker.onShortcut((info) => { setMarkerHeldFrame(info?.heldFrame); setShowMarker(true) })
   }, [])
+  // The global screenshot chord fires while RedLog is in the background; its
+  // result waits here as a toast for when the operator comes back.
+  useEffect(() => {
+    return window.redlog.screenshot.onShortcutResult?.((r) => r.ok
+      ? toast(t('palette.screenshotTaken'), 'success')
+      : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
+  },[t])
 
   // The palette shows "pause" or "resume" depending on the current state, so
   // it has to know it.
@@ -150,7 +163,29 @@ export default function App(): JSX.Element {
 
   return (
     <FilterProvider>
-    <div className="h-full flex flex-col">
+    <div
+      className="h-full flex flex-col relative"
+      // Files dropped anywhere on the window are offered as evidence; the
+      // main process lists them and asks before anything is copied.
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        if (!dropping) setDropping(true)
+      }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target || !e.relatedTarget) setDropping(false) }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        setDropping(false)
+        void addDroppedWithFeedback([...e.dataTransfer.files], t)
+      }}
+    >
+      {dropping && (
+        <div data-testid="evidence-drop-overlay" className="pointer-events-none absolute inset-2 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-redlog-accent/60 bg-redlog-bg/80 text-sm text-redlog-text">
+          {t('artifacts.dropHere')}
+        </div>
+      )}
       {/* Title bar */}
       <div
         className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
@@ -203,6 +238,28 @@ export default function App(): JSX.Element {
               Its scope is an option, not a location. */}
           <ExportMenu totalCount={exportableCount} />
           <LaunchBrowserButton onNavigate={navigate} />
+          {/* The evidence verbs sit together (UI/UX audit F8): screenshot and
+              add-file used to be reachable only from ⌘K. */}
+          <button
+            type="button"
+            data-testid="titlebar-screenshot"
+            onClick={() => { void captureScreenshotWithFeedback(t) }}
+            aria-label={t('app.evidenceShot')}
+            title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
+            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
+          >
+            <Camera size={14} strokeWidth={1.75} aria-hidden />
+          </button>
+          <button
+            type="button"
+            data-testid="titlebar-add-file"
+            onClick={() => { void addArtifactsWithFeedback(t) }}
+            aria-label={t('app.evidenceFile')}
+            title={t('app.evidenceFile')}
+            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
+          >
+            <FilePlus size={14} strokeWidth={1.75} aria-hidden />
+          </button>
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
@@ -271,7 +328,7 @@ export default function App(): JSX.Element {
           playing here when the operator switches views (§14). */}
       <ReplayDrawer />
       <StatusBar />
-      {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined) }} atTimestamp={markerAtTs} />}
+      {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined); setMarkerHeldFrame(undefined) }} atTimestamp={markerAtTs} heldFrame={markerHeldFrame} />}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

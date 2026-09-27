@@ -24,6 +24,9 @@ export const QUICK_MARK_ACCELERATOR = 'CommandOrControl+Shift+M'
  *  by `test/shortcuts.test.ts` for the same reason as the marker chord. */
 export const HUD_PASSTHROUGH_ACCELERATOR = 'CommandOrControl+Shift+P'
 
+/** Mirrors `QUICK_SHOT_ACCELERATOR` in `src/core/shortcuts.ts`. */
+export const QUICK_SHOT_ACCELERATOR = 'CommandOrControl+Shift+2'
+
 export type ShortcutScope = 'nav' | 'app' | 'terminal' | 'timeline'
 
 export interface ShortcutRow {
@@ -134,6 +137,13 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
       scope: 'app'
       // Registered by the main process as a global accelerator, so the
       // renderer never sees the key — documentation only, deliberately.
+    },
+    {
+      id: 'app:screenshot',
+      keys: formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac),
+      label: 'dashboard.screenshotNow',
+      scope: 'app'
+      // Global accelerator — documentation only, like the marker chord.
     },
     {
       id: 'app:hudCorner',

@@ -66,8 +66,11 @@ export function registerMarkersIpc(
   ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
     ctx.getActiveProject() && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
 
-  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) =>
-    screenshotAgent.captureNow('manual', causeEventId))
+  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string, opts?: { heldFrame?: unknown; hideOwnWindows?: unknown }) =>
+    screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
+      heldFrame: typeof opts?.heldFrame === 'string' ? opts.heldFrame : undefined,
+      hideOwnWindows: opts?.hideOwnWindows === true
+    }))
 
   ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
     try {

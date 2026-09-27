@@ -12,6 +12,29 @@ import { dHashFromBgra, hammingDistance } from '../../core/dhash'
 // the agent deciding to take one. See captureNow.
 const DELIBERATE_TRIGGERS = new Set(['manual', 'api'])
 
+/** How long a frame held at the moment of a shortcut stays usable. */
+const HELD_FRAME_TTL_MS = 120_000
+
+interface Frame {
+  image: Electron.NativeImage
+  jpeg: Buffer
+  width: number
+  height: number
+  displayId: string | null
+  /** when the pixels were taken, which for a held frame is before the event */
+  at: number
+}
+
+/** Hides RedLog's own windows; resolves to the function that brings them back. */
+export type WindowHider = () => Promise<() => void>
+
+export interface CaptureOptions {
+  /** Use the frame held when the marker shortcut fired, if this is its token. */
+  heldFrame?: string
+  /** Take RedLog's windows (main and HUD) off the screen for the capture. */
+  hideOwnWindows?: boolean
+}
+
 export class ScreenshotAgent {
   private lastHash = ''
   private engagementId = 'default'
@@ -35,6 +58,88 @@ export class ScreenshotAgent {
   private diffThreshold = 5
   // Opt-in: capture a frame when a shell command finishes, linked to it.
   private captureOnCommand = false
+  // UI/UX audit F2. A capture asked for from inside RedLog photographed
+  // RedLog: ⌘⇧M raised the main window before the marker's screenshot, and
+  // "Capture now" ran with the app in front. The frame the operator meant was
+  // the one behind it. So the shortcut holds a frame before anything is
+  // raised, and in-app captures hide RedLog's windows for the moment of the
+  // grab. A held frame is never written unless a marker claims it.
+  private held: { token: string; frame: Frame } | null = null
+  private hider: WindowHider | null = null
+
+  setWindowHider(hider: WindowHider | null): void { this.hider = hider }
+
+  /** Grab the current screen now, keep it in memory only, and return a token a
+   *  later capture can claim it with. Null when nothing could be grabbed. */
+  async holdFrame(): Promise<string | null> {
+    if (!this.operatorId) return null
+    const frame = await this.grabFrame().catch((e) => { noteCaptureError('screenshot', e); return null })
+    if (!frame) { this.held = null; return null }
+    const token = crypto.randomBytes(8).toString('hex')
+    this.held = { token, frame }
+    return token
+  }
+
+  private takeHeld(token: string | undefined): Frame | null {
+    const h = this.held
+    if (!token || !h || h.token !== token) return null
+    this.held = null
+    return Date.now() - h.frame.at <= HELD_FRAME_TTL_MS ? h.frame : null
+  }
+
+  /** One frame of the display the operator is working on — the one under the
+   *  cursor — rather than always the primary display. */
+  private async grabFrame(): Promise<Frame | null> {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    const { width, height } = display.size
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width, height }
+    })
+    // An empty source list is a failure, not "nothing to capture".
+    //
+    // There is always a screen; `getSources` returning none means the
+    // capture backend could not enumerate it. Observed on Windows 11 /
+    // Chromium 152 in a single-display session — `types: ['screen']` came
+    // back empty while `types: ['window']` returned six. Whatever the
+    // upstream cause, the effect here was that every periodic capture
+    // silently did nothing: no event, no error, and capture-health still
+    // reading `state: "idle"`, which is what it says before the first
+    // screenshot of a fresh project. "Not yet" and "never again" looked
+    // identical, so an operator relying on periodic screenshots would find
+    // out at write-up time.
+    if (!sources.length) {
+      noteCaptureError('screenshot', new Error(
+        `desktopCapturer returned no screen sources (${screen.getAllDisplays().length} display(s) known)`
+      ))
+      return null
+    }
+    const source = sources.find((src) => src.display_id === String(display.id)) ?? sources[0]
+    const image = source.thumbnail
+    const jpeg = image.toJPEG(this.quality)
+    // An empty frame is a FAILURE, and it must never become evidence.
+    //
+    // Windows 11 / Chromium 152 hands back the right number of screen
+    // sources with every thumbnail empty: `getSize()` 0x0, `isEmpty()`
+    // true, `toJPEG()` 0 bytes, at every `thumbnailSize` we asked for
+    // (window sources on the same box are fine). Nothing below this point
+    // notices — the sha256 of zero bytes is a perfectly good hash — so a
+    // deliberate capture wrote a 0-byte .jpg, ingested a screenshot event
+    // for it, showed it in the Screenshots grid as a captured frame, and
+    // exported it into the evidence bundle, where the verifier confirmed
+    // its sha256 and reported the file verified. A bundle that certifies a
+    // blank screenshot as a screenshot is worse than one with no screenshot
+    // in it: it is a claim about the engagement that is not true.
+    if (jpeg.length === 0 || image.isEmpty()) {
+      const { width: tw, height: th } = image.getSize()
+      noteCaptureError('screenshot', new Error(
+        `screen capture came back empty (${sources.length} source(s), thumbnail ${tw}x${th}, ` +
+        `${screen.getAllDisplays().length} display(s)) — nothing was recorded`
+      ))
+      return null
+    }
+    return { image, jpeg, width, height, displayId: source.display_id || null, at: Date.now() }
+  }
 
   configure(opts: {
     engagementId?: string
@@ -81,7 +186,7 @@ export class ScreenshotAgent {
   start(): void { this.applyInterval() }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null } }
 
-  async captureNow(trigger: string, causeEventId?: string): Promise<string | null> {
+  async captureNow(trigger: string, causeEventId?: string, opts: CaptureOptions = {}): Promise<string | null> {
     if (!this.operatorId) return null
     // Deliberate captures always land — operator intent overrides pause and
     // dedup. `api` belongs here with `manual`: POST /api/screenshot is an
@@ -92,60 +197,18 @@ export class ScreenshotAgent {
     const deliberate = DELIBERATE_TRIGGERS.has(trigger)
     if (!deliberate && eventBus.paused) return null
     try {
-      const display = screen.getPrimaryDisplay()
-      const { width, height } = display.size
-
-      const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width, height }
-      })
-      // An empty source list is a failure, not "nothing to capture".
-      //
-      // There is always a screen; `getSources` returning none means the
-      // capture backend could not enumerate it. Observed on Windows 11 /
-      // Chromium 152 in a single-display session — `types: ['screen']` came
-      // back empty while `types: ['window']` returned six. Whatever the
-      // upstream cause, the effect here was that every periodic capture
-      // silently did nothing: no event, no error, and capture-health still
-      // reading `state: "idle"`, which is what it says before the first
-      // screenshot of a fresh project. "Not yet" and "never again" looked
-      // identical, so an operator relying on periodic screenshots would find
-      // out at write-up time.
-      //
-      // The `catch` below already routes failures to capture-health with a
-      // comment about surfacing "permission denied / disk full / display
-      // asleep" rather than swallowing them. This is that same class of
-      // failure; it just does not throw.
-      if (!sources.length) {
-        noteCaptureError('screenshot', new Error(
-          `desktopCapturer returned no screen sources (${screen.getAllDisplays().length} display(s) known)`
-        ))
-        return null
+      let frame = deliberate ? this.takeHeld(opts.heldFrame) : null
+      const heldAt = frame ? frame.at : null
+      if (!frame) {
+        const restore = deliberate && opts.hideOwnWindows && this.hider ? await this.hider() : null
+        try {
+          frame = await this.grabFrame()
+        } finally {
+          restore?.()
+        }
       }
-
-      const image = sources[0].thumbnail
-      const jpeg = image.toJPEG(this.quality)
-      // An empty frame is a FAILURE, and it must never become evidence.
-      //
-      // Windows 11 / Chromium 152 hands back the right number of screen
-      // sources with every thumbnail empty: `getSize()` 0x0, `isEmpty()`
-      // true, `toJPEG()` 0 bytes, at every `thumbnailSize` we asked for
-      // (window sources on the same box are fine). Nothing below this point
-      // notices — the sha256 of zero bytes is a perfectly good hash — so a
-      // deliberate capture wrote a 0-byte .jpg, ingested a screenshot event
-      // for it, showed it in the Screenshots grid as a captured frame, and
-      // exported it into the evidence bundle, where the verifier confirmed
-      // its sha256 and reported the file verified. A bundle that certifies a
-      // blank screenshot as a screenshot is worse than one with no screenshot
-      // in it: it is a claim about the engagement that is not true.
-      if (jpeg.length === 0 || image.isEmpty()) {
-        const { width: tw, height: th } = image.getSize()
-        noteCaptureError('screenshot', new Error(
-          `screen capture came back empty (${sources.length} source(s), thumbnail ${tw}x${th}, ` +
-          `${screen.getAllDisplays().length} display(s)) — nothing was recorded`
-        ))
-        return null
-      }
+      if (!frame) return null
+      const { image, jpeg, width, height } = frame
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
 
@@ -197,6 +260,9 @@ export class ScreenshotAgent {
         height,
         sha256,
         hash: dedupKey,
+        ...(frame.displayId ? { display_id: frame.displayId } : {}),
+        // A frame held at the shortcut predates this event; say when it was taken.
+        ...(heldAt ? { captured_at: heldAt, held_for_marker: true } : {}),
         // v0.6.89 `_causes`: EventMarker (⌘⇧M) passes the marker event id so
         // focus chain walks link marker→screenshot→(later screenshot_deleted).
         ...(causeEventId ? { _causes: [causeEventId] } : {})

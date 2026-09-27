@@ -19,9 +19,11 @@ interface EventMarkerProps {
   // break the audit chain — but data.atTimestamp preserves the intended
   // moment for Timeline rendering.
   atTimestamp?: number
+  /** A frame the shortcut took before RedLog came forward (UI/UX audit F2). */
+  heldFrame?: string
 }
 
-export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps): JSX.Element {
+export default function EventMarker({ onClose, atTimestamp, heldFrame }: EventMarkerProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [url, setUrl] = useState('')
@@ -93,7 +95,9 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
     let shotFailed: string | null = null
     if (withScreenshot) {
       try {
-        const shot = await window.redlog.screenshot.capture(markerEvent.id)
+        // The frame from when the shortcut fired, else one taken with RedLog
+        // off screen — never a picture of this dialog.
+        const shot = await window.redlog.screenshot.capture(markerEvent.id, { heldFrame, hideOwnWindows: true })
         if (!shot) shotFailed = t('palette.screenshotNotSavedWhy')
       } catch (err) {
         shotFailed = err instanceof Error ? err.message : String(err)

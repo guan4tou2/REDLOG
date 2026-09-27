@@ -1468,5 +1468,11 @@
   "transcript.toolInterrupted": "(tool interrupted)",
   "transcript.toolResultUnpaired": "(tool result without a matching call)",
   "settings.pickFolder": "Pick a folder",
-  "artifacts.pickerTitle": "Add evidence files"
+  "artifacts.pickerTitle": "Add evidence files",
+  "dashboard.screenshotNow": "Screenshot now (from any app)",
+  "artifacts.dropConfirm": "Add {{count}} dropped file(s) to this project as evidence?",
+  "artifacts.dropConfirmYes": "Add as evidence",
+  "artifacts.dropHere": "Drop to add as evidence — you will be asked to confirm",
+  "app.evidenceShot": "Screenshot (RedLog steps aside for the capture)",
+  "app.evidenceFile": "Add evidence file… (or drop files on the window)"
 }
