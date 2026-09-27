@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
-import { writeClipboard } from '../lib/clipboard'
+import { CopyButton } from './CopyButton'
 import { activationCommand, activationNonce, isActivationEvent, missingDependencies } from '../lib/terminalActivation'
 import { classifyCanaryEvent, mergeCanary, outputCanary, type CanaryResult } from '../lib/outputCanary'
 import type { RedLogEvent } from '../../../core/db/events'
@@ -129,7 +129,7 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
           <p className="text-redlog-text">{t('firstRun.record.paste')}</p>
           <div className="flex items-center gap-2">
             <code data-testid="record-terminal-command" className="flex-1 min-w-0 break-all font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{command}</code>
-            <Button level="quiet" onClick={() => void writeClipboard(command)}>{t('firstRun.copy')}</Button>
+            <CopyButton text={command} />
           </div>
           {phase === 'waiting-for-activation' ? (
             <p className="text-redlog-text-faint">{t('firstRun.record.waiting')}</p>
@@ -169,7 +169,7 @@ export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }
             {c.remediation ? (
               <>
                 <code className="font-mono text-redlog-text-dim">{c.remediation}</code>
-                <Button level="quiet" onClick={() => void writeClipboard(c.remediation ?? '')}>{t('firstRun.copy')}</Button>
+                <CopyButton text={c.remediation ?? ''} />
               </>
             ) : (
               <span className="text-redlog-text-faint">{t('firstRun.installManually')}</span>
@@ -213,7 +213,7 @@ function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {
             <p className="text-redlog-text-dim">{t('firstRun.record.sessionHint')}</p>
             <div className="flex items-center gap-2">
               <code data-testid="record-terminal-session-command" className="font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">redlog-session</code>
-              <Button level="quiet" onClick={() => void writeClipboard('redlog-session')}>{t('firstRun.copy')}</Button>
+              <CopyButton text={'redlog-session'} />
             </div>
             <OutputCheck />
           </>
@@ -247,7 +247,7 @@ function OutputCheck(): JSX.Element {
       <p className="text-redlog-text-dim">{t('firstRun.record.outputCheck')}</p>
       <div className="flex items-center gap-2">
         <code data-testid="record-terminal-output-command" title={viaRun} className="flex-1 min-w-0 truncate font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{viaRun}</code>
-        <Button level="quiet" onClick={() => void writeClipboard(viaRun)}>{t('firstRun.copy')}</Button>
+        <CopyButton text={viaRun} />
       </div>
       <p className="text-redlog-text-faint">{t('firstRun.record.outputCheckSession', { command: canary.command })}</p>
       {result?.kind === 'output' ? (

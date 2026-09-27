@@ -65,12 +65,12 @@ const api: RedLogAPI = {
     }
   },
   artifacts: {
-    add: () => ipcRenderer.invoke('artifacts:add') as Promise<ArtifactAddResponse | null>
+    add: (title?: string) => ipcRenderer.invoke('artifacts:add', title) as Promise<ArtifactAddResponse | null>
   },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
-    pickPath: () => ipcRenderer.invoke('hookConfig:pickPath') as Promise<string | null>
+    pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   events: {
     query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),

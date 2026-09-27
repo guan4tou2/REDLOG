@@ -315,7 +315,7 @@ export default function OverlayApp(): JSX.Element {
               </div>
 
               {safety === 'unknown' && (
-                <p style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint')}</p>
+                <p style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint', { page: t('settings.pageNetwork') })}</p>
               )}
 
               {pivots.length > 0 && (() => {

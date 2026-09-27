@@ -64,7 +64,7 @@ function open(props: Partial<Parameters<typeof CommandPalette>[0]> = {}): {
 }
 
 const type = (value: string): void => {
-  fireEvent.change(screen.getByRole('textbox'), { target: { value } })
+  fireEvent.change(screen.getByRole('combobox'), { target: { value } })
 }
 
 describe('command palette', () => {
@@ -197,11 +197,11 @@ describe('command palette', () => {
     // something before they can type.
     const { onClose } = open()
     type('leftover')
-    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('leftover')
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('leftover')
     cleanup()
     void onClose
     open()
-    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('')
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('')
   })
 
   it('closes on Escape', async () => {

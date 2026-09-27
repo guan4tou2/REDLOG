@@ -56,6 +56,21 @@ const DEFAULT_MS = 3000
 /** §10: long enough to notice and act, short enough not to hold up a queue. */
 export const UNDO_MS = 8000
 const MAX_VISIBLE = 3
+/**
+ * Trim to what fits, oldest first — but drop a non-error before any error.
+ * Errors are the toasts that do not expire because they must not go unseen;
+ * dropping the oldest regardless of type (as before) let a batch of later
+ * successes erase the one failure in it (UI/UX audit F4). With only errors
+ * left, the oldest goes, as before.
+ */
+export function capToasts<T extends { type: string }>(list: T[]): T[] {
+  const out = [...list]
+  while (out.length > MAX_VISIBLE) {
+    const i = out.findIndex((x) => x.type !== 'error')
+    out.splice(i >= 0 ? i : 0, 1)
+  }
+  return out
+}
 
 type PushFn = (message: string, opts: ToastOptions) => void
 let _push: PushFn = () => {}
@@ -130,7 +145,7 @@ export function ToastContainer(): JSX.Element | null {
       const next = at >= 0
         ? prev.map((x, i) => (i === at ? { ...x, ...opts, message, type, count: x.count + 1, expiresAt } : x))
         : [...prev, { ...opts, id: ++seq.current, message, type, key, count: 1, expiresAt }]
-      return next.slice(-MAX_VISIBLE)
+      return capToasts(next)
     })
   }, [])
 

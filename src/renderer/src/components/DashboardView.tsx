@@ -75,7 +75,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
       } else {
         toast(t('browser.failed'), {
           type: 'error',
-          why: t('browser.failedWhy'),
+          why: t('browser.failedWhy', { page: t('settings.pageBrowser') }),
           detail: r.error,
           action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('browser')) }
         })
@@ -106,7 +106,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
     <button
       onClick={handleClick}
       disabled={busy}
-      title={t('browser.hint')}
+      title={t('browser.hint', { page: t('settings.pageBrowser') })}
       className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
         running
           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
@@ -120,7 +120,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, lootCount, scopeViolations, scopeConfigured, loading: countsLoading } = useAppCounts()
+  const { eventCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
   const [chainLen, setChainLen] = useState(0)
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
   // start at 0 / null so the card doesn't flash a spurious "no logged
@@ -286,18 +286,18 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
               let ageLabel = ''
               if (typeof ets === 'number' && ets > 0) {
                 const days = Math.floor((Date.now() - ets) / 86400000)
-                if (days >= 1) ageLabel = ` (${days}d old)`
+                if (days >= 1) ageLabel = ` ${t('dashboard.sampleAgeDays', { n: days })}`
                 else {
                   const hrs = Math.floor((Date.now() - ets) / 3600000)
-                  ageLabel = hrs > 0 ? ` (${hrs}h old)` : ' (fresh)'
+                  ageLabel = hrs > 0 ? ` ${t('dashboard.sampleAgeHours', { n: hrs })}` : ` ${t('dashboard.sampleFresh')}`
                 }
               }
-              anchorSub = `${anchorSub} · sample BROKEN${ageLabel}`
+              anchorSub = `${anchorSub} · ${t('dashboard.sampleBroken')}${ageLabel}`
               anchorTone = 'red'
             } else if (capture?.lastSampleOkAt) {
               const sMin = Math.floor((Date.now() - capture.lastSampleOkAt) / 60000)
               const sLabel = sMin < 1 ? '<1m' : sMin < 60 ? `${sMin}m` : `${Math.floor(sMin / 60)}h`
-              anchorSub = `${anchorSub} · sampled ${sLabel}`
+              anchorSub = `${anchorSub} · ${t('dashboard.sampled', { age: sLabel })}`
             }
             return (
               <StatCard
@@ -309,12 +309,26 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             )
           })()}
           <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
+          {/* Never green when the scope state could not be read. */}
           <StatCard
             label={t('dashboard.scope')}
-            value={scopeViolations > 0 ? String(scopeViolations) : scopeConfigured ? t('dashboard.scopeOk') : t('dashboard.scopeNotConfigured')}
-            tone={scopeViolations > 0 ? 'red' : scopeConfigured ? 'green' : 'neutral'}
+            value={scopeViolations > 0 ? String(scopeViolations)
+              : scopeUnknown ? t('dashboard.scopeUnknown')
+                : scopeConfigured ? t('dashboard.scopeOk') : t('dashboard.scopeNotConfigured')}
+            sub={scopeViolations === 0 && scopeUnknown ? t('dashboard.scopeUnknownWhy') : undefined}
+            tone={scopeViolations > 0 ? 'red' : scopeUnknown ? 'amber' : scopeConfigured ? 'green' : 'neutral'}
           />
         </div>
+        {scopeUnknown && (
+          <button
+            type="button"
+            data-testid="dashboard-scope-retry"
+            onClick={retryCounts}
+            className="mt-2 text-xs text-amber-300 underline hover:text-amber-200"
+          >
+            {t('common.retry')}
+          </button>
+        )}
       </section>
 
       {config && (
