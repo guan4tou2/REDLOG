@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **The capture browser is silent when idle.** RedLog's own browser profile
+  still sent 8 requests a minute to Google with nothing open:
+  `accounts.google.com/ListAccounts` ×5, `android.clients.google.com/checkin`
+  ×2 and `www.google.com/async/folae` (the omnibox AI Mode eligibility
+  check), plus a preconnect to www.google.com. They went into the logged
+  tier as if the operator had sent them. The profile now disables
+  `PreconnectToSearch` and the `Aim*` features, and points the Gaia and GCM
+  check-in endpoints at a reserved `.invalid` host that bypasses the proxy,
+  so those requests never leave the machine. Measured through the capture
+  proxy over 60 s idle: none. The operator's own pages, accounts.google.com
+  included, and omnibox search are unaffected; only signing Chrome's profile
+  itself into Google stops working. (#182)
 - **Pick steps in the transcript and copy them with their provenance.** Each
   transcript step can now be picked as a **key step** or **failed attempt**,
   which records a marker citing that step's events. The step itself is never
