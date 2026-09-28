@@ -474,7 +474,7 @@ function MiniListField({ label, items, onChange, placeholder }: {
           placeholder={placeholder}
           className="flex-1 bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
         />
-        <button onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
+        <IconButton label={t('common.addItem')} onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
       </div>
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">

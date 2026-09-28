@@ -7,6 +7,8 @@ import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/TimelineStatusStrips'
+import { TimelineEventLog } from './timeline/TimelineEventLog'
+import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
@@ -26,7 +28,6 @@ import {
   isMarkerAmendment,
   AMENDABLE_FIELDS, type MarkerValues
 } from '../lib/markerFold'
-import { MarkerDetail } from './MarkerDetail'
 import { isHookSource } from '../lib/housekeeping'
 import { isMac } from '../lib/platform'
 import { useContributeExport } from '../lib/exportScope'
@@ -35,13 +36,9 @@ import {
   type PluginEventType, type DotShape, IO_MARK_COLOR,
   displayTs, toLane, eventCompare, binarySearchInsert,
   axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
-  subagentIndentPx
+  subagentIndentPx, LANE_OFF_COLOR, SESSION_BAND_LABEL_COLOR
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
-import { TierBadge } from './TierBadge'
-import { ReplayCommand } from './ReplayCommand'
-import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from './TimelineEventDetails'
-import { HttpDetail } from './HttpDetail'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -1916,7 +1913,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
-                  color: off ? '#7e7e88' : LANE_COLORS[id],
+                  color: off ? LANE_OFF_COLOR : LANE_COLORS[id],
                   backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
                 title={empty
@@ -2219,7 +2216,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                       {w >= 34 && (
                         <span
                           className="absolute text-xs font-mono px-1 rounded-b bg-redlog-surface/80 whitespace-nowrap"
-                          style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
+                          style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? SESSION_BAND_LABEL_COLOR.paused : SESSION_BAND_LABEL_COLOR.session }}
                         >{b.label}</span>
                       )}
                     </div>
@@ -2524,59 +2521,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             so the +1-step hint font from v0.6.56 doesn't push rows off the
             bottom, and so the panel scales with window height. Values chosen
             so the list shows ~5 rows at 900 px tall and ~8 at 1200 px. */}
-        <div className="shrink-0 border-t border-redlog-border/60 bg-redlog-bg/50" style={{ height: selectedEvent ? '18vh' : '22vh' }}>
-          <div className="px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
-            <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
-            <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{recentEvents.length}</span>
-          </div>
-          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent && detailOpen ? '18vh' : '22vh'} - 32px)` }}>
-            {recentEvents.map((evt) => {
-              const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
-              const isSel = selectedEvent?.id === evt.id
-              return (
-                <div
-                  key={evt.id}
-                  className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
-                    isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
-                  }`}
-                  onClick={() => { if (isSel) { setSelectedEvent(null); setDetailOpen(false) } else { setSelectedEvent(evt); setDetailOpen(true) } }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
-                  <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
-                    {formatTime(evt.timestamp, { seconds: true })}
-                  </span>
-                  {/* v0.14 §9.1: per-row tier badge. Icon-only in the row so
-                   *  the visual density stays low — the full labeled version
-                   *  lives in the detail panel. Reviewer scanning the
-                   *  timeline can now spot chained-vs-logged at a glance
-                   *  instead of clicking each row to check. */}
-                  <TierBadge tier={evt.tier} variant="row" />
-                  {showOperator && (
-                    <span className="text-redlog-text-dim font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
-                      {operatorLabel(evt.operatorId)}
-                    </span>
-                  )}
-                  <span title={`${titleOf(evt)}${amendSuffix(evt)}`} className="text-redlog-text-dim truncate">{titleOf(evt)}</span>
-                  {/* Rendered only for a marker that HAS been corrected (§22:
-                      a noun does not appear before its data exists) — most
-                      markers never are, and the row is already dense. Never
-                      truncated: a count that reads 「已修訂 1…」 is worse than no
-                      count, and never in danger red, which would make an
-                      ordinary correction read as an alarm. */}
-                  {foldById.get(evt.id) && (
-                    <span
-                      data-testid="marker-amend-count"
-                      className="text-redlog-text-dim font-mono tabular-nums shrink-0"
-                      title={t('marker.amendedTimesHint')}
-                    >
-                      {t('marker.amendedTimes', { count: foldById.get(evt.id)!.amendCount })}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <TimelineEventLog
+          events={recentEvents}
+          selectedId={selectedEvent?.id ?? null}
+          detailOpen={detailOpen}
+          pluginTypes={pluginTypes}
+          showOperator={showOperator}
+          operatorLabel={operatorLabel}
+          titleOf={titleOf}
+          amendSuffix={amendSuffix}
+          amendCountOf={(id) => foldById.get(id)?.amendCount}
+          onSelect={(evt) => {
+            if (selectedEvent?.id === evt.id) { setSelectedEvent(null); setDetailOpen(false) }
+            else { setSelectedEvent(evt); setDetailOpen(true) }
+          }}
+          t={t}
+        />
       </div>
 
       {/* Enhanced detail panel — height is drag-resizable; the handle at the
@@ -2607,304 +2567,34 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           className={`shrink-0 border-t border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto${detailPanelPx == null ? ' max-h-[45vh]' : ''}`}
           style={detailPanelPx == null ? undefined : { height: detailPanelPx }}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }} />
-              <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }}>
-                {selectedEvent.agentType}
-              </span>
-              <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60" title={selectedEvent.operatorId}>
-                {operatorLabel(selectedEvent.operatorId)}
-              </span>
-              <TierBadge tier={selectedEvent.tier} variant="detail" show={tierChip} />
-            </div>
-            <div className="flex items-center gap-2">
-              {/* "What else was happening when this ran" is the commonest
-                  next question about an event, and there was no way to ask
-                  it: the bar offered only windows ending now. */}
-              <button
-                type="button"
-                data-testid="detail-around-event"
-                className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
-                title={t('filter.around')}
-                onClick={() => setSharedTimeRange(windowAround(selectedEvent.timestamp))}
-              >{t('filter.around')}</button>
-              <button
-                type="button"
-                className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
-                  dneFlag
-                    ? 'border-red-500/60 bg-red-500/15 text-red-300'
-                    : 'border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border'
-                }`}
-                title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}
-                onClick={() => {
-                  void window.redlog.events.toggleDoNotExport(selectedEvent.id).then((v) => {
-                    if (v !== null) setDneFlag(v)
-                  })
-                }}
-              >
-                {dneFlag ? t('timeline.doNotExportActive') : t('timeline.doNotExport')}
-              </button>
-            </div>
-          </div>
-          <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{titleOf(selectedEvent)}</p>
-          {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
-              to the title so the operator sees every flag at once (the dot
-              overlay only shows the first). Empty when the event has none. */}
-          {(() => {
-            const badges = badgesById.get(selectedEvent.id)
-            if (!badges || badges.length === 0) return null
-            return (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                {badges.map((b) => (
-                  <span
-                    key={b.key}
-                    className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
-                    title={b.reasonKey ? t(b.reasonKey) : b.reason}
-                  >
-                    {b.icon} {b.reasonKey ? t(b.reasonKey) : b.reason}
-                  </span>
-                ))}
-              </div>
-            )
-          })()}
-          {/* v0.6.89.5 feature 1: `_causes` visualisation. Chips look up the
-              cause in the in-memory events map; a click sets that event as
-              the new selection and scrolls the track to centre it. A cause
-              id not found in the map is a "chain broken" symptom — the T6
-              case from the design grill — and gets a red chip so the
-              operator can't miss it. */}
-          {(() => {
-            const causes = (selectedEvent.data as { _causes?: unknown } | undefined)?._causes
-            if (!Array.isArray(causes) || causes.length === 0) return null
-            return (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                <span className="text-xs text-redlog-text-dim font-mono">
-                  {t('timeline.detail.causedBy')}
-                </span>
-                {(causes as unknown[]).filter((c): c is string => typeof c === 'string').map((cid) => {
-                  const cev = eventsMapRef.current.get(cid)
-                  if (!cev) {
-                    // Two very different situations wore the same red chip. A
-                    // cause the panel simply has not paged in yet is normal —
-                    // an amendment is always newer than the marker it names, so
-                    // this is the DEFAULT path for one — while 「chain broken」 is
-                    // the app's most serious claim and must stay rare enough to
-                    // be believed. Offer to fetch it instead.
-                    // A retroactive violation cites a source event that is days
-                    // old and almost never inside the loaded window. Same honest
-                    // claim as the amendment case: not loaded, not broken.
-                    const srcTs = (selectedEvent.data as Record<string, unknown> | undefined)?.source_ts
-                    if (typeof srcTs === 'number' && srcTs > 0) {
-                      return (
-                        <button
-                          key={cid}
-                          type="button"
-                          onClick={() => scrollToTs(srcTs)}
-                          className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
-                          title={cid}
-                        >
-                          {t('timeline.detail.causeNotLoaded', { time: formatTime(srcTs, { seconds: true }) })}
-                        </button>
-                      )
-                    }
-                    if (isMarkerAmendment(selectedEvent)) {
-                      return (
-                        <button
-                          key={cid}
-                          type="button"
-                          onClick={() => void resolveReferencedEvent(cid)}
-                          className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
-                          title={cid}
-                        >
-                          {t('timeline.detail.causeUnpaged')}
-                        </button>
-                      )
-                    }
-                    return (
-                      <button
-                        key={cid}
-                        type="button"
-                        onClick={() => void resolveReferencedEvent(cid)}
-                        className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:text-amber-100 font-mono"
-                        title={cid}
-                      >
-                        {t('timeline.detail.causeNotFound', { id: cid.slice(0, 8) })}
-                      </button>
-                    )
-                  }
-                  const clane = toLane(cev.agentType, cev.data?.subtype as string | undefined, pluginTypes)
-                  const cc = LANE_COLORS[clane]
-                  return (
-                    <button
-                      key={cid}
-                      onClick={() => { setSelectedEvent(cev); setDetailOpen(true); scrollToEvent(cev) }}
-                      className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-                      style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
-                      title={titleOf(cev)}
-                    >
-                      ◂ {titleOf(cev)}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })()}
-          {(() => {
-            const raw = (selectedEvent.data as { related_commands?: unknown } | undefined)?.related_commands
-            if (!Array.isArray(raw) || raw.length === 0) return null
-            const candidates = raw.filter((value): value is { event_id: string; method: string; state: string } => {
-              if (!value || typeof value !== 'object') return false
-              const candidate = value as Record<string, unknown>
-              return typeof candidate.event_id === 'string' && typeof candidate.method === 'string'
-            })
-            if (candidates.length === 0) return null
-            return (
-              <div className="mt-1 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1.5">
-                <p className="text-xs text-amber-200 font-mono">{t('timeline.detail.relatedCommands')}</p>
-                <p className="text-xs text-redlog-text-dim mt-0.5">{t('timeline.detail.relatedCommandsHint')}</p>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {candidates.map((candidate) => {
-                    const related = eventsMapRef.current.get(candidate.event_id)
-                    const label = related ? titleOf(related) : candidate.event_id.slice(0, 8)
-                    return (
-                      <button
-                        key={`${candidate.event_id}:${candidate.method}`}
-                        type="button"
-                        onClick={() => related
-                          ? (setSelectedEvent(related), setDetailOpen(true), scrollToEvent(related))
-                          : void resolveReferencedEvent(candidate.event_id)}
-                        className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:text-amber-100 font-mono"
-                        title={`${candidate.method} · ${candidate.state}`}
-                      >
-                        ≈ {label} · {t(candidate.state === 'recent' ? 'timeline.detail.relatedRecent' : 'timeline.detail.relatedActive')}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
-          {/* Effects (reverse map). Capped at 20 chips; overflow footer says
-              how many more without rendering thousands of buttons. */}
-          {(() => {
-            const eff = effectsById.get(selectedEvent.id)
-            if (!eff || eff.length === 0) return null
-            const CAP = 20
-            const shown = eff.slice(0, CAP)
-            const more = eff.length - shown.length
-            return (
-              <div className="mt-1 flex flex-wrap items-center gap-1">
-                <span className="text-xs text-redlog-text-dim font-mono">
-                  {t('timeline.detail.effects', { count: eff.length })}
-                </span>
-                {shown.map((eid) => {
-                  const ev = eventsMapRef.current.get(eid)
-                  if (!ev) return null
-                  const elane = toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)
-                  const ec = LANE_COLORS[elane]
-                  return (
-                    <button
-                      key={eid}
-                      onClick={() => { setSelectedEvent(ev); setDetailOpen(true); scrollToEvent(ev) }}
-                      className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-                      style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
-                      title={titleOf(ev)}
-                    >
-                      ▸ {titleOf(ev)}
-                    </button>
-                  )
-                })}
-                {more > 0 && (
-                  <span className="text-xs text-redlog-text-dim font-mono">
-                    {t('timeline.detail.effectsMore', { count: more })}
-                  </span>
-                )}
-              </div>
-            )
-          })()}
-          {/* Focus-chain hint bubble (feature 2) — small nudge shown on the
-              currently-selected event's detail panel when focus mode is OFF.
-              Suppressed entirely once the operator is already in focus mode
-              so it doesn't add noise. */}
-          {!focusChain && (
-            <p className="mt-1 text-xs text-redlog-text-faint font-mono">
-              {t('timeline.focusChain.enterHint')}
-            </p>
-          )}
-          {selectedEvent.targetId && (
-            <p className="text-xs text-redlog-text-dim mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
-          )}
-          {/* Structured stdout/stderr + metadata for shell command_end. */}
-          {selectedEvent.agentType === 'shell'
-            && selectedEvent.data?.subtype === 'command_end'
-            && (
-              <CommandEndDetail data={selectedEvent.data as Record<string, unknown>} />
-            )}
-          {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
-              assistant_message / thinking) shown open by default via
-              CollapsibleStream so the operator sees the prompt/response
-              on click without another expand. tool_call renders the
-              parsed input JSON; tool_result its output stream. */}
-          {selectedEvent.agentType === 'agent' && (
-            <AgentTurnDetail
-              data={selectedEvent.data as Record<string, unknown>}
-              paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
-              allLoaded={!hasMore}
-            />
-          )}
-          {/* v0.11.2 (T6): scanner and browser events carried their payloads
-              all along — mitmproxy sends request params and a 2 KB
-              `response_preview`, CDP sends the console message and stack — but
-              neither had a detail body, so the only way to read any of it was
-              the raw-JSON toggle: unformatted, redaction-masked, in a 120px
-              box. Same treatment as shell and agent events now. */}
-          {selectedEvent.agentType === 'scanner' && (
-            <HttpDetail data={selectedEvent.data as Record<string, unknown>} eventId={selectedEvent.id} />
-          )}
-          {selectedEvent.agentType === 'browser' && (
-            <BrowserConsoleDetail data={selectedEvent.data as Record<string, unknown>} />
-          )}
-          {selectedEvent.agentType === 'marker' && (
-            <MarkerDetail
-              key={selectedEvent.id}
-              event={selectedEvent}
-              fold={foldById.get(selectedEvent.id)}
-              linkedScreenshots={(effectsById.get(selectedEvent.id) ?? [])
-                .map((id) => eventsMapRef.current.get(id))
-                .filter((e): e is RedLogEvent => !!e && e.agentType === 'screenshot')}
-              operatorLabel={operatorLabel}
-              onAmend={(id, changes) => void handleAmend(id, changes)}
-              onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
-              onResolveOriginal={(id) => void resolveReferencedEvent(id)}
-            />
-          )}
-          {/* Replay this command: only for shell.command_end from a builtin
-              terminal — pulls the stdout window out of the session's .cast
-              file instead of storing it in the chain. */}
-          {selectedEvent.agentType === 'shell'
-            && selectedEvent.data?.subtype === 'command_end'
-            && selectedEvent.data?.source === 'builtin-terminal'
-            && (
-              <ReplayCommand eventId={selectedEvent.id} mode="command" />
-            )}
-          {/* Session-level replay: for session_start / session_end, replays
-              the ENTIRE pty session. Critical when the operator ssh'd into
-              a remote host — command_end only shows the local `ssh` line;
-              session replay shows every keystroke and screen after that. */}
-          {selectedEvent.agentType === 'shell'
-            && (selectedEvent.data?.subtype === 'session_start' || selectedEvent.data?.subtype === 'session_end')
-            && selectedEvent.data?.source === 'builtin-terminal'
-            && (
-              <ReplayCommand eventId={selectedEvent.id} mode="session" />
-            )}
-          {/* Shown as recorded. See copyJson above — layer 3 display masking
-              is gone; layer 4 still redacts everything that leaves. */}
-          {showJson && (
-            <pre className="mt-2 p-3 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text-dim font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
-              {JSON.stringify(selectedEvent.data, null, 2)}
-            </pre>
-          )}
+          <TimelineEventInspector
+            event={selectedEvent}
+            pluginTypes={pluginTypes}
+            tierChip={tierChip}
+            doNotExport={dneFlag}
+            onToggleDoNotExport={() => {
+              void window.redlog.events.toggleDoNotExport(selectedEvent.id).then((v) => {
+                if (v !== null) setDneFlag(v)
+              })
+            }}
+            onAround={() => setSharedTimeRange(windowAround(selectedEvent.timestamp))}
+            operatorLabel={operatorLabel}
+            titleOf={titleOf}
+            badges={badgesById.get(selectedEvent.id)}
+            effects={effectsById.get(selectedEvent.id)}
+            fold={foldById.get(selectedEvent.id)}
+            paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+            allLoaded={!hasMore}
+            focusChainOn={!!focusChain}
+            showJson={showJson}
+            lookup={(id) => eventsMapRef.current.get(id)}
+            onJump={(e) => { setSelectedEvent(e); setDetailOpen(true); scrollToEvent(e) }}
+            onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
+            onResolve={(id) => void resolveReferencedEvent(id)}
+            scrollToTs={scrollToTs}
+            onAmend={(id, changes) => void handleAmend(id, changes)}
+            t={t}
+          />
         </div>
         </>
       )}
