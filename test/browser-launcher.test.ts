@@ -95,8 +95,13 @@ describe('the capture browser does not record Chrome talking to Google', () => {
   })
 
   it('leaves the operator\'s own profile alone', () => {
+    // `args` is empty here, and `[].some()` is false whatever the predicate
+    // says — so naming two flags asserted nothing, and the test would have
+    // kept passing if buildArgs started returning nothing at all. The claim
+    // its own name makes is stronger and is the one worth holding: RedLog adds
+    // NO argument to a profile the operator chose.
     const args = buildArgs(cfg({ isolateProfile: false }), '/tmp/profile')
-    expect(args.some((a) => a.startsWith('--gaia-url') || a.startsWith('--gcm-checkin-url'))).toBe(false)
+    expect(args).toEqual([])
   })
 
   // An operator pointed at their own profile has chosen their browser's
