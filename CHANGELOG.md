@@ -5,6 +5,24 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **One palette, and a smaller Timeline.** A UI/UX pass, third batch:
+  - *Colour*: about 200 colour classes named shades the theme never set,
+    such as `red-200`, `amber-900`, `indigo-*` and `blue-*`. They fell back
+    to Tailwind's stock palette, which is brighter than RedLog's. Every
+    shade in use is now derived from the theme's own hues. The Timeline's
+    and Transcript's inline hex colours now come from the same tokens.
+    `test/design-palette.test.ts` fails when a new class uses an undefined
+    shade, or when a component outside the canvas and terminal code writes
+    a hex colour.
+  - *Timeline*: the event list and the detail panel moved out of the
+    2,900-line `Timeline.tsx` into `components/timeline/`, and receive
+    everything as props. The file is now about 2,600 lines, and neither
+    part can read a Timeline value before it is declared, the bug that has
+    crashed this file twice.
+  - *Buttons*: three "+" buttons (the scope list, the VPN pattern and
+    settings lists) had no accessible name. They now use `IconButton`.
+    `test/button-names.test.ts` fails on any icon-only button without one.
+
 - **Screenshots show what you were looking at, not RedLog.** A UI/UX pass,
   second batch:
   - *Capture*: pressing ⌘⇧M in another app used to bring RedLog forward and
