@@ -5,6 +5,21 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Every request in the timeline was unattributed, and not because RedLog
+  could not tell.** `socket-attribution.ts` joins a request's source port to
+  the pid that opened it and on to the shell command that owns that pid,
+  writing the result into `_causes` so a request links back to the `sqlmap`
+  or `curl` that made it. It is designed, documented and unit tested — and
+  the mitmproxy addon only ever sent `source_addr` on DNS events, never on
+  HTTP, WebSocket or raw TCP ones. With no port to look up the join returned
+  nothing, every time, so attribution shipped working for lookups and
+  silently not for requests. Same shape as the DNS hook-name bug: a correct
+  consumer reading a field no producer wrote.
+
+  Attribution still needs the connection monitor running to observe the
+  socket, and it stays best-effort — a request that cannot be attributed is
+  recorded anyway, without the edge.
+
 - **Screenshots show what you were looking at, not RedLog.** A UI/UX pass,
   second batch:
   - *Capture*: pressing ⌘⇧M in another app used to bring RedLog forward and

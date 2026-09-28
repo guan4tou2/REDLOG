@@ -47,6 +47,29 @@ describe('the mitmproxy addon exposes the hooks mitmproxy actually calls', () =>
     expect(body('error')).toContain('VERIFY_HOST')
   })
 
+  // The same shape as the dns_message bug above, one layer along: the consumer
+  // was written, documented (docs/DESIGN-traffic-attribution.md 2.3) and unit
+  // tested, and the producer never sent the field it reads. `socketCausesFor`
+  // joins source port -> pid -> the command_start that owns it, so without
+  // `source_addr` on a request event it has nothing to look up and returns []
+  // every time. Attribution shipped working for DNS lookups and silently not
+  // for HTTP requests -- and an unattributed timeline reads as "RedLog cannot
+  // tell which command made this", which was not true, only unimplemented.
+  it('sends the client address on every flow event, not just DNS', () => {
+    const body = (name: string): string => {
+      const start = ADDON.indexOf(`    def ${name}(`)
+      expect(start, `no ${name} hook`).toBeGreaterThan(-1)
+      return ADDON.slice(start, start + 2500)
+    }
+    // One helper, so the DNS copy and the HTTP one cannot drift apart.
+    expect(ADDON).toContain('def _client_addr(flow)')
+    for (const hook of ['request', 'websocket_message', 'tcp_message']) {
+      expect(body(hook), `${hook} sends no client address`).toContain('_client_addr(flow)')
+    }
+    // And it reaches the event, under the key socket-attribution.ts reads.
+    expect(ADDON).toContain('event_data["source_addr"] = client_addr')
+  })
+
   it('routes a DNS request to the query path and a response to the response path', () => {
     // Cheap structural check: each hook body delegates to the right helper, so
     // a future edit cannot cross them over without this failing.
