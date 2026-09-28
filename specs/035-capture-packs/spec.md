@@ -5,6 +5,13 @@
 **Status**: Verified
 **Input**: "If the capture that is necessary stays built in, and everything else becomes plugins?" — operator, 2026-09-24.
 
+> **Superseded member default (#224):** a pack is a preset, and each member
+> has its own switch (`packMembers.<member>`). An unset switch follows the
+> member's default — on for process, connection and file monitoring, **off
+> for the clipboard**, which records only when the operator ticks it. Turning
+> "Host monitors" on no longer starts clipboard sampling. No migration: an
+> explicit `packMembers.clipboard: true` keeps it on.
+
 Capture sources today are spread across nine Settings pages, each with its own
 switch, and are listed by capture health from a mix of manifests
 (`starter-pack`, `pcap-capture`, `c2-tailers`, `transparent-proxy`) and
@@ -47,7 +54,7 @@ sources are offered, listed and health-checked; disabling the pack removes them.
 |---|---|---|
 | **Core, not removable** | evidence chain, ingest, redaction/secret masking, pause, scope, markers, manual screenshot, built-in terminal (.cast) | always |
 | **Essential capture** | shell hooks (starter-pack, with in-code fallback); **HTTP(S) capture** — managed mitmdump + proxied browser/CDP, and the same addon under an operator-run mitmproxy; `redlog-session` PTY; built-in key/hash loot rules | on |
-| Pack: **Host monitors** | process monitor, connection monitor, file watcher, clipboard | off |
+| Pack: **Host monitors** | process monitor, connection monitor, file watcher; clipboard (own opt-in, off even with the pack on) | off |
 | Pack: **AI agents** | Claude Code / Codex / OpenCode transcript tailers | off |
 | Pack: **Windows output** | PowerShell Start-Transcript follower | off |
 | Pack: **Network, privileged** | transparent HTTP(S) interception (root), pcap | off (already plugins) |

@@ -11,7 +11,7 @@ export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
+  const { eventCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [loggedCount, setLoggedCount] = useState(0)
   const [uptime, setUptime] = useState(0)
@@ -244,6 +244,11 @@ export default function StatusBar(): JSX.Element {
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
             <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+          </>
+        ) : scopeUnknown ? (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span className="text-amber-400/80">{t('statusBar.scopeUnknown')}</span>
           </>
         ) : scopeConfigured ? (
           <>

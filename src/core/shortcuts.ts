@@ -17,3 +17,8 @@ export const QUICK_MARK_ACCELERATOR = 'CommandOrControl+Shift+M'
  *  window-scoped binding would be unreachable exactly when it is needed
  *  (UIUX-STANDARD §8). */
 export const HUD_PASSTHROUGH_ACCELERATOR = 'CommandOrControl+Shift+P'
+
+/** Screenshot now, from anywhere (UI/UX audit F8). Global for the same reason
+ *  as the marker chord: the screen worth recording is the tool the operator is
+ *  in, not RedLog. ⇧2 because ⇧3–⇧5 are the macOS system screenshot chords. */
+export const QUICK_SHOT_ACCELERATOR = 'CommandOrControl+Shift+2'

@@ -67,7 +67,7 @@ describe('the export preview shows only what the plan measured', () => {
 
   it('shows no invented in-scope or screenshot counts', async () => {
     await draw(plan())
-    const panel = screen.getByRole('menu').textContent ?? ''
+    const panel = screen.getByRole('dialog').textContent ?? ''
     // `inScope` was included - maskedOutOfScope = 95, and screenshots was 0.
     expect(panel).not.toMatch(/In scope/i)
     expect(panel).not.toMatch(/Screenshots/i)
@@ -111,7 +111,7 @@ describe('the export preview shows only what the plan measured', () => {
       counts: { ...plan().counts, attachmentsIncluded: 4, attachmentsMissing: 2, attachmentsUnattributed: 1 }
     }))
     expect(screen.queryByTestId('export-preview-no-attachments')).toBeNull()
-    const panel = screen.getByRole('menu').textContent ?? ''
+    const panel = screen.getByRole('dialog').textContent ?? ''
     expect(panel).toMatch(/Attachments missing/i)
     expect(panel).toMatch(/Attachments unattributed/i)
   })

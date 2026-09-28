@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { X509Certificate } from 'node:crypto'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
@@ -10,7 +11,28 @@ export interface ManagedProxyStatus {
   pid?: number
   error?: string
   caPath?: string
+  /** The CA file exists. It says nothing about who trusts it. */
   certReady?: boolean
+  /** The CA's own fingerprints, so trust can be removed by identity rather
+   *  than by the name "mitmproxy", which other tools' CAs share (#220). */
+  caFingerprint?: CaFingerprint
+}
+
+export interface CaFingerprint {
+  /** uppercase hex, no separators — what certutil and `security -Z` take */
+  sha1: string
+  sha256: string
+}
+
+/** Fingerprints of the first certificate in a PEM file, or null. */
+export function readCaFingerprint(caPath: string): CaFingerprint | null {
+  try {
+    const cert = new X509Certificate(readFileSync(caPath))
+    const hex = (v: string): string => v.replace(/:/g, '').toUpperCase()
+    return { sha1: hex(cert.fingerprint), sha256: hex(cert.fingerprint256) }
+  } catch {
+    return null
+  }
 }
 
 type StatusListener = (next: ManagedProxyStatus, previous: ManagedProxyStatus) => void
@@ -18,6 +40,7 @@ type StatusListener = (next: ManagedProxyStatus, previous: ManagedProxyStatus) =
 interface Dependencies {
   spawn: typeof nodeSpawn
   exists: typeof existsSync
+  fingerprint: (caPath: string) => CaFingerprint | null
   readinessTimeoutMs: number
 }
 
@@ -25,6 +48,7 @@ const READY_PATTERN = /proxy server listening|listening at/i
 const DEFAULT_DEPS: Dependencies = {
   spawn: nodeSpawn,
   exists: existsSync,
+  fingerprint: readCaFingerprint,
   readinessTimeoutMs: 5_000
 }
 
@@ -51,9 +75,14 @@ export class ManagedHttpProxy {
   }
 
   status(): ManagedProxyStatus {
+    if (!this.caPath) return { ...this.snapshot }
+    const certReady = this.deps.exists(this.caPath)
+    const caFingerprint = certReady ? this.deps.fingerprint(this.caPath) : null
     return {
       ...this.snapshot,
-      ...(this.caPath ? { caPath: this.caPath, certReady: this.deps.exists(this.caPath) } : {})
+      caPath: this.caPath,
+      certReady,
+      ...(caFingerprint ? { caFingerprint } : {})
     }
   }
 

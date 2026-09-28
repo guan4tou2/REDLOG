@@ -62,3 +62,29 @@ to the test proxy config; client trust was supplied only to the curl subprocess.
 
 No extension hooks configured. Converge left tasks unchanged; completion marks
 and this evidence record were written by the implementation workflow afterwards.
+
+## Integration with main #235
+
+Final integration verification (2026-09-28):
+
+- Full Vitest after merging the two implementations: 287 files passed, 1 skipped;
+  2897 tests passed, 11 skipped (original performance/platform exclusions).
+- Follow-up lifecycle regression reproduced stale core-ready after a proxy
+  restart. Applied status/nonce reset atomically and propagated false to the
+  first-run summary; targeted 3 files / 50 tests passed.
+- Final source-specific regression: 10 files / 119 tests passed, including
+  same-length artifact replacement and canonical attachment references.
+- Development Electron journeys: 18/18 passed (onboarding, export preview,
+  target return, transcript, setup draft, real HTTP/HTTPS and narrow chrome).
+- Screenshot review found the source disclosure overlapping HTTP on the narrow
+  stacked onboarding. Fixed the flex sizing and added non-overlap geometry
+  assertions at 800/1000/1400px in both locales. Removed directional "on the left"
+  copy and separated client/protocol labels from their response status.
+- Fresh unsigned macOS ARM App: 3/3 passed (real HTTP/HTTPS, packaged session
+  helper, final narrow layout). Final screenshot reviewed; no overlap.
+- typecheck, build, architecture gate, Spec Kit gate and packaged-resource
+  verification passed. No installer/release uploaded; Windows/WSL and
+  Gatekeeper remain outside this local smoke.
+
+These replace the earlier source-state assumptions for the merged branch;
+the original RED/GREEN history above remains a record of the earlier change.

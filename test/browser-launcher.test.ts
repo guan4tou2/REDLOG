@@ -11,7 +11,10 @@ describe('browser launcher args', () => {
     expect(args).toContain('--proxy-server=http://127.0.0.1:6661')
     // Chrome bypasses the proxy for localhost by default, which would hide
     // traffic to a local target from mitmproxy.
-    expect(args).toContain('--proxy-bypass-list=<-loopback>')
+    // RedLog's own profile adds only the reserved offline suffix (#182).
+    expect(args).toContain('--proxy-bypass-list=<-loopback>;*.redlog-offline.invalid')
+    const shared = buildArgs({ ...DEFAULT_BROWSER, isolateProfile: false }, PROFILE)
+    expect(shared).toContain('--proxy-bypass-list=<-loopback>')
   })
 
   it('omits proxy flags entirely when no proxy is configured', () => {
@@ -67,12 +70,33 @@ describe('the capture browser does not record Chrome talking to Google', () => {
   it('quiets background networking on RedLog\'s own profile', () => {
     const args = buildArgs(cfg(), '/tmp/profile')
     expect(args).toContain('--disable-background-networking')
+    // #182: measured through the capture proxy — without it, unbranded
+    // Chromium's testing field-trial config prefetches www.google.com.
+    expect(args).toContain('--disable-field-trial-config')
     expect(args).toContain('--disable-component-update')
     expect(args).toContain('--disable-sync')
     expect(args).toContain('--no-pings')
     // The GCM registration that produced the T1078 rows, and the model
     // downloads that produced most of the request volume.
     expect(args.join(' ')).toMatch(/OptimizationGuideModelDownloading/)
+  })
+
+  it('sends the services no switch disables to a host that never resolves (#182)', () => {
+    const args = buildArgs(cfg({ proxy: 'http://127.0.0.1:6661' }), '/tmp/profile')
+    const features = args.find((a) => a.startsWith('--disable-features='))!
+    // www.google.com preconnect and the omnibox AI Mode eligibility fetch (/async/folae)
+    for (const f of ['PreconnectToSearch', 'AimEnabled', 'AimServerEligibilityEnabled']) expect(features).toContain(f)
+    // ListAccounts and GCM check-in go to a reserved host the proxy never sees…
+    expect(args).toContain('--gaia-url=https://gaia.redlog-offline.invalid')
+    expect(args).toContain('--gcm-checkin-url=https://gcm.redlog-offline.invalid/checkin')
+    expect(args).toContain('--proxy-bypass-list=<-loopback>;*.redlog-offline.invalid')
+    // …and the HTTP check host is not caught by that bypass.
+    expect('redlog.verify.invalid'.endsWith('.redlog-offline.invalid')).toBe(false)
+  })
+
+  it('leaves the operator\'s own profile alone', () => {
+    const args = buildArgs(cfg({ isolateProfile: false }), '/tmp/profile')
+    expect(args.some((a) => a.startsWith('--gaia-url') || a.startsWith('--gcm-checkin-url'))).toBe(false)
   })
 
   // An operator pointed at their own profile has chosen their browser's

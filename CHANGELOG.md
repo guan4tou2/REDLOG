@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Main integration preserves both capture checks.** The local HTTP(S) nonce
+  probe verifies the client-to-proxy connection; an expandable real-request
+  check verifies a recorded target response. Proxy restart clears both checks
+  and withdraws the first-run ready state. Attachment selection and content
+  pinning now share one inventory, including operator-added files. Narrow
+  onboarding no longer lets the source disclosure overlap HTTP controls.
+
 - HTTP capture verification now uses a fresh test address for each browser or
   terminal attempt, with separate HTTP/HTTPS outcomes and proxy lifecycle reset.
   Request-only/unrelated traffic no longer passes; setup/save errors are visible.
@@ -28,8 +35,200 @@ for full commit body + generated notes.
   too narrow to read.
 - Clipboard capture now requires explicit per-source opt-in even when Host
   monitors are enabled. No compatibility default silently enables it.
+- **Screenshots show what you were looking at, not RedLog.** A UI/UX pass,
+  second batch:
+  - *Capture*: pressing ⌘⇧M in another app used to bring RedLog forward and
+    then photograph the marker dialog. It now takes the frame first, and the
+    marker uses that frame when saved; a cancelled marker writes nothing.
+    Captures started inside RedLog (Screenshots page, palette, title bar)
+    hide RedLog's windows, HUD included, for the moment of the grab. The
+    display under the cursor is captured, not always the primary one.
+  - *Evidence entry points*: the title bar has screenshot and add-file
+    buttons beside + Mark. There is a global ⌘⇧2 / Ctrl+Shift+2
+    screenshot. Files dropped on the window are offered as evidence after a
+    confirmation that lists them, and dropping a file no longer navigates
+    the window away.
+  - *Export*: the preview opens as a dialog instead of a 280px menu. A
+    failed export keeps the preview and offers to recalculate and try again.
+    A finished export offers "Show in folder".
+  - *Navigation*: after jumping to the Timeline from a target, finding,
+    search or bookmark, "← Back to …" (⌘[ / Alt+←) returns you there. The
+    Timeline's `/` box is labelled a highlight, because it dims events and
+    removes none, unlike the filter bar above it.
+  - *Dialogs and accessibility*:
+    - The help dialog, the screenshot viewer and the plugin consent dialog
+      now keep focus inside them and close on Escape.
+    - The plugin consent dialog is a security decision, so a stray click
+      outside no longer dismisses it.
+    - The screenshot viewer shows each shot's time, trigger and SHA, and
+      steps to the previous or next shot.
+    - Icon-only buttons now have accessible names.
+    - `text-faint` is brightened to 4.5:1 on every surface.
+- **Failures are reported, and a failed read is never shown as safe.** A
+  UI/UX pass over the renderer, first batch:
+  - *New marker*: a failed save used to leave the dialog stuck on "Saving…".
+    It now keeps your draft, says it failed and lets you save again. A saved
+    marker is confirmed, and a failed screenshot is reported on its own. A
+    stray backdrop click no longer throws away a typed title or notes. The
+    severity buttons expose `aria-pressed`, and the fields have labels.
+  - *Scope*: when the violation count or scope configuration cannot be read,
+    the dashboard and status bar show "unknown" with a retry, never a green
+    "scope OK". The Targets page shows scope as unknown when it cannot read
+    the rules, instead of treating every target as in scope.
+  - *Targets and Screenshots*: a failed load shows an error and a retry
+    instead of a blank page or a spinner that never stops. "Load more" can no
+    longer get stuck.
+  - *Setup*: every Copy button now says "Copied". A rejected "Start HTTP
+    capture" shows the reason. A failed save of the terminal proxy setting
+    puts the checkbox back. A failed environment check says so.
+  - *Toasts*: a batch of successes no longer pushes an error off the screen.
+    Adding several evidence files gives one summary plus one toast for each
+    file that failed.
+  - *範圍* appears in the sidebar as soon as a real out-of-scope hit exists,
+    even with only one target.
+  - *Command palette*: the highlighted item stays scrolled into view, and the
+    list is announced as a combobox. Switching project writes pending
+    settings first and reports a failed open instead of reloading anyway.
+  - *Language*: terminal badges, dashboard sampling labels, transcript meta
+    and file-picker titles no longer have hardcoded English. Hints now name
+    settings pages that exist (not "Settings ▸ Data"), and zh-TW uses the
+    fixed glossary terms. A test guards both.
+- **The capture browser is silent when idle.** RedLog's own browser profile
+  still sent 8 requests a minute to Google with nothing open:
+  `accounts.google.com/ListAccounts` ×5, `android.clients.google.com/checkin`
+  ×2 and `www.google.com/async/folae` (the omnibox AI Mode eligibility
+  check), plus a preconnect to www.google.com. They went into the logged
+  tier as if the operator had sent them. The profile now disables
+  `PreconnectToSearch` and the `Aim*` features, and points the Gaia and GCM
+  check-in endpoints at a reserved `.invalid` host that bypasses the proxy,
+  so those requests never leave the machine. Measured through the capture
+  proxy over 60 s idle: none. The operator's own pages, accounts.google.com
+  included, and omnibox search are unaffected; only signing Chrome's profile
+  itself into Google stops working. (#182)
+- **Pick steps in the transcript and copy them with their provenance.** Each
+  transcript step can now be picked as a **key step** or **failed attempt**,
+  which records a marker citing that step's events. The step itself is never
+  edited, and like every marker the pick is append-only. **Picked only** narrows
+  the transcript to those steps, and **Copy as Markdown** then copies just
+  them. Any single step can be copied on its own. Every copied step names its
+  target, local time with UTC offset (plus UTC), event IDs and session, keeps
+  newlines inside a fence its own backticks cannot close, and says whether the
+  output is verbatim, only a preview in the record, clipped in this copy, or
+  was not captured. `marker:create` accepts `causes` and `targetId` for this.
+  No assessment, scoring or report generation is added. (#225)
+- **Add a local file as evidence.** A loot file, a tool report or a pcap
+  saved outside the watched folders never reached the record. The command
+  palette's **Add evidence file…** copies the files you pick into the
+  project's `artifacts/`, hashes the copy, and records a `file_transfer` /
+  `artifact_added` event with the hash, original path, size and mtime. The
+  evidence bundle carries each file only with the event that added it, lists
+  it in the preview so it can be left out, and drops it under scope masking
+  when its target is out of scope. A shell command that ran in the file's
+  folder while it was written is listed as a possible relationship, not as
+  its cause. Too large (over 200 MB), disk full, unreadable and duplicate
+  files are each reported. RedLog reads only the files you pick. (#221)
+- **Connecting your own terminal now checks output, not just the hook.** A
+  verified shell hook records commands, never what they print. The connected
+  screen now gives a canary, `printf '%s-%s\n' redlog-out <code>`: its
+  output contains text its command line does not. Run through `redlog-run`
+  or inside `redlog-session`, the screen says output was recorded and by
+  which. Run plainly, it says only the command arrived. (#218)
+- **`redlog-session` refuses to record inside another `redlog-session`.** The
+  outer PTY already sees everything drawn inside it, tmux panes included, so
+  a second recorder stored the same bytes twice. It now explains why and
+  exits; `--nested` overrides it for a tmux server that outlived its
+  session. (#218)
+- **Each terminal can have its own target.** The current target was one
+  global value, so with several panes on several hosts, switching it for one
+  pane re-attributed whatever the others recorded next — a command with no
+  host in it, a marker, a late `command_end`. A built-in terminal tab can now
+  be bound to a target from its toolbar, and an external shell can declare
+  one with `export REDLOG_TARGET=<host>`. Precedence: the event's own target,
+  then a host found in the command, then the session's target, then the
+  global one. Binding and unbinding are recorded as `session_target_changed`
+  events; earlier rows are never rewritten. (#219)
+- **The evidence-bundle preview lists every file, and you can leave any out.**
+  It used to give counts only, so there was no way to see which terminal
+  recording or screenshot was about to be handed over, or to drop the one
+  that held another host's session. Each file is now listed with its size and
+  the targets tied to it. A recording that spans several targets, or none, is
+  labelled as such: casts are never trimmed to scope, and exporting only
+  target A does not make a session that also touched B A-only. Unticking a
+  file resolves the plan again, so the fingerprint covers the choice. The
+  manifest records what was left out and which targets each included cast
+  spans. The source files are never modified. (#222)
+- **Settings leads with the two core captures.** The first group was "What
+  to record", with Commands, AI agents, the pack switches and Browser & HTTP
+  side by side. It is now **Core capture** (Commands & terminal, Browser &
+  HTTP capture) followed by **Other capture sources** (packs, screenshots and
+  retention; AI agent monitoring). "Capture control" is renamed for what the
+  page holds. (#228)
+- **The README no longer promises more than RedLog records.** "Passively
+  records everything" and "no manual note-taking required" are replaced by
+  what is actually captured: command metadata from hooked shells, output
+  only through the built-in terminal, `redlog-run` or `redlog-session`,
+  HTTP(S) only through RedLog's proxy, and the optional sources. The
+  first-run steps describe the current screen. (#226)
+- **Closing a project could drop the last settings change.** The close
+  button awaited `project.close()` and only then unmounted Settings, so the
+  pending autosave reached main with no project open, was refused, and
+  nothing said so. Pending saves are now written to the project before it
+  closes; if one fails, the project stays open with the change on screen to
+  retry. (#223)
+- **Filter retry did not retry the scope.** The one retry button reloaded
+  only the target and type menus, so a failed scope read stayed failed. It
+  now re-reads the scope too. (#223)
+- **Settings and filters under React.StrictMode (development).** Their
+  "still mounted" flag was cleared on cleanup and never set again, so after
+  StrictMode's mount–cleanup–mount the filters never loaded and saves never
+  showed their state. The packaged app is unaffected. (#223)
+- **A failed first read of Settings said "Loading…" forever.** It now says
+  the settings could not be read and offers to try again. (#223)
+- **Turning on "Host monitors" no longer starts clipboard sampling.** The
+  clipboard had its own switch, but an unset switch counted as on, so
+  enabling the pack to watch processes and connections also sampled
+  everything copied on the machine. The clipboard now records only when it
+  is ticked; process, connection and file monitoring still come on with the
+  pack. The runtime, Capture Health and Settings read the same rule. **No
+  migration:** a project that relied on the pack alone stops sampling the
+  clipboard until it is ticked; one that ticked it keeps it. (#224)
+- **HTTP capture was "verified" by traffic the operator never sent.** Any
+  HTTP event counted, and the capture browser makes its own requests the
+  moment it starts, so the check could pass before the operator's client had
+  sent anything — and it could not tell HTTP from HTTPS. A check is now a
+  request for a per-attempt code on `redlog.verify.invalid`, which the
+  mitmproxy addon answers itself (nothing leaves the machine) and reports to
+  RedLog instead of recording it as evidence. HTTP and HTTPS verify
+  separately and say which client passed; the capture browser, which ignores
+  certificate errors, is flagged as not proving the CA is trusted, and a
+  client that refuses the certificate is named as such. The terminal check
+  commands never use `-k`. (#220)
+- **Removing CA trust could remove someone else's CA.** The untrust command
+  removed "mitmproxy" by name on Windows and macOS, and on Linux RedLog wrote
+  its CA to `mitmproxy.crt` — the name any other mitmproxy setup uses. Trust
+  and removal now go by this CA's fingerprint (`certutil -delstore … <SHA-1>`,
+  `security delete-certificate -Z <SHA-1>`, and a
+  `redlog-mitmproxy-<fingerprint>.crt` file on Linux), and the CA's SHA-256
+  is shown. "CA ready" now says only that the file exists. (#220)
+- **First run no longer makes a web operator prove a shell first.** HTTP(S)
+  appeared only after a command had been recorded, and then behind a "Web /
+  Hosts / Both" question that turned two core captures into a choice of mode.
+  Commands and HTTP(S) now sit side by side from the first frame, each with
+  its own verification; a missing python3 or curl blocks only Commands, and
+  the HTTP card can no longer be dismissed. "Core capture is ready" needs
+  both. The operator can leave early, and the Dashboard's capture card keeps a
+  Core capture line naming whichever is unfinished. The engagement-focus
+  choice is removed. (#217)
+- **Settings named a page for what it no longer held.** "Proxy & browser"
+  held only IP safety and RedLog's own traffic after the browser moved out; it
+  is now "IP exposure & own traffic". The two headings with a single page each
+  are folded into their neighbours, and the IA test that let the browser page
+  go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
+
+> **Status:** tagged; the GitHub Release and its installers are not published
+> yet. Remove this note when they are.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one

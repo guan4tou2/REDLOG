@@ -121,7 +121,7 @@ interface FilterContextValue {
   listsStatus: ListsStatus
   /** Of the scope lists, which drive the in-scope and personal switches. */
   scopeStatus: ListsStatus
-  /** Load the menus again, for the retry the operator is offered. */
+  /** Load the menus and the scope again, for the retry the operator is offered. */
   retryLists: () => void
 }
 
@@ -162,6 +162,10 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   // A late reply must not write into a provider that has gone away — the
   // provider unmounts when the project closes, so a reply in flight then
   // belongs to a project that is no longer open.
+  //
+  // Re-armed in setup, not only cleared in cleanup: React.StrictMode runs
+  // mount → cleanup → mount in development, and a ref that only ever goes
+  // false left every later reply dropped — filters that never loaded (#223).
   const live = useRef(true)
   const listsGeneration = useRef(0)
   const scopeGeneration = useRef(0)

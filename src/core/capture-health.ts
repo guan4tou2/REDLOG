@@ -1,4 +1,4 @@
-import { isPackAvailable, isMemberSelected, type PackMemberId, type CapturePackId } from './capture-packs'
+import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
@@ -389,10 +389,17 @@ function computeCaptureHealth(now: number): CaptureHealth {
   ): CaptureSource => {
     // A pack that is not set is off (Spec 035), not "unknown".
     //
-    // Health and the producer share the same member selection defaults.
+    // A pack MEMBER is on when its pack is on and its own switch selects it,
+    // so both halves are read — by the same rule the capture runtime uses
+    // (isMemberSelected). An unset member follows its default: on for most,
+    // which keeps the pack a preset; off for the clipboard, which needs an
+    // explicit yes (#224).
     const packOn = opts.packPath ? cfgFlag(opts.packPath) === true : undefined
+    const member = opts.configPath?.startsWith('packMembers.')
+      ? opts.configPath.slice('packMembers.'.length) as PackMemberId
+      : null
     const enabled = opts.packPath
-      ? packOn === true && isMemberSelected(cfgSnapshot, opts.configPath!.slice('packMembers.'.length) as PackMemberId)
+      ? packOn === true && member !== null && isMemberSelected({ [member]: cfgFlag(opts.configPath as string) }, member)
       : opts.configPath
         ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
         : undefined

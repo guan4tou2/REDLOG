@@ -14,6 +14,11 @@ test('title and status controls stay inside their bars at supported desktop widt
       for (const width of [1400, 1000, 800]) {
         await window.evaluate((window, width) => window.setSize(width, 850), width)
         await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width)
+        const strip = await page.getByTestId('first-run-strip').boundingBox()
+        const more = await page.getByTestId('first-run-more-sources').boundingBox()
+        expect(strip).not.toBeNull()
+        expect(more).not.toBeNull()
+        expect(more!.y, `${locale} ${width}px source disclosure overlaps core setup`).toBeGreaterThanOrEqual(strip!.y + strip!.height - 1)
         for (const bar of ['app-titlebar', 'app-statusbar']) {
           await expect(page.getByTestId(bar)).toBeVisible()
           const clipped = await page.getByTestId(bar).evaluate((element) => {

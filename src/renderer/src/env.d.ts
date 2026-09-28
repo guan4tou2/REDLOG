@@ -26,7 +26,24 @@ interface ExportRequest {
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
+  /** Attachments left out, by bundle-relative path (#222). */
+  excludeAttachments?: string[]
 }
+/** One file an evidence bundle would carry (core/export-attachments.ts). */
+interface ExportAttachmentRow {
+  id: string
+  kind: 'screenshot' | 'cast' | 'httpBody' | 'artifact'
+  bytes: number | null
+  targets: string[]
+  attribution: 'target' | 'cross-target' | 'unattributed'
+  status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
+  source?: string
+}
+/** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
+type ArtifactAddOutcome =
+  | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
+  | { ok: false; error: 'not-a-file' | 'unreadable' | 'too-large' | 'no-space' | 'copy-failed'; originalPath: string; bytes?: number; detail?: string }
+interface ArtifactAddResponse { canceled: boolean; results: ArtifactAddOutcome[] }
 interface ResolvedExportPlan {
   id: string
   fingerprint: string
@@ -54,8 +71,10 @@ interface ResolvedExportPlan {
     attachmentsIncluded: number
     attachmentsMissing: number
     attachmentsUnattributed: number
+    attachmentsExcludedByOperator: number
     unsupported: number
   }
+  attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
 type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
@@ -167,12 +186,23 @@ interface RedLogAPI {
   targetContext: {
     get: () => Promise<string | null>
     set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
+    /** #219: a built-in terminal's own target, which outranks the global one. */
+    getSession: (terminalId: string) => Promise<string | null>
+    bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
+  }
+  /** #221: copy operator-picked local files into the project as evidence. */
+  artifacts: {
+    /** `title`: the picker's title, already translated */
+    add: (title?: string) => Promise<ArtifactAddResponse | null>
+    /** Files dropped on the window; the main process asks before adding. */
+    addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) => Promise<ArtifactAddResponse | null>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
-    pickPath: () => Promise<string | null>
+    /** `title`: the picker's title, already translated */
+    pickPath: (title?: string) => Promise<string | null>
   }
   events: {
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
@@ -235,10 +265,16 @@ interface RedLogAPI {
     amend: (markerId: string, changes: { title?: string; severity?: string; notes?: string }) =>
       Promise<{ ok: true; event: RedLogEvent } | { ok: false; error: string; detail?: string }>
     amendments: (ids: string[]) => Promise<RedLogEvent[]>
-    onShortcut: (cb: () => void) => () => void
+    /** `heldFrame`: a screen frame taken when the shortcut fired, before
+     *  RedLog came forward; pass it to `screenshot.capture` to use it. */
+    onShortcut: (cb: (info: { heldFrame?: string }) => void) => () => void
   }
   screenshot: {
-    capture: (causeEventId?: string) => Promise<string | null>
+    /** `hideOwnWindows` takes RedLog off screen for the grab; `heldFrame`
+     *  claims the frame held by the marker shortcut. */
+    capture: (causeEventId?: string, opts?: { heldFrame?: string; hideOwnWindows?: boolean }) => Promise<string | null>
+    /** The global screenshot chord fired; whether a frame was stored. */
+    onShortcutResult: (cb: (r: { ok: boolean }) => void) => () => void
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
   }
   scope: {
@@ -289,10 +325,16 @@ interface RedLogAPI {
     status: () => Promise<ManagedProxyStatus>
     start: () => Promise<ManagedProxyStatus>
     stop: () => Promise<ManagedProxyStatus>
+    /** Load the #220 verification page for `nonce` in the capture browser. */
+    verifyInBrowser: (nonce: string) => Promise<{ ok: boolean; error?: string }>
+    /** Capture checks reported by the mitmproxy addon. */
+    onVerify: (cb: (report: import('../../core/http-verify').HttpVerifyReport) => void) => () => void
   }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
+    /** Show a finished export in the file manager (paths inside the project only). */
+    revealExport: (target: string) => Promise<boolean>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. */
@@ -305,6 +347,7 @@ interface RedLogAPI {
       bookmarkSeen: boolean
       httpFlowSeen: boolean
       loggedEver: boolean
+      scopeViolationSeen: boolean
     } | null>
   }
   recording: {
@@ -483,7 +526,9 @@ interface ManagedProxyStatus {
   pid?: number
   error?: string
   caPath?: string
+  /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
+  caFingerprint?: { sha1: string; sha256: string }
 }
 
 interface OperatorInfo {

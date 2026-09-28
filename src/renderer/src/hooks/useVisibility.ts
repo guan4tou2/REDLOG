@@ -10,7 +10,8 @@ type View = SidebarViewId | 'settings'
  *  silence available. */
 const ALL_DISCLOSED: VisibilitySignals = {
   evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
-  screenshotSeen: true, bookmarkSeen: true, httpFlowSeen: true, loggedEver: true
+  screenshotSeen: true, bookmarkSeen: true, httpFlowSeen: true, loggedEver: true,
+  scopeViolationSeen: true
 }
 
 interface UseVisibilityResult {

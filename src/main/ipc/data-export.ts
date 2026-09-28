@@ -1,4 +1,5 @@
-import type { IpcMain } from 'electron'
+import { shell, type IpcMain } from 'electron'
+import { isInsideDir } from '../../core/paths'
 import path from 'path'
 import fs from 'fs'
 import type { IpcContext } from './types'
@@ -10,7 +11,6 @@ import { redactEventForExport, redactEventsForExport, type RedactExportOpts } fr
 import { capabilitiesFor } from '../../core/export-capabilities'
 import {
   ExportPlanRegistry,
-  resolveExportAttachments,
   countReferencedAttachments,
   createExportPlan,
   fingerprintValue,
@@ -24,6 +24,7 @@ import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
 import { exportBundle } from '../../core/bundle-export'
+import { listExportAttachments, summarizeAttachments } from '../../core/export-attachments'
 import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
@@ -90,13 +91,9 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     if (redacted.data !== event.data) sanitized++
   }
   const attachments = request.format === 'bundle'
-    ? resolveExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope })
+    ? listExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude: new Set(request.excludeAttachments) })
     : []
-  const attachmentCounts = {
-    included: attachments.filter(file => file.sha256 !== null).length,
-    missing: attachments.filter(file => file.sha256 === null).length,
-    unattributed: attachments.filter(file => file.sha256 !== null && file.unattributed).length
-  }
+  const attachmentCounts = summarizeAttachments(attachments)
   const plan = createExportPlan({
     projectId: project.id,
     request,
@@ -119,10 +116,11 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       attachmentsIncluded: attachmentCounts.included,
       attachmentsMissing: attachmentCounts.missing,
       attachmentsUnattributed: attachmentCounts.unattributed,
+      attachmentsExcludedByOperator: attachmentCounts.excludedByOperator,
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents)
     },
-    selectedEventIds,
     attachments,
+    selectedEventIds,
     selectedEvidenceDigest: fingerprintValue(selectedEvents),
     policyFingerprint: fingerprintValue(cfg)
   })
@@ -137,8 +135,9 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
 // `selectedEventIds` and the digests stay behind; the renderer confirms by
 // planId and never needs them.
 function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan,
-  'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts' | 'scopeSnapshot'> {
+  'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts' | 'scopeSnapshot' | 'attachments'> {
   return {
+    attachments: plan.attachments,
     id: plan.id,
     fingerprint: plan.fingerprint,
     expiresAt: plan.expiresAt,
@@ -164,6 +163,18 @@ export function registerDataExportIpc(
     }
   })
 
+  // Show an export the operator just made in the file manager. Only a path
+  // inside the open project's folder — the renderer names the file, it does
+  // not get to open arbitrary locations (UI/UX audit F12).
+  ipcMain.handle('data:revealExport', (_e, target: unknown) => {
+    const project = ctx.getActiveProject()
+    if (!project || typeof target !== 'string') return false
+    const resolved = path.resolve(target)
+    if (!isInsideDir(getProjectPath(project), resolved) || !fs.existsSync(resolved)) return false
+    shell.showItemInFolder(resolved)
+    return true
+  })
+
   ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string }) => {
     const project = ctx.getActiveProject()
     if (!project) return { ok: false as const, error: 'no-active-project' }
@@ -186,8 +197,8 @@ export function registerDataExportIpc(
         return { ok: false as const, error: 'policy-changed' }
       }
       if (plan.request.format === 'bundle') {
-        const attachments = resolveExportAttachments(getProjectPath(project), approvedNow, {
-          scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope
+        const attachments = listExportAttachments(getProjectPath(project), approvedNow, {
+          scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope, exclude: new Set(plan.request.excludeAttachments)
         })
         if (fingerprintValue(attachments) !== fingerprintValue(plan.attachments)) {
           return { ok: false as const, error: 'source-unavailable' }
@@ -220,6 +231,7 @@ export function registerDataExportIpc(
           maskOutOfScope: plan.request.maskOutOfScope,
           snapshot: plan.snapshot,
           includeEventIds: new Set(plan.selectedEventIds),
+          excludeAttachments: new Set(plan.request.excludeAttachments),
           attachments: plan.attachments,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts }
         })

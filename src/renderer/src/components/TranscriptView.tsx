@@ -9,6 +9,8 @@ import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
 import { AlignLeft } from 'lucide-react'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+import { blockToMarkdown, blocksToMarkdown } from '../lib/transcriptSnippet'
+import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcriptPicks'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -84,6 +86,8 @@ interface Block {
   /** why there is no output, when there isn't one */
   outputNote?: string
   meta?: string
+  /** a finished command's exit code, when known */
+  exitCode?: number | null
   events: Ev[]
 }
 
@@ -132,7 +136,7 @@ const KIND_COLOR: Record<Kind, string> = {
  * incomplete — the command is still running, the response never came — the
  * block renders with the half that exists and says so.
  */
-function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
+function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string, v?: Record<string, string | number>) => string): Block[] {
   const out: Block[] = []
   const pendingTool = new Map<string, Block>()
   const pendingHttp = new Map<string, Block>()
@@ -145,8 +149,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     if (e.agentType === 'shell' && sub === 'session_output') {
       const output = String(d.stdout ?? '')
       out.push({ id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
-        input: `Session ${String(d.terminalId ?? '')} · #${String(d.sequence ?? '')}`,
-        output, outputBytes: output.length, meta: 'PTY · stdout/stderr merged', events: [e] })
+        input: t('transcript.sessionChunk', { terminal: String(d.terminalId ?? ''), seq: String(d.sequence ?? '') }),
+        output, outputBytes: output.length, meta: t('transcript.metaPtyMerged'), events: [e] })
       continue
     }
 
@@ -168,7 +172,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
         output, outputBytes, outputNote,
-        meta: `${exitKnown ? `exit ${exit}` : 'exit unknown'}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        meta: `${exitKnown ? t('transcript.metaExit', { code: String(exit) }) : t('transcript.metaExitUnknown')}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        exitCode: exit,
         events: [e]
       })
       continue
@@ -212,7 +217,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         } else {
           out.push({
             id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
-            input: '(tool interrupted)', outputNote: 'interrupted', events: [e]
+            input: t('transcript.toolInterrupted'), outputNote: 'interrupted', events: [e]
           })
         }
         continue
@@ -230,7 +235,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         } else {
           out.push({
             id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
-            input: '(tool result without a matching call)', output: body, events: [e]
+            input: t('transcript.toolResultUnpaired'), output: body, events: [e]
           })
         }
         continue
@@ -303,6 +308,12 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
   return out
 }
 
+function pickBadges(b: Block, picks: Map<string, Set<PickCategory>>): PickCategory[] {
+  const out = new Set<PickCategory>()
+  for (const e of b.events) for (const c of picks.get(e.id) ?? []) out.add(c)
+  return PICK_CATEGORIES.filter((c) => out.has(c))
+}
+
 function safeJson(v: unknown): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
@@ -325,6 +336,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [bucketPages, setBucketPages] = useState<Record<string, BucketPageState>>({})
   const [toolSession, setToolSession] = useState<ToolSessionInfo | null>(null)
+  const [pickedOnly, setPickedOnly] = useState(false)
+  const [picking, setPicking] = useState<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const loadSeqRef = useRef(0)
 
@@ -447,7 +460,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   }, [])
   useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
 
-  const blocks = useMemo(() => buildBlocks(events, names), [events, names])
+  const blocks = useMemo(() => buildBlocks(events, names, t), [events, names, t])
   const hasMore = Object.values(bucketPages).some((page) => page.hasMore)
 
   const autoExpandedRef = useRef<Set<string>>(new Set())
@@ -457,24 +470,52 @@ export default function TranscriptView({ onOpenInTimeline }: {
       if (autoExpandedRef.current.has(b.id)) continue
       autoExpandedRef.current.add(b.id)
       if (b.kind === 'loot') { toExpand.push(b.id); continue }
-      if (b.kind === 'shell' && b.meta) {
-        const m = b.meta.match(/^exit (\d+)/)
-        if (m && m[1] !== '0') toExpand.push(b.id)
-      }
+      if (b.kind === 'shell' && typeof b.exitCode === 'number' && b.exitCode !== 0) toExpand.push(b.id)
     }
     if (toExpand.length > 0) {
       setExpanded((prev) => { const next = new Set(prev); for (const id of toExpand) next.add(id); return next })
     }
   }, [blocks])
 
+  // #225: steps the operator picked — markers citing the events of a block.
+  const picks = useMemo(() => pickedSteps(events), [events])
+
   const shown = useMemo(
     // Text is matched by the store now. Filtering again over the rendered
     // block would drop a row whose match lies in a field the block does not
     // show, making the answer depend on the presentation. Kind stays local and
     // is labelled as such.
-    () => blocks.filter((b) => !kinds.size || kinds.has(b.kind)),
-    [blocks, kinds]
+    () => blocks.filter((b) => (!kinds.size || kinds.has(b.kind))
+      && (!pickedOnly || b.events.some((e) => picks.has(e.id)))),
+    [blocks, kinds, pickedOnly, picks]
   )
+
+  // Picking a step records a marker that cites it. The step's own events are
+  // never edited, and the pick is append-only like any marker.
+  const pickStep = useCallback(async (b: Block, category: PickCategory) => {
+    setPicking(null)
+    const first = b.input.split('\n')[0].slice(0, 80)
+    try {
+      const ev = await window.redlog.marker.create({
+        title: `${t(`marker.category.${category}`)}: ${first}`,
+        severity: 'info',
+        category,
+        atTimestamp: b.ts,
+        causes: b.events.map((e) => e.id),
+        ...(b.events[0]?.targetId ? { targetId: b.events[0].targetId } : {})
+      })
+      if (!ev) throw new Error('no-active-project')
+      toast(t('transcript.picked', { kind: t(`marker.category.${category}`) }), 'success')
+      void load()
+    } catch (err) {
+      toast(t('transcript.pickFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
+    }
+  }, [load, t])
+
+  const copyStep = useCallback(async (b: Block) => {
+    if (await writeClipboard(blockToMarkdown(b, t))) toast(t('transcript.stepCopied'), 'success')
+    else toast(t('transcript.copyFailed'), { type: 'error', why: t('transcript.copyFailedWhy') })
+  }, [t])
 
   const toggleKind = (k: Kind): void => setKinds((prev) => {
     const next = new Set(prev)
@@ -490,20 +531,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const copyAsMarkdown = useCallback(async () => {
     // The one report-adjacent thing RedLog can offer without becoming a
     // reporting tool: a verbatim transcript, not an assessment.
-    const lines: string[] = ['# RedLog transcript', '']
-    if (hasMore) lines.push(`> ${t('transcript.partialMarkdown')}`, '')
-    for (const b of shown) {
-      lines.push(`## ${new Date(b.ts).toISOString()} — ${b.actor}${b.meta ? ` (${b.meta})` : ''}`, '')
-      lines.push('```', b.input, '```', '')
-      if (b.output) {
-        const truncated = b.output.length > MAX_INLINE
-        lines.push('```', b.output.slice(0, MAX_INLINE), '```')
-        if (truncated) lines.push(`_[truncated — ${fmtBytes(b.output.length)} total]_`)
-        lines.push('')
-      }
-      else if (b.outputNote) lines.push(`_${t(`transcript.note.${b.outputNote}`)}_`, '')
-    }
-    if (await writeClipboard(lines.join('\n'))) {
+    const text = blocksToMarkdown(shown, t, {
+      clipAt: MAX_INLINE,
+      partialNote: hasMore ? t('transcript.partialMarkdown') : undefined,
+      selection: pickedOnly ? t('transcript.selectionPicked') : undefined
+    })
+    if (await writeClipboard(text)) {
       toast(t('transcript.copied'), 'success')
     } else {
       toast(t('transcript.copyFailed'), {
@@ -511,7 +544,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
         why: t('transcript.copyFailedWhy')
       })
     }
-  }, [hasMore, shown, t])
+  }, [hasMore, pickedOnly, shown, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
 
@@ -550,6 +583,18 @@ export default function TranscriptView({ onOpenInTimeline }: {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          data-testid="transcript-picked-only"
+          aria-pressed={pickedOnly}
+          onClick={() => setPickedOnly((v) => !v)}
+          title={t('transcript.pickedOnlyHint')}
+          className={`text-xs px-2 py-1 rounded border shrink-0 transition-colors ${
+            pickedOnly ? 'border-red-500/50 text-red-300 bg-red-500/10' : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+          }`}
+        >
+          {t('transcript.pickedOnly', { n: picks.size ? new Set(blocks.filter((b) => b.events.some((e) => picks.has(e.id))).map((b) => b.id)).size : 0 })}
+        </button>
         <button
           onClick={() => void copyAsMarkdown()}
           className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
@@ -637,7 +682,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {t('transcript.receiptTime')} {formatTime(b.events[0]?.createdAt ?? b.ts, { seconds: true })}
                 </span>
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
-                {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
+                {b.meta && (
+                  <span
+                    data-testid="transcript-meta"
+                    className={`text-xs font-mono shrink-0 ${typeof b.exitCode === 'number' && b.exitCode !== 0 ? 'text-amber-400' : 'text-redlog-text-faint'}`}
+                  >{b.meta}</span>
+                )}
                 {hasOutput && (
                   <button
                     // Stable hook: the e2e reached this by matching the ▶ glyph
@@ -657,6 +707,47 @@ export default function TranscriptView({ onOpenInTimeline }: {
                     {revealed ? '▼' : '▶'}{b.outputBytes ? ` ${fmtBytes(b.outputBytes)}` : ''}
                   </button>
                 )}
+                {pickBadges(b, picks).map((c) => (
+                  <span key={c} data-testid="transcript-pick-badge" className={`text-xs font-mono shrink-0 ${c === 'failed_attempt' ? 'text-amber-400' : 'text-red-400'}`}>
+                    ⚑ {t(`marker.category.${c}`)}
+                  </span>
+                ))}
+                {b.kind !== 'marker' && (
+                  picking === b.id
+                    ? PICK_CATEGORIES.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        data-testid={`transcript-pick-${c}`}
+                        onClick={() => void pickStep(b, c)}
+                        className="text-xs px-1.5 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text shrink-0"
+                      >
+                        {t(`marker.category.${c}`)}
+                      </button>
+                    ))
+                    : (
+                      <button
+                        type="button"
+                        data-testid="transcript-pick"
+                        onClick={() => setPicking(b.id)}
+                        className="text-xs text-redlog-text-faint hover:text-red-400 font-mono shrink-0"
+                        title={t('transcript.pick')}
+                        aria-label={t('transcript.pick')}
+                      >
+                        ⚑
+                      </button>
+                    )
+                )}
+                <button
+                  type="button"
+                  data-testid="transcript-copy-step"
+                  onClick={() => void copyStep(b)}
+                  className="text-xs text-redlog-text-faint hover:text-redlog-text font-mono shrink-0"
+                  title={t('transcript.copyStep')}
+                  aria-label={t('transcript.copyStep')}
+                >
+                  ⧉
+                </button>
                 {onOpenInTimeline && (
                   <button
                     onClick={() => onOpenInTimeline(b.id, b.ts)}

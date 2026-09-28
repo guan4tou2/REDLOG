@@ -182,7 +182,7 @@ describeDB('evidence bundle export', () => {
   it('refuses a completed bundle when an approved attachment disappears', () => {
     ins('screenshot', { filename: 'gone.jpg' })
     expect(() => exportBundle('eng', {
-      attachments: [{ path: 'screenshots/gone.jpg', bytes: 3, sha256: 'approved', unattributed: false }]
+      attachments: [{ id: 'screenshots/gone.jpg', kind: 'screenshot', status: 'included', targets: [], attribution: 'unattributed', bytes: 3, sha256: 'approved' }]
     })).toThrow('Approved attachment unavailable')
     expect(fs.readdirSync(path.join(dir, 'exports')).every(name => name.includes('.partial-'))).toBe(true)
   })

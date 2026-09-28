@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
-import { createHttpAttempt, httpTestCommand, matchesHttpAttempt, type HttpAttempt, type HttpClient } from '../lib/httpVerification'
+import { createHttpAttempt, httpTestCommand, matchesHttpAttempt, type HttpAttempt, type HttpClient } from '../lib/httpAttempt'
 import { writeClipboard } from '../lib/clipboard'
 import { isWindows } from '../lib/platform'
 import { Button } from './Button'
@@ -96,19 +96,20 @@ export function HttpCaptureVerification({ status, checkStatus }: {
       </select>
     </label>}
     <Button level="secondary" disabled={!address.trim()} onClick={generate}>{t('httpVerify.generate')}</Button>
-    {error && <p role="alert" className="text-redlog-red">{error}</p>}
+    {error && <p role="alert" className="text-redlog-danger">{error}</p>}
     {result && <div className="space-y-1">
       <code data-testid="http-test-url" className="block break-all select-text">{result.attempt.url}</code>
       {result.attempt.client === 'terminal' && <code data-testid="http-test-command" className="block break-all select-text bg-redlog-bg p-2 rounded">{command}</code>}
       <Button level="quiet" onClick={() => void copy()}>{t(copied ? 'httpVerify.copied' : 'firstRun.copy')}</Button>
-      <p role="status" data-testid={result.response ? 'first-run-http-verified' : result.timedOut ? 'first-run-http-timeout' : undefined}>
+      <p role="status" data-testid={result.response ? 'http-attempt-verified' : result.timedOut ? 'http-attempt-timeout' : undefined}>
         {resultLabel(result)}
       </p>
       {result.timedOut && !result.response && <p className="text-redlog-text-dim">{t('httpVerify.recovery')}</p>}
     </div>}
-    <ul className="grid grid-cols-2 gap-1 text-redlog-text-dim" aria-label={t('httpVerify.results')}>
+    <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-redlog-text-dim" aria-label={t('httpVerify.results')}>
       {clients.flatMap((c) => protocols.map((p) => <li key={`${c}-${p}`} data-testid={`http-result-${c}-${p}`}>
-        {t(`httpVerify.${c}`)} · {p.toUpperCase()}: {resultLabel(results[`${c}-${p}`])}
+        <span className="block">{t(`httpVerify.${c}`)} · {p.toUpperCase()}</span>
+        <span className="block">{resultLabel(results[`${c}-${p}`])}</span>
       </li>))}
     </ul>
     <p className="text-redlog-text-faint">{t('httpVerify.limits')}</p>

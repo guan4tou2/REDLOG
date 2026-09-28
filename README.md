@@ -1,6 +1,6 @@
 # RedLog
 
-Red Team Operation Log — an Electron desktop app that passively records everything during a penetration test engagement into a tamper-evident, per-project timeline database.
+Red Team Operation Log — an Electron desktop app that records a penetration test engagement into a tamper-evident, per-project timeline database: the commands you run and the HTTP(S) traffic that goes through its proxy, plus the optional sources you turn on.
 
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
@@ -72,13 +72,16 @@ The first engagement, in the order that proves capture works:
    empty; RedLog still records, it just cannot tell in-scope from out-of-scope.
    Tick *ignore this machine's own traffic* to keep your own IP out of
    deliverables.
-2. **Run a command in the built-in terminal and watch it appear.** A new
-   project opens on a built-in terminal with a live recording strip beside it;
-   run something with a target (`nmap -sV 10.0.0.5`) and it shows up there and
-   on the Timeline. Everything in the built-in terminal is recorded, output
-   included (as an asciinema `.cast`).
-3. **Connect your normal shell.** Once the built-in command appears, the
-   first-run screen offers **Record my Zsh / Bash / PowerShell terminal**: it
+2. **Verify the two core captures.** A new project opens on its first-run
+   screen: the built-in terminal, with **Commands** and **HTTP(S)** beside it,
+   each "not verified" until something actually arrives. Neither waits on the
+   other. Run a command in the built-in terminal (`echo redlog-ok`) and
+   Commands verifies; start HTTP capture and run its check (in the capture
+   browser, or the `curl` it shows) and HTTP and HTTPS verify separately. The
+   built-in terminal records its screen output as an asciinema `.cast`; its
+   commands reach the Timeline once python3 and curl are installed.
+3. **Connect your normal shell.** The Commands step also offers
+   **Record my Zsh / Bash / PowerShell terminal**: it
    checks python3 and curl, adds one line to your shell's startup file, asks you
    to open a **new** terminal and run the `echo redlog-ok-…` it shows, and
    confirms only when that command arrives — shells that were already open are
@@ -86,17 +89,19 @@ The first engagement, in the order that proves capture works:
    there is recorded as metadata: command, exit code, duration and working
    directory. Output is not; for that use the built-in terminal,
    `redlog-run <cmd>`, or a `redlog-session` recorded shell.
-4. **Optionally, start HTTP capture.** **Start HTTP capture** on the Dashboard
-   (or Settings ▸ Proxy & browser) runs a local mitmproxy with RedLog's addon;
-   the one-click proxied browser goes through it. Trust the mitmproxy CA for
-   HTTPS. *Route new terminals through HTTP capture* (same page, off by
+4. **HTTP capture.** **Start HTTP capture** on the Dashboard or the
+   first-run screen (or Settings ▸ Browser & HTTP capture) runs a local
+   mitmproxy with RedLog's addon; the one-click proxied browser goes through
+   it. Other tools need to trust the mitmproxy CA for HTTPS — the card shows
+   the trust command and the one that removes it, both by the CA's
+   fingerprint. *Route new terminals through HTTP capture* (same page, off by
    default) sets `HTTP_PROXY` / `HTTPS_PROXY` for built-in terminals opened
    afterwards, so proxy-aware HTTP tools — curl, wget, Python `requests`, Node
    HTTP clients — go through mitmproxy. nmap SYN scans, raw TCP, SMB, LDAP and
    RDP do not use an HTTP proxy and are not captured this way.
 
 Everything beyond that is optional and off by default: **capture packs** under
-**Settings ▸ Capture control** add host monitors (processes, connections,
+**Settings ▸ Packs, screenshots & retention** add host monitors (processes, connections,
 files, clipboard), AI agent transcripts (Claude Code, Codex, OpenCode) and
 Windows terminal output. The full walkthrough, in Traditional Chinese, is the
 [operator guide](docs/USER-GUIDE.md).
@@ -114,7 +119,13 @@ Windows terminal output. The full walkthrough, in Traditional Chinese, is the
 
 ## Why RedLog
 
-Penetration testers need a complete, tamper-evident record of every action taken during an engagement. RedLog runs in the background and captures terminal commands, clipboard activity, screenshots, file transfers, and network events — all timestamped and indexed in a per-project SQLite database. No manual note-taking required.
+Penetration testers need a tamper-evident record of what they did during an engagement. RedLog runs in the background and records it into a per-project SQLite database, timestamped and hash-chained. What it records, and what it does not, is stated rather than implied:
+
+- **Commands** from any shell with the hook installed: the command, exit code, duration and working directory. **Output** is recorded only by the built-in terminal, `redlog-run <cmd>`, or a `redlog-session` shell.
+- **HTTP(S)** that goes through RedLog's proxy — the capture browser, or a tool pointed at the proxy. Traffic that does not use the proxy (raw TCP, SMB, nmap SYN scans) is not recorded as HTTP.
+- **Optional sources**, off until you turn them on: process, connection and file monitoring; the clipboard (its own opt-in); AI agent transcripts; periodic screenshots.
+
+Markers, bookmarks and findings are still yours to write. RedLog keeps the record; it does not write the report.
 
 **Key differentiators:**
 
@@ -223,7 +234,7 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can additionally be captured by turning on the **AI agents** capture pack (Settings ▸ Capture control, off by default), whose transcript tailer records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can additionally be captured by turning on the **AI agents** capture pack (Settings ▸ Packs, screenshots & retention, off by default), whose transcript tailer records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 

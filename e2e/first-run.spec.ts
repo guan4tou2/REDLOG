@@ -1,5 +1,4 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { tmpdir } from 'node:os'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
@@ -47,16 +46,12 @@ test.describe.serial('the first run', () => {
     await expect(strip).toHaveAttribute('data-first-run-lit', 'false')
   })
 
-
-  test('offers Web capture before requiring a shell command', async () => {
-    await page.getByTestId('first-run-focus-web').click()
-    await expect(page.getByTestId('first-run-focus-web')).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByText('Start recording Web traffic', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('first-run-http')).toBeVisible()
-    await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-first-run-lit', 'false')
-    await expect(page.locator('.xterm')).toHaveCount(0)
-    await page.screenshot({ path: join(tmpdir(), 'redlog-first-run-web.png') })
-    await page.getByTestId('first-run-focus-both').click()
+  test('shows both core captures from the start, neither waiting on the other (#217)', async () => {
+    await expect(page.locator('[data-testid="first-run-commands"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-http"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-core-ready', 'false')
   })
 
   test('keeps the ten capture sources one disclosure away', async () => {
@@ -93,7 +88,10 @@ test.describe.serial('the first run', () => {
     await post('shell', { subtype: 'command_start', command: 'nmap -sV 10.0.0.5' })
     await expect(page.locator('[data-testid="first-run-strip"]'))
       .toHaveAttribute('data-first-run-lit', 'true', { timeout: 15_000 })
-    await expect(page.locator('[data-testid="first-run-builtin-only"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('✓ Verified')
+    // A command does not make HTTP(S) any less unverified.
+    await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
+    await expect(page.locator('[data-testid="first-run-later"]')).toBeVisible()
   })
 
   test('hands over to the real dashboard, and does not come back', async () => {

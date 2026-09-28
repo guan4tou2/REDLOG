@@ -8,6 +8,8 @@ import { writeClipboard } from '../lib/clipboard'
 import { formatTime } from '../lib/time'
 import { useI18n } from '../i18n'
 import { settingsTarget } from '../lib/navigation'
+import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
+import { Modal } from './Modal'
 
 const PAGE_SIZE = 100
 
@@ -26,6 +28,12 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const triggerFilterRef = useRef(triggerFilter)
   triggerFilterRef.current = triggerFilter
   const { t } = useI18n()
+  // Trigger ids (manual, periodic…) are stored as-is; they are shown in words.
+  const triggerLabel = (trigger: string): string => {
+    const key = `screenshots.trigger.${trigger}`
+    const label = t(key)
+    return label === key ? trigger : label
+  }
 
   const loadPage = useCallback(async (trigger: string | null) => {
     const request = ++generation.current
@@ -123,10 +131,10 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
       )}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold text-redlog-text-dim uppercase tracking-wider">
-          {t('screenshots.title', { count: screenshots.length })}
+          {t('screenshots.title', { count: hasMore ? `${screenshots.length}+` : screenshots.length })}
         </h2>
         <button
-          onClick={() => window.redlog.screenshot.capture()}
+          onClick={() => { void captureScreenshotWithFeedback(t) }}
           className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
           {t('screenshots.captureNow')}
@@ -139,7 +147,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           reason={t('screenshots.emptyReason')}
           action={{
             label: t('screenshots.captureNow'),
-            onClick: () => { void window.redlog.screenshot.capture() }
+            onClick: () => { void captureScreenshotWithFeedback(t) }
           }}
           secondary={{ label: t('screenshots.emptySettings'), onClick: () => onNavigate(settingsTarget('captureControl')) }}
         />
@@ -158,7 +166,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
                   triggerFilter === trigger ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                 }`}
-              >{trigger} <span className="text-redlog-text-faint">&middot;{count}</span></button>
+              >{triggerLabel(trigger)} <span className="text-redlog-text-faint">&middot;{count}</span></button>
             ))}
           </div>
         )}
@@ -171,14 +179,14 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
               key={s.id}
               role="button"
               tabIndex={0}
-              aria-label={`Screenshot at ${formatTime(s.timestamp, { seconds: true })}`}
+              aria-label={t('screenshots.itemLabel', { time: formatTime(s.timestamp, { seconds: true }) })}
               className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-redlog-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
             >
               <div className="aspect-video bg-redlog-surface flex items-center justify-center overflow-hidden">
                 {deletedIds.has(s.id) ? (
-                  <span className="text-redlog-muted text-xs italic">{t('screenshots.deleted')}</span>
+                  <span className="text-redlog-text-faint text-xs italic">{t('screenshots.deleted')}</span>
                 ) : thumbs[s.id] ? (
                   <img
                     src={thumbs[s.id]}
@@ -188,13 +196,13 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-redlog-muted text-xs">{(s.data.filename as string) ?? '...'}</span>
+                  <span className="text-redlog-text-faint text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
               </div>
               <div className="px-2 py-1 flex flex-col gap-0.5">
                 <div className="flex items-center justify-between gap-1">
-                <p title={`${formatTime(s.timestamp, { seconds: true })} — ${String(s.data.trigger ?? '')}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
-                  {formatTime(s.timestamp, { seconds: true })} &mdash; {s.data.trigger as string}
+                <p title={`${formatTime(s.timestamp, { seconds: true })} — ${triggerLabel(String(s.data.trigger ?? ''))}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
+                  {formatTime(s.timestamp, { seconds: true })} &mdash; {triggerLabel(String(s.data.trigger ?? ''))}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-redlog-text-faint">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}
@@ -228,7 +236,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 </div>
                 {typeof s.data.sha256 === 'string' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string) }}
+                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
                     className="text-xs font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
                     title={`SHA-256: ${s.data.sha256 as string}`}
                   >
@@ -251,20 +259,51 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         </>
         )
       })()}
-      {expanded && thumbs[expanded] && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Screenshot preview"
-          tabIndex={-1}
-          ref={(el) => el?.focus()}
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer outline-none"
-          onClick={() => setExpanded(null)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setExpanded(null) }}
-        >
-          <img src={thumbs[expanded]} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
-        </div>
-      )}
+      {(() => {
+        // The lightbox (UI/UX audit F20): what the frame is, not just the
+        // pixels — when, why it was taken, its hash — and the neighbours
+        // without closing it. A shared Modal, so focus stays in it.
+        const viewable = screenshots.filter((x) => !deletedIds.has(x.id) && thumbs[x.id])
+        const at = expanded ? viewable.findIndex((x) => x.id === expanded) : -1
+        const shot = at >= 0 ? viewable[at] : null
+        const step = (d: number): void => {
+          const next = viewable[at + d]
+          if (next) setExpanded(next.id)
+        }
+        return (
+          <Modal
+            open={!!shot}
+            onClose={() => setExpanded(null)}
+            label={t('screenshots.previewLabel')}
+            testId="screenshot-lightbox"
+            backdropClassName="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+            panelClassName="flex flex-col items-center gap-2 max-w-[92vw]"
+          >
+            {shot && (
+              <div
+                className="flex flex-col items-center gap-2"
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1) }
+                  if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
+                }}
+              >
+                <img src={thumbs[shot.id]} alt="" className="max-w-[90vw] max-h-[78vh] object-contain rounded-lg" />
+                <div className="flex items-center gap-3 text-xs text-redlog-text-dim">
+                  <button type="button" onClick={() => step(-1)} disabled={at <= 0} aria-label={t('screenshots.prev')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover disabled:opacity-40">←</button>
+                  <span className="font-mono">{formatTime(shot.timestamp, { seconds: true })}</span>
+                  <span>{triggerLabel(String(shot.data.trigger ?? ''))}</span>
+                  {typeof shot.data.sha256 === 'string' && (
+                    <span className="font-mono text-redlog-text-faint" title={`SHA-256: ${shot.data.sha256 as string}`}>{(shot.data.sha256 as string).slice(0, 12)}</span>
+                  )}
+                  <span className="text-redlog-text-faint">{at + 1} / {viewable.length}</span>
+                  <button type="button" onClick={() => step(1)} disabled={at >= viewable.length - 1} aria-label={t('screenshots.next')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover disabled:opacity-40">→</button>
+                  <button type="button" onClick={() => setExpanded(null)} aria-label={t('common.close')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover">{t('common.close')}</button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        )
+      })()}
     </div>
   )
 }

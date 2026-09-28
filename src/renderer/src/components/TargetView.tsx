@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
 import { formatTime } from '../lib/time'
-import { toastDeferred } from './Toast'
+import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
@@ -30,6 +30,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // §5.4: distinguish "still loading" from "genuinely empty" so a project that
   // has targets doesn't flash the no-targets empty state on the initial async.
   const [loading, setLoading] = useState(true)
+  // A failed read is shown as one, never as an empty project (no targets) or
+  // as everything in scope (no rules).
+  const [scopeFailed, setScopeFailed] = useState(false)
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
@@ -74,11 +77,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     // Refresh both on mount and whenever the operator saves settings — the
     // auto-save (v0.6.21) doesn't broadcast, but any nav back to this view
     // will re-mount and pick up the current config.
-    window.redlog.config.get().then((c) => {
-      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
-      setScopeTargets(cfg?.scope?.targets ?? [])
-      setExcludeTargets(cfg?.scope?.excludeTargets ?? [])
-    }).catch(() => {})
+    loadScope()
     loadTargets()
     const unsub = window.redlog.events.onNewBatch((events) => {
       if (events.some((evt) => evt.targetId || evt.data?.detectedTarget)) loadTargets()
@@ -109,7 +108,16 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
 
   // Reclassify existing targets whenever scope config changes (e.g. operator
   // added a scope entry after seeing an out-of-scope hit).
-  useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets, excludeTargets])
+  useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets, excludeTargets, scopeFailed])
+
+  function loadScope(): void {
+    window.redlog.config.get().then((c) => {
+      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
+      setScopeTargets(cfg?.scope?.targets ?? [])
+      setExcludeTargets(cfg?.scope?.excludeTargets ?? [])
+      setScopeFailed(false)
+    }).catch(() => setScopeFailed(true))
+  }
 
   async function loadTargets(): Promise<void> {
     // Counts + first/last-seen are aggregated in SQL over the whole timeline
@@ -131,7 +139,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         firstSeen: r.firstSeen,
         lastSeen: r.lastSeen,
         eventCount: r.eventCount,
-        inScope: hostInScope(r.target, scopeTargets, excludeTargets)
+        inScope: scopeFailed ? null : hostInScope(r.target, scopeTargets, excludeTargets)
       }))
       setTargets(list)
     } catch {
@@ -240,6 +248,12 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         </div>
       </div>
 
+      {scopeFailed && (
+        <div data-testid="targets-scope-failed" role="status" className="mx-4 mb-2 text-xs text-amber-300">
+          {t('targets.scopeFailed')}{' '}
+          <button type="button" onClick={loadScope} className="underline">{t('common.retry')}</button>
+        </div>
+      )}
       {listError && (
         <div role="alert" data-testid="targets-load-failed" className="text-red-400 text-xs">
           {t('targets.loadFailed')}{' '}

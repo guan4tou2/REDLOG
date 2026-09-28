@@ -48,10 +48,9 @@ test('real local proxy verifies only the generated client and protocol attempt',
       await window.redlog.config.save({ ...config, httpCapture: { port, routeTerminals: false }, browser: { ...config.browser, ignoreCertErrors: true } })
     }, port)
     await page.reload()
-    await page.getByTestId('first-run-focus-web').click()
     await page.getByTestId('first-run-http').getByRole('button', { name: 'Start HTTP capture', exact: true }).click()
-    await expect(page.getByTestId('http-verification')).toBeVisible({ timeout: 25_000 })
-    await expect(page.getByText(/configured to ignore certificate errors/)).toBeVisible()
+    await page.getByTestId('http-real-request-check').locator('summary').click({ timeout: 25_000 })
+    await expect(page.getByTestId('http-verification')).toBeVisible()
     const proxy = `http://127.0.0.1:${port}`
     const generate = async (client: string, url: string): Promise<string> => {
       await page.getByLabel('Client to verify').selectOption(client)
@@ -62,7 +61,7 @@ test('real local proxy verifies only the generated client and protocol attempt',
     // Real Chromium browser request, followed by a distinct external curl HTTPS attempt.
     const browserUrl = await generate('browser', `http://127.0.0.1:${httpPort}/browser`)
     await exec('curl', ['--max-time', '15', '--proxy', proxy, '--noproxy', '', `http://127.0.0.1:${httpPort}/unrelated`])
-    await expect(page.getByTestId('first-run-http-verified')).toHaveCount(0)
+    await expect(page.getByTestId('http-attempt-verified')).toHaveCount(0)
     await app.evaluate(async ({ BrowserWindow, session }, { proxy, url }) => {
       const s = session.fromPartition('verification-browser')
       await s.setProxy({ proxyRules: proxy, proxyBypassRules: '<-loopback>' })

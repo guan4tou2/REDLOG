@@ -1,10 +1,10 @@
+import { listExportAttachments, summarizeAttachments } from '../src/core/export-attachments'
 import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
   ExportPlanRegistry,
-  resolveExportAttachments,
   countReferencedAttachments,
   createExportPlan,
   normalizeExportRequest,
@@ -25,6 +25,7 @@ const counts: ExportCounts = {
   attachmentsIncluded: 2,
   attachmentsMissing: 1,
   attachmentsUnattributed: 0,
+  attachmentsExcludedByOperator: 0,
   unsupported: 0
 }
 
@@ -40,6 +41,14 @@ describe('ExportPlan domain contract', () => {
       format: 'timeline',
       subset: { kind: 'time-range', since: 20, before: 10 }
     })).toThrow(/time range/i)
+  })
+
+  it('counts every canonical sidecar and operator artifact once for formats without attachments', () => {
+    const events = [
+      { agentType: 'scanner', data: { ws_body_ref: { sha256: 'same' }, tcp_body_ref: { sha256: 'same' }, stdout_ref: { sha256: 'output' } } },
+      { agentType: 'file_transfer', data: { subtype: 'artifact_added', stored: 'artifacts/report.txt' } }
+    ] as never
+    expect(countReferencedAttachments(events)).toBe(3)
   })
 
   it('declares format capability gaps instead of implying protections', () => {
@@ -104,14 +113,11 @@ describe('ExportPlan domain contract', () => {
       { ...base, id: 'shot-missing', agentType: 'screenshot', data: { filename: 'missing.png' } },
       { ...base, id: 'http', agentType: 'scanner', data: { request_body_ref: { sha256: 'body-ok' }, response_body_ref: { sha256: 'body-missing' } } }
     ]
-    expect(resolveExportAttachments(dir, events)).toEqual([
-      { path: 'casts/session.cast', bytes: 4, sha256: expect.any(String), unattributed: true },
-      { path: 'http-bodies/body-missing.body', bytes: null, sha256: null, unattributed: false },
-      { path: 'http-bodies/body-ok.body', bytes: 4, sha256: expect.any(String), unattributed: false },
-      { path: 'screenshots/missing.png', bytes: null, sha256: null, unattributed: false },
-      { path: 'screenshots/seen.png', bytes: 5, sha256: expect.any(String), unattributed: false }
-    ])
+    expect(summarizeAttachments(listExportAttachments(dir, events))).toEqual({ included: 3, missing: 2, unattributed: 1, excludedByOperator: 0 })
     expect(countReferencedAttachments(events)).toBe(4)
+    // #222: a file the operator left out is counted as such, not as included.
+    expect(summarizeAttachments(listExportAttachments(dir, events, { exclude: new Set(['casts/session.cast', 'screenshots/seen.png']) })))
+      .toEqual({ included: 1, missing: 2, unattributed: 0, excludedByOperator: 2 })
     fs.rmSync(dir, { recursive: true, force: true })
   })
 })

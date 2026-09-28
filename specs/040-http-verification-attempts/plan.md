@@ -10,7 +10,7 @@ no evidence mutation; no automatic network or terminal actions. Test-first appli
 Canonical capture lifecycle: docs/domain/SPEC-capture-source-lifecycle.md.
 
 ## Design
-`src/renderer/src/lib/httpVerification.ts` owns URL validation, nonce generation,
+`src/renderer/src/lib/httpAttempt.ts` owns URL validation, nonce generation,
 safe POSIX/PowerShell curl recipes and exact completed-response matching.
 `HttpCaptureVerification.tsx` owns four independent client/protocol slots and
 60-second timeout, plus explicit generate/copy/retry. Each nonce binds one slot.
@@ -35,3 +35,12 @@ request. A stdlib regression reproduced IPAddress SAN JSON serialization failure
 in hooks/mitmproxy-addon.py. Convert SAN values to text (existing event schema),
 then repeat the same real proxy and packaged macOS smoke. This is an in-scope
 evidence-loss defect, not a new capture engine.
+
+## Main integration
+
+Keep upstream `httpVerification.ts` for the synthetic local probe, and move
+actual-response helpers to `httpAttempt.ts`. These prove different things;
+neither helper duplicates the other's matcher. `HttpCaptureStep` presents the
+local check first and the actual-request check in a labelled disclosure.
+Trust/untrust commands use upstream CA fingerprints. Apply proxy identity and
+attempt reset in the same state update so a newly displayed nonce is stable.

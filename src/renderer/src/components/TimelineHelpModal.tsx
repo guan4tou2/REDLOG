@@ -1,4 +1,5 @@
 import { timelineShortcuts } from '../lib/shortcuts'
+import { Modal } from './Modal'
 
 interface TimelineHelpModalProps {
   open: boolean
@@ -8,12 +9,13 @@ interface TimelineHelpModalProps {
 }
 
 export function TimelineHelpModal({ open, onClose, isMac, t }: TimelineHelpModalProps): JSX.Element | null {
-  if (!open) return null
   return (
-    <div
-      data-testid="timeline-help"
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      label={t('timeline.help.title')}
+      testId="timeline-help"
+      backdropClassName="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
     >
       <div className="w-[560px] max-w-[92vw] rounded-lg border border-redlog-border bg-redlog-bg shadow-2xl overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border">
@@ -44,6 +46,6 @@ export function TimelineHelpModal({ open, onClose, isMac, t }: TimelineHelpModal
           {t('timeline.help.footer')}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

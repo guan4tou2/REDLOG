@@ -16,6 +16,75 @@ interface PendingExport {
   request: ExportRequest
 }
 
+function fmtBytes(n: number | null): string {
+  if (n === null) return '—'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** Every file the bundle would carry, one row each, with a switch (#222).
+ *
+ *  The counts above say how many; this says which. A terminal recording spans
+ *  every command typed in it and RedLog never trims it, so a cast tied to
+ *  several targets — or to none — is labelled as such and not presented as
+ *  scope-clean. Leaving a row out re-resolves the plan: the exclusion is part
+ *  of the request the fingerprint covers. */
+function AttachmentList({ rows, onToggle, busy, t }: {
+  rows: ExportAttachmentRow[]
+  onToggle: (id: string) => void
+  busy: boolean
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element | null {
+  if (rows.length === 0) return null
+  return (
+    <div data-testid="export-attachments" className="px-3 py-1 border-t border-redlog-border mt-1 text-xs">
+      <p className="text-redlog-text-dim mb-1">{t('export.attachments.title')}</p>
+      <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>
+      <ul className="max-h-48 overflow-auto space-y-0.5">
+        {rows.map((a) => {
+          const selectable = a.status === 'included' || a.status === 'excluded-by-operator'
+          const name = a.id.split('/').slice(1).join('/')
+          const where = a.attribution === 'unattributed'
+            ? t('export.attachments.unattributed')
+            : a.attribution === 'cross-target'
+              ? t('export.attachments.crossTarget', { targets: a.targets.join(', ') })
+              : a.targets[0]
+          const detail = [
+            where,
+            ...(a.source ? [a.source] : []),
+            fmtBytes(a.bytes),
+            ...(a.status !== 'included' ? [t(`export.attachments.status.${a.status}`)] : [])
+          ].join(' · ')
+          return (
+            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                aria-label={a.id}
+                checked={a.status === 'included'}
+                disabled={busy || !selectable}
+                onChange={() => onToggle(a.id)}
+                className="mt-0.5 accent-red-600"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="block truncate font-mono text-redlog-text" title={a.id}>
+                  {t(`export.attachments.kind.${a.kind}`)} · {name}
+                </span>
+                <span
+                  title={detail}
+                  className={`block truncate ${a.kind === 'cast' && a.attribution !== 'target' ? 'text-amber-400' : 'text-redlog-text-faint'}`}
+                >
+                  {detail}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const viewExport = useViewExport()
@@ -27,23 +96,27 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
+  // A failed run keeps the dialog and its preview (UI/UX audit F12): closing
+  // on failure threw away exactly what the operator had just reviewed.
+  const [runError, setRunError] = useState<string | null>(null)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        if (pending) { setPending(null); setResolvedPlan(null) }
+      if (e.key === 'Escape' && !busy) {
+        if (pending) { setPending(null); setResolvedPlan(null); setRunError(null) }
         else setOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, pending])
+  }, [open, pending, busy])
 
   const loadPreview = useCallback(async (p: PendingExport) => {
     setPending(p)
+    setRunError(null)
     setPreviewLoading(true)
     setResolvedPlan(null)
     setPreviewError(null)
@@ -64,17 +137,45 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     }
   }, [t])
 
+  // Leaving an attachment in or out is a different export: the plan is
+  // resolved again, so what is confirmed is what was previewed.
+  const toggleAttachment = (id: string): void => {
+    if (!pending || !resolvedPlan) return
+    const current = new Set(resolvedPlan.request.excludeAttachments ?? [])
+    if (current.has(id)) current.delete(id)
+    else current.add(id)
+    void loadPreview({ ...pending, request: { ...pending.request, excludeAttachments: [...current] } })
+  }
+
+  const closeAll = (): void => {
+    setPending(null)
+    setResolvedPlan(null)
+    setPreviewError(null)
+    setRunError(null)
+    setOpen(false)
+  }
+
   const confirmExport = async (): Promise<void> => {
     if (!pending) return
     setBusy(true)
+    setRunError(null)
     try {
       if (!resolvedPlan) throw new Error('export plan unavailable')
       const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id })
       if (!result.ok) throw new Error(result.error)
       const path = result.artifactPath
-      if (path) toast(t('export.done', { label: pending.label }), { type: 'success', why: path })
-      else toast(t('export.failed', { label: pending.label }), { type: 'error', why: t('toast.exportFailedWhy') })
+      if (!path) throw new Error(t('toast.exportFailedWhy'))
+      toast(t('export.done', { label: pending.label }), {
+        type: 'success',
+        why: path,
+        action: { label: t('export.reveal'), onClick: () => { void window.redlog.data.revealExport?.(path) } },
+        duration: 8000
+      })
+      closeAll()
     } catch (e) {
+      // Stay open with the preview. A plan is single-use, so resolve it again
+      // for the retry: the operator retries the same request, not a stale id.
+      setRunError(String((e as Error)?.message ?? e))
       toast(t('export.failed', { label: pending.label }), {
         type: 'error',
         why: t('toast.exportFailedWhy'),
@@ -82,11 +183,12 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       })
     } finally {
       setBusy(false)
-      setPending(null)
-        setResolvedPlan(null)
-      setPreviewError(null)
-      setOpen(false)
     }
+  }
+
+  const retryRun = async (): Promise<void> => {
+    if (!pending) return
+    await loadPreview(pending)
   }
 
   const empty = totalCount === 0
@@ -163,12 +265,22 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-[90]" onClick={() => { setPending(null); setResolvedPlan(null); setOpen(false) }} />
+          {/* The format picker is a menu under the button. The preview is a
+              decision with a dozen facts and a file list in it, so it is a
+              dialog of its own rather than a 280px popover (UI/UX audit F12). */}
+          <div
+            className={`fixed inset-0 z-[90] ${pending ? 'bg-black/60' : ''}`}
+            onClick={() => { if (!busy) closeAll() }}
+          />
           <div
             ref={panel}
-            role="menu"
-            aria-label={t('export.title')}
-            className="absolute right-0 top-7 z-[91] w-[280px] bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl overflow-hidden py-1"
+            role={pending ? 'dialog' : 'menu'}
+            aria-modal={pending ? true : undefined}
+            aria-label={pending ? `${t('export.title')} · ${pending.label}` : t('export.title')}
+            data-testid={pending ? 'export-dialog' : 'export-menu'}
+            className={pending
+              ? 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] overflow-y-auto bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl py-1'
+              : 'absolute right-0 top-7 z-[91] w-[280px] bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl overflow-hidden py-1'}
           >
             {pending ? (
               /* ── Preview panel ── */
@@ -262,6 +374,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         <PreviewRow label={t('export.preview.bodyRefs')} value={resolvedPlan.counts.attachmentsIncluded} />
                         <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
                         <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
+                        <PreviewRow label={t('export.preview.attachmentsExcludedByOperator')} value={resolvedPlan.counts.attachmentsExcludedByOperator ?? 0} />
+                        <AttachmentList rows={resolvedPlan.attachments ?? []} onToggle={toggleAttachment} busy={busy} t={t} />
                       </>
                     )}
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
@@ -271,19 +385,41 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         <span className="text-redlog-text font-mono tabular-nums">{resolvedPlan.counts.included}</span>
                       </div>
                     </div>
-                    <div className="px-3 pt-2 pb-1">
+                    {runError && (
+                      <div data-testid="export-run-error" role="alert" className="mx-3 mt-2 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                        <div>{t('export.runFailed')}</div>
+                        <div className="mt-1 break-all font-mono text-redlog-text-faint">{runError}</div>
+                        <button type="button" onClick={() => void retryRun()} className="mt-2 text-red-300 underline hover:text-red-200">
+                          {t('export.retryResolve')}
+                        </button>
+                      </div>
+                    )}
+                    <div className="px-3 pt-2 pb-1 flex gap-2 justify-end">
                       <button
-                        onClick={() => void confirmExport()}
-                        disabled={busy || resolvedPlan.counts.included === 0}
-                        className="w-full px-3 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        type="button"
+                        onClick={() => { setPending(null); setResolvedPlan(null); setRunError(null) }}
+                        disabled={busy}
+                        className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"
                       >
-                        {busy ? '…' : t('export.preview.confirm')}
+                        {t('common.cancel')}
+                      </button>
+                      <button
+                        data-testid="export-confirm"
+                        onClick={() => void confirmExport()}
+                        disabled={busy || !!runError || resolvedPlan.counts.included === 0}
+                        aria-busy={busy}
+                        className="px-4 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {busy ? t('export.running') : t('export.preview.confirm')}
                       </button>
                     </div>
                   </div>
                 ) : previewError ? (
-                  <div role="alert" className="px-3 py-2 text-xs text-red-400">
-                    {t('export.failed', { label: pending.label })}: {previewError}
+                  <div data-testid="export-preview-error" role="alert" className="px-3 py-2 text-xs text-red-400">
+                    <div>{t('export.failed', { label: pending.label })}: {previewError}</div>
+                    <button type="button" onClick={() => void loadPreview(pending)} className="mt-2 text-red-300 underline hover:text-red-200">
+                      {t('common.retry')}
+                    </button>
                   </div>
                 ) : (
                   <div className="px-3 py-2">

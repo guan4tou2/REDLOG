@@ -59,6 +59,10 @@ export function detectBrowser(): string | null {
 // filter downstream: traffic never generated needs no classifying. Only
 // applied with `isolateProfile`, because an operator pointed at their own
 // profile has chosen their own browser's behaviour and we do not override it.
+/** Reserved (RFC 6761) and distinct from the HTTP check's
+ *  `redlog.verify.invalid`, which must go through the proxy. */
+const OFFLINE_SUFFIX = 'redlog-offline.invalid'
+
 const QUIET_ARGS = [
   // The umbrella switch: variations seed, field trials, GCM/push
   // registration, the safe-browsing and component update fetches.
@@ -68,7 +72,12 @@ const QUIET_ARGS = [
   '--disable-domain-reliability',
   '--disable-sync',
   '--disable-features=OptimizationHints,OptimizationGuideModelDownloading,MediaRouter,Translate,'
-    + 'NetworkTimeServiceQuerying,InterestFeedContentSuggestions,CalculateNativeWinOcclusion',
+    + 'NetworkTimeServiceQuerying,InterestFeedContentSuggestions,CalculateNativeWinOcclusion,'
+    // #182, measured through the capture proxy on an idle about:blank tab:
+    // PreconnectToSearch opens a socket to www.google.com; the omnibox AI Mode
+    // eligibility service (`Aim*`) fetches www.google.com/async/folae.
+    + 'PreconnectToSearch,AimEnabled,AimServerEligibilityEnabled,'
+    + 'AimServerRequestOnStartupEnabled,AimServerRequestOnIdentityChangeEnabled',
   // Chrome's own bundled component extensions are what register for GCM
   // (android.clients.google.com/c2dm) and poll the update service. This does
   // NOT touch extensions the operator installs — those are often the point of
@@ -80,7 +89,23 @@ const QUIET_ARGS = [
   '--disable-client-side-phishing-detection',
   '--safebrowsing-disable-auto-update',
   '--metrics-recording-only',
-  '--disable-search-engine-choice-screen'
+  '--disable-search-engine-choice-screen',
+  // Unbranded Chromium builds apply a testing field-trial config by default,
+  // and it turns on search preconnect/prefetch: a `www.google.com/warmup.html`
+  // fetch within seconds of launch with nothing typed. Measured through the
+  // capture proxy (#182): gone with this switch. Playwright passes it too.
+  '--disable-field-trial-config',
+  // #182: two background services no switch turns off — the Gaia cookie
+  // reconciler (POST accounts.google.com/ListAccounts, five times a minute)
+  // and GCM device check-in (POST android.clients.google.com/checkin). Both
+  // take their endpoint from a switch, so they are pointed at a reserved
+  // `.invalid` host that bypasses the proxy (OFFLINE_BYPASS below): the
+  // request never resolves, never leaves the machine and is never recorded.
+  // Pages the operator opens, accounts.google.com included, are unaffected;
+  // only Chrome's own profile sign-in to Google stops working, which a
+  // capture profile with sync off does not use.
+  `--gaia-url=https://gaia.${OFFLINE_SUFFIX}`,
+  `--gcm-checkin-url=https://gcm.${OFFLINE_SUFFIX}/checkin`
 ]
 
 export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
@@ -89,7 +114,12 @@ export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
     args.push(`--proxy-server=${cfg.proxy}`)
     // Chrome otherwise bypasses the proxy for localhost, which hides exactly
     // the traffic an operator testing a local target wants captured.
-    args.push('--proxy-bypass-list=<-loopback>')
+    // RedLog's own profile also sends the redirected background services
+    // (QUIET_ARGS) direct, where they fail to resolve instead of reaching
+    // mitmproxy. Nothing real lives under `.invalid`.
+    args.push(cfg.isolateProfile
+      ? `--proxy-bypass-list=<-loopback>;*.${OFFLINE_SUFFIX}`
+      : '--proxy-bypass-list=<-loopback>')
   }
   if (cfg.cdpPort > 0) args.push(`--remote-debugging-port=${cfg.cdpPort}`)
   if (cfg.isolateProfile) {

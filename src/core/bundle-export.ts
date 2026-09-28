@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
-import type { ExportAttachment, ExportCounts, ExportSnapshot } from './export-plan'
+import type { ExportCounts, ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
@@ -13,6 +13,7 @@ import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSan
 import { BODY_REF_FOR } from './redact-export'
 import { operatorPiiReplacements } from './operator-pii'
 import { getDoNotExportIds } from './db/do-not-export'
+import { isAttachmentId, type ExportAttachment } from './export-attachments'
 
 interface ManifestFile {
   path: string
@@ -46,6 +47,15 @@ interface ManifestPayload {
   /** Row counts per tier. `chained` matches chainHead.eventCount and is the
    *  count the OTS anchor covers. `logged` is the events_logged row count. */
   tiers: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
+  /** #222: what the operator left out, and which targets each included cast
+   *  spans. A cast is never trimmed; one that spans several targets says so
+   *  here rather than being presented as scope-clean. */
+  attachments?: {
+    excludedByOperator: string[]
+    casts: Array<{ path: string; targets: string[]; attribution: ExportAttachment['attribution'] }>
+    /** operator-added evidence files (#221) copied into `artifacts/` */
+    artifacts: number
+  }
   attachmentScopePolicy?: {
     screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
     casts: { included: number; scopeFiltered: false; reason: string }
@@ -91,9 +101,13 @@ export interface ExportBundleOpts {
   snapshot?: ExportSnapshot
   /** Exact event selection approved by ExportPlan. When present, later policy
    * changes cannot silently widen or narrow the bundle. */
-  attachments?: readonly ExportAttachment[]
   includeEventIds?: ReadonlySet<string>
   exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
+  /** Files the operator left out, by bundle-relative path (#222). */
+  excludeAttachments?: ReadonlySet<string>
+  /** The approved preview's attachment rows, recorded in the manifest so a
+   *  recipient can see which targets each cast spans. */
+  attachments?: readonly ExportAttachment[]
 }
 
 export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
@@ -177,9 +191,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const approvedAttachments = opts.attachments === undefined ? undefined
-    : new Map(opts.attachments.map(file => [file.path, file]))
+    : new Map(opts.attachments.map(file => [file.id, file]))
   const isApproved = (relative: string): boolean =>
-    approvedAttachments === undefined || approvedAttachments.get(relative)?.sha256 != null
+    approvedAttachments === undefined || approvedAttachments.get(relative)?.status === 'included'
   const verifyAttachment = (relative: string, file: string): void => {
     if (!approvedAttachments) return
     const expected = approvedAttachments.get(relative)
@@ -202,6 +216,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   fs.mkdirSync(bundleDir, { recursive: true })
 
   const files: ManifestFile[] = []
+  const excluded = opts.excludeAttachments ?? new Set<string>()
 
   const db = getDB()
 
@@ -264,6 +279,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   const doNotExportIds = getDoNotExportIds()
   const survivingBodyRefs = new Set<string>()
+  const survivingArtifacts = new Set<string>()
   const survivingScreenshots = new Map<string, string | null>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
@@ -314,6 +330,10 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
           survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
         }
+      }
+      if (agentType === 'file_transfer' && d.subtype === 'artifact_added' && isAttachmentId(d.stored)
+        && d.stored.startsWith('artifacts/') && !(scope && isOutOfScope(row.target_id as string | null, scope))) {
+        survivingArtifacts.add(d.stored)
       }
     } catch { /* parse already failed above; skip */ }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
@@ -428,6 +448,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     let dirCreated = false
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
+      if (excluded.has(`screenshots/${name}`)) continue
       if (!survivingScreenshots.has(name) || !isApproved(`screenshots/${name}`) || !fs.lstatSync(s).isFile()) continue
       {
         const target = survivingScreenshots.get(name)
@@ -468,6 +489,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     fs.mkdirSync(dstCasts, { recursive: true })
     const piiReps = operatorPiiReplacements()
     for (const name of fs.readdirSync(srcCasts)) {
+      if (excluded.has(`casts/${name}`)) continue
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (isApproved(`casts/${name}`) && fs.lstatSync(s).isFile()) {
@@ -502,6 +524,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {
+        if (excluded.has(`http-bodies/${name}`)) continue
         if (!isApproved(`http-bodies/${name}`)) { httpBodiesExcluded++; continue }
         {
           const hash = name.replace(/\.body$/, '')
@@ -519,6 +542,21 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         }
       }
     }
+  }
+
+  // 6c. artifacts/ — files the operator added as evidence (#221). Copied
+  // byte-for-byte: the sha256 in the event that added each one must match.
+  let artifactsIncluded = 0
+  for (const id of [...survivingArtifacts].sort()) {
+    if (excluded.has(id) || !isApproved(id)) continue
+    const s = path.join(projectDir, id)
+    if (!fs.existsSync(s) || !fs.lstatSync(s).isFile()) continue
+    const d = path.join(bundleDir, id)
+    fs.mkdirSync(path.dirname(d), { recursive: true })
+    fs.copyFileSync(s, d)
+    verifyAttachment(id, d)
+    files.push({ path: id, ...sha256File(d) })
+    artifactsIncluded++
   }
 
   // 6b. agent-transcripts/ — copied ONLY when opts.includeAgentTranscripts.
@@ -671,7 +709,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   if (approvedAttachments) {
     const copied = new Set(files.map(file => file.path))
     for (const attachment of approvedAttachments.values()) {
-      if (attachment.sha256 !== null && !copied.has(attachment.path)) {
+      if (attachment.status === 'included' && !copied.has(attachment.id)) {
         throw new Error('Approved attachment unavailable; preview again')
       }
     }
@@ -701,6 +739,13 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     personalDropped,
     doNotExportDropped,
     exportPlan: opts.exportPlan,
+    attachments: {
+      excludedByOperator: [...excluded].sort(),
+      casts: (opts.attachments ?? [])
+        .filter((a) => a.kind === 'cast' && a.status === 'included')
+        .map((a) => ({ path: a.id, targets: a.targets, attribution: a.attribution })),
+      artifacts: artifactsIncluded
+    },
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },

@@ -1,11 +1,9 @@
 import { BODY_REF_FOR } from './redact-export'
 import { getReadonlyDB } from './db/index'
 import { createHash, randomUUID } from 'crypto'
-import fs from 'fs'
-import path from 'path'
 import type { RedLogEvent } from './db/event-types'
-import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
+import { isAttachmentId, storedArtifactOf, type ExportAttachment } from './export-attachments'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -29,6 +27,8 @@ export interface ExportRequest {
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
+  /** Attachments the operator left out, by bundle-relative path (#222). */
+  excludeAttachments?: string[]
 }
 
 export interface NormalizedExportRequest {
@@ -38,6 +38,7 @@ export interface NormalizedExportRequest {
   maskOutOfScope: boolean
   scopeOnly: boolean
   scrubPii: boolean
+  excludeAttachments: readonly string[]
 }
 
 export interface ExportCounts {
@@ -51,12 +52,16 @@ export interface ExportCounts {
   attachmentsIncluded: number
   attachmentsMissing: number
   attachmentsUnattributed: number
+  /** attachments the operator chose to leave out (#222) */
+  attachmentsExcludedByOperator: number
   unsupported: number
 }
 
 export function countReferencedAttachments(events: readonly RedLogEvent[]): number {
   const references = new Set<string>()
   for (const event of events) {
+    const artifact = storedArtifactOf(event)
+    if (artifact) references.add(artifact)
     if (event.agentType === 'screenshot' && typeof event.data.filename === 'string') references.add(`screenshot:${event.data.filename}`)
     for (const key of Object.values(BODY_REF_FOR)) {
       const ref = event.data[key]
@@ -66,51 +71,6 @@ export function countReferencedAttachments(events: readonly RedLogEvent[]): numb
     }
   }
   return references.size
-}
-
-/** Exact file identities approved with the event selection. Missing references
- * remain explicit; unrelated files never become implicitly approved orphans. */
-export interface ExportAttachment {
-  path: string
-  bytes: number | null
-  sha256: string | null
-  unattributed: boolean
-}
-
-export function resolveExportAttachments(
-  projectDir: string,
-  events: readonly RedLogEvent[],
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean } = {}
-): ExportAttachment[] {
-  const refs = new Map<string, boolean>()
-  for (const event of events) {
-    const filename = event.data.filename
-    if (event.agentType === 'screenshot' && typeof filename === 'string' &&
-        !(options.maskOutOfScope !== false && options.scope && isOutOfScope(event.targetId, options.scope))) {
-      if (path.basename(filename) !== filename || filename === '.' || filename === '..') throw new Error('invalid-attachment-path')
-      refs.set(`screenshots/${filename}`, !event.targetId)
-    }
-    for (const key of Object.values(BODY_REF_FOR)) {
-      const ref = event.data[key] as { sha256?: unknown } | undefined
-      if (ref && typeof ref.sha256 === 'string') {
-        if (!/^[a-zA-Z0-9_-]+$/.test(ref.sha256)) throw new Error('invalid-attachment-path')
-        refs.set(`http-bodies/${ref.sha256}.body`, false)
-      }
-    }
-  }
-  const castsDir = path.join(projectDir, 'casts')
-  if (fs.existsSync(castsDir)) {
-    for (const filename of fs.readdirSync(castsDir)) {
-      if (fs.lstatSync(path.join(castsDir, filename)).isFile()) refs.set(`casts/${filename}`, true)
-    }
-  }
-  return [...refs].sort(([a], [b]) => a.localeCompare(b)).map(([relative, unattributed]) => {
-    const file = path.join(projectDir, relative)
-    if (!fs.existsSync(file)) return { path: relative, bytes: null, sha256: null, unattributed }
-    if (!fs.lstatSync(file).isFile()) throw new Error('invalid-attachment-file')
-    const content = fs.readFileSync(file)
-    return { path: relative, bytes: content.length, sha256: createHash('sha256').update(content).digest('hex'), unattributed }
-  })
 }
 
 export interface ExportScopeSnapshot {
@@ -131,8 +91,9 @@ export interface ExportPlan {
   scopeSnapshot: ExportScopeSnapshot
   capabilities: ExportCapabilities
   counts: ExportCounts
-  selectedEventIds: readonly string[]
+  /** One row per file the bundle would carry, for the preview (#222). */
   attachments: readonly ExportAttachment[]
+  selectedEventIds: readonly string[]
   selectedEvidenceDigest: string
   policyFingerprint: string
   fingerprint: string
@@ -150,7 +111,8 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
     sharing: request.sharing === true,
     maskOutOfScope: request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
-    scrubPii: request.scrubPii === true || request.sharing === true
+    scrubPii: request.scrubPii === true || request.sharing === true,
+    excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort())
   })
 }
 
@@ -160,8 +122,8 @@ interface CreateExportPlanInput {
   snapshot: ExportSnapshot
   scopeSnapshot: ExportScopeSnapshot
   counts: ExportCounts
-  selectedEventIds: string[] | readonly string[]
   attachments?: readonly ExportAttachment[]
+  selectedEventIds: string[] | readonly string[]
   selectedEvidenceDigest?: string
   policyFingerprint?: string
 }
@@ -186,7 +148,7 @@ export function createExportPlan(
     scopeSnapshot,
     counts: input.counts,
     selectedEventIds,
-    attachments: Object.freeze((input.attachments ?? []).map(file => Object.freeze({ ...file }))),
+    attachments: input.attachments ?? [],
     selectedEvidenceDigest: input.selectedEvidenceDigest ?? '',
     policyFingerprint: input.policyFingerprint ?? ''
   })
@@ -206,8 +168,8 @@ export function createExportPlan(
     }),
     capabilities: Object.freeze(capabilitiesFor(input.request.format)),
     counts: Object.freeze({ ...input.counts }),
+    attachments: Object.freeze((input.attachments ?? []).map(file => Object.freeze({ ...file, targets: Object.freeze([...file.targets]) as unknown as string[] }))),
     selectedEventIds: Object.freeze(selectedEventIds),
-    attachments: Object.freeze((input.attachments ?? []).map(file => Object.freeze({ ...file }))),
     selectedEvidenceDigest: input.selectedEvidenceDigest ?? '',
     policyFingerprint: input.policyFingerprint ?? '',
     fingerprint: createHash('sha256').update(evidence).digest('hex')

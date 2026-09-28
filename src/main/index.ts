@@ -15,8 +15,10 @@ import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEven
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
-import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
-import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
+import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
+import { isVerifyNonce, verifyUrl } from '../core/http-verify'
+import { clearSessionTargets } from '../core/session-targets'
+import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -84,6 +86,7 @@ import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
 import { registerTargetContextIpc } from './ipc/target-context'
+import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -246,9 +249,18 @@ function toggleRecording(): boolean {
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
 // operator is about to type a title and notes.
 function triggerBookmark(): void {
-  send(mainWindow, 'shortcut:marker')
-  mainWindow?.show()
-  mainWindow?.focus()
+  // When the operator is in another app, what they want recorded is on screen
+  // NOW, before RedLog comes forward. Hold that frame; the marker claims it on
+  // save, and an abandoned marker leaves nothing behind (UI/UX audit F2).
+  // From inside RedLog there is nothing worth holding — the save hides
+  // RedLog's windows for its own capture instead.
+  const fromElsewhere = !BrowserWindow.getFocusedWindow()
+  const hold = fromElsewhere ? screenshotAgent.holdFrame().catch(() => null) : Promise.resolve(null)
+  void hold.then((heldFrame) => {
+    send(mainWindow, 'shortcut:marker', heldFrame ? { heldFrame } : {})
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
 }
 
 // v0.9.7: the HUD's instant mark. Drops a timestamped marker straight into the
@@ -326,6 +338,20 @@ function debouncedSaveWindowState(win: BrowserWindow): void {
 // first `openProjectHandler` call via `alertRuntime.configure(...)`.
 const alertRuntime = new AlertRuntime({ engagementId: '', operatorId: '' })
 const screenshotAgent = new ScreenshotAgent()
+// In-app captures must not photograph RedLog (UI/UX audit F2): take every
+// visible RedLog window — main and HUD — off screen for the grab, then put
+// them back without stealing focus from where it was.
+screenshotAgent.setWindowHider(async () => {
+  const shown = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible() && !w.isMinimized())
+  const focused = BrowserWindow.getFocusedWindow()
+  for (const w of shown) w.hide()
+  // Give the compositor a frame or two to take them off the screen.
+  await new Promise((r) => setTimeout(r, 250))
+  return () => {
+    for (const w of shown) if (!w.isDestroyed()) w.showInactive()
+    if (focused && !focused.isDestroyed()) focused.focus()
+  }
+})
 const lootDetector = new LootDetector()
 
 /** Start or stop every optional capture source from the project's packs
@@ -867,7 +893,10 @@ function startProject(project: ProjectMeta): void {
         } catch { return false }
       },
       listPaths: (): string[] => readHookConfig().watchPaths
-    }
+    },
+    // #220: capture checks go to the screen that asked for them, not to the
+    // record.
+    httpVerifySink: (report) => send(mainWindow, 'httpCapture:verify', report)
   })
   onApiProjectOpen()
 
@@ -1010,6 +1039,7 @@ function stopProject(): void {
   currentOperatorId = null
   resetCausesResolver()
   configureIngest({ activeTarget: null })
+  clearSessionTargets()
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -1161,6 +1191,7 @@ app.whenReady().then(() => {
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
   registerTargetContextIpc(ipcMain, ipcCtx)
+  registerArtifactsIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1217,11 +1248,11 @@ app.whenReady().then(() => {
   })
   // Native folder picker for the Settings UI — text input is fine but a
   // real picker matches how operators actually pick engagement folders.
-  ipcMain.handle('hookConfig:pickPath', async () => {
+  ipcMain.handle('hookConfig:pickPath', async (_e, title?: unknown) => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
-      title: 'Pick a folder'
+      title: typeof title === 'string' && title.trim() ? title.slice(0, 120) : 'Pick a folder'
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
@@ -1425,11 +1456,22 @@ app.whenReady().then(() => {
   ipcMain.handle('httpCapture:stop', () => stopManagedHttpCapture())
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
-  ipcMain.handle('browser:launch', async () => {
+  ipcMain.handle('browser:launch', () => launchCaptureBrowser())
+  // #220: load the verification page in the capture browser — a new tab if
+  // it is already open, which a second launch would refuse.
+  ipcMain.handle('httpCapture:verifyInBrowser', async (_e, nonce: unknown) => {
+    if (!isVerifyNonce(nonce)) return { ok: false, error: 'invalid verification nonce' }
+    const url = verifyUrl('http', nonce)
+    if (isBrowserRunning()) {
+      return (await openBrowserTab(url)) ? { ok: true } : { ok: false, error: 'Could not open a tab in the RedLog browser' }
+    }
+    return launchCaptureBrowser(url)
+  })
+  async function launchCaptureBrowser(startUrl?: string): Promise<{ ok: boolean; error?: string }> {
     if (!activeProject) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
-    const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
+    const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
     if (isManagedProxy(browserCfg.proxy, managedProxyEndpoint(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
@@ -1460,7 +1502,7 @@ app.whenReady().then(() => {
       if (event) eventBus.publish(event)
     }
     return result
-  })
+  }
   ipcMain.handle('browser:stop', () => { stopCdpMonitor(); return { stopped: stopBrowser() } })
 
   // --- CDP ---
@@ -1571,6 +1613,14 @@ app.whenReady().then(() => {
   // the button is behind it — and the only escape is Settings, which the
   // operator has to know exists.
   globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
+  // Screenshot now, from whatever tool the operator is in. RedLog's own
+  // windows (the HUD included) are taken off screen for the grab. A chord
+  // another app already owns is not an error worth refusing to start over;
+  // the palette and the title-bar button still capture.
+  if (!globalShortcut.register(QUICK_SHOT_ACCELERATOR, () => {
+    void screenshotAgent.captureNow('manual', undefined, { hideOwnWindows: true })
+      .then((file) => send(mainWindow, 'screenshot:shortcutResult', { ok: !!file }))
+  })) console.warn(`[shortcuts] ${QUICK_SHOT_ACCELERATOR} is taken by another application`)
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))

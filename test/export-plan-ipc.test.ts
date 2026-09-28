@@ -10,7 +10,7 @@ import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import type { IpcContext } from '../src/main/ipc/types'
 import type { ProjectMeta } from '../src/core/project-manager'
 import { ExportPlanRegistry } from '../src/core/export-plan'
-import { addExportEvent as addEvent } from './helpers/export-fixtures'
+import { addExportEvent as addEvent, addExportAttachment } from './helpers/export-fixtures'
 
 type Handler = (_event: unknown, input?: never) => unknown
 
@@ -180,6 +180,65 @@ describe('export plan IPC contract', () => {
     expect(manifest.exportPlan).toMatchObject({ id: resolved.plan.id, fingerprint: resolved.plan.fingerprint })
   })
 
+  // #222: a session that moved between two targets. Exporting only target A
+  // does not make its recording A-only, so the preview says the cast spans
+  // both, and the operator can leave it out of this delivery.
+  it('lists a cross-target cast, and leaves it out of the bundle when the operator does', () => {
+    addExportAttachment(dir, 'casts/term-1.cast', 'A and B typed here')
+    addExportAttachment(dir, 'casts/term-2.cast', 'A only')
+    addEvent('events', 'on-a', 1000, { targetId: 'a.test', data: { terminalId: 't1', io: { stream: 'cast', ref: path.join(dir, 'casts', 'term-1.cast'), off: 0, len: 3 } } })
+    addEvent('events', 'on-b', 1001, { targetId: 'b.test', data: { terminalId: 't1', io: { stream: 'cast', ref: path.join(dir, 'casts', 'term-1.cast'), off: 3, len: 3 } } })
+    addEvent('events', 'only-a', 1002, { targetId: 'a.test', data: { terminalId: 't2', io: { stream: 'cast', ref: path.join(dir, 'casts', 'term-2.cast'), off: 0, len: 3 } } })
+
+    type Plan = { id: string; fingerprint: string; request: { excludeAttachments: string[] }; counts: { attachmentsIncluded: number; attachmentsExcludedByOperator: number }; attachments: Array<{ id: string; targets: string[]; attribution: string; status: string }> }
+    const first = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    const cast = first.plan.attachments.find((a) => a.id === 'casts/term-1.cast')
+    expect(cast).toMatchObject({ targets: ['a.test', 'b.test'], attribution: 'cross-target', status: 'included' })
+
+    const second = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['casts/term-1.cast'] } as never) as { ok: true; plan: Plan }
+    expect(second.plan.fingerprint).not.toBe(first.plan.fingerprint)
+    expect(second.plan.counts.attachmentsExcludedByOperator).toBe(1)
+    expect(second.plan.counts.attachmentsIncluded).toBe(first.plan.counts.attachmentsIncluded - 1)
+    expect(second.plan.attachments.find((a) => a.id === 'casts/term-1.cast')?.status).toBe('excluded-by-operator')
+
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: second.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    expect(fs.existsSync(path.join(executed.artifactPath, 'casts', 'term-1.cast'))).toBe(false)
+    expect(fs.existsSync(path.join(executed.artifactPath, 'casts', 'term-2.cast'))).toBe(true)
+    // The original recording is never trimmed or deleted.
+    expect(fs.readFileSync(path.join(dir, 'casts', 'term-1.cast'), 'utf8')).toBe('A and B typed here')
+    const manifest = JSON.parse(fs.readFileSync(path.join(executed.artifactPath, 'manifest.json'), 'utf8')) as {
+      attachments: { excludedByOperator: string[]; casts: Array<{ path: string; targets: string[]; attribution: string }> }
+      files: Array<{ path: string }>
+    }
+    expect(manifest.attachments.excludedByOperator).toEqual(['casts/term-1.cast'])
+    expect(manifest.attachments.casts).toEqual([{ path: 'casts/term-2.cast', targets: ['a.test'], attribution: 'target' }])
+    expect(manifest.files.map((f) => f.path)).not.toContain('casts/term-1.cast')
+  })
+
+  it('carries an operator-added artifact with its event, and leaves it out when the operator does (#221)', () => {
+    addExportAttachment(dir, 'artifacts/abc-report.xml', '<nmaprun/>')
+    addExportAttachment(dir, 'artifacts/def-stray.txt', 'no event added this')
+    addEvent('events', 'art', 1000, { agentType: 'file_transfer', subtype: 'artifact_added', data: { stored: 'artifacts/abc-report.xml', sha256: 'x' } })
+
+    type Plan = { id: string; attachments: Array<{ id: string; kind: string; status: string }> }
+    const first = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    expect(first.plan.attachments.filter((a) => a.kind === 'artifact')).toEqual([
+      expect.objectContaining({ id: 'artifacts/abc-report.xml', status: 'included' })
+    ])
+    const kept = handlers.get('data:executeExportPlan')?.({}, { planId: first.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(fs.readFileSync(path.join(kept.artifactPath, 'artifacts', 'abc-report.xml'), 'utf8')).toBe('<nmaprun/>')
+    expect(fs.existsSync(path.join(kept.artifactPath, 'artifacts', 'def-stray.txt'))).toBe(false)
+    const manifest = JSON.parse(fs.readFileSync(path.join(kept.artifactPath, 'manifest.json'), 'utf8')) as { attachments: { artifacts: number }; files: Array<{ path: string }> }
+    expect(manifest.attachments.artifacts).toBe(1)
+    expect(manifest.files.map((f) => f.path)).toContain('artifacts/abc-report.xml')
+
+    const second = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['artifacts/abc-report.xml'] } as never) as { ok: true; plan: Plan }
+    const dropped = handlers.get('data:executeExportPlan')?.({}, { planId: second.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(dropped.ok).toBe(true)
+    expect(fs.existsSync(path.join(dropped.artifactPath, 'artifacts', 'abc-report.xml'))).toBe(false)
+  })
+
   it('uses the approved raw out-of-scope policy in both bundle preview and execution', () => {
     fs.writeFileSync(path.join(dir, 'config.yaml'), [
       'engagement:',
@@ -269,6 +328,16 @@ describe('export plan IPC contract', () => {
     fs.writeFileSync(shot, 'different-image-after-preview')
     const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as any
     expect(executed.ok).toBe(false)
+  })
+
+  it('pins an operator-added artifact by content, even when replacement bytes have the same length', () => {
+    addExportAttachment(dir, 'artifacts/report.txt', 'alpha')
+    addEvent('events', 'artifact-pinned', 1001, { agentType: 'file_transfer', subtype: 'artifact_added', data: { stored: 'artifacts/report.txt' } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as any
+    expect(resolved.ok).toBe(true)
+    fs.writeFileSync(path.join(dir, 'artifacts/report.txt'), 'bravo')
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never))
+      .toMatchObject({ ok: false, error: 'source-unavailable' })
   })
 
 })

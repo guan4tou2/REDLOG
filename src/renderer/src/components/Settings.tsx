@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { registerPendingSave } from '../lib/pendingSaves'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import type { ConfigState, HookInfo } from './settings/SettingsShared'
@@ -55,6 +56,8 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [hookLoading, setHookLoading] = useState<string | null>(null)
   const { t } = useI18n()
 
+  const configRef = useRef(config)
+  configRef.current = config
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadAttempt, setLoadAttempt] = useState(0)
   useEffect(() => {
@@ -129,6 +132,16 @@ export default function Settings({ request = null }: { request?: { page: Setting
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => registerPendingSave(async () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const next = pending.current ?? configRef.current
+    if (!next) return true
+    const ok = await settingsWrites.flush(next.engagement.id)
+    if (ok) pending.current = null
+    if (live.current) setSaveState(ok ? 'saved' : 'failed')
+    return ok
+  }), [])
+
   if (loadFailed) return (
     <div className="p-4 text-red-400" role="alert" data-testid="settings-load-failed">
       {t('settings.loadFailed')}{' '}
@@ -144,40 +157,42 @@ export default function Settings({ request = null }: { request?: { page: Setting
     {
       heading: t('settings.groupCapture'),
       pages: [
+        // #228: the two core captures, and nothing else. The product has two
+        // things it is for — commands and HTTP(S) — and the nav used to put
+        // them level with AI transcripts and the pack switches, under a
+        // heading ("What to record") that said nothing about which mattered.
         { id: 'hooks', label: t('settings.pageHooks') },
-        { id: 'agents', label: t('settings.pageAgents') },
-        { id: 'captureControl', label: t('settings.pageCaptureControl') },
         // The browser and its HTTP capture proxy decide what ends up in the
-        // record, so they belong with the other capture sources. They used to
-        // sit on Network, beside the VPN and IP-exposure settings, which
-        // answer a different question entirely.
+        // record. They used to sit on Network, beside the VPN and
+        // IP-exposure settings, which answer a different question entirely.
         { id: 'browser', label: t('settings.pageBrowser') }
+      ]
+    },
+    {
+      heading: t('settings.groupSources'),
+      pages: [
+        { id: 'captureControl', label: t('settings.pageCaptureControl') },
+        { id: 'agents', label: t('settings.pageAgents') }
       ]
     },
     {
       heading: t('settings.groupScope'),
       pages: [
         { id: 'scope', label: t('settings.pageScope') },
-        { id: 'network', label: t('settings.pageNetwork') }
-      ]
-    },
-    {
-      heading: t('settings.groupEvidence'),
-      pages: [
+        { id: 'network', label: t('settings.pageNetwork') },
+        // Chain verification is the other half of "can this record be handed
+        // over": what was in bounds, and whether the record is intact. It used
+        // to be the only page under its own heading, as Plugins was — a heading
+        // over one entry groups nothing and costs a row of scanning.
         { id: 'integrity', label: t('settings.pageIntegrity') }
-      ]
-    },
-    {
-      heading: t('settings.groupCollab'),
-      pages: [
-        { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     },
     {
       heading: t('settings.groupApp'),
       pages: [
         { id: 'general', label: t('settings.pageGeneral') },
-        { id: 'hud', label: t('settings.pageHud') }
+        { id: 'hud', label: t('settings.pageHud') },
+        { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     }
   ]

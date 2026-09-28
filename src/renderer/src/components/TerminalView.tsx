@@ -7,6 +7,7 @@ import { useI18n } from '../i18n'
 import { SetupCommandReview } from './SetupCommandReview'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
+import { SessionTargetControl } from './SessionTargetControl'
 import { usePersistentState } from '../lib/usePersistentState'
 
 interface Tab {
@@ -202,16 +203,16 @@ export default function TerminalView(): JSX.Element {
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
             <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
             {tab.alive && tab.castRecording === true && (
-              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>rec</span>
+              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>{t('terminal.castRecordingShort')}</span>
             )}
             {tab.alive && tab.castTruncated === true && (
-              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
+              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>{t('terminal.castTruncatedShort')}</span>
             )}
             {tab.alive && tab.castPaused === true && (
-              <span className="text-xs font-mono text-redlog-text-dim bg-redlog-elevated px-1 rounded" title={t('terminal.castPaused')}>paused</span>
+              <span className="text-xs font-mono text-redlog-text-dim bg-redlog-elevated px-1 rounded" title={t('terminal.castPaused')}>{t('terminal.castPausedShort')}</span>
             )}
             {tab.alive && tab.castRecording === false && tab.castTruncated !== true && tab.castPaused !== true && (
-              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
+              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>{t('terminal.castNotRecordingShort')}</span>
             )}
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
@@ -315,6 +316,7 @@ export default function TerminalView(): JSX.Element {
         {/* Font-size + search on the right — audit findings #14 (SearchAddon)
             and #15 (font size adjustable). */}
         <div className="ml-auto flex items-center gap-1 pr-1">
+          {activeTab && <SessionTargetControl terminalId={activeTab} />}
           <button
             onClick={() => setFontSize((s) => Math.max(8, s - 1))}
             className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"

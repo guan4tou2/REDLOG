@@ -33,7 +33,7 @@
   - 列出 python3、curl、你的 shell、mitmproxy（選用）；
   - 缺少的項目附上可複製的安裝指令；
   - 「開始使用」永遠可以按。
-- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端仍可記錄。
+- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
   - 失敗時查：`src/core/runtime-preflight.ts`、`RuntimeReadiness.tsx`。
 - [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app，就緒卡的 mitmproxy 顯示已找到。
   - 失敗時查：`src/main/login-path.ts`。
@@ -49,9 +49,11 @@
 
 ## BUILTIN TERMINAL
 
-- [ ] 新專案開在「先跑一個指令」畫面。在內建終端執行 `echo first-test`：
-  - 右側記錄帶亮起；
-  - 畫面顯示「已記下這道指令」。
+- [ ] 新專案開在「讓這場開始被完整記錄」畫面，右側並列「指令與終端」與「HTTP(S)」，兩項都是「○ 尚未驗證」；沒有「Web／主機／兩者」選項，HTTP(S) 不需先跑指令就能開始。
+- [ ] 在內建終端執行 `echo first-test`：
+  - 「指令與終端」變成「✓ 已驗證」，並寫明外部終端尚未接上；
+  - 「HTTP(S)」仍是「○ 尚未驗證」。
+- [ ] 按「稍後處理」離開 → 儀表板「核心擷取」列顯示 HTTP(S) 尚未完成。
 - [ ] 時間軸出現一筆 `command_start` 和一筆 `command_end`，結束碼是 0。
 - [ ] 專案目錄的 `casts/` 下有 `.cast` 檔（`~/.redlog/projects/<id>/casts/`），逐字稿看得到輸出。
 
@@ -69,6 +71,17 @@
   - `redlog-run nmap -sV 127.0.0.1`：有輸出；
   - `redlog-session`，然後跑同一道指令，再 `exit`：有輸出。
   - 記下：你**直覺**以為第一種會不會記到輸出？
+- [ ] **輸出驗證（#218）**：連線後的畫面有「確認輸出有被留下」：
+  - 直接貼 `printf '%s-%s\n' redlog-out <碼>`（不加 redlog-run）→ 顯示「只收到指令本身」；
+  - 貼畫面給的 `redlog-run printf …` → 顯示「✓ 輸出已記錄（經由 redlog-run）」；
+  - 在 `redlog-session` 裡跑同一個 printf → 顯示「經由 redlog-session」，搜尋 `redlog-out-<碼>` 找得到。
+- [ ] **tmux 與長 session（#218，需真機）**。每一項記下 Action / Expected / Actual：
+  - 先 `redlog-session`，裡面開 `tmux`：新 pane 的輸出有被錄到（外層 PTY 看得到整個畫面）；在 pane 裡再跑 `redlog-session` 會被拒絕並說明原因（避免重複錄製）。
+  - 反過來：在 tmux **裡**的每個 pane 各自跑 `redlog-session`：各 pane 分開錄；detach 後 attach 回來，錄製不會中斷或重複。
+  - `ssh`、`nc` 互動 session 在 `redlog-session` 裡：遠端輸出有進時間軸；`Ctrl-C` 中斷前景程式不會結束錄製；`exit` 正常結束時有 `session_end`（含 outputBytes）。
+  - 錄到一半關掉 RedLog 再開：shell 不中斷；`session_end` 或終端上的 `[redlog] omitted N bytes` 說明缺了多少，**不會**假裝補回。
+  - 暫停錄製一段：`pausedBytes` 反映那段；恢復後繼續錄。
+  - 用 `--max-bytes 1000` 跑大量輸出：終端照常，`truncated: true`。
 - [ ] **WSL（Windows）**：「記我的 WSL 終端」流程與上面相同，nonce 能驗證通過。
 - [ ] **破壞測試**：
   - 關掉 RedLog 後打指令：不記錄（這是設計）。重開後，你能不能理解剛才為什麼沒記到？
@@ -88,6 +101,15 @@
 - [ ] 畫面分開說明 CA 檔案、瀏覽器忽略憑證錯誤、系統信任未驗證；不把其中一項當成其他來源已就緒。
 - [ ] **按「開啟代理瀏覽器」**，打開一個 HTTP 網站，HTTP 頁出現這筆往返（有 request 和 response）。
 - [ ] **HTTPS 網站**：能正常瀏覽；或者失敗時，畫面上找得到「HTTPS 憑證」與 CA 路徑。記下 Friction。
+- [ ] **背景流量不會讓驗證通過（#220）**：啟動擷取瀏覽器但不按驗證，等 30 秒——HTTP、HTTPS 都仍是「○ 尚未驗證」。
+- [ ] 什麼都不做 60 秒：
+  - 列出原因：瀏覽器、HTTPS 憑證（未就緒時才出現）、終端代理選項；
+  - 之後再驗證一次，仍然會變成「✓ HTTP 擷取已驗證」。
+- [ ] **按「用擷取瀏覽器驗證」**：HTTP、HTTPS 都顯示「✓ 已驗證（Chromium）」，HTTPS 附帶「擷取瀏覽器會忽略憑證錯誤」的提醒；時間軸與 HTTP 頁**沒有** `redlog.verify.invalid` 的紀錄。
+- [ ] **終端驗證（CA 未信任）**：在內建終端跑畫面上的 HTTPS 指令 → curl 失敗，HTTPS 列顯示「有 client 拒絕了 RedLog 的憑證」。
+- [ ] **信任後再驗證**：跑「HTTPS 憑證」裡的信任指令，按「重新驗證」後再跑 HTTPS 指令 → 「✓ 已驗證（curl/…）」，沒有提醒。
+- [ ] **移除信任**：跑移除指令，確認它以指紋（Windows／macOS）或 `redlog-mitmproxy-<指紋>.crt`（Linux）移除；另一個工具的 mitmproxy CA（若有）仍在。重新驗證 HTTPS 指令應再次失敗。
+- [ ] **打開一個 HTTP 網站**，HTTP 頁出現這筆往返（有 request 和 response）。
 - [ ] **終端走代理的選項**：
   - 關閉時：內建終端的 `curl http://example.com` 不進 HTTP 頁；
   - 打開後**新開**內建終端，再 `curl` 一次：會進 HTTP 頁；
@@ -126,6 +148,7 @@
   - 顯示失敗原因；
   - `.zshrc` 內容不變，沒有寫出一半的檔（可能會留下一份備份檔，這沒關係）。
 - [ ] **pack 設定**：用舊版開過剪貼簿或 AI agent 監聽的專案，升級後照 CHANGELOG「Upgrading」的說明在 設定 ▸ 擷取 打開 pack，就恢復記錄。
+- [ ] **剪貼簿要另外勾選（#224）**：新專案打開「主機監看」pack → 行程／連線／檔案監看開始記錄，剪貼簿**沒有**；儀表板的剪貼簿列顯示關閉。勾選剪貼簿後才開始記錄。
 
 ## 真實工作流（30–60 分鐘，每個大版本一次）
 

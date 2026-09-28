@@ -86,3 +86,14 @@ states cannot report verified capture or installed system trust.
   the shell coverage disclosure remains in effect.
 - Canonical evidence and truthfulness: ../../.specify/memory/constitution.md
   and ../../docs/domain/glossary.md.
+
+## Integration with main #235 (2026-09-28)
+
+Main adds a local nonce probe on `redlog.verify.invalid`, answered by the addon
+and intentionally omitted from evidence. Keep it as the default connection
+check; it does not establish that a target response was saved. This feature's
+actual-request check lives in an expandable section beside it and keeps all
+FR-001–009 guarantees. Both paths reset on a proxy instance change. The
+first-run core-ready indicator follows the local probe's current state,
+including loss of verification, rather than retaining a previous success.
+The two core sources remain side by side; the old Web/Host focus choice is gone.

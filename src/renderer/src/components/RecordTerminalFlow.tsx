@@ -11,8 +11,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
-import { writeClipboard } from '../lib/clipboard'
+import { CopyButton } from './CopyButton'
 import { activationCommand, activationNonce, isActivationEvent, missingDependencies } from '../lib/terminalActivation'
+import { classifyCanaryEvent, mergeCanary, outputCanary, type CanaryResult } from '../lib/outputCanary'
 import type { RedLogEvent } from '../../../core/db/events'
 
 export type RecordTarget =
@@ -128,7 +129,7 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
           <p className="text-redlog-text">{t('firstRun.record.paste')}</p>
           <div className="flex items-center gap-2">
             <code data-testid="record-terminal-command" className="flex-1 min-w-0 break-all font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{command}</code>
-            <Button level="quiet" onClick={() => void writeClipboard(command)}>{t('firstRun.copy')}</Button>
+            <CopyButton text={command} />
           </div>
           {phase === 'waiting-for-activation' ? (
             <p className="text-redlog-text-faint">{t('firstRun.record.waiting')}</p>
@@ -168,7 +169,7 @@ export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }
             {c.remediation ? (
               <>
                 <code className="font-mono text-redlog-text-dim">{c.remediation}</code>
-                <Button level="quiet" onClick={() => void writeClipboard(c.remediation ?? '')}>{t('firstRun.copy')}</Button>
+                <CopyButton text={c.remediation ?? ''} />
               </>
             ) : (
               <span className="text-redlog-text-faint">{t('firstRun.installManually')}</span>
@@ -212,13 +213,52 @@ function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {
             <p className="text-redlog-text-dim">{t('firstRun.record.sessionHint')}</p>
             <div className="flex items-center gap-2">
               <code data-testid="record-terminal-session-command" className="font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">redlog-session</code>
-              <Button level="quiet" onClick={() => void writeClipboard('redlog-session')}>{t('firstRun.copy')}</Button>
+              <CopyButton text={'redlog-session'} />
             </div>
+            <OutputCheck />
           </>
         ) : (
           <p className="text-redlog-text-dim">{t('firstRun.record.outputBuiltin')}</p>
         )}
       </div>
+    </div>
+  )
+}
+
+/** #218: prove the output path, not just the hook. The canary prints text its
+ *  own command line does not contain, so an event carrying it in `stdout`
+ *  means output was recorded, and the same line with no output means only
+ *  the metadata was. Nothing is claimed about output that was never seen. */
+function OutputCheck(): JSX.Element {
+  const { t } = useI18n()
+  const [canary] = useState(() => outputCanary(activationNonce()))
+  const [result, setResult] = useState<CanaryResult | null>(null)
+
+  useEffect(() => {
+    if (result?.kind === 'output') return
+    return window.redlog.events.onNewBatch((evs: RedLogEvent[]) => {
+      setResult((prev) => evs.reduce<CanaryResult | null>((acc, ev) => mergeCanary(acc, classifyCanaryEvent(ev, canary)), prev))
+    })
+  }, [canary, result?.kind])
+
+  const viaRun = `redlog-run ${canary.command}`
+  return (
+    <div data-testid="record-terminal-output-check" className="space-y-1 pt-1">
+      <p className="text-redlog-text-dim">{t('firstRun.record.outputCheck')}</p>
+      <div className="flex items-center gap-2">
+        <code data-testid="record-terminal-output-command" title={viaRun} className="flex-1 min-w-0 truncate font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{viaRun}</code>
+        <CopyButton text={viaRun} />
+      </div>
+      <p className="text-redlog-text-faint">{t('firstRun.record.outputCheckSession', { command: canary.command })}</p>
+      {result?.kind === 'output' ? (
+        <p data-testid="record-terminal-output-verified" className="text-emerald-500 font-medium">
+          {t('firstRun.record.outputVerified', { via: result.capturedBy })}
+        </p>
+      ) : result?.kind === 'metadata-only' ? (
+        <p data-testid="record-terminal-output-metadata-only" className="text-amber-400">
+          {t('firstRun.record.outputMetadataOnly')}
+        </p>
+      ) : null}
     </div>
   )
 }
