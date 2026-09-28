@@ -47,9 +47,23 @@ describe('redaction cache (v0.12.1)', () => {
       minLength: 10
     })
     // High-entropy token that would hit the entropy branch — allowlist skips.
-    const r = redact('note: ALWAYS_OK_abcdEFGH1234!@#$ passed')
+    const TEXT = 'note: ALWAYS_OK_abcdEFGH1234!@#$ passed'
+    const r = redact(TEXT)
     // The token starts with `ALWAYS_OK_` prefix → matches the allowlist regex.
-    expect(r.redacted.every((s) => !s.hint.startsWith('16 chars'))).toBe(true)
+    //
+    // This used to read `r.redacted.every((s) => !s.hint.startsWith('16 chars'))`
+    // and asserted nothing twice over. `r.redacted` is empty here, and
+    // `[].every()` is true whatever the predicate says — so the test passed if
+    // redact() returned nothing for ANY reason, including not running. And the
+    // hint it looked for never existed: the entropy branch reports this token
+    // as `22 chars, 4.28 bits/char`, so even with the allowlist removed the
+    // predicate held and the assertion still passed.
+    expect(r.redacted).toEqual([])
+
+    // The control that makes the claim mean something: the allowlist is what
+    // emptied it, not an inert redactor. Without it the same token is caught.
+    configureRedaction({ allowlist: [], denylist: [], entropyThreshold: 3.0, minLength: 10 })
+    expect(redact(TEXT).redacted.map((s) => s.pattern)).toEqual(['entropy'])
   })
 
   it('configureRedaction invalidates the cache — next redact sees new rules', () => {
