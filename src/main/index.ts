@@ -13,7 +13,7 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
 import {
-  createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
+  createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
 import { isVerifyNonce, verifyUrl } from '../core/http-verify'
@@ -1436,7 +1436,7 @@ app.whenReady().then(() => {
     const context = {
       browserUrl: browser.url || undefined,
       browserTitle: browser.title || undefined,
-      externalIP: alertRuntime.ipStatus().externalIP || undefined
+      ...egressContext(alertRuntime.ipProducer.getState())
     }
     return createBookmark({
       title: data.title || browser.title || 'Untitled',

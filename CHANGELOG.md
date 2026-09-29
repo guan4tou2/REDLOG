@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **A bookmark could record an address nobody had just read.** When the IP
+  lookup had failed, or air-gap mode was on, the IP producer still held the
+  last address it had read. A new bookmark saved that address as its external
+  IP, and the detail pane showed it under "Auto-captured Context" as the
+  address in use. A bookmark made without a current reading now records the
+  address as `lastKnownExternalIP`, with the time that address was last read.
+  The pane shows it as "Last known IP (read …)", and `externalIP` is set only
+  from a current reading. Existing bookmarks are not rewritten. The producer
+  now dates its stable address (`externalReadAt`): a read that returns an
+  unconfirmed new address does not move that date. See
+  `test/bookmark-egress.test.ts` and `test/bookmarks-view.test.tsx`.
+
 - **The skill's mandated first call had nothing to bind to.** The
   `redlog-pentest` skill tells the agent to call `redlog_session_register`
   on its first turn — the call that opts a session into capture so RedLog

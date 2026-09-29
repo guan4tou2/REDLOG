@@ -130,6 +130,14 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 
 **Response:** `{ bookmarks: Bookmark[] }`
 
+A bookmark's `context.externalIP` is the egress address at the time the
+bookmark was made, and it is set only from a current IP reading. When there
+was no current reading (the lookup had failed, or air-gap mode was on),
+`externalIP` is absent. In its place, `context.lastKnownExternalIP` is
+`{ address, readAt }`: the last address read, and when (ms since the epoch).
+Rows written before this change carry only `externalIP`, which was recorded
+whether or not the reading was current.
+
 #### `POST /api/bookmarks`
 
 **Body:** `{ title, url?, note? }`
