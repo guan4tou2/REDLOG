@@ -16,6 +16,86 @@ let currentProjectDir: string | null = null
 // stale handle from the previous project.
 let roDb: Database.Database | null = null
 
+
+// Every nullable column of the two event tables, added to an older project
+// that predates it.
+//
+// `CREATE TABLE IF NOT EXISTS` does nothing to a database that exists, so a
+// column added to the statement later never appears in an older project — and
+// the CREATE INDEX that names it fails on open. That is what "no such column:
+// subtype" was: v0.16 denormalized the column out of the JSON, and every
+// engagement recorded before it became unopenable by every build after it.
+//
+// The list is every nullable column rather than only the ones known to have
+// been added late, because a column that is already there is skipped -- listing
+// one that was always present costs nothing, and leaving one out is how this
+// bug happened. NOT NULL columns cannot be listed: ALTER TABLE ADD COLUMN
+// refuses them without a default, and their absence is a louder problem than
+// this function should paper over.
+//
+// A column denormalized out of existing data needs a `backfill`, because the
+// queries read the column now: without it every older row answers NULL and the
+// timeline drops its own history silently, which is worse than refusing to
+// open (constitution I and II).
+const NULLABLE_COLUMNS: Record<string, Array<{ name: string; decl: string; backfill?: string }>> = {
+  events: [
+    { name: 'subtype', decl: 'TEXT', backfill: `json_extract(data, '$.subtype')` },
+    { name: 'source_ip', decl: 'TEXT' },
+    { name: 'target_id', decl: 'TEXT' },
+    { name: 'hash', decl: 'TEXT' },
+    { name: 'prev_hash', decl: 'TEXT' },
+    { name: 'monotonic_ns', decl: 'TEXT' },
+    { name: 'ntp_offset_ms', decl: 'INTEGER' },
+    { name: 'signature', decl: 'TEXT' },
+    { name: 'raw_ref', decl: 'TEXT' },
+    { name: 'mapper', decl: 'TEXT' },
+    { name: 'schema_version', decl: 'INTEGER' },
+    { name: 'ts_source', decl: 'INTEGER' },
+    { name: 'source', decl: 'TEXT' },
+    { name: 'transcript_uuid', decl: 'TEXT' }
+  ],
+  events_logged: [
+    { name: 'subtype', decl: 'TEXT', backfill: `json_extract(data, '$.subtype')` },
+    { name: 'source_ip', decl: 'TEXT' },
+    { name: 'target_id', decl: 'TEXT' },
+    { name: 'raw_ref', decl: 'TEXT' },
+    { name: 'mapper', decl: 'TEXT' },
+    { name: 'schema_version', decl: 'INTEGER' },
+    { name: 'ts_source', decl: 'INTEGER' },
+    { name: 'source', decl: 'TEXT' }
+  ]
+}
+
+function migrateAddedColumns(database: Database.Database): void {
+  const tableExists = database.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+  )
+  for (const [table, columns] of Object.entries(NULLABLE_COLUMNS)) {
+    if (!tableExists.get(table)) continue   // fresh project: CREATE TABLE has them
+    const present = new Set(
+      (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name)
+    )
+    for (const column of columns) {
+      if (present.has(column.name)) continue
+      database.exec(`ALTER TABLE ${table} ADD COLUMN ${column.name} ${column.decl}`)
+      if (!column.backfill) continue
+      // Every value is NULL a moment after the ALTER, so this cannot overwrite
+      // anything; a later open finds the column present and skips it.
+      //
+      // The append-only trigger names `subtype` among the immutable fields, so
+      // it has to come off first. Two things make that safe here. It is
+      // reinstalled unconditionally at the end of initDB by
+      // assertEventsAppendOnly(), before anything can write. And the chain does
+      // not see this column at all: the hash is taken over the event's `data`,
+      // and the denormalized copy is written afterwards from `data.subtype`
+      // (event-write.ts). The backfill writes exactly what the current code
+      // would have written, from the same bytes the hash covers.
+      database.exec('DROP TRIGGER IF EXISTS no_update_events_hash')
+      database.exec(`UPDATE ${table} SET ${column.name} = ${column.backfill}`)
+    }
+  }
+}
+
 export function initDB(projectDir: string): Database.Database {
   if (db) closeDB()
   // Every project open is a fresh session — regenerate sessionId so events
@@ -33,6 +113,8 @@ export function initDB(projectDir: string): Database.Database {
 
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+
+  migrateAddedColumns(db)
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS events (
