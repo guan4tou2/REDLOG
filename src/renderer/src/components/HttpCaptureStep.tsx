@@ -22,6 +22,7 @@ import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
 import { requestRunInTerminal } from '../lib/terminalRunner'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { isMac, isWindows } from '../lib/platform'
 import {
   applyVerifyReport, httpTimeoutReasons, httpsProvesTrust, newAttempt, verifyCommand, type VerifyAttempt
@@ -166,6 +167,11 @@ export function HttpCaptureStep({ onVerified }: {
     window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
   }, [])
 
+  // mitmproxy may have been installed in a terminal while RedLog was in the
+  // background. The proxy's own status already refreshes on a timer below;
+  // this is the other half of the same question.
+  useRevalidateOnFocus(() => { void check() })
+
   // The proxy has other controls — the app-wide toggle beside this screen,
   // Settings — and this card is on screen from the first frame (#217). Read
   // once at mount, it kept offering "Start HTTP capture" for a proxy the
@@ -248,7 +254,6 @@ export function HttpCaptureStep({ onVerified }: {
             <code className="font-mono text-redlog-text-dim">{MITM_INSTALL}</code>
             <CopyButton text={MITM_INSTALL} />
           </div>
-          <Button level="secondary" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">

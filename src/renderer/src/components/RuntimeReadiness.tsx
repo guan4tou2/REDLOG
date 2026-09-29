@@ -5,6 +5,7 @@ import { writeClipboard } from '../lib/clipboard'
 import {
   markReadinessSeen, onOpenRuntimeReadiness, readinessSeen, tildePath
 } from '../lib/runtimeReadiness'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 
 // Spec 036. The POSIX shell hook needs python3 and curl; without them it
 // installs cleanly and records nothing. This card says so once, on first
@@ -28,6 +29,9 @@ function usePreflight(): { data: RuntimePreflight | null; status: 'loading' | 'r
       .catch(() => setStatus('error'))
   }, [])
   useEffect(() => { recheck() }, [recheck])
+  // The machine can change while RedLog is in the background; returning to the
+  // window asks again, so the card needs no button for it.
+  useRevalidateOnFocus(recheck)
   return { data, status, recheck }
 }
 
@@ -168,7 +172,6 @@ function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element 
         </p>
       )}
       <div className="mt-3 flex justify-end gap-2">
-        <Button level="quiet" onClick={recheck}>{t('readiness.recheck')}</Button>
         <Button onClick={onDone}>{t('readiness.start')}</Button>
       </div>
     </section>

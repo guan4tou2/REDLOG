@@ -261,7 +261,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
 })
 
 describe('first run: record my terminal', () => {
-  it('blocks the install when curl is missing, names curl and its remediation, and re-checks on demand', async () => {
+  it('blocks the install when curl is missing, names curl, and resumes when the operator comes back', async () => {
     install({ pre: preflight({ missing: ['curl'] }) })
     draw()
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
@@ -271,8 +271,12 @@ describe('first run: record my terminal', () => {
     expect(blocked.textContent).toContain('brew install curl')
     expect(bridge.install).not.toHaveBeenCalled()
 
+    // No button for this: the operator went to a terminal, installed curl, and
+    // came back. That return is the re-check, and the click that started this
+    // flow was already consent to install the hook.
+    expect(blocked.textContent).not.toContain('重新檢查')
     bridge.preflight.mockResolvedValue(preflight())
-    fireEvent.click(screen.getByText('重新檢查'))
+    act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => expect(bridge.install).toHaveBeenCalledWith('shell-zsh'))
   })
 
@@ -322,7 +326,7 @@ describe('first run: record my terminal', () => {
     // The retry re-runs preflight — which now blocks on python3.
     expect((await screen.findByTestId('record-terminal-missing')).textContent).toContain('python3')
     bridge.preflight.mockResolvedValue(preflight())
-    fireEvent.click(screen.getByText('重新檢查'))
+    act(() => { window.dispatchEvent(new Event('focus')) })
     const second = (await screen.findByTestId('record-terminal-command')).textContent
     expect(second).not.toBe(first)
   })
@@ -361,14 +365,19 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
 })
 
 describe('first run: HTTP(S) card', () => {
-  it('when mitmdump is missing, says so with the copyable install command and a re-check', async () => {
+  it('when mitmdump is missing, says so with the copyable install command and re-probes on return', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()
     const card = await screen.findByTestId('first-run-http')
     expect(card.textContent).toContain('HTTP(S)')
     await waitFor(() => expect(card.textContent).toContain('mitmproxy 尚未安裝'))
     expect(card.textContent).toContain('uv tool install mitmproxy')
-    expect(card.textContent).toContain('重新檢查')
+    // No re-check button: mitmproxy may have been installed in a terminal
+    // while RedLog was in the background, and coming back asks again.
+    expect(card.textContent).not.toContain('重新檢查')
+    const before = bridge.preflight.mock.calls.length
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(bridge.preflight.mock.calls.length).toBeGreaterThan(before))
   })
 
   it('when running, shows the listen address, the browser check, and the accurate routeTerminals limit', async () => {

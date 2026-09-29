@@ -33,6 +33,7 @@ import { Button } from './Button'
 import { RecordTerminalFlow, MissingList, ExecutionPolicyBlocker, type RecordTarget } from './RecordTerminalFlow'
 import { HttpCaptureStep } from './HttpCaptureStep'
 import { commandCaptureBlockers, missingDependencies, shellLabel } from '../lib/terminalActivation'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { commandsVerification, coreCaptureReady } from '../lib/coreCapture'
 import { ChevronRight } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
@@ -76,6 +77,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       .catch(() => setPreflightFailed(true))
   }
   useEffect(checkRuntime, [])
+  // Coming back to the window is the re-check. The operator left to install
+  // something; there is nothing for them to press on the way back.
+  useRevalidateOnFocus(checkRuntime)
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -207,13 +211,12 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
             ) : blockers.length > 0 ? (
               <div data-testid="first-run-blocked" className="space-y-2">
                 {policyBlocker ? (
-                  <ExecutionPolicyBlocker blocker={policyBlocker} onRecheck={checkRuntime} />
+                  <ExecutionPolicyBlocker blocker={policyBlocker} />
                 ) : (
                   <div data-testid="first-run-missing-deps" className="space-y-2">
                     <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
                     <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
                     <MissingList missing={missing} />
-                    <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
                   </div>
                 )}
               </div>
