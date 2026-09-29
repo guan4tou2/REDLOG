@@ -630,7 +630,6 @@
   "project.excludeTargets": "排除目標",
   "project.excludePlaceholder": "10.10.11.1\nprod-db.corp.local",
   "project.scopePlaceholder": "10.10.11.0/24\n*.corp.local",
-  "project.scopeEmptyNote": "尚未設定測試範圍。RedLog 仍會記錄，但無法判斷越界，也不會依範圍遮蔽交付資料。",
   "project.invalidEntries": "不是有效的範圍項目，不會儲存：{{entries}}",
   "project.ignoreLocalTraffic": "忽略本機自身流量（{{ip}}）",
   "project.whitelist": "安全 IP —— 攻擊出口（綠）",

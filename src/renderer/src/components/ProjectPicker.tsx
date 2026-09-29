@@ -223,9 +223,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               placeholder={t('project.scopePlaceholder')}
               invalid={scope.invalid}
             />
-            {scope.valid.length === 0 && (
-              <p className="text-xs text-redlog-text-faint -mt-2">{t('project.scopeEmptyNote')}</p>
-            )}
             <ScopeTextField
               id="project-exclude"
               label={t('project.excludeTargets')}

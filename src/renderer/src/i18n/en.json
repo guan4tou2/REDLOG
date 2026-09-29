@@ -630,7 +630,6 @@
   "project.excludeTargets": "Excluded targets",
   "project.excludePlaceholder": "10.10.11.1\nprod-db.corp.local",
   "project.scopePlaceholder": "10.10.11.0/24\n*.corp.local",
-  "project.scopeEmptyNote": "No scope set yet. RedLog still records, but it cannot tell when you go out of scope, and it will not mask handoff data by scope.",
   "project.invalidEntries": "Not valid scope entries, will not be saved: {{entries}}",
   "project.ignoreLocalTraffic": "Ignore this machine's own traffic ({{ip}})",
   "project.whitelist": "Safe IPs — attack exits (green)",
