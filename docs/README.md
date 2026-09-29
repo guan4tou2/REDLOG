@@ -12,7 +12,7 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 
 - **[操作者手冊](USER-GUIDE.md)** — for the person *using* RedLog rather than building it: the first ten minutes, what each screen answers, how to wire the three capture sources that matter, how to export. 繁體中文, like the interface.
 - **Picking the work up?** Work is specified and tracked in [`specs/`](../specs/) (Spec Kit — one directory per change, each with spec, plan, tasks and verification); the rules every change is checked against are in [`.specify/memory/constitution.md`](../.specify/memory/constitution.md). [Architecture](ARCHITECTURE.md) is the current map of the code, and [Testing](TESTING.md) lists every config option with the test that proves it.
-- **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to MCP tool usage.
+- **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to driving RedLog from an agent.
 
 ## Product & planning
 
@@ -88,11 +88,11 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Extending RedLog
 
-- **[Plugin development](plugin-development.md)** — build a plugin: the manifest format, 🟢 declarative contributions (`lootPatterns`, `redaction`, `commandTags` for stamping MITRE/custom fields onto shell events, `targetExtractors`, `eventTypes`, `capture` integrations) and 🔴 privileged MCP tools, the capability-scoped `ctx` API, and the content-hash-pinned trust gate. RedLog ships with **no** `commandTags` — install per shop or let your SIEM tag downstream. Hot-reload via Settings ▸ Plugins ▸ Reload; drop plugin dirs into `~/.redlog/plugins/` (Open folder button).
+- **[Plugin development](plugin-development.md)** — build a plugin: the manifest format, 🟢 declarative contributions (`lootPatterns`, `redaction`, `commandTags` for stamping MITRE/custom fields onto shell events, `targetExtractors`, `eventTypes`, `capture` integrations) and 🔴 `tailers` (bundled plugins only), behind the content-hash-pinned trust gate. RedLog ships with **no** `commandTags` — install per shop or let your SIEM tag downstream. Hot-reload via Settings ▸ Plugins ▸ Reload; drop plugin dirs into `~/.redlog/plugins/` (Open folder button).
 
 ## Agent skills (drop-in)
 
-- **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill: hooks record, MCP operates; session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.
+- **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill: hooks record, the API operates; session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.
 
 ## Windows
 
@@ -105,7 +105,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Machine-readable
 
-- **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema (18 functions, matches the MCP surface).
+- **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema (18 functions, matches the control-plane API surface).
 
 ## Related source
 
