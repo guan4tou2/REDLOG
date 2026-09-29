@@ -4,7 +4,6 @@ import {
   distributeLaneEvents,
   distributeRowEvents,
   computeRecentEvents,
-  computeSliceCount,
   type ViewportWindow
 } from '../src/renderer/src/lib/timelineFilters'
 import type { LaneId } from '../src/renderer/src/lib/timelineDomain'
@@ -173,19 +172,3 @@ describe('computeRecentEvents', () => {
   })
 })
 
-describe('computeSliceCount', () => {
-  it('returns total count when whole track visible', () => {
-    const events = [evt('a', 'shell'), evt('b', 'dns')]
-    expect(computeSliceCount(events, makeVp())).toBe(2)
-  })
-
-  it('counts only in-viewport events when scrolled', () => {
-    const events = [
-      evt('a', 'shell', {}, { timestamp: 100 }),
-      evt('b', 'shell', {}, { timestamp: 500 }),
-      evt('c', 'shell', {}, { timestamp: 900 })
-    ]
-    const vp = makeVp({ left: 40, width: 30, fromX: (px) => px })
-    expect(computeSliceCount(events, vp)).toBe(1)
-  })
-})

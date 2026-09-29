@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { useHttpCaptureStatus } from '../hooks/useHttpCaptureStatus'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
 import { CaptureHealthCard } from './CaptureHealth'
@@ -37,28 +38,19 @@ export const StatCard = memo(function StatCard({ label, value, sub, tone = 'neut
 export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [proxy, setProxy] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
-  const [proxyBusy, setProxyBusy] = useState(false)
+  const { status: proxy, busy: proxyBusy, toggle, refresh } = useHttpCaptureStatus()
   const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.browser.status().then((s) => setRunning(s.running)).catch(() => {})
-    const refresh = (): void => { window.redlog.httpCapture.status().then(setProxy).catch(() => {}) }
-    refresh()
-    const timer = setInterval(refresh, 3_000)
-    return () => clearInterval(timer)
   }, [])
 
   const toggleProxy = async (): Promise<void> => {
-    setProxyBusy(true)
-    const next = proxy.state === 'running'
-      ? await window.redlog.httpCapture.stop()
-      : await window.redlog.httpCapture.start()
-    setProxy(next)
+    if (proxy.state === 'unknown') { await refresh(); return }
+    const next = await toggle()
     if (next.state === 'running') toast(t('httpCapture.started'), 'success')
     else if (next.state === 'stopped') toast(t('httpCapture.stopped'), 'info')
     else toast(next.error || t('httpCapture.failed'), 'error')
-    setProxyBusy(false)
   }
 
   const handleClick = async (): Promise<void> => {
@@ -99,7 +91,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
             : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60'
       }`}
     >
-      {proxyBusy || proxy.state === 'starting' ? t('httpCapture.starting')
+      {proxy.state === 'unknown' ? t('common.retry') : proxyBusy || proxy.state === 'starting' ? t('httpCapture.starting')
         : proxy.state === 'running' ? t('httpCapture.stop')
           : t('httpCapture.start')}
     </button>

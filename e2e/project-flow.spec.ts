@@ -23,6 +23,7 @@ test.describe.serial('project flow', () => {
   })
 
   test('creates a project and opens the dashboard', async () => {
+    await expect(page).toHaveTitle(/RedLog/)
     // Fresh HOME → no projects yet, so ProjectPicker owns the window.
     await expect(page.locator('[data-testid="project-picker"]')).toBeVisible()
 

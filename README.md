@@ -539,6 +539,11 @@ npm run dev            # run the app with hot reload
 npm run build          # production build of main + renderer
 ```
 
+### Testing
+
+See [the test guide](e2e/README.md) for unit, Electron, real HTTP/HTTPS and
+packaged-app checks, their prerequisites, and CI coverage.
+
 ### Packaging
 
 ```bash

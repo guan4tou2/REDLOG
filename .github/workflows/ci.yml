@@ -107,7 +107,7 @@ jobs:
             libgtk-3-0 libasound2t64 xvfb
 
       - name: Build the app the e2e test launches
-        # e2e/smoke.spec.ts asserts out/main/index.js exists — build it first.
+        # e2e/helpers.ts checks out/main/index.js before launching — build it first.
         run: npm run build
 
       - name: Playwright for Electron

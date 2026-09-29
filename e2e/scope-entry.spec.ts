@@ -20,6 +20,8 @@ test.describe.serial('scope entry and project identity', () => {
     await page.locator('#project-exclude').fill('127.0.0.1')
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'dashboard')
+    // Do not reload: the actual Create path must initialize first-run itself.
+    await expect(page.getByTestId('first-run-strip')).toBeVisible()
 
     const config = await page.evaluate(async () => {
       return (window as unknown as { redlog: { config: { get: () => Promise<{ engagement: { id: string }; scope: { excludeTargets: string[] } }> } } }).redlog.config.get()

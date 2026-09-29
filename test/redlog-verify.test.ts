@@ -68,6 +68,21 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     else process.env.REDLOG_KEYS_DIR = prevKeysEnv
   })
 
+  it('verifies a non-contiguous projection without claiming a complete chain', () => {
+    const op = ops.ensurePrimaryOperator('projection-op', 'Projection', 'projection-token')
+    const ids: string[] = []
+    for (let i=0;i<3;i++) ids.push(events.insertEvent('shell', { subtype: 'command_start', command: `echo ${i}` }, { operatorId: op.id })!.id)
+    const bundle = bundleExport.exportBundle('default', { outRoot: tmpDir, includeEventIds: new Set([ids[0],ids[2]]) })
+    expect(bundle.manifest.evidence.kind).toBe('projection')
+    expect(bundle.manifest.tiers.chained).toBe(2)
+    const r=spawnSync(pythonBin!, [verifierPath,bundle.outDir], { encoding:'utf8' })
+    expect(r.status, r.stdout+r.stderr).toBe(0)
+    expect(r.stdout).toContain('source-chain completeness NOT verified')
+    expect(r.stdout).not.toContain('Chain            : INTACT')
+    fs.appendFileSync(path.join(bundle.outDir,'events.jsonl'), '{}\n')
+    expect(spawnSync(pythonBin!, [verifierPath,bundle.outDir], { encoding:'utf8' }).status).not.toBe(0)
+  })
+
   // 30s timeout: Windows CI takes ~5-8s just to cold-spawn python3 the first
   // time (interpreter warmup + PATH resolution + antivirus scan), so the
   // default 5s ceiling races. macOS/Linux finish in <1s.

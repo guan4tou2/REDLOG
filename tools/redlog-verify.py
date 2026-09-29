@@ -14,7 +14,7 @@ directory (or a .zip file) and validates:
      and skips signature verification; the hash chain still catches most
      tampering.
 
-Exit code 0 = chain intact (signature verification may have been skipped).
+Exit code 0 = declared verification mode passed (signatures may be skipped).
 Exit code 1 = chain broken or a signature verification failed.
 Exit code 2 = bundle malformed / files missing / usage error.
 
@@ -185,6 +185,18 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"ERROR: manifest.json unreadable: {e}", file=sys.stderr)
         return 2
 
+    evidence = manifest.get("evidence") or {}
+    kind = evidence.get("kind")
+    if kind not in ("complete-chain", "projection"):
+        print("ERROR: unknown or missing evidence verification mode", file=sys.stderr)
+        return 2
+    projection = kind == "projection"
+    transformed = set(evidence.get("transformedEventIds") or [])
+    if transformed and not projection:
+        print("ERROR: transformed records require projection mode", file=sys.stderr)
+        return 1
+    seen_ids = set()
+
     operators = _load_operators(bundle_dir)
     ed_verify = _load_ed25519_verifier()
     if ed_verify is None:
@@ -210,8 +222,14 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         walked += 1
         rid = row.get("id", f"<line {lineno}>")
 
+        if not isinstance(rid, str) or rid in seen_ids:
+            print("ERROR: duplicate or invalid event ID", file=sys.stderr)
+            return 1
+        seen_ids.add(rid)
+        if rid in transformed:
+            continue  # Only the delivered file digest can verify these bytes.
         row_prev = row.get("prev_hash")
-        if row_prev != expected_prev:
+        if not projection and row_prev != expected_prev:
             print(
                 f"CHAIN BROKEN at event {rid}: prev_hash mismatch "
                 f"(expected {expected_prev!r}, got {row_prev!r})",
@@ -284,7 +302,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     head_ok: Optional[bool] = None
     manifest_head = manifest.get("chainHead") or {}
     manifest_head_hash = manifest_head.get("hash")
-    if last_hash and manifest_head_hash:
+    if not projection and last_hash and manifest_head_hash:
         recomputed = hashlib.sha256(
             last_hash.encode("utf-8") + str(walked).encode("utf-8")
         ).hexdigest()
@@ -298,10 +316,21 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     logged_rows: Optional[int] = None
     if logged_path.exists():
         try:
-            with logged_path.open("r", encoding="utf-8") as f:
-                logged_rows = sum(1 for line in f if line.strip())
-        except Exception:
-            logged_rows = None
+            logged_rows = 0
+            for _, row in _iter_events(logged_path):
+                rid = row.get("id")
+                if not isinstance(rid, str) or rid in seen_ids:
+                    print("ERROR: duplicate or invalid event ID", file=sys.stderr)
+                    return 1
+                seen_ids.add(rid)
+                logged_rows += 1
+        except Exception as error:
+            print(f"ERROR: unreadable logged tier: {error}", file=sys.stderr)
+            return 1
+    tiers = manifest.get("tiers") or {}
+    if tiers.get("chained") != walked or tiers.get("logged") != logged_rows or not transformed.issubset(seen_ids):
+        print("ERROR: delivered counts or transformed IDs mismatch", file=sys.stderr)
+        return 1
 
     # ---------------------------------------------------------------------
     # Manifest file digests. `manifest["files"]` lists every artefact the
@@ -313,6 +342,10 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     # "chain intact" while being a different image than the operator captured.
     # ---------------------------------------------------------------------
     file_entries = manifest.get("files") or []
+    listed = [entry.get("path") for entry in file_entries]
+    if len(listed) != len(set(listed)) or not {"events.jsonl", "events_logged.jsonl", "operators.json"}.issubset(listed):
+        print("ERROR: required evidence files missing from manifest or duplicated", file=sys.stderr)
+        return 1
     files_checked = 0
     files_bad: List[str] = []
     files_missing: List[str] = []
@@ -326,6 +359,9 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         if not rel or not want or rel in SELF:
             continue
         target_file = bundle_dir / rel
+        if bundle_dir.resolve() not in target_file.resolve().parents:
+            print("ERROR: manifest path escapes bundle", file=sys.stderr)
+            return 1
         if not target_file.exists():
             files_missing.append(rel)
             continue
@@ -348,7 +384,11 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     print(f"Bundle version   : {bundle_version}")
     print(f"Engagement ID    : {bundle_engagement}")
     print(f"Events walked    : {walked}")
-    print(f"Chain            : INTACT")
+    if projection:
+        print("Projection files checked; source-chain completeness NOT verified")
+        print(f"Transformed rows : {len(transformed)} (source bytes NOT verified)")
+    else:
+        print("Chain            : INTACT")
     if head_ok is True:
         print(f"Chain-head match : yes (recomputed matches manifest.chainHead)")
     elif head_ok is False:

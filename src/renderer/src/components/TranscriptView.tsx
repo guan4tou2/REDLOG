@@ -8,6 +8,7 @@ import { UnappliedFilterNotice } from './FilterNotice'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
 import { AlignLeft } from 'lucide-react'
+import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { blockToMarkdown, blocksToMarkdown } from '../lib/transcriptSnippet'
 import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcriptPicks'
@@ -325,6 +326,9 @@ export default function TranscriptView({ onOpenInTimeline }: {
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
+  const unsupportedExport = useMemo<ExportRequest>(() => ({ format: 'json', subset: { kind: 'selection', projection: 'events', filter: toEventFilter(sharedFilter) } }), [sharedFilter])
+  // Blocks, pair completion and picked steps are not a raw event predicate.
+  useContributeExport({ label: t('export.current'), request: unsupportedExport, disabledReason: t('export.transcriptLimit') })
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')

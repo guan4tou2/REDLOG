@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- New projects enter first-run setup without reloading. Project switches discard
+  stale visibility responses. HTTP controls in Settings and the toolbar refresh
+  from the same status hook, report unreadable status, and recover after failed actions.
+
 - **Main integration preserves both capture checks.** The local HTTP(S) nonce
   probe verifies the client-to-proxy connection; an expandable real-request
   check verifies a recorded target response. Proxy restart clears both checks
@@ -227,8 +231,8 @@ for full commit body + generated notes.
 
 ## v0.18.0 — 2026-09-27
 
-> **Status:** tagged; the GitHub Release and its installers are not published
-> yet. Remove this note when they are.
+> **Published:** GitHub Release and installers were published on 2026-09-27
+> (Asia/Taipei). Changes under Unreleased are not included in these installers.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one

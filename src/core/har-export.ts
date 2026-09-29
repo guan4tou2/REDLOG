@@ -5,6 +5,7 @@ import type { ScopeForSanitize } from './scope-sanitize'
 import type { ExportSnapshot } from './export-plan'
 
 interface HarEntry {
+  _redlog: { flowId: string; requestEventId: string | null; responseEventId: string | null; incomplete: boolean }
   startedDateTime: string
   time: number
   request: {
@@ -150,16 +151,17 @@ export function exportHar(opts?: {
     const d = ev.data as Record<string, unknown> | undefined
     if (!d) continue
     const flowId = d.flow_id as string | undefined
-    if (!flowId) continue
+    if (typeof flowId !== 'string' || !flowId) continue
     if (d.subtype === 'http_request_start') requests.set(flowId, ev)
-    else if (d.subtype === 'http_response') responses.set(flowId, ev)
+    else if (d.subtype === 'http_response' && !responses.has(flowId)) responses.set(flowId, ev)
   }
 
   const entries: HarEntry[] = []
 
-  for (const [flowId, reqEv] of requests) {
-    const rd = reqEv.data as Record<string, unknown>
+  for (const flowId of new Set([...requests.keys(), ...responses.keys()])) {
+    const reqEv = requests.get(flowId)
     const respEv = responses.get(flowId)
+    const rd = (reqEv?.data ?? {}) as Record<string, unknown>
     const rsd = respEv?.data as Record<string, unknown> | undefined
 
     const reqBody = resolveBody(
@@ -174,11 +176,12 @@ export function exportHar(opts?: {
     const timing = rsd?.timing as Record<string, number> | undefined
 
     const entry: HarEntry = {
-      startedDateTime: new Date(reqEv.timestamp).toISOString(),
+      _redlog: { flowId, requestEventId: reqEv?.id ?? null, responseEventId: respEv?.id ?? null, incomplete: !reqEv || !respEv },
+      startedDateTime: new Date(reqEv?.timestamp ?? respEv!.timestamp).toISOString(),
       time: (rsd?.duration_ms as number) ?? -1,
       request: {
-        method: String(rd.method ?? 'GET'),
-        url: String(rd.url ?? ''),
+        method: String(rd.method ?? rsd?.method ?? ''),
+        url: String(rd.url ?? rsd?.url ?? ''),
         httpVersion: String(rd.http_version ?? rsd?.http_version ?? 'HTTP/1.1'),
         cookies: requestCookiesToHar(rd.cookies),
         headers: headersToHar(rd.request_headers),

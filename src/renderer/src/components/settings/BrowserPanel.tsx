@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useHttpCaptureStatus } from '../../hooks/useHttpCaptureStatus'
 import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
@@ -17,11 +18,10 @@ export default function BrowserPanel({
   const listenHost = (httpCapture.listenHost ?? DEFAULT_CAPTURE_HOST) || DEFAULT_CAPTURE_HOST
   const exposed = !isLoopbackHost(listenHost)
   const [detected, setDetected] = useState<string | null>(null)
-  const [proxyStatus, setProxyStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
+  const { status: proxyStatus, busy: proxyBusy, toggle: toggleProxy, refresh: refreshProxy } = useHttpCaptureStatus()
 
   useEffect(() => {
     window.redlog.browser.detect().then(setDetected).catch(() => setDetected(null))
-    window.redlog.httpCapture.status().then(setProxyStatus).catch(() => {})
   }, [])
 
   const patch = (delta: Partial<typeof b>): void => {
@@ -90,12 +90,11 @@ export default function BrowserPanel({
           {t(`httpCapture.state.${proxyStatus.state}`)}{proxyStatus.url ? ` · ${proxyStatus.url}` : ''}
         </span>
         <button
-          onClick={async () => setProxyStatus(proxyStatus.state === 'running'
-            ? await window.redlog.httpCapture.stop()
-            : await window.redlog.httpCapture.start())}
+          onClick={() => { void (proxyStatus.state === 'unknown' ? refreshProxy() : toggleProxy()) }}
+          disabled={proxyBusy || proxyStatus.state === 'starting'}
           className="px-2 py-1 bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
-          {proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.start')}
+          {proxyStatus.state === 'unknown' ? t('common.retry') : proxyBusy ? '…' : proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.start')}
         </button>
       </div>
       {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}

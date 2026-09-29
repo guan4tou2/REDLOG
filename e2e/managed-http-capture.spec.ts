@@ -116,6 +116,15 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
     await expect(toggle).toHaveText('Start HTTP capture')
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+9' : 'Control+9')
+    await page.locator('[data-settings-page="browser"]').click()
+    await expect(page.getByTestId('view-root').getByText('HTTP capture stopped', { exact: true })).toBeVisible()
+    await toggle.click()
+    await expect(page.getByTestId('view-root').getByText('HTTP capture running', { exact: false })).toBeVisible({ timeout: 45000 })
+    // Stop from Settings; both surfaces must agree without navigating away.
+    await page.getByTestId('view-root').getByRole('button', { name: 'Stop HTTP capture', exact: true }).click()
+    await expect(page.getByTestId('view-root').getByText('HTTP capture stopped', { exact: true })).toBeVisible()
+    await expect(toggle).toHaveText('Start HTTP capture')
   } finally {
     await app.close()
   }

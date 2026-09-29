@@ -14,6 +14,7 @@ import { useSyncExternalStore } from 'react'
 
 export interface ViewExport {
   /** What the operator will recognise this subset as, in the menu. */
+  disabledReason?: string
   label: string
   /** Declarative selection used by the canonical preview/execute plan. */
   request: ExportRequest
@@ -50,6 +51,7 @@ export function useViewExport(): ViewExport | null {
  * view" that quietly means the previous one is worse than no option at all.
  */
 export function useContributeExport(entry: ViewExport | null): void {
+  const disabledReason = entry?.disabledReason
   const label = entry?.label
   const count = entry?.count
   const request = entry?.request
@@ -57,11 +59,11 @@ export function useContributeExport(entry: ViewExport | null): void {
     if (!label || !request) {
       return
     }
-    current = { label, request, count }
+    current = { label, request, count, disabledReason }
     emit()
     return () => {
       current = null
       emit()
     }
-  }, [label, count, request])
+  }, [label, count, request, disabledReason])
 }

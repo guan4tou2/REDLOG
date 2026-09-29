@@ -15,9 +15,9 @@ export interface ExportCapabilities {
 }
 
 const CAPABILITIES: Record<ExportFormat, ExportCapabilities> = {
-  json: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-  ndjson: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-  bundle: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
+  json: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false },
+  ndjson: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false },
+  bundle: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: false, attachments: true },
   har: { snapshot: true, boundedSubset: true, scopeMasking: false, piiScrubbing: false, attachments: false },
   timeline: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false }
 }

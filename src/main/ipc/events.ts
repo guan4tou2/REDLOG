@@ -30,12 +30,12 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:query', (_e, opts: EventQueryOptions) =>
     ctx.getActiveProject() ? queryEvents(withActiveScope(opts ?? {})) : [])
 
-  ipcMain.handle('events:queryPage', (_e, opts: EventFilter & { limit?: number; cursor?: string | null }) =>
+  ipcMain.handle('events:queryPage', (_e, opts: import('../../core/db/events').HttpFlowQueryOptions) =>
     ctx.getActiveProject()
       ? queryEventsPage(withActiveScope(opts ?? {}))
       : { items: [], hasMore: false, nextCursor: null })
 
-  ipcMain.handle('events:queryHttpFlowPage', (_e, opts: EventFilter & { limit?: number; cursor?: string | null }) =>
+  ipcMain.handle('events:queryHttpFlowPage', (_e, opts: import('../../core/db/events').HttpFlowQueryOptions) =>
     ctx.getActiveProject()
       ? queryHttpFlowPage(withActiveScope(opts ?? {}))
       : { items: [], flowCount: 0, hasMore: false, nextCursor: null })

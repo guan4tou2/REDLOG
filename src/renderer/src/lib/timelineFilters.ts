@@ -117,26 +117,6 @@ export function computeRecentEvents(
   return nearest
 }
 
-/**
- * Count of events whose display timestamp falls inside the current viewport.
- * Returns total event count when the whole track is visible.
- */
-export function computeSliceCount(
-  events: readonly RedLogEvent[],
-  vp: Pick<ViewportWindow, 'left' | 'width' | 'trackW' | 'fromX' | 'displayTs'>
-): number {
-  const widthPx = (vp.width / 100) * vp.trackW
-  if (widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)) return events.length
-  const from = vp.fromX((vp.left / 100) * vp.trackW)
-  const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
-  let n = 0
-  for (const e of events) {
-    const d = vp.displayTs(e)
-    if (d >= from && d <= to) n++
-  }
-  return n
-}
-
 // ── Lane distribution ───────────────────────────────────────────────
 
 /**
