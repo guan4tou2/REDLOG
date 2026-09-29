@@ -8,7 +8,7 @@ import {
 } from '../src/main/services/managed-http-proxy'
 import {
   isManagedProxy, followCaptureEndpoint,
-  managedProxyUrl, isLoopbackHost
+  managedProxyUrl, isLoopbackHost, proxyAlreadyOn
 } from '../src/core/managed-proxy-url'
 
 class FakeStream extends EventEmitter {}
@@ -239,5 +239,37 @@ describe('the capture endpoint is host and port', () => {
     for (const h of ['0.0.0.0', '10.0.0.2', '192.168.1.5', 'redlog.local']) {
       expect(isLoopbackHost(h)).toBe(false)
     }
+  })
+
+  // #226: start HTTP capture, then launch the capture browser — which starts
+  // capture again, because that is how it guarantees the proxy is up before
+  // pointing a browser at it — and the operator was told
+  // `127.0.0.1:6661 is already in use by python.exe (PID …)`, naming RedLog's
+  // own mitmdump as the intruder. The browser never launched.
+  describe('proxyAlreadyOn', () => {
+    const endpoint = { host: '127.0.0.1', port: 6661 }
+
+    it('recognises our own proxy so the port probe is not asked about us', () => {
+      expect(proxyAlreadyOn({ state: 'running', url: 'http://127.0.0.1:6661' }, endpoint)).toBe(true)
+      // Loopback spellings are interchangeable, as everywhere else here.
+      expect(proxyAlreadyOn({ state: 'running', url: 'http://localhost:6661' }, endpoint)).toBe(true)
+    })
+
+    it('counts `starting`, because probing then races the bind we are waiting on', () => {
+      expect(proxyAlreadyOn({ state: 'starting', url: 'http://127.0.0.1:6661' }, endpoint)).toBe(true)
+    })
+
+    it('does not swallow a port a stranger holds', () => {
+      // Nothing of ours is up, so Burp on that port must still be named.
+      for (const state of ['stopped', 'failed', 'unavailable']) {
+        expect(proxyAlreadyOn({ state, url: null }, endpoint), state).toBe(false)
+      }
+      // Running, but somewhere else: the operator moved the port in Settings
+      // and is asking about the new one, where nothing of ours is yet.
+      expect(proxyAlreadyOn({ state: 'running', url: 'http://127.0.0.1:8080' }, endpoint)).toBe(false)
+      expect(proxyAlreadyOn({ state: 'running', url: 'http://10.0.0.2:6661' }, endpoint)).toBe(false)
+      // Running with no URL says nothing about which endpoint it is on.
+      expect(proxyAlreadyOn({ state: 'running', url: null }, endpoint)).toBe(false)
+    })
   })
 })
