@@ -30,9 +30,9 @@ import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
 import { eventTitle } from '../lib/eventTitle'
 import { Button } from './Button'
-import { RecordTerminalFlow, MissingList, type RecordTarget } from './RecordTerminalFlow'
+import { RecordTerminalFlow, MissingList, ExecutionPolicyBlocker, type RecordTarget } from './RecordTerminalFlow'
 import { HttpCaptureStep } from './HttpCaptureStep'
-import { missingDependencies, shellLabel } from '../lib/terminalActivation'
+import { commandCaptureBlockers, missingDependencies, shellLabel } from '../lib/terminalActivation'
 import { commandsVerification, coreCaptureReady } from '../lib/coreCapture'
 import { ChevronRight } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
@@ -128,6 +128,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
 
   const ready = coreCaptureReady({ commands, http: httpVerified })
   const missing = missingDependencies(preflight)
+  // What is actually stopping capture, per platform. On Windows that is never
+  // a missing command — it is the execution policy (F6).
+  const blockers = commandCaptureBlockers(preflight)
+  const policyBlocker = blockers.find((b) => b.kind === 'execution-policy')
   const hostTarget: RecordTarget | null = preflight?.shell
     ? { kind: 'host', hookId: preflight.shell.hookId, label: shellLabel(preflight.shell.name) }
     : null
@@ -200,12 +204,18 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <p className="text-redlog-text-dim">{t('firstRun.preflightFailedWhy')}</p>
                 <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
               </div>
-            ) : missing.length > 0 ? (
-              <div data-testid="first-run-missing-deps" className="space-y-2">
-                <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
-                <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
-                <MissingList missing={missing} />
-                <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+            ) : blockers.length > 0 ? (
+              <div data-testid="first-run-blocked" className="space-y-2">
+                {policyBlocker ? (
+                  <ExecutionPolicyBlocker blocker={policyBlocker} onRecheck={checkRuntime} />
+                ) : (
+                  <div data-testid="first-run-missing-deps" className="space-y-2">
+                    <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
+                    <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
+                    <MissingList missing={missing} />
+                    <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+                  </div>
+                )}
               </div>
             ) : stuck ? (
               <div data-testid="first-run-stuck" role="status" className="space-y-2">
