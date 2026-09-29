@@ -62,7 +62,7 @@ import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk,
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
-import { isManagedProxy, type CaptureEndpoint } from '../core/managed-proxy-url'
+import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
@@ -157,18 +157,29 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
   const config = loadConfig(getProjectPath(activeProject))
-  const before = managedHttpProxy.status().state
+  const current = managedHttpProxy.status()
+  const before = current.state
   const endpoint = managedProxyEndpoint(config)
   // Say what is holding the port before mitmdump does. Its own message is a
   // multi-line startup dump that ends in a localised winsock error and a
   // suggestion to pass `--mode regular@8082` — a mitmproxy flag, not a RedLog
   // setting — so the operator was told neither what took the port nor that
   // the port is theirs to change.
-  const holder = await whoHoldsPort(endpoint)
-  if (holder) {
-    const status: ManagedProxyStatus = { state: 'failed', url: null, error: holder }
-    publishManagedProxyEvent('http_proxy_failed', status)
-    return status
+  //
+  // #226: unless the answer is us. Starting capture and then launching the
+  // capture browser — which starts capture again, because that is how it
+  // guarantees the proxy is up before pointing a browser at it — reported
+  // RedLog's own mitmdump as the intruder and refused to launch the browser.
+  // `managedHttpProxy.start()` below already returns cleanly when it is
+  // running or starting; this probe just ran first and failed before reaching
+  // it.
+  if (!proxyAlreadyOn(current, endpoint)) {
+    const holder = await whoHoldsPort(endpoint)
+    if (holder) {
+      const status: ManagedProxyStatus = { state: 'failed', url: null, error: holder }
+      publishManagedProxyEvent('http_proxy_failed', status)
+      return status
+    }
   }
   const status = await managedHttpProxy.start({
     addonPath,
