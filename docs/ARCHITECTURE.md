@@ -36,8 +36,8 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 ```
 
 **Why `core/` exists.** Anything that does not need an Electron API lives
-there, so the same function backs the REST route, the MCP tool, the CLI
-subcommand and the vitest file. `test/` has 40 files against `core/`; the
+there, so the same function backs the REST route, the CLI subcommand and the
+vitest file. `test/` has 40 files against `core/`; the
 `main/` layer is deliberately thin glue (and, as a consequence, mostly
 untested — see `AUDIT-2026-08-08.md` §4).
 
