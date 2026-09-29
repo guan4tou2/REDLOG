@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { parseScopeInput } from '../lib/scopeInput'
 import { confirmChainImpact } from './ConfirmDialog'
@@ -15,21 +14,9 @@ interface ProjectPickerProps {
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
-  // Advanced-setup dialog. It focused itself once and let Tab walk out into
-  // the picker behind it; Escape only worked while focus happened to be on the
-  // backdrop, which is the case that was already broken (§4).
-  const advancedRef = useRef<HTMLDivElement | null>(null)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  useFocusTrap(advancedRef, showAdvanced)
-  useEffect(() => {
-    if (!showAdvanced) return
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); setShowAdvanced(false) } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [showAdvanced])
   // Spec 037: scope and excludes are pasted on the create card itself. Only
   // the entries the parser accepts are submitted; the rest are listed inline.
   const [scopeText, setScopeText] = useState('')
@@ -40,9 +27,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // traffic, Spec 021), never in excludeTargets (client targets out of scope).
   const [localIP, setLocalIP] = useState<string | null>(null)
   const [ignoreLocal, setIgnoreLocal] = useState(false)
+  // Safe IPs, exposed IPs and the violation warning are owned by Settings
+  // (Network and Scope pages). They are held here only because a profile can
+  // carry them into a project that does not exist yet.
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
   const [warnOnViolation, setWarnOnViolation] = useState(true)
+  const [applied, setApplied] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const { t } = useI18n()
@@ -140,8 +131,15 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (allow) setWhitelist(allow)
     const deny = profile.network?.blacklist
     if (deny) setBlacklist(deny)
-    if (profile.scope?.warnOnViolation !== undefined) setWarnOnViolation(profile.scope.warnOnViolation)
-    setShowAdvanced(true)
+    const warn = profile.scope?.warnOnViolation
+    if (warn !== undefined) setWarnOnViolation(warn)
+    // The scope lands in a field the operator can read. The rest does not, and
+    // applying it silently would be the same failure as hiding it.
+    setApplied([
+      allow?.length ? t('project.appliedSafe', { count: allow.length }) : null,
+      deny?.length ? t('project.appliedExposed', { count: deny.length }) : null,
+      warn === false ? t('project.appliedNoWarn') : null
+    ].filter(Boolean).join(' · ') || null)
     toast(t('toast.profileImported'), 'success')
   }
 
@@ -240,105 +238,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             )}
           </div>
 
-          {/* Advanced toggle — opens a modal instead of expanding inline. The
-              inline version pushed the recent-projects list off the viewport
-              on smaller windows; the modal keeps the picker at a fixed size. */}
           <button
-            onClick={() => setShowAdvanced(true)}
-            className="mt-3 text-xs text-redlog-text-faint hover:text-redlog-text-dim transition-colors flex items-center gap-1"
+            onClick={handleImportProfile}
+            className="mt-3 text-xs text-redlog-text-faint hover:text-redlog-text-dim transition-colors"
           >
-            <ChevronRight size={14} className="text-redlog-muted" aria-hidden />
-            {t('project.advancedSetup')}
-            {(whitelist.length + blacklist.length > 0) && (
-              <span className="ml-1 text-redlog-text-dim">
-                ({t('project.advancedSummary', {
-                  safe: whitelist.length,
-                  exposed: blacklist.length
-                })})
-              </span>
-            )}
+            {t('project.importProfile')}
           </button>
+          {applied && (
+            <p data-testid="profile-applied" className="mt-1 text-xs text-redlog-text-dim font-mono">{applied}</p>
+          )}
         </div>
-
-        {/* Advanced setup modal */}
-        {showAdvanced && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-text"
-            onClick={() => setShowAdvanced(false)}
-            role="presentation"
-          >
-            <div
-              ref={advancedRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('project.advancedSetup')}
-              tabIndex={-1}
-              className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card w-full max-w-md max-h-[90vh] overflow-y-auto outline-none"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-redlog-text text-xs font-semibold uppercase tracking-[0.15em]">
-                  {t('project.advancedSetup')}
-                </h2>
-                <button
-                  onClick={() => setShowAdvanced(false)}
-                  className="text-redlog-text-faint hover:text-redlog-text text-lg leading-none"
-                  aria-label={t('project.close')}
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <MiniListField
-                  label={t('project.whitelist')}
-                  items={whitelist}
-                  onChange={setWhitelist}
-                  placeholder={t('settings.safeIpPlaceholder')}
-                />
-                <MiniListField
-                  label={t('project.blacklist')}
-                  items={blacklist}
-                  onChange={setBlacklist}
-                  placeholder={t('settings.exposedIpPlaceholder')}
-                />
-
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={warnOnViolation}
-                    onChange={(e) => setWarnOnViolation(e.target.checked)}
-                    className="accent-red-600"
-                  />
-                  <span className="text-xs text-redlog-text">{t('project.warnOnViolation')}</span>
-                </label>
-                <p className="text-xs text-redlog-text-faint -mt-1">{t('project.warnOnViolationHint')}</p>
-
-                <div className="flex items-center gap-3 pt-1">
-                  <div className="flex-1 border-t border-redlog-border" />
-                  <span className="text-xs text-redlog-text-faint">{t('project.or')}</span>
-                  <div className="flex-1 border-t border-redlog-border" />
-                </div>
-
-                <button
-                  onClick={handleImportProfile}
-                  className="w-full py-2 bg-redlog-elevated/50 border border-dashed border-redlog-border rounded-lg text-xs text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
-                >
-                  {t('project.importProfile')}
-                </button>
-              </div>
-
-              <div className="flex justify-end mt-5 pt-3 border-t border-redlog-border">
-                <button
-                  onClick={() => setShowAdvanced(false)}
-                  className="px-4 py-1.5 text-xs bg-redlog-elevated hover:bg-redlog-elevated-hover text-redlog-text rounded-lg transition-colors"
-                >
-                  {t('project.done')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Recent projects */}
         {projects.length > 0 && (() => {
@@ -449,43 +358,3 @@ function ScopeTextField({ id, label, value, onChange, placeholder, invalid }: {
   )
 }
 
-function MiniListField({ label, items, onChange, placeholder }: {
-  label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
-}): JSX.Element {
-  const { t } = useI18n()
-  const [input, setInput] = useState('')
-
-  const addItem = (): void => {
-    const trimmed = input.trim()
-    if (trimmed && !items.includes(trimmed)) {
-      onChange([...items, trimmed])
-      setInput('')
-    }
-  }
-
-  return (
-    <div>
-      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
-      <div className="flex gap-1">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addItem() } }}
-          placeholder={placeholder}
-          className="flex-1 bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
-        />
-        <button onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
-      </div>
-      {items.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {items.map((item, i) => (
-            <span key={i} className="inline-flex items-center gap-1 bg-redlog-elevated text-redlog-text-dim text-xs font-mono px-1.5 py-0.5 rounded">
-              {item}
-              <IconButton label={t('common.removeItem', { item })} onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-faint hover:text-red-400">×</IconButton>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
