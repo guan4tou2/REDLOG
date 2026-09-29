@@ -161,7 +161,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
     // HTTP is reachable without a shell event having landed first.
-    expect(await screen.findByText('開始 HTTP 擷取')).toBeTruthy()
+    expect(await screen.findByText('重新啟動 HTTP 擷取')).toBeTruthy()
     // The connect-your-terminal path is offered from the start too.
     expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
     // No engagement-type choice, and HTTP cannot be waved away as optional.
@@ -175,7 +175,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     draw()
     const missing = await screen.findByTestId('first-run-missing-deps')
     expect(screen.getByTestId('first-run-commands').contains(missing)).toBe(true)
-    fireEvent.click(await screen.findByText('開始 HTTP 擷取'))
+    fireEvent.click(await screen.findByText('重新啟動 HTTP 擷取'))
     await waitFor(() => expect(bridge.proxyStart).toHaveBeenCalled())
   })
 
@@ -406,10 +406,12 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     install()
     bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
     draw()
-    fireEvent.click(await screen.findByRole('button', { name: '開始 HTTP 擷取' }))
+    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }))
     const card = await screen.findByTestId('first-run-http')
     await waitFor(() => expect(card.textContent).toContain('port 8080 in use'))
-    expect(screen.getByRole('button', { name: '再試一次' })).not.toBeNull()
+    // One label for one button: the failure is stated above it, so the control
+    // does not have to say "again" in one state and "start" in another.
+    expect(screen.getByTestId('first-run-http-restart')).not.toBeNull()
   })
 
   it('a failed save of the terminal proxy setting puts the box back', async () => {
@@ -570,7 +572,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ rows: [], proxy: { state: 'stopped', url: null } })
     draw()
-    await screen.findByText('開始 HTTP 擷取')
+    await screen.findByText('重新啟動 HTTP 擷取')
     bridge.proxyStatus.mockResolvedValue(RUNNING)
     await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
     await screen.findByText(/正在監聽/)
@@ -584,7 +586,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await screen.findByTestId('first-run-http')
     await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
     expect(verifyListeners.length).toBe(0)
-    fireEvent.click(screen.getByText('開始 HTTP 擷取'))
+    fireEvent.click(screen.getByText('重新啟動 HTTP 擷取'))
     await waitFor(() => expect(verifyListeners.length).toBeGreaterThanOrEqual(1))
   })
 

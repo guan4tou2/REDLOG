@@ -99,9 +99,11 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
             : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60'
       }`}
     >
+      {/* Opening the project starts capture; this toggle stops it and brings
+          it back. "Start" would suggest capture waits to be turned on. */}
       {proxyBusy || proxy.state === 'starting' ? t('httpCapture.starting')
         : proxy.state === 'running' ? t('httpCapture.stop')
-          : t('httpCapture.start')}
+          : t('httpCapture.restart')}
     </button>
     <button
       onClick={handleClick}

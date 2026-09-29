@@ -323,6 +323,7 @@
   "browser.stopped": "Browser stopped",
   "browser.failed": "Could not launch browser",
   "httpCapture.start": "Start HTTP capture",
+  "httpCapture.restart": "Restart HTTP capture",
   "httpCapture.stop": "Stop HTTP capture",
   "httpCapture.starting": "Starting HTTP…",
   "httpCapture.started": "HTTP capture is running",

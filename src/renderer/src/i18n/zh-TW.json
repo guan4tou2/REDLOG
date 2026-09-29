@@ -323,6 +323,7 @@
   "browser.stopped": "瀏覽器已關閉",
   "browser.failed": "無法啟動瀏覽器",
   "httpCapture.start": "開始 HTTP 擷取",
+  "httpCapture.restart": "重新啟動 HTTP 擷取",
   "httpCapture.stop": "停止 HTTP 擷取",
   "httpCapture.starting": "正在啟動 HTTP…",
   "httpCapture.started": "HTTP 擷取已開始",
