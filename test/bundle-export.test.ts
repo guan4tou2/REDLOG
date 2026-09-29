@@ -14,6 +14,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
+let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 let mod: typeof import('../src/core/db/index')
 
 let dbAvailable = false
@@ -21,7 +22,9 @@ try {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const b = await import('../src/core/bundle-export')
+  const p = await import('../src/core/export-plan')
   initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle; mod = d
+  takeExportSnapshot = p.takeExportSnapshot
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
 
@@ -265,4 +268,51 @@ describeDB('private bookmarks stay out of the bundle', () => {
   }, 30000) // spawns python3 twice; the interpreter cold-start alone exceeds the
   // 5s default on Windows CI runners (observed ~6s), so the test timed out there
   // while asserting nothing wrong. Wall-clock budget, not a logic change.
+})
+
+describeDB('the chain head a recipient verifies', () => {
+  // The Export menu previews a plan and then runs it against the plan's
+  // snapshot, so every bundle an operator makes takes the snapshot branch of
+  // the head computation. That branch wrote the last event's own hash as
+  // chainHead.hash, where computeChainHead() and redlog-verify.py both use
+  // sha256(lastHash || eventCount). So a bundle nobody had touched reported
+  // "Chain-head match : NO" and verify.sh / verify.cmd exited 1 (#226). Every
+  // other test here exports without a snapshot, and the verifier test above
+  // runs on an empty chain, where the head check does not apply.
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-head-'))
+    initDB(dir)
+    ins('shell', { subtype: 'command_end', command: 'whoami', exit_code: 0 })
+    ins('marker', { title: 'finding', severity: 'info' })
+    ins('shell', { subtype: 'command_end', command: 'id', exit_code: 0 })
+  })
+  afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it('a planned export records the same chain head as an unplanned one, in the verifier\'s form', () => {
+    const planned = exportBundle('eng', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') })
+    const unplanned = exportBundle('eng', { outRoot: path.join(dir, 'unplanned') })
+    expect(planned.manifest.chainHead).toEqual(unplanned.manifest.chainHead)
+
+    const lines = fs.readFileSync(path.join(planned.outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const last = lines[lines.length - 1]
+    const recomputed = crypto.createHash('sha256').update(last.hash).update(String(lines.length)).digest('hex')
+    expect(planned.manifest.chainHead).toEqual({ hash: recomputed, eventCount: lines.length })
+  })
+
+  it('the python verifier passes a planned bundle and an unplanned one, chain head included', () => {
+    const child = require('node:child_process') as typeof import('node:child_process')
+    for (const [label, opts] of [
+      ['planned', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') }],
+      ['unplanned', { outRoot: path.join(dir, 'unplanned') }]
+    ] as const) {
+      const { outDir } = exportBundle('eng', opts)
+      const verifier = path.join(outDir, 'redlog-verify.py')
+      if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
+      const run = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+      if (run.error) return // python3 unavailable on this runner — skip
+      expect(run.stdout, label).toMatch(/Events walked\s+:\s+3/)
+      expect(run.stdout, label).toMatch(/Chain-head match\s+:\s+yes/)
+      expect(run.status, `${label}: ${run.stdout}${run.stderr}`).toBe(0)
+    }
+  }, 30000) // two python3 cold starts, as above
 })

@@ -65,6 +65,15 @@ function rowToAnchor(row: AnchorRow): ChainAnchor {
   }
 }
 
+/** The chain head: sha256 of the last chained event's hash followed by the
+ *  number of chained events, in decimal. Anchors, bundle manifests and the
+ *  offline verifier (tools/redlog-verify.py) all state the head in this form,
+ *  so it is computed only here. A bundle that wrote the bare last hash instead
+ *  failed its own verifier (#226). */
+export function chainHeadHash(lastHash: string, eventCount: number): string {
+  return crypto.createHash('sha256').update(lastHash).update(String(eventCount)).digest('hex')
+}
+
 export function computeChainHead(maxEvents?: number): { hash: string; headEventId: string | null; eventCount: number } | null {
   const db = getDB()
   if (maxEvents !== undefined) {
@@ -87,17 +96,9 @@ export function computeChainHead(maxEvents?: number): { hash: string; headEventI
       const tail = db.prepare(
         `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`
       ).get() as { id: string; hash: string }
-      return {
-        hash: crypto.createHash('sha256').update(tail.hash).update(String(n)).digest('hex'),
-        headEventId: tail.id,
-        eventCount: n
-      }
+      return { hash: chainHeadHash(tail.hash, n), headEventId: tail.id, eventCount: n }
     }
-    const hash = crypto.createHash('sha256')
-      .update(row.hash)
-      .update(String(maxEvents))
-      .digest('hex')
-    return { hash, headEventId: row.id, eventCount: maxEvents }
+    return { hash: chainHeadHash(row.hash, maxEvents), headEventId: row.id, eventCount: maxEvents }
   }
   const row = db.prepare(
     `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -106,11 +107,7 @@ export function computeChainHead(maxEvents?: number): { hash: string; headEventI
     `SELECT COUNT(*) as count FROM events WHERE hash IS NOT NULL`
   ).get() as { count: number }
   if (!row) return null
-  const hash = crypto.createHash('sha256')
-    .update(row.hash)
-    .update(String(countRow.count))
-    .digest('hex')
-  return { hash, headEventId: row.id, eventCount: countRow.count }
+  return { hash: chainHeadHash(row.hash, countRow.count), headEventId: row.id, eventCount: countRow.count }
 }
 
 export function listAnchors(limit = 50): ChainAnchor[] {
