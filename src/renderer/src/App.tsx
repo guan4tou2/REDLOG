@@ -39,7 +39,6 @@ import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
 import { Camera, FilePlus } from 'lucide-react'
 import { FilterBar } from './components/FilterBar'
 import { ActiveTargetControl } from './components/ActiveTargetControl'
-import { LegacyHookBanner, RuntimeReadinessHost } from './components/RuntimeReadiness'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -177,16 +176,7 @@ export default function App(): JSX.Element {
   if (!project) {
     return (
       <>
-        {/* Spec 036: the picker keeps its own title bar at the top, so the
-            legacy-hook banner sits at the bottom here; the readiness card
-            floats beside the picker and never blocks it. */}
-        <div className="h-full flex flex-col">
-          <div className="flex-1 min-h-0">
-            <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
-          </div>
-          <LegacyHookBanner />
-        </div>
-        <RuntimeReadinessHost firstLaunch />
+        <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
         <ToastContainer />
         <ConfirmDialogContainer />
       </>
@@ -306,8 +296,6 @@ export default function App(): JSX.Element {
 
       {/* Spec 036: re-checked each time a project opens (key), since an
           operator may have edited their profile while the picker was up. */}
-      <LegacyHookBanner key={project.id} />
-      <RuntimeReadinessHost firstLaunch={false} />
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">

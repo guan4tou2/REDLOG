@@ -159,12 +159,6 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
                 {missing.length > 0 && (
                   <li>{t('firstRun.record.reasonMissing', { names: missing.map((c) => c.id).join(', ') })}<MissingList missing={missing} /></li>
                 )}
-                {target.kind === 'host' && (preflight?.legacyHooks ?? []).map((h) => (
-                  <li key={`${h.file}:${h.line}`}>
-                    {t('firstRun.record.reasonLegacy', { file: h.file, line: h.line })}
-                    <code className="block font-mono text-redlog-text-faint break-all">{h.text}</code>
-                  </li>
-                ))}
               </ul>
               <Button level="secondary" onClick={() => void run()}>{t('firstRun.record.retry')}</Button>
             </div>

@@ -214,8 +214,7 @@ const api: RedLogAPI = {
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
-    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId),
-    migrateLegacy: (ref: unknown) => ipcRenderer.invoke('hooks:migrateLegacy', ref)
+    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
   runtime: {
     preflight: () => ipcRenderer.invoke('runtime:preflight')

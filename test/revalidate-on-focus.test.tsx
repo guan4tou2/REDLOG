@@ -82,7 +82,6 @@ const winPreflight = (blocks: boolean): RuntimePreflight => ({
     { id: 'pwsh', found: false, neededFor: ['shell-powershell'] },
     { id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }
   ],
-  legacyHooks: [],
   powershell: { shell: 'powershell', policy: blocks ? 'Restricted' : 'RemoteSigned', blocksProfile: blocks }
 })
 

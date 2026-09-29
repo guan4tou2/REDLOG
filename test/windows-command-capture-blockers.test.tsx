@@ -33,7 +33,6 @@ const winPreflight = (over: Partial<RuntimePreflight> = {}): RuntimePreflight =>
     { id: 'pwsh', found: false, neededFor: ['shell-powershell'] },
     { id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }
   ],
-  legacyHooks: [],
   powershell: { shell: 'powershell', policy: 'Restricted', blocksProfile: true },
   ...over
 })
@@ -105,8 +104,7 @@ describe('command capture blockers', () => {
       checks: [
         { id: 'python3', found: false, neededFor: ['shell-zsh'], remediation: 'brew install python' },
         { id: 'curl', found: true, neededFor: ['shell-zsh'] }
-      ],
-      legacyHooks: []
+      ]
     }
     const blockers = commandCaptureBlockers(posix)
     expect(blockers).toHaveLength(1)
