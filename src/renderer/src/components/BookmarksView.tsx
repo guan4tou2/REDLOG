@@ -401,6 +401,19 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
                 <span className="text-redlog-text font-mono">{mark.context.externalIP}</span>
               </div>
             )}
+            {mark.context.lastKnownExternalIP && (
+              // No current IP reading when the bookmark was made: the address
+              // is the last one read, and must not pass for the one in use.
+              <div className="text-xs" data-testid="bookmark-last-known-ip" title={t('bookmarks.lastKnownIpHint')}>
+                <span className="text-redlog-text-dim">{t('bookmarks.lastKnownIpLabel')}</span>{' '}
+                <span className="text-redlog-text-dim font-mono">{mark.context.lastKnownExternalIP.address}</span>
+                {mark.context.lastKnownExternalIP.readAt > 0 && (
+                  <span className="text-redlog-text-dim">
+                    {' '}{t('bookmarks.lastKnownIpReadAt', { time: formatDateTime(mark.context.lastKnownExternalIP.readAt, { seconds: true }) })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

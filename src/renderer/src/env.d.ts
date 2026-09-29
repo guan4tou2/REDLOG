@@ -108,12 +108,7 @@ interface RedLogEvent {
   tier: 'chained' | 'logged'
 }
 
-interface BookmarkContext {
-  browserUrl?: string
-  browserTitle?: string
-  externalIP?: string
-  lastCommand?: string
-}
+type BookmarkContext = import('../../core/db/bookmarks').BookmarkContext
 
 interface Bookmark {
   id: string
