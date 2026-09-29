@@ -212,10 +212,10 @@ export default function App(): JSX.Element {
       )}
       {/* Title bar */}
       <div
-        className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
+        className="h-10 flex items-center gap-2 px-4 select-none shrink-0 overflow-hidden border-b border-redlog-border bg-redlog-bg whitespace-nowrap"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
+        <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
           {/* Title-bar size is small, so the ring collapses to a solid dot
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />
@@ -238,7 +238,7 @@ export default function App(): JSX.Element {
           >{t('settings.checkUpdate')}</button>
         </div>
         <button
-          className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
+          className="ml-2 min-w-0 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
             // Pending settings go to THIS project before it closes (#223).
@@ -253,11 +253,13 @@ export default function App(): JSX.Element {
           }}
           title={t('app.closeProject')}
         >
-          <span className="text-xs">&#9664;</span>
-          {project.name}
+          <span className="text-xs shrink-0">&#9664;</span>
+          {/* The button's own title names the action; the name needs its own
+              route to the full value once it can be cut short (§9). */}
+          <span className="truncate" title={project.name}>{project.name}</span>
         </button>
         <ActiveTargetControl key={project.id} />
-        <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className={`ml-auto flex gap-2 shrink-0 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* §10: one export control, in the shell rather than six places.
               Its scope is an option, not a location. */}
           <ExportMenu totalCount={exportableCount} />

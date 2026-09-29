@@ -24,22 +24,26 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 export type ButtonLevel = 'primary' | 'secondary' | 'quiet' | 'danger'
 
+// `border` is here, not on the levels: a level that sets only a border COLOUR
+// paints nothing, which is how the quiet button stayed invisible until hover —
+// what looked like an edge was the hover fill. Every level now has a 1px box
+// and chooses what colour it is.
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 h-[34px] px-4 rounded-lg text-sm font-medium ' +
+  'inline-flex items-center justify-center gap-1.5 h-[34px] px-4 rounded-lg text-sm font-medium border ' +
   'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ' +
   'focus-visible:ring-offset-redlog-bg disabled:opacity-40 disabled:cursor-not-allowed'
 
 const LEVEL: Record<ButtonLevel, string> = {
   // The verb. At most one per screen (§4). Dark text, like every fill in this
   // palette — see the `on-*` tokens for why white fails on all of them.
-  primary: 'bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
-  secondary: 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-text-dim/40',
+  primary: 'border-transparent bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
+  secondary: 'border-redlog-border bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-text-dim/40',
   // Bordered, not bare. "Quiet" is about weight, not about whether the
   // operator can see where the control is: an unframed label gives no hit
   // area and no edge, so its target has to be guessed.
-  quiet: 'border-redlog-border-subtle text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40',
+  quiet: 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated focus-visible:ring-redlog-text-dim/40',
   // The only other fill in the system.
-  danger: 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
+  danger: 'border-transparent bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

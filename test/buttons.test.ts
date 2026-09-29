@@ -28,8 +28,12 @@ describe('button levels', () => {
       expect(mod, `missing level: ${level}`).toMatch(new RegExp(`\\b${level}:`))
     }
     // Only two of the four fill, and they are the two the standard names.
-    expect(mod).toMatch(/primary: 'bg-redlog-accent/)
-    expect(mod).toMatch(/danger: 'bg-redlog-danger/)
+    expect(mod).toMatch(/primary: '[^']*bg-redlog-accent/)
+    expect(mod).toMatch(/danger: '[^']*bg-redlog-danger/)
+    // Every level paints a 1px box; only the colour differs. A level that set
+    // a border colour without the width drew nothing (the quiet button was
+    // invisible until its hover fill appeared).
+    expect(mod, 'the border width belongs on BASE').toMatch(/const BASE =[\s\S]*?border /)
   })
 
   it('never puts a filled primary next to a filled danger', () => {

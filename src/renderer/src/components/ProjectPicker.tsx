@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
-import { parseScopeInput } from '../lib/scopeInput'
 import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
@@ -19,14 +18,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [creating, setCreating] = useState(false)
   // Spec 037: scope and excludes are pasted on the create card itself. Only
   // the entries the parser accepts are submitted; the rest are listed inline.
-  const [scopeText, setScopeText] = useState('')
-  const [excludeText, setExcludeText] = useState('')
-  const scope = useMemo(() => parseScopeInput(scopeText), [scopeText])
-  const exclude = useMemo(() => parseScopeInput(excludeText), [excludeText])
-  // The operator's own address. It belongs in personalDomains (their own
-  // traffic, Spec 021), never in excludeTargets (client targets out of scope).
-  const [localIP, setLocalIP] = useState<string | null>(null)
-  const [ignoreLocal, setIgnoreLocal] = useState(false)
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
   // Safe IPs, exposed IPs and the violation warning are owned by Settings
   // (Network and Scope pages). They are held here only because a profile can
   // carry them into a project that does not exist yet.
@@ -56,7 +49,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   useEffect(() => {
     if (bridgeMissing) return
     window.redlog.project.list().then(setProjects).catch(() => {})
-    window.redlog.ip?.getStatus().then((s) => setLocalIP(s?.internalIP ?? null)).catch(() => {})
   }, [bridgeMissing])
 
   async function handleCreate(): Promise<void> {
@@ -64,12 +56,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const personalDomains = ignoreLocal && localIP ? [localIP] : []
-      const initialConfig = (scope.valid.length > 0 || exclude.valid.length > 0 || whitelist.length > 0 || blacklist.length > 0 || personalDomains.length > 0)
+      // Only an imported profile puts anything here now: the card asks for a
+      // name, and Settings ▸ Scope owns the rest.
+      const carried = scopeTargets.length > 0 || excludeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0
+      const initialConfig = carried
         ? {
-          // personalDomains is added to the defaults by project:create
-          // (mergeInitialConfig), so the operator's IP goes in the same call.
-          scope: { targets: scope.valid, excludeTargets: exclude.valid, warnOnViolation, scopeFile: null, personalDomains },
+          scope: { targets: scopeTargets, excludeTargets, warnOnViolation, scopeFile: null, personalDomains: [] },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
@@ -126,16 +118,19 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   async function handleImportProfile(): Promise<void> {
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
-    if (profile.scope?.targets) setScopeText(profile.scope.targets.join('\n'))
+    if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
     const allow = profile.network?.whitelist
     if (allow) setWhitelist(allow)
     const deny = profile.network?.blacklist
     if (deny) setBlacklist(deny)
+    if (profile.scope?.excludeTargets) setExcludeTargets(profile.scope.excludeTargets)
     const warn = profile.scope?.warnOnViolation
     if (warn !== undefined) setWarnOnViolation(warn)
-    // The scope lands in a field the operator can read. The rest does not, and
-    // applying it silently would be the same failure as hiding it.
+    // Nothing a profile carries is visible on this card, so all of it is named
+    // here or it is applied in silence.
     setApplied([
+      profile.scope?.targets?.length ? t('project.appliedScope', { count: profile.scope.targets.length }) : null,
+      profile.scope?.excludeTargets?.length ? t('project.appliedExcluded', { count: profile.scope.excludeTargets.length }) : null,
       allow?.length ? t('project.appliedSafe', { count: allow.length }) : null,
       deny?.length ? t('project.appliedExposed', { count: deny.length }) : null,
       warn === false ? t('project.appliedNoWarn') : null
@@ -212,36 +207,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             >
               {t('project.create')}
             </Button>
-          </div>
-
-          <div className="mt-3 space-y-3">
-            <ScopeTextField
-              id="project-scope"
-              label={t('project.scopeTargets')}
-              value={scopeText}
-              onChange={setScopeText}
-              placeholder={t('project.scopePlaceholder')}
-              invalid={scope.invalid}
-            />
-            <ScopeTextField
-              id="project-exclude"
-              label={t('project.excludeTargets')}
-              value={excludeText}
-              onChange={setExcludeText}
-              placeholder={t('project.excludePlaceholder')}
-              invalid={exclude.invalid}
-            />
-            {localIP && (
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={ignoreLocal}
-                  onChange={(e) => setIgnoreLocal(e.target.checked)}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-redlog-text">{t('project.ignoreLocalTraffic', { ip: localIP })}</span>
-              </label>
-            )}
           </div>
 
           <Button level="quiet" onClick={handleImportProfile} className="mt-3 text-xs">
@@ -334,30 +299,4 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   )
 }
 
-function ScopeTextField({ id, label, value, onChange, placeholder, invalid }: {
-  id: string; label: string; value: string; onChange: (v: string) => void; placeholder: string; invalid: string[]
-}): JSX.Element {
-  const { t } = useI18n()
-  return (
-    <div>
-      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
-      <textarea
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={2}
-        spellCheck={false}
-        aria-invalid={invalid.length > 0}
-        aria-describedby={invalid.length > 0 ? `${id}-invalid` : undefined}
-        className="w-full bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-redlog-accent focus:ring-2 focus:ring-redlog-accent/40 focus:ring-offset-2 focus:ring-offset-redlog-surface placeholder-redlog-muted"
-      />
-      {invalid.length > 0 && (
-        <p id={`${id}-invalid`} className="text-xs text-red-400 mt-1 font-mono break-all">
-          {t('project.invalidEntries', { entries: invalid.join(', ') })}
-        </p>
-      )}
-    </div>
-  )
-}
 
