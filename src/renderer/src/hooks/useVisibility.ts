@@ -5,9 +5,9 @@ import type { SidebarViewId } from '../lib/sidebarOrder'
 
 type View = SidebarViewId | 'settings'
 
-/** What the renderer assumes when the main process cannot answer: everything
- *  visible. Hiding a page because a probe failed would be the worst reading of
- *  silence available. */
+/** What the renderer assumes when the probe FAILS: everything visible. Hiding a
+ *  page because a probe threw would be the worst reading of silence available.
+ *  This is not what a `null` answer means — see the fetch effect below. */
 const ALL_DISCLOSED: VisibilitySignals = {
   evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
   screenshotSeen: true, bookmarkSeen: true, httpFlowSeen: true, loggedEver: true,
@@ -17,9 +17,9 @@ const ALL_DISCLOSED: VisibilitySignals = {
 interface UseVisibilityResult {
   visibility: ReturnType<typeof computeVisibility>
   firstRunActive: boolean
-  /** Raw signals — App's initial fetch writes here via setVisSignals. */
+  /** Raw signals, or null while no project is open / the answer is in flight. */
   visSignals: VisibilitySignals | null
-  setVisSignals: (s: VisibilitySignals) => void
+  setVisSignals: (s: VisibilitySignals | null) => void
 }
 
 export function useVisibility(
@@ -48,13 +48,27 @@ export function useVisibility(
     [visSignals, showAllPages]
   )
 
-  // Fetch initial visibility signals (project fetch stays in App).
+  // Fetch visibility signals for the open project — and again when a project
+  // opens, which is the whole point of the dependency.
+  //
+  // `visibility:signals` returns null while no project is active, and this used
+  // to read that null as ALL_DISCLOSED on a single mount-time fetch. On a fresh
+  // install that is exactly what happens: the app mounts at the picker with no
+  // project, latches every gate open, and — because ALL_DISCLOSED also makes
+  // `visibility.complete` true, which switches off the re-probe below — never
+  // asks again. The operator then creates their first project and lands on a
+  // full sidebar with no first-run screen: the one screen that tells them what
+  // to do was hidden by the answer to a question asked before it could exist.
+  // A null answer means "not asked yet", never "everything has been seen".
   useEffect(() => {
-    void (window.redlog.visibility.signals().catch(() => null) ?? Promise.resolve(null))
-      .then((signals) => {
-        setVisSignals((signals as VisibilitySignals | null) ?? ALL_DISCLOSED)
-      })
-  }, [])
+    if (!project) { setVisSignals(null); return }
+    let cancelled = false
+    void Promise.resolve()
+      .then(() => window.redlog.visibility.signals())
+      .then((signals) => { if (!cancelled) setVisSignals((signals as VisibilitySignals | null) ?? null) })
+      .catch(() => { if (!cancelled) setVisSignals(ALL_DISCLOSED) })
+    return () => { cancelled = true }
+  }, [project?.id])
 
   // Re-probe only when a row arrives that could open a gate still closed, and
   // only after the batch settles: a scan produces hundreds of rows a second,
