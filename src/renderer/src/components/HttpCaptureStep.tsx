@@ -362,12 +362,15 @@ export function HttpCaptureStep({ onVerified }: {
       ) : status.state === 'starting' || busy ? (
         <p className="text-redlog-text-dim">{t('httpCapture.starting')}</p>
       ) : (
+        /* Opening the project already started this. Reaching here means it
+           failed, or the operator stopped it — neither is a reason to offer
+           "start" as if capture were something they had forgotten to turn on. */
         <div className="space-y-2">
           {status.state === 'failed' && (
             <p className="text-redlog-text-dim break-all">{status.error || t('httpCapture.failed')}</p>
           )}
-          <Button level="secondary" onClick={() => void start()}>
-            {status.state === 'failed' ? t('firstRun.record.retry') : t('httpCapture.start')}
+          <Button level="secondary" data-testid="first-run-http-restart" onClick={() => void start()}>
+            {t('httpCapture.restart')}
           </Button>
         </div>
       )}

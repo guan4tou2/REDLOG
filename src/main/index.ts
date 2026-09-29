@@ -43,6 +43,8 @@ import {
 } from './terminal-manager'
 import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
+import { shouldAutoStartHttpCapture } from '../core/http-autostart'
+import { isOnPath } from '../core/command-lookup'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -677,7 +679,33 @@ function startProject(project: ProjectMeta): void {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
   })
-  // Capture starts only through an explicit operator action.
+  // Capture starts with the project.
+  //
+  // This line used to read "capture starts only through an explicit operator
+  // action", and that rule only ever applied to HTTP: the shell hook records
+  // from the moment a project is open and has never asked. HTTP asked because
+  // starting it spawns mitmdump and binds a port — a cost to RedLog and to
+  // nothing else, because the system proxy settings are never touched. No
+  // traffic on this machine moves until the operator launches the capture
+  // browser or opts their terminals in. docs/UIUX-CONTROLS-AND-COPY.md §5.
+  //
+  // One attempt per open, after the login PATH lands (a Dock-launched app
+  // cannot see ~/.local/bin before then, and would call mitmproxy missing).
+  // A failure publishes its event and shows on the card; repeating it on every
+  // open would report the same thing to an operator who has already read it.
+  {
+    const openedFor = project.id
+    void loginPathReady
+      .then(() => {
+        if (activeProject?.id !== openedFor) return
+        if (!shouldAutoStartHttpCapture({
+          mitmdumpOnPath: isOnPath('mitmdump'),
+          state: managedHttpProxy.status().state
+        })) return
+        return startManagedHttpCapture().then(() => undefined)
+      })
+      .catch((e) => console.error('[http-capture] auto-start failed:', e))
+  }
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
