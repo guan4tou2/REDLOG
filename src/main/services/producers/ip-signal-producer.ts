@@ -142,6 +142,10 @@ const DEFAULT_CONFIG: IPProducerConfig = {
  *  internal IP / last-error text. */
 export interface IPProducerState {
   external: string | null   // stable value; a settling candidate does NOT overwrite this
+  /** When a read last returned `external`; 0 before any did. `lastCheck`
+   *  moves on every read, failed ones and candidate reads included, so it
+   *  cannot date the address itself. */
+  externalReadAt: number
   internal: string | null
   lastCheck: number
   error: string | null
@@ -158,6 +162,7 @@ export class IPSignalProducer {
   private pendingCount = 0
   private state: IPProducerState = {
     external: null,
+    externalReadAt: 0,
     internal: null,
     lastCheck: 0,
     error: null,
@@ -252,7 +257,7 @@ export class IPSignalProducer {
         // Same address as the stable value — drop any half-confirmed candidate.
         this.pendingIP = null
         this.pendingCount = 0
-        this.state = { ...this.state, internal, lastCheck: now, error: null, settling: false, stale: false }
+        this.state = { ...this.state, externalReadAt: now, internal, lastCheck: now, error: null, settling: false, stale: false }
       } else {
         // Different. Confirm N-in-a-row before promoting.
         this.pendingCount = external === this.pendingIP ? this.pendingCount + 1 : 1
@@ -262,7 +267,7 @@ export class IPSignalProducer {
           this.pendingIP = null
           this.pendingCount = 0
           this.state = {
-            external, internal, lastCheck: now,
+            external, externalReadAt: now, internal, lastCheck: now,
             error: null, settling: false, stale: false,
             link: this.state.link
           }
