@@ -49,6 +49,21 @@ _json_escape() {
   python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' <<< "$1"
 }
 
+# Register this session so RedLog captures only explicitly opted-in sessions
+# instead of every Claude Code session on the machine. Call once at session
+# start, before any other redlog_* function. Falls back to $CLAUDE_SESSION_ID
+# and the current directory when arguments are omitted.
+redlog_session_register() {
+  local session_id="${1:-${CLAUDE_SESSION_ID:-}}"
+  local cwd="${2:-$PWD}"
+  if [[ -z "$session_id" ]]; then
+    echo "[redlog] redlog_session_register: session_id required (pass it or set CLAUDE_SESSION_ID)" >&2
+    return 1
+  fi
+  _redlog_post "/api/session/register" \
+    "{\"session_id\":$(_json_escape "$session_id"),\"cwd\":$(_json_escape "$cwd")}"
+}
+
 # Create a timestamp marker (most common action)
 redlog_mark() {
   local title="${1:-Agent mark}"
