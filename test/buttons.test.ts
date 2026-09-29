@@ -34,11 +34,13 @@ describe('button levels', () => {
 
   it('never puts a filled primary next to a filled danger', () => {
     // The confirm dialog is the only surface that fills a button with danger,
-    // so it is the only place the constraint can be broken.
+    // so it is the only place the constraint can be broken. It now asks for
+    // the level rather than writing the fill, which is why this reads the
+    // level and not the class.
     const dialog = read('src/renderer/src/components/ConfirmDialog.tsx')
-    expect(dialog).toMatch(/bg-redlog-danger/)
+    expect(dialog).toMatch(/level=\{?['"]?.*danger/)
     expect(dialog, 'a primary fill would sit beside the destructive verb')
-      .not.toMatch(/bg-redlog-accent(?![-/])/)
+      .not.toMatch(/level="primary"|bg-redlog-accent(?![-/])/)
   })
 
   it('keeps at most one primary per component', () => {

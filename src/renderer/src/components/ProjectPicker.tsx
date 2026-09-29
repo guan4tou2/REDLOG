@@ -202,7 +202,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               placeholder={t('project.placeholder')}
               autoFocus
-              className="flex-1 bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-sm text-redlog-text font-mono focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-redlog-muted transition-all"
+              className="flex-1 h-[34px] bg-redlog-bg border border-redlog-border rounded-lg px-3 text-sm text-redlog-text font-mono focus:outline-none focus:border-redlog-accent focus:ring-2 focus:ring-redlog-accent/40 focus:ring-offset-2 focus:ring-offset-redlog-surface placeholder-redlog-muted transition-colors"
             />
             <Button
               level="primary"
@@ -244,12 +244,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             )}
           </div>
 
-          <button
-            onClick={handleImportProfile}
-            className="mt-3 text-xs text-redlog-text-faint hover:text-redlog-text-dim transition-colors"
-          >
+          <Button level="quiet" onClick={handleImportProfile} className="mt-3 text-xs">
             {t('project.importProfile')}
-          </button>
+          </Button>
           {applied && (
             <p data-testid="profile-applied" className="mt-1 text-xs text-redlog-text-dim font-mono">{applied}</p>
           )}
@@ -353,7 +350,7 @@ function ScopeTextField({ id, label, value, onChange, placeholder, invalid }: {
         spellCheck={false}
         aria-invalid={invalid.length > 0}
         aria-describedby={invalid.length > 0 ? `${id}-invalid` : undefined}
-        className="w-full bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-redlog-muted"
+        className="w-full bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-redlog-accent focus:ring-2 focus:ring-redlog-accent/40 focus:ring-offset-2 focus:ring-offset-redlog-surface placeholder-redlog-muted"
       />
       {invalid.length > 0 && (
         <p id={`${id}-invalid`} className="text-xs text-red-400 mt-1 font-mono break-all">

@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 // The four button levels (docs/UIUX-STANDARD.md §4), in one place.
@@ -33,7 +34,10 @@ const LEVEL: Record<ButtonLevel, string> = {
   // palette — see the `on-*` tokens for why white fails on all of them.
   primary: 'bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
   secondary: 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-text-dim/40',
-  quiet: 'text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated focus-visible:ring-redlog-text-dim/40',
+  // Bordered, not bare. "Quiet" is about weight, not about whether the
+  // operator can see where the control is: an unframed label gives no hit
+  // area and no edge, so its target has to be guessed.
+  quiet: 'border-redlog-border-subtle text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40',
   // The only other fill in the system.
   danger: 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
 }
@@ -43,12 +47,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
 }
 
-export function Button({
-  level = 'secondary', className = '', children, ...rest
-}: ButtonProps): JSX.Element {
+// forwardRef because a dialog focuses its confirm button, and a component that
+// cannot be focused programmatically is one the shared geometry cannot reach.
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { level = 'secondary', className = '', children, ...rest }, ref
+) {
   return (
-    <button className={`${BASE} ${LEVEL[level]} ${className}`} {...rest}>
+    <button ref={ref} className={`${BASE} ${LEVEL[level]} ${className}`} {...rest}>
       {children}
     </button>
   )
-}
+})
