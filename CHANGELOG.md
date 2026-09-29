@@ -50,6 +50,20 @@ for full commit body + generated notes.
   in the endpoint table. New `test/agent-tool-surface.test.ts` fails if the
   skill ever names a `redlog_*` tool that no interface defines. (#241)
 
+- **mitmproxy is now one click, not a command to copy.** Spec 019 made HTTP
+  capture auto-start the managed `mitmdump`, but installing mitmproxy was left
+  out (Spec 019 out-of-scope; Spec 036 shipped only a copyable
+  `uv tool install mitmproxy`). The first-run HTTP card now runs that install
+  itself: a general dependency installer (`core/dependency-install.ts` decides
+  run / needs-prereq / manual, `main/services/dependency-installer.ts` spawns
+  it under the operator's widened PATH, `runtime:install` IPC) drives it, with
+  mitmproxy as the first dependency wired in. RedLog only runs an unprivileged
+  installer whose own tool is present: a `sudo` remediation stays manual, and
+  **when uv itself is missing the card points at uv rather than failing** — it
+  does not try to install uv. The copy-the-command fallback is gone. New unit
+  tests cover the plan and the spawner; the first-run card's test now drives
+  the install button and the uv-missing path.
+
 - **Every request in the timeline was unattributed, and not because RedLog
   could not tell.** `socket-attribution.ts` joins a request's source port to
   the pid that opened it and on to the shell command that owns that pid,

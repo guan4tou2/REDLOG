@@ -72,6 +72,7 @@ let verifyListeners: Array<(r: Report) => void>
 let bridge: {
   preflight: ReturnType<typeof vi.fn>
   install: ReturnType<typeof vi.fn>
+  runtimeInstall: ReturnType<typeof vi.fn>
   query: ReturnType<typeof vi.fn>
   proxyStatus: ReturnType<typeof vi.fn>
   proxyStart: ReturnType<typeof vi.fn>
@@ -88,6 +89,7 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
   bridge = {
     preflight: vi.fn(async () => opts.pre ?? preflight()),
     install: vi.fn(async () => ({ success: true, message: 'ok' })),
+    runtimeInstall: vi.fn(async () => ({ success: true, message: 'ok' })),
     query: vi.fn(async () => opts.rows ?? [BUILTIN]),
     proxyStatus: vi.fn(async () => opts.proxy ?? { state: 'stopped', url: null }),
     proxyStart: vi.fn(async () => ({ state: 'running', url: 'http://127.0.0.1:8080' })),
@@ -102,8 +104,9 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
       query: bridge.query,
       onNewBatch: (cb: (evs: Ev[]) => void) => { listeners.push(cb); return () => { listeners = listeners.filter((l) => l !== cb) } }
     },
-    runtime: { preflight: bridge.preflight },
+    runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall },
     hooks: { install: bridge.install },
+    app: { openExternal: vi.fn(async () => {}) },
     httpCapture: {
       status: bridge.proxyStatus,
       start: bridge.proxyStart,
@@ -363,19 +366,34 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
 })
 
 describe('first run: HTTP(S) card', () => {
-  it('when mitmdump is missing, says so with the copyable install command and re-probes on return', async () => {
+  it('when mitmdump is missing, installs it in one click and re-probes on return', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()
     const card = await screen.findByTestId('first-run-http')
     expect(card.textContent).toContain('HTTP(S)')
     await waitFor(() => expect(card.textContent).toContain('mitmproxy 尚未安裝'))
-    expect(card.textContent).toContain('uv tool install mitmproxy')
     // No re-check button: mitmproxy may have been installed in a terminal
     // while RedLog was in the background, and coming back asks again.
     expect(card.textContent).not.toContain('重新檢查')
     const before = bridge.preflight.mock.calls.length
     act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => expect(bridge.preflight.mock.calls.length).toBeGreaterThan(before))
+    const installBtn = await screen.findByTestId('first-run-http-install')
+    fireEvent.click(installBtn)
+    // The install runs, and on success the card re-checks preflight.
+    await waitFor(() => expect(bridge.runtimeInstall).toHaveBeenCalledWith('mitmdump'))
+    await waitFor(() => expect(bridge.preflight.mock.calls.length).toBeGreaterThan(1))
+  })
+
+  it('when the installer (uv) is missing, points at it instead of failing again', async () => {
+    install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
+    bridge.runtimeInstall.mockResolvedValueOnce({
+      success: false, message: 'uv required', needsPrereq: { command: 'uv', url: 'https://astral.sh/uv' }
+    })
+    draw()
+    fireEvent.click(await screen.findByTestId('first-run-http-install'))
+    const prereq = await screen.findByTestId('first-run-http-install-prereq')
+    expect(prereq.textContent).toContain('安裝 uv')
   })
 
   it('when running, shows the listen address and the browser check', async () => {
@@ -424,7 +442,7 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
   })
 
   it('Copy says it copied', async () => {
-    install({ pre: preflight({ missing: ['mitmdump'] }) })
+    install({ proxy: RUNNING })
     draw()
     const card = await screen.findByTestId('first-run-http')
     const copy = await waitFor(() => {
