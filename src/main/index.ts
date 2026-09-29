@@ -41,10 +41,11 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { runPreflight } from '../core/runtime-preflight'
+import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
+import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -1625,6 +1626,9 @@ app.whenReady().then(() => {
     const shell = result.platform === 'win32' ? result.shell?.name : null
     return shell ? { ...result, powershell: await readExecutionPolicy(shell) } : result
   })
+  // The operator's PATH has to be resolved first, or uv/brew installed outside
+  // launchd's minimal PATH are invisible and the install ENOENTs.
+  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => { await loginPathReady; return installDependency(id) })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())
