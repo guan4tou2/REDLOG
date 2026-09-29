@@ -38,7 +38,6 @@ import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
 import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
 import { Camera, FilePlus } from 'lucide-react'
 import { FilterBar } from './components/FilterBar'
-import { ActiveTargetControl } from './components/ActiveTargetControl'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -258,7 +257,6 @@ export default function App(): JSX.Element {
               route to the full value once it can be cut short (§9). */}
           <span className="truncate" title={project.name}>{project.name}</span>
         </button>
-        <ActiveTargetControl key={project.id} />
         <div className={`ml-auto flex gap-2 shrink-0 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* §10: one export control, in the shell rather than six places.
               Its scope is an option, not a location. */}
