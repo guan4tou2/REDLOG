@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -76,12 +76,7 @@ describe('ProjectPicker scope on the create card', () => {
     expect(save).not.toHaveBeenCalled()
   })
 
-  it('keeps scope and excludes out of the Advanced dialog', async () => {
-    setup()
-    fireEvent.click(screen.getByText('Advanced Setup (optional)'))
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog.querySelector('textarea')).toBeNull()
-    expect(within(dialog).queryByLabelText('Scope')).toBeNull()
-    expect(within(dialog).queryByLabelText('Excluded targets')).toBeNull()
-  })
+  // The Advanced dialog this used to guard scope against is gone
+  // (docs/UIUX-CONTROLS-AND-COPY.md §5); scope cannot be anywhere but the card
+  // now. test/project-picker-create-card.test.tsx pins its absence.
 })
