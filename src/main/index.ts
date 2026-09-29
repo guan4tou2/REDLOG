@@ -42,6 +42,7 @@ import {
   getCastPosition
 } from './terminal-manager'
 import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
+import { readExecutionPolicy } from '../core/powershell-policy'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -1581,7 +1582,17 @@ app.whenReady().then(() => {
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
   // with a minimal PATH, and probing before it lands reports installed tools
   // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.
-  ipcMain.handle('runtime:preflight', async () => { await loginPathReady; return runPreflight() })
+  // The PowerShell execution policy rides along rather than living in
+  // runPreflight: that function is documented as spawning nothing, so it stays
+  // safe to call from the main thread on every onboarding render. This handler
+  // is already async, and the probe is the one question on Windows whose
+  // answer cannot be read off the filesystem.
+  ipcMain.handle('runtime:preflight', async () => {
+    await loginPathReady
+    const result = runPreflight()
+    const shell = result.platform === 'win32' ? result.shell?.name : null
+    return shell ? { ...result, powershell: await readExecutionPolicy(shell) } : result
+  })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())

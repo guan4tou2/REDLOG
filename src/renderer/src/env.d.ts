@@ -462,6 +462,10 @@ interface RuntimePreflight {
     remediationRequires?: { command: string; url: string }
   }>
   legacyHooks: LegacyHookRef[]
+  /** Windows only, and null when it could not be measured — never "fine".
+   *  A Restricted policy stops `$PROFILE` loading, which is the one Windows
+   *  failure that leaves the hook installed and the terminal silent. */
+  powershell?: { shell: string; policy: string; blocksProfile: boolean } | null
 }
 
 interface CaptureSourceInfo {
