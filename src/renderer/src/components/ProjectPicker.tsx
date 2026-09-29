@@ -161,7 +161,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+      {/* `align-items: center` on a scroll container overflows in BOTH
+          directions once the content is taller than the box, and the half
+          above the scroll origin cannot be reached — shrink the window and the
+          wordmark is cut off with no way to scroll back to it. `safe center`
+          centers while it fits and falls back to flex-start when it does not,
+          which is the only behaviour that survives a resize. */}
+      <div
+        className="flex-1 flex justify-center p-6 overflow-y-auto"
+        style={{ alignItems: 'safe center' }}
+      >
       <div className={`w-full ${hasRecent ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
         {/* Header — spans both columns. Centered anchor for identity so the
             wider layout still feels intentional and not empty. */}
