@@ -255,6 +255,8 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/bookmarks` | yes | Create bookmark |
 | POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
+| POST | `/api/session/register` | yes | Opt a session into capture (`{ session_id, cwd? }`); once any session registers, only registered sessions are tailed |
+| GET | `/api/session/registered` | yes | List registered session ids |
 | GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
 | POST | `/api/terminal/replay` | yes | Replay terminal command output from `.cast` file |
 | GET | `/api/chain` | yes | Chain length + latest anchor |
@@ -303,6 +305,7 @@ source /path/to/redlog/shell/redlog-agent.sh
 
 | Function | Description | Example |
 |----------|-------------|---------|
+| `redlog_session_register` | Opt this session into capture (call first) | `redlog_session_register "$CLAUDE_SESSION_ID"` |
 | `redlog_status` | Check if RedLog is running | `redlog_status` |
 | `redlog_mark` | Create a marker | `redlog_mark "Finding" "Details" "high"` |
 | `redlog_event` | Log raw event | `redlog_event "agent" '{"subtype":"done"}'` |
@@ -316,18 +319,19 @@ source /path/to/redlog/shell/redlog-agent.sh
 
 ## 4. Codex / OpenAI Function Calling
 
-See [`codex-tools.json`](codex-tools.json) for OpenAI-compatible function definitions. These work with Codex, GPT, or any OpenAI-API-compatible model.
+See [`codex-tools.json`](codex-tools.json) for OpenAI-compatible function definitions. These work with Codex, GPT, or any OpenAI-API-compatible model. Session-start and other frequently used tools:
 
-**8 tool definitions included:**
+1. `redlog_session_register` — opt this session into capture (call first)
+2. `redlog_status` — get recording status
+3. `redlog_mark` — create finding/phase marker
+4. `redlog_log_event` — log arbitrary event
+5. `redlog_search` — full-text search
+6. `redlog_scope` — check scope config
+7. `redlog_loot_scan` — scan for credentials
+8. `redlog_screenshot` — capture screenshot
+9. `redlog_recording` — control recording state
 
-1. `redlog_status` — get recording status
-2. `redlog_mark` — create finding/phase marker
-3. `redlog_log_event` — log arbitrary event
-4. `redlog_search` — full-text search
-5. `redlog_scope` — check scope config
-6. `redlog_loot_scan` — scan for credentials
-7. `redlog_screenshot` — capture screenshot
-8. `redlog_recording` — control recording state
+The file carries the full set (identity, events, bookmarks, chain/anchoring, config); the list above is the common subset.
 
 ## Config Profile Sharing
 

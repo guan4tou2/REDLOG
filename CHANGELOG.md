@@ -5,6 +5,21 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **The skill's mandated first call had nothing to bind to.** The
+  `redlog-pentest` skill tells the agent to call `redlog_session_register`
+  on its first turn — the call that opts a session into capture so RedLog
+  tails only explicitly registered sessions, not every Claude Code session
+  on the machine — and, if it errors, to stop calling RedLog tools for the
+  rest of the session. But `redlog_session_register` shipped only as an MCP
+  tool; when the MCP server was removed it went with it, while the skill and
+  the `/api/session/register` endpoint stayed. So the agent's very first step
+  failed and it abandoned the whole control plane. The tool is now exposed on
+  the two surfaces that remain — `docs/codex-tools.json` (18 → 19) and
+  `shell/redlog-agent.sh` (defaulting `session_id` to `$CLAUDE_SESSION_ID`)
+  — and both `/api/session/register` and `/api/session/registered` are now
+  in the endpoint table. New `test/agent-tool-surface.test.ts` fails if the
+  skill ever names a `redlog_*` tool that no interface defines. (#241)
+
 - **Every request in the timeline was unattributed, and not because RedLog
   could not tell.** `socket-attribution.ts` joins a request's source port to
   the pid that opened it and on to the shell command that owns that pid,

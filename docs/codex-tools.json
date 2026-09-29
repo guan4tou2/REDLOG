@@ -4,6 +4,29 @@
     {
       "type": "function",
       "function": {
+        "name": "redlog_session_register",
+        "description": "Register this agent session with RedLog so the transcript tailer captures only explicitly opted-in sessions instead of every Claude Code session on the machine. Call once at session start, before any other RedLog tool. Pass the current session id (from the CLAUDE_SESSION_ID environment variable or session metadata); optionally pass the working directory to add it to the capture watch paths.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "description": "The current agent session id (e.g. the value of CLAUDE_SESSION_ID)"
+            },
+            "cwd": {
+              "type": "string",
+              "description": "Optional working directory to add to RedLog's capture watch paths"
+            }
+          },
+          "required": [
+            "session_id"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "redlog_mark",
         "description": "Create a timestamped marker in the RedLog attack timeline. Use when you discover a vulnerability, start a new testing phase, or want to note something important.",
         "parameters": {
