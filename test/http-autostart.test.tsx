@@ -44,8 +44,7 @@ function mount(status: ManagedProxyStatus): { start: ReturnType<typeof vi.fn> } 
       preflight: vi.fn(async () => ({
         platform: 'linux',
         shell: { name: 'zsh', hookId: 'shell-zsh' },
-        checks: [{ id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }],
-        legacyHooks: []
+        checks: [{ id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }]
       }))
     },
     httpCapture: {

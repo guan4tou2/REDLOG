@@ -41,7 +41,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
+import { runPreflight } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
@@ -1606,7 +1606,6 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
-  ipcMain.handle('hooks:migrateLegacy', (_e, ref: LegacyHookRef) => { invalidateHooksCache(); invalidateHooksDetectCache(); return migrateLegacyHook(ref) })
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
   // with a minimal PATH, and probing before it lands reports installed tools
   // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.

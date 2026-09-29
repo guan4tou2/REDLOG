@@ -403,7 +403,6 @@ interface RedLogAPI {
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
-    migrateLegacy: (ref: LegacyHookRef) => Promise<LegacyMigrationResult>
   }
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
@@ -434,22 +433,6 @@ interface RedLogAPI {
   }
 }
 
-interface LegacyHookRef {
-  file: string
-  line: number
-  text: string
-  /** current adapter that replaces the retired file; null = remove only */
-  hookId: string | null
-}
-
-interface LegacyMigrationResult {
-  success: boolean
-  message: string
-  backupPath?: string
-  removed: number
-  hookId: string | null
-}
-
 interface RuntimePreflight {
   platform: string
   shell: { name: string; hookId: string } | null
@@ -461,7 +444,6 @@ interface RuntimePreflight {
     remediation?: string
     remediationRequires?: { command: string; url: string }
   }>
-  legacyHooks: LegacyHookRef[]
   /** Windows only, and null when it could not be measured — never "fine".
    *  A Restricted policy stops `$PROFILE` loading, which is the one Windows
    *  failure that leaves the hook installed and the terminal silent. */

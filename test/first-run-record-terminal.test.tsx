@@ -40,8 +40,7 @@ function preflight(over: Partial<Preflight> & { missing?: Array<'python3' | 'cur
   return {
     platform,
     shell: over.shell === undefined ? { name: 'zsh', hookId: 'shell-zsh' } : over.shell,
-    checks,
-    legacyHooks: over.legacyHooks ?? []
+    checks
   }
 }
 
@@ -310,17 +309,15 @@ describe('first run: record my terminal', () => {
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const first = (await screen.findByTestId('record-terminal-command')).textContent
 
-    // By the time the wait expires the operator's machine has changed: python3
-    // went missing and a retired hook line is still in .zshrc.
+    // By the time the wait expires the operator's machine has changed:
+    // python3 went missing.
     bridge.preflight.mockResolvedValue(preflight({
-      missing: ['python3'],
-      legacyHooks: [{ file: '/home/op/.zshrc', line: 12, text: 'source ~/redlog/shell-preexec-hook.sh', hookId: 'shell-zsh' }]
+      missing: ['python3']
     }))
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const why = await screen.findByTestId('record-terminal-timeout')
     expect(why.textContent).toContain('新的')
     expect(why.textContent).toContain('python3')
-    expect(why.textContent).toContain('/home/op/.zshrc')
 
     fireEvent.click(screen.getByText('再試一次'))
     // The retry re-runs preflight — which now blocks on python3.
