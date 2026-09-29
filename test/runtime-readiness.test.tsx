@@ -6,7 +6,7 @@
 // missing python3 explains itself and still lets the operator continue.
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { RuntimeReadinessHost, LegacyHookBanner } from '../src/renderer/src/components/RuntimeReadiness'
 import { openRuntimeReadiness } from '../src/renderer/src/lib/runtimeReadiness'
@@ -76,8 +76,9 @@ describe('first-launch readiness', () => {
     expect(note).toContain('時間軸')
     expect(note).toContain('adapter')
     expect(note).not.toContain('內建終端仍可記錄')
-    // re-check probes again
-    fireEvent.click(screen.getByRole('button', { name: '重新檢查' }))
+    // Coming back to the window probes again; there is no button for it.
+    expect(screen.queryByRole('button', { name: '重新檢查' })).toBeNull()
+    act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => expect(pf).toHaveBeenCalledTimes(2))
     // continuing is never blocked
     const start = screen.getByRole('button', { name: '開始使用' })

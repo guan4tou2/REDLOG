@@ -14,6 +14,7 @@ import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { activationCommand, activationNonce, isActivationEvent, missingDependencies, SET_EXECUTION_POLICY } from '../lib/terminalActivation'
 import { requestRunInTerminal } from '../lib/terminalRunner'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { classifyCanaryEvent, mergeCanary, outputCanary, type CanaryResult } from '../lib/outputCanary'
 import type { RedLogEvent } from '../../../core/db/events'
 
@@ -83,6 +84,13 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Blocked means a dependency was missing, and the operator has gone to
+  // install it. Coming back re-runs the attempt: the click that started this
+  // flow was already consent to install the hook, and it is only the missing
+  // dependency that held it. Every other phase is waiting on an event or on a
+  // failure the operator must retry themselves, so none of them re-runs here.
+  useRevalidateOnFocus(() => { if (phase === 'blocked') void run() })
+
   // Listen only while waiting: verification or the timeout ends it, and the
   // cleanup unsubscribes either way.
   useEffect(() => {
@@ -115,7 +123,6 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
         <div data-testid="record-terminal-missing" className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.record.blocked', { shell: target.label })}</p>
           <MissingList missing={missing} />
-          <Button level="secondary" onClick={() => void run()}>{t('firstRun.recheck')}</Button>
         </div>
       ) : phase === 'install-failed' ? (
         <div className="space-y-2">
@@ -176,9 +183,8 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
  *  recording, so both halves have to be said: without the second one the
  *  operator reads a working built-in pane beside a silent terminal as a broken
  *  machine rather than as one policy. */
-export function ExecutionPolicyBlocker({ blocker, onRecheck }: {
+export function ExecutionPolicyBlocker({ blocker }: {
   blocker: { policy: string; remediation: string }
-  onRecheck: () => void
 }): JSX.Element {
   const { t } = useI18n()
   return (
@@ -200,7 +206,6 @@ export function ExecutionPolicyBlocker({ blocker, onRecheck }: {
         <Button level="secondary" onClick={() => requestRunInTerminal(blocker.remediation)}>
           {t('settings.hookRun')}
         </Button>
-        <Button level="quiet" onClick={onRecheck}>{t('firstRun.recheck')}</Button>
       </div>
     </div>
   )
