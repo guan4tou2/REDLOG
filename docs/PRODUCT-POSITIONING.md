@@ -46,7 +46,7 @@ Two halves, and both are load-bearing:
 2. **Without taking notes** — capture has to be passive. The moment logging
    depends on the operator remembering to log, the record has holes exactly
    where the interesting things happened. This is why hooks are the backbone
-   and MCP is only the control plane (see `agent-integration.md`).
+   and the API is only the control plane (see `agent-integration.md`).
 
 An AI agent is the sharpest case of the first half — you delegate, it does
 three hundred things, you know none of them — but it is **one producer among
@@ -79,9 +79,9 @@ operator runs their own RedLog; there is no central server by design.
 
 Drives the engagement through Claude Code / Codex / OpenCode. Their risk is a
 **silent gap**: the agent did something and forgot to log it. RedLog's answer is
-the transcript tailer + shell hooks (passive, can't be forgotten) with MCP as an
-explicit control plane. This persona is why "hooks log, MCP operates" is a hard
-rule, not a preference.
+the transcript tailer + shell hooks (passive, can't be forgotten) with the API
+as an explicit control plane. This persona is why "hooks log, the API operates"
+is a hard rule, not a preference.
 
 ## Who consumes the output
 

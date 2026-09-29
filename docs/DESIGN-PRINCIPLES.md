@@ -140,11 +140,13 @@ agent-operations platform.
 
 ## 7. Control plane: one implementation, many thin faces
 
-Different consumers legitimately need different transports — agents want MCP,
-scripts want REST, humans want shell functions. The rule is **one canonical
-implementation** (the localhost REST handlers) with every other surface a
-**thin, ideally generated, adapter** that cannot drift: MCP is the blessed
-agent-native face; shell functions and the Codex JSON schema are thin wrappers.
+Different consumers legitimately need different transports — scripts want REST,
+humans want shell functions, agents want whatever their framework speaks. The
+rule is **one canonical implementation** (the localhost REST handlers) with
+every other surface a **thin, ideally generated, adapter** that cannot drift:
+the CLI, the shell functions and the Codex JSON schema are all wrappers over
+those handlers. An app-hosted MCP server was one such face and was removed in
+`ddc2606` — the principle is what survived it, not that particular transport.
 The control-op set stays minimal and **evidence-relevant only** — write evidence
 (mark, quickmark), operate the chain (anchor, recording pause/resume), read for
 agent decisions (scope, status, search, whoami). It never duplicates capture
