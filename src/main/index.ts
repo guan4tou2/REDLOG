@@ -41,7 +41,8 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
+import { migrateLegacyHook, runPreflight, type LegacyHookRef, type PreflightCommand } from '../core/runtime-preflight'
+import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -1571,6 +1572,9 @@ app.whenReady().then(() => {
   // with a minimal PATH, and probing before it lands reports installed tools
   // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.
   ipcMain.handle('runtime:preflight', async () => { await loginPathReady; return runPreflight() })
+  // The operator's PATH has to be resolved first, or uv/brew installed outside
+  // launchd's minimal PATH are invisible and the install ENOENTs.
+  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => { await loginPathReady; return installDependency(id) })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())

@@ -218,7 +218,8 @@ const api: RedLogAPI = {
     migrateLegacy: (ref: unknown) => ipcRenderer.invoke('hooks:migrateLegacy', ref)
   },
   runtime: {
-    preflight: () => ipcRenderer.invoke('runtime:preflight')
+    preflight: () => ipcRenderer.invoke('runtime:preflight'),
+    install: (id: string) => ipcRenderer.invoke('runtime:install', id)
   },
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),

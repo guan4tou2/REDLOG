@@ -413,6 +413,13 @@ interface RedLogAPI {
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
     preflight: () => Promise<RuntimePreflight>
+    /** Run the install a preflight remediation describes (e.g. mitmproxy via uv).
+     *  `needsPrereq` is set when the installer itself (uv/brew) is missing. */
+    install: (id: RuntimePreflight['checks'][number]['id']) => Promise<{
+      success: boolean
+      message: string
+      needsPrereq?: { command: string; url: string }
+    }>
   }
   plugins: {
     list: () => Promise<unknown[]>

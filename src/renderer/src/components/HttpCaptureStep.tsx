@@ -29,7 +29,6 @@ import {
 import { clientLabel, newVerifyNonce, type HttpVerifyReport } from '../../../core/http-verify'
 import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
 
-const MITM_INSTALL = 'uv tool install mitmproxy'
 /** Same window as the shell activation: long enough to launch a browser and
  *  load a page, short enough to be named while the operator is watching. */
 const HTTP_VERIFY_TIMEOUT_MS = 60_000
@@ -124,6 +123,10 @@ export function HttpCaptureStep({ onVerified }: {
   const { t } = useI18n()
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
   const [mitmMissing, setMitmMissing] = useState(false)
+  /** Set when mitmproxy's installer (uv) is itself missing: RedLog cannot run
+   *  the install, so the operator is pointed at uv first (#241 follow-up). */
+  const [mitmRequires, setMitmRequires] = useState<{ command: string; url: string } | null>(null)
+  const [installing, setInstalling] = useState(false)
   const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
@@ -157,8 +160,34 @@ export function HttpCaptureStep({ onVerified }: {
     ])
     // A failed environment check is not "mitmproxy is installed".
     setPreflightFailed(pf === null)
-    if (pf) setMitmMissing(pf.checks.some((c) => c.id === 'mitmdump' && !c.found))
+    if (pf) {
+      const mitm = pf.checks.find((c) => c.id === 'mitmdump')
+      setMitmMissing(mitm ? !mitm.found : false)
+      setMitmRequires(mitm && !mitm.found ? mitm.remediationRequires ?? null : null)
+    }
     if (st) setStatus(st)
+  }
+
+  // One-click install of the dependency RedLog can install for the operator.
+  // When uv is missing the IPC reports it rather than failing, and the card
+  // switches to pointing at uv.
+  const installMitm = async (): Promise<void> => {
+    setInstalling(true)
+    try {
+      const r = await window.redlog.runtime.install('mitmdump')
+      if (r.success) {
+        toast(t('firstRun.http.installed'), 'success')
+        await check()
+      } else if (r.needsPrereq) {
+        setMitmRequires(r.needsPrereq)
+      } else {
+        toast(t('firstRun.http.installFailed'), { type: 'error', detail: r.message })
+      }
+    } catch (e) {
+      toast(t('firstRun.http.installFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setInstalling(false)
+    }
   }
 
   useEffect(() => {
@@ -242,13 +271,26 @@ export function HttpCaptureStep({ onVerified }: {
         </p>
       )}
       {unavailable ? (
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="first-run-http-unavailable">
           <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
-          <div className="flex items-center gap-2">
-            <code className="font-mono text-redlog-text-dim">{MITM_INSTALL}</code>
-            <CopyButton text={MITM_INSTALL} />
-          </div>
-          <Button level="secondary" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
+          {mitmRequires ? (
+            <>
+              <p className="text-redlog-text-dim">{t('firstRun.http.needsPrereq', { command: mitmRequires.command })}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button level="secondary" onClick={() => void window.redlog.app.openExternal(mitmRequires.url)} data-testid="first-run-http-install-prereq">
+                  {t('firstRun.http.installPrereq', { command: mitmRequires.command })}
+                </Button>
+                <Button level="quiet" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button level="secondary" disabled={installing} onClick={() => void installMitm()} data-testid="first-run-http-install">
+                {installing ? t('firstRun.http.installing') : t('firstRun.http.install')}
+              </Button>
+              <Button level="quiet" disabled={installing} onClick={() => void check()}>{t('firstRun.recheck')}</Button>
+            </div>
+          )}
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
