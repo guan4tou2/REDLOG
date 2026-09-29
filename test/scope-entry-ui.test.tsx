@@ -9,22 +9,18 @@ import type { ConfigState } from '../src/renderer/src/components/settings/Settin
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('scope and project identity entry', () => {
-  it('persists exclude targets entered on the project creation card', async () => {
-    const create = vi.fn(async () => ({ id: 'p1', name: 'Lab', createdAt: 1, lastOpened: 1, path: '/tmp/p1' }))
-    ;(window as unknown as { redlog: unknown }).redlog = {
-      project: { list: async () => [], create, open: async () => null, delete: async () => true, rename: async () => ({ ok: true }), active: async () => ({ id: 'p1' }) },
-      config: { importProfile: async () => null }
-    }
-    render(<I18nProvider><ProjectPicker onProjectOpen={() => {}} /></I18nProvider>)
-    fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
-    fireEvent.change(screen.getByLabelText('Excluded targets'), { target: { value: '127.0.0.1' } })
-    fireEvent.click(screen.getByText('Create'))
-    await vi.waitFor(() => expect(create).toHaveBeenCalledWith('Lab', expect.objectContaining({
-      scope: expect.objectContaining({ excludeTargets: ['127.0.0.1'] })
-    })))
-  })
+  // The create card no longer asks for scope or exclusions: Settings > Scope
+  // owns them, and asking twice is asking twice
+  // (docs/UIUX-CONTROLS-AND-COPY.md §2). What it still carries at create time
+  // comes from an imported profile, covered in
+  // test/project-picker-create-card.test.tsx.
 
   it('renders an existing engagement ID as read-only', () => {
+    // Its own bridge: this used to run on whatever the previous test left on
+    // `window`, which is why removing that test broke this one.
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => null, rename: vi.fn() }
+    }
     const config = {
       engagement: { id: 'immutable-id' }, operator: { id: 'op', name: 'Operator' },
       network: { whitelist: [], blacklist: [], checkInterval: 60 },

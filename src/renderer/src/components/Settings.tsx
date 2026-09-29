@@ -242,9 +242,16 @@ export default function Settings({ request = null }: { request?: { page: Setting
               {t('settings.noSettingMatches', { query: pageQuery })}
             </p>
           )}
-          {visible.map((g) => (
-            <div key={g.heading} className="mb-2">
-              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+          {/* A heading and a page used to differ by one weight step and two
+              greys three units apart, with `uppercase` doing the rest — and
+              `uppercase` does nothing to Chinese. In this locale they read as
+              one flat list, so which rows are clickable had to be guessed.
+              The difference is structural now: headings sit at the margin in
+              the muted grey and never highlight, pages are indented, have a
+              row height, and light up under the pointer. */}
+          {visible.map((g, i) => (
+            <div key={g.heading} className={i > 0 ? 'mt-3 pt-3 border-t border-redlog-border-subtle' : ''}>
+              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
                 {g.heading}
               </p>
               {g.pages.map((pg) => (
@@ -253,7 +260,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
                   data-settings-page={pg.id}
                   onClick={() => setTab(pg.id)}
                   aria-current={tab === pg.id ? 'page' : undefined}
-                  className={`w-full text-left px-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
+                  className={`w-full text-left pl-5 pr-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
                     tab === pg.id
                       ? 'bg-redlog-elevated text-redlog-text'
                       : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -265,15 +272,15 @@ export default function Settings({ request = null }: { request?: { page: Setting
             </div>
           ))}
           {hits.length > 0 && (
-            <div className="mb-2" data-testid="settings-search-results">
-              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+            <div className="mt-3 pt-3 border-t border-redlog-border-subtle" data-testid="settings-search-results">
+              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
                 {t('settings.searchResults')}
               </p>
               {hits.map((h) => (
                 <button
                   key={`${h.page}:${h.text}`}
                   onClick={() => { setTab(h.page); setFindText(h.text) }}
-                  className="w-full text-left px-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
+                  className="w-full text-left pl-5 pr-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
                 >
                   <span className="block truncate" title={h.text}>{h.text}</span>
                   <span className="block text-redlog-text-faint">{pageLabel.get(h.page)}</span>

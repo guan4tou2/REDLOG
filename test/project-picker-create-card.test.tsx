@@ -46,24 +46,26 @@ describe('create card', () => {
     expect(screen.queryByText(/Warn on scope violation/i)).toBeNull()
   })
 
-  it('asks for a name and a scope, and nothing else', () => {
+  it('asks for a name, and nothing else', () => {
     setup()
-    // Name, scope, excluded targets. No fourth field, no disclosure.
+    // Settings > Scope owns in-scope targets, exclusions, the violation
+    // warning and personal domains. Asking for them again here is asking the
+    // same question twice, on the screen an operator sees before every
+    // engagement.
     expect(screen.getByPlaceholderText('e.g. Client-Pentest-Q3')).toBeTruthy()
-    expect(screen.getByLabelText('Scope')).toBeTruthy()
-    expect(screen.getByLabelText('Excluded targets')).toBeTruthy()
-    expect(screen.getAllByRole('textbox')).toHaveLength(3)
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.queryByLabelText('Scope')).toBeNull()
+    expect(screen.queryByLabelText('Excluded targets')).toBeNull()
   })
 
   it('imports a profile and says what it applied, with no modal to open', async () => {
     setup(PROFILE)
     fireEvent.click(screen.getByText(/Import Profile/i))
-    // The scope is visible in its own field; the rest is not, so it is named.
-    await vi.waitFor(() => expect((screen.getByLabelText('Scope') as HTMLTextAreaElement).value)
-      .toContain('10.10.11.0/24'))
+    // Nothing it carries is visible on the card, so all of it is named.
     const applied = await screen.findByTestId('profile-applied')
-    expect(applied.textContent).toContain('1')   // one safe IP
-    expect(applied.textContent).toContain('2')   // two exposed IPs
+    expect(applied.textContent).toContain('Scope 2')
+    expect(applied.textContent).toContain('Safe IPs 1')
+    expect(applied.textContent).toContain('Exposed IPs 2')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 

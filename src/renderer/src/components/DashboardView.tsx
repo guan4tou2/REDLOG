@@ -37,29 +37,11 @@ export const StatCard = memo(function StatCard({ label, value, sub, tone = 'neut
 export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [proxy, setProxy] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
-  const [proxyBusy, setProxyBusy] = useState(false)
   const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.browser.status().then((s) => setRunning(s.running)).catch(() => {})
-    const refresh = (): void => { window.redlog.httpCapture.status().then(setProxy).catch(() => {}) }
-    refresh()
-    const timer = setInterval(refresh, 3_000)
-    return () => clearInterval(timer)
   }, [])
-
-  const toggleProxy = async (): Promise<void> => {
-    setProxyBusy(true)
-    const next = proxy.state === 'running'
-      ? await window.redlog.httpCapture.stop()
-      : await window.redlog.httpCapture.start()
-    setProxy(next)
-    if (next.state === 'running') toast(t('httpCapture.started'), 'success')
-    else if (next.state === 'stopped') toast(t('httpCapture.stopped'), 'info')
-    else toast(next.error || t('httpCapture.failed'), 'error')
-    setProxyBusy(false)
-  }
 
   const handleClick = async (): Promise<void> => {
     setBusy(true)
@@ -84,27 +66,12 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
     setBusy(false)
   }
 
+  // The proxy toggle used to sit here too, in the most expensive strip in the
+  // app, for an action taken at most a few times an engagement -- and it
+  // already exists in the HTTP card and on Settings > Browser. Three places
+  // for one switch (docs/UIUX-CONTROLS-AND-COPY.md §2, question 3).
   return (
-    <div className="flex items-center gap-1.5">
-    <button
-      onClick={toggleProxy}
-      data-testid="http-capture-toggle"
-      disabled={proxyBusy || proxy.state === 'starting'}
-      title={proxy.error || t('httpCapture.hint')}
-      className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
-        proxy.state === 'running'
-          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-          : proxy.state === 'failed' || proxy.state === 'unavailable'
-            ? 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
-            : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60'
-      }`}
-    >
-      {/* Opening the project starts capture; this toggle stops it and brings
-          it back. "Start" would suggest capture waits to be turned on. */}
-      {proxyBusy || proxy.state === 'starting' ? t('httpCapture.starting')
-        : proxy.state === 'running' ? t('httpCapture.stop')
-          : t('httpCapture.restart')}
-    </button>
+    <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
     <button
       onClick={handleClick}
       disabled={busy}
