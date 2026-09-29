@@ -67,9 +67,15 @@ describe('ProjectPicker scope on the create card', () => {
     expect(screen.queryByLabelText(/own traffic/)).toBeNull()
   })
 
-  it('notes an empty scope without blocking creation', async () => {
+  it('creates with an empty scope, and says nothing about it here', async () => {
     const { create, save, onOpen } = setup()
-    expect(screen.getByText(/No scope set yet/)).toBeTruthy()
+    // Spec 037 kept an empty scope legal and attached a note explaining what
+    // RedLog cannot judge without one. The note went: it appeared on a field
+    // the operator had not filled in yet, to explain the consequence of
+    // something they had not done. The status bar carries the fact where it
+    // bites — inside the project, as "scope not set" — for as long as it is
+    // true.
+    expect(screen.queryByText(/No scope set yet/)).toBeNull()
     fireEvent.click(screen.getByText('Create'))
     await vi.waitFor(() => expect(onOpen).toHaveBeenCalledWith({ id: 'p1', name: 'Lab' }))
     expect(create).toHaveBeenCalled()
