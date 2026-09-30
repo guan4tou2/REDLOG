@@ -913,6 +913,7 @@
   "capture.group.commands": "Commands",
   "capture.mitmproxyCapability": "requests and responses from any proxied tool · needs mitmproxy",
   "capture.group.additional": "Additional sources",
+  "capture.group.additionalCount": "{{count}} more capture sources are available — turn them on under All sources",
   "capture.group.http": "HTTP(S) requests",
   "capture.group.traffic": "Other network",
   "capture.group.artifacts": "Screen & files",
