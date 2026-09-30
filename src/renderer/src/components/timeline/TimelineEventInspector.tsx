@@ -125,7 +125,38 @@ export function TimelineEventInspector({
           </button>
         </div>
       </div>
-      <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{titleOf(event)}</p>
+      {/* The headline. One thing on this pane is the subject and everything
+          else describes it — the command, the METHOD and URL, the marker's
+          title. It used to render at the same 13px, the same weight and the
+          same colour as the six facts under it, so the eye had nowhere to
+          land first and the operator read the panel top to bottom every
+          time. `break-all` because a URL with a query string is longer than
+          any pane. */}
+      <p className="mt-2 font-mono text-sm leading-relaxed text-redlog-text break-all">{titleOf(event)}</p>
+      {/* The facts, as label/value rather than prose.
+          `目標：10.0.4.12` reads as a sentence and scans as nothing: every
+          line began with a different word at a different length, so finding
+          the target meant reading all of them. Labels left and dim, values
+          right and mono — the values line up, which is what makes a column
+          scannable rather than merely present. */}
+      <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+        <dt className="text-redlog-text-faint">{t('timeline.detail.when')}</dt>
+        <dd className="font-mono text-redlog-text-dim text-right tabular-nums">
+          {formatTime(event.timestamp, { seconds: true })}
+        </dd>
+        <dt className="text-redlog-text-faint">{t('timeline.detail.source')}</dt>
+        <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.hostname}>
+          {event.hostname}
+        </dd>
+        {event.targetId && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.target')}</dt>
+            <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.targetId}>
+              {event.targetId}
+            </dd>
+          </>
+        )}
+      </dl>
       {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
           to the title so the operator sees every flag at once (the dot
           overlay only shows the first). Empty when the event has none. */}
@@ -306,9 +337,6 @@ export function TimelineEventInspector({
         <p className="mt-1 text-xs text-redlog-text-faint font-mono">
           {t('timeline.focusChain.enterHint')}
         </p>
-      )}
-      {event.targetId && (
-        <p className="text-xs text-redlog-text-dim mt-1 font-mono">{t('timeline.target', { target: event.targetId })}</p>
       )}
       {/* Structured stdout/stderr + metadata for shell command_end. */}
       {event.agentType === 'shell'
