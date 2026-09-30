@@ -19,7 +19,12 @@ import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 
 // Heavy views loaded lazily — keeps the initial bundle small.
-// Electron-local loads are instant so the Suspense fallback is null.
+// These are lazy so the first paint does not carry xterm and the settings
+// tree. The fallback used to be `null` on the premise that "Electron-local
+// loads are instant" — true of a packaged build reading a bundled chunk, and
+// false in dev, where Vite transforms each module on demand. `null` means the
+// pane renders nothing while it waits, which against a #121214 window is a
+// black screen with no explanation.
 const TerminalView = lazy(() => import('./components/TerminalView'))
 const Settings = lazy(() => import('./components/Settings'))
 const TranscriptView = lazy(() => import('./components/TranscriptView'))
@@ -50,7 +55,14 @@ import { useAppShortcuts } from './hooks/useAppShortcuts'
 type View = SidebarViewId | 'settings'
 
 
-export default function App(): JSX.Element {
+export default /** What a pane shows while its chunk arrives. Deliberately dim and still: it
+ *  is a few hundred milliseconds in a packaged build, and a spinner that
+ *  flashes is worse than a surface that is simply not filled in yet. */
+function PaneLoading(): JSX.Element {
+  return <div className="h-full w-full bg-redlog-surface/30 animate-pulse" aria-hidden />
+}
+
+function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
 
@@ -310,7 +322,7 @@ export default function App(): JSX.Element {
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={navigate} firstRun={firstRunActive} projectName={project.name} />}
-            {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
+            {view === 'terminal' && <Suspense fallback={<PaneLoading />}><TerminalView /></Suspense>}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
@@ -333,7 +345,7 @@ export default function App(): JSX.Element {
                 this answers "what did I type and what came back", which is the
                 question an operator asks when writing an engagement up. */}
             {view === 'transcript' && (
-              <Suspense fallback={null}>
+              <Suspense fallback={<PaneLoading />}>
                 <TranscriptView
                   key={project?.id ?? 'no-project'}
                   // `onNavigate` is not in scope here — App switches views with
@@ -351,8 +363,8 @@ export default function App(): JSX.Element {
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
-            {view === 'settings' && <Suspense fallback={null}><Settings request={settingsRequest} /></Suspense>}
+            {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
+            {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>
         </div>

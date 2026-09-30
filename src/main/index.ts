@@ -593,6 +593,10 @@ async function runPendingRecompute(): Promise<void> {
 // row. Prioritized: VPN state comes first (biggest OPSEC impact), then MAC
 // (randomization signal), then DNS (leak signal), then hostname.
 function startProject(project: ProjectMeta): void {
+  // Opening is the one moment the renderer can do nothing but wait: every IPC
+  // it needs queues behind this function. A number in the log is what turns
+  // "it hung for a few seconds" into a phase to look at.
+  const openedAt = Date.now()
   if (activeProject) stopProject()
   activeProject = project
   const projectDir = getProjectPath(project)
@@ -1044,6 +1048,7 @@ function startProject(project: ProjectMeta): void {
     }
   }
 
+  console.log(`[project] opened in ${Date.now() - openedAt}ms`)
 }
 
 function stopProject(): void {
