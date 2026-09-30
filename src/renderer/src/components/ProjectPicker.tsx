@@ -156,23 +156,23 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      {/* `align-items: center` on a scroll container overflows in BOTH
-          directions once the content is taller than the box, and the half
-          above the scroll origin cannot be reached — shrink the window and the
-          wordmark is cut off with no way to scroll back to it. `safe center`
-          centers while it fits and falls back to flex-start when it does not,
-          which is the only behaviour that survives a resize. */}
+      {/* The wordmark is pinned, not centred with everything else. Centring
+          the whole column meant the identity drifted up and down with the
+          window height — the one thing on the screen that should be in the
+          same place every time you open the app.
+          The cards below it still centre in what is left, and `safe center`
+          is what keeps that survivable: `align-items: center` on a scrolling
+          box overflows in BOTH directions once the content is taller than the
+          box, and the half above the scroll origin cannot be reached. */}
+      <div className="shrink-0 pt-10 pb-8 text-center space-y-2">
+        <Wordmark className="text-4xl" />
+        <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
+      </div>
       <div
-        className="flex-1 flex justify-center p-6 overflow-y-auto"
+        className="flex-1 flex justify-center px-6 pb-6 overflow-y-auto"
         style={{ alignItems: 'safe center' }}
       >
       <div className={`w-full ${hasRecent ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
-        {/* Header — spans both columns. Centered anchor for identity so the
-            wider layout still feels intentional and not empty. */}
-        <div className="text-center space-y-2">
-          <Wordmark className="text-4xl" />
-          <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
-        </div>
 
         {bridgeMissing && (
           <div className="bg-red-950/40 border border-red-900/50 rounded-xl p-4 text-center">

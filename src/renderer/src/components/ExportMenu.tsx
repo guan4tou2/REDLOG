@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { TITLEBAR_CONTROL } from './Button'
 import { Download, ChevronDown, ChevronLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -256,7 +257,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t('export.title')}
-        className="flex items-center gap-1 px-2 h-6 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50"
+        className={`${TITLEBAR_CONTROL} border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-accent/40`}
       >
         <Download size={13} strokeWidth={1.5} aria-hidden />
         {t('export.title')}
