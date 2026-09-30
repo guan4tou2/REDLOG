@@ -1,8 +1,11 @@
 # Feature Specification: Capture Setup Wizard
 
-**Feature Branch**: `feat/040-capture-setup-wizard`
+**Feature Branch**: `feat/047-capture-setup-wizard`
 **Created**: 2026-09-29
 **Status**: Draft
+**Renumbered**: written as 040; main merged 040-046 from parallel work
+before this branch opened its PR, so the folder moved to 047. Commits
+earlier in the branch still say 040.
 **Input**: The readiness card (036), the first-run screen (037/039) and preflight each answer "can this machine record?" on their own terms. Collapse them into one wizard that lives inside an open project: step 1 prepares the machine by installing what is missing, step 2 proves capture with real events. Skippable, and re-runnable from Capture Health.
 
 > **Supersedes:** the first-launch readiness card of spec 036 (its preflight

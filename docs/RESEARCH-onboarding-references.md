@@ -1,6 +1,6 @@
 # Onboarding & UX References — 其他產品怎麼做
 
-> 來源：2026-09-29 為了重新設計首次安裝流程（spec 040）所做的調查。
+> 來源：2026-09-29 為了重新設計首次安裝流程（spec 047）所做的調查。
 > 每一項只記「值得抄的那一件事」與它對 RedLog 的意義，不做產品全貌介紹。
 > 狀態：持續更新中
 
@@ -19,7 +19,7 @@ Sentry 把 getting-started 文件的結構寫死成三段，第三段 Verify 的
 
 **對 RedLog**：檢查結果不算驗證，事件才算。`FirstRunView` 已經是這個模式（跑一個指令
 → 真的出現在時間軸）；而 spec 036 的準備狀態卡是相反的東西 —— 它拿 preflight 的
-**預測**去佔 Verify 的版面。這是 spec 040 把兩者收斂的主要理由。
+**預測**去佔 Verify 的版面。這是 spec 047 把兩者收斂的主要理由。
 
 - <https://develop.sentry.dev/frontend/working-on-getting-started-docs/>
 - <https://docs.datadoghq.com/agent/troubleshooting/>
@@ -32,7 +32,7 @@ Sentry 把 getting-started 文件的結構寫死成三段，第三段 Verify 的
 隨時從 Tools 選單叫出來。
 
 **對 RedLog**：這同時解掉「一次性 localStorage 旗標」的毛病 —— 精靈不是一次性告知，
-是一個常駐可重跑的東西，首次啟動只是自動幫你跑一次。spec 040 的 FR-007 / FR-011
+是一個常駐可重跑的東西，首次啟動只是自動幫你跑一次。spec 047 的 FR-007 / FR-011
 直接來自這條。
 
 - <https://obsproject.com/forum/threads/how-do-i-launch-the-auto-configuration-wizard.160351/>
