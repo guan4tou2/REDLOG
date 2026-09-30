@@ -25,6 +25,7 @@
 // and a missing shell dependency blocks only the Commands step.
 
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
@@ -163,9 +164,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
         >
-          <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+          <SectionLabel>
             {t('firstRun.core.heading')}
-          </p>
+          </SectionLabel>
 
           <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
             <div className="flex items-baseline justify-between gap-2">

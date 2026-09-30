@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { SectionLabel } from '../SectionLabel'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 
@@ -80,7 +81,7 @@ export interface HookInfo {
 export function FieldGroup({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{title}</h3>
+      <SectionLabel>{title}</SectionLabel>
       <div className="space-y-2">{children}</div>
     </div>
   )

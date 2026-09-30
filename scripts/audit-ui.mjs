@@ -25,7 +25,8 @@ const OWNS_THE_SYSTEM = new Set([
   'components/IconButton.tsx',
   // The HUD is the standard's one density exception (§8): a floating strip
   // with an 11px floor and its own scale, where a 34px box would not fit.
-  'OverlayApp.tsx'
+  'OverlayApp.tsx',
+  'components/SectionLabel.tsx'
 ])
 
 const RULES = [
@@ -64,9 +65,14 @@ const RULES = [
       && !/type="(checkbox|radio)"/.test(attrs)
   },
   {
-    id: 'uppercase-heading',
-    what: 'uppercase as the hierarchy signal — it does nothing to Chinese',
-    test: (_tag, attrs) => /\buppercase\b/.test(attrs) && /text-redlog-text-(faint|dim)/.test(attrs)
+    id: 'section-label',
+    what: 'a section heading written by hand instead of <SectionLabel>',
+    // Block-level only. A <label>, a <th> and an inline badge share the type
+    // treatment but not the role: a form label belongs to its input, and
+    // moving it into a <p> would break that. They are a different slice.
+    test: (tag, attrs) => ['p', 'h2', 'h3', 'div'].includes(tag)
+      && /\buppercase\b/.test(attrs)
+      && /text-redlog-text-(faint|dim)/.test(attrs)
   }
 ]
 

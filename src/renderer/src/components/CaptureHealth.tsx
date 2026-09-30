@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
@@ -82,9 +83,9 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
         ))}
         {extra.length > 0 && (
           <div className="pt-2 border-t border-redlog-border/50 space-y-2.5">
-            <p className="text-xs text-redlog-text-faint uppercase tracking-wider">
+            <SectionLabel>
               {t('capture.group.additional')}
-            </p>
+            </SectionLabel>
             {extra.map((group) => (
               <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
             ))}
@@ -134,7 +135,7 @@ function CoreCaptureLine({ readiness, http, t }: {
   )
   return (
     <div data-testid="capture-core" className="mb-3">
-      <p className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider mb-1">{t('capture.core.heading')}</p>
+      <SectionLabel className="mb-1">{t('capture.core.heading')}</SectionLabel>
       <ul className="space-y-1 text-xs">
         <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
@@ -159,11 +160,9 @@ function Group({ group, glyph, t, STEP_LABEL }: {
 }): JSX.Element {
   return (
     <div>
-      <p className={`text-xs uppercase tracking-wider mb-1 ${
-        group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint'
-      }`}>
+      <SectionLabel className="mb-1 ${ group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint' }">
         {t(`capture.group.${group.id}`)}
-      </p>
+      </SectionLabel>
       <ul className="space-y-1">
         {group.steps.map((s) => {
           const g = glyph(s.status)
@@ -392,7 +391,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       }`}>
         <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
+          <SectionLabel className="tracking-[0.15em]">{t('capture.title')}</SectionLabel>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setManage((m) => !m)}

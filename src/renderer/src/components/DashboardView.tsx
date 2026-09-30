@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
 import { CaptureHealthCard } from './CaptureHealth'
@@ -25,7 +26,7 @@ export const StatCard = memo(function StatCard({ label, value, sub, tone = 'neut
       {/* §4: state rides a left colour block, not a top bar; the card ground
           stays surface regardless of tone. */}
       <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${bar}`} />
-      <p className="text-xs text-redlog-text-dim uppercase tracking-wider font-medium">{label}</p>
+      <SectionLabel>{label}</SectionLabel>
       {/* §4/PHASE1-TOKENS: the StatCard headline number is the "value size"
           (xl = 22px), not a heading (lg = 19px) — it was on text-lg. */}
       <p className={`text-xl font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
@@ -208,16 +209,16 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       )}
 
       <section>
-        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+        <SectionLabel className="tracking-[0.15em] mb-3">
           {t('dashboard.networkStatus')}
-        </h2>
+        </SectionLabel>
         <IPStatusCard />
       </section>
 
       <section>
-        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+        <SectionLabel className="tracking-[0.15em] mb-3">
           {t('dashboard.sessionStats')}
-        </h2>
+        </SectionLabel>
         <div className="grid grid-cols-3 gap-3">
           {/* Events + chain length were two cards showing the same number —
               every event is one chain entry so they moved in lockstep. Merged
@@ -302,9 +303,9 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
       {config && (
         <section>
-          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+          <SectionLabel className="tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
-          </h2>
+          </SectionLabel>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
             <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               <div>
@@ -340,9 +341,9 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       )}
 
       <section>
-        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+        <SectionLabel className="tracking-[0.15em] mb-3">
           {t('dashboard.shortcuts')}
-        </h2>
+        </SectionLabel>
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {appShortcuts(shortcutOrder, isMac).map((row) => (
