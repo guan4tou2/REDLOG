@@ -5,7 +5,7 @@ import { useDisplayZone, setDisplayZone } from '../../lib/time'
 import { toast } from '../Toast'
 import { applyDensity, resolveDensity, storedDensity } from '../../lib/density'
 import { storedShowAllPages, setShowAllPages } from '../../lib/showAllPages'
-import { UI_SCALE_KEY, UI_SCALE_OPTIONS, DEFAULT_UI_SCALE, parseUiScale } from '../../lib/uiScale'
+import { UI_SCALE_KEY, UI_SCALE_OPTIONS, DEFAULT_UI_SCALE, parseUiScale, zoomFor } from '../../lib/uiScale'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 
 const LOCALE_LABELS: Record<Locale, string> = {
@@ -137,7 +137,7 @@ function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string |
     parse: parseUiScale
   })
   useEffect(() => {
-    document.body.style.setProperty('--app-zoom', String(scale))
+    document.body.style.setProperty('--app-zoom', String(zoomFor(scale)))
     // usePersistentState already mirrors `scale` into UI_SCALE_KEY; this effect
     // only carries the side-effects that must ride the same value change.
     // A bigger zoom means fewer rows on screen, so it implies tight density —

@@ -485,6 +485,9 @@ interface CaptureSourceInfo {
   informational?: boolean
   /** Human label for an informational source (the plugin's own name). */
   label?: string
+  /** Switched off and listed anyway. With `state: 'active'` it is the one
+   *  combination that means the record is taking data nobody authorised. */
+  disabled?: boolean
 }
 
 interface CaptureHealthInfo {

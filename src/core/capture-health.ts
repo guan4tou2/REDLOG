@@ -57,6 +57,11 @@ export interface CaptureSource {
   /** Human label for an informational source (the plugin's own name), since it
    *  has no core i18n `capture.*` entry. */
   label?: string
+  /** The operator switched this source off, and it is listed anyway. These
+   *  producers run outside RedLog, so switching them off never stopped them --
+   *  it stopped RedLog saying so. `disabled` with `state: 'active'` is the one
+   *  combination that means the record is taking data nobody authorised now. */
+  disabled?: boolean
   /** E3: an informational plugin producer that has posted a `producer_heartbeat`
    *  recently — the operator has it RUNNING. This is the one case a plugin
    *  producer becomes "expected": a running producer that has stopped feeding is
@@ -489,7 +494,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       // Feeding → active. Running-but-not-feeding, or fed-before-but-stale →
       // idle. Never run and never fed → off (not a fault).
       const state: SourceState = fedRecently ? 'active' : (running || last !== null ? 'idle' : 'off')
-      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true, running }
+      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true, running, disabled: h.disabled === true }
     })
 
   // The verdict ASYMMETRY that keeps the trust signal honest: plugin producers

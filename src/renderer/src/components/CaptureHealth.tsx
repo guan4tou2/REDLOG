@@ -259,16 +259,28 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   }, [capture.sources])
   const sources = capture.sources.map((s) => (s.hookId && removing.has(s.hookId) ? { ...s, installed: false } : s))
 
+  // "Switched off, and still writing to the record."
+  //
+  // The one combination that answers this card's audit question — is anything
+  // capturing that I did not put there — with a yes. These producers run
+  // outside RedLog under the operator's own sudo, so switching them off inside
+  // RedLog never stopped them; it stopped RedLog mentioning them. Filed under
+  // `informational` it was invisible by construction, because informational
+  // rows are excluded from the compact view. It is not informational. It is
+  // the fault.
+  const isRogue = (s: CaptureSourceInfo): boolean => s.disabled === true && s.state === 'active'
+
   // "On but not delivering." A source switched off is a choice, not a fault;
   // a hook that was never installed is a setup step, and the banner above
   // already covers the nothing-is-wired case.
   const isProblem = (s: CaptureSourceInfo): boolean =>
+    isRogue(s) ||
     // E3: plugin producers are optional/manual — an idle or unrun one is never
-    // a fault to nag about, so they stay out of the compact "problems" view
-    // (they're still listed in `manage`, read-only, with honest live state).
-    !s.informational &&
+    // a fault to nag about, so they stay out of the compact view. A rogue one
+    // is not covered by that: it is above, and it is unconditional.
+    (!s.informational &&
     (s.state === 'error' || s.state === 'absent'
-      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
+      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))))
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'active')
   const shown = manage ? sources : problems
@@ -373,7 +385,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     return 'text-redlog-text-faint'
   }
 
-  const dark = capture.verdict === 'dark'
+  // A rogue source cannot leave the headline saying 健康. The core verdict
+  // grades whether capture is WORKING; this grades whether it is AUTHORISED,
+  // and a card that reports both has to let the worse one win, or it prints a
+  // reassurance directly above the row that contradicts it.
+  const rogue = sources.filter(isRogue)
+  const dark = capture.verdict === 'dark' || rogue.length > 0
   const partial = capture.verdict === 'partial'
   // The ordered dark->recording onboarding model. Pure + unit-tested in
   // capture-readiness.ts; this card just renders it. Drives the checklist and
@@ -381,7 +398,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // hint that dropped a first-run operator into a 2600-line page with no order.
   const readiness = computeCaptureReadiness({ ...capture, sources })
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
-  const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
+  const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
+    : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
     <section>
@@ -399,7 +417,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             <button
               onClick={() => setManage((m) => !m)}
               className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
-              title={t('capture.manageHint')}
+              title={t('capture.auditHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
             </button>
@@ -451,6 +469,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                   <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
                 )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
+                {/* The operator believes they stopped this. They stopped
+                    RedLog talking about it; the producer is theirs, running
+                    under their own sudo, and only they can end it. Say where
+                    the teardown lives rather than leaving a red dot. */}
+                {isRogue(s) && (
+                  <span data-testid={`capture-rogue-${s.id}`} className="block text-redlog-danger">
+                    {t('capture.rogueWhy')}
+                  </span>
+                )}
                 {/* Why it failed, not just that it did — the operator cannot
                     act on a red dot alone. */}
                 {s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}

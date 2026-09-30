@@ -8,20 +8,24 @@
 //
 // They interact in one place. Raising the zoom pushes rows off the bottom of
 // the window, which is the opposite of what an operator watching a live
-// engagement wants, so a raised zoom implies tight density unless the user has
+// engagement wants, so a raised scale implies tight density unless the user has
 // said otherwise. An explicit choice always wins and is remembered.
 
 export type Density = 'comfortable' | 'tight'
 
 export const DENSITY_KEY = 'redlog-density'
-/** Above this zoom, density goes tight unless the user picked one explicitly. */
-export const AUTO_TIGHT_ZOOM = 1.15
+/** At or above this SCALE — the relative number in Settings, where normal is
+ *  1 — density goes tight unless the operator picked one explicitly. Stated in
+ *  scale rather than in the zoom that reaches CSS because the two disagreed:
+ *  the settings page compared the scale and main.tsx compared the zoom, so 特大
+ *  was tight until you reloaded and comfortable afterwards. */
+export const AUTO_TIGHT_SCALE = 1.25
 
 /** The density to use given the current zoom and whatever the user has chosen.
  *  `stored` is `null` when they have never chosen. */
-export function resolveDensity(zoom: number, stored: string | null): Density {
+export function resolveDensity(scale: number, stored: string | null): Density {
   if (stored === 'comfortable' || stored === 'tight') return stored
-  return zoom >= AUTO_TIGHT_ZOOM ? 'tight' : 'comfortable'
+  return scale >= AUTO_TIGHT_SCALE ? 'tight' : 'comfortable'
 }
 
 /** Reflect the density onto the document. `styles/index.css` keys the variable
