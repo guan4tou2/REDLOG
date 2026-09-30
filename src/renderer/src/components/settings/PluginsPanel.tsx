@@ -3,6 +3,7 @@ import { Button } from '../Button'
 import { toast, toastDeferred } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
+import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 
 interface PluginView {
   id: string
@@ -36,19 +37,28 @@ interface PluginView {
 //                  指令與終端 lists them; this row could switch them all off
 //                  from a page that does not say that is what it does.
 //   builtin-tools  is the tool → target table core reads. Not a choice.
-//   pack-*         are the three capture packs Settings ▸ 擷取 pack already
-//                  owns, per project, with words that say what they record.
-//                  Two switches for one thing, and they do not even agree on
-//                  scope: that page is per project, this one is every
-//                  project at once.
+//   pack-*         are the capture packs Settings ▸ 擷取 pack already owns,
+//                  per project, with words that say what they record. Two
+//                  switches for one thing, and they do not even agree on
+//                  scope: that page is per project, this one is every project
+//                  at once.
 //
-// What is left is what the page is for -- the file's own question, "is
-// anything capturing that I did not put there". The three bundled rows that
-// remain are real opt-in captures with no other switch anywhere.
-const HIDDEN = new Set([
-  'starter-pack', 'builtin-tools',
-  'pack-ai-agents', 'pack-host-monitors', 'pack-windows-output'
+// Derived from CAPTURE_PACKS rather than written out, so a pack added later
+// leaves this page without anyone having to remember a string list.
+const OWNED_ELSEWHERE = new Set<string>([
+  'starter-pack',
+  'builtin-tools',
+  ...Object.values(CAPTURE_PACKS).map((p) => p.pluginId)
 ])
+
+// Hiding a row hides a CHOICE, never a STATE. `isPackAvailable` requires the
+// pack's plugin to be active, and a disable persists in
+// ~/.redlog/plugins/state.json -- so a plugin switched off before this filter
+// existed would sit disabled forever, with 擷取 pack reporting it unavailable
+// and the only control that could bring it back hidden from the operator. A
+// row that is off is always shown, because that is the row someone needs.
+const isHidden = (p: { id: string; status: string }): boolean =>
+  OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
 
 // The manifests describe these packs to whoever maintains them: spec
 // numbers, doc paths, the identifiers the code uses, and the reason the
@@ -88,12 +98,17 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
       setBusy(p.id); setPlugins(await api.setEnabled(p.id, true)); setBusy(null)
       return
     }
-    // Disabling stops a capture source and writes `system.config_changed`, so
-    // SS10 gives it a window and defers the *write*, not just the undo: the
-    // list shows the plugin as disabled immediately, but nothing is persisted
-    // until the eight seconds are up. An operator who catches their own
-    // mistake inside the window leaves no trace of it in the audit log —
-    // which is the point, since that log is evidence.
+    // SS10 gives disabling a window and defers the write itself, not just the
+    // undo: the list shows the plugin as disabled immediately, nothing is
+    // persisted until the eight seconds are up.
+    //
+    // This used to claim the deferral kept the mistake out of the audit log.
+    // It does not, because there is nothing to keep out: `plugins:setEnabled`
+    // writes ~/.redlog/plugins/state.json and no event. The only writer of
+    // `system.config_changed` is logConfigDiff on `config:save`, and
+    // config-audit covers packs and pack members, never plugins. Switching a
+    // capture source off leaves no trace of who did it or when -- a real gap,
+    // and a separate one from this window.
     setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'disabled' } : x)))
     toastDeferred(
       t('plugins.disabled', { name: p.name }),
@@ -128,7 +143,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     error: 'bg-red-900/50 text-red-400'
   }
 
-  const shown = plugins.filter((p) => !HIDDEN.has(p.id))
+  const shown = plugins.filter((p) => !isHidden(p))
 
   return (
     <FieldGroup title={t('settings.plugins')}>

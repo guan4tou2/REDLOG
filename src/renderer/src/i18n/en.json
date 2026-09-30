@@ -841,7 +841,7 @@
   "terminal.tabClosedWhy": "The shell process ended. Undo opens a new one — scrollback does not come back.",
   "toast.recordingPausedWhy": "Capture sources stop feeding the timeline. Your markers and RedLog’s own audit events keep recording.",
   "plugins.disabled": "Disabled {{name}}",
-  "plugins.disabledWhy": "Not written yet — undo within 8 seconds and nothing reaches the audit log.",
+  "plugins.disabledWhy": "Not written yet — undo within 8 seconds.",
   "targets.addedToScope": "{{target}} added to scope",
   "targets.addedToScopeWhy": "Not written yet — undo within 8 seconds and nothing reaches the audit log.",
   "settings.hookRemoved": "Removed the {{name}} hook",

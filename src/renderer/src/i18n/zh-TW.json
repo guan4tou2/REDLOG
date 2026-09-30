@@ -841,7 +841,7 @@
   "terminal.tabClosedWhy": "shell 程序已結束。復原會開一個新的——捲動歷史不會回來。",
   "toast.recordingPausedWhy": "擷取來源停止供給時間軸。你的標記與 RedLog 自己的稽核事件仍會記錄。",
   "plugins.disabled": "已停用 {{name}}",
-  "plugins.disabledWhy": "尚未寫入——8 秒內復原，稽核紀錄不會有任何痕跡。",
+  "plugins.disabledWhy": "尚未寫入——8 秒內可以復原。",
   "targets.addedToScope": "已將 {{target}} 加入範圍",
   "targets.addedToScopeWhy": "尚未寫入——8 秒內復原，稽核紀錄不會有任何痕跡。",
   "settings.hookRemoved": "已移除 {{name}} hook",
