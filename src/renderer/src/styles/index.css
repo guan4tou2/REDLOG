@@ -179,9 +179,14 @@
   --color-redlog-border-subtle: #26262c;
   --color-redlog-border: #33333a;
   --color-redlog-text: #ececf0;
-  --color-redlog-text-dim: #9a9aa4;
-  --color-redlog-text-faint: #93939d;
-  --color-redlog-muted: #7e7e88;
+  /* Lifted when the default zoom dropped to 0.9 (lib/uiScale). WCAG's 4.5:1
+     is calibrated at ~16px; the ramp sat at 4.0–6.7:1, which reads as grey
+     mush at an effective 11.7px on a near-black field. `dim` and `faint` were
+     also 2.7 L* apart -- three declared tiers, two visible ones -- so the gap
+     between them is now 7.7 L*, which is a step you can actually see. */
+  --color-redlog-text-dim: #bebec8;
+  --color-redlog-text-faint: #a9a9b4;
+  --color-redlog-muted: #91919c;
   --color-redlog-on-accent: #16090a;
   --color-redlog-on-danger: #1a0303;
   --color-redlog-on-warn: #1a1203;
