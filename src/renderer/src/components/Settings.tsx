@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import AboutPage from './settings/AboutPage'
 import { useI18n } from '../i18n'
 import { registerPendingSave } from '../lib/pendingSaves'
 import { toast } from './Toast'
@@ -22,7 +23,7 @@ import { searchSettings } from '../lib/settingsSearch'
 export type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl' | 'browser'
   | 'scope' | 'network' | 'integrity'
-  | 'general' | 'hud' | 'plugins'
+  | 'general' | 'hud' | 'plugins' | 'about'
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
@@ -209,7 +210,8 @@ export default function Settings({ request = null }: { request?: { page: Setting
       pages: [
         { id: 'general', label: t('settings.pageGeneral') },
         { id: 'hud', label: t('settings.pageHud') },
-        { id: 'plugins', label: t('settings.pagePlugins') }
+        { id: 'plugins', label: t('settings.pagePlugins') },
+        { id: 'about', label: t('settings.pageAbout') }
       ]
     }
   ]
@@ -327,6 +329,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} />}
+        {tab === 'about' && <AboutPage t={t} />}
       </div>
 
       <div className="px-4 py-2 border-t border-redlog-border shrink-0 max-w-[900px]">

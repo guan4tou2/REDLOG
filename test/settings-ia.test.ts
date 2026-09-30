@@ -26,7 +26,7 @@ const SETTINGS_DIR = path.join(ROOT, 'src/renderer/src/components/settings')
 const PAGES = [
   'hooks', 'agents', 'captureControl', 'browser',
   'scope', 'network', 'integrity',
-  'general', 'hud', 'plugins'
+  'general', 'hud', 'plugins', 'about'
 ]
 
 describe('settings information architecture', () => {

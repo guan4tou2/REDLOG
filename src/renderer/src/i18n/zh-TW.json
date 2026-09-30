@@ -905,6 +905,8 @@
   "settings.pageNetwork": "IP 曝光與自身流量",
   "settings.pageIntegrity": "證據鏈驗證",
   "settings.pagePlugins": "外掛",
+  "settings.pageAbout": "關於",
+  "settings.aboutVersion": "版本",
   "settings.pageGeneral": "外觀與語言",
   "settings.pageHud": "覆蓋顯示",
   "capture.http.absent": "未安裝 mitmproxy",

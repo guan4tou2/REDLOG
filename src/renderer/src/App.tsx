@@ -231,23 +231,6 @@ export default function App(): JSX.Element {
           {/* Title-bar size is small, so the ring collapses to a solid dot
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />
-          {/* Take the version out of the drag zone so users reporting bugs can
-              actually copy it — audit finding P2 #36. */}
-          <span
-            className="text-redlog-text-dim text-xs font-mono select-text cursor-text"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title={t('app.copyVersionHint')}
-          >v{__APP_VERSION__}</span>
-          {/* "Check for updates" was a Settings group, next to a copy of this
-              same version string. It is an action about the version, so it
-              belongs beside the version rather than in a page of settings —
-              and nobody looks for it under Settings anyway. */}
-          <button
-            onClick={() => void window.redlog.app.checkForUpdates()}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title={t('settings.checkUpdateHint')}
-            className="text-redlog-text-faint hover:text-redlog-text text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
-          >{t('settings.checkUpdate')}</button>
         </div>
         <button
           className="ml-2 min-w-0 h-7 px-2 rounded-md bg-redlog-elevated/50 hover:bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"

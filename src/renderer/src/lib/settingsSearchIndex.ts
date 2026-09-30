@@ -273,5 +273,10 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.overlayPassThroughOpacity',
     'settings.overlayShowInDock',
     'settings.overlayShowInDockHint'
+  ],
+  about: [
+    'settings.aboutVersion',
+    'settings.checkUpdate',
+    'settings.checkUpdateHint'
   ]
 }
