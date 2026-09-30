@@ -4,6 +4,7 @@
 // Timeline value before it is declared.
 
 import type { RedLogEvent } from '../../../../core/db/event-types'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
 import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
@@ -38,6 +39,11 @@ export interface TimelineEventInspectorProps {
   lookup: (id: string) => RedLogEvent | undefined
   /** Select an event and scroll the track to it. */
   onJump: (e: RedLogEvent) => void
+  /** Move the selection one row along the list the operator is reading.
+   *  Absent when there is no list to walk (a single filtered result). */
+  onStep?: (delta: -1 | 1) => void
+  canStepPrev?: boolean
+  canStepNext?: boolean
   /** Select an event without scrolling. */
   onSelect: (e: RedLogEvent) => void
   /** Fetch an event outside the loaded page and select it. */
@@ -50,12 +56,41 @@ export interface TimelineEventInspectorProps {
 export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, allLoaded, focusChainOn,
-  showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t
+  showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
+  onStep, canStepPrev = false, canStepNext = false
 }: TimelineEventInspectorProps): JSX.Element {
   return (
     <>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
+          {/* Reading a capture is reading a sequence — what ran before this,
+              what came back after. The keyboard could already walk it, lane by
+              lane, and nothing on screen said so: an operator who opened the
+              pane from the list had to close it, move, and open the next one.
+              These step the list's own order, which is the order they were
+              just reading. */}
+          {onStep && (
+            <span className="flex items-center mr-0.5">
+              <button
+                type="button"
+                data-testid="detail-step-prev"
+                disabled={!canStepPrev}
+                onClick={() => onStep(-1)}
+                title={t('timeline.stepPrev')}
+                aria-label={t('timeline.stepPrev')}
+                className="w-5 h-5 flex items-center justify-center rounded-l border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronLeft size={12} strokeWidth={2} aria-hidden /></button>
+              <button
+                type="button"
+                data-testid="detail-step-next"
+                disabled={!canStepNext}
+                onClick={() => onStep(1)}
+                title={t('timeline.stepNext')}
+                aria-label={t('timeline.stepNext')}
+                className="w-5 h-5 flex items-center justify-center rounded-r border border-l-0 border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronRight size={12} strokeWidth={2} aria-hidden /></button>
+            </span>
+          )}
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
           <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
             {event.agentType}

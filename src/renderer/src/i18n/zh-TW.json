@@ -168,6 +168,8 @@
   "timeline.clusterMoreItems": "還有 {{count}} 個 — 放大以個別檢視",
   "timeline.layoutToRight": "詳情改放右側（清單保有完整高度）",
   "timeline.layoutToBottom": "詳情改放下方（內容橫跨整個寬度）",
+  "timeline.stepPrev": "上一筆（時間軸清單順序）",
+  "timeline.stepNext": "下一筆（時間軸清單順序）",
   "timeline.resizeLog": "拖曳調整清單高度，雙擊還原",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
   "targets.title": "目標（{{count}}）",
