@@ -257,9 +257,6 @@ for full commit body + generated notes.
 
 ## v0.18.0 — 2026-09-27
 
-> **Status:** tagged; the GitHub Release and its installers are not published
-> yet. Remove this note when they are.
-
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
 the constitution calls Surface Truthfulness: a capture source that is not
