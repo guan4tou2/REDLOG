@@ -2056,7 +2056,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             under their labels. 18 lanes x the 36px floor overflows a 1080p
             window, and the old `overflow-hidden` clipped the tail of the
             stack (scope / process / system) with no scrollbar and no hint. */}
-        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto">
+        <div ref={containerRef} data-testid="timeline-lane-scroll" className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto">
           {/* Lane labels */}
           <div className="shrink-0 border-r border-redlog-border/60 bg-redlog-bg/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-redlog-border/60" />
