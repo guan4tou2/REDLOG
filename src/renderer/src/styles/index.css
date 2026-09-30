@@ -303,11 +303,26 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #33333a;
+  background: var(--color-redlog-border);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a54;
+  background: var(--color-redlog-muted);
+}
+
+/* The nav scrolls by a few pixels on a short window, and a 10px bar inside a
+   48px icon rail is a fifth of the rail spent saying so — it sat against the
+   icons and made the one column the eye tracks look crowded. Four pixels is
+   still an affordance; it is just not a column of its own. */
+.rl-thin-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.rl-thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border-subtle);
+}
+.rl-thin-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border);
 }
 
 .drag-over {

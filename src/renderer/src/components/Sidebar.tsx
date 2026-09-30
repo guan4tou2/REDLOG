@@ -1,5 +1,4 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
-import { setShowAllPages } from '../lib/showAllPages'
 import { SIDEBAR_COLLAPSED_EVENT, setSidebarCollapsed, storedSidebarCollapsed } from '../lib/sidebarCollapsed'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
@@ -9,10 +8,7 @@ import { useI18n } from '../i18n'
 interface SidebarProps {
   active: string
   onNavigate: (view: string) => void
-  /** §22: the views to render. Undefined shows everything — the shape a test
-   *  harness or an older caller gets, and the safe direction. */
-  visibleViews?: ReadonlySet<SidebarViewId>
-  /** Needed only to offer the per-project "show every page" opt-out. */
+  /** Only for the per-project counts on the badges. */
   projectId?: string
 }
 
@@ -39,7 +35,7 @@ import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sid
 import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
-export default function Sidebar({ active, onNavigate, visibleViews, projectId }: SidebarProps): JSX.Element {
+export default function Sidebar({ active, onNavigate, projectId }: SidebarProps): JSX.Element {
   const { lootCount, scopeViolations } = useAppCounts()
   const { t } = useI18n()
 
@@ -74,14 +70,12 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
-  // A hidden row is not-advertised, never unreachable: ⌘K lists every view and
-  // its chord still works, which is what makes hiding safe rather than lossy.
-  const items = DEFAULT_ORDER
-    .filter((id) => visibleViews === undefined || visibleViews.has(id))
-    .map((id) => itemMap[id])
-    .filter(Boolean)
-
-  const hiddenCount = DEFAULT_ORDER.length - items.length
+  // Every view, always. Pages used to appear as the record grew the data each
+  // one was named after (§22), which cost a hint line here explaining the
+  // absence, a checkbox in Settings to undo it, and two occasions on which the
+  // app's own author asked why his new project had three rows. Eleven rows was
+  // never the problem it was solving.
+  const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)
 
   // Collapsed, the sidebar is an icon rail. §3.5 allows icon-only here and
   // almost nowhere else: navigation is the highest-frequency thing in the app,
@@ -116,7 +110,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
           of the two carried `mt-auto` changed with the row count, so the
           footer moved as pages appeared. Three fixed bands instead: rows that
           scroll, then the hint, then the footer. */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto rl-thin-scroll space-y-0.5">
         {items.map((item) => {
           const isActive = active === item.id
           // The view's own number, never its position in what happens to be
@@ -175,20 +169,6 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
         })}
       </div>
 
-      {/* §22 hides a noun until its data exists, and the rule is right — but
-          it is invisible, so a correct four-row sidebar reads as one that lost
-          something. Saying so costs a line, and puts the opt-out where the
-          absence is noticed rather than three pages into Settings. */}
-      {hiddenCount > 0 && !collapsed && (
-        <p className="shrink-0 pt-3 px-2 text-xs text-redlog-text-faint leading-relaxed">
-          {t('sidebar.hiddenHint', { count: hiddenCount })}{' '}
-          <button
-            data-testid="sidebar-show-all"
-            onClick={() => { if (projectId) setShowAllPages(projectId, true) }}
-            className="underline hover:text-redlog-text"
-          >{t('sidebar.showAll')}</button>
-        </p>
-      )}
       <div className="shrink-0 mt-3 pt-3 border-t border-redlog-border/40 space-y-0.5">
         <button
           data-testid="sidebar-collapse"
