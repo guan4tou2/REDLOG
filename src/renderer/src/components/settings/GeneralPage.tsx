@@ -41,13 +41,18 @@ export default function GeneralPage({
 
   return (
     <>
+      {/* Two IDs and two names, and the labels alone do not say which reach
+          the record. The engagement ID and the operator ID are stamped on
+          every event; the two names are display strings, and one of them
+          quietly renames the project. That is on the ⓘ rather than under the
+          field — four lines of prose here would bury the four inputs. */}
       <FieldGroup title={t('settings.engagement')}>
-        <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly />
-        <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} />
+        <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly hint={t('settings.engagementIdHint')} />
+        <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} hint={t('settings.engagementNameHint')} />
       </FieldGroup>
       <FieldGroup title={t('settings.operatorGroup')}>
-        <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
-        <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
+        <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} hint={t('settings.operatorIdHint')} />
+        <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} hint={t('settings.operatorNameHint')} />
       </FieldGroup>
       {/* Was "Team Profile Sync", two buttons. The import half duplicated
           the one on the project picker, which is where you actually want
