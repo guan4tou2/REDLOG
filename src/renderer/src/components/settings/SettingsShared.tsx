@@ -107,33 +107,72 @@ export function Field({ label, value, onChange, onBlur, type = 'text', readOnly 
   )
 }
 
-export function ListField({ label, items, onChange, placeholder }: {
+export function ListField({ label, items, onChange, placeholder, parse }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
+  /** Spec 037 FR: a field that takes pasted scope splits the text on newline,
+   *  comma or space, validates each entry against the scope evaluator, and
+   *  shows the rejects inline. An entry the evaluator can never match --
+   *  `10.0.0.0/33`, `host:8080`, a URL -- would be stored as a rule that
+   *  silently never fires. Fields that are not scope leave this off and keep
+   *  the one-entry-per-Enter behaviour. */
+  parse?: (text: string) => { valid: string[]; invalid: string[] }
 }): JSX.Element {
   const { t } = useI18n()
   const [input, setInput] = useState('')
+  const [rejected, setRejected] = useState<string[]>([])
 
   const addItem = (): void => {
     const trimmed = input.trim()
-    if (trimmed && !items.includes(trimmed)) {
-      onChange([...items, trimmed])
-      setInput('')
+    if (!trimmed) return
+    if (!parse) {
+      if (!items.includes(trimmed)) {
+        onChange([...items, trimmed])
+        setInput('')
+      }
+      return
     }
+    const { valid, invalid } = parse(trimmed)
+    const added = valid.filter((entry) => !items.includes(entry))
+    if (added.length > 0) onChange([...items, ...added])
+    setRejected(invalid)
+    // Leave the rejects in the box, and only the rejects: the operator fixes
+    // them where they typed them instead of retyping the whole paste.
+    setInput(invalid.join(' '))
   }
 
   return (
     <div>
       <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <div className="flex gap-1 mb-1">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addItem()}
-          placeholder={placeholder}
-          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
-        />
+        {/* A validating field takes a paste, and the requirement splits it on
+            newlines -- which a single-line <input> sanitises away, gluing the
+            last entry of one line to the first of the next. So it gets a
+            textarea, and Enter stays a newline: ⌘/Ctrl+Enter or + commits. */}
+        {parse ? (
+          <textarea
+            rows={2}
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setRejected([]) }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addItem() } }}
+            placeholder={placeholder}
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500"
+          />
+        ) : (
+          <input
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setRejected([]) }}
+            onKeyDown={(e) => e.key === 'Enter' && addItem()}
+            placeholder={placeholder}
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+          />
+        )}
         <IconButton label={t('common.addItem')} onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
       </div>
+      {rejected.length > 0 && (
+        <p data-testid="list-field-rejected" role="alert" className="text-xs text-redlog-warn mb-1 font-mono">
+          {t('settings.scopeRejected', { entries: rejected.join(', ') })}
+        </p>
+      )}
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {items.map((item, i) => (
