@@ -5,18 +5,16 @@ import { I18nProvider } from './i18n'
 import './styles/fonts'
 import './styles/index.css'
 import { applyDensity, resolveDensity, storedDensity } from './lib/density'
+import { UI_SCALE_KEY, parseUiScale } from './lib/uiScale'
 
 // Apply the saved UI zoom and density before first paint so there's no visible
 // resize on load. Settings ▸ 一般 lets them change both; this reads whatever
-// they last chose. Zoom is clamped to [0.9, 1.5] to avoid unreadably tiny or
-// offscreen. The default is 1 — it used to be 1.1 to compensate for text that
-// was too small, which the 13px floor in the type scale now handles properly.
+// they last chose, and falls back to the default in lib/uiScale.
 try {
-  const raw = parseFloat(localStorage.getItem('redlog-app-zoom') || '')
-  const zoom = Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1
+  const zoom = parseUiScale(localStorage.getItem(UI_SCALE_KEY))
   document.body.style.setProperty('--app-zoom', String(zoom))
   applyDensity(resolveDensity(zoom, storedDensity()))
-} catch { /* localStorage disabled — use CSS fallback */ }
+} catch { /* localStorage disabled — index.css carries the same default */ }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

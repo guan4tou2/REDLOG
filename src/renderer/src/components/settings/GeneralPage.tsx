@@ -5,6 +5,7 @@ import { useDisplayZone, setDisplayZone } from '../../lib/time'
 import { toast } from '../Toast'
 import { applyDensity, resolveDensity, storedDensity } from '../../lib/density'
 import { storedShowAllPages, setShowAllPages } from '../../lib/showAllPages'
+import { UI_SCALE_KEY, UI_SCALE_OPTIONS, DEFAULT_UI_SCALE, parseUiScale } from '../../lib/uiScale'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 
 const LOCALE_LABELS: Record<Locale, string> = {
@@ -122,26 +123,13 @@ function DisplayZoneControl({ t }: { t: (key: string, vars?: Record<string, stri
   )
 }
 
-// Per-user UI zoom. Persisted to localStorage and applied to `document.body`
-// via a CSS var (`--app-zoom`), which body's zoom rule in index.css consumes.
-// Not part of engagement config: it's a personal viewing preference and
-// shouldn't sync across teammates on the same project.
-const UI_SCALE_KEY = 'redlog-app-zoom'
-// Shifted down one step when the type scale gained its 13px floor: 1.1 used to
-// be "normal" because 1.0 rendered text too small to read comfortably. It no
-// longer does, so 1.0 is normal again and the ladder has room at the top.
-const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
-  { value: 0.9, labelKey: 'settings.uiScale.small' },
-  { value: 1.0, labelKey: 'settings.uiScale.normal' },
-  { value: 1.15, labelKey: 'settings.uiScale.large' },
-  { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
-]
+// The ladder, its default and its storage key live in lib/uiScale — main.tsx
+// applies the same value before first paint, and two copies of a default is
+// one copy too many.
+
 function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, 1, {
-    parse: (raw) => {
-      const parsed = parseFloat(raw || '')
-      return Number.isFinite(parsed) && parsed >= 0.9 && parsed <= 1.5 ? parsed : 1
-    }
+  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, DEFAULT_UI_SCALE, {
+    parse: parseUiScale
   })
   useEffect(() => {
     document.body.style.setProperty('--app-zoom', String(scale))
