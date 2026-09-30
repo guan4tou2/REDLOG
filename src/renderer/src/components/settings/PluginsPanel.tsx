@@ -29,6 +29,20 @@ interface PluginView {
 // product is for. What stays is the part an operator needs to answer "is
 // anything capturing that I did not put there" — the installed list.
 export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  // The manifests describe these packs to whoever maintains them: spec
+  // numbers, doc paths, the identifiers the code uses, and the reason the
+  // thing is a manifest at all. None of that is what the operator standing on
+  // this page is asking, which is "what does this put in my record, and can I
+  // turn it off" -- and all of it was in English inside a Chinese interface.
+  // Bundled packs get a translated line each; a user's plugin still speaks for
+  // itself through its own manifest.
+  const describe = (p: PluginView): string => {
+    if (p.source !== 'bundled') return p.description
+    const key = `plugins.builtin.${p.id}`
+    const line = t(key)
+    return line === key ? p.description : line
+  }
+
   const [plugins, setPlugins] = useState<PluginView[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
@@ -123,15 +137,21 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                     <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
                       {t(`plugins.status.${p.status}`)}
                     </span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
-                      {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
+                    {/* Only the dangerous tier gets a chip. The other one said
+                        "🟢 宣告式" -- the implementation category, not the
+                        consequence -- on every safe plugin, so the marker that
+                        matters sat in a row of markers that did not. §22: show
+                        the exception, and the exception here is code running. */}
+                    {privileged && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
+                        {t('plugins.tier.privileged')}
+                      </span>
+                    )}
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">
+                      {t(`plugins.source.${p.source}`)}
                     </span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{p.source}</span>
                   </div>
-                  {p.description && <p className="text-xs text-redlog-text-dim mt-0.5">{p.description}</p>}
-                  {p.contributes.length > 0 && (
-                    <p className="text-xs text-redlog-text-faint mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
-                  )}
+                  {describe(p) && <p className="text-xs text-redlog-text-dim mt-0.5">{describe(p)}</p>}
                   {privileged && p.capabilities.length > 0 && (
                     <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
@@ -174,8 +194,6 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           )
         })}
       </div>
-
-      <p className="text-xs text-redlog-text-faint mt-3">{t('plugins.dir')}</p>
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (
