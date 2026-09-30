@@ -203,7 +203,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // v0.14.3 §9.5: chained·logged split for the card footer. Optional so
   // callers that don't care (tests, older Dashboard mounts) keep working;
   // when omitted the tier line just doesn't render.
-  tierSplit?: { chained: number; logged: number; lastLoggedTs: number | null }
+  tierSplit?: {
+    chained: number
+    logged: number
+    lastLoggedTs: number | null
+    /** Rows carrying a hash. This is what 證據鏈 means; `chained` is the row
+     *  count of the chained tier. They are equal on a sound chain, which is
+     *  why one was quietly standing in for the other. */
+    chainLen: number
+  }
 }): JSX.Element {
   const { t } = useI18n()
 
@@ -574,8 +582,28 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
         {tierSplit && tierSplit.logged > 0 && (
           <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-xs font-mono">
             <div className="flex items-center gap-2">
+              {/* 證據鏈 now labels the chain. It used to label
+                  `getCount('chained')` — a row count — while the real chain
+                  length sat under the same word forty pixels away on the
+                  stats tile. Two queries, one noun, and on the one day they
+                  disagree the card read 證據鏈 56 with ⚠ 證據鏈 54 ≠ 事件 56
+                  directly beneath it. The drift is now stated here, where the
+                  number is. */}
               <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
-              <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
+              {tierSplit.chainLen === tierSplit.chained ? (
+                <span className="text-redlog-text tabular-nums">{tierSplit.chainLen.toLocaleString()}</span>
+              ) : (
+                /* §21 rule 6: danger red reports a state, it never colours a
+                   numeral. The marker carries the alarm; the two numbers stay
+                   readable, which is the point of showing them at all. */
+                <span data-testid="capture-chain-drift" className="flex items-center gap-1">
+                  <span className="text-redlog-danger" aria-hidden>&#9888;</span>
+                  <span className="text-redlog-text tabular-nums">{tierSplit.chainLen.toLocaleString()}</span>
+                  <span className="text-redlog-text-dim">&ne;</span>
+                  <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
+                  <span className="text-redlog-text-dim">{t('capture.tierEvents')}</span>
+                </span>
+              )}
               <span className="text-redlog-muted">&middot;</span>
               <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
               <span className="text-redlog-text-dim tabular-nums">{tierSplit.logged.toLocaleString()}</span>
