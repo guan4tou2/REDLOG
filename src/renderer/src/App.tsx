@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
+import { ControlBoundary } from './components/ControlBoundary'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
 import StatusBar from './components/StatusBar'
@@ -236,64 +237,81 @@ export default function App(): JSX.Element {
             50% elevated tint, and `elevated` is 1.17:1 from `bg`, so there was
             nothing there to see. §3.5: every control has a visible boundary,
             and this one closes a project. */}
-        <button
-          className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          onClick={async () => {
-            // Pending settings go to THIS project before it closes (#223).
-            // Closing first let the flush arrive with no project open, where
-            // it was refused and nothing said so. A failed save keeps the
-            // project open, with the change still on screen to retry.
-            if (!(await closeProjectAfterSaves())) {
-              toast(t('app.closeSaveFailed'), 'error')
-              return
-            }
-            setProject(null)
-          }}
-          title={t('app.closeProject')}
-        >
-          <span className="text-xs shrink-0">&#9664;</span>
-          {/* The button's own title names the action; the name needs its own
-              route to the full value once it can be cut short (§9). */}
-          <span className="truncate" title={project.name}>{project.name}</span>
-        </button>
+        <ControlBoundary name={t('app.closeProject')}>
+          <button
+            className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            onClick={async () => {
+              // Pending settings go to THIS project before it closes (#223).
+              // Closing first let the flush arrive with no project open, where
+              // it was refused and nothing said so. A failed save keeps the
+              // project open, with the change still on screen to retry.
+              if (!(await closeProjectAfterSaves())) {
+                toast(t('app.closeSaveFailed'), 'error')
+                return
+              }
+              setProject(null)
+            }}
+            title={t('app.closeProject')}
+          >
+            <span className="text-xs shrink-0">&#9664;</span>
+            {/* The button's own title names the action; the name needs its own
+                route to the full value once it can be cut short (§9). */}
+            <span className="truncate" title={project.name}>{project.name}</span>
+          </button>
+        </ControlBoundary>
+        {/* The outer net. Anything unforeseen in this strip costs the strip,
+            not the window: the title bar sits outside the view's ErrorBoundary
+            (below), so until now a throw here unmounted the app root and left
+            a black window -- with the shortcuts still working and nothing on
+            screen to say what had happened. */}
         <div className={`ml-auto flex gap-2 shrink-0 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* §10: one export control, in the shell rather than six places.
-              Its scope is an option, not a location. */}
-          <ExportMenu totalCount={exportableCount} />
-          <LaunchBrowserButton onNavigate={navigate} />
-          {/* The evidence verbs sit together (UI/UX audit F8): screenshot and
-              add-file used to be reachable only from ⌘K. */}
-          <button
-            type="button"
-            data-testid="titlebar-screenshot"
-            onClick={() => { void captureScreenshotWithFeedback(t) }}
-            aria-label={t('app.evidenceShot')}
-            title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
-            className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
-          >
-            <Camera size={14} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
-            type="button"
-            data-testid="titlebar-add-file"
-            onClick={() => { void addArtifactsWithFeedback(t) }}
-            aria-label={t('app.evidenceFile')}
-            title={t('app.evidenceFile')}
-            className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
-          >
-            <FilePlus size={14} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
-            onClick={() => setShowMarker(true)}
-            /* A command button, so it carries the brand accent rather than a
-               raw red the palette has no token for (§1: brand red fills a verb
-               you can press; danger red reports a state). */
-            className={`${TITLEBAR_CONTROL} bg-redlog-accent/10 text-redlog-accent border-redlog-accent/25 hover:bg-redlog-accent/20 focus-visible:ring-redlog-accent/40`}
-            title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
-          >
-            {t('app.mark')}
-          </button>
+          <ControlBoundary name={t('control.titlebar')}>
+            {/* Each of the two stateful controls gets its own barrier, so one
+                failing leaves the other four working. These are the two that
+                hold hooks and talk to main, which is the class of failure that
+                reaches a boundary at all; the three below are inline markup. */}
+            {/* §10: one export control, in the shell rather than six places.
+                Its scope is an option, not a location. */}
+            <ControlBoundary name={t('export.title')}>
+              <ExportMenu totalCount={exportableCount} />
+            </ControlBoundary>
+            <ControlBoundary name={t('browser.launch')}>
+              <LaunchBrowserButton onNavigate={navigate} />
+            </ControlBoundary>
+            {/* The evidence verbs sit together (UI/UX audit F8): screenshot and
+                add-file used to be reachable only from ⌘K. */}
+            <button
+              type="button"
+              data-testid="titlebar-screenshot"
+              onClick={() => { void captureScreenshotWithFeedback(t) }}
+              aria-label={t('app.evidenceShot')}
+              title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
+              className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
+            >
+              <Camera size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+            <button
+              type="button"
+              data-testid="titlebar-add-file"
+              onClick={() => { void addArtifactsWithFeedback(t) }}
+              aria-label={t('app.evidenceFile')}
+              title={t('app.evidenceFile')}
+              className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
+            >
+              <FilePlus size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+            <button
+              onClick={() => setShowMarker(true)}
+              /* A command button, so it carries the brand accent rather than a
+                 raw red the palette has no token for (§1: brand red fills a verb
+                 you can press; danger red reports a state). */
+              className={`${TITLEBAR_CONTROL} bg-redlog-accent/10 text-redlog-accent border-redlog-accent/25 hover:bg-redlog-accent/20 focus-visible:ring-redlog-accent/40`}
+              title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
+            >
+              {t('app.mark')}
+            </button>
+          </ControlBoundary>
         </div>
       </div>
 
