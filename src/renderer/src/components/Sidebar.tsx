@@ -98,7 +98,13 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
 
   return (
     <nav className={`${collapsed ? 'w-[56px]' : 'w-[186px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
-      <div className="space-y-0.5">
+      {/* The rows scroll; the footer does not. With `overflow-hidden` on the
+          nav and the footer pushed by `mt-auto`, turning every page on clipped
+          Settings and the collapse toggle straight off the bottom — and which
+          of the two carried `mt-auto` changed with the row count, so the
+          footer moved as pages appeared. Three fixed bands instead: rows that
+          scroll, then the hint, then the footer. */}
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5">
         {items.map((item) => {
           const isActive = active === item.id
           // The view's own number, never its position in what happens to be
@@ -162,7 +168,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
           something. Saying so costs a line, and puts the opt-out where the
           absence is noticed rather than three pages into Settings. */}
       {hiddenCount > 0 && !collapsed && (
-        <p className="mt-auto pt-3 px-2 text-xs text-redlog-text-faint leading-relaxed">
+        <p className="shrink-0 pt-3 px-2 text-xs text-redlog-text-faint leading-relaxed">
           {t('sidebar.hiddenHint', { count: hiddenCount })}{' '}
           <button
             data-testid="sidebar-show-all"
@@ -171,7 +177,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
           >{t('sidebar.showAll')}</button>
         </p>
       )}
-      <div className={`${hiddenCount > 0 ? 'mt-3' : 'mt-auto'} pt-3 border-t border-redlog-border/40 space-y-0.5`}>
+      <div className="shrink-0 mt-3 pt-3 border-t border-redlog-border/40 space-y-0.5">
         <button
           data-testid="sidebar-collapse"
           onClick={() => setSidebarCollapsed(!collapsed)}

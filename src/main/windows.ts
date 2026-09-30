@@ -65,13 +65,16 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   attachContextMenu(win.webContents, { dev: is.dev })
   hardenNavigation(win)
 
-  win.on('ready-to-show', () => {
-    if (isWin) {
-      const dpi = screen.getPrimaryDisplay().scaleFactor
-      if (dpi <= 1) win.webContents.setZoomFactor(1.1)
-    }
-    win.show()
-  })
+  // No zoom bump here. Windows at scaleFactor 1 used to get a silent 1.1,
+  // from when 1.0 rendered text too small to read — and the visible zoom
+  // ladder in Settings said the same thing, with 1.1 as its "normal". The
+  // type scale then gained its 13px floor (§2) and the ladder was corrected
+  // to 1.0; this was not. So the operator's own setting was being multiplied
+  // by an older default they never chose and could not see, and turning it
+  // down never reached the size they were asking for.
+  //
+  // One zoom now, and it is the one on the screen.
+  win.on('ready-to-show', () => win.show())
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
