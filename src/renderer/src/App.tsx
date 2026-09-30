@@ -55,14 +55,14 @@ import { useAppShortcuts } from './hooks/useAppShortcuts'
 type View = SidebarViewId | 'settings'
 
 
-export default /** What a pane shows while its chunk arrives. Deliberately dim and still: it
+/** What a pane shows while its chunk arrives. Deliberately dim and still: it
  *  is a few hundred milliseconds in a packaged build, and a spinner that
  *  flashes is worse than a surface that is simply not filled in yet. */
 function PaneLoading(): JSX.Element {
   return <div className="h-full w-full bg-redlog-surface/30 animate-pulse" aria-hidden />
 }
 
-function App(): JSX.Element {
+export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
 
