@@ -253,8 +253,8 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  zoom: var(--app-zoom, 1);
-  height: calc(100vh / var(--app-zoom, 1));
+  zoom: var(--app-zoom, 0.9);
+  height: calc(100vh / var(--app-zoom, 0.9));
 }
 
 @media (-webkit-min-device-pixel-ratio: 1) and (max-resolution: 143dpi) {
