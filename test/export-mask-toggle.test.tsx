@@ -79,8 +79,9 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
   it('unchecking ships raw out-of-scope content, with a warning label', async () => {
     render(<I18nProvider><ExportMenu /></I18nProvider>)
     open()
-    const checkbox = screen.getByRole('checkbox')
-    fireEvent.click(checkbox)
+    // Two checkboxes now that the 自用/交付 preset is gone: this one and the
+    // PII scrub it used to stand in for. Pick the mask by its own label.
+    fireEvent.click(screen.getByLabelText(/masked \(recommended\)/i))
     expect(screen.getByText(/including out-of-scope content raw/i)).toBeTruthy()
     clickBundle()
     await clickConfirm()

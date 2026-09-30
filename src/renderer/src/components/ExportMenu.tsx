@@ -91,7 +91,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const viewExport = useViewExport()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [sharing, setSharing] = useState(false)
+  const [scrubPii, setScrubPii] = useState(false)
   const [maskScope, setMaskScope] = useState(true)
   const [pending, setPending] = useState<PendingExport | null>(null)
   const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
@@ -206,9 +206,9 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       {hint && <span className="block text-xs text-redlog-text-faint">{hint}</span>}
     </button>
   )
-  // Sharing mode scrubs operator PII; a format that cannot is refused by the
-  // plan resolver, so it is not offered here.
-  const cannotShare = (format: ExportFormat): boolean => sharing && !capabilitiesFor(format).piiScrubbing
+  // A format that cannot scrub is refused by the plan resolver, so it is not
+  // offered while scrubbing is on.
+  const cannotShare = (format: ExportFormat): boolean => scrubPii && !capabilitiesFor(format).piiScrubbing
   const shareHint = (format: ExportFormat): string | undefined => cannotShare(format) ? t('export.cannotScrub') : undefined
 
   const PreviewRow = ({ label, value, warn }: { label: string; value: number; warn?: boolean }): JSX.Element | null => {
@@ -221,33 +221,24 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     )
   }
 
-  const PresetToggle = (): JSX.Element => (
-    <div className="px-3 py-1.5">
-      <div className="flex rounded border border-redlog-border overflow-hidden">
-        <button
-          onClick={() => setSharing(false)}
-          className={`flex-1 px-2 py-1 text-xs transition-colors ${
-            !sharing
-              ? 'bg-redlog-elevated text-redlog-text'
-              : 'text-redlog-text-dim hover:text-redlog-text'
-          }`}
-          title={t('export.preset.mergeHint')}
-        >
-          {t('export.preset.merge')}
-        </button>
-        <button
-          onClick={() => setSharing(true)}
-          className={`flex-1 px-2 py-1 text-xs transition-colors border-l border-redlog-border ${
-            sharing
-              ? 'bg-red-600/15 text-red-400'
-              : 'text-redlog-text-dim hover:text-redlog-text'
-          }`}
-          title={t('export.preset.deliveryHint')}
-        >
-          {t('export.preset.delivery')}
-        </button>
-      </div>
-    </div>
+  // The 自用 / 交付 pair is gone. A mode named after an audience asks the
+  // operator to translate "who is this for" into "what comes out", every
+  // time -- and it translated badly: its own tooltip promised masked
+  // metadata, scrubbed PII and excluded infrastructure, while the flag set
+  // exactly one of those three. What it really did is now the checkbox it
+  // really was, beside the one that was already here.
+  const Toggle = ({ on, setOn, label, warn }: {
+    on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean
+  }): JSX.Element => (
+    <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => setOn(e.target.checked)}
+        className="mt-0.5 accent-red-600"
+      />
+      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
+    </label>
   )
 
   return (
@@ -325,7 +316,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                           <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
                           <span data-testid="export-preview-policy" className="text-right text-redlog-text">
                             {[
-                              resolvedPlan.request.sharing ? t('export.preset.delivery') : t('export.preset.merge'),
                               resolvedPlan.request.maskOutOfScope ? t('export.preview.policyMask') : t('export.preview.policyNoMask'),
                               ...(resolvedPlan.request.scopeOnly ? [t('export.preview.policyScopeOnly')] : []),
                               ...(resolvedPlan.request.scrubPii ? [t('export.preview.policyScrubPii')] : [])
@@ -437,7 +427,13 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             ) : (
               /* ── Format picker ── */
               <>
-                <PresetToggle />
+                <Toggle on={scrubPii} setOn={setScrubPii} label={t('export.scrubPii')} />
+                <Toggle
+                  on={maskScope}
+                  setOn={setMaskScope}
+                  label={maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
+                  warn={!maskScope}
+                />
                 <div className="border-t border-redlog-border my-1" />
                 {empty && (
                   <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
@@ -447,20 +443,20 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                     label={viewExport.label}
                     disabled={empty || cannotShare(viewExport.request.format)}
                     hint={shareHint(viewExport.request.format)}
-                    onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, sharing } })}
+                    onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, scrubPii, maskOutOfScope: maskScope } })}
                   />
                 )}
                 <Option
                   label={t('export.all')}
                   disabled={empty}
-                  onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', sharing } })}
+                  onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', scrubPii, maskOutOfScope: maskScope } })}
                 />
                 <Option
                   label={t('export.ndjson')}
                   disabled={empty}
                   onPick={() => void loadPreview({
                     label: t('export.ndjson'),
-                    request: { format: 'ndjson', sharing }
+                    request: { format: 'ndjson', scrubPii, maskOutOfScope: maskScope }
                   })}
                 />
 
@@ -472,20 +468,9 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   hint={shareHint('bundle')}
                   onPick={() => void loadPreview({
                     label: t('export.bundle'),
-                    request: { format: 'bundle', sharing, maskOutOfScope: maskScope }
+                    request: { format: 'bundle', scrubPii, maskOutOfScope: maskScope }
                   })}
                 />
-                <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={maskScope}
-                    onChange={(e) => setMaskScope(e.target.checked)}
-                    className="mt-0.5 accent-red-600"
-                  />
-                  <span className={maskScope ? 'text-redlog-text-dim' : 'text-amber-500'}>
-                    {maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
-                  </span>
-                </label>
               </>
             )}
           </div>

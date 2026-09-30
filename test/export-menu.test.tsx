@@ -37,16 +37,16 @@ function openJson(): void {
 describe('ExportMenu plan preview', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-  // Sharing mode scrubs operator PII, which the evidence bundle cannot do, so
-  // the plan resolver refuses the pair (unsupported-policy). The menu must not
-  // offer it as if it would work.
-  it('does not offer a format that cannot honour sharing mode', () => {
+  // The evidence bundle cannot scrub operator PII, so the plan resolver
+  // refuses the pair (unsupported-policy). The menu must not offer it as if it
+  // would work.
+  it('does not offer a format that cannot scrub PII once scrubbing is on', () => {
     install(vi.fn())
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
     const bundle = (): HTMLButtonElement | null => screen.getByText('Evidence bundle (with verifier)').closest('button')
     expect(bundle()?.disabled).toBe(false)
-    fireEvent.click(screen.getByText('For sharing'))
+    fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
     expect(bundle()?.disabled).toBe(true)
     expect(screen.getByText('Everything').closest('button')?.disabled).toBe(false)
   })
@@ -68,10 +68,12 @@ describe('ExportMenu plan preview', () => {
     expect(screen.getByText('Calculating…')).toBeTruthy()
     release?.({ ok: true, plan: plan(3) })
     await waitFor(() => expect(screen.getByText('Entire approved snapshot')).toBeTruthy())
-    // The policy line now names each decision rather than one preset word:
-    // an operator checking a delivery has to see whether masking was on.
+    // The policy line names each decision. It used to lead with the preset
+    // word ("For sharing"), which told the operator which button had been
+    // pressed rather than what the file would contain -- and the preset's own
+    // description was wrong about two of the three things it claimed.
     const policy = screen.getByTestId('export-preview-policy').textContent ?? ''
-    expect(policy).toContain('For sharing')
+    expect(policy).not.toContain('For sharing')
     expect(policy).toContain('out-of-scope masked')
     expect(policy).toContain('PII scrubbed')
     // And the boundary it was resolved against, which the menu used to
