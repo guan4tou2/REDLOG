@@ -159,8 +159,17 @@ function ConfirmDialogInner({ state, close, t }: {
 
         {level === 'chain' && (
           <div className="mt-4">
+            {/* The name to type is set in the same prose as the instruction
+                around it, so the exact string -- where it starts, where it
+                ends, whether the punctuation is part of it -- had to be
+                guessed on the app's most destructive action. It is a value
+                now, and it looks like one. */}
             <label htmlFor="confirm-typed" className="block text-xs text-redlog-text-dim mb-1">
-              {t('confirm.typeToConfirm', { value: state.requireTyped ?? '' })}
+              {t('confirm.typeToConfirmBefore')}{' '}
+              <code className="font-mono text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 select-all">
+                {state.requireTyped ?? ''}
+              </code>{' '}
+              {t('confirm.typeToConfirmAfter')}
             </label>
             <input
               id="confirm-typed"
