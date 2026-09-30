@@ -50,6 +50,14 @@ export const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
   LANES.map((id) => [id, LANE_COLOR])
 ) as Record<LaneId, string>
 
+// The Timeline composes these into strings with a hex alpha appended
+// (`${colour}40`), so they stay hex here — this module is where the
+// Timeline's inline colours live (test/design-palette.test.ts allows it).
+/** A lane chip that is switched off: the `muted` grey. */
+export const LANE_OFF_COLOR = '#7e7e88'
+/** Session band labels: a paused stretch in neutral, a session in indigo. */
+export const SESSION_BAND_LABEL_COLOR = { paused: '#cbd5e1', session: '#a5b4fc' } as const
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface PluginEventType {

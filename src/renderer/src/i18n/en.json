@@ -1492,5 +1492,6 @@
   "screenshots.trigger.command": "after command",
   "screenshots.trigger.api": "API",
   "common.close": "Close",
-  "common.removeItem": "Remove {{item}}"
+  "common.removeItem": "Remove {{item}}",
+  "common.addItem": "Add"
 }
