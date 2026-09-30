@@ -11,6 +11,7 @@
 //
 //   node scripts/audit-ui.mjs          all findings, grouped by file
 //   node scripts/audit-ui.mjs --rule=button
+//   node scripts/audit-ui.mjs --rule=button --lines
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -21,7 +22,10 @@ const SRC = path.join(ROOT, 'src', 'renderer', 'src')
 /** Files that own the system itself, so they must write the raw styles. */
 const OWNS_THE_SYSTEM = new Set([
   'components/Button.tsx',
-  'components/IconButton.tsx'
+  'components/IconButton.tsx',
+  // The HUD is the standard's one density exception (§8): a floating strip
+  // with an 11px floor and its own scale, where a 34px box would not fit.
+  'OverlayApp.tsx'
 ])
 
 const RULES = [
@@ -38,11 +42,18 @@ const RULES = [
   {
     id: 'bare-button',
     what: 'a clickable element with no box at all — no edge, no hit area (§3.5)',
+    // A box is a border OR a fill; either draws an edge. Two affordances need
+    // neither, and calling them violations would make the rule noise:
+    //   - an underlined inline link, which prose has taught for decades
+    //   - an icon control inside an already-bounded element (the × on a filter
+    //     chip), whose edge is the chip's; those carry an aria-label
     test: (tag, attrs) => tag === 'button'
       && /className=/.test(attrs)
       && !/\bp[xy]?-\d|\bp-\d\b/.test(attrs)
       && !/\bh-\[|\bh-\d/.test(attrs)
       && !/rounded/.test(attrs)
+      && !/\bunderline\b/.test(attrs)
+      && !/aria-label=/.test(attrs)
   },
   {
     id: 'input',
@@ -68,6 +79,8 @@ function* walk(dir) {
 }
 
 const only = process.argv.find((a) => a.startsWith('--rule='))?.split('=')[1]
+const withLines = process.argv.includes('--lines')
+const sites = []
 const findings = new Map()   // file -> rule id -> count
 
 for (const file of walk(SRC)) {
@@ -82,6 +95,7 @@ for (const file of walk(SRC)) {
       const byRule = findings.get(rel) ?? new Map()
       byRule.set(rule.id, (byRule.get(rule.id) ?? 0) + 1)
       findings.set(rel, byRule)
+      sites.push({ rel, rule: rule.id, line: text.slice(0, m.index).split(/\r?\n/).length, tag })
     }
   }
 }
@@ -106,3 +120,10 @@ for (const [file, byRule, total] of ranked.slice(0, 25)) {
   console.log(`  ${String(total).padStart(3)}  ${file.padEnd(46)} ${detail}`)
 }
 if (ranked.length > 25) console.log(`  … and ${ranked.length - 25} more`)
+
+if (withLines) {
+  console.log('')
+  for (const s of sites.sort((a, b) => a.rel.localeCompare(b.rel) || a.line - b.line)) {
+    console.log(`  ${s.rel}:${s.line}  <${s.tag}>  ${s.rule}`)
+  }
+}
