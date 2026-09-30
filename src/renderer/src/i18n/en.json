@@ -905,6 +905,8 @@
   "settings.pageNetwork": "IP exposure & own traffic",
   "settings.pageIntegrity": "Chain verification",
   "settings.pagePlugins": "Plugins",
+  "settings.pageAbout": "About",
+  "settings.aboutVersion": "Version",
   "settings.pageGeneral": "Appearance & language",
   "settings.pageHud": "Overlay display",
   "capture.http.absent": "mitmproxy not installed",

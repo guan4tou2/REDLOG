@@ -16,7 +16,8 @@ export const PAGE_SOURCES = {
   integrity: [{ file: 'settings/IntegrityPanel.tsx' }],
   plugins: [{ file: 'settings/PluginsPanel.tsx' }],
   general: [{ file: 'settings/GeneralPage.tsx' }],
-  hud: [{ file: 'settings/HudPage.tsx' }]
+  hud: [{ file: 'settings/HudPage.tsx' }],
+  about: [{ file: 'settings/AboutPage.tsx' }]
 }
 
 const KEY = /\bt\(\s*['"]([a-zA-Z]+\.[A-Za-z0-9_.]+)['"]/g
