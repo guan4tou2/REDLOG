@@ -442,9 +442,13 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
   })
 
   it('Copy says it copied', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ proxy: RUNNING })
     draw()
     const card = await screen.findByTestId('first-run-http')
+    // The copyable commands that used to sit on the card unconditionally are
+    // now the fallback shown once a check has not landed.
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const copy = await waitFor(() => {
       const b = [...card.querySelectorAll('button')].find((el) => el.textContent === '複製')
       expect(b).toBeTruthy()
