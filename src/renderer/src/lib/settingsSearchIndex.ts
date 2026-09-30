@@ -18,10 +18,11 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.hookHideSetup',
     'settings.hookOptionalSteps',
     'settings.hookShowSetup',
+    'settings.hookManualNote',
     'settings.hookCopy',
     'settings.hookRunHint',
     'settings.hookRun',
-    'settings.hookManualNote',
+    'settings.hookTeardown',
     'settings.wsl.hookInstalled',
     'settings.wsl.hookInstallFailed',
     'settings.wsl.hookInstallFailedWhy',
@@ -115,7 +116,18 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.lootHint',
     'settings.lootRulesFailed',
     'settings.lootBuiltin',
-    'settings.lootRuleStopped'
+    'settings.lootRuleStopped',
+    'settings.externalCapture',
+    'settings.externalCaptureHint',
+    'settings.externalDisabledFeeding',
+    'settings.externalDisabled',
+    'settings.externalMissing',
+    'settings.externalFeeding',
+    'settings.externalIdle',
+    'settings.externalNotRunning',
+    'settings.externalDesc.c2-tailers',
+    'settings.externalDesc.pcap-capture',
+    'settings.externalDesc.transparent-proxy'
   ],
   browser: [
     'settings.cdp',
@@ -237,7 +249,12 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'plugins.consentTitle',
     'plugins.consentBody',
     'plugins.consentWarn',
-    'plugins.grantRun'
+    'plugins.grantRun',
+    'plugins.builtin.builtin-tools',
+    'plugins.builtin.pack-ai-agents',
+    'plugins.builtin.pack-host-monitors',
+    'plugins.builtin.pack-windows-output',
+    'plugins.builtin.starter-pack'
   ],
   general: [
     'settings.engagement',
