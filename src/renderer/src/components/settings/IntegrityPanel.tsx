@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from '../Button'
 import { toast } from '../Toast'
 import { raiseIssue, clearIssue } from '../../lib/issues'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../../lib/verifyResultCache'
@@ -108,24 +109,16 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
     <FieldGroup title={t('settings.integrity')}>
       <p className="text-xs text-redlog-text-faint">{t('settings.integrityHint')}</p>
       <div className="flex gap-2 flex-wrap">
-        <button
-          onClick={handleAnchor}
-          disabled={busy}
-          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
-        >
+        <Button level="danger" onClick={handleAnchor} disabled={busy}>
           {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
-        </button>
+        </Button>
         {/* v0.6.87 E1: walks every event, recomputes each hash, and checks
             it against `prev_hash`, then checks the latest anchor. Shows a
             detail card with walked count, broken-at (if any), current head,
             and anchor match. */}
-        <button
-          onClick={handleVerify}
-          disabled={verifying}
-          className="px-3 py-1.5 bg-redlog-elevated text-emerald-300 text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
-        >
+        <Button level="secondary" onClick={handleVerify} disabled={verifying}>
           {verifying ? t('settings.integrityVerifying') : t('settings.integrityVerifyFull')}
-        </button>
+        </Button>
         <button
           onClick={async () => {
             const r = await window.redlog.chain.upgrade() as { upgraded: number; scanned: number } | null

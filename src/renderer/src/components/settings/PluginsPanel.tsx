@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from '../Button'
 import { toast, toastDeferred } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
@@ -99,10 +100,9 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           title={t('plugins.openFolderHint')}>
           {t('plugins.openFolder')}
         </button>
-        <button onClick={doReload} disabled={busy === '*'}
-          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0">
+        <Button level="secondary" onClick={doReload} disabled={busy === '*'} className="shrink-0">
           {busy === '*' ? '…' : t('plugins.reload')}
-        </button>
+        </Button>
       </div>
 
       {plugins.length === 0 && (

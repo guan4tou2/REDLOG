@@ -295,9 +295,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
         <Button level="primary" onClick={submit}>
           {initial ? t('bookmarks.update') : t('bookmarks.save')}
         </Button>
-        <button onClick={onCancel} className="px-3 py-1.5 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">
-          {t('bookmarks.cancel')}
-        </button>
+        <Button level="secondary" onClick={onCancel}>{t('bookmarks.cancel')}</Button>
       </div>
     </div>
   )
