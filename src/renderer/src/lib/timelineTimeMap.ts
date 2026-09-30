@@ -169,3 +169,26 @@ export function computeBins(
   }
   return { counts, max: Math.max(1, ...counts), N: binCount }
 }
+
+/**
+ * A bin's bar height, 0–1, on a log scale.
+ *
+ * Linear normalisation does not survive this data. Capture is bursty by
+ * construction: a scan puts thousands of rows in one bin and the rest of the
+ * engagement puts tens in each of the others. Against `count / max`, a bin
+ * holding forty manual operations next to a five-thousand-row scan renders at
+ * 0.8% — indistinguishable from a bin holding one. The burst does not just
+ * dominate the scale, it erases every other bin's differences, which is the
+ * one thing the strip exists to show.
+ *
+ * `log1p` keeps the ordering and compresses the ratio: the same forty-versus-
+ * five-thousand pair reads as 45% against 100%.
+ *
+ * Zero stays zero. A bin with nothing in it must render as nothing, because
+ * the only thing this strip can say that the list cannot is "here is a gap",
+ * and a floor applied to an empty bin would fill the gap in.
+ */
+export function binHeight(count: number, max: number): number {
+  if (count <= 0) return 0
+  return Math.log1p(count) / Math.log1p(Math.max(1, max))
+}

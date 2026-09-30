@@ -537,6 +537,7 @@
   "terminal.pickShell": "選擇下一個分頁要用的 shell",
   "terminal.notRecorded": "不會記錄",
   "timeline.zoomIn": "放大（Ctrl+滾輪）",
+  "timeline.minimapPartialHint": "只涵蓋已載入的部分——左邊的空白是還沒抓的頁，不是紀錄上的空窗。拉到底或按「載入更多」才看得到完整跨度。",
   "timeline.minimapHint": "拖曳選取時間範圍以放大 · 點擊跳至該時間",
   "timeline.zoomOut": "縮小（Ctrl+滾輪）",
   "timeline.resetZoom": "重置縮放",
