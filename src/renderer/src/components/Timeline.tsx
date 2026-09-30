@@ -1482,6 +1482,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     scrollToTs(displayTs(evt))
   }, [scrollToTs])
 
+  // Stepping walks the list's own order, because that is the order the
+  // operator was reading when they opened the pane. The lane arrows (← →)
+  // stay lane-scoped and mean something different on purpose: one follows a
+  // single producer, this follows time.
+  const stepIndex = useMemo(
+    () => (selectedEvent ? recentEvents.findIndex((e) => e.id === selectedEvent.id) : -1),
+    [recentEvents, selectedEvent]
+  )
+  const stepTo = useCallback((delta: -1 | 1) => {
+    if (stepIndex < 0) return
+    const next = recentEvents[stepIndex + delta]
+    if (!next) return
+    setSelectedEvent(next)
+    setDetailOpen(true)
+    scrollToEvent(next)
+  }, [recentEvents, stepIndex, scrollToEvent])
+
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
     // §10: no masked variant. The data is already on the operator's own
@@ -2669,6 +2686,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             showJson={showJson}
             lookup={(id) => eventsMapRef.current.get(id)}
             onJump={(e) => { setSelectedEvent(e); setDetailOpen(true); scrollToEvent(e) }}
+            onStep={stepIndex >= 0 ? stepTo : undefined}
+            canStepPrev={stepIndex > 0}
+            canStepNext={stepIndex >= 0 && stepIndex < recentEvents.length - 1}
             onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
             onResolve={(id) => void resolveReferencedEvent(id)}
             scrollToTs={scrollToTs}
