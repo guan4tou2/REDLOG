@@ -96,8 +96,13 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
+  // 48px is not a round number, it is the arithmetic: the nav's own 8px
+  // padding, the row's 8px, and a 16px icon, twice over. Centring the icon in
+  // a wider rail moved it four pixels sideways on every collapse, so the thing
+  // the eye tracks jumped while the panel animated. It does not move now; only
+  // the right edge does.
   return (
-    <nav className={`${collapsed ? 'w-[56px]' : 'w-[186px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
+    <nav className={`${collapsed ? 'w-[48px]' : 'w-[186px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
       {/* The rows scroll; the footer does not. With `overflow-hidden` on the
           nav and the footer pushed by `mt-auto`, turning every page on clipped
           Settings and the collapse toggle straight off the bottom — and which
@@ -120,7 +125,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
               title={`${item.label}${chordLabel}`}
               aria-label={`${item.label}${chordLabel.replace(' · ', ' — ')}`}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 ${collapsed ? 'justify-center px-0' : 'px-2'} ${
+              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 px-2 ${
                 isActive
                   ? 'text-redlog-accent'
                   : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -184,7 +189,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
           title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           aria-expanded={!collapsed}
-          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] ${collapsed ? 'justify-center px-0' : 'px-2'}`}
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] px-2`}
         >
           <PanelLeft size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} aria-hidden className="shrink-0" />
           {!collapsed && <span className="text-xs leading-none truncate font-medium">{t('sidebar.collapse')}</span>}
@@ -195,7 +200,7 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
           title={`${t('sidebar.config')} · ${isMac ? '⌘' : 'Ctrl+'}9`}
           aria-label={`${t('sidebar.config')} — ${isMac ? '⌘' : 'Ctrl+'}9`}
           aria-current={active === 'settings' ? 'page' : undefined}
-          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative ${collapsed ? 'justify-center px-0' : 'px-2'} ${
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative px-2 ${
             active === 'settings'
               ? 'text-redlog-accent'
               : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'

@@ -106,6 +106,15 @@ export interface PluginInfo {
   manualSteps?: ManualStep[]
   /** how to undo a source RedLog cannot uninstall itself */
   removalSteps?: ManualStep[]
+  /** Shipped with RedLog, as opposed to contributed by an installed plugin.
+   *  The Hooks page lists only these: a plugin's own capture belongs on the
+   *  Plugins page, beside the plugin that brought it. */
+  builtin: boolean
+  /** The steps are an extra, not a setup. mitmproxy is installed and started
+   *  by RedLog now; what is left is the optional second instance for DNS, and
+   *  calling that "manual setup" says the capture needs work that it does
+   *  not. */
+  stepsAreOptional?: boolean
 }
 
 const HOOKS_DIR = join(__dirname, '../../../hooks')
@@ -537,6 +546,7 @@ function hasManualSteps(plugin: PluginManifest): boolean {
 }
 
 export function detectHooks(): PluginInfo[] {
+  const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   return allManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
     const manualSteps = hasManualSteps(plugin)
@@ -554,7 +564,9 @@ export function detectHooks(): PluginInfo[] {
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id)
+      removalSteps: buildRemovalSteps(plugin.id),
+      builtin: builtinIds.has(plugin.id),
+      stepsAreOptional: plugin.id === 'mitmproxy'
     }
   })
 }
@@ -563,6 +575,7 @@ let _detectCache: PluginInfo[] | null = null
 
 export async function detectHooksAsync(): Promise<PluginInfo[]> {
   const manifests = allManifests()
+  const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   const results = await Promise.all(manifests.map(async (plugin) => {
     const hookFile = srcPathFor(plugin)
     const manualSteps = hasManualSteps(plugin)
@@ -579,7 +592,9 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id)
+      removalSteps: buildRemovalSteps(plugin.id),
+      builtin: builtinIds.has(plugin.id),
+      stepsAreOptional: plugin.id === 'mitmproxy'
     }
   }))
   _detectCache = results
