@@ -117,14 +117,16 @@ interface BucketPageState {
 
 const fmtBytes = formatSize
 
+// Theme variables, not hex: the transcript's kinds take their colours from
+// the palette like everything else (UI/UX audit F24).
 const KIND_COLOR: Record<Kind, string> = {
-  shell: '#22c55e',
-  'agent-turn': '#84cc16',
-  'agent-tool': '#a3a3a3',
-  http: '#8b5cf6',
-  marker: '#ef4444',
-  loot: '#f97316',
-  other: '#52525b'
+  shell: 'var(--color-emerald-500)',
+  'agent-turn': 'var(--color-lime-400)',
+  'agent-tool': 'var(--color-redlog-text-dim)',
+  http: 'var(--color-purple-400)',
+  marker: 'var(--color-red-400)',
+  loot: 'var(--color-orange-400)',
+  other: 'var(--color-redlog-muted)'
 }
 
 /**
@@ -577,7 +579,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   ? 'text-redlog-text border-redlog-border bg-redlog-elevated/60'
                   : 'text-redlog-text-faint border-redlog-border hover:text-redlog-text-dim'
               }`}
-              style={kinds.has(k) ? { color: KIND_COLOR[k], borderColor: `${KIND_COLOR[k]}66` } : undefined}
+              style={kinds.has(k) ? { color: KIND_COLOR[k], borderColor: `color-mix(in oklab, ${KIND_COLOR[k]} 40%, transparent)` } : undefined}
             >
               {t(`transcript.kind.${k}`)}
             </button>

@@ -7,7 +7,6 @@ import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
-import { IconButton } from './IconButton'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void

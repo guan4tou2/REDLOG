@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../Toast'
 import { useI18n } from '../../i18n'
+import { IconButton } from '../IconButton'
 import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
 
 const DEFAULT_VPN_ADAPTERS = [
@@ -87,7 +88,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             placeholder={t('settings.vpnPatternPlaceholder')}
             className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />
-          <button onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
+          <IconButton label={t('common.addItem')} onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
         </div>
       </div>
     </div>
