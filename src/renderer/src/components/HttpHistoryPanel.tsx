@@ -732,7 +732,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           {t(hasMore ? 'httpHistory.recentSubset' : 'httpHistory.complete')}
         </span>
         {hasMore && (
-          <button type="button" onClick={() => void loadFlows(true)} disabled={loadingMore} className="text-blue-400 underline disabled:text-redlog-text-faint">
+          <button type="button" onClick={() => void loadFlows(true)} disabled={loadingMore} className="text-redlog-cyan underline disabled:text-redlog-text-faint">
             {loadingMore ? t('httpHistory.loadingMore') : t('httpHistory.loadMore')}
           </button>
         )}

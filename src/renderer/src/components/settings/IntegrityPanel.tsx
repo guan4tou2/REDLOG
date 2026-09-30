@@ -204,7 +204,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
                       ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}`
                       : `${r.calendar} — ${r.error}`}
                     className={`text-xs px-1.5 py-0.5 rounded font-mono ${
-                      r.upgraded ? 'bg-blue-900/50 text-blue-300' :
+                      r.upgraded ? 'bg-redlog-cyan/15 text-redlog-cyan' :
                       r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
                     }`}
                   >

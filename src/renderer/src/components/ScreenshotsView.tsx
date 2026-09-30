@@ -248,7 +248,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           <button
             onClick={loadMore}
             disabled={loadingMore}
-            className="mt-3 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+            className="mt-3 w-full text-xs text-redlog-cyan hover:text-redlog-text disabled:text-redlog-text-faint py-2"
           >
             {loadingMore ? t('screenshots.loading') : t('screenshots.loadMore')}
           </button>
