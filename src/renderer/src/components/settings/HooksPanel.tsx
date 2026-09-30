@@ -64,7 +64,10 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
 
   return (
     <>
-      <FieldGroup title={t('settings.hooksDetected')}>
+      {/* Only what RedLog ships. A plugin's own capture is listed with the
+          plugin that brought it, on the Plugins page — here it was padding a
+          list the operator reads to answer "is my shell recording". */}
+      <FieldGroup title={t('settings.hooksBuiltin')}>
         <p className="text-xs text-redlog-text-faint mb-2">
           {t('settings.hooksHint')}
         </p>
@@ -72,9 +75,13 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
         <div className="space-y-2">
-          {hooks.map((hook) => {
-            const isManual = hook.installMethod === 'manual'
-            const hasSteps = isManual && !!hook.manualSteps?.length
+          {hooks.filter((hook) => hook.builtin).map((hook) => {
+            // "Manual" means RedLog cannot set it up for you. mitmproxy no
+            // longer qualifies — it is installed in one click and started when
+            // a project opens — so its remaining steps are an optional extra,
+            // and saying "manual setup" would claim work that is not needed.
+            const isManual = hook.installMethod === 'manual' && !hook.stepsAreOptional
+            const hasSteps = !!hook.manualSteps?.length
             const isOpen = expanded === hook.id
             return (
               <div
@@ -130,7 +137,9 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                       onClick={() => setExpanded(isOpen ? null : hook.id)}
                       className="px-3 py-1 text-xs rounded ml-3 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
                     >
-                      {isOpen ? t('settings.hookHideSetup') : t('settings.hookShowSetup')}
+                      {isOpen
+                        ? t('settings.hookHideSetup')
+                        : hook.stepsAreOptional ? t('settings.hookOptionalSteps') : t('settings.hookShowSetup')}
                     </button>
                   )}
                 </div>

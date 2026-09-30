@@ -8,7 +8,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   hooks: [
     'settings.hookInstallFailed',
     'settings.hookFailedWhy',
-    'settings.hooksDetected',
+    'settings.hooksBuiltin',
     'settings.hooksHint',
     'settings.hookActive',
     'settings.hookManual',
@@ -16,6 +16,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.hookDisable',
     'settings.hookEnable',
     'settings.hookHideSetup',
+    'settings.hookOptionalSteps',
     'settings.hookShowSetup',
     'settings.hookCopy',
     'settings.hookRunHint',

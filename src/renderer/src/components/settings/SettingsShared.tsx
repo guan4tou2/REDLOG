@@ -76,6 +76,10 @@ export interface HookInfo {
   installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]
+  /** Shipped with RedLog, rather than contributed by an installed plugin. */
+  builtin?: boolean
+  /** The steps are an extra, not a setup RedLog needs the operator to do. */
+  stepsAreOptional?: boolean
 }
 
 export function FieldGroup({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
