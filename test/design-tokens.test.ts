@@ -52,34 +52,52 @@ describe('token palette', () => {
     expect(t.accent).not.toBe(t.danger)
   })
 
-  it('holds text tiers above 4.5:1 on every surface they sit on', () => {
+  it('holds every readable tier above 6:1, hover surface included', () => {
+    // 6, not WCAG's 4.5. That threshold is calibrated at ~16px normal weight;
+    // the app's floor is 13px and the default zoom is 0.9 (lib/uiScale), so
+    // body text lands near 11.7px effective. The ramp passed 4.5 and was still
+    // unreadable on the near-black field -- which is what a threshold borrowed
+    // from the wrong size buys you. `elevated-hover` is in the list because a
+    // row does not get harder to read when the cursor is over it.
     const t = redlogTokens()
-    const surfaces = ['bg', 'surface', 'elevated'] as const
     const failures: string[] = []
-    // `muted` is excluded on purpose — §1 scopes it to placeholder and
-    // disabled text, which WCAG exempts. Anything a person must read is
-    // `text-dim` or brighter.
-    for (const tier of ['text', 'text-dim'] as const) {
-      for (const s of surfaces) {
+    for (const tier of ['text', 'text-dim', 'text-faint'] as const) {
+      for (const s of ['bg', 'surface', 'elevated', 'elevated-hover'] as const) {
+        expect(t[s], `token ${s} not found`).toMatch(/^#[0-9a-f]{6}$/i)
         const ratio = contrast(t[tier], t[s])
-        if (ratio < 4.5) failures.push(`${tier} on ${s}: ${ratio.toFixed(2)}:1`)
+        if (ratio < 6) failures.push(`${tier} on ${s}: ${ratio.toFixed(2)}:1`)
       }
     }
     expect(failures).toEqual([])
   })
 
-  it('holds text-faint above 4.5:1 too, hover surface included (UI/UX audit F23)', () => {
-    // text-faint carries section labels, hints and timestamps — text people
-    // read — so it is held to the same line as text-dim, on every surface a
-    // row can be under, including the hover tint.
+  it('holds muted above 4.5:1 as well', () => {
+    // §1 scopes `muted` to placeholder and disabled text, which WCAG exempts
+    // -- so it is held one tier lower than the rest, not exempted outright. It
+    // sat at 3.55:1 on the hover surface, which is not "de-emphasised", it is
+    // gone. Anything a person must read is `text-faint` or brighter.
     const t = redlogTokens()
     const failures: string[] = []
     for (const s of ['bg', 'surface', 'elevated', 'elevated-hover'] as const) {
-      expect(t[s], `token ${s} not found`).toMatch(/^#[0-9a-f]{6}$/i)
-      const ratio = contrast(t['text-faint'], t[s])
-      if (ratio < 4.5) failures.push(`text-faint on ${s}: ${ratio.toFixed(2)}:1`)
+      const ratio = contrast(t.muted, t[s])
+      if (ratio < 4.5) failures.push(`muted on ${s}: ${ratio.toFixed(2)}:1`)
     }
     expect(failures).toEqual([])
+  })
+
+  it('keeps each step of the text ramp visibly apart', () => {
+    // Contrast alone does not make a hierarchy: `text-dim` and `text-faint`
+    // were 2.7 L* apart, which is at the edge of a just-noticeable difference.
+    // Three tokens, two visible tiers, and every "this is secondary" the app
+    // tried to say went unheard.
+    const t = redlogTokens()
+    const lstar = (hex: string): number => 116 * Math.cbrt(luminance(hex)) - 16
+    const ramp = ['text', 'text-dim', 'text-faint', 'muted'] as const
+    for (let i = 1; i < ramp.length; i++) {
+      const gap = lstar(t[ramp[i - 1]]) - lstar(t[ramp[i]])
+      expect(gap, `${ramp[i - 1]} -> ${ramp[i]} is only ${gap.toFixed(1)} L* apart`)
+        .toBeGreaterThanOrEqual(5)
+    }
   })
 
   it('holds non-text elements above 3:1 on every surface', () => {
