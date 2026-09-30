@@ -166,6 +166,8 @@
   "settings.integrityFullNoAnchor": "尚無錨點：只檢查了各列之間的雜湊。",
   "settings.integrityFullClockAnomalies": "偵測到 {{n}} 次時鐘異常",
   "timeline.clusterMoreItems": "還有 {{count}} 個 — 放大以個別檢視",
+  "timeline.layoutToRight": "詳情改放右側（清單保有完整高度）",
+  "timeline.layoutToBottom": "詳情改放下方（內容橫跨整個寬度）",
   "timeline.resizeLog": "拖曳調整清單高度，雙擊還原",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
   "targets.title": "目標（{{count}}）",

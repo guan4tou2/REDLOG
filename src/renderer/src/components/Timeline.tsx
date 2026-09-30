@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
+import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
@@ -11,7 +12,7 @@ import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/T
 import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
-import { Rows3 } from 'lucide-react'
+import { Rows3, PanelBottom, PanelRight } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
@@ -193,7 +194,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // was the one that could not be dragged — the panel a three-day engagement
   // spends all day reading, frozen at 22vh while the detail panel below it
   // moved freely.
-  const detailPanel = usePanelHeight('redlog-timeline-detail-h')
+  // Bottom or beside. The stored size is keyed per layout: 320px of height and
+  // 320px of width are not the same request, and one number serving both meant
+  // switching gave you a pane sized for the other axis.
+  const [layout, setLayout] = useState<DetailLayout>(storedDetailLayout)
+  useEffect(() => {
+    const onChange = (): void => setLayout(storedDetailLayout())
+    window.addEventListener(DETAIL_LAYOUT_EVENT, onChange)
+    return () => window.removeEventListener(DETAIL_LAYOUT_EVENT, onChange)
+  }, [])
+  const detailPanel = usePanelHeight(
+    layout === 'right' ? 'redlog-timeline-detail-w' : 'redlog-timeline-detail-h',
+    layout === 'right' ? { axis: 'x', min: 280, maxRatio: 0.6 } : {}
+  )
   const logPanel = usePanelHeight('redlog-timeline-log-h', { min: 64, maxRatio: 0.7 })
   // Detail panel container. Reset scroll to top on every selectedEvent change
   // so a cluster-popover click always lands you on the new item's title —
@@ -1713,6 +1726,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           aria-label={t('timeline.help.hint')}
         >?</button>
 
+        {/* Where the detail pane sits. A switch you reach for while working —
+            reading one capture closely wants width, sweeping the record wants
+            height — so it is here rather than two pages away in Settings. */}
+        <button
+          data-testid="timeline-layout-toggle"
+          onClick={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
+          className="ml-1 w-5 h-5 flex items-center justify-center text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+          title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+          aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+          aria-pressed={layout === 'right'}
+        >
+          {layout === 'bottom'
+            ? <PanelBottom size={12} strokeWidth={1.75} aria-hidden />
+            : <PanelRight size={12} strokeWidth={1.75} aria-hidden />}
+        </button>
+
         {/* Zoom controls */}
         <div className="flex items-center gap-1 ml-2">
           <button
@@ -2025,7 +2054,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       </div>
 
       {/* Timeline + event list split */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      {/* The layout switch is this one flex direction. Column puts the pane
+          under the list across the full width; row puts it beside, and the
+          list keeps its height. One pane in one place in the DOM either way —
+          rendering it twice would be two panes to keep in step and only one
+          of them ever tested. */}
+      <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         {/* Swim lanes */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
@@ -2535,19 +2570,36 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           to the CSS `max-h-[45vh]` when the operator hasn't dragged. */}
       {selectedEvent && detailOpen && (
         <>
-          {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
+          {/* 4px hit strip on the edge the pane grows from. */}
           <div
-            className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
+            data-testid="timeline-detail-resize"
+            className={`shrink-0 bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative ${
+              layout === 'bottom' ? 'h-1 cursor-row-resize' : 'w-1 cursor-col-resize'
+            }`}
             title={t('timeline.resizeDetailPanel')}
-            onMouseDown={(e) => detailPanel.beginResize(e, detailPanelRef.current?.getBoundingClientRect().height ?? 320)}
+            onMouseDown={(e) => {
+              const box = detailPanelRef.current?.getBoundingClientRect()
+              detailPanel.beginResize(e, layout === 'bottom' ? box?.height ?? 320 : box?.width ?? 440)
+            }}
             onDoubleClick={detailPanel.reset}
           >
-            <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
+            <div className={`absolute rounded bg-redlog-elevated-hover/50 pointer-events-none ${
+              layout === 'bottom'
+                ? 'left-1/2 top-0 -translate-x-1/2 h-1 w-8'
+                : 'top-1/2 left-0 -translate-y-1/2 w-1 h-8'
+            }`} />
           </div>
         <div
           ref={detailPanelRef}
-          className={`shrink-0 border-t border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto${detailPanel.px == null ? ' max-h-[45vh]' : ''}`}
-          style={detailPanel.px == null ? undefined : { height: detailPanel.px }}
+          data-testid="timeline-detail-panel"
+          className={`shrink-0 border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto ${
+            layout === 'bottom'
+              ? `border-t${detailPanel.px == null ? ' max-h-[45vh]' : ''}`
+              : 'border-l h-full'
+          }`}
+          style={detailPanel.px == null
+            ? (layout === 'right' ? { width: 440 } : undefined)
+            : (layout === 'bottom' ? { height: detailPanel.px } : { width: detailPanel.px })}
         >
           <TimelineEventInspector
             event={selectedEvent}
@@ -2580,6 +2632,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         </div>
         </>
       )}
+      </div>
     </div>
   )
 }

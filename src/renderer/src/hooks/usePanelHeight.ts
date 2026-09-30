@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-// A panel whose height the operator drags, remembered across reloads.
+// A panel whose size the operator drags, remembered across reloads.
 //
 // The Timeline has two horizontal splits and they were not the same thing: the
 // detail panel could be dragged and the event log could not, so the one a
@@ -14,18 +14,25 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 // default responsive to window height instead of freezing a pixel count taken
 // on somebody else's monitor.
 
-interface PanelHeight {
-  /** Chosen height in px, or null while the CSS default applies. */
+interface PanelSize {
+  /** Chosen size in px, or null while the CSS default applies. */
   px: number | null
-  /** Pass the mousedown from the drag handle. */
-  beginResize: (e: { clientY: number; preventDefault: () => void }, currentHeight: number) => void
+  /** Pass the mousedown from the drag handle, with the panel's current size. */
+  beginResize: (e: { clientX: number; clientY: number; preventDefault: () => void }, current: number) => void
   /** Back to the CSS default. Bound to double-click on the handle. */
   reset: () => void
 }
 
-export function usePanelHeight(storageKey: string, opts: { min?: number; maxRatio?: number } = {}): PanelHeight {
+/** `axis: 'y'` is a handle on the top edge growing downward; `'x'` is a handle
+ *  on the left edge growing rightward. Both grow when dragged AWAY from the
+ *  panel, which is the only gesture that feels the same in either direction. */
+export function usePanelHeight(
+  storageKey: string,
+  opts: { min?: number; maxRatio?: number; axis?: 'x' | 'y' } = {}
+): PanelSize {
   const min = opts.min ?? 80
   const maxRatio = opts.maxRatio ?? 0.85
+  const axis = opts.axis ?? 'y'
 
   const [px, setPx] = useState<number | null>(() => {
     try {
@@ -34,7 +41,7 @@ export function usePanelHeight(storageKey: string, opts: { min?: number; maxRati
       return Number.isFinite(n) && n > min && n < 2000 ? n : null
     } catch { return null }
   })
-  const drag = useRef<{ startY: number; startH: number } | null>(null)
+  const drag = useRef<{ start: number; size: number } | null>(null)
   // The live value, so the mouseup listener persists what the last mousemove
   // set rather than what the render that installed it had. Without it the
   // effect has to depend on `px` and re-subscribe on every pixel of the drag.
@@ -45,7 +52,9 @@ export function usePanelHeight(storageKey: string, opts: { min?: number; maxRati
     const onMove = (e: MouseEvent): void => {
       const s = drag.current
       if (!s) return
-      setPx(Math.max(min, Math.min(window.innerHeight * maxRatio, s.startH + (s.startY - e.clientY))))
+      const limit = (axis === 'y' ? window.innerHeight : window.innerWidth) * maxRatio
+      const delta = axis === 'y' ? s.start - e.clientY : s.start - e.clientX
+      setPx(Math.max(min, Math.min(limit, s.size + delta)))
     }
     const onUp = (): void => {
       if (!drag.current) return
@@ -58,15 +67,15 @@ export function usePanelHeight(storageKey: string, opts: { min?: number; maxRati
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [storageKey, min, maxRatio])
+  }, [storageKey, min, maxRatio, axis])
 
-  const beginResize = useCallback((e: { clientY: number; preventDefault: () => void }, currentHeight: number) => {
+  const beginResize = useCallback((e: { clientX: number; clientY: number; preventDefault: () => void }, current: number) => {
     e.preventDefault()
-    drag.current = { startY: e.clientY, startH: currentHeight }
+    drag.current = { start: axis === 'y' ? e.clientY : e.clientX, size: current }
     // Suppresses text selection and pointer events on the panes while dragging
     // — without it the drag selects the event rows it passes over.
     document.body.classList.add('timeline-resizing')
-  }, [])
+  }, [axis])
 
   const reset = useCallback(() => {
     setPx(null)
