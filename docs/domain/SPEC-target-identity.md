@@ -2,7 +2,7 @@
 
 > Domain: Engagement / Evidence
 > Invariant: Every target-oriented query MUST use the same canonical target identity semantics.
-> Status: Implemented — canonical identity and active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 038).
+> Status: Implemented — canonical identity, session target and active-target fallback share the ingest boundary (Spec 041); every target filter compares case-insensitively through one helper (Spec 038).
 
 ## Canonical Definition
 
@@ -28,11 +28,21 @@ target_id ⊇ data.host (for target-bearing events)
 Target assignment precedence at ingest is:
 
 ```
-explicit producer target > observed/enriched target > active-target fallback > null
+explicit producer target > observed/enriched target > session target > active-target fallback > null
 ```
 
+A **session target** (Spec 041) is the target of one terminal session rather
+than of the whole app: a built-in terminal tab bound from its toolbar, or an
+external shell that exported `REDLOG_TARGET` (sent on each event as
+`data.session_target`). A declared `session_target` wins over a tab binding.
+It applies to the same row types as the active-target fallback (shell, marker,
+screenshot), and a row that took it is stamped `data.target_source =
+'session'`. Tab bindings live in memory and are cleared when the project
+closes. `src/core/session-targets.ts` holds the one implementation.
+
 Changing or clearing the active target appends `system.active_target_changed`;
-existing rows are never re-attributed.
+binding or unbinding a session appends `system.session_target_changed`.
+Existing rows are never re-attributed.
 
 ## Normalization
 
