@@ -242,8 +242,12 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   general: [
     'settings.engagement',
     'settings.id',
+    'settings.engagementIdHint',
     'settings.name',
+    'settings.engagementNameHint',
     'settings.operatorGroup',
+    'settings.operatorIdHint',
+    'settings.operatorNameHint',
     'settings.handoffProfile',
     'settings.exportProfile',
     'settings.handoffProfileHint',

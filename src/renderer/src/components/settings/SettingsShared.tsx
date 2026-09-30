@@ -91,21 +91,43 @@ export function FieldGroup({ title, children }: { title: string; children: React
   )
 }
 
-export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false }: {
-  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; type?: string; readOnly?: boolean
+// `hint` is the tooltip on a ⓘ beside the label, not a line of prose under the
+// field. Four fields on the General page are labelled ID and 名稱, twice over,
+// and the labels alone do not say which of them is stamped on every event and
+// which is a display string -- so the operator cannot tell the evidence field
+// from the cosmetic one sitting directly beneath it.
+export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false, hint }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void
+  type?: string; readOnly?: boolean; hint?: string
 }): JSX.Element {
   const id = useId()
+  const hintId = `${id}-hint`
   return (
     <div>
-      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
+      <div className="flex items-center gap-1 mb-1">
+        <label htmlFor={id} className="text-xs text-redlog-text-dim">{label}</label>
+        {hint && (
+          <span
+            id={hintId}
+            title={hint}
+            aria-label={hint}
+            tabIndex={0}
+            className="text-xs leading-none text-redlog-text-faint hover:text-redlog-text cursor-help focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/40 rounded"
+          >&#9432;</span>
+        )}
+      </div>
       <input
         id={id}
         type={type}
         value={value}
         readOnly={readOnly}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
-        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim cursor-not-allowed' : 'text-redlog-text focus:border-red-500'}`}
+        // `cursor-not-allowed` on a read-only field was wrong twice over: it is
+        // not disabled, and copying the value is the first thing anyone does
+        // with it -- a bug report starts there.
+        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
       />
     </div>
   )

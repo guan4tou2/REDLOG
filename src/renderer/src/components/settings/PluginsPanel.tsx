@@ -28,14 +28,37 @@ interface PluginView {
 // machinery of distributing capture code, and distribution is not what this
 // product is for. What stays is the part an operator needs to answer "is
 // anything capturing that I did not put there" — the installed list.
+
+// Five of the eight bundled manifests were never a choice made here.
+//
+//   starter-pack   declares the shell hooks, the Codex wrapper and the
+//                  mitmproxy addon -- what RedLog always ships. Settings ▸
+//                  指令與終端 lists them; this row could switch them all off
+//                  from a page that does not say that is what it does.
+//   builtin-tools  is the tool → target table core reads. Not a choice.
+//   pack-*         are the three capture packs Settings ▸ 擷取 pack already
+//                  owns, per project, with words that say what they record.
+//                  Two switches for one thing, and they do not even agree on
+//                  scope: that page is per project, this one is every
+//                  project at once.
+//
+// What is left is what the page is for -- the file's own question, "is
+// anything capturing that I did not put there". The three bundled rows that
+// remain are real opt-in captures with no other switch anywhere.
+const HIDDEN = new Set([
+  'starter-pack', 'builtin-tools',
+  'pack-ai-agents', 'pack-host-monitors', 'pack-windows-output'
+])
+
+// The manifests describe these packs to whoever maintains them: spec
+// numbers, doc paths, the identifiers the code uses, and the reason the
+// thing is a manifest at all. None of that is what the operator standing on
+// this page is asking, which is "what does this put in my record, and can I
+// turn it off" -- and all of it was in English inside a Chinese interface.
+// Bundled packs get a translated line each; a user's plugin still speaks for
+// itself through its own manifest.
+
 export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  // The manifests describe these packs to whoever maintains them: spec
-  // numbers, doc paths, the identifiers the code uses, and the reason the
-  // thing is a manifest at all. None of that is what the operator standing on
-  // this page is asking, which is "what does this put in my record, and can I
-  // turn it off" -- and all of it was in English inside a Chinese interface.
-  // Bundled packs get a translated line each; a user's plugin still speaks for
-  // itself through its own manifest.
   const describe = (p: PluginView): string => {
     if (p.source !== 'bundled') return p.description
     const key = `plugins.builtin.${p.id}`
@@ -105,6 +128,8 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     error: 'bg-red-900/50 text-red-400'
   }
 
+  const shown = plugins.filter((p) => !HIDDEN.has(p.id))
+
   return (
     <FieldGroup title={t('settings.plugins')}>
       <div className="flex items-center justify-between mb-2 gap-2">
@@ -119,12 +144,12 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         </Button>
       </div>
 
-      {plugins.length === 0 && (
+      {shown.length === 0 && (
         <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>
       )}
 
       <div className="space-y-2">
-        {plugins.map((p) => {
+        {shown.map((p) => {
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
           return (
