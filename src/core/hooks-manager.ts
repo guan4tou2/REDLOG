@@ -450,51 +450,27 @@ async function checkAvailableAsync(plugin: PluginManifest): Promise<boolean> {
   return false
 }
 
-// Manual hooks can't be a persistent one-click install: mitmproxy needs a
-// running external process and codex changes how the agent's shell is launched.
-// Instead of a dead "Manual" label, hand the operator exact copy-paste commands
-// with the absolute hook path already resolved for this install.
+// Some hooks cannot be a one-click install — codex changes how the agent's
+// shell is launched — so instead of a dead "Manual" label they hand over exact
+// copy-paste commands with the absolute hook path already resolved.
+//
+// mitmproxy used to be the main one, with six steps: install it, put it on
+// PATH, start mitmdump yourself, point your tools at it, and two for DNS.
+// RedLog does the first four now — it installs mitmproxy in one click and
+// starts the managed proxy when a project opens — so those steps described a
+// setup nobody performs, on a panel labelled "manual" for something that is
+// not. What is left is the one case the managed proxy genuinely does not
+// cover.
 function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | undefined {
   switch (pluginId) {
     case 'mitmproxy':
       return [
         {
-          label: 'Install mitmproxy with uv (skip if already installed)',
-          command: 'uv tool install mitmproxy'
-        },
-        {
-          label: process.platform === 'win32'
-            ? 'Put uv-installed tools on your PATH (restart terminal after running this)'
-            : 'Verify mitmdump is on your PATH',
-          command: process.platform === 'win32'
-            ? 'uv tool update-shell'
-            : 'which mitmdump'
-        },
-        {
-          // Both this port and the one in the next step are mitmproxy's own
-          // default, and they must not drift apart: an operator following
-          // these steps ends up proxied at whatever the command above bound.
-          // It is NOT the managed proxy's port (Settings -> Browser), which
-          // RedLog passes explicitly and no longer defaults to 8080 — 8080 is
-          // Burp's default listener and Burp is running on most of these
-          // machines. Name it here so the collision is visible before it
-          // happens.
-          label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement). '
-            + "This binds 127.0.0.1:8080, mitmproxy's default — change it if Burp already has that port.",
-          command: `mitmdump -s "${hookFile}" --listen-host 127.0.0.1 --listen-port 8080`
-        },
-        {
-          label: 'Route traffic through it — proxy your browser/tools at the address above, '
-            + "or use Launch Browser in RedLog, which starts RedLog's own managed proxy "
-            + '(its address is in Settings → Browser) and wires the browser to it for you'
-        },
-        {
-          // DNS needs its own mitmdump: one instance serves one mode. The
-          // addon has handled DNS all along and nothing said how to turn it
-          // on, so it was capture nobody could reach.
-          label: 'Optional — capture DNS as well. This is a SECOND mitmdump: one instance '
-            + 'serves one mode, so it runs alongside the HTTP one above. Port 53 needs '
-            + 'admin rights, so this uses 5353; point the target resolver at it.',
+          // One mitmdump serves one mode, so DNS needs a second instance
+          // alongside the managed HTTP one. Nothing else in RedLog starts it.
+          label: 'Optional — capture DNS as well. This is a SECOND mitmdump alongside the '
+            + 'one RedLog runs: one instance serves one mode. Port 53 needs admin rights, '
+            + 'so this uses 5353; point the target resolver at it.',
           command: `mitmdump -s "${hookFile}" --mode dns@5353`
         },
         {

@@ -36,6 +36,8 @@
   "sidebar.loot": "Loot",
   "sidebar.bookmarks": "Bookmarks",
   "sidebar.config": "Config",
+  "sidebar.collapse": "Collapse sidebar",
+  "sidebar.expand": "Expand sidebar",
   "sidebar.hiddenHint": "{{count}} more pages appear once they have data.",
   "sidebar.showAll": "Show all",
   "sidebar.settings": "Settings",
