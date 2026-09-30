@@ -59,6 +59,7 @@
   "capture.state.absent": "off",
   "capture.ago": "ago",
   "capture.tierChain": "Chain",
+  "capture.tierEvents": "events",
   "capture.tierLogged": "Logged",
   "capture.tierLastFed": "Last fed",
   "dashboard.networkStatus": "Network Status",

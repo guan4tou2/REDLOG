@@ -106,12 +106,10 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
-  const [chainLen, setChainLen] = useState(0)
+  const { eventCount, loggedCount, chainLen, lootCount, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
   // start at 0 / null so the card doesn't flash a spurious "no logged
   // rows" line while the initial fetch is in flight.
-  const [loggedCount, setLoggedCount] = useState(0)
   const [latestLoggedTs, setLatestLoggedTs] = useState<number | null>(null)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
@@ -131,10 +129,10 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   useEffect(() => {
     // Dashboard-specific fetches — the shared counts (eventCount, lootCount,
     // scopeViolations, scopeConfigured) come from useAppCounts.
-    Promise.all([
-      window.redlog.chain.length().then(setChainLen).catch(() => {}),
-      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)).catch(() => {})
-    ]).then(() => setLocalLoading(false))
+    window.redlog.config.get()
+      .then((c) => setConfig(c as Record<string, Record<string, unknown>>))
+      .catch(() => {})
+      .finally(() => setLocalLoading(false))
 
     // Capture health is non-critical and loaded separately so a slow check
     // never blocks the dashboard.
@@ -157,20 +155,15 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
     // The shared counts (eventCount, lootCount, scopeViolations) are refreshed
     // by useAppCounts's own onNew subscription.
     //
-    // v0.7.6 H2: chainLen was ALSO stuck at mount snapshot — the
-    // v0.7.5 dogfood surfaced the "⚠ 證據鏈 10396 ≠ 事件 28338" scary
-    // Dashboard warning as a direct consequence. Both queries look at
-    // the same table (`WHERE hash IS NOT NULL` for chainLen, `COUNT(*)`
-    // for events); with the tailer hashing every insert, they always
-    // match on-disk. Refreshing chainLen here closes the drift.
+    // chainLen and the logged count moved to useAppCounts, which refetches
+    // both on every batch. They were fetched here AND in the status bar, and
+    // the status bar's copy only ever went up — v0.7.6 H2 fixed the same
+    // stale-snapshot bug here ("⚠ 證據鏈 10396 ≠ 事件 28338" on a sound
+    // chain) and left the other copy to rot.
     const refreshLocalCounts = (): void => {
-      window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
       window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
-      window.redlog.chain.length().then(setChainLen).catch(() => {})
     }
-    // Seed the tier split on first paint so the card doesn't wait for
-    // the first onNew tick to fill in.
-    window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
+    // Seed on first paint so the card doesn't wait for the first onNew tick.
     window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
     const unsub = window.redlog.events.onNewBatch(() => { loadCapture(); loadAnchor(); refreshLocalCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
@@ -205,7 +198,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
                 capture={capture}
                 onNavigate={onNavigate}
                 onRefresh={() => refreshCaptureRef.current()}
-                tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs }}
+                tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs, chainLen }}
               />
             : <></>
         )}
@@ -220,7 +213,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
-          tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs }}
+          tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs, chainLen }}
         />
       )}
 

@@ -13,9 +13,8 @@ export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
+  const { eventCount, loggedCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
-  const [loggedCount, setLoggedCount] = useState(0)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
   // number next to REC does not say — it reads as this session's recording time.
@@ -40,23 +39,12 @@ export default function StatusBar(): JSX.Element {
       if (p?.createdAt) { start = p.createdAt; setSince(p.createdAt) }
     })
     window.redlog.ip.getStatus().then(setIpStatus)
-    // v0.13.0: fetch the logged-tier count for the chained·logged split.
-    // The shared counts (eventCount, lootCount, scopeViolations,
-    // scopeConfigured) come from useAppCounts.
-    window.redlog.events.getCount('logged').then(setLoggedCount)
     window.redlog.recording.get().then((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
     })
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
-    // v0.13.0: the logged-tier count for the chained·logged split is
-    // StatusBar-specific. The shared counts (eventCount, lootCount,
-    // scopeViolations) are refreshed by useAppCounts's own batch subscription.
-    const unsubEvent = window.redlog.events.onNewBatch((events) => {
-      const added = events.filter((event) => event.tier === 'logged').length
-      if (added) setLoggedCount((c) => c + added)
-    })
     const unsubRec = window.redlog.recording.onChange((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
@@ -150,7 +138,7 @@ export default function StatusBar(): JSX.Element {
     loadCapture()
     const healthTimer = setInterval(loadCapture, 30_000)
 
-    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
+    return () => { unsubIp(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
 
   useEffect(() => {
