@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react'
+import { setShowAllPages } from '../lib/showAllPages'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
   Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
@@ -11,6 +12,8 @@ interface SidebarProps {
   /** §22: the views to render. Undefined shows everything — the shape a test
    *  harness or an older caller gets, and the safe direction. */
   visibleViews?: ReadonlySet<SidebarViewId>
+  /** Needed only to offer the per-project "show every page" opt-out. */
+  projectId?: string
 }
 
 interface NavItem {
@@ -36,7 +39,7 @@ import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sid
 import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
-export default function Sidebar({ active, onNavigate, visibleViews }: SidebarProps): JSX.Element {
+export default function Sidebar({ active, onNavigate, visibleViews, projectId }: SidebarProps): JSX.Element {
   const { lootCount, scopeViolations } = useAppCounts()
   const { t } = useI18n()
 
@@ -77,6 +80,8 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
     .filter((id) => visibleViews === undefined || visibleViews.has(id))
     .map((id) => itemMap[id])
     .filter(Boolean)
+
+  const hiddenCount = DEFAULT_ORDER.length - items.length
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
@@ -139,7 +144,21 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
         })}
       </div>
 
-      <div className="mt-auto pt-3 border-t border-redlog-border/40">
+      {/* §22 hides a noun until its data exists, and the rule is right — but
+          it is invisible, so a correct four-row sidebar reads as one that lost
+          something. Saying so costs a line, and puts the opt-out where the
+          absence is noticed rather than three pages into Settings. */}
+      {hiddenCount > 0 && (
+        <p className="mt-auto pt-3 px-2 text-xs text-redlog-text-faint leading-relaxed">
+          {t('sidebar.hiddenHint', { count: hiddenCount })}{' '}
+          <button
+            data-testid="sidebar-show-all"
+            onClick={() => { if (projectId) setShowAllPages(projectId, true) }}
+            className="underline hover:text-redlog-text"
+          >{t('sidebar.showAll')}</button>
+        </p>
+      )}
+      <div className={`${hiddenCount > 0 ? 'mt-3' : 'mt-auto'} pt-3 border-t border-redlog-border/40`}>
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}
