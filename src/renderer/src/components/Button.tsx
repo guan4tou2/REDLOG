@@ -46,6 +46,19 @@ const LEVEL: Record<ButtonLevel, string> = {
   danger: 'border-transparent bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
 }
 
+/** The title-bar strip. It is 40px tall, so its controls are 28px rather than
+ *  the app's 34px — the same density exception the terminal strip has. What it
+ *  is not is four different sizes, which is what happened while every button
+ *  in it was written where it was used: a 24px export trigger beside a 26px
+ *  browser toggle beside two icon buttons of a third height. */
+export const TITLEBAR_CONTROL =
+  'inline-flex items-center justify-center gap-1 h-7 px-2.5 rounded-md border text-xs font-medium ' +
+  'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ' +
+  'focus-visible:ring-offset-redlog-bg disabled:opacity-50'
+
+/** Same box, sized for a single icon. */
+export const TITLEBAR_ICON = TITLEBAR_CONTROL.replace('px-2.5', 'w-7 px-0')
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   level?: ButtonLevel
   children: ReactNode

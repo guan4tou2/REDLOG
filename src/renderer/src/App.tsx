@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
 import StatusBar from './components/StatusBar'
@@ -282,7 +283,7 @@ export default function App(): JSX.Element {
             onClick={() => { void captureScreenshotWithFeedback(t) }}
             aria-label={t('app.evidenceShot')}
             title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
-            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
+            className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
           >
             <Camera size={14} strokeWidth={1.75} aria-hidden />
           </button>
@@ -292,13 +293,16 @@ export default function App(): JSX.Element {
             onClick={() => { void addArtifactsWithFeedback(t) }}
             aria-label={t('app.evidenceFile')}
             title={t('app.evidenceFile')}
-            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
+            className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
           >
             <FilePlus size={14} strokeWidth={1.75} aria-hidden />
           </button>
           <button
             onClick={() => setShowMarker(true)}
-            className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
+            /* A command button, so it carries the brand accent rather than a
+               raw red the palette has no token for (§1: brand red fills a verb
+               you can press; danger red reports a state). */
+            className={`${TITLEBAR_CONTROL} bg-redlog-accent/10 text-redlog-accent border-redlog-accent/25 hover:bg-redlog-accent/20 focus-visible:ring-redlog-accent/40`}
             title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
           >
             {t('app.mark')}

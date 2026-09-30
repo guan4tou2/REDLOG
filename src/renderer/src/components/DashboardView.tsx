@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { TITLEBAR_CONTROL } from './Button'
 import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
@@ -77,9 +78,9 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
       onClick={handleClick}
       disabled={busy}
       title={t('browser.hint', { page: t('settings.pageBrowser') })}
-      className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
+      className={`${TITLEBAR_CONTROL} ${
         running
-          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+          ? 'bg-redlog-safe/10 text-redlog-safe border-redlog-safe/25 hover:bg-redlog-safe/20'
           : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60 hover:text-redlog-text'
       }`}
     >
