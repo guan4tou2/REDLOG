@@ -81,15 +81,18 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
         {core.map((group) => (
           <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
         ))}
+        {/* The other groups are named, not listed. Fifteen rows of sources an
+            operator has never touched answer "what could RedLog capture",
+            while the dashboard is asking "is it capturing, and if not what do
+            I do" — the ten-source checklist §22 replaced, still on the screen
+            it was replaced on. They are one click away under 所有來源, where
+            someone who wants a clipboard watcher will go looking for it. */}
         {extra.length > 0 && (
-          <div className="pt-2 border-t border-redlog-border/50 space-y-2.5">
-            <SectionLabel>
-              {t('capture.group.additional')}
-            </SectionLabel>
-            {extra.map((group) => (
-              <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
-            ))}
-          </div>
+          <p className="pt-2 border-t border-redlog-border/50 text-xs text-redlog-text-faint">
+            {t('capture.group.additionalCount', {
+              count: extra.reduce((n, g) => n + g.steps.length, 0)
+            })}
+          </p>
         )}
       </div>
       <div className="flex items-center gap-3">

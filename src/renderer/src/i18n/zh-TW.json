@@ -913,6 +913,7 @@
   "capture.group.commands": "指令",
   "capture.mitmproxyCapability": "任何走 proxy 的工具的 request 與 response · 需要 mitmproxy",
   "capture.group.additional": "其他擷取來源",
+  "capture.group.additionalCount": "另有 {{count}} 個擷取來源可用 —— 從上方「所有來源」開啟",
   "capture.group.http": "HTTP(S) 請求",
   "capture.group.traffic": "其他網路",
   "capture.group.artifacts": "畫面與檔案",
