@@ -173,22 +173,19 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // operator is actually asking rather than by when each feature was added.
   const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
     {
+      // One heading. #228 split these into "Core capture" and "Other capture
+      // sources" to say that commands and HTTP(S) are what the product is
+      // for — but a heading is a weak way to say it, and the order already
+      // says it: the two that matter are the two at the top. What the split
+      // did reliably was ask the operator to decide which of two capture
+      // headings their question belonged under, every time they came here.
       heading: t('settings.groupCapture'),
       pages: [
-        // #228: the two core captures, and nothing else. The product has two
-        // things it is for — commands and HTTP(S) — and the nav used to put
-        // them level with AI transcripts and the pack switches, under a
-        // heading ("What to record") that said nothing about which mattered.
         { id: 'hooks', label: t('settings.pageHooks') },
         // The browser and its HTTP capture proxy decide what ends up in the
         // record. They used to sit on Network, beside the VPN and
         // IP-exposure settings, which answer a different question entirely.
-        { id: 'browser', label: t('settings.pageBrowser') }
-      ]
-    },
-    {
-      heading: t('settings.groupSources'),
-      pages: [
+        { id: 'browser', label: t('settings.pageBrowser') },
         { id: 'captureControl', label: t('settings.pageCaptureControl') },
         { id: 'agents', label: t('settings.pageAgents') }
       ]
