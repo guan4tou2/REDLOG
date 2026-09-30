@@ -1881,7 +1881,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
                   >
                     <span>⋮ {t('timeline.boundaries.toggle')}</span>
-                    <span className={sessionDividers ? 'text-indigo-300' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
+                    <span className={sessionDividers ? 'text-redlog-cyan' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
                   </button>
                 </div>
               </>

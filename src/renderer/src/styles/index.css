@@ -70,6 +70,12 @@
   --color-redlog-accent-dim: #b84d51;
   --color-redlog-danger: #ff4d4f;
   --color-redlog-danger-hover: #ff6a6c;
+  /* §1's state colours. `on-safe` and `on-warn` were already here -- the dark
+     text that sits on these two fills -- while the fills themselves were not,
+     so every "healthy" and every "unknown" in the app reached for a raw
+     Tailwind emerald or amber instead. */
+  --color-redlog-safe: #5ecf9c;
+  --color-redlog-warn: #d4ac5a;
   --color-redlog-cyan: #3fc7d6;
   --color-redlog-cyan-dim: #0e7490;
   --color-redlog-lane: #6e6e78;

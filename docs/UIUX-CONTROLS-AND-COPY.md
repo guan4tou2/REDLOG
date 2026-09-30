@@ -191,6 +191,37 @@
 3. **`ProjectPicker` 的進階 modal 整個消失。** 白名單、黑名單、違規警告、匯入設定檔都是
    一場交戰 0～1 次的動作，屬於設定頁。建立專案只留名稱與範圍。
 
+## 5.5 色彩：還沒收斂的那一塊（2026-09-30）
+
+`scripts/audit-ui.mjs` 只掃元素屬性，而顏色幾乎都寫在動態 className 裡
+（`${cond ? 'text-red-400' : ''}`），所以它看不到。用 grep 數：
+
+```
+grep -roh "\(text\|bg\|border\|ring\)-<色>-[0-9]\+" src/renderer/src --include=*.tsx | wc -l
+```
+
+| 原色 | 次數 | §1 的 token | 狀態 |
+|---|---|---|---|
+| red | 225 | `danger` #ff4d4f | 待收斂 |
+| amber + yellow | 183 | `warn` #d4ac5a | token 今天才補上 |
+| emerald + green | 104 | `safe` #5ecf9c | token 今天才補上 |
+| cyan | 41 | `redlog-cyan` #3fc7d6 | 待收斂 |
+| blue + indigo + purple | 45 | **沒有 token** | 連結與資訊狀態已改；分類色待裁定 |
+| orange | 少量 | 無 | 待裁定 |
+
+**已處理**：`safe` 與 `warn` 兩個 token 補進 `styles/index.css` —— 它們的
+`on-safe` / `on-warn`（疊在上面的深色字）本來就在，但填色本身沒有，所以全 app 的
+「健康」與「未知」都去抓 Tailwind 原色。另外把**連結／載入更多**與**資訊狀態**從
+blue / indigo 改成 `redlog-cyan`。
+
+**未處理，需要你裁定的一件事**：事件類型的**分類色**（藍＝截圖、紫＝檔案傳輸、
+綠＝shell、橘＝loot…）散在 `SearchPanel`、`TargetView`、`BookmarksView`、
+`HttpHistoryPanel`。§1 已經把時間軸泳道的 18 色收成單一灰（`--lane`），依同一個
+理由這些分類色也該收掉 —— 但那會改變每一張清單的讀法，不是機械替換。
+
+剩下的 550 多處（red / amber / emerald）是一次大掃除：多數帶透明度變體
+（`/20`、`/40`）與特定色階（`red-300` vs `red-500`），沒有一對一的對應，要一屏一屏看。
+
 ## 6. 可以進 CI 的部分
 
 `UIUX-STANDARD.md` §21 已經有規則測試的先例（`test/lane-colours.test.ts`）。本文可機檢的：

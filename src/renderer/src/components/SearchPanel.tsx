@@ -413,7 +413,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+                  className="mt-2 w-full text-xs text-redlog-cyan hover:text-redlog-text disabled:text-redlog-text-faint py-2"
                 >
                   {loadingMore ? t('search.loading') : t('search.loadMore')}
                 </button>

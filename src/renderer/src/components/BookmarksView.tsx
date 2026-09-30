@@ -181,7 +181,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
                       the list clean). */}
                   {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
-                {m.url && <div title={m.url} className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                {m.url && <div title={m.url} className="text-xs text-redlog-cyan/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
                 <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
                   {formatDateTime(m.createdAt)}
                 </div>
@@ -331,7 +331,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
           {mark.url && (
             <button
               onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
-              className="text-xs text-blue-400 font-mono mt-1 break-all text-left hover:text-blue-300 hover:underline transition-colors cursor-pointer"
+              className="text-xs text-redlog-cyan font-mono mt-1 break-all text-left hover:text-redlog-text hover:underline transition-colors cursor-pointer"
               title={t('bookmarks.openUrl')}
             >
               {mark.url} ↗
@@ -380,7 +380,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
                 <span className="text-redlog-text-dim">{t('bookmarks.browserUrl')}</span>{' '}
                 <button
                   onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
-                  className="text-blue-400 font-mono hover:text-blue-300 hover:underline transition-colors cursor-pointer"
+                  className="text-redlog-cyan font-mono hover:text-redlog-text hover:underline transition-colors cursor-pointer"
                   title={t('bookmarks.openUrl')}
                 >
                   {mark.context.browserUrl} ↗
