@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from './Button'
 import { toast } from './Toast'
 import { IconButton } from './IconButton'
 
@@ -116,12 +117,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{t('settings.wsl.title')}</h3>
-          <button
-            onClick={refresh}
-            className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
-          >
-            {t('settings.wsl.refresh')}
-          </button>
+          <Button level="secondary" onClick={refresh}>{t('settings.wsl.refresh')}</Button>
         </div>
         <p className="text-xs text-redlog-text-dim">{t('settings.wsl.noDistros')}</p>
       </div>
@@ -148,12 +144,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{t('settings.wsl.title')}</h3>
-        <button
-          onClick={refresh}
-          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
-        >
-          {t('settings.wsl.refresh')}
-        </button>
+        <Button level="secondary" onClick={refresh}>{t('settings.wsl.refresh')}</Button>
       </div>
 
       {/* Network mode banner */}
