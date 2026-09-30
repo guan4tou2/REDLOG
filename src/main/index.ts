@@ -63,7 +63,7 @@ import { setTailerContributionSink, type TailerLike } from '../core/plugins/tail
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
-import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
+import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
@@ -1550,6 +1550,14 @@ app.whenReady().then(() => {
     return result
   }
   ipcMain.handle('browser:stop', () => { stopCdpMonitor(); return { stopped: stopBrowser() } })
+  // However the browser ends -- the button here, or the operator closing the
+  // window, which is the ordinary way -- the same two things must happen:
+  // stop polling a port that no longer answers, and tell the renderer, which
+  // otherwise read `browser:status` once on mount and never again.
+  onBrowserExit(() => {
+    stopCdpMonitor()
+    send(mainWindow, 'browser:exited')
+  })
 
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())

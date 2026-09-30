@@ -232,8 +232,12 @@ export default function App(): JSX.Element {
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />
         </div>
+        {/* The one control on this strip that had no outline — it leaned on a
+            50% elevated tint, and `elevated` is 1.17:1 from `bg`, so there was
+            nothing there to see. §3.5: every control has a visible boundary,
+            and this one closes a project. */}
         <button
-          className="ml-2 min-w-0 h-7 px-2 rounded-md bg-redlog-elevated/50 hover:bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
+          className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
             // Pending settings go to THIS project before it closes (#223).

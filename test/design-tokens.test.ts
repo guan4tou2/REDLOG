@@ -102,16 +102,37 @@ describe('token palette', () => {
 
   it('holds non-text elements above 3:1 on every surface', () => {
     // WCAG SC 1.4.11. `lane` is the only thing marking lane membership now
-    // that hue is gone, and `border` carries the app's entire depth model.
+    // that hue is gone, and `border` carries the app's entire depth model --
+    // literally: `elevated` is 1.17:1 from `bg`, so an input's fill does not
+    // identify it and the hairline is the only boundary there is. `border`
+    // was 1.49:1 while being the sole indicator, which is the mechanism
+    // behind every "I cannot tell where this control ends".
     const t = redlogTokens()
     const failures: string[] = []
-    for (const role of ['lane', 'danger'] as const) {
-      for (const s of ['bg', 'surface', 'elevated'] as const) {
+    // `border` carries the hover surface too, because it outlines controls the
+    // cursor lands on. `lane` and `danger` mark rows and never sit on one.
+    const surfacesFor = (role: string): readonly string[] =>
+      role === 'border'
+        ? ['bg', 'surface', 'elevated', 'elevated-hover']
+        : ['bg', 'surface', 'elevated']
+    for (const role of ['lane', 'danger', 'border'] as const) {
+      for (const s of surfacesFor(role)) {
         const ratio = contrast(t[role], t[s])
         if (ratio < 3) failures.push(`${role} on ${s}: ${ratio.toFixed(2)}:1`)
       }
     }
     expect(failures).toEqual([])
+  })
+
+  it('keeps border-subtle a lesser line than border, and still a visible one', () => {
+    // Deliberately under 3:1: it separates rows inside a list, which 1.4.11
+    // does not cover, and held to the control line it would draw a grid over
+    // every table. But 1.24:1 was not restraint, it was absence -- the rule
+    // is that it stays below `border` and above the point of vanishing.
+    const t = redlogTokens()
+    const onBg = contrast(t['border-subtle'], t.bg)
+    expect(onBg).toBeGreaterThanOrEqual(1.9)
+    expect(onBg).toBeLessThan(contrast(t.border, t.bg))
   })
 
   it('orders the text ramp from brightest to dimmest', () => {

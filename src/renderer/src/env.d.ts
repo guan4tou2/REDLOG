@@ -315,6 +315,7 @@ interface RedLogAPI {
     status: () => Promise<{ running: boolean }>
     launch: () => Promise<BrowserLaunchResult>
     stop: () => Promise<{ stopped: boolean }>
+    onExited: (cb: () => void) => () => void
   }
   httpCapture: {
     status: () => Promise<ManagedProxyStatus>

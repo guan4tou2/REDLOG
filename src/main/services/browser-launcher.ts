@@ -143,6 +143,27 @@ export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
 
 let child: ChildProcess | null = null
 
+// The launcher already learned the browser was gone -- `child.on('exit')` --
+// and told nobody. So closing the window yourself left the title-bar control
+// still offering to stop a browser that no longer existed, and left the CDP
+// monitor polling a dead port for the rest of the session. The operator
+// closing their own browser is the ordinary way a capture session ends; it
+// should not be the one way RedLog misses it.
+type ExitListener = () => void
+const exitListeners = new Set<ExitListener>()
+
+/** Called once per launched browser, whoever ended it. */
+export function onBrowserExit(cb: ExitListener): () => void {
+  exitListeners.add(cb)
+  return () => exitListeners.delete(cb)
+}
+
+function announceExit(): void {
+  for (const cb of exitListeners) {
+    try { cb() } catch { /* a listener must not strand the others */ }
+  }
+}
+
 export interface LaunchResult {
   ok: boolean
   pid?: number
@@ -177,7 +198,7 @@ export function launchBrowser(cfg: BrowserConfig, projectDir: string): LaunchRes
   try {
     child = spawn(binary, args, { detached: true, stdio: 'ignore' })
     child.unref()
-    child.on('exit', () => { child = null })
+    child.on('exit', () => { child = null; announceExit() })
     return { ok: true, pid: child.pid, binary, args, profileDir }
   } catch (e) {
     child = null
@@ -188,6 +209,10 @@ export function launchBrowser(cfg: BrowserConfig, projectDir: string): LaunchRes
 export function stopBrowser(): boolean {
   if (!isBrowserRunning()) return false
   try { child!.kill() } catch { /* already gone */ }
+  // Cleared here as well as in the exit handler: kill() is asynchronous, and
+  // a status read between the two would say the browser was still running.
+  // Whichever path clears it, listeners hear exactly once -- `announceExit`
+  // runs from the exit handler only, which fires for a killed child too.
   child = null
   return true
 }

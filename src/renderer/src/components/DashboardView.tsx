@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { TITLEBAR_CONTROL } from './Button'
 import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
@@ -12,6 +12,7 @@ import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
 import { useAppCounts } from '../lib/useAppCounts'
 import { settingsTarget } from '../lib/navigation'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 
 export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
@@ -41,9 +42,23 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   const [busy, setBusy] = useState(false)
   const { t } = useI18n()
 
-  useEffect(() => {
+  const readStatus = useCallback(() => {
     window.redlog.browser.status().then((s) => setRunning(s.running)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    readStatus()
+    // The operator closing the browser window themselves is the ordinary way
+    // a capture session ends, and it used to leave this control offering to
+    // stop something that was already gone -- the status was read once, on
+    // mount. Main knows the moment it happens, so it says so.
+    return window.redlog.browser.onExited(() => setRunning(false))
+  }, [readStatus])
+
+  // Belt and braces for the case main cannot see: a launcher process that
+  // exits while the browser it started lives on. Coming back to the RedLog
+  // window is exactly when the answer gets looked at.
+  useRevalidateOnFocus(readStatus)
 
   const handleClick = async (): Promise<void> => {
     setBusy(true)

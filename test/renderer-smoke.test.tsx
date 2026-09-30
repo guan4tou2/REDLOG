@@ -180,7 +180,8 @@ function installBridge(): void {
       detect: async () => '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       status: async () => ({ running: false }),
       launch: async () => ({ ok: true, pid: 1 }),
-      stop: async () => ({ stopped: true })
+      stop: async () => ({ stopped: true }),
+      onExited: () => () => {}
     },
     httpCapture: {
       status: async () => ({ state: 'running', url: 'http://127.0.0.1:8080', pid: 2 }),
