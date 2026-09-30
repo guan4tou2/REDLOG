@@ -142,5 +142,28 @@ Current format semantics:
 | HAR | Logged scanner snapshot | Time + target | Body references only | Unsupported; resolution is blocked |
 | Timeline slice | Chained + logged snapshot | Time + target | No | Yes |
 
+### Evidence Bundle attachments (Spec 040)
+
+The bundle carries four kinds of file, each only with an approved Event that
+references it: screenshots, terminal casts, HTTP bodies and operator-added
+artifacts (`file_transfer` / `artifact_added`, Spec 043).
+`src/core/export-attachments.ts` lists them, one row per file, with the targets
+tied to it and an attribution:
+
+- `target`: exactly one target;
+- `cross-target`: more than one, which a cast spanning several hosts is;
+- `unattributed`: none.
+
+A cast is never trimmed or scope-dropped: RedLog does not cut a recording, so a
+session that touched A and B is labelled as spanning both, never as A-only.
+Scope masking still drops an artifact when every target tied to it is out of scope.
+
+The operator may leave any listed file out. `ExportRequest.excludeAttachments`
+is normalised to valid bundle paths, sorted and de-duplicated, and is part of
+the request, so the plan fingerprint covers the choice. Execution re-checks the
+counts with the exclusions applied, and the manifest records
+`excludedByOperator` plus, for each included cast, its targets and attribution.
+Source files are never modified.
+
 An unsupported requested protection is an explicit preview failure. It must not
 fall back to a legacy export or produce a success state.
