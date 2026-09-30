@@ -165,6 +165,7 @@
   "settings.integrityFullNoAnchor": "No anchor yet: only the rows were checked against each other.",
   "settings.integrityFullClockAnomalies": "{{n}} clock anomaly / anomalies detected",
   "timeline.clusterMoreItems": "+{{count}} more — zoom in to see individually",
+  "timeline.resizeLog": "Drag to resize the list, double-click to reset",
   "timeline.resizeDetailPanel": "Drag to resize the detail panel · double-click to reset",
   "targets.title": "Targets ({{count}})",
   "targets.subtitle": "Targets are auto-collected from your logged commands (e.g. nmap 10.0.0.1) — independent of Scope. Scope is the allowlist you set to decide in/out of scope.",

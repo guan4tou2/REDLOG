@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { useI18n } from '../i18n'
+import { usePanelHeight } from '../hooks/usePanelHeight'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
@@ -188,21 +189,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // added since v0.6.90 was previously invisible unless a teammate told you.
   // `?` opens; Escape or click-outside closes.
   const [showHelp, setShowHelp] = useState(false)
-  // Detail-panel height, in px. Persisted to localStorage so operator's chosen
-  // size survives reloads. Default `null` = use CSS max-h-[45vh] fallback.
-  const [detailPanelPx, setDetailPanelPx] = useState<number | null>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-detail-h')
-      const n = raw ? parseInt(raw, 10) : NaN
-      return Number.isFinite(n) && n > 80 && n < 2000 ? n : null
-    } catch { return null }
-  })
-  const detailResizing = useRef<{ startY: number; startH: number } | null>(null)
+  // The two horizontal splits, both drag-resizable, both remembered. The log
+  // was the one that could not be dragged — the panel a three-day engagement
+  // spends all day reading, frozen at 22vh while the detail panel below it
+  // moved freely.
+  const detailPanel = usePanelHeight('redlog-timeline-detail-h')
+  const logPanel = usePanelHeight('redlog-timeline-log-h', { min: 64, maxRatio: 0.7 })
   // Detail panel container. Reset scroll to top on every selectedEvent change
   // so a cluster-popover click always lands you on the new item's title —
   // otherwise the panel keeps whatever scroll offset the prior event left
   // (with JSON expanded the title easily scrolls off screen).
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
+  const logPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
   // v0.6.89.5: focus chain / anomaly filter / broken-chain state.
   //
@@ -420,27 +418,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     }
   }, [selectedEvent?.id])
 
-  // Detail-panel drag-to-resize. Handle at the top edge of the panel — drag
-  // up to grow, drag down to shrink. Persisted to localStorage so the choice
-  // survives across reloads.
-  useEffect(() => {
-    const onMove = (e: MouseEvent): void => {
-      const s = detailResizing.current
-      if (!s) return
-      const dy = s.startY - e.clientY
-      const next = Math.max(80, Math.min(window.innerHeight * 0.85, s.startH + dy))
-      setDetailPanelPx(next)
-    }
-    const onUp = (): void => {
-      if (!detailResizing.current) return
-      detailResizing.current = null
-      document.body.classList.remove('timeline-resizing')
-      try { if (detailPanelPx != null) localStorage.setItem('redlog-timeline-detail-h', String(Math.round(detailPanelPx))) } catch { /* ignore */ }
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [detailPanelPx])
 
   // Known operator ids, held in a ref so the event guard below reads the
   // CURRENT set. It used to read the `operatorNames` state, which the []-dep
@@ -2517,11 +2494,25 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           </div>
         </div>
 
-        {/* Event log — bottom panel. Sized in vh (was hardcoded 160/180 px)
-            so the +1-step hint font from v0.6.56 doesn't push rows off the
-            bottom, and so the panel scales with window height. Values chosen
-            so the list shows ~5 rows at 900 px tall and ~8 at 1200 px. */}
+        {/* The lanes above and the log below are the split an operator looks
+            at all day, and which half they want depends on what they are
+            doing: reading a scan is all list, following a chain is all lanes.
+            Same handle as the detail panel's, so there is one gesture in this
+            view rather than one draggable edge and one frozen one. */}
+        <div
+          data-testid="timeline-log-resize"
+          className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
+          title={t('timeline.resizeLog')}
+          onMouseDown={(e) => logPanel.beginResize(e, logPanelRef.current?.getBoundingClientRect().height ?? 200)}
+          onDoubleClick={logPanel.reset}
+        >
+          <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
+        </div>
+        {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
+            scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog
+          rootRef={logPanelRef}
+          heightPx={logPanel.px}
           events={recentEvents}
           selectedId={selectedEvent?.id ?? null}
           detailOpen={detailOpen}
@@ -2548,24 +2539,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           <div
             className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
             title={t('timeline.resizeDetailPanel')}
-            onMouseDown={(e) => {
-              e.preventDefault()
-              const currentH = detailPanelRef.current?.getBoundingClientRect().height ?? 320
-              detailResizing.current = { startY: e.clientY, startH: currentH }
-              document.body.classList.add('timeline-resizing')
-            }}
-            onDoubleClick={() => {
-              // Double-click resets to default (CSS 45vh).
-              setDetailPanelPx(null)
-              try { localStorage.removeItem('redlog-timeline-detail-h') } catch { /* ignore */ }
-            }}
+            onMouseDown={(e) => detailPanel.beginResize(e, detailPanelRef.current?.getBoundingClientRect().height ?? 320)}
+            onDoubleClick={detailPanel.reset}
           >
             <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
           </div>
         <div
           ref={detailPanelRef}
-          className={`shrink-0 border-t border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto${detailPanelPx == null ? ' max-h-[45vh]' : ''}`}
-          style={detailPanelPx == null ? undefined : { height: detailPanelPx }}
+          className={`shrink-0 border-t border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto${detailPanel.px == null ? ' max-h-[45vh]' : ''}`}
+          style={detailPanel.px == null ? undefined : { height: detailPanel.px }}
         >
           <TimelineEventInspector
             event={selectedEvent}

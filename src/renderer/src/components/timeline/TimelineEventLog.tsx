@@ -10,7 +10,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
-  titleOf, amendSuffix, amendCountOf, onSelect, t
+  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef
 }: {
   events: readonly RedLogEvent[]
   selectedId: string | null
@@ -25,17 +25,24 @@ export function TimelineEventLog({
   /** Toggle: the same row again clears the selection. */
   onSelect: (e: RedLogEvent) => void
   t: Translate
+  /** Height the operator dragged to, or null for the vh default. */
+  heightPx?: number | null
+  rootRef?: React.RefObject<HTMLDivElement | null>
 }): JSX.Element {
-  // Sized in vh so the panel scales with window height: ~5 rows at 900px
-  // tall and ~8 at 1200px.
-  const height = selectedId ? '18vh' : '22vh'
+  // vh until the operator drags, so the DEFAULT scales with window height —
+  // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
+  // taken on somebody else's monitor. Once dragged, px wins.
+  const height = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
-    <div className="shrink-0 border-t border-redlog-border/60 bg-redlog-bg/50" style={{ height }}>
+    <div ref={rootRef} className="shrink-0 border-t border-redlog-border/60 bg-redlog-bg/50" style={{ height }}>
       <div className="px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
         <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
         <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
       </div>
-      <div className="overflow-y-auto" style={{ height: `calc(${selectedId && detailOpen ? '18vh' : '22vh'} - 32px)` }}>
+      {/* 32px is the header above. Expressed against the panel's own height so
+          the list follows a dragged size; it used to restate the vh literal,
+          which is why only the default ever lined up. */}
+      <div className="overflow-y-auto" style={{ height: 'calc(100% - 32px)' }}>
         {events.map((evt) => {
           const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
           const isSel = selectedId === evt.id
