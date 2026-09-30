@@ -193,7 +193,13 @@ const api: RedLogAPI = {
     detect: () => ipcRenderer.invoke('browser:detect'),
     status: () => ipcRenderer.invoke('browser:status'),
     launch: () => ipcRenderer.invoke('browser:launch'),
-    stop: () => ipcRenderer.invoke('browser:stop')
+    stop: () => ipcRenderer.invoke('browser:stop'),
+    /** Fires whoever ended it, including the operator closing the window. */
+    onExited: (cb: () => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('browser:exited', handler)
+      return () => ipcRenderer.removeListener('browser:exited', handler)
+    }
   },
   httpCapture: {
     status: () => ipcRenderer.invoke('httpCapture:status'),

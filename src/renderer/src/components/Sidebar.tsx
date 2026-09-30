@@ -96,13 +96,20 @@ export default function Sidebar({ active, onNavigate, visibleViews, projectId }:
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
-  // 48px is not a round number, it is the arithmetic: the nav's own 8px
-  // padding, the row's 8px, and a 16px icon, twice over. Centring the icon in
-  // a wider rail moved it four pixels sideways on every collapse, so the thing
-  // the eye tracks jumped while the panel animated. It does not move now; only
-  // the right edge does.
+  // Both widths are arithmetic, not round numbers.
+  //
+  // 48 = the nav's own 8px padding, the row's 8px, and a 16px icon, twice
+  // over. Centring the icon in a wider rail moved it four pixels sideways on
+  // every collapse, so the thing the eye tracks jumped while the panel
+  // animated. It does not move now; only the right edge does.
+  //
+  // 150 = the same 8+8+16 lead, the 8px gap, the longest label the nav can
+  // hold ("Transcript"), then the 8px gap, the 12px chord column and the two
+  // 8px paddings back out. 186 was sized for a label no row has: the surplus
+  // showed up as a gutter between every name and its number, which reads as
+  // two columns of unrelated things rather than one row.
   return (
-    <nav className={`${collapsed ? 'w-[48px]' : 'w-[186px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
+    <nav className={`${collapsed ? 'w-[48px]' : 'w-[150px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
       {/* The rows scroll; the footer does not. With `overflow-hidden` on the
           nav and the footer pushed by `mt-auto`, turning every page on clipped
           Settings and the collapse toggle straight off the bottom — and which

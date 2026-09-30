@@ -176,8 +176,17 @@
   --color-redlog-surface: #1a1a1d;
   --color-redlog-elevated: #212126;
   --color-redlog-elevated-hover: #2a2a30;
-  --color-redlog-border-subtle: #26262c;
-  --color-redlog-border: #33333a;
+  /* WCAG 1.4.11 wants 3:1 for a control's boundary when the boundary is the
+     only thing identifying it -- and here it is: `elevated` sits 1.17:1 from
+     `bg`, so the fill of an input or a quiet button says nothing, and the
+     hairline was carrying the whole depth model at 1.49:1. That is the
+     mechanism behind "these controls have no visible extent".
+     `border-subtle` stays deliberately under 3:1. It separates rows inside a
+     list, which is decoration rather than a component boundary; held to the
+     same line it would draw a grid over every table in the app. It was still
+     1.24:1 -- a line nobody could see -- so it roughly doubles. */
+  --color-redlog-border-subtle: #4a4a53;
+  --color-redlog-border: #74747c;
   --color-redlog-text: #ececf0;
   /* Lifted when the default zoom dropped to 0.9 (lib/uiScale). WCAG's 4.5:1
      is calibrated at ~16px; the ramp sat at 4.0–6.7:1, which reads as grey
