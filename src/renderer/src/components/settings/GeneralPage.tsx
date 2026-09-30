@@ -4,7 +4,6 @@ import { usePersistentState } from '../../lib/usePersistentState'
 import { useDisplayZone, setDisplayZone } from '../../lib/time'
 import { toast } from '../Toast'
 import { applyDensity, resolveDensity, storedDensity } from '../../lib/density'
-import { storedShowAllPages, setShowAllPages } from '../../lib/showAllPages'
 import { UI_SCALE_KEY, UI_SCALE_OPTIONS, DEFAULT_UI_SCALE, parseUiScale, zoomFor } from '../../lib/uiScale'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 
@@ -93,9 +92,6 @@ export default function GeneralPage({
       <FieldGroup title={t('settings.uiScale')}>
         <UiScaleControl t={t} />
       </FieldGroup>
-      <FieldGroup title={t('settings.disclosure')}>
-        <ShowAllPagesControl t={t} />
-      </FieldGroup>
     </>
   )
 }
@@ -162,36 +158,3 @@ function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string |
   )
 }
 
-/** SS22's escape hatch. Per project, because switching projects reloads the same
- *  origin — a global preference would turn disclosure off for every future
- *  engagement after one tick here. */
-function ShowAllPagesControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [projectId, setProjectId] = useState<string | null>(null)
-  const [on, setOn] = useState(false)
-  useEffect(() => {
-    void window.redlog.project.active().then((p) => {
-      const id = (p as { id?: string } | null)?.id ?? null
-      setProjectId(id)
-      setOn(storedShowAllPages(id))
-    })
-  }, [])
-  return (
-    <div className="space-y-1.5">
-      <label className="flex items-center gap-2 text-xs text-redlog-text cursor-pointer">
-        <input
-          type="checkbox"
-          data-testid="show-all-pages"
-          checked={on}
-          disabled={!projectId}
-          onChange={(e) => {
-            setOn(e.target.checked)
-            if (projectId) setShowAllPages(projectId, e.target.checked)
-          }}
-          className="accent-redlog-accent"
-        />
-        {t('settings.showAllPages')}
-      </label>
-      <p className="text-xs text-redlog-text-faint">{t('settings.showAllPagesHint')}</p>
-    </div>
-  )
-}

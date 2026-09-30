@@ -64,11 +64,14 @@ describe('the sidebar rail', () => {
     expect(storedSidebarCollapsed()).toBe(false)
   })
 
-  it('drops the hidden-pages sentence, which is prose a rail has no room for', () => {
+  it('scrolls on a thin bar, not a column against the icons', () => {
+    // Every page is always listed now, so the rail scrolls on a short window.
+    // At the default 10px the bar took a fifth of a 48px rail and sat against
+    // the one column the eye tracks.
     draw()
-    expect(screen.getByTestId('sidebar-show-all')).toBeTruthy()
-    fireEvent.click(screen.getByTestId('sidebar-collapse'))
-    expect(screen.queryByTestId('sidebar-show-all')).toBeNull()
+    const rows = screen.getByTestId('sidebar-collapse').closest('nav')!
+      .querySelector('[data-view-btn="dashboard"]')!.parentElement!
+    expect(rows.className).toMatch(/rl-thin-scroll/)
   })
 
   it('keeps the footer reachable when every page is on', () => {

@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 //
-// The disclosure model asks the main process one question: what does this
-// engagement contain? On a fresh install the app mounts at the project picker,
-// where the honest answer is "there is no engagement yet" — a null. Reading
-// that null as "everything has been seen" is the one failure mode that hides
-// the first-run screen from exactly the operator it was written for, and it is
-// self-sealing: ALL_DISCLOSED makes `complete` true, which switches off the
-// re-probe that would have corrected it.
+// One question to the main process: has this engagement captured anything? On
+// a fresh install the app mounts at the project picker, where the honest
+// answer is "there is no engagement yet" — a null. Reading that null as
+// "everything has been seen" is the one failure mode that hides the first-run
+// screen from exactly the operator it was written for, and it is
+// self-sealing: it makes `complete` true, which switches off the re-probe that
+// would have corrected it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
@@ -44,7 +44,7 @@ describe('useVisibility', () => {
     expect(result.current.visibility.firstRun).toBe(true)
   })
 
-  it('does not treat "no project open" as every gate already unlocked', async () => {
+  it('does not treat "no project open" as "everything already seen"', async () => {
     const { result } = renderHook(() => useVisibility(null, 'dashboard'))
     // Flush the microtasks a mount-time fetch would have resolved in, so this
     // is the settled answer and not the frame before it.
@@ -52,7 +52,7 @@ describe('useVisibility', () => {
     expect(signals).not.toHaveBeenCalled()
     expect(result.current.visSignals).toBeNull()
     expect(result.current.visibility.complete).toBe(false)
-    expect(result.current.visibility.views.has('loot')).toBe(false)
+    expect(result.current.visibility.firstRun).toBe(true)
   })
 
   it('still discloses everything when the probe itself fails', async () => {

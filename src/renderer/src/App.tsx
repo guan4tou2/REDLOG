@@ -322,7 +322,6 @@ export default function App(): JSX.Element {
       <div className="flex flex-1 min-h-0">
         <Sidebar
           active={view}
-          visibleViews={visibility.views}
           projectId={project.id}
           onNavigate={(v) => { setFocusEvent(null); navigate(v) }}
         />
