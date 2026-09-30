@@ -13,8 +13,35 @@ export interface Bookmark {
 export interface BookmarkContext {
   browserUrl?: string
   browserTitle?: string
+  /** The egress address, recorded only when the IP read was current. */
   externalIP?: string
+  /** Set instead of `externalIP` when there was no current reading (a failed
+   *  read, or air-gap mode): the last address read, and when (ms). */
+  lastKnownExternalIP?: { address: string; readAt: number }
   lastCommand?: string
+}
+
+/** What the IP producer holds when a bookmark is made. */
+export interface EgressReading {
+  /** The last stable address. A failed read keeps it. */
+  external: string | null
+  /** The last read failed, or air-gap mode is on. */
+  stale: boolean
+  /** When a read last returned `external`; 0 before any did. */
+  externalReadAt: number
+}
+
+/** The egress fields of a bookmark's auto-captured context.
+ *
+ *  A stale address is history, not the address in use, so it never goes in
+ *  `externalIP`: every reader, this app's older builds and API clients
+ *  included, takes that field as current. Keeping it, with its read time,
+ *  rather than dropping it tells "not current" apart from "never read" and
+ *  from a bookmark made without context (the API's). */
+export function egressContext(reading: EgressReading): Pick<BookmarkContext, 'externalIP' | 'lastKnownExternalIP'> {
+  if (!reading.external) return {}
+  if (!reading.stale) return { externalIP: reading.external }
+  return { lastKnownExternalIP: { address: reading.external, readAt: reading.externalReadAt } }
 }
 
 function rowToBookmark(row: Record<string, unknown>): Bookmark {

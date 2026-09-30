@@ -34,6 +34,9 @@ What gets logged:
                       JA3 hash + raw string
     - Cookie change:  session cookie rotation detection per domain
     - DNS query:      question name/type/id, transport, source_addr
+    - Every flow event carries source_addr (the client's ip:port on its
+      connection to the proxy), which is what ties a request to the command
+      that made it.
     - DNS response:   response_code, answers, duration_ms, _causes ← query event
 
 Environment variables:
@@ -418,6 +421,33 @@ def _is_static(url: str) -> bool:
     return any(path.endswith(ext) for ext in STATIC_EXTENSIONS)
 
 
+def _client_addr(flow) -> str:
+    """The client's own ip:port on its connection to the proxy, or "".
+
+    This is what ties a request back to the command that made it. RedLog joins
+    it as source port -> pid (from the socket table the connection monitor
+    reads) -> the shell command_start that owns that pid, and writes the result
+    into `_causes`; see src/core/socket-attribution.ts and
+    docs/DESIGN-traffic-attribution.md 2.3.
+
+    Without it that whole join is dead: `socketCausesFor` has no port to look
+    up, returns [], and every request in the timeline is unattributed. The DNS
+    handler sent it from the start and HTTP never did, so the design shipped
+    working for lookups and silently not for requests.
+
+    Best-effort on purpose. A flow with no readable peer still produces its
+    event -- attribution must never be able to block capture.
+    """
+    try:
+        conn = getattr(flow, 'client_conn', None)
+        peer = getattr(conn, 'peername', None) if conn else None
+        if peer:
+            return f"{peer[0]}:{peer[1]}"
+    except Exception:
+        pass
+    return ""
+
+
 def _compute_ja3(client_hello: tls.ClientHelloData) -> dict | None:
     """Compute JA3 fingerprint from a TLS ClientHello.
 
@@ -750,6 +780,10 @@ class RedLogAddon:
             "request_headers": req_headers,
         }
 
+        client_addr = _client_addr(flow)
+        if client_addr:
+            event_data["source_addr"] = client_addr
+
         if params:
             event_data["params"] = params
         if request_body_preview:
@@ -924,12 +958,7 @@ class RedLogAddon:
             question = None
         query_name = getattr(question, 'name', '') if question else ''
         query_type = _dns_type_name(getattr(question, 'type', 0) if question else 0)
-        source_addr = ''
-        try:
-            src = flow.client_conn.peername if flow.client_conn else None
-            if src: source_addr = f"{src[0]}:{src[1]}"
-        except Exception:
-            pass
+        source_addr = _client_addr(flow)
         transport = 'udp'
         try:
             if getattr(flow, 'client_conn', None) and getattr(flow.client_conn, 'transport_protocol', None):
@@ -1040,6 +1069,10 @@ class RedLogAddon:
             "message_count": len(flow.websocket.messages),
         }
 
+        client_addr = _client_addr(flow)
+        if client_addr:
+            event_data["source_addr"] = client_addr
+
         if ws_preview:
             event_data["ws_preview"] = ws_preview
         if ws_body:
@@ -1096,6 +1129,10 @@ class RedLogAddon:
             "port": port,
             "message_count": len(flow.messages),
         }
+
+        client_addr = _client_addr(flow)
+        if client_addr:
+            event_data["source_addr"] = client_addr
 
         if tcp_preview:
             event_data["tcp_preview"] = tcp_preview

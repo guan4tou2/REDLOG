@@ -87,7 +87,12 @@ describe('loot pattern detection', () => {
   })
 
   it('detects mongodb URLs', () => {
-    const matches = scanText('mongodb://admin:pass@cluster.mongodb.net/test')
+    // No credential at all, on a reserved host (RFC 2606 `.test`). The
+    // database_url shape is `(?:mysql|postgres|mongodb|redis)://[^\s]+` — it
+    // never needed a user:pass to fire, and the postgres and mysql fixtures
+    // above still cover the credentialed form. A fixture that cannot be
+    // mistaken for a live connection string is one a scanner cannot flag.
+    const matches = scanText('mongodb://db.example.test:27017/test')
     expect(matches.some(m => m.type === 'database_url')).toBe(true)
   })
 

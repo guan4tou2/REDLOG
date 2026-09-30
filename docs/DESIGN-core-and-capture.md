@@ -379,9 +379,9 @@ recordings.
   named "8 tabs / 34 groups" as the symptom of breadth outrunning the persona.
   The left list took the page count *up* to 13 before removals brought it to 11
   (export and cloud-share pages gone) and the groups from 34 to 26, then back
-  to 27 when connection capture added one. Three groups still need a scope
-  ruling rather than a merge: the deconfliction webhook, operator tokens, and
-  the MCP server.
+  to 27 when connection capture added one. Two groups still need a scope
+  ruling rather than a merge: the deconfliction webhook and operator tokens.
+  (The third was the MCP server, removed in `ddc2606`.)
 - ~~Timeline view modes / the eight flat toggles.~~ **Done 2026-08-24.** The
   three-view-modes attempt was reverted (it invented personas); the toggles are
   now grouped by effect, with the low-frequency view/audit controls (session

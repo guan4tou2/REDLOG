@@ -59,7 +59,6 @@ The hourly loop retries any failed head at the next tick. Manual retry:
 
 - UI: Settings ▸ Data ▸ **Timeline Integrity** ▸ **Anchor now**.
 - CLI: `redlog-cli chain anchor` (and `redlog-cli chain status` / `chain verify` / `chain anchors`).
-- MCP: `redlog_chain_anchor_now`.
 - REST: `POST /api/anchors`.
 
 ## Layer 3: drift-detection events
@@ -124,7 +123,7 @@ attestation), so any OTS-aware tooling can consume it.
 
 Two levels of check:
 
-**Fast** — `GET /api/anchors/verify` (or `redlog-cli chain verify` / `redlog_chain_verify` in MCP) compares the latest anchor's `event_count` to the current chain length. Detects deletion of events after anchoring in constant time.
+**Fast** — `GET /api/anchors/verify` (or `redlog-cli chain verify`) compares the latest anchor's `event_count` to the current chain length. Detects deletion of events after anchoring in constant time.
 
 **Full re-walk** — `GET /api/anchors/verify?full=1` (or `redlog-cli chain verify --full`) iterates every event in insertion order, recomputes each hash, checks each `prev_hash` pointer, and confirms the walked head matches the anchor's `head_hash`. Detects any modification, deletion, insertion, or reorder — but O(n).
 
@@ -142,7 +141,7 @@ redlog-cli chain verify --full
 - Any tampering that happens after the latest OTS anchor was submitted, because the anchored head no longer matches (once the calendar bakes the digest into Bitcoin, the tampering timestamp is provably before the anchor time).
 
 **Not detected:**
-- Tampering with events in the window between the last anchor and now (up to 1 hour by default). Anchor more often via `redlog_chain_anchor_now` right after critical actions to shrink this window.
+- Tampering with events in the window between the last anchor and now (up to 1 hour by default). Anchor more often via `redlog-cli chain anchor` right after critical actions to shrink this window.
 - An attacker who compromises RedLog **before** any anchor is made, and who never lets one succeed. The `chain_anchors` table is local and can itself be deleted. Mitigation: export anchors off-machine periodically.
 - An attacker who compromises OTS calendars **and** RedLog simultaneously. Bitcoin backs the calendars, so this is expensive and detectable to third parties.
 - State changes RedLog can't observe (a pivot closed on the remote side, a `config.yaml` edited directly on disk while the app is closed). Layer 3 catches everything RedLog *does* observe; anything invisible to the process is invisible to the log.

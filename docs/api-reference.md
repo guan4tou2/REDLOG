@@ -108,7 +108,7 @@ an operator changed what a finding claims; routing a forged one through
 validation would make it well-formed rather than refused. Amendments are written
 from the app's Inspector.
 
-REST and MCP consumers receive raw rows, so a marker read over the API carries
+API consumers receive raw rows, so a marker read over the API carries
 what it said when it was written. To show what it says now, fetch the marker's
 amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 `data.markerId` = the marker id) and apply them in insertion order.
@@ -129,6 +129,14 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 #### `GET /api/bookmarks`
 
 **Response:** `{ bookmarks: Bookmark[] }`
+
+A bookmark's `context.externalIP` is the egress address at the time the
+bookmark was made, and it is set only from a current IP reading. When there
+was no current reading (the lookup had failed, or air-gap mode was on),
+`externalIP` is absent. In its place, `context.lastKnownExternalIP` is
+`{ address, readAt }`: the last address read, and when (ms since the epoch).
+Rows written before this change carry only `externalIP`, which was recorded
+whether or not the reading was current.
 
 #### `POST /api/bookmarks`
 
