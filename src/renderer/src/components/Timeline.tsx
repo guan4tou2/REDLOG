@@ -1414,6 +1414,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           break
         case 'nav-prev':
         case 'nav-next':
+        case 'nav-lane-prev':
+        case 'nav-lane-next':
         case 'nav-lane-up':
         case 'nav-lane-down':
         case 'nav-state-prev':
