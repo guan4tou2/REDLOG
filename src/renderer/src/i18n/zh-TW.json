@@ -1492,5 +1492,6 @@
   "screenshots.trigger.command": "指令後",
   "screenshots.trigger.api": "API",
   "common.close": "關閉",
-  "common.removeItem": "移除 {{item}}"
+  "common.removeItem": "移除 {{item}}",
+  "common.addItem": "新增"
 }
