@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { Button } from './Button'
 import { toast } from './Toast'
 import { IconButton } from './IconButton'
@@ -105,7 +106,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
   if (loading) {
     return (
       <div className="space-y-2">
-        <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{t('settings.wsl.title')}</h3>
+        <SectionLabel>{t('settings.wsl.title')}</SectionLabel>
         <p className="text-xs text-redlog-text-dim">{t('common.loading')}</p>
       </div>
     )
@@ -116,7 +117,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{t('settings.wsl.title')}</h3>
+          <SectionLabel>{t('settings.wsl.title')}</SectionLabel>
           <Button level="secondary" onClick={refresh}>{t('settings.wsl.refresh')}</Button>
         </div>
         <p className="text-xs text-redlog-text-dim">{t('settings.wsl.noDistros')}</p>
@@ -143,7 +144,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{t('settings.wsl.title')}</h3>
+        <SectionLabel>{t('settings.wsl.title')}</SectionLabel>
         <Button level="secondary" onClick={refresh}>{t('settings.wsl.refresh')}</Button>
       </div>
 

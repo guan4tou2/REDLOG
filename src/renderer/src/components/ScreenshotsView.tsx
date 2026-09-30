@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { Image } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
@@ -117,9 +118,9 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   return (
     <div className="p-4 overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-semibold text-redlog-text-dim uppercase tracking-wider">
+        <SectionLabel className="text-base">
           {t('screenshots.title', { count: hasMore ? `${screenshots.length}+` : screenshots.length })}
-        </h2>
+        </SectionLabel>
         <button
           onClick={() => { void captureScreenshotWithFeedback(t) }}
           className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"

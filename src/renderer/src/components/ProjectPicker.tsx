@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
@@ -189,7 +190,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         <div className={`grid gap-6 ${hasRecent ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
         {/* New project */}
         <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-          <h2 className="text-redlog-text-dim text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.new')}</h2>
+          <SectionLabel className="tracking-[0.15em] mb-3">{t('project.new')}</SectionLabel>
           <div className="flex gap-2">
             <input
               value={newName}
@@ -223,7 +224,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
           return (
           <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-            <h2 className="text-redlog-text-dim text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.recent')}</h2>
+            <SectionLabel className="tracking-[0.15em] mb-3">{t('project.recent')}</SectionLabel>
             <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
               {projects.map((p) => {
                 const isDup = (nameCounts.get(p.name) ?? 0) > 1
