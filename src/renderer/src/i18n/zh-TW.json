@@ -165,6 +165,7 @@
   "settings.integrityFullNoAnchor": "尚無錨點：只檢查了各列之間的雜湊。",
   "settings.integrityFullClockAnomalies": "偵測到 {{n}} 次時鐘異常",
   "timeline.clusterMoreItems": "還有 {{count}} 個 — 放大以個別檢視",
+  "timeline.resizeLog": "拖曳調整清單高度，雙擊還原",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
   "targets.title": "目標（{{count}}）",
   "targets.subtitle": "目標由記錄到的指令自動收集(例如 nmap 10.0.0.1),與「範圍」設定無關。範圍是你設定的允許清單,用來判定是否在範圍內。",
