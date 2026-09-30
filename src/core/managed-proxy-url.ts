@@ -73,3 +73,34 @@ export function followCaptureEndpoint(
   }
   return managedProxyUrl(to)
 }
+
+/** Is RedLog's own managed proxy already on this endpoint?
+ *
+ *  #226: `startManagedHttpCapture()` asked `whoHoldsPort()` who had the port
+ *  before it delegated to `managedHttpProxy.start()`. Start "HTTP capture",
+ *  then "Launch capture browser" — which starts capture again, because that is
+ *  how it guarantees the proxy is up before pointing a browser at it — and the
+ *  operator was told
+ *
+ *      127.0.0.1:6661 is already in use by python.exe (PID 12345)
+ *
+ *  naming RedLog's own mitmdump as the intruder. The browser never launched.
+ *
+ *  `start()` has always handled the re-entry correctly (`if running, return
+ *  the current status; if starting, return the in-flight promise`) — the port
+ *  probe simply ran first and failed before reaching it. This is the question
+ *  that probe should have asked: whoever holds the port, is it us?
+ *
+ *  `starting` counts. The proxy sets its URL when it begins starting, and a
+ *  probe during that window races the bind we are waiting on.
+ *
+ *  A status with no URL, or one pointing somewhere else, does not count: an
+ *  operator who moved the port in Settings is asking about the new endpoint,
+ *  and nothing on it is ours yet. */
+export function proxyAlreadyOn(
+  status: { state: string; url: string | null },
+  endpoint: CaptureEndpoint
+): boolean {
+  if (status.state !== 'running' && status.state !== 'starting') return false
+  return !!status.url && isManagedProxy(status.url, endpoint)
+}

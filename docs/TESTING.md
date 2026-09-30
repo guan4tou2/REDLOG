@@ -129,20 +129,22 @@ one still on the client VLAN, and the external IP can be perfectly fine while
 you are on the wrong network.
 
 A failed external lookup still re-reads the internal address rather than
-discarding it with the rejection (`check()` in
-`src/main/services/producers/ip-signal-producer.ts`); no test asserts it (`—`).
+discarding it with the rejection (`read()` in
+`src/main/services/producers/ip-signal-producer.ts`; `—`). A failure to read the
+interfaces leaves only the internal address empty; the external read keeps its
+result (`ip-signal-producer`).
 
 ## 1.2.1 A failed read expires the verdict
 
 There is no `network.staleAfter` option. The first failed read marks the
-reading stale (`check()` in `src/main/services/producers/ip-signal-producer.ts`):
+reading stale (`read()` in `src/main/services/producers/ip-signal-producer.ts`):
 the last stable address is kept, and `IPPolicy` answers `unknown` with
 `stale: true`, whatever the lists say.
 
 | Case | Behaviour | Proof |
 |---|---|---|
-| a read fails (a provider error, every provider down, or air-gap `offline`) | `stale: true` at once; the verdict is `unknown`, never the last good answer | `alert/ip-policy` (the verdict); `—` (the producer) |
-| a later read succeeds | the verdict is recomputed and `stale` clears | `—` |
+| a read fails (a provider error, every provider down, or air-gap `offline`) | `stale: true` at once; the verdict is `unknown`, never the last good answer | `alert/ip-policy` (the verdict); `ip-signal-producer` (the producer marks it) |
+| a later read succeeds | the verdict is recomputed and `stale` clears | `ip-signal-producer` (`stale` clears); `alert/ip-policy` (a fresh reading is classified) |
 
 A dropped VPN and a dead IP provider look identical from outside the process, so
 neither may keep rendering the last good answer at full confidence. The screen
@@ -156,46 +158,44 @@ displayed address, and therefore the verdict, does not change during the hold.
 
 | Value | Behaviour | Proof |
 |---|---|---|
-| `1` | promote on sight, no flap protection | `—` |
-| `3` (default) | two reads hold the old address, the third promotes | `config-options` (the default); `—` (the hold) |
+| `1` | promote on sight, no flap protection | `ip-signal-producer` |
+| `3` (default) | two reads hold the old address, the third promotes | `config-options` (the default), `ip-signal-producer` (the hold) |
 | `5` | four reads hold, the fifth promotes | `—` |
-| `0`, negative | ignored: the previous value is kept (3 on a fresh producer), **not** "promote instantly" (`configure()`) | `—` |
-| first ever reading | taken as-is; there is nothing to flap against | `—` |
-| candidate changes each poll (CGNAT) | nothing is ever promoted; `settling` stays true | `—` |
-| old address returns mid-hold | the half-confirmed candidate is dropped | `—` |
+| `0`, negative | ignored: the previous value is kept (3 on a fresh producer), **not** "promote instantly" (`configure()`) | `ip-signal-producer` |
+| first ever reading | taken as-is; there is nothing to flap against | `ip-signal-producer` |
+| candidate changes each poll (CGNAT) | nothing is ever promoted; `settling` stays true | `ip-signal-producer` |
+| old address returns mid-hold | the half-confirmed candidate is dropped | `ip-signal-producer` |
 
 `settling: true` is the "displayed value is the last stable read" flag. It is
-set during the hold and cleared on promotion; a failed read in mid-hold also
-clears it, although the hold goes on (`ip-signal-producer.ts`). The policy
-carries it into the verdict as a modifier without changing the verdict
-(`alert/ip-policy`); the producer's side is asserted by no test (`—`).
-`IPSignalProducer` has had no tests since v0.12.0, which is why §1.3–§1.5 are
-`—` throughout.
+set during the hold and cleared on promotion (`ip-signal-producer`). A failed
+read in mid-hold also clears it, although the hold goes on (`read()` in
+`ip-signal-producer.ts`; `—`). The policy carries it into the verdict as a
+modifier without changing the verdict (`alert/ip-policy`).
 
 ## 1.4 `network.ipMode` and `network.providers`
 
 | Option | Value | Behaviour | Proof |
 |---|---|---|---|
-| `ipMode` | `auto` (default) | DNS first, HTTP only if DNS fails/blocked | `config-options` (the default); `—` (the fallback) |
-| `ipMode` | `dns` | direct query to OpenDNS/Google resolvers, no HTTP at all | `—` |
-| `ipMode` | `http` | HTTP echo only, DNS never queried | `—` |
-| `providers` | `[]` (default) | the three built-in echo services are used | `config-options` (the default); `—` (the services) |
-| `providers` | custom list | tried in order; first success wins | `—` |
-| `providers` | first entry throws | falls through to the next | `—` |
-| `providers` | first entry answers non-2xx | treated as a failure, moves on | `—` |
-| `providers` | response `{ip}` or `{origin}` | both shapes are accepted | `—` |
-| `providers` | every entry fails | `error: 'All IP providers failed'`, **last known address is kept**, and the reading goes stale (§1.2.1) | `—` |
-| `providers` | a later poll succeeds | error clears | `—` |
+| `ipMode` | `auto` (default) | DNS first, HTTP only if DNS fails/blocked | `config-options` (the default), `ip-signal-producer` (the fallback) |
+| `ipMode` | `dns` | direct query to OpenDNS/Google resolvers, no HTTP at all | `ip-signal-producer` |
+| `ipMode` | `http` | HTTP echo only, DNS never queried | `ip-signal-producer` |
+| `providers` | `[]` (default) | the three built-in echo services are used | `config-options` (the default), `ip-signal-producer` (the services) |
+| `providers` | custom list | tried in order; first success wins | `ip-signal-producer` |
+| `providers` | first entry throws | falls through to the next | `ip-signal-producer` |
+| `providers` | first entry answers non-2xx | treated as a failure, moves on | `ip-signal-producer` |
+| `providers` | the answer | the address is `ip`, else `origin`, else a bare JSON string, and only when that is one IPv4 address (`addressIn()`). Anything else — another JSON shape, a comma-separated `origin`, an IPv6 address — means that provider failed, and the next is tried. IPv6 is refused because the list matcher cannot judge an IPv6 range (G-IP1) | `ip-signal-producer` |
+| `providers` | every entry fails | `error: 'All IP providers failed'`, **last known address is kept**, and the reading goes stale (§1.2.1) | `ip-signal-producer` |
+| `providers` | a later poll succeeds | error clears | `ip-signal-producer` |
 
 ## 1.5 `network.checkInterval`
 
 | Value | Behaviour | Proof |
 |---|---|---|
-| unset (monitor default) | polls every 10 s | `—` |
-| `60` (config default) | polls every 60 s | `config-options` (the default); `—` (the cadence) |
-| `0` | ignored, the previous interval is kept — a zero-second poll would be a busy loop | `—` |
-| `stop()` | clears the timer, idempotent | `—` |
-| slow poll still in flight | the next tick is skipped, not queued | `—` |
+| unset (monitor default) | polls every 10 s | `ip-signal-producer` |
+| `60` (config default) | polls every 60 s | `config-options` (the default), `ip-signal-producer` (the cadence) |
+| `0` | ignored, the previous interval is kept — a zero-second poll would be a busy loop; negatives too | `ip-signal-producer` |
+| `stop()` | clears the timer, idempotent | `ip-signal-producer` |
+| slow poll still in flight | the next tick is skipped, not queued | `ip-signal-producer` |
 
 ## 1.6 Scope distance ladder — `classifyScope`
 
@@ -365,17 +365,21 @@ HUD and card show `—` and the status bar shows no address.
 **Scope alerts:** the status bar shows `SCOPE <n>` with a red dot, `SCOPE OK`,
 or `SCOPE —` when no scope is set. `<n>` counts the violations that still stand
 across the whole chain (`countActiveScopeViolations()` in
-`src/core/scope-recompute-run.ts`). The Scope & Evidence view distinguishes
-`NOT SET` (with the hint that fixes it) from `ACTIVE` + "all commands within
-scope". It lists the standing violations with target, command and time, 200 at
-a time with a shown / total footer. Withdrawn ones sit behind "Show withdrawn",
-which appears only while at least one violation still stands. There is no
-Export button on it. The list is read from the newest 500
-`scope_violation` rows (`queryScopeViolationRows()`, same file), and that
-window counts the in-scope rows before dropping them (G-S3). Proof:
-`scope-recompute-run` for the read model; `e2e` (`scope-recompute.spec.ts`)
-for the recompute banner, the "judged later" tag on rows a recompute flagged,
-and withdrawn rows kept rather than deleted. The rest is `—`.
+`src/core/scope-recompute-run.ts`), and the Scope & Evidence view shows the same
+number as "violations still standing" (`scope:getViolationCount`). The view
+distinguishes `NOT SET` (with the hint that fixes it) from `ACTIVE`, and says
+"all commands within scope" only when nothing stands and nothing was recorded.
+It lists the standing violations with target, command and time, 200 at a time
+with a shown / total footer. Withdrawn ones sit behind "Show withdrawn", which
+appears only while at least one violation still stands. There is no Export
+button on it. The list is read from the newest 500 violation records
+(`queryScopeViolationRows()`, same file): in-scope rows and records a newer one
+replaced are left out before the cut, and the page says so whenever the window
+is cut. Proof: `scope-recompute-run` for the read model; `scope-status` for the
+count, "all commands within scope" and the truncation note; `e2e`
+(`scope-recompute.spec.ts`) for the recompute banner, the "judged later" tag on
+rows a recompute flagged, and withdrawn rows kept rather than deleted. The rest
+is `—`.
 
 **Recording vs capture health:** the status bar's recording control has a dot
 and a label. Paused: a grey dot and `PAUSED`, which turns amber, pulses and
@@ -417,11 +421,11 @@ title bar and the picker, and Settings ▸ General renames the project.
 |---|---|---|---|---|
 | `whitelist` | `[]` | IPs / CIDRs | §1.1–1.2 | `config-options` (the default), `alert/ip-policy` (the verdicts) |
 | `blacklist` | `[]` | IPs / CIDRs | §1.1–1.2, wins over whitelist | `config-options` (the default), `alert/ip-policy` (the verdicts) |
-| `checkInterval` | `60` | seconds | §1.5; the Settings field turns junk, and `0`, into 60 (`parseInt(v) \|\| 60` in `NetworkPage.tsx`) | `config-options` (the default); `—` (the cadence, the field) |
-| `providers` | `[]` | URLs | §1.4 | `config-options` (the default); `—` (§1.4) |
-| `confirmations` | `3` | ≥1 | §1.3; the Settings field clamps to ≥1 and turns junk into 3 | `config-options` (the default); `—` (§1.3, the field) |
-| `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `config-options` (the default); `—` (§1.4) |
-| `offline` | `false` | bool | air-gap: RedLog makes no outbound requests of its own — OpenTimestamps anchoring, NTP, the update check and the external-IP lookup. The IP verdict reads `unknown`, with the internal address still shown. Capture and the local API are unaffected | `—` |
+| `checkInterval` | `60` | seconds | §1.5; the Settings field turns junk, and `0`, into 60 (`parseInt(v) \|\| 60` in `NetworkPage.tsx`) | `config-options` (the default), `ip-signal-producer` (the cadence); `—` (the field) |
+| `providers` | `[]` | URLs | §1.4 | `config-options` (the default), `ip-signal-producer` (§1.4) |
+| `confirmations` | `3` | ≥1 | §1.3; the Settings field clamps to ≥1 and turns junk into 3 | `config-options` (the default), `ip-signal-producer` (§1.3); `—` (the field) |
+| `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `config-options` (the default), `ip-signal-producer` (§1.4) |
+| `offline` | `false` | bool | air-gap: RedLog makes no outbound requests of its own — OpenTimestamps anchoring, NTP, the update check and the external-IP lookup. The IP verdict reads `unknown`, with the internal address still shown. Capture and the local API are unaffected | `ip-signal-producer` (no external-IP lookup, the reading stale); `—` (the rest) |
 | `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The toggle shows on every platform; on macOS it also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `network-link-display` |
 | `vpnAdapters` | 12 built-ins, all enabled | `{name, pattern, enabled}` | patterns are user regexes matched case-insensitively against interface names | `config-options` (the default); `—` (the matching) |
 
@@ -542,19 +546,21 @@ and the chain survive, so a pruned file verifies as *pruned*, not as tampered.
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| *(runs with)* | `packs.hostMonitors` | with the pack off from the start nothing is captured; on start the current clipboard is seeded so pre-session content is never captured. Turning the pack off in Settings does **not** stop the poll (G-CB2) | `capture-packs` (the pack's members); `—` (the monitor) |
-| `pollMs` | `1500` | honoured as given, **clamped up to 500 ms** | `config-options` (the default); `—` |
-| `storePreview` | `false` | off stores hash + length + line count and `preview: null`; on stores the first 120 characters with the spans redaction flags masked to `•` | `config-options` (the default); `—` |
+| *(runs with)* | `packs.hostMonitors` | with the pack off nothing is captured, or even read. Turning it off, in Settings or by opening a project with it off, stops the poll, and a save replaces the poll rather than adding one. On start the current clipboard is seeded, so pre-session content is never captured | `clipboard-monitor`, `capture-packs` (the pack's members) |
+| `pollMs` | `1500` | honoured as given, **clamped up to 500 ms** | `config-options` (the default), `clipboard-monitor` |
+| `storePreview` | `false` | off stores hash + length + line count and `preview: null`; on stores the first 120 characters with the spans redaction flags masked to `•` | `config-options` (the default), `clipboard-monitor` |
 
-What the monitor does (`src/main/clipboard-monitor.ts`), none of it asserted by
-a test (`—`): with `storePreview` off no clipboard text is stored; with it on,
-the preview is the raw text apart from the masked spans, so a secret redaction
-does not flag lands in clear. Identical consecutive reads dedupe to one event;
-an empty clipboard produces nothing; paused recording suspends capture and
-resuming restores it — but what was copied during the pause is still captured
-at the first poll after resume if it is still on the clipboard (G-CB1).
-Detected credential *types* are recorded without copying the credential; a
-throwing loot detector does not lose the event.
+What the monitor does (`src/main/clipboard-monitor.ts`): with `storePreview`
+off no clipboard text is stored; with it on, the preview is the raw text apart
+from the masked spans, so a secret redaction does not flag lands in clear.
+Identical consecutive reads dedupe to one event. Paused recording reads
+nothing, and resuming seeds what is on the clipboard then, so what was copied
+during the pause is not captured (`clipboard-monitor`). Asserted by no test
+(`—`): an empty clipboard produces nothing; detected credential *types* are
+recorded without copying the credential; a throwing loot detector does not lose
+the event; and, the flip side of seeding on resume, a copy made in the last poll
+interval before the pause and still on the clipboard at resume is not captured
+either.
 
 ## 2.8 `browser`
 
@@ -604,16 +610,17 @@ bundle itself remains, in the one export control.
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| *(runs with)* | `packs.hostMonitors` | starts only with the pack on + non-empty `watchPaths` + an engagement id; turning the pack off stops the watcher | `file-watcher`, `capture-packs` |
+| *(runs with)* | `packs.hostMonitors` | starts only with the pack on + non-empty `watchPaths` + an engagement id; turning the pack off stops the watcher, in Settings or by opening a project with it off, and a save keeps one watcher rather than adding one | `file-watcher`, `watcher-restart`, `capture-packs` |
 | `fileWatcher.watchPaths` | `[]` | empty is a no-op even with the pack on | `file-watcher` |
 | `fileWatcher.ignorePatterns` | `[]` | added on top of the built-in ignores | `file-watcher` |
-| *(runs with)* | `packs.hostMonitors` | off by default; polled on macOS, Linux and Windows and nowhere else. If the first process listing fails (BusyBox `ps` in a minimal container), a one-shot `process_monitor_ps_unavailable` event says why (`restart()` in `src/main/services/process-monitor.ts`) | `capture-packs` (the pack's members); `—` (the start, the advisory) |
+| *(runs with)* | `packs.hostMonitors` | off by default; polled on macOS, Linux and Windows and nowhere else. If the first process listing fails (BusyBox `ps` in a minimal container), a `process_monitor_ps_unavailable` event says why, once per capture start: the first, after a project close or switch, or when the pack is turned back on, not on every save (`restart()` in `src/main/services/process-monitor.ts`). A `ps` run that finishes after a restart or a stop records nothing | `capture-packs` (the pack's members), `process-monitor-restart` (the advisory, late runs); `—` (the platforms) |
 | `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `config-options` (the default); `—` (the floors) |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
+| *(runs with)* | `packs.hostMonitors` | the connection monitor states its SYN-scan blind spot (`connection_capture_started`) once per capture start: the first, after a project close or switch, or when the pack is turned back on, not on every save. A socket-table read that finishes after a restart or a stop records nothing | `connection-monitor-restart` |
 | `connectionMonitor.pollMs` | `2000` | socket-table poll cadence of the connection monitor, which runs with `packs.hostMonitors`; floored at 1000 ms | `—` |
 | *(runs with)* | `packs.aiAgents` | agent transcripts are sensitive: off until the operator turns the pack on for the project; a `.redlog-app-root` marker still opts a repo out | `capture-packs`, `agent-tailer` |
 | `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
-| *(runs with)* | `packs.windowsOutput` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript`, `capture-packs` |
+| *(runs with)* | `packs.windowsOutput` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once; opening a project with the pack off stops following, and a project switch keeps one follower | `powershell-transcript`, `watcher-restart`, `capture-packs` |
 
 ## 2.12a `packs` — optional capture (Spec 035)
 
@@ -673,7 +680,7 @@ through unread.
 | HUD verdict colour / label / flash / scale / emphasis / pass-through / mark buttons | §1.8, §2.5 | `—` (`renderer-smoke` mounts the HUD and drives expand and hide; `e2e` `hud-overlay.spec.ts` covers its geometry) |
 | dashboard IP card: three states, both addresses, hints, provider error | §1.8 | `—` (`renderer-smoke` mounts it) |
 | status bar: IP state, scope count, recording × capture-health dot, loot | §1.8 | `—` (`renderer-smoke`: the clock's title; `e2e` `recording-flow.spec.ts`: the `PAUSED` and `Waiting for events…` labels; `loot-count`: the number it reads) |
-| scope violations list: not-set / all-in-scope states, paging, withdrawn rows, chain length | §1.8 | `scope-recompute-run` (the read model), `e2e` (`scope-recompute.spec.ts`), `list-keyboard` (the list keyboard contract) |
+| scope violations list: not-set / all-in-scope states, the standing count, paging, withdrawn rows, the truncation note, chain length | §1.8 | `scope-recompute-run` (the read model), `scope-status` (the count, all-in-scope, the truncation note), `e2e` (`scope-recompute.spec.ts`), `list-keyboard` (the list keyboard contract) |
 | HUD live-update subscriptions (Settings → open overlay) | §1.8 | `—` |
 | Settings controls: each toggle / number field writes the right config key, with its UI-layer coercion | §2.x | `—` (`scope-entry-ui`: the create card's excludes and the project rename; `overlay-pass-through`: the pass-through toggle) |
 | process-monitor poll cadence + platform floors | §2.12 | `—` |
@@ -782,12 +789,21 @@ screenshot, so "off" has to mean off everywhere, immediately.
 | **G-UI2** | The renderer gets three states for five verdicts (`verdictToSafety()` in `src/main/services/alert-runtime.ts`): `presumed_safe` shows as `SAFE`, `off_profile` as `EXPOSED` with a hint that the address is on the Exposed IP list, and a stale reading as `IP?` with a hint to set lists that may already be set (§1.8). | The policy's distinctions (§1.1, §1.2.1) stop at the main process, and two of the hints point at the wrong fix. |
 | **G-UI3** | No test asserts what an alert surface renders: HUD label and frame, card, status bar dot and label, live updates (§1.8, Part 4). | A display regression on a correct verdict passes the suite. |
 | **G-IP1** | An IPv6 CIDR entry in either list never matches, not even its own address; only a bare IPv6 address matches, and only exactly. An IPv6 CIDR with a prefix of 32 or less is read as IPv4 arithmetic instead, so it can match IPv4 addresses (`matchesCIDR` in `src/core/alert/policies.ts`, §1.2). | An IPv6 exit or home range gives no verdict, and a short IPv6 prefix can put IPv4 addresses on a list. |
-| **G-IP2** | `IPSignalProducer` (`src/main/services/producers/ip-signal-producer.ts`) has had no tests since v0.12.0 (§1.2.1–§1.5). Two things in it no test would catch: the HTTP path takes `data.ip ?? data.origin ?? String(data)` without the IPv4 check the DNS path applies, so a provider answering another JSON shape yields an address such as `[object Object]`; and `check()` clears its in-flight flag at the end rather than in a `finally`, so a throw from `getInternalIP()` would stop every later check, stale marking included. | A malformed custom provider misses every list: with only a blacklist set that reads `presumed_safe`, shown as `SAFE`. |
 | **G-S1** | A CIDR entry narrower than /24 still seeds the /24 of its base address (`buildScopeIndexes`, §1.6). | `10.0.0.0/28` makes `10.0.0.200` `adjacent_subnet`: an inferred boundary the operator did not state. |
 | **G-S2** | Every in-scope hit is chained as a `scope_violation` row with `distance: in_scope` (`ChainEmitter`, §1.7), and the Timeline titles each one as a violation (`eventTitle.ts`). | Adherence records read as violations to anyone looking at the Timeline or the raw chain. |
-| **G-S3** | The Scope page reads the newest 500 `scope_violation` rows and only then drops the in-scope ones (`queryScopeViolationRows()` in `src/core/scope-recompute-run.ts`, §1.8). Reproduced with one excluded violation under three newer in-scope rows and a window of 2: `countActiveScopeViolations()` 1, rows 0, `truncated: true`. | After enough in-scope traffic the page lists none of the standing violations, hides the truncation note (it renders only with rows), and says "All commands within scope" while the status bar reads `SCOPE <n>`. |
-| **G-CB1** | While recording is paused the clipboard monitor returns before reading, so its last hash is the pre-pause one (`sample()` in `src/main/clipboard-monitor.ts`, §2.7). | Whatever was copied during the pause and is still on the clipboard is captured at the first poll after resume — its hash, length, loot types, and the preview when `storePreview` is on. |
-| **G-CB2** | `restart()` in `src/main/clipboard-monitor.ts` checks `enabled` before an `await` and sets the interval after it, without clearing one set in between. config:save calls `configureClipboardMonitor` twice in one tick (the options, then `applyCapturePacks`, in `src/main/index.ts`), so every save with the pack on leaves an extra poller nothing references, and the save that turns the pack off still starts one. Reproduced with fake timers in that call order: a clipboard change made after the pack was turned off was captured; with a single configure call it was not. | Clipboard capture continues after the operator turned host monitors off, and nothing stops a leaked poller short of quitting the app. |
+**Fixed.** These IDs stay listed because code comments cite them:
+
+| ID | What it was | Fixed by | Proof |
+|---|---|---|---|
+| **G-IP2** | The HTTP path took `data.ip ?? data.origin ?? String(data)` unchecked, so a provider answering another JSON shape yielded the address `[object Object]`, which with only a blacklist set read `presumed_safe`, shown as `SAFE`. A throw from `getInternalIP()` left the in-flight flag set and stopped every later check. | #169: only one IPv4 address counts as an answer (§1.4); the flag is cleared in a `finally` | `ip-signal-producer` |
+| **G-S3** | The Scope page cut its 500-row window before dropping in-scope rows, so after enough in-scope traffic it listed none of the standing violations and said "All commands within scope" while the status bar read `SCOPE <n>`. | #168: in-scope and replaced rows are left out before the cut, and the page takes its totals from the chain (§1.8) | `scope-recompute-run`, `scope-status` |
+| **G-CB1** | What was copied while recording was paused, and still on the clipboard, was captured at the first poll after resume. | #167: resuming seeds the clipboard (§2.7) | `clipboard-monitor` |
+| **G-CB2** | Each restart armed its interval after an `await`, and config:save restarts the monitor twice in one tick, so a save leaked a poller and turning Host monitors off did not stop clipboard capture. | #167: only the newest restart arms the poll (§2.7) | `clipboard-monitor` |
+
+The same late-continuation guard went into the file watcher and the transcript
+follower (#167, `watcher-restart`), the connection monitor (#165,
+`connection-monitor-restart`) and the process monitor (#166,
+`process-monitor-restart`), §2.12.
 
 Adding a config option? Add its default to the table in `config-options` and
 its behaviour to the relevant Part 2 section. If it changes what the operator

@@ -23,6 +23,48 @@ for full commit body + generated notes.
     settings lists) had no accessible name. They now use `IconButton`.
     `test/button-names.test.ts` fails on any icon-only button without one.
 
+- **A bookmark could record an address nobody had just read.** When the IP
+  lookup had failed, or air-gap mode was on, the IP producer still held the
+  last address it had read. A new bookmark saved that address as its external
+  IP, and the detail pane showed it under "Auto-captured Context" as the
+  address in use. A bookmark made without a current reading now records the
+  address as `lastKnownExternalIP`, with the time that address was last read.
+  The pane shows it as "Last known IP (read …)", and `externalIP` is set only
+  from a current reading. Existing bookmarks are not rewritten. The producer
+  now dates its stable address (`externalReadAt`): a read that returns an
+  unconfirmed new address does not move that date. See
+  `test/bookmark-egress.test.ts` and `test/bookmarks-view.test.tsx`.
+
+- **The skill's mandated first call had nothing to bind to.** The
+  `redlog-pentest` skill tells the agent to call `redlog_session_register`
+  on its first turn — the call that opts a session into capture so RedLog
+  tails only explicitly registered sessions, not every Claude Code session
+  on the machine — and, if it errors, to stop calling RedLog tools for the
+  rest of the session. But `redlog_session_register` shipped only as an MCP
+  tool; when the MCP server was removed it went with it, while the skill and
+  the `/api/session/register` endpoint stayed. So the agent's very first step
+  failed and it abandoned the whole control plane. The tool is now exposed on
+  the two surfaces that remain — `docs/codex-tools.json` (18 → 19) and
+  `shell/redlog-agent.sh` (defaulting `session_id` to `$CLAUDE_SESSION_ID`)
+  — and both `/api/session/register` and `/api/session/registered` are now
+  in the endpoint table. New `test/agent-tool-surface.test.ts` fails if the
+  skill ever names a `redlog_*` tool that no interface defines. (#241)
+
+- **Every request in the timeline was unattributed, and not because RedLog
+  could not tell.** `socket-attribution.ts` joins a request's source port to
+  the pid that opened it and on to the shell command that owns that pid,
+  writing the result into `_causes` so a request links back to the `sqlmap`
+  or `curl` that made it. It is designed, documented and unit tested — and
+  the mitmproxy addon only ever sent `source_addr` on DNS events, never on
+  HTTP, WebSocket or raw TCP ones. With no port to look up the join returned
+  nothing, every time, so attribution shipped working for lookups and
+  silently not for requests. Same shape as the DNS hook-name bug: a correct
+  consumer reading a field no producer wrote.
+
+  Attribution still needs the connection monitor running to observe the
+  socket, and it stays best-effort — a request that cannot be attributed is
+  recorded anyway, without the edge.
+
 - **Screenshots show what you were looking at, not RedLog.** A UI/UX pass,
   second batch:
   - *Capture*: pressing ⌘⇧M in another app used to bring RedLog forward and

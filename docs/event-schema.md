@@ -31,7 +31,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 
 **Recorded from operator / agent activity:**
 - `shell` — commands captured via hooks or the built-in terminal
-- `agent` — Claude Code / Codex tool calls (via MCP)
+- `agent` — Claude Code / Codex tool calls (via the transcript tailer)
 - `http_navigation` — page loads inside the built-in CDP-connected browser
 - `dns` — DNS resolutions and probes (`subtype: dns_query` / `dns_response`)
 - `pivot` — tunnel/pivot lifecycle — RedLog auto-detects from shell (see below)

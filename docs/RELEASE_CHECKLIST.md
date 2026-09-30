@@ -134,7 +134,8 @@ Everything below still needs hands on the app.
 - [ ] Auto-save works (no explicit Save button; edit → wait → reload → persists)
 - [ ] Operators: add / rename / rotate token / revoke
 - [ ] Scope: add pattern → violation flow triggers next command_start
-- [ ] Plugin: enable → reload → tools appear in MCP list
+- [ ] Plugin: enable → reload → its contributions take effect (a `lootPatterns`
+      entry matches, an `eventTypes` lane appears)
 
 ## 13. CLI (`redlog-cli`)
 
