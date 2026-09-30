@@ -609,7 +609,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             invite reading a typo as proof the evidence is absent. */}
         <QueryReadout outcome={parseFailed && parse && !parse.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         {toolSession && (
-          <div data-testid="transcript-tool-session" role="status" className="rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+          <div data-testid="transcript-tool-session" role="status" className="rounded border border-redlog-cyan/40 bg-redlog-cyan/10 px-3 py-2 text-xs text-redlog-cyan">
             <div>{t('transcript.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}</div>
             {toolSession.otherSessionIds.length > 0 && (
               <div className="mt-1 text-redlog-text-dim">

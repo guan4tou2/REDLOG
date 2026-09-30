@@ -207,11 +207,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     file_transfer: 'F', marker: 'M', loot: 'L', system: '!'
   }
 
-  const agentColor: Record<string, string> = {
-    shell: 'text-green-400', screenshot: 'text-blue-400', clipboard: 'text-yellow-400',
-    file_transfer: 'text-purple-400', marker: 'text-red-400', loot: 'text-orange-400', system: 'text-redlog-text-dim'
-  }
-
   return (
     <div className="p-4 space-y-4 h-full overflow-auto">
       <div className="flex items-start justify-between">
@@ -353,7 +348,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                             return acc
                           }, {})
                         ).map(([type, count]) => (
-                          <span key={type} className={`text-xs ${agentColor[type] || 'text-redlog-text-dim'} bg-redlog-elevated px-1.5 py-0.5 rounded`}>
+                          <span key={type} className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">
                             {type}: {count}
                           </span>
                         ))}
@@ -363,7 +358,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       </p>
                       {evidence.map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
-                          <span className={`font-mono font-bold w-4 shrink-0 ${agentColor[e.agentType] || 'text-redlog-text-dim'}`}>
+                          <span className="font-mono font-bold w-4 shrink-0 text-redlog-text-dim">
                             {agentIcon[e.agentType] || '?'}
                           </span>
                           <span className="text-redlog-text-faint w-16 shrink-0">

@@ -10,22 +10,10 @@ import { EmptyState } from './EmptyState'
 import { Flag } from 'lucide-react'
 import { Button } from './Button'
 
-const TAG_COLORS = [
-  { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
-  { bg: 'bg-blue-500/20', text: 'text-blue-400', dot: 'bg-blue-400' },
-  { bg: 'bg-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-400' },
-  { bg: 'bg-amber-500/20', text: 'text-amber-400', dot: 'bg-amber-400' },
-  { bg: 'bg-purple-500/20', text: 'text-purple-400', dot: 'bg-purple-400' },
-  { bg: 'bg-pink-500/20', text: 'text-pink-400', dot: 'bg-pink-400' },
-  { bg: 'bg-cyan-500/20', text: 'text-cyan-400', dot: 'bg-cyan-400' },
-  { bg: 'bg-orange-500/20', text: 'text-orange-400', dot: 'bg-orange-400' }
-]
-
-function getTagColor(title: string): typeof TAG_COLORS[0] {
-  let hash = 0
-  for (let i = 0; i < title.length; i++) hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
-}
+// A hash of the mark's title used to pick one of eight hues. It grouped
+// nothing an operator could rely on -- two unrelated marks share a colour as
+// readily as two related ones -- while spending the palette that has to be
+// available when something is out of scope (§1).
 
 const PINNED_KEY = 'redlog-bookmarks-pinned'
 
@@ -160,7 +148,6 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         )}
         <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
           {visibleMarks.map((m, i) => {
-            const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
             const rowProps = listNav.itemProps(i)
             return (
@@ -174,7 +161,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
+                  <span className="w-2 h-2 rounded-full shrink-0 bg-redlog-lane" />
                   <span title={m.title} className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
                   {/* Pinned marks get a small star indicator; pin/unpin action
                       lives in the detail panel (low-frequency action, keep

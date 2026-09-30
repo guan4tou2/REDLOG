@@ -36,11 +36,14 @@ interface HttpFlow {
 
 const formatBytes = formatSize
 
+// A status IS a state, so it keeps colour — but only where something is
+// wrong. 2xx and 3xx are the expected case and say nothing worth a hue; 4xx
+// and 5xx are what the operator is scanning for (§1's state table).
 const STATUS_COLORS: Record<string, string> = {
-  '2': 'text-green-400',
-  '3': 'text-blue-400',
-  '4': 'text-amber-400',
-  '5': 'text-red-400'
+  '2': 'text-redlog-text-dim',
+  '3': 'text-redlog-text-dim',
+  '4': 'text-redlog-warn',
+  '5': 'text-redlog-danger'
 }
 
 /**
@@ -344,13 +347,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline, onOpenDetail, outOfSco
         )}
         <span className="flex-shrink-0 flex items-center gap-1 ml-auto">
           {methodArr.map(m => (
-            <span key={m} className={`text-xs font-mono px-1 rounded ${
-              m === 'GET' ? 'text-green-500/70 bg-green-900/20'
-                : m === 'POST' ? 'text-amber-500/70 bg-amber-900/20'
-                  : m === 'PUT' || m === 'PATCH' ? 'text-blue-500/70 bg-blue-900/20'
-                    : m === 'DELETE' ? 'text-red-500/70 bg-red-900/20'
-                      : 'text-redlog-text-dim/70 bg-redlog-elevated/40'
-            }`}>{m}</span>
+            <span key={m} className="text-xs font-mono px-1 rounded text-redlog-text-dim/70 bg-redlog-elevated/40">{m}</span>
           ))}
           {statusArr.length > 0 && statusArr.length <= 3 && statusArr.map(s => (
             <span key={s} className={`text-xs font-mono ${STATUS_COLORS[String(s)[0]] ?? 'text-redlog-text-dim'}`}>
@@ -654,19 +651,19 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             onClick={() => setViewMode('activity')}
             data-http-view="activity"
             aria-pressed={viewMode === 'activity'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewActivity')}</button>
           <button
             onClick={() => setViewMode('flows')}
             data-http-view="flows"
             aria-pressed={viewMode === 'flows'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewFlows')}</button>
           <button
             onClick={() => setViewMode('sitemap')}
             data-http-view="sitemap"
             aria-pressed={viewMode === 'sitemap'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewSitemap')}</button>
         </div>
 
@@ -683,13 +680,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
         <button
           onClick={() => setMethodFilter(null)}
-          className={`text-xs font-mono px-1.5 py-0.5 rounded ${!methodFilter ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          className={`text-xs font-mono px-1.5 py-0.5 rounded ${!methodFilter ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
         >{t('httpHistory.filterAll')}</button>
         {methods.map(m => (
           <button
             key={m}
             onClick={() => setMethodFilter(methodFilter === m ? null : m)}
-            className={`text-xs font-mono px-1.5 py-0.5 rounded ${methodFilter === m ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-1.5 py-0.5 rounded ${methodFilter === m ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{m}</button>
         ))}
         <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
@@ -697,7 +694,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           <button
             key={s}
             onClick={() => setStatusFilter(statusFilter === s ? null : s)}
-            className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
         {hosts.length > 1 && (
@@ -799,10 +796,11 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 const statusClass = f.status !== null
                   ? STATUS_COLORS[String(f.status)[0]] ?? 'text-redlog-text-dim'
                   : 'text-redlog-text-faint'
-                const methodClass = f.method === 'GET' ? 'text-green-400'
-                  : f.method === 'POST' ? 'text-amber-400'
-                    : f.method === 'PUT' || f.method === 'PATCH' ? 'text-blue-400'
-                      : f.method === 'DELETE' ? 'text-red-400' : 'text-redlog-text-dim'
+                // The method is a category, and every row has one. DELETE in
+                // particular is the target's verb, not RedLog warning about
+                // anything, so red on it spends the colour that has to mean
+                // "look here".
+                const methodClass = 'text-redlog-text-dim'
                 const eventId = f.responseEventId ?? f.requestEventId
                 const urlPath = (() => {
                   try { return new URL(f.url).pathname + (new URL(f.url).search || '') }
