@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import GeneralPage from '../src/renderer/src/components/settings/GeneralPage'
+import ScopePage from '../src/renderer/src/components/settings/ScopePage'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import type { ConfigState } from '../src/renderer/src/components/settings/SettingsShared'
 
@@ -54,5 +55,39 @@ describe('scope and project identity entry', () => {
     await waitFor(() => expect(rename).toHaveBeenCalledWith('p1', 'New name'))
     expect(renamed).toHaveBeenCalledOnce()
     window.removeEventListener('redlog:project-renamed', renamed)
+  })
+
+  // Spec 037 FR: scope is pasted, split on newline/comma/space, and every entry
+  // is validated against the scope evaluator. The requirement moved here with
+  // the field -- the create card stopped asking -- and an entry the evaluator
+  // can never match must not be stored as a rule that silently never fires.
+  it('splits pasted scope, keeps what the evaluator can match, names what it cannot', () => {
+    const setConfig = vi.fn()
+    const config = {
+      engagement: { id: 'p1' }, operator: { id: 'op', name: 'Operator' },
+      network: { whitelist: [], blacklist: [], checkInterval: 60 },
+      scope: { targets: [], excludeTargets: [], personalDomains: [], scopeFile: '' },
+      screenshot: { quality: 80 }
+    } as unknown as ConfigState
+    render(
+      <I18nProvider>
+        <ScopePage config={config} setConfig={setConfig} t={(k: string) => k} />
+      </I18nProvider>
+    )
+
+    const field = screen.getAllByPlaceholderText('settings.targetsPlaceholder')[0]
+    // a real newline in the paste, which is what the requirement names
+    fireEvent.change(field, { target: { value: `10.10.11.0/24, *.corp.local
+10.0.0.0/33 host:8080` } })
+    fireEvent.keyDown(field, { key: 'Enter', ctrlKey: true })
+
+    expect(setConfig).toHaveBeenCalledOnce()
+    expect(setConfig.mock.calls[0][0].scope.targets).toEqual(['10.10.11.0/24', '*.corp.local'])
+
+    // The rejects are named, and they stay in the box to be fixed in place.
+    const alert = screen.getByTestId('list-field-rejected')
+    expect(alert.textContent).toContain('10.0.0.0/33')
+    expect(alert.textContent).toContain('host:8080')
+    expect((field as HTMLInputElement).value).toBe('10.0.0.0/33 host:8080')
   })
 })

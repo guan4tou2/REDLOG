@@ -1,4 +1,5 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import { parseScopeInput } from '../../lib/scopeInput'
 
 export default function ScopePage({
   config, setConfig, t
@@ -27,6 +28,7 @@ export default function ScopePage({
           items={config.scope.targets}
           onChange={(items) => setConfig({ ...config, scope: { ...config.scope, targets: items } })}
           placeholder={t('settings.targetsPlaceholder')}
+          parse={parseScopeInput}
         />
       </FieldGroup>
       <FieldGroup title={t('settings.excludedTargets')}>
@@ -35,6 +37,7 @@ export default function ScopePage({
           items={config.scope.excludeTargets}
           onChange={(items) => setConfig({ ...config, scope: { ...config.scope, excludeTargets: items } })}
           placeholder={t('settings.excludePlaceholder')}
+          parse={parseScopeInput}
         />
       </FieldGroup>
       <FieldGroup title={t('settings.personalDomains')}>
