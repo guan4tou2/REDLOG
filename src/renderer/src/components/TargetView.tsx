@@ -389,7 +389,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                         <button
                           onClick={loadMore}
                           disabled={loadingMore}
-                          className="mt-2 text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint"
+                          className="mt-2 px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated disabled:opacity-40"
                         >
                           {loadingMore ? t('targets.loading') : t('targets.loadMore', { loaded: evidence.length, total: tgt.eventCount })}
                         </button>

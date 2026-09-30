@@ -1722,7 +1722,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                 )}
         </span>
         {hasMore && (
-          <button onClick={loadMore} className="text-xs text-redlog-text-faint hover:text-redlog-text ml-1 transition-colors">
+          <button onClick={loadMore} className="ml-1 px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors">
             {t('timeline.loadMore')}
           </button>
         )}

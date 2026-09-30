@@ -237,7 +237,7 @@ export default function App(): JSX.Element {
           >{t('settings.checkUpdate')}</button>
         </div>
         <button
-          className="ml-2 min-w-0 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
+          className="ml-2 min-w-0 h-7 px-2 rounded-md bg-redlog-elevated/50 hover:bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
             // Pending settings go to THIS project before it closes (#223).
