@@ -106,6 +106,8 @@ export interface PluginInfo {
   manualSteps?: ManualStep[]
   /** how to undo a source RedLog cannot uninstall itself */
   removalSteps?: ManualStep[]
+  /** Contributed by a plugin the operator has switched off. */
+  disabled?: boolean
   /** Shipped with RedLog, as opposed to contributed by an installed plugin.
    *  The Hooks page lists only these: a plugin's own capture belongs on the
    *  Plugins page, beside the plugin that brought it. */
@@ -255,13 +257,47 @@ export function registerCapturePlugins(
     // namespace the id so two plugins can't collide with each other or a built-in
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
     externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
+    const retired = retiredCaptures.findIndex((m) => m.id === id)
+    if (retired >= 0) retiredCaptures.splice(retired, 1)
   }
 }
 
+// Disabled captures, kept rather than dropped.
+//
+// Unregistering used to delete them outright, so a disabled source vanished
+// from `detectHooks()` and from capture-health together. That reads as "this
+// is not happening" and it is not what disabling does: these producers run
+// outside RedLog -- tcpdump under sudo, an iptables redirect, a log tailer --
+// and they keep running and keep POSTing, because ingest does not consult the
+// plugin registry. So an operator who pressed the switch to STOP a host-level
+// redirect got a screen with no rows for it while the traffic kept landing in
+// the record. A control that looks like a stop button and is actually a
+// blindfold is worse than no control.
+//
+// They stay listed, flagged, with their live state still read from the events
+// themselves — which is how "disabled, and still receiving" becomes something
+// the operator can see instead of something only the record knows.
+const retiredCaptures: PluginManifest[] = []
+
 export function unregisterCapturePlugins(pluginId: string): void {
   for (let i = externalCaptures.length - 1; i >= 0; i--) {
-    if (externalCaptures[i].id.startsWith(`${pluginId}.`)) externalCaptures.splice(i, 1)
+    if (externalCaptures[i].id.startsWith(`${pluginId}.`)) {
+      retiredCaptures.push(externalCaptures[i])
+      externalCaptures.splice(i, 1)
+    }
   }
+}
+
+/** Every capture the UI should show, live or switched off. Behaviour — install
+ *  targets, hook paths — reads `allManifests()` and is deliberately unchanged:
+ *  a disabled capture is listed, not runnable. */
+function listableManifests(): Array<PluginManifest & { disabled?: boolean }> {
+  const live = allManifests()
+  const liveIds = new Set(live.map((m) => m.id))
+  return [
+    ...live,
+    ...retiredCaptures.filter((m) => !liveIds.has(m.id)).map((m) => ({ ...m, disabled: true }))
+  ]
 }
 
 function allManifests(): PluginManifest[] {
@@ -547,7 +583,7 @@ function hasManualSteps(plugin: PluginManifest): boolean {
 
 export function detectHooks(): PluginInfo[] {
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
-  return allManifests().map((plugin) => {
+  return listableManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
     const manualSteps = hasManualSteps(plugin)
       ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
@@ -566,6 +602,9 @@ export function detectHooks(): PluginInfo[] {
       manualSteps,
       removalSteps: buildRemovalSteps(plugin.id),
       builtin: builtinIds.has(plugin.id),
+      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
+       *  runs outside RedLog and disabling does not stop it. */
+      disabled: (plugin as { disabled?: boolean }).disabled === true,
       stepsAreOptional: plugin.id === 'mitmproxy'
     }
   })
@@ -574,7 +613,7 @@ export function detectHooks(): PluginInfo[] {
 let _detectCache: PluginInfo[] | null = null
 
 export async function detectHooksAsync(): Promise<PluginInfo[]> {
-  const manifests = allManifests()
+  const manifests = listableManifests()
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   const results = await Promise.all(manifests.map(async (plugin) => {
     const hookFile = srcPathFor(plugin)
@@ -594,6 +633,9 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       manualSteps,
       removalSteps: buildRemovalSteps(plugin.id),
       builtin: builtinIds.has(plugin.id),
+      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
+       *  runs outside RedLog and disabling does not stop it. */
+      disabled: (plugin as { disabled?: boolean }).disabled === true,
       stepsAreOptional: plugin.id === 'mitmproxy'
     }
   }))

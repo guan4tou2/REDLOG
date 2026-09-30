@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { FieldGroup, type HookInfo } from './SettingsShared'
-import { writeClipboard } from '../../lib/clipboard'
 import { removeHookWithUndo } from '../../lib/hookRemoval'
-import { requestRunInTerminal } from '../../lib/terminalRunner'
+import { SetupAndTeardown } from './ManualStepList'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -28,11 +27,6 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
   useEffect(() => {
     (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
   }, [])
-
-  const copy = async (text: string): Promise<void> => {
-    const ok = await writeClipboard(text)
-    toast(ok ? t('toast.copied') : t('toast.copyFailed'), ok ? 'success' : 'error')
-  }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
     const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
@@ -143,43 +137,19 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                     </button>
                   )}
                 </div>
-                {hasSteps && isOpen && (
-                  <div className="border-t border-redlog-border px-3 py-2.5 space-y-2.5">
-                    {hook.manualSteps!.map((step, i) => (
-                      <div key={i}>
-                        <p className="text-xs text-redlog-text-dim leading-relaxed">
-                          <span className="text-redlog-text-dim">{i + 1}.</span> {step.label}
-                        </p>
-                        {step.command && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <code title={step.command} className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
-                              {step.command}
-                            </code>
-                            <button
-                              onClick={() => void copy(step.command!)}
-                              className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
-                            >
-                              {t('settings.hookCopy')}
-                            </button>
-                            {/* Pasting into some other terminal is the one
-                                part of an engagement RedLog does not record.
-                                This types the line into RedLog's own shell —
-                                without pressing Enter, because some of these
-                                start long-running processes and some kill
-                                them by PID. */}
-                            <button
-                              data-testid="hook-step-run"
-                              onClick={() => requestRunInTerminal(step.command!)}
-                              title={t('settings.hookRunHint')}
-                              className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
-                            >
-                              {t('settings.hookRun')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-redlog-text-faint pt-0.5">{t('settings.hookManualNote')}</p>
+                {isOpen && (
+                  <div className="border-t border-redlog-border px-3 py-2.5">
+                    {/* Shared with the external-capture group, so a teardown
+                        written in core reaches the operator wherever the
+                        source is listed. `removalSteps` used to render
+                        nowhere at all — including the mitmproxy CA removal,
+                        the longest-lived thing RedLog leaves on a machine. */}
+                    <SetupAndTeardown
+                      setup={hook.manualSteps}
+                      teardown={hook.removalSteps}
+                      note={hasSteps ? t('settings.hookManualNote') : undefined}
+                      t={t}
+                    />
                   </div>
                 )}
               </div>

@@ -76,8 +76,16 @@ export interface HookInfo {
   installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]
+  /** How to undo it. Computed in core for every hook and, until now, rendered
+   *  by nothing — including the mitmproxy CA removal, which is the longest
+   *  lived thing RedLog can leave on a machine. */
+  removalSteps?: ManualStep[]
   /** Shipped with RedLog, rather than contributed by an installed plugin. */
   builtin?: boolean
+  /** Contributed by a plugin that has been switched off. Still listed: these
+   *  producers run outside RedLog, so switching them off here does not stop
+   *  them, and a row that disappears reads as one that is not happening. */
+  disabled?: boolean
   /** The steps are an extra, not a setup RedLog needs the operator to do. */
   stepsAreOptional?: boolean
 }
