@@ -537,6 +537,7 @@
   "terminal.pickShell": "Choose the shell for the next pane",
   "terminal.notRecorded": "not recorded",
   "timeline.zoomIn": "Zoom in (Ctrl+scroll)",
+  "timeline.minimapPartialHint": "Covers the loaded range only — the emptiness at the left is an unfetched page, not a gap in the record. Scroll to the end or load more for the full span.",
   "timeline.minimapHint": "Drag to zoom to a time window · click to jump",
   "timeline.zoomOut": "Zoom out (Ctrl+scroll)",
   "timeline.resetZoom": "Reset zoom",

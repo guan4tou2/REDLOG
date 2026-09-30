@@ -32,17 +32,21 @@ export function TimelineEventLog({
   // vh until the operator drags, so the DEFAULT scales with window height —
   // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
   // taken on somebody else's monitor. Once dragged, px wins.
-  const height = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
+  // A FLOOR, not a fixed height. The lanes above are capped at their content,
+  // so whatever the window has left over arrives here — which is the point:
+  // the surplus used to be spent padding lanes out around a 9px dot while
+  // this list showed six rows.
+  const minHeight = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
-    <div ref={rootRef} className="shrink-0 border-t border-redlog-border/60 bg-redlog-bg/50" style={{ height }}>
-      <div className="px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
+    <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
+      <div className="shrink-0 px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
         <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
         <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
       </div>
-      {/* 32px is the header above. Expressed against the panel's own height so
-          the list follows a dragged size; it used to restate the vh literal,
-          which is why only the default ever lined up. */}
-      <div className="overflow-y-auto" style={{ height: 'calc(100% - 32px)' }}>
+      {/* The header above is a fixed row; this takes the rest. It used to
+          restate the vh literal in a calc(), which is why only the default
+          height ever lined up. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {events.map((evt) => {
           const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
           const isSel = selectedId === evt.id

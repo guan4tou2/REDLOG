@@ -18,7 +18,7 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
-import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, binHeight, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
@@ -43,6 +43,11 @@ import {
 import { eventTitle } from '../lib/eventTitle'
 
 const MIN_LANE_H = 36
+// A dot is 9px. A lane taller than this is empty space either side of it, and
+// on a half-screen window the old `available / rows` division handed every
+// band 168px to draw nine pixels in — 159px of nothing per row, four rows
+// deep, while the list under it showed six lines.
+const MAX_LANE_H = 44
 const LABEL_W = 92
 // v0.11.6 (AUDIT V8): a floor, not a fixed width. The track used to be exactly
 // 2000px at zoom 1 regardless of the window, so on a 2560px or 4K display the
@@ -531,11 +536,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     [populatedLanes, hiddenLanes]
   )
 
+  // Lane height is clamped, not divided.
+  //
+  // Dividing the container by the row count meant the lanes took whatever
+  // space existed whether they could use it or not: measured at 960x1032, the
+  // four collapsed bands got 168px each to draw a 9px dot in, so two thirds of
+  // the Timeline was lane padding and the list showed six rows. Clamped, the
+  // same window gives the lanes 172px total and the list twenty-four rows —
+  // and nothing is lost, because nothing was being drawn in the difference.
+  //
+  // The floor still wins over the ceiling when rows are expanded past what
+  // fits: the container scrolls, which is what it did before.
   const laneH = useMemo(() => {
     if (visibleRows.length === 0) return MIN_LANE_H
     const axisH = 28
     const available = containerH - axisH
-    return Math.max(MIN_LANE_H, Math.floor(available / visibleRows.length))
+    const shareOut = Math.floor(available / visibleRows.length)
+    return Math.min(MAX_LANE_H, Math.max(MIN_LANE_H, shareOut))
   }, [containerH, visibleRows.length])
 
   // Spec 038 (research R1): pages come from the shared-filter page query, on
@@ -2029,16 +2046,34 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         </div>
       )}
 
-      {/* Density minimap — overview of the whole engagement. Drag to zoom to a
-          window, click to jump. The bright frame marks the current viewport. */}
+      {/* Density minimap. Drag to zoom to a window, click to jump; the bright
+          frame marks the current viewport.
+          It is an overview of what is LOADED, not of the engagement — the bins
+          are built from the paged set, and the pager fetches backwards from
+          the newest row. So while `hasMore` is true, the emptiness at the left
+          edge is the page boundary, not silence in the record. This strip's
+          one irreplaceable job is showing gaps, and it was drawing a gap that
+          was really an unread page: the operator could not tell "nothing
+          happened here" from "not fetched yet", on the one surface that
+          exists to answer exactly that. It now says which it is. */}
       <div
         className="relative h-9 border-b border-redlog-border/80 bg-redlog-bg/40 cursor-crosshair select-none shrink-0"
         onMouseDown={onMinimapDown}
-        title={t('timeline.minimapHint')}
+        title={hasMore ? t('timeline.minimapPartialHint') : t('timeline.minimapHint')}
       >
+        {hasMore && (
+          <span
+            data-testid="minimap-partial"
+            className="absolute left-1 top-0 bottom-0 flex items-center text-xs text-redlog-warn pointer-events-none z-10"
+            title={t('timeline.minimapPartialHint')}
+          >&#8942;</span>
+        )}
         <div className="absolute inset-0 flex items-end gap-px px-1 pb-0.5">
           {bins.counts.map((c, i) => (
-            <div key={i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: c ? `${18 + (c / bins.max) * 72}%` : '0%' }} />
+            // 18% floor on anything non-empty so one event is visible, and
+            // zero stays at zero — "quiet" and "nothing at all" are the whole
+            // point of the strip and must not look alike.
+            <div key={i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: c ? `${18 + binHeight(c, bins.max) * 72}%` : '0%' }} />
           ))}
         </div>
         <div
@@ -2068,7 +2103,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             under their labels. 18 lanes x the 36px floor overflows a 1080p
             window, and the old `overflow-hidden` clipped the tail of the
             stack (scope / process / system) with no scrollbar and no hint. */}
-        <div ref={containerRef} data-testid="timeline-lane-scroll" className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto">
+        {/* Capped at its own content. Clamping laneH is only half the fix: a
+            `flex-1` box still takes every spare pixel and pads the lanes out
+            inside it, which is the 159px-of-nothing-per-row the measurement
+            found. With a max-height flexbox freezes this box at its content
+            and hands the remainder to the list below, which is where rows are
+            actually read. */}
+        <div
+          ref={containerRef}
+          data-testid="timeline-lane-scroll"
+          className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto"
+          style={{ maxHeight: visibleRows.length * laneH + 28 }}
+        >
           {/* Lane labels */}
           <div className="shrink-0 border-r border-redlog-border/60 bg-redlog-bg/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-redlog-border/60" />
