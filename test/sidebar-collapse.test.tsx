@@ -13,11 +13,13 @@ import Sidebar from '../src/renderer/src/components/Sidebar'
 import { storedSidebarCollapsed } from '../src/renderer/src/lib/sidebarCollapsed'
 
 const VIEWS = new Set(['dashboard', 'timeline', 'terminal'] as const)
+/** Every page on — the state that used to clip the footer off the bottom. */
+const ALL = undefined
 
-function draw(): void {
+function draw(views: unknown = VIEWS): void {
   render(
     <I18nProvider>
-      <Sidebar active="dashboard" onNavigate={vi.fn()} visibleViews={VIEWS as never} projectId="p1" />
+      <Sidebar active="dashboard" onNavigate={vi.fn()} visibleViews={views as never} projectId="p1" />
     </I18nProvider>
   )
 }
@@ -67,5 +69,17 @@ describe('the sidebar rail', () => {
     expect(screen.getByTestId('sidebar-show-all')).toBeTruthy()
     fireEvent.click(screen.getByTestId('sidebar-collapse'))
     expect(screen.queryByTestId('sidebar-show-all')).toBeNull()
+  })
+
+  it('keeps the footer reachable when every page is on', () => {
+    draw(ALL)
+    // The rows scroll in their own band; Settings and the collapse toggle are
+    // not pushed off the bottom of a nav that does not scroll.
+    const rows = screen.getByTestId('sidebar-collapse').closest('nav')!
+      .querySelector('[data-view-btn="dashboard"]')!.parentElement!
+    expect(rows.className).toMatch(/overflow-y-auto/)
+    expect(rows.className).toMatch(/flex-1/)
+    expect(screen.getByTestId('sidebar-collapse')).toBeTruthy()
+    expect(screen.getByText('設定')).toBeTruthy()
   })
 })
