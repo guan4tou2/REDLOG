@@ -255,6 +255,24 @@ export function initDB(projectDir: string): Database.Database {
       created_at INTEGER NOT NULL
     );
 
+    -- Operator commentary on one event: "this 404 is the interesting one",
+    -- "ran this twice by mistake". A side table for the same reason as
+    -- do_not_export -- events rows are immutable and hashed, and a note
+    -- written an hour later must not change the row it is about or the
+    -- chain would no longer verify.
+    --
+    -- It is an ANNOTATION, not evidence. The event says what happened; the
+    -- note says what the operator made of it, and it carries its own
+    -- timestamps so a reader can see it was written after the fact.
+    -- Empty text deletes the row rather than storing an empty note: a note
+    -- someone cleared should leave nothing behind, not a blank one.
+    CREATE TABLE IF NOT EXISTS event_notes (
+      event_id   TEXT PRIMARY KEY,
+      note       TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     -- v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.3): the
     -- logged tier for supporting evidence -- DNS lookups, HTTP flow
     -- bookkeeping, CDP console lines, agent thinking, ip_verdict

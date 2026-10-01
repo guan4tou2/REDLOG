@@ -5,6 +5,7 @@
 
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { EventNoteField } from './EventNoteField'
 import { formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
 import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
@@ -408,6 +409,8 @@ export function TimelineEventInspector({
           {JSON.stringify(event.data, null, 2)}
         </pre>
       )}
+      {/* Last, because it is the operator's words about everything above it. */}
+      <EventNoteField eventId={event.id} t={t} />
     </>
   )
 }

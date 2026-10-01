@@ -54,7 +54,12 @@ function draw(over: Partial<Parameters<typeof TimelineEventInspector>[0]> = {}):
   return onStep
 }
 
-beforeEach(() => localStorage.setItem('redlog-locale', 'zh-TW'))
+beforeEach(() => {
+  localStorage.setItem('redlog-locale', 'zh-TW')
+  ;(window as unknown as { redlog: unknown }).redlog = {
+    events: { getNote: vi.fn(async () => null), setNote: vi.fn(async () => null) }
+  }
+})
 afterEach(() => { cleanup(); localStorage.clear() })
 
 describe('stepping through the list from the detail pane', () => {
