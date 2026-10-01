@@ -44,6 +44,10 @@ import {
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
 
+// How far the pointer may travel before a press on the track counts as a pan
+// rather than a click. Same slop the minimap uses to tell a drag-to-zoom from
+// a click-to-jump.
+const PAN_SLOP_PX = 4
 const MIN_LANE_H = 36
 // A dot is 9px. A lane taller than this is empty space either side of it, and
 // on a half-screen window the old `available / rows` division handed every
@@ -478,6 +482,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   const sortedRef = useRef<RedLogEvent[]>([])
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, scroll: 0 })
+  // Did the gesture that is ending now PAN the track? A dot's hit box is 20px
+  // in a 36px lane, so grabbing the track to pan very often grabs a dot —
+  // most often the selected one, which is both what the operator is looking
+  // at and drawn on top. mouseup over the same button is still a `click`, so
+  // panning a few pixels fired the dot's toggle and cleared the selection out
+  // from under the detail pane. A pan is not a click; this says which it was.
+  const didPan = useRef(false)
   const didScrollToNow = useRef(false)
   const pendingZoomAnchor = useRef<{ frac: number; cursorX: number } | null>(null)
   const { t } = useI18n()
@@ -1294,6 +1305,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     if (target?.closest('[data-timeline-popup]')) return
     setCluster(null)
     isDragging.current = true
+    // Cleared here rather than on mouseup: the `click` this gesture may
+    // produce is dispatched AFTER mouseup, so it has to still be able to read
+    // what the gesture was. The next mousedown is the first moment nothing
+    // needs the answer any more.
+    didPan.current = false
     dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 }
     document.body.classList.add('timeline-grabbing')
   }, [])
@@ -1302,6 +1318,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     const onMove = (e: MouseEvent): void => {
       if (!isDragging.current || !scrollRef.current) return
       const dx = e.clientX - dragStart.current.x
+      if (Math.abs(dx) > PAN_SLOP_PX) didPan.current = true
       scrollRef.current.scrollLeft = dragStart.current.scroll - dx
     }
     const onUp = (): void => {
@@ -2487,7 +2504,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                         : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
-                      onClick={() => single ? (sel ? (setSelectedEvent(null), setDetailOpen(false)) : (setSelectedEvent(evt), setDetailOpen(true))) : setCluster({ x: c.x, y: c.y, events: c.events })}
+                      onClick={() => {
+                        // The tail of a pan, not a click on this dot. A
+                        // keyboard Enter/Space activation never pans, so it
+                        // never hits this.
+                        if (didPan.current) return
+                        if (!single) { setCluster({ x: c.x, y: c.y, events: c.events }); return }
+                        if (sel) { setSelectedEvent(null); setDetailOpen(false); return }
+                        setSelectedEvent(evt)
+                        setDetailOpen(true)
+                      }}
                     >
                       <div
                         className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
