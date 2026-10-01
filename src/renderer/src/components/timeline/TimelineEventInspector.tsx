@@ -4,7 +4,8 @@
 // Timeline value before it is declared.
 
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
+import type { DetailLayout } from '../../lib/detailLayout'
 import { EventNoteField } from './EventNoteField'
 import { formatDateTime, formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
@@ -45,6 +46,12 @@ export interface TimelineEventInspectorProps {
   onStep?: (delta: -1 | 1) => void
   canStepPrev?: boolean
   canStepNext?: boolean
+  /** Dock position, and a toggle for it, so the control sits in the pane's own
+   *  header (as on the HTTP log) rather than off on the toolbar. */
+  layout?: DetailLayout
+  onToggleLayout?: () => void
+  /** Close the pane from its own header. */
+  onClose?: () => void
   /** Select an event without scrolling. */
   onSelect: (e: RedLogEvent) => void
   /** Fetch an event outside the loaded page and select it. */
@@ -58,19 +65,20 @@ export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
-  onStep, canStepPrev = false, canStepNext = false
+  onStep, canStepPrev = false, canStepNext = false,
+  layout, onToggleLayout, onClose
 }: TimelineEventInspectorProps): JSX.Element {
   return (
     <>
-      {/* Pinned to the top of the pane, not scrolled with the body. The two
-          things on this row are how you leave the event — step to the next
-          one, exclude it, ask what else was running — and they used to go off
-          the top as soon as you read past the first screen, so stepping meant
-          scrolling back up first. `-top-3`/`-mx-4` cancel the pane's own
-          `py-3 px-4`: at `top-0` the pane's padding stays above the bar and
-          the body scrolls through the gap. The background is opaque for the
-          same reason — the pane is translucent, and a translucent bar shows
-          the text passing underneath it.
+      {/* Pinned to the top of the pane, not scrolled with the body — so
+          step/close/exclude stay reachable past the first screen. `sticky
+          top-0` with the pane dropping its own top padding (`pb-3`, not
+          `py-3`): the bar sits flush at the pane's top and holds that position
+          as the body scrolls, rather than jumping up a padding's worth the
+          moment scrolling begins (the old `-top-3` trick did that, and it read
+          as the whole pane shifting). `-mx-4 px-4` still cancels the pane's
+          horizontal padding so the bar is full-bleed. The background is opaque
+          because the pane is translucent and the body scrolls underneath it.
 
           It WRAPS. Beside the list the pane is 440px by default and 280px at
           its narrowest, and a single non-wrapping row put both label buttons
@@ -78,7 +86,7 @@ export function TimelineEventInspector({
           per line, 匯出時排除 one character per line, and the bar grew taller
           than the title it sits above. The identity chips keep their line and
           the two actions drop to their own when there is no room for both. */}
-      <div className="sticky -top-3 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+      <div className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-2 min-w-0">
           {/* Reading a capture is reading a sequence — what ran before this,
               what came back after. The keyboard could already walk it, lane by
@@ -142,6 +150,34 @@ export function TimelineEventInspector({
           >
             {dneFlag ? t('timeline.doNotExportActive') : t('timeline.doNotExport')}
           </button>
+          {/* Dock and close live in the pane's own header now, matching the
+              HTTP log, so every detail pane is driven from one place instead of
+              the dock control sitting off on the timeline toolbar. */}
+          {layout && onToggleLayout && (
+            <button
+              type="button"
+              data-testid="timeline-layout-toggle"
+              onClick={onToggleLayout}
+              title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+              aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+              aria-pressed={layout === 'right'}
+              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            >
+              {layout === 'bottom'
+                ? <PanelBottom size={12} strokeWidth={1.75} aria-hidden />
+                : <PanelRight size={12} strokeWidth={1.75} aria-hidden />}
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              data-testid="timeline-detail-close"
+              onClick={onClose}
+              title={t('httpHistory.closeDetail')}
+              aria-label={t('httpHistory.closeDetail')}
+              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            ><X size={12} strokeWidth={1.75} aria-hidden /></button>
+          )}
         </div>
       </div>
       {/* The headline. One thing on this pane is the subject and everything

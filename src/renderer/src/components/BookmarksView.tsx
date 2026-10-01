@@ -7,7 +7,7 @@ import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
-import { Flag } from 'lucide-react'
+import { Flag, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from './Button'
 
 // A hash of the mark's title used to pick one of eight hues. It grouped
@@ -201,16 +201,23 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             onCancel={() => setCreating(false)}
           />
         )}
-        {selected && !creating && (
-          <BookmarkDetail
-            mark={selected}
-            onUpdate={() => { refresh(); window.redlog.bookmarks.get(selected.id).then((m) => m && setSelected(m)) }}
-            onDelete={() => { setSelected(null); refresh() }}
-            onOpenInTimeline={onOpenInTimeline}
-            isPinned={pinned.has(selected.id)}
-            onTogglePin={() => togglePin(selected.id)}
-          />
-        )}
+        {selected && !creating && (() => {
+          const idx = visibleMarks.findIndex((m) => m.id === selected.id)
+          return (
+            <BookmarkDetail
+              mark={selected}
+              onUpdate={() => { refresh(); window.redlog.bookmarks.get(selected.id).then((m) => m && setSelected(m)) }}
+              onDelete={() => { setSelected(null); refresh() }}
+              onOpenInTimeline={onOpenInTimeline}
+              isPinned={pinned.has(selected.id)}
+              onTogglePin={() => togglePin(selected.id)}
+              onStep={(d) => { const n = visibleMarks[idx + d]; if (n) setSelected(n) }}
+              canStepPrev={idx > 0}
+              canStepNext={idx >= 0 && idx < visibleMarks.length - 1}
+              onClose={() => setSelected(null)}
+            />
+          )
+        })()}
         {!selected && !creating && (
           <div className="flex flex-col items-center justify-center h-full text-redlog-text-faint text-sm gap-2">
             <span>{t('bookmarks.placeholder')}</span>
@@ -288,13 +295,19 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin }: {
+function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin, onStep, canStepPrev = false, canStepNext = false, onClose }: {
   mark: Bookmark
   onUpdate: () => void
   onDelete: () => void
   onOpenInTimeline?: (ts: number) => void
   isPinned?: boolean
   onTogglePin?: () => void
+  // Step/close in the pane's own header, consistent with the HTTP log and the
+  // Timeline inspector, so every detail pane is driven the same way.
+  onStep?: (delta: -1 | 1) => void
+  canStepPrev?: boolean
+  canStepNext?: boolean
+  onClose?: () => void
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const { t } = useI18n()
@@ -312,8 +325,31 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0">
+          {onStep && (
+            <span className="flex items-center mt-0.5 shrink-0">
+              <button
+                type="button"
+                data-testid="bookmark-step-prev"
+                disabled={!canStepPrev}
+                onClick={() => onStep(-1)}
+                title={t('timeline.stepPrev')}
+                aria-label={t('timeline.stepPrev')}
+                className="w-5 h-5 flex items-center justify-center rounded-l border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronLeft size={12} strokeWidth={2} aria-hidden /></button>
+              <button
+                type="button"
+                data-testid="bookmark-step-next"
+                disabled={!canStepNext}
+                onClick={() => onStep(1)}
+                title={t('timeline.stepNext')}
+                aria-label={t('timeline.stepNext')}
+                className="w-5 h-5 flex items-center justify-center rounded-r border border-l-0 border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronRight size={12} strokeWidth={2} aria-hidden /></button>
+            </span>
+          )}
+        <div className="min-w-0">
           <h3 className="text-base font-semibold text-redlog-text">{mark.title}</h3>
           {mark.url && (
             <button
@@ -328,12 +364,23 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
             {formatDateTime(mark.createdAt, { seconds: true })}
           </div>
         </div>
-        <div className="flex gap-1">
+        </div>
+        <div className="flex gap-1 shrink-0">
           {onOpenInTimeline && (
             <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-redlog-elevated text-cyan-400 rounded hover:bg-redlog-elevated-hover">{t('loot.openInTimeline')}</button>
           )}
           <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('bookmarks.edit')}</button>
           <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('bookmarks.delete')}</button>
+          {onClose && (
+            <button
+              type="button"
+              data-testid="bookmark-detail-close"
+              onClick={onClose}
+              title={t('httpHistory.closeDetail')}
+              aria-label={t('httpHistory.closeDetail')}
+              className="w-6 flex items-center justify-center text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:text-redlog-text hover:bg-redlog-elevated-hover"
+            ><X size={14} aria-hidden /></button>
+          )}
         </div>
       </div>
 
