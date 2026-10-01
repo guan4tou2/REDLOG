@@ -103,6 +103,53 @@ describe('a panel the operator drags', () => {
     expect(result.current.px).toBeNull()
   })
 
+  // The same panel laid out on the other axis is the other case of "two keys",
+  // and the one the initializer could not see: the key changed under a mounted
+  // hook. 320px of height came back as 320px of width.
+  describe('the same panel on the other axis', () => {
+    const mount = (key: string, opts?: { min?: number; axis?: 'x' | 'y' }) =>
+      renderHook(({ k, o }: { k: string; o?: { min?: number; axis?: 'x' | 'y' } }) => usePanelHeight(k, o),
+        { initialProps: { k: key, o: opts } })
+
+    it('re-reads storage when the key changes', () => {
+      localStorage.setItem('panel-h', '320')
+      localStorage.setItem('panel-w', '500')
+      const { result, rerender } = mount('panel-h')
+      expect(result.current.px).toBe(320)
+      rerender({ k: 'panel-w', o: { min: 280, axis: 'x' } })
+      expect(result.current.px).toBe(500)
+    })
+
+    it('falls back to the caller default when the new key has nothing stored', () => {
+      // Not the old axis's number. A pane that has never been dragged beside
+      // the list is a pane the side layout gets to size itself.
+      localStorage.setItem('panel-h', '320')
+      const { result, rerender } = mount('panel-h')
+      expect(result.current.px).toBe(320)
+      rerender({ k: 'panel-w', o: { min: 280, axis: 'x' } })
+      expect(result.current.px).toBeNull()
+    })
+
+    it('applies the new key\'s floor, not the one it mounted with', () => {
+      localStorage.setItem('panel-h', '320')
+      localStorage.setItem('panel-w', '120')
+      const { result, rerender } = mount('panel-h')
+      rerender({ k: 'panel-w', o: { min: 280, axis: 'x' } })
+      expect(result.current.px).toBeNull()
+    })
+
+    it('writes a later drag under the key it is now on', () => {
+      localStorage.setItem('panel-h', '320')
+      const { result, rerender } = mount('panel-h')
+      rerender({ k: 'panel-w', o: { min: 280, axis: 'x' } })
+      act(() => result.current.beginResize({ clientX: 500, preventDefault: () => {} }, 400))
+      act(() => { window.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 })) })
+      act(() => { window.dispatchEvent(new MouseEvent('mouseup')) })
+      expect(localStorage.getItem('panel-w')).toBe('500')
+      expect(localStorage.getItem('panel-h')).toBe('320')
+    })
+  })
+
   it('keeps two panels apart, because they are two keys', () => {
     const a = renderHook(() => usePanelHeight('panel-a'))
     const b = renderHook(() => usePanelHeight('panel-b'))
