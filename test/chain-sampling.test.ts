@@ -105,14 +105,6 @@ describeDB('chain-sampling', () => {
     expect(after.lastSampleBroken?.reason).toContain('hash mismatch')
   })
 
-  it('noteSampleOk updates lastSampleOkAt', () => {
-    const t0 = Date.now()
-    capture.noteSampleOk()
-    const h = capture.getCaptureHealth()
-    expect(h.lastSampleOkAt).not.toBeNull()
-    expect(h.lastSampleOkAt!).toBeGreaterThanOrEqual(t0)
-  })
-
   it('clearSampleBroken removes the broken state', () => {
     capture.noteSampleBroken({ eventId: 'evt-x', reason: 'test' })
     expect(capture.getCaptureHealth().lastSampleBroken).toBeDefined()

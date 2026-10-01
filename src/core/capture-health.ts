@@ -99,10 +99,6 @@ export interface CaptureHealth {
    *  time so the Dashboard can render "6d old" alongside the eventId —
    *  operators can tell at a glance whether the flag is fresh or historical. */
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
-   *  Dashboard renders this as "sampled Xm ago" so operators can see the
-   *  background verify is actually running. */
-  lastSampleOkAt?: number | null
   /** §3.1: which HTTP proxy env vars are set so the operator can confirm
    *  traffic routing without leaving the app. */
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
@@ -186,7 +182,6 @@ function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
 // TTL means the dark state persists at least until the next 12 samples
 // have had a chance to re-check).
 let _lastSampleBroken: { at: number; eventId: string; reason: string; eventTimestamp?: number } | null = null
-let _lastSampleOkAt: number | null = null
 const SAMPLE_BROKEN_TTL_MS = 60 * 60 * 1000
 
 // v0.7.6 H3: accept optional `eventTimestamp` so the Dashboard can show
@@ -203,7 +198,6 @@ export function noteSampleBroken(details: { eventId: string; reason: string; eve
     ...(details.eventTimestamp != null ? { eventTimestamp: details.eventTimestamp } : {})
   }
 }
-export function noteSampleOk(): void { healthCache = null; _lastSampleOkAt = Date.now() }
 export function clearSampleBroken(): void { healthCache = null; _lastSampleBroken = null }
 function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
   if (!_lastSampleBroken) return undefined
@@ -577,7 +571,6 @@ function computeCaptureHealth(now: number): CaptureHealth {
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
-    lastSampleOkAt: _lastSampleOkAt,
     proxyEnv,
     managedHttpProxy: managedProxyStatusProvider?.()
   }

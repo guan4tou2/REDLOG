@@ -688,6 +688,11 @@ The tiny StatusBar row-count tick becomes `1,234 · 89,201` (chained · logged) 
 
 The Settings panel's chain-integrity readout ([Settings.tsx §2188](../src/renderer/src/components/Settings.tsx)) already reads `chainHead.eventCount`. That number continues to be chained-only. A new line below it displays logged-tier count and last-fed timestamp, so the operator can tell "is my mitmproxy feeding logged rows too, or is only the chained tier active?".
 
+> **2026-10-01:** the Dashboard's Capture Health card no longer carries a
+> chained · logged footer, and the last-fed timestamp went with it. The split
+> is the StatusBar's (§9.4); on the Dashboard it was a second copy, and
+> whether mitmproxy is feeding is the card's HTTP(S) row, not a tier count.
+
 ---
 
 ## 10. Migration and rollback
