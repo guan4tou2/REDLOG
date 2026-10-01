@@ -10,7 +10,11 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
   // mitmdump is on PATH, and on Windows the fake one cannot run, so the
   // assertion would fail on the fixture rather than on the behaviour.
   test.skip(process.platform === 'win32', 'the mitmdump stand-in is a shell script')
-  test.setTimeout(120_000)
+  // Three proxy transitions now, not two: capture starts with the project, so
+  // this asserts that, stops it, and then exercises the explicit start the
+  // rest of the spec is about. The old 120s budget was the sum of the polls
+  // below and left nothing for the work between them.
+  test.setTimeout(180_000)
   const tmpHome = makeTempHome('redlog-managed-http-')
   writeFileSync(join(tmpHome, '.zshrc'), '# Isolated test shell\n')
   const bin = join(tmpHome, 'bin')
@@ -39,8 +43,10 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     // stopped and waits for a button, and that was the wrong default: an
     // operator who opened a project and started working had no HTTP in the
     // record and nothing said so.
+    // Auto-start runs at project open and the stand-in announces itself at
+    // once, so this is generous rather than a budget to spend.
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
-      { timeout: 45_000, message: 'opening the project did not start capture' })
+      { timeout: 20_000, message: 'opening the project did not start capture' })
       .toMatchObject({ state: 'running' })
 
     const toggle = page.getByTestId('http-capture-toggle')
@@ -50,8 +56,9 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     // the operator's own action, and the only thing that can bring a stopped
     // source back.
     await toggle.click()
+    // Stopping is a kill, not a spawn — it does not need a cold-start budget.
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
-      { timeout: 30_000 }).toMatchObject({ state: 'stopped', url: null })
+      { timeout: 15_000 }).toMatchObject({ state: 'stopped', url: null })
 
     // Editing capture settings cannot start a stopped source.
     await page.evaluate(async () => {
