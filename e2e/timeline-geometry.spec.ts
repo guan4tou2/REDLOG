@@ -164,7 +164,13 @@ test.describe.serial('timeline geometry + startup gates', () => {
       const scroll = document.querySelector('div.cursor-grab') as HTMLElement | null
       if (!scroll) return null
       const track = scroll.firstElementChild as HTMLElement
-      const trackW = track.getBoundingClientRect().width
+      // `offsetWidth`, not `getBoundingClientRect().width`. The app renders
+      // at `body { zoom: 0.9 }`, and the two disagree under zoom: the rect is
+      // in device pixels (2000 × 0.9 = 1800) while `offsetLeft` below is in
+      // CSS pixels. Comparing them made a dot at 1898 of a 2000px track read
+      // as 98px outside it — an assertion failing on arithmetic rather than
+      // on anything that was wrong with the track.
+      const trackW = track.offsetWidth
       const dots = Array.from(document.querySelectorAll('[data-timeline-event]')) as HTMLElement[]
       const xs = dots.map((d) => d.offsetLeft)
       return { trackW, count: dots.length, min: Math.min(...xs), max: Math.max(...xs) }

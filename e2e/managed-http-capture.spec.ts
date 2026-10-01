@@ -4,6 +4,12 @@ import { delimiter, join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 test('REDLOG owns HTTP capture and exposes its real state', async () => {
+  // The fixture below is a `#!/bin/sh` script standing in for mitmdump, so
+  // this has always been a POSIX test — it just never said so, because CI
+  // runs e2e on ubuntu. It matters now: capture starts with the project when
+  // mitmdump is on PATH, and on Windows the fake one cannot run, so the
+  // assertion would fail on the fixture rather than on the behaviour.
+  test.skip(process.platform === 'win32', 'the mitmdump stand-in is a shell script')
   test.setTimeout(120_000)
   const tmpHome = makeTempHome('redlog-managed-http-')
   writeFileSync(join(tmpHome, '.zshrc'), '# Isolated test shell\n')
@@ -28,8 +34,25 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'managed-http')
 
-    await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
-      .toMatchObject({ state: 'stopped', url: null })
+    // Capture now starts with the project when mitmdump is on PATH, which it
+    // is here — the fake one. The old contract was that a fresh project opens
+    // stopped and waits for a button, and that was the wrong default: an
+    // operator who opened a project and started working had no HTTP in the
+    // record and nothing said so.
+    await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
+      { timeout: 45_000, message: 'opening the project did not start capture' })
+      .toMatchObject({ state: 'running' })
+
+    const toggle = page.getByTestId('http-capture-toggle')
+    await expect(toggle).toHaveText('Stop HTTP capture')
+
+    // Stop it, so the rest of this spec still exercises the explicit start —
+    // the operator's own action, and the only thing that can bring a stopped
+    // source back.
+    await toggle.click()
+    await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
+      { timeout: 30_000 }).toMatchObject({ state: 'stopped', url: null })
+
     // Editing capture settings cannot start a stopped source.
     await page.evaluate(async () => {
       const config = await window.redlog.config.get()
@@ -37,9 +60,6 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     })
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    // The app-wide toggle, not the first-run card's button: a fresh project
-    // opens on first run, where both are on screen (#217).
-    const toggle = page.getByTestId('http-capture-toggle')
     await expect(toggle).toHaveText('Start HTTP capture')
     await toggle.click()
     // Starting the proxy spawns mitmdump, an external Python process, and

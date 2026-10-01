@@ -24,11 +24,21 @@ test.describe.serial('active target context', () => {
 
   test.afterAll(async () => { await app?.close() })
 
+  // The title bar's active-target input is gone — it sat on the strip that
+  // holds the evidence verbs, for a value set a handful of times an
+  // engagement, and Settings and the Targets page both already owned it. The
+  // capability did not go with it: Targets ▸ "Work on this" sets it, and it
+  // is read back through the bridge. So the semantics this spec exists for —
+  // persists per project, applies only as a fallback — are driven through
+  // the bridge rather than through a control that no longer exists.
+  const activeTarget = (): Promise<string | null> =>
+    page.evaluate(() => (window as unknown as { redlog: RedLogAPI }).redlog.targetContext.get())
+  const setActiveTarget = (t: string): Promise<unknown> =>
+    page.evaluate((v) => (window as unknown as { redlog: RedLogAPI }).redlog.targetContext.set(v), t)
+
   test('persists per project and applies only as a fallback', async () => {
-    const input = page.getByTestId('active-target-input')
-    await input.fill('10.10.11.24')
-    await input.press('Enter')
-    await expect(input).toHaveValue('10.10.11.24')
+    await setActiveTarget('10.10.11.24')
+    await expect.poll(activeTarget).toBe('10.10.11.24')
 
     const initialEvidence = await page.evaluate(async () => {
       const bridge = (window as unknown as { redlog: RedLogAPI }).redlog
@@ -65,9 +75,9 @@ test.describe.serial('active target context', () => {
     expect(projectResult.restoredA).toBe('10.10.11.24')
 
     await page.reload()
-    await expect(page.getByTestId('active-target-input')).toHaveValue('10.10.11.24')
-    await page.getByRole('button', { name: 'Clear current target' }).click()
-    await expect(page.getByTestId('active-target-input')).toHaveValue('')
+    await expect.poll(activeTarget).toBe('10.10.11.24')
+    await setActiveTarget('')
+    await expect.poll(activeTarget).toBeNull()
     const clearedMarkerTarget = await page.evaluate(async () => {
       const event = await (window as unknown as { redlog: RedLogAPI }).redlog.marker.create({ title: 'cleared target marker' })
       return event?.targetId
@@ -78,6 +88,8 @@ test.describe.serial('active target context', () => {
     await page.click('[data-view-btn="targets"]')
     const targetRow = page.getByText('10.10.11.99', { exact: true }).locator('..')
     await targetRow.getByRole('button', { name: 'Work on this' }).click()
-    await expect(page.getByTestId('active-target-input')).toHaveValue('10.10.11.99')
+    // The Targets page is now the control, so this is the case that matters
+    // most: the one surface that can still set it, still does.
+    await expect.poll(activeTarget).toBe('10.10.11.99')
   })
 })
