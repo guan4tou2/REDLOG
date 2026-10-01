@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import fs from 'fs'
 import { detectHooks, getHookInstallPlan, installHook } from '../src/core/hooks-manager'
+import { loadPlugins } from '../src/core/plugins/loader'
+import { applyContributions } from '../src/core/plugins/contributions'
 
 // process.platform is non-writable; test the Windows refusal branch by
 // swapping it in-place then restoring.
@@ -76,8 +78,17 @@ describe('hooks-manager guided setup', () => {
     }
   })
 
+  // Codex is contributed by pack-ai-agents now, not shipped as a built-in, so
+  // it reaches detectHooks only once that pack's contributions are applied —
+  // and under the namespaced id every contributed producer gets. Its setup
+  // steps still come from code rather than the manifest, because they branch
+  // on the platform and a manifest's `manualSteps` are one fixed list.
   it('codex is guided-manual with platform-appropriate steps', () => {
-    const c = byId('codex')
+    const pack = loadPlugins().find((p) => p.manifest.id === 'pack-ai-agents')
+    expect(pack, 'pack-ai-agents not found on disk').toBeDefined()
+    applyContributions(pack!)
+    const c = detectHooks().find((h) => h.id === 'pack-ai-agents.codex')!
+    expect(c, 'the pack contributes no codex producer').toBeDefined()
     expect(c.installMethod).toBe('manual')
     expect(c.manualSteps?.length).toBeGreaterThan(0)
     if (process.platform === 'win32') {
