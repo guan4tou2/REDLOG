@@ -7,7 +7,18 @@ import { formatTime } from '../../lib/time'
 import { foldByCause, statusSummary } from '../../lib/timelineFold'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { LANE_COLORS, toLane, type PluginEventType } from '../../lib/timelineDomain'
+import { isMac, isWindows } from '../../lib/platform'
 import { TierBadge } from '../TierBadge'
+
+/** Why this host answers nothing, in its own terms. The three platforms fail
+ *  at different points and the remedy is not the same, so a line that lists
+ *  all three tells two operators out of three to go install something they do
+ *  not need — and said nothing at all to the Windows one, which is how this
+ *  was reported. `netstat -no` is always present, so on Windows the socket's
+ *  owner is never the missing half: the pid → command link is. */
+const blindCauseKey = isWindows
+  ? 'timeline.fold.blind.win32'
+  : isMac ? 'timeline.fold.blind.darwin' : 'timeline.fold.blind.linux'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -97,7 +108,7 @@ export function TimelineEventLog({
           notice is tempted to put the time-window guess back. */}
       {attributionBlind && (
         <p data-testid="log-attribution-blind" className="shrink-0 px-3 py-1 text-xs text-redlog-warn border-b border-redlog-border-subtle/30">
-          {t('timeline.fold.blind')}
+          {t('timeline.fold.blind')} {t(blindCauseKey)}
         </p>
       )}
       <div className="flex-1 min-h-0 overflow-y-auto">
