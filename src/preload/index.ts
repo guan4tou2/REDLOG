@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
 import type { ArtifactAddResponse } from '../core/artifacts'
+import type { EventNote } from '../core/db/event-notes'
 
 // Single source of truth: the bridge is typed against the RedLogAPI contract
 // declared in the renderer's env.d.ts. Before this, env.d.ts was a hand-copied
@@ -127,6 +128,10 @@ const api: RedLogAPI = {
     },
     toggleDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
+    setNote: (eventId: string, note: string) =>
+      ipcRenderer.invoke('events:setNote', eventId, note) as Promise<EventNote | null>,
+    getNote: (eventId: string) =>
+      ipcRenderer.invoke('events:getNote', eventId) as Promise<EventNote | null>,
     isDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },

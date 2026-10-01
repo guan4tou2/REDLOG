@@ -249,6 +249,8 @@ interface RedLogAPI {
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    setNote: (eventId: string, note: string) => Promise<EventNote | null>
+    getNote: (eventId: string) => Promise<EventNote | null>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
@@ -488,6 +490,12 @@ interface CaptureSourceInfo {
   /** Switched off and listed anyway. With `state: 'active'` it is the one
    *  combination that means the record is taking data nobody authorised. */
   disabled?: boolean
+}
+
+interface EventNote {
+  note: string
+  createdAt: number
+  updatedAt: number
 }
 
 interface CaptureHealthInfo {
