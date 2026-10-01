@@ -14,7 +14,7 @@ import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/T
 import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
-import { Rows3, PanelBottom, PanelRight } from 'lucide-react'
+import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
@@ -1825,21 +1825,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           aria-label={t('timeline.help.hint')}
         >?</button>
 
-        {/* Where the detail pane sits. A switch you reach for while working —
-            reading one capture closely wants width, sweeping the record wants
-            height — so it is here rather than two pages away in Settings. */}
-        <button
-          data-testid="timeline-layout-toggle"
-          onClick={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
-          className="ml-1 w-5 h-5 flex items-center justify-center text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-          title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
-          aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
-          aria-pressed={layout === 'right'}
-        >
-          {layout === 'bottom'
-            ? <PanelBottom size={12} strokeWidth={1.75} aria-hidden />
-            : <PanelRight size={12} strokeWidth={1.75} aria-hidden />}
-        </button>
+        {/* The detail pane's dock control moved into the pane's own header
+            (TimelineEventInspector), so it sits with close and step like the
+            HTTP log rather than off here on the toolbar. */}
 
         {/* Zoom controls */}
         <div className="flex items-center gap-1 ml-2">
@@ -2734,7 +2722,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         <div
           ref={detailPanelRef}
           data-testid="timeline-detail-panel"
-          className={`shrink-0 border-redlog-border/50 px-4 py-3 bg-redlog-surface/80 overflow-y-auto ${
+          className={`shrink-0 border-redlog-border/50 px-4 pb-3 bg-redlog-surface/80 overflow-y-auto ${
             layout === 'bottom'
               ? `border-t${detailPanel.px == null ? ' max-h-[45vh]' : ''}`
               : 'border-l h-full'
@@ -2768,6 +2756,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             onStep={stepIndex >= 0 ? stepTo : undefined}
             canStepPrev={stepIndex > 0}
             canStepNext={stepIndex >= 0 && stepIndex < recentEvents.length - 1}
+            layout={layout}
+            onToggleLayout={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
+            onClose={() => { setSelectedEvent(null); setDetailOpen(false) }}
             onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
             onResolve={(id) => void resolveReferencedEvent(id)}
             scrollToTs={scrollToTs}
