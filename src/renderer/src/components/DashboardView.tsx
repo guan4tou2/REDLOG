@@ -11,6 +11,7 @@ import { isMac } from '../lib/platform'
 import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
 import { useAppCounts } from '../lib/useAppCounts'
+import { eventTileStatus } from '../lib/eventTileStatus'
 import { settingsTarget } from '../lib/navigation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 
@@ -106,11 +107,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, loggedCount, chainLen, lootCount, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
-  // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
-  // start at 0 / null so the card doesn't flash a spurious "no logged
-  // rows" line while the initial fetch is in flight.
-  const [latestLoggedTs, setLatestLoggedTs] = useState<number | null>(null)
+  const { eventCount, chainLen, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const refreshCaptureRef = useRef<() => void>(() => {})
@@ -127,7 +124,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   const { t } = useI18n()
 
   useEffect(() => {
-    // Dashboard-specific fetches — the shared counts (eventCount, lootCount,
+    // Dashboard-specific fetches — the shared counts (eventCount,
     // scopeViolations, scopeConfigured) come from useAppCounts.
     window.redlog.config.get()
       .then((c) => setConfig(c as Record<string, Record<string, unknown>>))
@@ -151,21 +148,9 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       }).catch(() => {})
     }
     loadAnchor()
-    // v0.7.5 G3: refresh dashboard-specific counts on every incoming event.
-    // The shared counts (eventCount, lootCount, scopeViolations) are refreshed
+    // The shared counts (eventCount, chainLen, scopeViolations) are refreshed
     // by useAppCounts's own onNew subscription.
-    //
-    // chainLen and the logged count moved to useAppCounts, which refetches
-    // both on every batch. They were fetched here AND in the status bar, and
-    // the status bar's copy only ever went up — v0.7.6 H2 fixed the same
-    // stale-snapshot bug here ("⚠ 證據鏈 10396 ≠ 事件 28338" on a sound
-    // chain) and left the other copy to rot.
-    const refreshLocalCounts = (): void => {
-      window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
-    }
-    // Seed on first paint so the card doesn't wait for the first onNew tick.
-    window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
-    const unsub = window.redlog.events.onNewBatch(() => { loadCapture(); loadAnchor(); refreshLocalCounts() })
+    const unsub = window.redlog.events.onNewBatch(() => { loadCapture(); loadAnchor() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
   }, [])
@@ -198,7 +183,6 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
                 capture={capture}
                 onNavigate={onNavigate}
                 onRefresh={() => refreshCaptureRef.current()}
-                tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs, chainLen }}
               />
             : <></>
         )}
@@ -213,7 +197,6 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
-          tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs, chainLen }}
         />
       )}
 
@@ -228,66 +211,16 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
         <SectionLabel className="tracking-[0.15em] mb-3">
           {t('dashboard.sessionStats')}
         </SectionLabel>
-        <div className="grid grid-cols-3 gap-3">
-          {/* Events + chain length were two cards showing the same number —
-              every event is one chain entry so they moved in lockstep. Merged
-              here: the big number is events, the sub-line calls out that the
-              chain covers the same count (or flags a drift if it ever
-              differs, which would itself be a tamper signal). */}
+        {/* No loot tile: the sidebar badge and the status bar already count
+            it, and on the Dashboard it was a third box that read 0 for most
+            of an engagement. */}
+        <div className="grid grid-cols-2 gap-3">
           {(() => {
-            // v0.6.88 P2-B: last-anchor age surface. <2h green, <24h amber,
-            // 24h+ red (matches the OTS calendar hourly cadence — anything
-            // beyond a day means the anchor loop has been broken for a while).
-            let anchorSub = ''
-            let anchorTone: HudTone = chainLen === eventCount ? 'cyan' : 'red'
-            const baseSub = chainLen === eventCount
-              ? t('dashboard.chainMatches', { n: chainLen })
-              : t('dashboard.chainDrift', { chain: chainLen, events: eventCount })
-            if (lastAnchor) {
-              const ageMin = Math.floor((Date.now() - lastAnchor.createdAt) / 60000)
-              const ageHr = Math.floor(ageMin / 60)
-              const ageLabel = ageHr < 1 ? `${ageMin}m` : ageHr < 24 ? `${ageHr}h` : `${Math.floor(ageHr / 24)}d`
-              anchorSub = `${baseSub} · ⚓ ${ageLabel}`
-              if (lastAnchor.status === 'failed') anchorTone = 'red'
-              else if (ageHr >= 24) anchorTone = 'red'
-              else if (ageHr >= 2) anchorTone = 'amber'
-            } else {
-              anchorSub = baseSub
-            }
-            // Append last-sample-verify age. A broken sample
-            // shows "sample BROKEN" in the same sub-line and forces the tile
-            // red — the CaptureHealthCard also flips to dark, so the operator
-            // gets two independent signals.
-            if (capture?.lastSampleBroken) {
-              // Append the broken row's own age so the operator can tell a
-              // stale historical row from a fresh regression.
-              const ets = capture.lastSampleBroken.eventTimestamp
-              let ageLabel = ''
-              if (typeof ets === 'number' && ets > 0) {
-                const days = Math.floor((Date.now() - ets) / 86400000)
-                if (days >= 1) ageLabel = ` ${t('dashboard.sampleAgeDays', { n: days })}`
-                else {
-                  const hrs = Math.floor((Date.now() - ets) / 3600000)
-                  ageLabel = hrs > 0 ? ` ${t('dashboard.sampleAgeHours', { n: hrs })}` : ` ${t('dashboard.sampleFresh')}`
-                }
-              }
-              anchorSub = `${anchorSub} · ${t('dashboard.sampleBroken')}${ageLabel}`
-              anchorTone = 'red'
-            } else if (capture?.lastSampleOkAt) {
-              const sMin = Math.floor((Date.now() - capture.lastSampleOkAt) / 60000)
-              const sLabel = sMin < 1 ? '<1m' : sMin < 60 ? `${sMin}m` : `${Math.floor(sMin / 60)}h`
-              anchorSub = `${anchorSub} · ${t('dashboard.sampled', { age: sLabel })}`
-            }
-            return (
-              <StatCard
-                label={t('dashboard.events')}
-                value={String(eventCount)}
-                sub={anchorSub}
-                tone={anchorTone}
-              />
-            )
+            const { sub, tone } = eventTileStatus({
+              eventCount, chainLen, lastAnchor, sampleBroken: capture?.lastSampleBroken, now: Date.now()
+            }, t)
+            return <StatCard label={t('dashboard.events')} value={String(eventCount)} sub={sub} tone={tone} />
           })()}
-          <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
           {/* Never green when the scope state could not be read. */}
           <StatCard
             label={t('dashboard.scope')}

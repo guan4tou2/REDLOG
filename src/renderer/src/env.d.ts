@@ -211,10 +211,6 @@ interface RedLogAPI {
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
     getCount: (tier: import('../../core/db/events').EventTierFilter) => Promise<number>
-    /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
-     *  if none have been written. Drives the CaptureHealthCard "last
-     *  fed" freshness readout without pulling row bodies. */
-    getLatestLoggedTs: () => Promise<number | null>
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
@@ -508,7 +504,6 @@ interface CaptureHealthInfo {
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  lastSampleOkAt?: number | null
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
   managedHttpProxy?: ManagedProxyStatus
 }

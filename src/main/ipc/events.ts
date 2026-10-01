@@ -4,7 +4,7 @@ import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
-  getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
+  getEventCount, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
@@ -44,9 +44,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:getCount', (_e, tier: EventTierFilter) =>
     ctx.getActiveProject() ? getEventCount({ tier }) : 0)
-
-  ipcMain.handle('events:getLatestLoggedTs', () =>
-    ctx.getActiveProject() ? getLatestLoggedTs() : null)
 
   // Spec 017. The renderer parses and sends the result, so it can show how the
   // query was read without a round trip and a parse failure never becomes a

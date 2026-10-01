@@ -217,22 +217,10 @@ function Group({ group, glyph, t, STEP_LABEL }: {
   )
 }
 
-export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }: {
+export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
   onRefresh: () => void
-  // v0.14.3 §9.5: chained·logged split for the card footer. Optional so
-  // callers that don't care (tests, older Dashboard mounts) keep working;
-  // when omitted the tier line just doesn't render.
-  tierSplit?: {
-    chained: number
-    logged: number
-    lastLoggedTs: number | null
-    /** Rows carrying a hash. This is what 證據鏈 means; `chained` is the row
-     *  count of the chained tier. They are equal on a sound chain, which is
-     *  why one was quietly standing in for the other. */
-    chainLen: number
-  }
 }): JSX.Element {
   const { t } = useI18n()
 
@@ -617,48 +605,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             </p>
           )}
         </div>
-        {/* Two-tier chain-health footer. Renders only when the logged tier
-         *  has at least one row. Chained is the brighter number
-         *  (audit chain); logged renders muted (supporting evidence).
-         *  "Last fed" is the newest logged-row age — a slow tick is fine
-         *  because it uses the same 1s nowTick as the source-row ages. */}
-        {tierSplit && tierSplit.logged > 0 && (
-          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-xs font-mono">
-            <div className="flex items-center gap-2">
-              {/* 證據鏈 now labels the chain. It used to label
-                  `getCount('chained')` — a row count — while the real chain
-                  length sat under the same word forty pixels away on the
-                  stats tile. Two queries, one noun, and on the one day they
-                  disagree the card read 證據鏈 56 with ⚠ 證據鏈 54 ≠ 事件 56
-                  directly beneath it. The drift is now stated here, where the
-                  number is. */}
-              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
-              {tierSplit.chainLen === tierSplit.chained ? (
-                <span className="text-redlog-text tabular-nums">{tierSplit.chainLen.toLocaleString()}</span>
-              ) : (
-                /* §21 rule 6: danger red reports a state, it never colours a
-                   numeral. The marker carries the alarm; the two numbers stay
-                   readable, which is the point of showing them at all. */
-                <span data-testid="capture-chain-drift" className="flex items-center gap-1">
-                  <span className="text-redlog-danger" aria-hidden>&#9888;</span>
-                  <span className="text-redlog-text tabular-nums">{tierSplit.chainLen.toLocaleString()}</span>
-                  <span className="text-redlog-text-dim">&ne;</span>
-                  <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
-                  <span className="text-redlog-text-dim">{t('capture.tierEvents')}</span>
-                </span>
-              )}
-              <span className="text-redlog-muted">&middot;</span>
-              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
-              <span className="text-redlog-text-dim tabular-nums">{tierSplit.logged.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-redlog-text-faint">{t('capture.tierLastFed')}</span>
-              <span className={`tabular-nums ${ageColor(tierSplit.lastLoggedTs, nowTick)}`}>
-                {fmtAge(tierSplit.lastLoggedTs, nowTick)}
-              </span>
-            </div>
-          </div>
-        )}
+        {/* No chain/logged footer. It restated the status bar's tier count,
+            and its drift warning was a third copy of one the event tile and
+            the issues list already raise. */}
         {capture.proxyEnv && (
           <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs font-mono">
             <span className="text-emerald-500/80">●</span>

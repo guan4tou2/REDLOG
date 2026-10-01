@@ -62,7 +62,7 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { applyLoginPath } from './login-path'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
@@ -1002,8 +1002,6 @@ function startProject(project: ProjectMeta): void {
         }, { engagementId, operatorId })
         if (ev) eventBus.publish(ev)
       } catch { /* noteSampleBroken already surfaces via capture-health */ }
-    } else {
-      noteSampleOk()
     }
   } catch (e) { console.error('[chain-sample] initial verify failed:', e) }
 
@@ -1027,8 +1025,6 @@ function startProject(project: ProjectMeta): void {
           }, { engagementId, operatorId })
           if (ev) eventBus.publish(ev)
         } catch { /* */ }
-      } else {
-        noteSampleOk()
       }
     } catch { /* transient sqlite errors already surface through DB error path */ }
   }, 5 * 60 * 1000)
