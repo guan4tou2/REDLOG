@@ -176,7 +176,7 @@ export class ManagedHttpProxy {
       child.stdout?.on('data', consume)
       child.stderr?.on('data', consume)
       child.once('error', (error: NodeJS.ErrnoException) => {
-        this.child = null
+        if (this.child === child) this.child = null
         finish({
           state: error.code === 'ENOENT' ? 'unavailable' : 'failed',
           url: null,
@@ -184,7 +184,16 @@ export class ManagedHttpProxy {
         })
       })
       child.once('exit', (code, signal) => {
-        this.child = null
+        if (this.child === child) this.child = null
+        // Only the generation that owns this child may speak for the status.
+        // A restart is a stop and a start: the new child can be up and
+        // `running` before the old one's `exit` is delivered, and without
+        // this guard that late event rewrote the new proxy's status to
+        // `failed` — carrying the OLD process's output as the reason, which
+        // for a proxy that had come up cleanly was its own readiness line.
+        // A capture that was working, reported as broken, with a stale
+        // explanation that read as if it had never started.
+        if (generation !== this.generation) return
         const reason = diagnostics.trim() || `mitmdump exited before readiness (code ${code ?? 'null'}, signal ${signal ?? 'none'})`
         if (!settled) finish({ state: 'failed', url: null, error: reason })
         else if (this.snapshot.state === 'running') {

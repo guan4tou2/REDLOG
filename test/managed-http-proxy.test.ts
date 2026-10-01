@@ -112,6 +112,43 @@ describe('managed HTTP proxy', () => {
     expect(transitions).toContain('running->failed')
   })
 
+  // A restart is a stop and a start, and the signal the stop sends is not
+  // acted on instantly: the replacement can be up and `running` before the
+  // old child's `exit` is delivered. That late event used to be allowed to
+  // speak for the status, so it rewrote the new proxy's `running` to
+  // `failed` — with the OLD process's output as the reason, which for one
+  // that had come up cleanly was its own readiness line. The capture was
+  // working; the only thing wrong was what the app said about it.
+  it('does not let a replaced child report a failure for the one that replaced it', async () => {
+    // `kill()` on the stock fake emits `exit` synchronously, which is the one
+    // case this race cannot happen in.
+    class LingeringChild extends FakeChild {
+      kill(): boolean { this.killed = true; return true }
+    }
+    const first = new LingeringChild()
+    const second = new LingeringChild()
+    const queue: LingeringChild[] = [first, second]
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => queue.shift() as never), exists: () => true, readinessTimeoutMs: 100
+    })
+
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    first.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8080'))
+    await started
+    expect(proxy.status().state).toBe('running')
+
+    proxy.stop()
+    const restarted = proxy.start({ addonPath: '/addon.py', port: 8081 })
+    second.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8081'))
+    await restarted
+    expect(proxy.status()).toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
+
+    first.exitCode = 0
+    first.emit('exit', null, 'SIGTERM')
+    expect(proxy.status()).toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
+    expect(proxy.status().error).toBeUndefined()
+  })
+
   it('reaches running only after mitmdump announces a listener', async () => {
     const child = new FakeChild()
     const proxy = new ManagedHttpProxy({
