@@ -70,9 +70,16 @@ export function TimelineEventInspector({
           `py-3 px-4`: at `top-0` the pane's padding stays above the bar and
           the body scrolls through the gap. The background is opaque for the
           same reason — the pane is translucent, and a translucent bar shows
-          the text passing underneath it. */}
-      <div className="sticky -top-3 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+          the text passing underneath it.
+
+          It WRAPS. Beside the list the pane is 440px by default and 280px at
+          its narrowest, and a single non-wrapping row put both label buttons
+          under a few pixels each: `Exclude from export` came out one letter
+          per line, 匯出時排除 one character per line, and the bar grew taller
+          than the title it sits above. The identity chips keep their line and
+          the two actions drop to their own when there is no room for both. */}
+      <div className="sticky -top-3 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Reading a capture is reading a sequence — what ran before this,
               what came back after. The keyboard could already walk it, lane by
               lane, and nothing on screen said so: an operator who opened the
@@ -80,7 +87,7 @@ export function TimelineEventInspector({
               These step the list's own order, which is the order they were
               just reading. */}
           {onStep && (
-            <span className="flex items-center mr-0.5">
+            <span className="flex items-center mr-0.5 shrink-0">
               <button
                 type="button"
                 data-testid="detail-step-prev"
@@ -101,29 +108,31 @@ export function TimelineEventInspector({
               ><ChevronRight size={12} strokeWidth={2} aria-hidden /></button>
             </span>
           )}
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
-          <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
+          <span className="text-xs font-mono font-semibold uppercase tracking-wider shrink-0 whitespace-nowrap" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
             {event.agentType}
           </span>
-          <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60" title={event.operatorId}>
+          {/* The one thing here allowed to lose characters rather than lines:
+              an operator id is long, arbitrary, and already in the tooltip. */}
+          <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60 truncate" title={event.operatorId}>
             {operatorLabel(event.operatorId)}
           </span>
           <TierBadge tier={event.tier} variant="detail" show={tierChip} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* "What else was happening when this ran" is the commonest
               next question about an event, and there was no way to ask
               it: the bar offered only windows ending now. */}
           <button
             type="button"
             data-testid="detail-around-event"
-            className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
             title={t('filter.around')}
             onClick={onAround}
           >{t('filter.around')}</button>
           <button
             type="button"
-            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
+            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap ${
               dneFlag
                 ? 'border-red-500/60 bg-red-500/15 text-red-300'
                 : 'border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border'
