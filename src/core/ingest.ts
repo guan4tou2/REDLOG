@@ -87,6 +87,13 @@ export interface IngestInput {
   bypassPause?: boolean
   /** Envelope: raw bytes / ref, mapper, producer id, producer timestamp. */
   envelope?: EnvelopeInput
+  /** When the reported thing actually happened at the source, if the producer
+   *  knows and it is not simply "now" — a replayed transcript, a spool that sat
+   *  offline. Lands in `timestamp`; `created_at` stays RedLog's receipt clock.
+   *  Producers that already carry it in `data.source_timestamp` or
+   *  `envelope.tsSource` need not repeat it here. See resolveOccurredAt in
+   *  db/event-write.ts for the precedence and the validation. */
+  occurredAt?: number
   /** A companion emitted by the pipeline itself. Skips enrichment so a
    *  derived row cannot derive further rows (no pivot-of-a-pivot). */
   derived?: boolean
@@ -109,7 +116,7 @@ export interface IngestResult {
 export function ingestEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   return ingest({ agentType, data, ...opts }).event
 }
@@ -195,7 +202,8 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 5. Write. insertEvent stores the raw bytes and hashes the envelope.
   const event = insertEvent(agentType, data, {
-    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope
+    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope,
+    occurredAt: input.occurredAt
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
 
