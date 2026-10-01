@@ -12,7 +12,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
-import { activationCommand, activationNonce, isActivationEvent, missingDependencies } from '../lib/terminalActivation'
+import { activationCommand, activationNonce, isActivationEvent, missingDependencies, SET_EXECUTION_POLICY } from '../lib/terminalActivation'
+import { requestRunInTerminal } from '../lib/terminalRunner'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { classifyCanaryEvent, mergeCanary, outputCanary, type CanaryResult } from '../lib/outputCanary'
 import type { RedLogEvent } from '../../../core/db/events'
 
@@ -82,6 +84,13 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Blocked means a dependency was missing, and the operator has gone to
+  // install it. Coming back re-runs the attempt: the click that started this
+  // flow was already consent to install the hook, and it is only the missing
+  // dependency that held it. Every other phase is waiting on an event or on a
+  // failure the operator must retry themselves, so none of them re-runs here.
+  useRevalidateOnFocus(() => { if (phase === 'blocked') void run() })
+
   // Listen only while waiting: verification or the timeout ends it, and the
   // cleanup unsubscribes either way.
   useEffect(() => {
@@ -114,7 +123,6 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
         <div data-testid="record-terminal-missing" className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.record.blocked', { shell: target.label })}</p>
           <MissingList missing={missing} />
-          <Button level="secondary" onClick={() => void run()}>{t('firstRun.recheck')}</Button>
         </div>
       ) : phase === 'install-failed' ? (
         <div className="space-y-2">
@@ -138,21 +146,61 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
               <p className="text-redlog-text">{t('firstRun.record.timeoutTitle')}</p>
               <ul className="list-disc pl-4 space-y-1 text-redlog-text-dim">
                 <li>{t('firstRun.record.reasonNewTab')}</li>
+                {/* Re-read at timeout, so this is the policy in force now —
+                    the operator may have changed it while waiting. */}
+                {preflight?.powershell?.blocksProfile && (
+                  <li data-testid="record-terminal-reason-policy">
+                    {t('firstRun.record.reasonPolicy', {
+                      policy: preflight.powershell.policy,
+                      command: SET_EXECUTION_POLICY
+                    })}
+                  </li>
+                )}
                 {missing.length > 0 && (
                   <li>{t('firstRun.record.reasonMissing', { names: missing.map((c) => c.id).join(', ') })}<MissingList missing={missing} /></li>
                 )}
-                {target.kind === 'host' && (preflight?.legacyHooks ?? []).map((h) => (
-                  <li key={`${h.file}:${h.line}`}>
-                    {t('firstRun.record.reasonLegacy', { file: h.file, line: h.line })}
-                    <code className="block font-mono text-redlog-text-faint break-all">{h.text}</code>
-                  </li>
-                ))}
               </ul>
               <Button level="secondary" onClick={() => void run()}>{t('firstRun.record.retry')}</Button>
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** The Windows blocker that is not a missing command (F6).
+ *
+ *  `Restricted` — the Windows client default for PowerShell 5.1 — stops
+ *  `$PROFILE` from loading, so the hook RedLog installed never runs. The
+ *  built-in terminal is spawned with `-ExecutionPolicy Bypass` and keeps
+ *  recording, so both halves have to be said: without the second one the
+ *  operator reads a working built-in pane beside a silent terminal as a broken
+ *  machine rather than as one policy. */
+export function ExecutionPolicyBlocker({ blocker }: {
+  blocker: { policy: string; remediation: string }
+}): JSX.Element {
+  const { t } = useI18n()
+  return (
+    <div data-testid="execution-policy-blocker" className="space-y-2">
+      <p className="font-semibold text-redlog-text">{t('firstRun.policy.title')}</p>
+      <p className="text-redlog-text-dim">{t('firstRun.policy.why', { policy: blocker.policy })}</p>
+      <p className="text-redlog-text-faint">{t('firstRun.policy.builtinOk')}</p>
+      <p className="text-redlog-text-dim">{t('firstRun.policy.fix')}</p>
+      <div className="flex items-center gap-2">
+        <code data-testid="execution-policy-command" className="flex-1 min-w-0 break-all font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">
+          {blocker.remediation}
+        </code>
+        <CopyButton text={blocker.remediation} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {/* Typed into RedLog's own terminal, not executed for the operator: it
+            changes a machine-wide-ish setting, so they read it and press
+            Enter themselves — the same rule the CA trust command follows. */}
+        <Button level="secondary" onClick={() => requestRunInTerminal(blocker.remediation)}>
+          {t('settings.hookRun')}
+        </Button>
+      </div>
     </div>
   )
 }

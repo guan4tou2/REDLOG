@@ -47,9 +47,11 @@ export function SessionTargetControl({ terminalId }: { terminalId: string }): JS
           aria-label={t('terminal.sessionTarget')}
           className="w-36 px-1.5 py-0.5 bg-redlog-elevated border border-redlog-border rounded text-xs font-mono text-redlog-text outline-none focus:border-redlog-accent/60"
         />
-        <button type="submit" className="text-xs text-redlog-text-dim hover:text-redlog-text">{t('terminal.sessionTargetBind')}</button>
+        {/* Sized to the input beside them rather than to the app's 34px, which
+            is the terminal strip's own density — but boxed, like any control. */}
+        <button type="submit" className="px-2 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-xs text-redlog-text hover:bg-redlog-elevated-hover">{t('terminal.sessionTargetBind')}</button>
         {bound && (
-          <button type="button" onClick={() => void bind(null)} className="text-xs text-redlog-text-faint hover:text-redlog-text">
+          <button type="button" onClick={() => void bind(null)} className="px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated">
             {t('terminal.sessionTargetUnbind')}
           </button>
         )}

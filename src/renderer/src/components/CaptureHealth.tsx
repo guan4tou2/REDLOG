@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
@@ -6,7 +7,6 @@ import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
-import { openRuntimeReadiness } from '../lib/runtimeReadiness'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -81,15 +81,18 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
         {core.map((group) => (
           <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
         ))}
+        {/* The other groups are named, not listed. Fifteen rows of sources an
+            operator has never touched answer "what could RedLog capture",
+            while the dashboard is asking "is it capturing, and if not what do
+            I do" — the ten-source checklist §22 replaced, still on the screen
+            it was replaced on. They are one click away under 所有來源, where
+            someone who wants a clipboard watcher will go looking for it. */}
         {extra.length > 0 && (
-          <div className="pt-2 border-t border-redlog-border/50 space-y-2.5">
-            <p className="text-xs text-redlog-text-faint uppercase tracking-wider">
-              {t('capture.group.additional')}
-            </p>
-            {extra.map((group) => (
-              <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
-            ))}
-          </div>
+          <p className="pt-2 border-t border-redlog-border/50 text-xs text-redlog-text-faint">
+            {t('capture.group.additionalCount', {
+              count: extra.reduce((n, g) => n + g.steps.length, 0)
+            })}
+          </p>
         )}
       </div>
       <div className="flex items-center gap-3">
@@ -112,10 +115,13 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
 
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
- *  vocabulary from httpCaptureState. */
-function CoreCaptureLine({ readiness, http, t }: {
+ *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
+ *  to say beneath it — that row is not repeated while this line is shown. */
+function CoreCaptureLine({ readiness, http, source, proxyError, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
+  source: CaptureSourceInfo | undefined
+  proxyError: string | undefined
   t: (key: string) => string
 }): JSX.Element {
   const commands = readiness.groups.find((g) => g.id === 'commands')
@@ -135,16 +141,34 @@ function CoreCaptureLine({ readiness, http, t }: {
   )
   return (
     <div data-testid="capture-core" className="mb-3">
-      <p className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider mb-1">{t('capture.core.heading')}</p>
+      <SectionLabel className="mb-1">{t('capture.core.heading')}</SectionLabel>
       <ul className="space-y-1 text-xs">
         <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
           <span className="flex-1 text-redlog-text">{t('capture.group.commands')}</span>
           <span className="text-redlog-text-faint">{t(`capture.core.commands.${cmd}`)}</span>
         </li>
-        <li data-testid="capture-core-http" data-state={http} className="flex items-center gap-2">
+        <li data-testid="capture-core-http" data-state={http} className="flex items-start gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
-          <span className="flex-1 text-redlog-text">{t('capture.group.http')}</span>
+          <span className="flex-1 min-w-0 text-redlog-text">
+            {t('capture.group.http')}
+            {http === 'listening' && (
+              <span data-testid="capture-http-listening" className="block text-amber-400">
+                {t('capture.http.listeningWhy')}
+              </span>
+            )}
+            {proxyError && <span className="block text-red-400">{proxyError}</span>}
+            {source?.lastError && (
+              <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
+            )}
+            {source?.streams && (source.streams.http || source.streams.dns) && (
+              <span data-testid="capture-streams-mitmproxy" className="block text-redlog-text-faint">
+                {source.streams.http && source.streams.dns
+                  ? t('capture.streamsBoth')
+                  : source.streams.http ? t('capture.streamsHttpOnly') : t('capture.streamsDnsOnly')}
+              </span>
+            )}
+          </span>
           <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>
         </li>
       </ul>
@@ -160,11 +184,9 @@ function Group({ group, glyph, t, STEP_LABEL }: {
 }): JSX.Element {
   return (
     <div>
-      <p className={`text-xs uppercase tracking-wider mb-1 ${
-        group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint'
-      }`}>
+      <SectionLabel className="mb-1 ${ group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint' }">
         {t(`capture.group.${group.id}`)}
-      </p>
+      </SectionLabel>
       <ul className="space-y-1">
         {group.steps.map((s) => {
           const g = glyph(s.status)
@@ -195,14 +217,10 @@ function Group({ group, glyph, t, STEP_LABEL }: {
   )
 }
 
-export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }: {
+export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
   onRefresh: () => void
-  // v0.14.3 §9.5: chained·logged split for the card footer. Optional so
-  // callers that don't care (tests, older Dashboard mounts) keep working;
-  // when omitted the tier line just doesn't render.
-  tierSplit?: { chained: number; logged: number; lastLoggedTs: number | null }
 }): JSX.Element {
   const { t } = useI18n()
 
@@ -258,19 +276,30 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   }, [capture.sources])
   const sources = capture.sources.map((s) => (s.hookId && removing.has(s.hookId) ? { ...s, installed: false } : s))
 
+  // "Switched off, and still writing to the record."
+  //
+  // The one combination that answers this card's audit question — is anything
+  // capturing that I did not put there — with a yes. These producers run
+  // outside RedLog under the operator's own sudo, so switching them off inside
+  // RedLog never stopped them; it stopped RedLog mentioning them. Filed under
+  // `informational` it was invisible by construction, because informational
+  // rows are excluded from the compact view. It is not informational. It is
+  // the fault.
+  const isRogue = (s: CaptureSourceInfo): boolean => s.disabled === true && s.state === 'active'
+
   // "On but not delivering." A source switched off is a choice, not a fault;
   // a hook that was never installed is a setup step, and the banner above
   // already covers the nothing-is-wired case.
   const isProblem = (s: CaptureSourceInfo): boolean =>
+    isRogue(s) ||
     // E3: plugin producers are optional/manual — an idle or unrun one is never
-    // a fault to nag about, so they stay out of the compact "problems" view
-    // (they're still listed in `manage`, read-only, with honest live state).
-    !s.informational &&
+    // a fault to nag about, so they stay out of the compact view. A rogue one
+    // is not covered by that: it is above, and it is unconditional.
+    (!s.informational &&
     (s.state === 'error' || s.state === 'absent'
-      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
+      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))))
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'active')
-  const shown = manage ? sources : problems
   const hiddenCount = sources.length - problems.length
 
   // HTTP capture had two vocabularies on this card: the mitmproxy row's
@@ -372,15 +401,31 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     return 'text-redlog-text-faint'
   }
 
-  const dark = capture.verdict === 'dark'
+  // A rogue source cannot leave the headline saying 健康. The core verdict
+  // grades whether capture is WORKING; this grades whether it is AUTHORISED,
+  // and a card that reports both has to let the worse one win, or it prints a
+  // reassurance directly above the row that contradicts it.
+  const rogue = sources.filter(isRogue)
+  const dark = capture.verdict === 'dark' || rogue.length > 0
   const partial = capture.verdict === 'partial'
   // The ordered dark->recording onboarding model. Pure + unit-tested in
   // capture-readiness.ts; this card just renders it. Drives the checklist and
   // the single primary CTA below, replacing the old one-line "go to Settings"
   // hint that dropped a first-run operator into a 2600-line page with no order.
   const readiness = computeCaptureReadiness({ ...capture, sources })
+  // Once the Core capture line is on screen it already carries HTTP(S), from
+  // the same derived state — so a mitmproxy problem row beneath it said
+  // 未安裝 mitmproxy twice. The row's detail moved up onto the core line; the
+  // full inventory still lists it. A rogue mitmproxy stays, because the core
+  // line has no word for "switched off and still writing".
+  const coreShown = readiness.level === 'recording'
+  const shown = manage ? sources
+    : coreShown ? problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
+      : problems
+  const mitmSource = sources.find((s) => s.id === 'mitmproxy')
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
-  const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
+  const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
+    : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
     <section>
@@ -393,18 +438,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       }`}>
         <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
+          <SectionLabel className="tracking-[0.15em]">{t('capture.title')}</SectionLabel>
           <div className="flex items-center gap-3">
-            <button
-              onClick={openRuntimeReadiness}
-              className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
-            >
-              {t('readiness.reopen')}
-            </button>
             <button
               onClick={() => setManage((m) => !m)}
               className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
-              title={t('capture.manageHint')}
+              title={t('capture.auditHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
             </button>
@@ -416,8 +455,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             named. An operator who left first-run with Commands verified and
             HTTP(S) not set up must keep seeing that, not have it fold into an
             exception list that only shows sources which were switched on. */}
-        {readiness.level === 'recording' && (
-          <CoreCaptureLine readiness={readiness} http={http} t={t} />
+        {coreShown && (
+          <CoreCaptureLine
+            readiness={readiness}
+            http={http}
+            source={mitmSource}
+            proxyError={capture.managedHttpProxy?.error}
+            t={t}
+          />
         )}
         {readiness.level !== 'recording' && (
           <CaptureOnboarding
@@ -430,7 +475,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           />
         )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
-          {shown.map((s) => (
+          {shown.map((s) => {
+            // The core line already says this about mitmproxy; the inventory
+            // row keeps its state word and controls, not a second copy.
+            const detail = !(coreShown && s.id === 'mitmproxy')
+            return (
             <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
               <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
@@ -447,23 +496,32 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                     RedLog is misconfigured, the operator's browser or tool is
                     simply not using it. It used to be indistinguishable from a
                     healthy quiet proxy. */}
-                {s.id === 'mitmproxy' && http === 'listening' && (
+                {detail && s.id === 'mitmproxy' && http === 'listening' && (
                   <span data-testid="capture-http-listening" className="block text-amber-400">
                     {t('capture.http.listeningWhy')}
                   </span>
                 )}
-                {s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
+                {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
                   <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
                 )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
+                {/* The operator believes they stopped this. They stopped
+                    RedLog talking about it; the producer is theirs, running
+                    under their own sudo, and only they can end it. Say where
+                    the teardown lives rather than leaving a red dot. */}
+                {isRogue(s) && (
+                  <span data-testid={`capture-rogue-${s.id}`} className="block text-redlog-danger">
+                    {t('capture.rogueWhy')}
+                  </span>
+                )}
                 {/* Why it failed, not just that it did — the operator cannot
                     act on a red dot alone. */}
-                {s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+                {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
 
                 {/* Which streams this row is actually carrying. `mitmproxy`
                     covers HTTP and DNS, and they are two processes: an
                     operator who started the proxy assumes DNS came with it. */}
-                {s.streams && (s.streams.http || s.streams.dns) && (
+                {detail && s.streams && (s.streams.http || s.streams.dns) && (
                   <span data-testid={`capture-streams-${s.id}`} className="block text-redlog-text-faint">
                     {s.streams.http && s.streams.dns
                       ? t('capture.streamsBoth')
@@ -535,8 +593,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                 </span>
               )}
             </div>
-          ))}
-          {!manage && shown.length === 0 && (
+            )
+          })}
+          {/* Not when the only problem was folded into the core line: 一切正常
+              directly under "! HTTP(S) 未安裝 mitmproxy" contradicts it. */}
+          {!manage && shown.length === 0 && problems.length === 0 && (
             <p className="text-xs text-redlog-text-dim col-span-2">
               {healthy.length > 0
                 ? t('capture.allGood', { active: healthy.length })
@@ -544,28 +605,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             </p>
           )}
         </div>
-        {/* Two-tier chain-health footer. Renders only when the logged tier
-         *  has at least one row. Chained is the brighter number
-         *  (audit chain); logged renders muted (supporting evidence).
-         *  "Last fed" is the newest logged-row age — a slow tick is fine
-         *  because it uses the same 1s nowTick as the source-row ages. */}
-        {tierSplit && tierSplit.logged > 0 && (
-          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-xs font-mono">
-            <div className="flex items-center gap-2">
-              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
-              <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
-              <span className="text-redlog-muted">&middot;</span>
-              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
-              <span className="text-redlog-text-dim tabular-nums">{tierSplit.logged.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-redlog-text-faint">{t('capture.tierLastFed')}</span>
-              <span className={`tabular-nums ${ageColor(tierSplit.lastLoggedTs, nowTick)}`}>
-                {fmtAge(tierSplit.lastLoggedTs, nowTick)}
-              </span>
-            </div>
-          </div>
-        )}
+        {/* No chain/logged footer. It restated the status bar's tier count,
+            and its drift warning was a third copy of one the event tile and
+            the issues list already raise. */}
         {capture.proxyEnv && (
           <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs font-mono">
             <span className="text-emerald-500/80">●</span>

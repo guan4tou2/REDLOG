@@ -81,10 +81,18 @@ export function computeRecentEvents(
   hiddenLanes: ReadonlySet<LaneId>,
   pluginTypes: PluginEventType[] | undefined,
   vp: ViewportWindow,
-  cap = 50
+  cap = 50,
+  /** `/` search results. Non-null means the list shows only these. */
+  matched: ReadonlySet<string> | null = null
 ): RedLogEvent[] {
+  // The `/` search used to DIM non-matches and leave them in place. On a half
+  // screen beside a terminal that is not a filter: a dirb run puts 920 rows
+  // in the list and all 920 still take their space, so searching `backup`
+  // left the operator scrolling the same distance looking for a shade of
+  // grey. Non-matches are removed; the panel says how many and opens them.
   const isVisible = (e: RedLogEvent): boolean =>
     !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
+    && (matched === null || matched.has(e.id))
 
   const widthPx = (vp.width / 100) * vp.trackW
   const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)

@@ -1,16 +1,15 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
+import { SIDEBAR_COLLAPSED_EVENT, setSidebarCollapsed, storedSidebarCollapsed } from '../lib/sidebarCollapsed'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
-  Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
-} from 'lucide-react'
+  Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 
 interface SidebarProps {
   active: string
   onNavigate: (view: string) => void
-  /** §22: the views to render. Undefined shows everything — the shape a test
-   *  harness or an older caller gets, and the safe direction. */
-  visibleViews?: ReadonlySet<SidebarViewId>
+  /** Only for the per-project counts on the badges. */
+  projectId?: string
 }
 
 interface NavItem {
@@ -36,7 +35,7 @@ import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sid
 import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
-export default function Sidebar({ active, onNavigate, visibleViews }: SidebarProps): JSX.Element {
+export default function Sidebar({ active, onNavigate, projectId }: SidebarProps): JSX.Element {
   const { lootCount, scopeViolations } = useAppCounts()
   const { t } = useI18n()
 
@@ -71,18 +70,47 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
-  // A hidden row is not-advertised, never unreachable: ⌘K lists every view and
-  // its chord still works, which is what makes hiding safe rather than lossy.
-  const items = DEFAULT_ORDER
-    .filter((id) => visibleViews === undefined || visibleViews.has(id))
-    .map((id) => itemMap[id])
-    .filter(Boolean)
+  // Every view, always. Pages used to appear as the record grew the data each
+  // one was named after (§22), which cost a hint line here explaining the
+  // absence, a checkbox in Settings to undo it, and two occasions on which the
+  // app's own author asked why his new project had three rows. Eleven rows was
+  // never the problem it was solving.
+  const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)
+
+  // Collapsed, the sidebar is an icon rail. §3.5 allows icon-only here and
+  // almost nowhere else: navigation is the highest-frequency thing in the app,
+  // every row keeps its ⌘N chord, and the tooltip names it. The labels are the
+  // default, because a rail has to be learned first.
+  const [collapsed, setCollapsed] = useState(storedSidebarCollapsed)
+  useEffect(() => {
+    const onChange = (): void => setCollapsed(storedSidebarCollapsed())
+    window.addEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
+    return () => window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
+  }, [])
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
+  // Both widths are arithmetic, not round numbers.
+  //
+  // 48 = the nav's own 8px padding, the row's 8px, and a 16px icon, twice
+  // over. Centring the icon in a wider rail moved it four pixels sideways on
+  // every collapse, so the thing the eye tracks jumped while the panel
+  // animated. It does not move now; only the right edge does.
+  //
+  // 150 = the same 8+8+16 lead, the 8px gap, the longest label the nav can
+  // hold ("Transcript"), then the 8px gap, the 12px chord column and the two
+  // 8px paddings back out. 186 was sized for a label no row has: the surplus
+  // showed up as a gutter between every name and its number, which reads as
+  // two columns of unrelated things rather than one row.
   return (
-    <nav className="w-[186px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
-      <div className="space-y-0.5">
+    <nav className={`${collapsed ? 'w-[48px]' : 'w-[150px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
+      {/* The rows scroll; the footer does not. With `overflow-hidden` on the
+          nav and the footer pushed by `mt-auto`, turning every page on clipped
+          Settings and the collapse toggle straight off the bottom — and which
+          of the two carried `mt-auto` changed with the row count, so the
+          footer moved as pages appeared. Three fixed bands instead: rows that
+          scroll, then the hint, then the footer. */}
+      <div className="flex-1 min-h-0 overflow-y-auto rl-thin-scroll space-y-0.5">
         {items.map((item) => {
           const isActive = active === item.id
           // The view's own number, never its position in what happens to be
@@ -98,7 +126,7 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
               title={`${item.label}${chordLabel}`}
               aria-label={`${item.label}${chordLabel.replace(' · ', ' — ')}`}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 ${
+              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 px-2 ${
                 isActive
                   ? 'text-redlog-accent'
                   : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -113,10 +141,12 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
                 aria-hidden
                 className={`shrink-0 transition-colors ${isActive ? 'text-redlog-accent' : ''}`}
               />
-              <span className={`text-xs leading-none truncate font-medium ${isActive ? 'text-redlog-accent' : ''}`}>
-                {item.label}
-              </span>
-              <span className="ml-auto flex items-center gap-2 shrink-0">
+              {!collapsed && (
+                <span className={`text-xs leading-none truncate font-medium ${isActive ? 'text-redlog-accent' : ''}`}>
+                  {item.label}
+                </span>
+              )}
+              <span className={`ml-auto flex items-center gap-2 shrink-0 ${collapsed ? 'hidden' : ''}`}>
                 {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-elevated text-redlog-text-dim', item.badgeLabel ?? String(item.badge))}
               {/* §5.3: the number is printed, not hidden in a tooltip. It can
                   be, now that the order is fixed — while rows could be dragged
@@ -139,14 +169,25 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
         })}
       </div>
 
-      <div className="mt-auto pt-3 border-t border-redlog-border/40">
+      <div className="shrink-0 mt-3 pt-3 border-t border-redlog-border/40 space-y-0.5">
+        <button
+          data-testid="sidebar-collapse"
+          onClick={() => setSidebarCollapsed(!collapsed)}
+          title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-expanded={!collapsed}
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] px-2`}
+        >
+          <PanelLeft size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} aria-hidden className="shrink-0" />
+          {!collapsed && <span className="text-xs leading-none truncate font-medium">{t('sidebar.collapse')}</span>}
+        </button>
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}
           title={`${t('sidebar.config')} · ${isMac ? '⌘' : 'Ctrl+'}9`}
           aria-label={`${t('sidebar.config')} — ${isMac ? '⌘' : 'Ctrl+'}9`}
           aria-current={active === 'settings' ? 'page' : undefined}
-          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative ${
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left relative px-2 ${
             active === 'settings'
               ? 'text-redlog-accent'
               : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -161,9 +202,11 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
             aria-hidden
             className={`shrink-0 ${active === 'settings' ? 'text-redlog-accent' : ''}`}
           />
-          <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-redlog-accent' : ''}`}>{t('sidebar.config')}</span>
+          {!collapsed && (
+            <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-redlog-accent' : ''}`}>{t('sidebar.config')}</span>
+          )}
           <span
-            className={`ml-auto shrink-0 text-xs font-mono tabular-nums ${active === 'settings' ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
+            className={`ml-auto shrink-0 text-xs font-mono tabular-nums ${collapsed ? 'hidden' : ''} ${active === 'settings' ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
             aria-hidden
           >9</span>
         </button>

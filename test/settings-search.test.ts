@@ -18,7 +18,7 @@ describe('settings search', () => {
   it('has an index entry for every key each page renders — regenerate with npm run gen:settings-search', () => {
     for (const page of Object.keys(PAGE_SOURCES)) {
       expect({ page, keys: SETTINGS_SEARCH_KEYS[page as keyof typeof SETTINGS_SEARCH_KEYS] })
-        .toEqual({ page, keys: pageKeys(page, read) })
+        .toEqual({ page, keys: pageKeys(page, read, Object.keys(en)) })
     }
   })
 

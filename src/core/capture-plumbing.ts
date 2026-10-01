@@ -24,22 +24,17 @@
 // filenames and marker strings — because the cost of a false positive is an
 // operator's real command silently missing from the record.
 
-import { RETIRED_HOOK_FILES } from './runtime-preflight'
-
 /** Adapter filenames RedLog sources into a shell.
  *
- *  The retired names come from `RETIRED_HOOK_FILES` rather than a second copy
- *  here: it is the same list, those files are still sitting in the rc files of
- *  operators who have not migrated, and a duplicate would drift. A repo guard
- *  (scripts/verify-specs.mjs) forbids naming them anywhere else, which is the
- *  same rule written down. */
+ *  Retired names used to be appended here from the legacy-hook detection list,
+ *  to keep a pre-Spec-006 rc line out of the record. Both are gone: RedLog is
+ *  pre-1.0 and no longer carries a path for profiles it has not written. */
 const ADAPTER_FILES = [
   'shell-hook.ps1',
   'shell-bash-hook.sh',
   'shell-zsh-hook.zsh',
   'shell-common.sh',
-  'start-transcript-hook.ps1',
-  ...RETIRED_HOOK_FILES
+  'start-transcript-hook.ps1'
 ]
 
 /** Internal functions of the POSIX adapter, reported by name when the shell's

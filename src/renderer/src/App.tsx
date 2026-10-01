@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
+import { ControlBoundary } from './components/ControlBoundary'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
 import StatusBar from './components/StatusBar'
@@ -19,7 +21,12 @@ import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 
 // Heavy views loaded lazily — keeps the initial bundle small.
-// Electron-local loads are instant so the Suspense fallback is null.
+// These are lazy so the first paint does not carry xterm and the settings
+// tree. The fallback used to be `null` on the premise that "Electron-local
+// loads are instant" — true of a packaged build reading a bundled chunk, and
+// false in dev, where Vite transforms each module on demand. `null` means the
+// pane renders nothing while it waits, which against a #121214 window is a
+// black screen with no explanation.
 const TerminalView = lazy(() => import('./components/TerminalView'))
 const Settings = lazy(() => import('./components/Settings'))
 const TranscriptView = lazy(() => import('./components/TranscriptView'))
@@ -38,8 +45,6 @@ import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
 import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
 import { Camera, FilePlus } from 'lucide-react'
 import { FilterBar } from './components/FilterBar'
-import { ActiveTargetControl } from './components/ActiveTargetControl'
-import { LegacyHookBanner, RuntimeReadinessHost } from './components/RuntimeReadiness'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -51,6 +56,13 @@ import { useAppShortcuts } from './hooks/useAppShortcuts'
 
 type View = SidebarViewId | 'settings'
 
+
+/** What a pane shows while its chunk arrives. Deliberately dim and still: it
+ *  is a few hundred milliseconds in a packaged build, and a spinner that
+ *  flashes is worse than a surface that is simply not filled in yet. */
+function PaneLoading(): JSX.Element {
+  return <div className="h-full w-full bg-redlog-surface/30 animate-pulse" aria-hidden />
+}
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
@@ -177,16 +189,7 @@ export default function App(): JSX.Element {
   if (!project) {
     return (
       <>
-        {/* Spec 036: the picker keeps its own title bar at the top, so the
-            legacy-hook banner sits at the bottom here; the readiness card
-            floats beside the picker and never blocks it. */}
-        <div className="h-full flex flex-col">
-          <div className="flex-1 min-h-0">
-            <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
-          </div>
-          <LegacyHookBanner />
-        </div>
-        <RuntimeReadinessHost firstLaunch />
+        <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
         <ToastContainer />
         <ConfirmDialogContainer />
       </>
@@ -220,100 +223,115 @@ export default function App(): JSX.Element {
           {t('artifacts.dropHere')}
         </div>
       )}
-      {/* Title bar */}
+      {/* Title bar.
+
+          No `overflow-hidden` on this strip. It is 40px tall and the controls
+          on it open downward — the export menu is `absolute top-7` inside it —
+          so clipping to the strip clips the popover to a single row and cuts
+          it off at the border below. That is what shipped: a menu that drew
+          its first checkbox and nothing else, which read as a broken component
+          and was not one. Wrapping is held off by `whitespace-nowrap`,
+          `shrink-0` and the project name's own `truncate`; overflow was never
+          the thing carrying it. */}
       <div
-        className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
+        className="h-10 flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
+        <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
           {/* Title-bar size is small, so the ring collapses to a solid dot
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />
-          {/* Take the version out of the drag zone so users reporting bugs can
-              actually copy it — audit finding P2 #36. */}
-          <span
-            className="text-redlog-text-dim text-xs font-mono select-text cursor-text"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title={t('app.copyVersionHint')}
-          >v{__APP_VERSION__}</span>
-          {/* "Check for updates" was a Settings group, next to a copy of this
-              same version string. It is an action about the version, so it
-              belongs beside the version rather than in a page of settings —
-              and nobody looks for it under Settings anyway. */}
-          <button
-            onClick={() => void window.redlog.app.checkForUpdates()}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title={t('settings.checkUpdateHint')}
-            className="text-redlog-text-faint hover:text-redlog-text text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
-          >{t('settings.checkUpdate')}</button>
         </div>
-        <button
-          className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          onClick={async () => {
-            // Pending settings go to THIS project before it closes (#223).
-            // Closing first let the flush arrive with no project open, where
-            // it was refused and nothing said so. A failed save keeps the
-            // project open, with the change still on screen to retry.
-            if (!(await closeProjectAfterSaves())) {
-              toast(t('app.closeSaveFailed'), 'error')
-              return
-            }
-            setProject(null)
-          }}
-          title={t('app.closeProject')}
-        >
-          <span className="text-xs">&#9664;</span>
-          {project.name}
-        </button>
-        <ActiveTargetControl key={project.id} />
-        <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* §10: one export control, in the shell rather than six places.
-              Its scope is an option, not a location. */}
-          <ExportMenu totalCount={exportableCount} />
-          <LaunchBrowserButton onNavigate={navigate} />
-          {/* The evidence verbs sit together (UI/UX audit F8): screenshot and
-              add-file used to be reachable only from ⌘K. */}
+        {/* The one control on this strip that had no outline — it leaned on a
+            50% elevated tint, and `elevated` is 1.17:1 from `bg`, so there was
+            nothing there to see. §3.5: every control has a visible boundary,
+            and this one closes a project. */}
+        <ControlBoundary name={t('app.closeProject')}>
           <button
-            type="button"
-            data-testid="titlebar-screenshot"
-            onClick={() => { void captureScreenshotWithFeedback(t) }}
-            aria-label={t('app.evidenceShot')}
-            title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
-            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
+            className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            onClick={async () => {
+              // Pending settings go to THIS project before it closes (#223).
+              // Closing first let the flush arrive with no project open, where
+              // it was refused and nothing said so. A failed save keeps the
+              // project open, with the change still on screen to retry.
+              if (!(await closeProjectAfterSaves())) {
+                toast(t('app.closeSaveFailed'), 'error')
+                return
+              }
+              setProject(null)
+            }}
+            title={t('app.closeProject')}
           >
-            <Camera size={14} strokeWidth={1.75} aria-hidden />
+            <span className="text-xs shrink-0">&#9664;</span>
+            {/* The button's own title names the action; the name needs its own
+                route to the full value once it can be cut short (§9). */}
+            <span className="truncate" title={project.name}>{project.name}</span>
           </button>
-          <button
-            type="button"
-            data-testid="titlebar-add-file"
-            onClick={() => { void addArtifactsWithFeedback(t) }}
-            aria-label={t('app.evidenceFile')}
-            title={t('app.evidenceFile')}
-            className="px-2 py-1 rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors"
-          >
-            <FilePlus size={14} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
-            onClick={() => setShowMarker(true)}
-            className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
-            title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
-          >
-            {t('app.mark')}
-          </button>
+        </ControlBoundary>
+        {/* The outer net. Anything unforeseen in this strip costs the strip,
+            not the window: the title bar sits outside the view's ErrorBoundary
+            (below), so until now a throw here unmounted the app root and left
+            a black window -- with the shortcuts still working and nothing on
+            screen to say what had happened. */}
+        <div className={`ml-auto flex gap-2 shrink-0 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <ControlBoundary name={t('control.titlebar')}>
+            {/* Each of the two stateful controls gets its own barrier, so one
+                failing leaves the other four working. These are the two that
+                hold hooks and talk to main, which is the class of failure that
+                reaches a boundary at all; the three below are inline markup. */}
+            {/* §10: one export control, in the shell rather than six places.
+                Its scope is an option, not a location. */}
+            <ControlBoundary name={t('export.title')}>
+              <ExportMenu totalCount={exportableCount} />
+            </ControlBoundary>
+            <ControlBoundary name={t('browser.launch')}>
+              <LaunchBrowserButton onNavigate={navigate} />
+            </ControlBoundary>
+            {/* The evidence verbs sit together (UI/UX audit F8): screenshot and
+                add-file used to be reachable only from ⌘K. */}
+            <button
+              type="button"
+              data-testid="titlebar-screenshot"
+              onClick={() => { void captureScreenshotWithFeedback(t) }}
+              aria-label={t('app.evidenceShot')}
+              title={`${t('app.evidenceShot')} · ${formatAccelerator(QUICK_SHOT_ACCELERATOR, isMac)}`}
+              className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
+            >
+              <Camera size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+            <button
+              type="button"
+              data-testid="titlebar-add-file"
+              onClick={() => { void addArtifactsWithFeedback(t) }}
+              aria-label={t('app.evidenceFile')}
+              title={t('app.evidenceFile')}
+              className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}
+            >
+              <FilePlus size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+            <button
+              onClick={() => setShowMarker(true)}
+              /* A command button, so it carries the brand accent rather than a
+                 raw red the palette has no token for (§1: brand red fills a verb
+                 you can press; danger red reports a state). */
+              className={`${TITLEBAR_CONTROL} bg-redlog-accent/10 text-redlog-accent border-redlog-accent/25 hover:bg-redlog-accent/20 focus-visible:ring-redlog-accent/40`}
+              title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
+            >
+              {t('app.mark')}
+            </button>
+          </ControlBoundary>
         </div>
       </div>
 
       {/* Spec 036: re-checked each time a project opens (key), since an
           operator may have edited their profile while the picker was up. */}
-      <LegacyHookBanner key={project.id} />
-      <RuntimeReadinessHost firstLaunch={false} />
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
         <Sidebar
           active={view}
-          visibleViews={visibility.views}
+          projectId={project.id}
           onNavigate={(v) => { setFocusEvent(null); navigate(v) }}
         />
 
@@ -322,7 +340,7 @@ export default function App(): JSX.Element {
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={navigate} firstRun={firstRunActive} projectName={project.name} />}
-            {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
+            {view === 'terminal' && <Suspense fallback={<PaneLoading />}><TerminalView /></Suspense>}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
@@ -345,7 +363,7 @@ export default function App(): JSX.Element {
                 this answers "what did I type and what came back", which is the
                 question an operator asks when writing an engagement up. */}
             {view === 'transcript' && (
-              <Suspense fallback={null}>
+              <Suspense fallback={<PaneLoading />}>
                 <TranscriptView
                   key={project?.id ?? 'no-project'}
                   // `onNavigate` is not in scope here — App switches views with
@@ -363,8 +381,8 @@ export default function App(): JSX.Element {
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
-            {view === 'settings' && <Suspense fallback={null}><Settings request={settingsRequest} /></Suspense>}
+            {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
+            {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>
         </div>

@@ -15,10 +15,30 @@
 // request jumps to the sqlmap that opened it, and a command expands to the
 // traffic it produced.
 //
+// THE PID A SHELL HOOK SENDS IS THE SHELL'S, NOT THE COMMAND'S.
+//
+// `hooks/shell-common.sh` sends `$$`. A `preexec` hook fires before the fork,
+// so the shell cannot know the child's pid — but the socket is opened by the
+// child (`dirb`, `sqlmap`), and that is the pid the socket table reports. So
+// `pidCmd` was keyed on the shell and `portPid` on its child, and the two maps
+// could never meet. Every HTTP flow resolved to nothing, silently, while the
+// whole path looked wired.
+//
+// `process-monitor.ts` records as much: `findCauseSession()` was deleted
+// because it always returned undefined.
+//
+// The missing link is ancestry, and only the OS has it. `noteProcessParent`
+// takes pid → ppid from whatever is watching processes, and `resolveByPid`
+// walks up from the socket's owner until it reaches a pid that ran a command.
+// A `dirb` whose parent is the hooked zsh resolves to the `dirb` command_start
+// — which is the edge the design asked for all along.
+//
 // Best-effort by design: resolution returns [] when the join is not known
-// (macOS gives no pid, the socket was gone before the HTTP event arrived, the
-// command was not hooked). Attribution never blocks capture — an unattributed
-// event still lands, just without a `_causes` edge.
+// (no process watcher, macOS gives no socket owner, the socket was gone before
+// the HTTP event arrived, the command was not hooked). Attribution never
+// blocks capture — an unattributed event still lands, just without a `_causes`
+// edge. It must never GUESS: a wrong edge is a false claim about who did what,
+// and this record is handed to a client.
 
 const MAX_ENTRIES = 10_000
 
@@ -41,6 +61,32 @@ class BoundedMap<K, V> {
 const portPid = new BoundedMap<number, number>()
 // pid → the eventId of the command_start that pid belongs to.
 const pidCmd = new BoundedMap<number, string>()
+// pid → ppid, from whatever is watching the process table. The bridge between
+// the pid a socket reports (the child) and the pid a shell hook reports (the
+// shell that forked it).
+const parentOf = new BoundedMap<number, number>()
+
+/** How far up the process tree to look for a command. Deep enough for the
+ *  real shapes — `zsh → sudo → tool`, `zsh → proxychains → tool`, a wrapper
+ *  script around a wrapper — and shallow enough that a pid whose ancestry is
+ *  unknown cannot walk to an unrelated ancient process and cite it. */
+export const MAX_ANCESTRY_DEPTH = 8
+
+// How this join is actually doing, so the UI can tell "nothing was caused"
+// apart from "this host cannot answer who owns a socket".
+//
+// Those look identical on screen — no edges either way — and they are not the
+// same thing. One is a true statement about the engagement; the other is a
+// capability the host does not have (no `ss`, no `lsof`, a connection shorter
+// than the snapshot interval). Leaving them indistinguishable is how a broken
+// join sits unnoticed for a year, which is exactly what happened here.
+let attempted = 0
+let resolved = 0
+
+/** Attribution attempts and successes since the project opened. */
+export function attributionStats(): { attempted: number; resolved: number } {
+  return { attempted, resolved }
+}
 
 /** connection-monitor: this local ephemeral port is owned by this pid. */
 export function notePortPid(localPort: number | undefined, pid: number | undefined): void {
@@ -54,10 +100,34 @@ export function noteCommandPid(pid: number | undefined, eventId: string): void {
   if (typeof pid === 'number' && pid > 0 && eventId) pidCmd.set(pid, eventId)
 }
 
-/** The command eventId that owns this pid, or null. */
+/** process watcher: this pid was forked by this one. */
+export function noteProcessParent(pid: number | undefined, ppid: number | undefined): void {
+  if (typeof pid !== 'number' || pid <= 0) return
+  if (typeof ppid !== 'number' || ppid <= 0 || ppid === pid) return
+  parentOf.set(pid, ppid)
+}
+
+/**
+ * The command eventId that owns this pid, or null.
+ *
+ * Walks up through `parentOf` when the pid itself ran no command, because the
+ * pid on a socket is the tool and the pid on a command_start is the shell that
+ * forked it. Bounded by MAX_ANCESTRY_DEPTH, and by a seen-set: a process table
+ * read mid-reparent can contain a cycle, and an attribution walk must not be
+ * the thing that hangs capture.
+ */
 export function resolveByPid(pid: number | undefined): string | null {
   if (typeof pid !== 'number' || pid <= 0) return null
-  return pidCmd.get(pid) ?? null
+  const seen = new Set<number>()
+  let at: number | undefined = pid
+  for (let depth = 0; at !== undefined && depth < MAX_ANCESTRY_DEPTH; depth++) {
+    if (seen.has(at)) return null
+    seen.add(at)
+    const cmd = pidCmd.get(at)
+    if (cmd) return cmd
+    at = parentOf.get(at)
+  }
+  return null
 }
 
 /** The command eventId that owns this local port (port → pid → command), or null. */
@@ -85,16 +155,21 @@ export function portOfSourceAddr(addr: unknown): number | undefined {
  */
 export function socketCausesFor(agentType: string, data: Record<string, unknown>): string[] {
   if (agentType !== 'scanner' && agentType !== 'dns' && agentType !== 'http_navigation') return []
+  attempted++
   const byPid = resolveByPid(data.pid as number | undefined)
-  if (byPid) return [byPid]
+  if (byPid) { resolved++; return [byPid] }
   const byPort = resolveByLocalPort(
     (data.local_port as number | undefined) ?? portOfSourceAddr(data.source_addr)
   )
-  return byPort ? [byPort] : []
+  if (byPort) { resolved++; return [byPort] }
+  return []
 }
 
 /** Test helper. */
 export function _resetSocketAttribution(): void {
   portPid.clear()
   pidCmd.clear()
+  parentOf.clear()
+  attempted = 0
+  resolved = 0
 }

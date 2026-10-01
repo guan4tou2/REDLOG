@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
+import { noteProcessParent } from '../../core/socket-attribution'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Process monitor (v0.6.92)
@@ -237,6 +238,14 @@ async function pollInner(): Promise<void> {
   if (run !== generation || !cfg.enabled) return
   const nowMap = new Map<number, PsRow>()
   for (const r of rows) nowMap.set(r.pid, r)
+  // Ancestry for socket attribution. The pid on a socket is the tool; the pid
+  // a shell hook reports is the shell that forked it, because a `preexec` hook
+  // fires before the fork and cannot know the child. Only the process table
+  // bridges them, and this is the one place that reads it.
+  //
+  // Every row, not just the spawns: a tool that was already running when the
+  // monitor started still opens sockets, and a diff would never mention it.
+  for (const r of rows) noteProcessParent(r.pid, r.ppid)
   const { spawns, exits } = diffProcs(knownProcs, nowMap, cfg.ignoreCommands ?? [])
   // Ignore RedLog's own pid + its descendants; capping the traversal at 32
   // ancestors so a cycle (should never happen) can't hang the poll.

@@ -150,6 +150,32 @@ export function formatFreshness(
   return t('time.dAgo', { d: Math.floor(hours / 24) })
 }
 
+/** Below this the two times are the same event as far as a reader is
+ *  concerned; live capture lands well under it. */
+const LAG_FLOOR_MS = 1000
+
+/**
+ * The gap between when something happened and when RedLog wrote it down, for
+ * the badge that appears only when the two differ — a replayed transcript, a
+ * spool that sat offline. Deliberately coarse: the badge exists to say "this
+ * row was not captured live", and the exact millisecond belongs in the detail
+ * panel rather than in a row the eye scans. Returns '' for a gap too small to
+ * be worth a badge, which is the common case.
+ */
+export function formatLag(
+  ms: number,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
+  if (!Number.isFinite(ms) || ms < LAG_FLOOR_MS) return ''
+  const secs = Math.round(ms / 1000)
+  if (secs < 60) return t('time.lagS', { s: secs })
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return t('time.lagM', { m: mins })
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return t('time.lagH', { h: hours })
+  return t('time.lagD', { d: Math.floor(hours / 24) })
+}
+
 /** Human-readable byte size: `1.2 MB`, `340 KB`, etc. */
 export function formatSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return ''

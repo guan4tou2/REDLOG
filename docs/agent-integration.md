@@ -201,10 +201,10 @@ For agents where you can't modify their hook system but can control the shell th
 
 ```bash
 # Option 1: Set as the agent's shell
-SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
+SHELL=/path/to/redlog/plugins/pack-ai-agents/hooks/codex-wrapper.sh codex run "scan the target"
 
 # Option 2: Wrap a specific command
-./hooks/codex-wrapper.sh nmap -sV target.com
+./plugins/pack-ai-agents/hooks/codex-wrapper.sh nmap -sV target.com
 
 ```
 

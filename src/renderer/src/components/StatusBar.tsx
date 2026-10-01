@@ -6,14 +6,15 @@ import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
+import { integrityFault } from '../lib/integrityPulse'
+import { settingsTarget } from '../lib/navigation'
 
 export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
+  const { eventCount, loggedCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
-  const [loggedCount, setLoggedCount] = useState(0)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
   // number next to REC does not say — it reads as this session's recording time.
@@ -38,23 +39,12 @@ export default function StatusBar(): JSX.Element {
       if (p?.createdAt) { start = p.createdAt; setSince(p.createdAt) }
     })
     window.redlog.ip.getStatus().then(setIpStatus)
-    // v0.13.0: fetch the logged-tier count for the chained·logged split.
-    // The shared counts (eventCount, lootCount, scopeViolations,
-    // scopeConfigured) come from useAppCounts.
-    window.redlog.events.getCount('logged').then(setLoggedCount)
     window.redlog.recording.get().then((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
     })
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
-    // v0.13.0: the logged-tier count for the chained·logged split is
-    // StatusBar-specific. The shared counts (eventCount, lootCount,
-    // scopeViolations) are refreshed by useAppCounts's own batch subscription.
-    const unsubEvent = window.redlog.events.onNewBatch((events) => {
-      const added = events.filter((event) => event.tier === 'logged').length
-      if (added) setLoggedCount((c) => c + added)
-    })
     const unsubRec = window.redlog.recording.onChange((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
@@ -106,12 +96,49 @@ export default function StatusBar(): JSX.Element {
             )
           }
           prevVerdict = verdict
+          // Same tick, and the sample state rides the payload this call
+          // already fetched rather than costing a second round trip.
+          loadIntegrity(!!(h as { lastSampleBroken?: unknown }).lastSampleBroken)
         }).catch(() => {})
     }
+    // The chain gets the same tick. Until now it was checked only when the
+    // operator pressed Verify in Settings ▸ Integrity or happened to look at
+    // the dashboard tile, so a drifted chain or a dead anchor loop could run
+    // the length of an engagement in silence — and unlike a capture outage,
+    // which costs the events it drops, a chain fault costs the defensibility
+    // of everything already written.
+    //
+    // Three cheap reads: two counts and the newest anchor row. The broken
+    // sample comes off the health payload, which was already carrying it and
+    // being ignored.
+    const loadIntegrity = (sampleBroken: boolean): void => {
+      void Promise.all([
+        window.redlog.chain.length(),
+        window.redlog.events.getCount('chained'),
+        window.redlog.chain.anchors()
+      ]).then(([chainLen, eventCount, anchors]) => {
+        const newest = anchors[0]
+        const fault = integrityFault({
+          chainLen,
+          eventCount,
+          lastAnchor: newest ? { createdAt: newest.createdAt, status: newest.status } : null,
+          sampleBroken
+        })
+        if (!fault) { clearIssue('integrity'); return }
+        raiseIssue({
+          id: 'integrity',
+          tier: 'attention',
+          title: t(`issues.integrity.${fault.kind}`, fault.vars),
+          detail: t('issues.integrityDetail'),
+          view: settingsTarget('integrity')
+        })
+      }).catch(() => { /* a failed probe must not clear a real fault */ })
+    }
+
     loadCapture()
     const healthTimer = setInterval(loadCapture, 30_000)
 
-    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
+    return () => { unsubIp(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
 
   useEffect(() => {

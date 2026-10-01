@@ -176,12 +176,26 @@
   --color-redlog-surface: #1a1a1d;
   --color-redlog-elevated: #212126;
   --color-redlog-elevated-hover: #2a2a30;
-  --color-redlog-border-subtle: #26262c;
-  --color-redlog-border: #33333a;
+  /* WCAG 1.4.11 wants 3:1 for a control's boundary when the boundary is the
+     only thing identifying it -- and here it is: `elevated` sits 1.17:1 from
+     `bg`, so the fill of an input or a quiet button says nothing, and the
+     hairline was carrying the whole depth model at 1.49:1. That is the
+     mechanism behind "these controls have no visible extent".
+     `border-subtle` stays deliberately under 3:1. It separates rows inside a
+     list, which is decoration rather than a component boundary; held to the
+     same line it would draw a grid over every table in the app. It was still
+     1.24:1 -- a line nobody could see -- so it roughly doubles. */
+  --color-redlog-border-subtle: #4a4a53;
+  --color-redlog-border: #74747c;
   --color-redlog-text: #ececf0;
-  --color-redlog-text-dim: #9a9aa4;
-  --color-redlog-text-faint: #93939d;
-  --color-redlog-muted: #7e7e88;
+  /* Lifted when the default zoom dropped to 0.9 (lib/uiScale). WCAG's 4.5:1
+     is calibrated at ~16px; the ramp sat at 4.0–6.7:1, which reads as grey
+     mush at an effective 11.7px on a near-black field. `dim` and `faint` were
+     also 2.7 L* apart -- three declared tiers, two visible ones -- so the gap
+     between them is now 7.7 L*, which is a step you can actually see. */
+  --color-redlog-text-dim: #bebec8;
+  --color-redlog-text-faint: #a9a9b4;
+  --color-redlog-muted: #91919c;
   --color-redlog-on-accent: #16090a;
   --color-redlog-on-danger: #1a0303;
   --color-redlog-on-warn: #1a1203;
@@ -191,6 +205,12 @@
   --color-redlog-accent-dim: #b84d51;
   --color-redlog-danger: #ff4d4f;
   --color-redlog-danger-hover: #ff6a6c;
+  /* §1's state colours. `on-safe` and `on-warn` were already here -- the dark
+     text that sits on these two fills -- while the fills themselves were not,
+     so every "healthy" and every "unknown" in the app reached for a raw
+     Tailwind emerald or amber instead. */
+  --color-redlog-safe: #5ecf9c;
+  --color-redlog-warn: #d4ac5a;
   --color-redlog-cyan: #3fc7d6;
   --color-redlog-cyan-dim: #0e7490;
   --color-redlog-lane: #6e6e78;
@@ -247,8 +267,8 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  zoom: var(--app-zoom, 1);
-  height: calc(100vh / var(--app-zoom, 1));
+  zoom: var(--app-zoom, 0.9);
+  height: calc(100vh / var(--app-zoom, 0.9));
 }
 
 @media (-webkit-min-device-pixel-ratio: 1) and (max-resolution: 143dpi) {
@@ -283,11 +303,26 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #33333a;
+  background: var(--color-redlog-border);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a54;
+  background: var(--color-redlog-muted);
+}
+
+/* The nav scrolls by a few pixels on a short window, and a 10px bar inside a
+   48px icon rail is a fifth of the rail spent saying so — it sat against the
+   icons and made the one column the eye tracks look crowded. Four pixels is
+   still an affordance; it is just not a column of its own. */
+.rl-thin-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.rl-thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border-subtle);
+}
+.rl-thin-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border);
 }
 
 .drag-over {

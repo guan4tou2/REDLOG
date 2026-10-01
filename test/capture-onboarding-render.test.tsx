@@ -60,14 +60,19 @@ describe('CaptureHealthCard onboarding', () => {
     const text = el.textContent ?? ''
     expect(text).toMatch(/Commands/)
     expect(text).toMatch(/HTTP\(S\) requests/)
-    expect(text).toMatch(/Screen & files/)
+    // The other groups are named by a count, not listed: fifteen rows of
+    // sources nobody has touched answer "what could RedLog capture", and the
+    // dashboard is asking whether it IS capturing.
+    expect(text).not.toMatch(/Screen & files/)
+    expect(text).toMatch(/more capture sources are available/)
     // The command group still holds the three, in the group's own order.
+    // Two lists now: the two core groups. The rest is a count.
     const groups = [...el.querySelectorAll('ul')]
-    expect(groups.length).toBeGreaterThanOrEqual(3)
+    expect(groups.length).toBe(2)
     expect(groups[0].textContent).toMatch(/Shell hook/)
   })
 
-  it('puts HTTP(S) at the same level as Commands, above "Additional sources"', () => {
+  it('puts HTTP(S) at the same level as Commands, above the rest', () => {
     // The whole point of the restructure. HTTP(S) used to be one line inside a
     // "Traffic" group listed third, beside the browser console — and an
     // operator who skims the top of a list and starts wiring reads that as
@@ -76,12 +81,10 @@ describe('CaptureHealthCard onboarding', () => {
     const text = draw(DARK).textContent ?? ''
     const commands = text.indexOf('Commands')
     const http = text.indexOf('HTTP(S) requests')
-    const additional = text.indexOf('Additional sources')
-    const screen = text.indexOf('Screen & files')
+    const rest = text.search(/more capture sources are available/)
     expect(commands).toBeGreaterThanOrEqual(0)
     expect(http).toBeGreaterThan(commands)
-    expect(additional).toBeGreaterThan(http)
-    expect(screen).toBeGreaterThan(additional)
+    expect(rest).toBeGreaterThan(http)
     // And it says what installing it buys, because "mitmproxy" alone does not.
     expect(text).toMatch(/requests and responses from any proxied tool/)
   })

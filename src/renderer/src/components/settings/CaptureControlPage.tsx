@@ -1,6 +1,7 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
 import LootRulesGroup from './LootRulesGroup'
 import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
+import ExternalCaptureGroup from './ExternalCaptureGroup'
 
 export default function CaptureControlPage({
   config, setConfig, t
@@ -102,6 +103,13 @@ export default function CaptureControlPage({
         pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
         available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
       />
+
+      {/* Last, and the one block on this page that is not per project: what
+          the operator wires up on the machine itself. It sits here rather
+          than on the Plugins page because the question it answers -- "is
+          anything actually recording" -- is this page's question, and because
+          what ships with RedLog is not a plugin. */}
+      <ExternalCaptureGroup t={t} />
 
       <LootRulesGroup config={config} setConfig={setConfig} t={t} />
 

@@ -314,7 +314,11 @@ function padMonoNs(ns: string | null): string | null {
 // under `_clock_anomaly` so verifyChainFullAsync can surface it and Timeline
 // can visually tag the row.
 const CLOCK_NTP_THRESHOLD_MS = 30_000
-let lastEventForClockCheck: { timestamp: number; monotonic: string; hostname: string; sessionId: string } | null = null
+// `receiptAt`, not `timestamp`: since events can carry a producer's own
+// occurrence time (see resolveOccurredAt), `timestamp` is no longer guaranteed
+// to be a reading of this machine's clock. Comparing one of those against
+// `now` would read a transcript backfill as the wall clock running backwards.
+let lastEventForClockCheck: { receiptAt: number; monotonic: string; hostname: string; sessionId: string } | null = null
 function detectClockAnomaly(
   now: number,
   currentMono: string | null,
@@ -336,8 +340,8 @@ function detectClockAnomaly(
       }
     } catch { /* malformed prefix — skip */ }
   }
-  if (prev && prev.timestamp > now + 60_000) {
-    return { reason: `wall_clock regressed by ${prev.timestamp - now}ms since previous event` }
+  if (prev && prev.receiptAt > now + 60_000) {
+    return { reason: `wall_clock regressed by ${prev.receiptAt - now}ms since previous event` }
   }
   return null
 }
@@ -348,10 +352,59 @@ function detectClockAnomaly(
  *  Everything else is passive capture and stops. */
 export const PAUSE_EXEMPT_AGENT_TYPES: ReadonlySet<string> = new Set(['system', 'marker'])
 
+// ── Source occurrence time ──────────────────────────────────────────────────
+//
+// A producer sometimes knows when the thing it reports actually happened, and
+// that is not when RedLog heard about it. The tailer attaching to a transcript
+// written hours ago replays the entire file in one burst — `catchUpJsonl`
+// resumes from the sidecar's size, which is 0 for a session RedLog has not seen
+// before — and a shell hook whose spool sat offline replays on the next project
+// open. Every one of those rows used to be stamped with the moment of replay,
+// so a three-hour engagement collapsed onto a single point on the Timeline.
+//
+// The source time goes into `timestamp`, not into a side column. `timestamp` is
+// the sort key for every event query and the keyset cursor's order (see
+// src/core/query-page.ts), it is inside the chain hash, and it is in the
+// immutability trigger's column list below. `ts_source` is none of those: a
+// time displayed from there would carry no tamper evidence, and rows would sort
+// by one number while showing another. `created_at` stays RedLog's own receipt
+// clock — keeping the two separate is what Domain Invariant #8 and spec 017
+// FR-014 ask for, and what makes the gap between them a reportable fact rather
+// than an unexplained silence.
+//
+// Because the result lands in an immutable hashed column, a producer-supplied
+// time is validated before it is trusted; garbage would be unfixable after the
+// fact. A rejected candidate falls back to the receipt time and says so in
+// `_source_time_rejected`, folded in before hashing for the same reason
+// `_clock_anomaly` is — stripping the note has to break the chain.
+const SOURCE_TIME_FLOOR_MS = Date.UTC(2015, 0, 1)
+const SOURCE_TIME_FUTURE_SLACK_MS = 60_000
+
+function resolveOccurredAt(
+  data: Record<string, unknown>,
+  envelope: EnvelopeInput | undefined,
+  explicit: number | undefined,
+  now: number
+): { occurredAt: number; sourceCandidate: number | null; rejected: { value: unknown; reason: string } | null } {
+  const candidate = explicit ?? envelope?.tsSource ?? data.source_timestamp
+  if (candidate === undefined || candidate === null) {
+    return { occurredAt: now, sourceCandidate: null, rejected: null }
+  }
+  const reject = (reason: string): { occurredAt: number; sourceCandidate: null; rejected: { value: unknown; reason: string } } =>
+    ({ occurredAt: now, sourceCandidate: null, rejected: { value: candidate, reason } })
+
+  if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return reject('not a finite number')
+  // A seconds-precision epoch read as milliseconds lands in 1970 and would drag
+  // the row to the far left of every timeline. Cheaper to refuse than to fix.
+  if (candidate < SOURCE_TIME_FLOOR_MS) return reject('before 2015 — probably seconds, not milliseconds')
+  if (candidate > now + SOURCE_TIME_FUTURE_SLACK_MS) return reject(`${candidate - now}ms in the future`)
+  return { occurredAt: candidate, sourceCandidate: candidate, rejected: null }
+}
+
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   // Pause enforcement stays at the front door for BOTH tiers. See the
   // block comment below (previously the head of this function) for why
@@ -375,7 +428,7 @@ export function insertEvent(
 function insertChainedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   // v0.9.5: pause means "do not record", not "do not display". Before this the
   // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
@@ -469,14 +522,26 @@ function insertChainedEvent(
   // before the anomaly stamp and the hash, so the chain covers the raw sha256.
   const env = prepareEnvelope(data, opts?.envelope)
 
+  const { occurredAt, sourceCandidate, rejected: sourceTimeRejected } =
+    resolveOccurredAt(data, opts?.envelope, opts?.occurredAt, now)
+  // Provenance only. The displayed and sorted time is `timestamp`; this column
+  // records the raw candidate a producer handed us, including the one that came
+  // in through `data.source_timestamp` rather than the envelope.
+  if (sourceCandidate !== null) env.tsSource = sourceCandidate
+
   // v0.6.88 P2-A: tag the event before hashing so the anomaly is part of
   // the chain (a later attacker can't strip it without a hash mismatch).
+  // Fed `now` rather than `occurredAt` on purpose: this detector answers "is
+  // this machine's clock lying", so a backfilled transcript must not read as
+  // the wall clock running backwards.
   const anomaly = detectClockAnomaly(now, paddedMono, hostname)
-  const dataForChain: Record<string, unknown> = anomaly ? { ...data, _clock_anomaly: anomaly } : data
+  let dataForChain: Record<string, unknown> = data
+  if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
+  if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
-    timestamp: now,
+    timestamp: occurredAt,
     engagementId: opts?.engagementId ?? 'default',
     sessionId,
     operatorId: opts.operatorId,
@@ -543,7 +608,7 @@ function insertChainedEvent(
   if (cachedEventCount !== null) cachedEventCount++
 
   lastEventForClockCheck = {
-    timestamp: event.timestamp,
+    receiptAt: event.createdAt,
     monotonic: event.monotonicNs || '',
     hostname: event.hostname,
     sessionId: event.sessionId
@@ -571,7 +636,7 @@ function insertChainedEvent(
 function insertLoggedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   if (!opts?.operatorId) {
     throw new Error(`insertEvent (logged): operatorId is required (agent_type=${agentType}). ` +
@@ -580,9 +645,15 @@ function insertLoggedEvent(
   const db = getDB()
   const now = Date.now()
   const env = prepareEnvelope(data, opts.envelope)
+  // Same source/receipt split as the chained arm. A rejected candidate is not
+  // stamped into `data` here: this tier has no hash for the note to be anchored
+  // to, and a silent fallback to the receipt time is what the rest of the tier
+  // already does with provenance it cannot attest.
+  const { occurredAt, sourceCandidate } = resolveOccurredAt(data, opts.envelope, opts.occurredAt, now)
+  if (sourceCandidate !== null) env.tsSource = sourceCandidate
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
-    timestamp: now,
+    timestamp: occurredAt,
     engagementId: opts.engagementId ?? 'default',
     sessionId,
     operatorId: opts.operatorId,

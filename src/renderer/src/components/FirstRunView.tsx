@@ -25,14 +25,16 @@
 // and a missing shell dependency blocks only the Commands step.
 
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
 import { eventTitle } from '../lib/eventTitle'
 import { Button } from './Button'
-import { RecordTerminalFlow, MissingList, type RecordTarget } from './RecordTerminalFlow'
+import { RecordTerminalFlow, MissingList, ExecutionPolicyBlocker, type RecordTarget } from './RecordTerminalFlow'
 import { HttpCaptureStep } from './HttpCaptureStep'
-import { missingDependencies, shellLabel } from '../lib/terminalActivation'
+import { commandCaptureBlockers, missingDependencies, shellLabel } from '../lib/terminalActivation'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { commandsVerification, coreCaptureReady } from '../lib/coreCapture'
 import { ChevronRight } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
@@ -76,6 +78,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       .catch(() => setPreflightFailed(true))
   }
   useEffect(checkRuntime, [])
+  // Coming back to the window is the re-check. The operator left to install
+  // something; there is nothing for them to press on the way back.
+  useRevalidateOnFocus(checkRuntime)
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -128,6 +133,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
 
   const ready = coreCaptureReady({ commands, http: httpVerified })
   const missing = missingDependencies(preflight)
+  // What is actually stopping capture, per platform. On Windows that is never
+  // a missing command — it is the execution policy (F6).
+  const blockers = commandCaptureBlockers(preflight)
+  const policyBlocker = blockers.find((b) => b.kind === 'execution-policy')
   const hostTarget: RecordTarget | null = preflight?.shell
     ? { kind: 'host', hookId: preflight.shell.hookId, label: shellLabel(preflight.shell.name) }
     : null
@@ -155,9 +164,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
         >
-          <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+          <SectionLabel>
             {t('firstRun.core.heading')}
-          </p>
+          </SectionLabel>
 
           <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
             <div className="flex items-baseline justify-between gap-2">
@@ -200,12 +209,17 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <p className="text-redlog-text-dim">{t('firstRun.preflightFailedWhy')}</p>
                 <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
               </div>
-            ) : missing.length > 0 ? (
-              <div data-testid="first-run-missing-deps" className="space-y-2">
-                <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
-                <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
-                <MissingList missing={missing} />
-                <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+            ) : blockers.length > 0 ? (
+              <div data-testid="first-run-blocked" className="space-y-2">
+                {policyBlocker ? (
+                  <ExecutionPolicyBlocker blocker={policyBlocker} />
+                ) : (
+                  <div data-testid="first-run-missing-deps" className="space-y-2">
+                    <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
+                    <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
+                    <MissingList missing={missing} />
+                  </div>
+                )}
               </div>
             ) : stuck ? (
               <div data-testid="first-run-stuck" role="status" className="space-y-2">

@@ -16,9 +16,14 @@ const manifest = JSON.parse(
 describe('starter-pack (§8-2)', () => {
   it('drives the built-in registry with BARE ids (not namespaced)', () => {
     const ids = detectHooks().map((h) => h.id)
-    for (const id of ['shell-zsh', 'shell-bash', 'codex', 'mitmproxy', 'shell-powershell', 'shell-wsl']) {
+    for (const id of ['shell-zsh', 'shell-bash', 'mitmproxy', 'shell-powershell', 'shell-wsl']) {
       expect(ids, `built-in producer ${id} missing from detectHooks`).toContain(id)
     }
+    // Codex is not one of them. The built-ins are the sources RedLog owns —
+    // the operator's shell and RedLog's own proxy — and wrapping somebody
+    // else's agent belongs to a plugin (pack-ai-agents), which contributes it
+    // under a namespaced id.
+    expect(ids).not.toContain('codex')
     // None of the built-ins are namespaced (`.`) — that dot is the marker
     // capture-health uses to tell a plugin producer from a built-in.
     expect(ids.filter((id) => id.includes('.')).some((id) => id.startsWith('starter-pack'))).toBe(false)

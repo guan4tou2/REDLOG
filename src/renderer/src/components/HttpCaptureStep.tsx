@@ -22,6 +22,7 @@ import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
 import { requestRunInTerminal } from '../lib/terminalRunner'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { isMac, isWindows } from '../lib/platform'
 import {
   applyVerifyReport, httpTimeoutReasons, httpsProvesTrust, newAttempt, verifyCommand, type VerifyAttempt
@@ -29,7 +30,6 @@ import {
 import { clientLabel, newVerifyNonce, type HttpVerifyReport } from '../../../core/http-verify'
 import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
 
-const MITM_INSTALL = 'uv tool install mitmproxy'
 /** Same window as the shell activation: long enough to launch a browser and
  *  load a page, short enough to be named while the operator is watching. */
 const HTTP_VERIFY_TIMEOUT_MS = 60_000
@@ -124,6 +124,10 @@ export function HttpCaptureStep({ onVerified }: {
   const { t } = useI18n()
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
   const [mitmMissing, setMitmMissing] = useState(false)
+  /** Set when mitmproxy's installer (uv) is itself missing: RedLog cannot run
+   *  the install, so the operator is pointed at uv first (#241 follow-up). */
+  const [mitmRequires, setMitmRequires] = useState<{ command: string; url: string } | null>(null)
+  const [installing, setInstalling] = useState(false)
   const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
@@ -157,14 +161,45 @@ export function HttpCaptureStep({ onVerified }: {
     ])
     // A failed environment check is not "mitmproxy is installed".
     setPreflightFailed(pf === null)
-    if (pf) setMitmMissing(pf.checks.some((c) => c.id === 'mitmdump' && !c.found))
+    if (pf) {
+      const mitm = pf.checks.find((c) => c.id === 'mitmdump')
+      setMitmMissing(mitm ? !mitm.found : false)
+      setMitmRequires(mitm && !mitm.found ? mitm.remediationRequires ?? null : null)
+    }
     if (st) setStatus(st)
+  }
+
+  // One-click install of the dependency RedLog can install for the operator.
+  // When uv is missing the IPC reports it rather than failing, and the card
+  // switches to pointing at uv.
+  const installMitm = async (): Promise<void> => {
+    setInstalling(true)
+    try {
+      const r = await window.redlog.runtime.install('mitmdump')
+      if (r.success) {
+        toast(t('firstRun.http.installed'), 'success')
+        await check()
+      } else if (r.needsPrereq) {
+        setMitmRequires(r.needsPrereq)
+      } else {
+        toast(t('firstRun.http.installFailed'), { type: 'error', detail: r.message })
+      }
+    } catch (e) {
+      toast(t('firstRun.http.installFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setInstalling(false)
+    }
   }
 
   useEffect(() => {
     void check()
     window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
   }, [])
+
+  // mitmproxy may have been installed in a terminal while RedLog was in the
+  // background. The proxy's own status already refreshes on a timer below;
+  // this is the other half of the same question.
+  useRevalidateOnFocus(() => { void check() })
 
   // The proxy has other controls — the app-wide toggle beside this screen,
   // Settings — and this card is on screen from the first frame (#217). Read
@@ -200,21 +235,9 @@ export function HttpCaptureStep({ onVerified }: {
   const retry = (): void => { setAttempt(newAttempt(newVerifyNonce())); setTimedOut(false) }
 
   const httpCapture = (config?.httpCapture ?? {}) as Record<string, unknown>
+  // Only to name it as a reason a check found nothing; the switch itself
+  // lives on Settings ▸ Browser, which owns every other proxy setting.
   const routeTerminals = httpCapture.routeTerminals === true
-  const setRouteTerminals = (on: boolean): void => {
-    if (!config) return
-    const prev = config
-    const next = { ...config, httpCapture: { ...httpCapture, routeTerminals: on } }
-    setConfig(next)
-    // The box reflects what was saved, not what was clicked.
-    const revert = (detail?: string): void => {
-      setConfig(prev)
-      toast(t('firstRun.http.routeSaveFailed'), { type: 'error', ...(detail ? { detail } : {}) })
-    }
-    window.redlog.config.save(next)
-      .then((ok) => { if (!ok) revert() })
-      .catch((err) => revert(err instanceof Error ? err.message : String(err)))
-  }
 
   const unavailable = mitmMissing || status.state === 'unavailable'
   const browserCfg = (config?.browser ?? {}) as { ignoreCertErrors?: boolean }
@@ -224,8 +247,12 @@ export function HttpCaptureStep({ onVerified }: {
     : undefined
   const os = thisOs()
 
+  // `data-nonce` carries the attempt the card would accept. The per-tool
+  // commands that used to be the only place it appeared are now the fallback
+  // shown after a check has not landed; nothing reads it off the screen in
+  // normal use, because the browser check carries it.
   return (
-    <section data-testid="first-run-http" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
+    <section data-testid="first-run-http" data-nonce={attempt.nonce} className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
         <span
@@ -242,17 +269,28 @@ export function HttpCaptureStep({ onVerified }: {
         </p>
       )}
       {unavailable ? (
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="first-run-http-unavailable">
           <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
-          <div className="flex items-center gap-2">
-            <code className="font-mono text-redlog-text-dim">{MITM_INSTALL}</code>
-            <CopyButton text={MITM_INSTALL} />
-          </div>
-          <Button level="secondary" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
+          {mitmRequires ? (
+            <>
+              <p className="text-redlog-text-dim">{t('firstRun.http.needsPrereq', { command: mitmRequires.command })}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button level="secondary" onClick={() => void window.redlog.app.openExternal(mitmRequires.url)} data-testid="first-run-http-install-prereq">
+                  {t('firstRun.http.installPrereq', { command: mitmRequires.command })}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button level="secondary" disabled={installing} onClick={() => void installMitm()} data-testid="first-run-http-install">
+                {installing ? t('firstRun.http.installing') : t('firstRun.http.install')}
+              </Button>
+            </div>
+          )}
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
-          <p className="text-redlog-text-dim">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
+          <p className="font-mono text-redlog-text-faint">{listenAddress(status.url)}</p>
           <ul data-testid="first-run-http-checks" className="space-y-1">
             <VerifyRow label="HTTP" report={attempt.http} testId="first-run-http-check-http" t={t} />
             <VerifyRow
@@ -264,8 +302,7 @@ export function HttpCaptureStep({ onVerified }: {
               t={t}
             />
           </ul>
-          {verified && <p data-testid="first-run-http-verified" className="text-emerald-500 font-medium">{t('firstRun.http.verified')}</p>}
-          {!verified && timedOut ? (
+          {!verified && timedOut && (
             <div data-testid="first-run-http-timeout" className="space-y-1">
               <p className="text-redlog-text">{t('firstRun.http.timeoutTitle')}</p>
               <ul className="list-disc pl-4 text-redlog-text-dim space-y-0.5">
@@ -274,8 +311,6 @@ export function HttpCaptureStep({ onVerified }: {
                 ))}
               </ul>
             </div>
-          ) : !verified && (
-            <p className="text-redlog-text-dim">{t('firstRun.http.waiting')}</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
@@ -285,7 +320,7 @@ export function HttpCaptureStep({ onVerified }: {
               <Button level="quiet" onClick={retry} data-testid="first-run-http-retry">{t('firstRun.http.newCheck')}</Button>
             )}
           </div>
-          {status.url && (
+          {status.url && timedOut && !verified && (
             <div data-testid="first-run-http-verify-commands" className="space-y-1">
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyFromTool')}</p>
               <CaCommand label="HTTP" command={verifyCommand('http', attempt.nonce, status.url, os)} t={t} />
@@ -293,19 +328,6 @@ export function HttpCaptureStep({ onVerified }: {
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyNoInsecure')}</p>
             </div>
           )}
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              data-testid="first-run-route-terminals"
-              checked={routeTerminals}
-              disabled={!config}
-              onChange={(e) => setRouteTerminals(e.target.checked)}
-            />
-            <span>
-              <span className="text-redlog-text-dim">{t('firstRun.http.routeTerminals')}</span>
-              <span className="block text-redlog-text-faint">{t('firstRun.http.routeTerminalsLimit')}</span>
-            </span>
-          </label>
           {status.caPath && (
             <div>
               <button onClick={() => setShowCa((v) => !v)} className="text-redlog-text-faint underline hover:text-redlog-text">
@@ -336,7 +358,6 @@ export function HttpCaptureStep({ onVerified }: {
                   {status.certReady !== false && status.caFingerprint && (
                     <>
                       <p className="text-redlog-text-dim">{t('httpCapture.caTrustWhy')}</p>
-                      <p className="text-redlog-text-dim">{t('httpCapture.caTrustStores')}</p>
                       <CaCommand
                         label={t('httpCapture.caTrust')}
                         command={caTrustCommand(status.caPath, status.caFingerprint, os)}
@@ -357,12 +378,15 @@ export function HttpCaptureStep({ onVerified }: {
       ) : status.state === 'starting' || busy ? (
         <p className="text-redlog-text-dim">{t('httpCapture.starting')}</p>
       ) : (
+        /* Opening the project already started this. Reaching here means it
+           failed, or the operator stopped it — neither is a reason to offer
+           "start" as if capture were something they had forgotten to turn on. */
         <div className="space-y-2">
           {status.state === 'failed' && (
             <p className="text-redlog-text-dim break-all">{status.error || t('httpCapture.failed')}</p>
           )}
-          <Button level="secondary" onClick={() => void start()}>
-            {status.state === 'failed' ? t('firstRun.record.retry') : t('httpCapture.start')}
+          <Button level="secondary" data-testid="first-run-http-restart" onClick={() => void start()}>
+            {t('httpCapture.restart')}
           </Button>
         </div>
       )}

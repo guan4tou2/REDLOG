@@ -129,6 +129,10 @@ function installBridge(): void {
       queryHttpFlowPage: async () => ({ items: EVENTS, flowCount: EVENTS.length, hasMore: false, nextCursor: null }),
       getCount: async () => EVENTS.length,
       getLatestLoggedTs: async () => null,
+      annotatedIds: async () => [],
+      attributionStats: async () => ({ attempted: 0, resolved: 0 }),
+      getNote: async () => null,
+      setNote: async () => null,
       search: async () => EVENTS,
       aggregateTargets: async () => {
         // Mirror the SQL rollup over the mock EVENTS so TargetView still renders
@@ -180,7 +184,8 @@ function installBridge(): void {
       detect: async () => '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       status: async () => ({ running: false }),
       launch: async () => ({ ok: true, pid: 1 }),
-      stop: async () => ({ stopped: true })
+      stop: async () => ({ stopped: true }),
+      onExited: () => () => {}
     },
     httpCapture: {
       status: async () => ({ state: 'running', url: 'http://127.0.0.1:8080', pid: 2 }),
@@ -314,6 +319,61 @@ describe('renderer views render without throwing', () => {
 
     fireEvent.mouseLeave(root)
     expect(bridge.overlay.mouseLeave).toHaveBeenCalledOnce()
+  })
+
+  // The HUD hangs off a `-webkit-app-region: drag` root so it can be dragged
+  // from anywhere. Chromium INHERITS that property, and Electron replays the
+  // collected rects in tree order — union for drag, difference for no-drag — so
+  // any element declared after a control and overlapping it hands those pixels
+  // back to the window manager. That is what killed the HUD: the compact bar
+  // followed the expand/hide cluster in the DOM and spans the full panel width,
+  // so WM_NCHITTEST over ✕ answered HTCAPTION and every click started a window
+  // drag. The HUD could be moved and nothing else.
+  //
+  // The e2e click test cannot catch this: Playwright dispatches through CDP,
+  // which lands in the renderer below the native hit test, so it passed the
+  // whole time the real HUD was dead. The order is the thing to assert.
+  it('HUD re-arms no drag region after its controls', async () => {
+    // jsdom's cssstyle drops properties it does not know, `-webkit-app-region`
+    // among them, so nothing survives to read back off the element. Give the
+    // prototype somewhere to keep it — React assigns `style.WebkitAppRegion`
+    // directly, so this records exactly what the component asked for.
+    const regions = new WeakMap<CSSStyleDeclaration, string>()
+    Object.defineProperty(window.CSSStyleDeclaration.prototype, 'WebkitAppRegion', {
+      configurable: true,
+      get(this: CSSStyleDeclaration) { return regions.get(this) ?? '' },
+      set(this: CSSStyleDeclaration, value: string) { regions.set(this, value) }
+    })
+
+    try {
+      const { container } = render(<I18nProvider><OverlayApp /></I18nProvider>)
+      // Expanded: the mark/pass-through/pin row only exists in this state, and
+      // it is the other set of controls the drag region can swallow.
+      fireEvent.click(await screen.findByRole('button', { name: /show details|顯示詳細資訊/i }))
+
+      const own = (el: Element): string =>
+        (el as HTMLElement).style.WebkitAppRegion ?? ''
+      const region = (el: Element): string => {
+        for (let node: Element | null = el; node; node = node.parentElement) {
+          if (own(node)) return own(node)
+        }
+        return 'drag'
+      }
+      // <style> has no layout box, so Blink never collects a region for it.
+      const boxes = Array.from(container.querySelectorAll('*'))
+        .filter((el) => el.tagName !== 'STYLE' && el.tagName !== 'SCRIPT')
+
+      const firstControl = boxes.findIndex((el) => region(el) === 'no-drag')
+      expect(firstControl, 'no no-drag control in the HUD at all').toBeGreaterThanOrEqual(0)
+
+      const reArmed = boxes.slice(firstControl).filter((el) => region(el) === 'drag')
+      expect(
+        reArmed.map((el) => el.outerHTML.replace(/\s+/g, ' ').slice(0, 90)),
+        'these come after a HUD control and put the drag region back over it — mark them no-drag, or move them ahead of the controls'
+      ).toEqual([])
+    } finally {
+      Reflect.deleteProperty(window.CSSStyleDeclaration.prototype, 'WebkitAppRegion')
+    }
   })
 
   // #49: the capture card lists a plugin producer read-only with its own label

@@ -211,10 +211,6 @@ interface RedLogAPI {
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
     getCount: (tier: import('../../core/db/events').EventTierFilter) => Promise<number>
-    /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
-     *  if none have been written. Drives the CaptureHealthCard "last
-     *  fed" freshness readout without pulling row bodies. */
-    getLatestLoggedTs: () => Promise<number | null>
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
@@ -249,6 +245,10 @@ interface RedLogAPI {
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    setNote: (eventId: string, note: string) => Promise<EventNote | null>
+    getNote: (eventId: string) => Promise<EventNote | null>
+    annotatedIds: () => Promise<string[]>
+    attributionStats: () => Promise<{ attempted: number; resolved: number }>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
@@ -315,6 +315,7 @@ interface RedLogAPI {
     status: () => Promise<{ running: boolean }>
     launch: () => Promise<BrowserLaunchResult>
     stop: () => Promise<{ stopped: boolean }>
+    onExited: (cb: () => void) => () => void
   }
   httpCapture: {
     status: () => Promise<ManagedProxyStatus>
@@ -403,11 +404,17 @@ interface RedLogAPI {
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
-    migrateLegacy: (ref: LegacyHookRef) => Promise<LegacyMigrationResult>
   }
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
     preflight: () => Promise<RuntimePreflight>
+    /** Run the install a preflight remediation describes (e.g. mitmproxy via uv).
+     *  `needsPrereq` is set when the installer itself (uv/brew) is missing. */
+    install: (id: RuntimePreflight['checks'][number]['id']) => Promise<{
+      success: boolean
+      message: string
+      needsPrereq?: { command: string; url: string }
+    }>
   }
   plugins: {
     list: () => Promise<unknown[]>
@@ -434,22 +441,6 @@ interface RedLogAPI {
   }
 }
 
-interface LegacyHookRef {
-  file: string
-  line: number
-  text: string
-  /** current adapter that replaces the retired file; null = remove only */
-  hookId: string | null
-}
-
-interface LegacyMigrationResult {
-  success: boolean
-  message: string
-  backupPath?: string
-  removed: number
-  hookId: string | null
-}
-
 interface RuntimePreflight {
   platform: string
   shell: { name: string; hookId: string } | null
@@ -461,7 +452,10 @@ interface RuntimePreflight {
     remediation?: string
     remediationRequires?: { command: string; url: string }
   }>
-  legacyHooks: LegacyHookRef[]
+  /** Windows only, and null when it could not be measured — never "fine".
+   *  A Restricted policy stops `$PROFILE` loading, which is the one Windows
+   *  failure that leaves the hook installed and the terminal silent. */
+  powershell?: { shell: string; policy: string; blocksProfile: boolean } | null
 }
 
 interface CaptureSourceInfo {
@@ -491,6 +485,15 @@ interface CaptureSourceInfo {
   informational?: boolean
   /** Human label for an informational source (the plugin's own name). */
   label?: string
+  /** Switched off and listed anyway. With `state: 'active'` it is the one
+   *  combination that means the record is taking data nobody authorised. */
+  disabled?: boolean
+}
+
+interface EventNote {
+  note: string
+  createdAt: number
+  updatedAt: number
 }
 
 interface CaptureHealthInfo {
@@ -501,7 +504,6 @@ interface CaptureHealthInfo {
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  lastSampleOkAt?: number | null
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
   managedHttpProxy?: ManagedProxyStatus
 }

@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
 import type { ArtifactAddResponse } from '../core/artifacts'
+import type { EventNote } from '../core/db/event-notes'
 
 // Single source of truth: the bridge is typed against the RedLogAPI contract
 // declared in the renderer's env.d.ts. Before this, env.d.ts was a hand-copied
@@ -87,7 +88,6 @@ const api: RedLogAPI = {
     queryHttpFlowPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
       ipcRenderer.invoke('events:queryHttpFlowPage', opts) as Promise<import('../core/db/events').HttpFlowPage>,
     getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
-    getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
@@ -127,6 +127,13 @@ const api: RedLogAPI = {
     },
     toggleDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
+    setNote: (eventId: string, note: string) =>
+      ipcRenderer.invoke('events:setNote', eventId, note) as Promise<EventNote | null>,
+    getNote: (eventId: string) =>
+      ipcRenderer.invoke('events:getNote', eventId) as Promise<EventNote | null>,
+    annotatedIds: () => ipcRenderer.invoke('events:annotatedIds') as Promise<string[]>,
+    attributionStats: () =>
+      ipcRenderer.invoke('events:attributionStats') as Promise<{ attempted: number; resolved: number }>,
     isDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },
@@ -193,7 +200,13 @@ const api: RedLogAPI = {
     detect: () => ipcRenderer.invoke('browser:detect'),
     status: () => ipcRenderer.invoke('browser:status'),
     launch: () => ipcRenderer.invoke('browser:launch'),
-    stop: () => ipcRenderer.invoke('browser:stop')
+    stop: () => ipcRenderer.invoke('browser:stop'),
+    /** Fires whoever ended it, including the operator closing the window. */
+    onExited: (cb: () => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('browser:exited', handler)
+      return () => ipcRenderer.removeListener('browser:exited', handler)
+    }
   },
   httpCapture: {
     status: () => ipcRenderer.invoke('httpCapture:status'),
@@ -214,11 +227,11 @@ const api: RedLogAPI = {
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
-    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId),
-    migrateLegacy: (ref: unknown) => ipcRenderer.invoke('hooks:migrateLegacy', ref)
+    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
   runtime: {
-    preflight: () => ipcRenderer.invoke('runtime:preflight')
+    preflight: () => ipcRenderer.invoke('runtime:preflight'),
+    install: (id: string) => ipcRenderer.invoke('runtime:install', id)
   },
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),

@@ -1,4 +1,5 @@
 import { timelineShortcuts } from '../lib/shortcuts'
+import { SectionLabel } from './SectionLabel'
 import { Modal } from './Modal'
 
 interface TimelineHelpModalProps {
@@ -30,7 +31,7 @@ export function TimelineHelpModal({ open, onClose, isMac, t }: TimelineHelpModal
         <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
           {timelineShortcuts(isMac).map((group) => (
             <div key={group.label}>
-              <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(group.label)}</div>
+              <SectionLabel className="font-mono mb-1">{t(group.label)}</SectionLabel>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                 {group.rows.map((row) => (
                   <div key={row.keys} className="contents">

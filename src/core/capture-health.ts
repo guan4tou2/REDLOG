@@ -57,6 +57,11 @@ export interface CaptureSource {
   /** Human label for an informational source (the plugin's own name), since it
    *  has no core i18n `capture.*` entry. */
   label?: string
+  /** The operator switched this source off, and it is listed anyway. These
+   *  producers run outside RedLog, so switching them off never stopped them --
+   *  it stopped RedLog saying so. `disabled` with `state: 'active'` is the one
+   *  combination that means the record is taking data nobody authorised now. */
+  disabled?: boolean
   /** E3: an informational plugin producer that has posted a `producer_heartbeat`
    *  recently — the operator has it RUNNING. This is the one case a plugin
    *  producer becomes "expected": a running producer that has stopped feeding is
@@ -94,10 +99,6 @@ export interface CaptureHealth {
    *  time so the Dashboard can render "6d old" alongside the eventId —
    *  operators can tell at a glance whether the flag is fresh or historical. */
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
-   *  Dashboard renders this as "sampled Xm ago" so operators can see the
-   *  background verify is actually running. */
-  lastSampleOkAt?: number | null
   /** §3.1: which HTTP proxy env vars are set so the operator can confirm
    *  traffic routing without leaving the app. */
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
@@ -181,7 +182,6 @@ function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
 // TTL means the dark state persists at least until the next 12 samples
 // have had a chance to re-check).
 let _lastSampleBroken: { at: number; eventId: string; reason: string; eventTimestamp?: number } | null = null
-let _lastSampleOkAt: number | null = null
 const SAMPLE_BROKEN_TTL_MS = 60 * 60 * 1000
 
 // v0.7.6 H3: accept optional `eventTimestamp` so the Dashboard can show
@@ -198,7 +198,6 @@ export function noteSampleBroken(details: { eventId: string; reason: string; eve
     ...(details.eventTimestamp != null ? { eventTimestamp: details.eventTimestamp } : {})
   }
 }
-export function noteSampleOk(): void { healthCache = null; _lastSampleOkAt = Date.now() }
 export function clearSampleBroken(): void { healthCache = null; _lastSampleBroken = null }
 function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
   if (!_lastSampleBroken) return undefined
@@ -489,7 +488,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       // Feeding → active. Running-but-not-feeding, or fed-before-but-stale →
       // idle. Never run and never fed → off (not a fault).
       const state: SourceState = fedRecently ? 'active' : (running || last !== null ? 'idle' : 'off')
-      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true, running }
+      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true, running, disabled: h.disabled === true }
     })
 
   // The verdict ASYMMETRY that keeps the trust signal honest: plugin producers
@@ -572,7 +571,6 @@ function computeCaptureHealth(now: number): CaptureHealth {
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
-    lastSampleOkAt: _lastSampleOkAt,
     proxyEnv,
     managedHttpProxy: managedProxyStatusProvider?.()
   }

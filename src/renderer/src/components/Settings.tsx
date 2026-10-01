@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import AboutPage from './settings/AboutPage'
 import { useI18n } from '../i18n'
 import { registerPendingSave } from '../lib/pendingSaves'
 import { toast } from './Toast'
@@ -22,7 +23,7 @@ import { searchSettings } from '../lib/settingsSearch'
 export type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl' | 'browser'
   | 'scope' | 'network' | 'integrity'
-  | 'general' | 'hud' | 'plugins'
+  | 'general' | 'hud' | 'plugins' | 'about'
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
@@ -172,22 +173,19 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // operator is actually asking rather than by when each feature was added.
   const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
     {
+      // One heading. #228 split these into "Core capture" and "Other capture
+      // sources" to say that commands and HTTP(S) are what the product is
+      // for — but a heading is a weak way to say it, and the order already
+      // says it: the two that matter are the two at the top. What the split
+      // did reliably was ask the operator to decide which of two capture
+      // headings their question belonged under, every time they came here.
       heading: t('settings.groupCapture'),
       pages: [
-        // #228: the two core captures, and nothing else. The product has two
-        // things it is for — commands and HTTP(S) — and the nav used to put
-        // them level with AI transcripts and the pack switches, under a
-        // heading ("What to record") that said nothing about which mattered.
         { id: 'hooks', label: t('settings.pageHooks') },
         // The browser and its HTTP capture proxy decide what ends up in the
         // record. They used to sit on Network, beside the VPN and
         // IP-exposure settings, which answer a different question entirely.
-        { id: 'browser', label: t('settings.pageBrowser') }
-      ]
-    },
-    {
-      heading: t('settings.groupSources'),
-      pages: [
+        { id: 'browser', label: t('settings.pageBrowser') },
         { id: 'captureControl', label: t('settings.pageCaptureControl') },
         { id: 'agents', label: t('settings.pageAgents') }
       ]
@@ -209,7 +207,8 @@ export default function Settings({ request = null }: { request?: { page: Setting
       pages: [
         { id: 'general', label: t('settings.pageGeneral') },
         { id: 'hud', label: t('settings.pageHud') },
-        { id: 'plugins', label: t('settings.pagePlugins') }
+        { id: 'plugins', label: t('settings.pagePlugins') },
+        { id: 'about', label: t('settings.pageAbout') }
       ]
     }
   ]
@@ -242,9 +241,16 @@ export default function Settings({ request = null }: { request?: { page: Setting
               {t('settings.noSettingMatches', { query: pageQuery })}
             </p>
           )}
-          {visible.map((g) => (
-            <div key={g.heading} className="mb-2">
-              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+          {/* A heading and a page used to differ by one weight step and two
+              greys three units apart, with `uppercase` doing the rest — and
+              `uppercase` does nothing to Chinese. In this locale they read as
+              one flat list, so which rows are clickable had to be guessed.
+              The difference is structural now: headings sit at the margin in
+              the muted grey and never highlight, pages are indented, have a
+              row height, and light up under the pointer. */}
+          {visible.map((g, i) => (
+            <div key={g.heading} className={i > 0 ? 'mt-3 pt-3 border-t border-redlog-border-subtle' : ''}>
+              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
                 {g.heading}
               </p>
               {g.pages.map((pg) => (
@@ -253,7 +259,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
                   data-settings-page={pg.id}
                   onClick={() => setTab(pg.id)}
                   aria-current={tab === pg.id ? 'page' : undefined}
-                  className={`w-full text-left px-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
+                  className={`w-full text-left pl-5 pr-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
                     tab === pg.id
                       ? 'bg-redlog-elevated text-redlog-text'
                       : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -265,15 +271,15 @@ export default function Settings({ request = null }: { request?: { page: Setting
             </div>
           ))}
           {hits.length > 0 && (
-            <div className="mb-2" data-testid="settings-search-results">
-              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+            <div className="mt-3 pt-3 border-t border-redlog-border-subtle" data-testid="settings-search-results">
+              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
                 {t('settings.searchResults')}
               </p>
               {hits.map((h) => (
                 <button
                   key={`${h.page}:${h.text}`}
                   onClick={() => { setTab(h.page); setFindText(h.text) }}
-                  className="w-full text-left px-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
+                  className="w-full text-left pl-5 pr-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
                 >
                   <span className="block truncate" title={h.text}>{h.text}</span>
                   <span className="block text-redlog-text-faint">{pageLabel.get(h.page)}</span>
@@ -320,6 +326,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} />}
+        {tab === 'about' && <AboutPage t={t} />}
       </div>
 
       <div className="px-4 py-2 border-t border-redlog-border shrink-0 max-w-[900px]">

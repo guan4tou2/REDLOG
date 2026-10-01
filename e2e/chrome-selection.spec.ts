@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
-import { launchWithTempHome, openTestProject, openView } from './helpers'
+import { launchWithTempHome, openTestProject, openView, openSettingsPage } from './helpers'
 
 // The "native desktop feel" work (PR #17) made the app's chrome behave like a
 // desktop app rather than a web page: dragging across the sidebar, the status
@@ -60,19 +60,26 @@ test.describe('chrome is not selectable, content is', () => {
     expect(await userSelect('.h-10')).toBe('none')
   })
 
-  test('the version string stays copyable inside that chrome', async () => {
-    // Deliberate exception: it is the first thing anyone reporting a bug is
-    // asked for, and it sits in the least selectable part of the app.
+  test('the version string stays copyable, wherever it lives', async () => {
+    // It used to sit in the title bar, where staying selectable was a
+    // deliberate exception to the chrome rule. It moved to Settings ▸ About:
+    // read once, pressed never, and it was taking a slot on the strip that
+    // holds the evidence verbs. The guarantee did not move with it — a bug
+    // report still starts with somebody copying this — so it is asserted
+    // where the version now is.
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'about')
     const sel = await page.evaluate(() => {
-      const el = [...document.querySelectorAll('span')].find((s) => /^v\d/.test(s.textContent ?? ''))
+      const el = [...document.querySelectorAll('p')].find((p) => /v\d/.test(p.textContent ?? ''))
       if (!el) return null
-      return {
-        userSelect: getComputedStyle(el).userSelect,
-        region: getComputedStyle(el).getPropertyValue('-webkit-app-region').trim()
-      }
+      return { text: el.textContent ?? '', userSelect: getComputedStyle(el).userSelect }
     })
-    expect(sel?.userSelect).toBe('text')
-    expect(sel?.region, 'a drag region swallows the mousedown that starts a selection').toBe('no-drag')
+    expect(sel, 'no version on the About page').not.toBeNull()
+    expect(sel!.text).toMatch(/v\d/)
+    expect(sel!.userSelect).toBe('text')
+    // Leave the app where this test found it: the cases below are about the
+    // chrome, and they should not inherit a settings view from this one.
+    await openView(page, 'dashboard')
   })
 
   test('the export control is reachable, not decoration behind a drag region', async () => {
