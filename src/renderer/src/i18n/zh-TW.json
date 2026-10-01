@@ -124,6 +124,8 @@
   "timeline.queryUnparsable": "這個輸入沒有套用",
   "timeline.matching": "比對中…",
   "timeline.queryFailed": "無法用輸入框的條件比對事件。",
+  "timeline.log.hiddenByQuery": "已隱藏 {{count}} 列",
+  "timeline.log.onlyMatches": "只看符合的",
   "timeline.matchCount": "{{count}} 個符合的事件",
   "timeline.hiddenByCollapse": "{{count}} 個符合的事件被代理逐輪收合隱藏",
   "timeline.earlierMatches": "更早還有 {{count}} 筆符合 — 往回載入到最近一筆",
