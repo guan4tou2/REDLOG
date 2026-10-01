@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, openSettingsPage } from './helpers'
 
 test('REDLOG owns HTTP capture and exposes its real state', async () => {
   // The fixture below is a `#!/bin/sh` script standing in for mitmdump, so
@@ -20,7 +20,12 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
   const bin = join(tmpHome, 'bin')
   mkdirSync(bin, { recursive: true })
   const fakeMitmdump = join(bin, 'mitmdump')
-  writeFileSync(fakeMitmdump, '#!/bin/sh\necho "HTTP(S) proxy server listening at 127.0.0.1:8080" >&2\ntrap "exit 0" TERM INT\nwhile :; do sleep 1; done\n')
+  // `exec sleep` rather than a trap around a loop: the loop's `sleep` is a
+  // grandchild, so SIGTERM is not acted on until the current one returns and
+  // the grandchild outlives the shell that owned it. `exec` leaves one
+  // process, holding the stderr the proxy reads for its readiness line, and
+  // it dies on the signal rather than up to a second later.
+  writeFileSync(fakeMitmdump, '#!/bin/sh\necho "HTTP(S) proxy server listening at 127.0.0.1:8080" >&2\nexec sleep 86400\n')
   chmodSync(fakeMitmdump, 0o755)
 
   const app = await electron.launch({
@@ -49,6 +54,12 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
       { timeout: 20_000, message: 'opening the project did not start capture' })
       .toMatchObject({ state: 'running' })
 
+    // The control lives in Settings ▸ Browser. It used to be on the first-run
+    // card as well, which is what this spec reached for — that copy went when
+    // the card stopped carrying a manual, and the spec kept pointing at a
+    // testid no source file had.
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'browser')
     const toggle = page.getByTestId('http-capture-toggle')
     await expect(toggle).toHaveText('Stop HTTP capture')
 
@@ -67,7 +78,9 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     })
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    await expect(toggle).toHaveText('Start HTTP capture')
+    // "Restart", not "Start": the control says what pressing it does to a
+    // source that has been up once already this session.
+    await expect(toggle).toHaveText('Restart HTTP capture')
     await toggle.click()
     // Starting the proxy spawns mitmdump, an external Python process, and
     // waits for it to announce that it is listening. A cold start takes well
@@ -92,9 +105,18 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
       })
       return r.status
     }
-    const commands = page.getByTestId('first-run-http-verify-commands')
-    await expect(commands).toContainText('redlog.verify.invalid/rv-', { timeout: 15_000 })
-    const nonce = /redlog\.verify\.invalid\/(rv-[a-z0-9]+)/.exec(await commands.innerText())![1]
+    // Back to the dashboard: the verification card is on first run, and the
+    // toggle above left us in Settings.
+    await openView(page, 'dashboard')
+    // The nonce comes off the card's own `data-nonce`, not off the per-tool
+    // commands. Those commands are the fallback for a check that has not
+    // landed, and they are only rendered once the wait has timed out — a
+    // minute of this spec's budget to read a value the card has carried
+    // since it mounted. Reading them was also the reason this spec failed
+    // in a way nothing could see: the element simply was not there.
+    const card = page.getByTestId('first-run-http')
+    await expect(card).toHaveAttribute('data-nonce', /^rv-/, { timeout: 15_000 })
+    const nonce = (await card.getAttribute('data-nonce'))!
     const httpRow = page.getByTestId('first-run-http-check-http')
     expect(await verifyReport({ scheme: 'http', nonce: 'rv-notthisone0' })).toBe(200)
     await page.waitForTimeout(500)
@@ -138,11 +160,17 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     })
     expect(await terminalProxy('routing-on')).toBe('http://127.0.0.1:8081')
 
-
+    // Back to the control. It is in Settings now, not on the dashboard card,
+    // so the clicks the rest of this spec makes have to go there — the card's
+    // copy of the toggle is what this used to press from here.
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'browser')
     await toggle.click()
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    await expect(toggle).toHaveText('Start HTTP capture')
+    // "Restart" again: the proxy has been up this session, so stopping it
+    // never returns the control to its first-press wording.
+    await expect(toggle).toHaveText('Restart HTTP capture')
   } finally {
     await app.close()
   }

@@ -90,6 +90,7 @@ export default function BrowserPanel({
           {t(`httpCapture.state.${proxyStatus.state}`)}{proxyStatus.url ? ` · ${proxyStatus.url}` : ''}
         </span>
         <button
+          data-testid="http-capture-toggle"
           onClick={async () => setProxyStatus(proxyStatus.state === 'running'
             ? await window.redlog.httpCapture.stop()
             : await window.redlog.httpCapture.start())}
