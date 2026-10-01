@@ -124,6 +124,8 @@
   "timeline.queryUnparsable": "This input was not applied",
   "timeline.matching": "Matching…",
   "timeline.queryFailed": "The filter box could not be checked against the events.",
+  "timeline.log.hiddenByQuery": "{{count}} hidden",
+  "timeline.log.onlyMatches": "Matches only",
   "timeline.matchCount": "{{count}} matching events",
   "timeline.hiddenByCollapse": "{{count}} matches hidden by the agent-turn collapse",
   "timeline.earlierMatches": "{{count}} earlier matches — load back to the nearest",

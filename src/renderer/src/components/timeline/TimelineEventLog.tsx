@@ -10,7 +10,8 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
-  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef
+  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef,
+  hiddenByQuery = 0, showingAll = false, onToggleHidden
 }: {
   events: readonly RedLogEvent[]
   selectedId: string | null
@@ -28,6 +29,10 @@ export function TimelineEventLog({
   /** Height the operator dragged to, or null for the vh default. */
   heightPx?: number | null
   rootRef?: React.RefObject<HTMLDivElement | null>
+  /** Rows the `/` search removed from this window. */
+  hiddenByQuery?: number
+  showingAll?: boolean
+  onToggleHidden?: () => void
 }): JSX.Element {
   // vh until the operator drags, so the DEFAULT scales with window height —
   // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
@@ -41,7 +46,24 @@ export function TimelineEventLog({
     <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
       <div className="shrink-0 px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
         <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
-        <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
+        <span className="flex items-center gap-2">
+          {/* The count is never not shown. A filter that hides without saying
+              how much is a filter that loses evidence quietly — and the thing
+              that mattered is sometimes a stack trace inside a 404 body that
+              no query would have matched. */}
+          {(hiddenByQuery > 0 || showingAll) && onToggleHidden && (
+            <button
+              data-testid="log-hidden-toggle"
+              onClick={onToggleHidden}
+              className="text-xs text-redlog-text-faint hover:text-redlog-text underline decoration-dotted"
+            >
+              {showingAll
+                ? t('timeline.log.onlyMatches')
+                : t('timeline.log.hiddenByQuery', { count: hiddenByQuery })}
+            </button>
+          )}
+          <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
+        </span>
       </div>
       {/* The header above is a fixed row; this takes the rest. It used to
           restate the vh literal in a calc(), which is why only the default

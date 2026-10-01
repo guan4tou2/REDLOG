@@ -1179,10 +1179,27 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     left: view.left, width: view.width, trackW: TRACK_W, fromX, displayTs, timeSpan
   }), [view.left, view.width, TRACK_W, fromX, timeSpan])
 
+  // The `/` search removes non-matches from the list rather than dimming
+  // them. Dimming was not a filter on a half-screen window — a dirb run puts
+  // 920 rows here and all 920 kept their space, so searching for `backup`
+  // meant scrolling the same distance looking for a shade of grey.
+  //
+  // `showAllDespiteQuery` is the way back, and it is never implicit. The
+  // interesting thing is sometimes a stack trace inside a 404 body that no
+  // query would have matched, and a filter that hides without saying how much
+  // is a filter that loses evidence quietly.
+  const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
+  useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
+  const queryActive = filterMatches !== null && !showAllDespiteQuery
   const recentEvents = useMemo(
+    () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
+    [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches]
+  )
+  const recentUnfiltered = useMemo(
     () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp),
     [events, hiddenLanes, pluginTypes, vp]
   )
+  const hiddenByQuery = queryActive ? recentUnfiltered.length - recentEvents.length : 0
 
   const sliceCount = useMemo(() => computeSliceCount(events, vp), [events, vp])
   const sliceExportRequest = useMemo<ExportRequest>(() => ({
@@ -2613,6 +2630,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         <TimelineEventLog
           rootRef={logPanelRef}
           heightPx={logPanel.px}
+          hiddenByQuery={hiddenByQuery}
+          showingAll={showAllDespiteQuery && filterMatches !== null}
+          onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
           events={recentEvents}
           selectedId={selectedEvent?.id ?? null}
           detailOpen={detailOpen}
