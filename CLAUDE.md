@@ -50,6 +50,33 @@ CI runs e2e on **ubuntu only**, which means two things:
 npm run build && npx playwright test e2e/<spec>.spec.ts --reporter=line
 ```
 
+### A bare "Test timeout exceeded" names nothing — make it name something
+
+A spec that fails with only `Test timeout of N exceeded`, no locator and no call
+log, usually did **not** hang where the timeout says. The assertion failed, the
+`finally` ran `await app.close()` against an app left in the broken state, the
+close did not return, and the teardown ate the rest of the budget before the
+real error could be reported. `Worker teardown timeout` beside it is the tell.
+
+Do not start by bisecting the hang. Make the error speak first:
+
+```ts
+} catch (e) {
+  console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+  throw e
+} finally {
+  await app.close()
+}
+```
+
+Three separate real failures hid behind one bare timeout in
+`managed-http-capture.spec.ts` for as long as nobody did this.
+
+A fixture that outlives a signal makes the same mess: a `#!/bin/sh` loop around
+`sleep` cannot act on SIGTERM until the current `sleep` returns, and leaves a
+grandchild behind. `exec` the long-running command instead, so the stand-in is
+one process that dies when it is told to.
+
 ### Measuring geometry in e2e
 
 The app renders at `body { zoom }` (default 0.9). `getBoundingClientRect()`
