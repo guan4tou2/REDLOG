@@ -70,8 +70,7 @@ export function EventNoteField({ eventId, t }: {
         onBlur={commit}
         rows={2}
         maxLength={4000}
-        placeholder={t('timeline.detail.notePlaceholder')}
-        className="w-full resize-y rounded border border-redlog-border bg-redlog-bg px-2 py-1.5 text-xs text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-accent/60"
+        className="w-full resize-y rounded border border-redlog-border bg-redlog-bg px-2 py-1.5 text-xs text-redlog-text focus:outline-none focus:border-redlog-accent/60"
       />
     </div>
   )

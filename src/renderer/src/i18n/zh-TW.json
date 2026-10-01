@@ -611,7 +611,6 @@
   "timeline.detail.tabRequest": "Request",
   "timeline.detail.tabResponse": "Response",
   "timeline.detail.note": "備註",
-  "timeline.detail.notePlaceholder": "你對這筆的看法",
   "timeline.detail.noteSavedAt": "{{time}} 寫的",
   "timeline.fold.blind": "這台機器讀不到 socket 的擁有程序，所以沒有任何流量折得進它的指令。不是「沒有指令產生流量」——是查不到。Linux 需要 ss、macOS 需要 lsof。",
   "timeline.fold.count": "＋{{count}} 筆流量",
