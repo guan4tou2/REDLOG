@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   noteCommandPid, noteProcessParent, notePortPid,
   resolveByPid, resolveByLocalPort, socketCausesFor,
-  _resetSocketAttribution, MAX_ANCESTRY_DEPTH
+  _resetSocketAttribution, attributionStats, MAX_ANCESTRY_DEPTH
 } from '../src/core/socket-attribution'
 
 const SHELL = 500
@@ -113,5 +113,36 @@ describe('what it refuses to claim', () => {
   it('attributes nothing for a non-traffic event type', () => {
     noteCommandPid(SHELL, 'cmd-dirb')
     expect(socketCausesFor('shell', { pid: SHELL })).toEqual([])
+  })
+})
+
+// "Nothing was caused" and "this host cannot answer who owns a socket" look
+// identical on screen — no edges either way — and they are not the same
+// thing. One is a true statement about the engagement; the other is a
+// capability the machine does not have. Leaving them indistinguishable is how
+// this join sat broken for a year.
+describe('whether the join is working at all', () => {
+  it('counts nothing before any traffic has been seen', () => {
+    expect(attributionStats()).toEqual({ attempted: 0, resolved: 0 })
+  })
+
+  it('counts an attempt that could not be answered', () => {
+    socketCausesFor('scanner', { source_addr: '127.0.0.1:1234' })
+    expect(attributionStats()).toEqual({ attempted: 1, resolved: 0 })
+  })
+
+  it('counts an attempt that was answered', () => {
+    noteCommandPid(SHELL, 'cmd-dirb')
+    noteProcessParent(TOOL, SHELL)
+    notePortPid(1234, TOOL)
+    socketCausesFor('scanner', { source_addr: '127.0.0.1:1234' })
+    expect(attributionStats()).toEqual({ attempted: 1, resolved: 1 })
+  })
+
+  it('does not count an event type it was never going to answer for', () => {
+    // A shell row is not an unanswered attribution; counting it would make a
+    // working host look blind.
+    socketCausesFor('shell', { pid: SHELL })
+    expect(attributionStats()).toEqual({ attempted: 0, resolved: 0 })
   })
 })

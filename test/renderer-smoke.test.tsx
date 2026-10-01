@@ -130,6 +130,7 @@ function installBridge(): void {
       getCount: async () => EVENTS.length,
       getLatestLoggedTs: async () => null,
       annotatedIds: async () => [],
+      attributionStats: async () => ({ attempted: 0, resolved: 0 }),
       getNote: async () => null,
       setNote: async () => null,
       search: async () => EVENTS,
