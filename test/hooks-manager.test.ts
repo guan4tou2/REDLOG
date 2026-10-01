@@ -57,6 +57,25 @@ describe('hooks-manager guided setup', () => {
     expect(cmd).toContain('mitmproxy-addon.py')
   })
 
+  // Every step on this card runs `mitmdump`, so on a machine without it they
+  // are all "command not found" — the usual case on Windows, where nothing
+  // brings mitmproxy in. The card used to open on step 1 of a sequence whose
+  // unstated step 0 was an install.
+  it('names the missing dependency before the commands that need it', () => {
+    const m = byId('mitmproxy')
+    const steps = m.manualSteps!
+    if (m.available) {
+      // Present: an install step would be noise on every machine that has it.
+      expect(steps.some((s) => s.command?.includes('uv tool install'))).toBe(false)
+    } else {
+      expect(steps[0].command).toBe('uv tool install mitmproxy')
+      // And where RedLog will do it for them, not only how to do it by hand.
+      expect(steps[0].label).toMatch(/capture check|dashboard/i)
+      // Before the commands that cannot work without it.
+      expect(steps.findIndex((s) => s.command?.includes('mitmdump -s'))).toBeGreaterThan(0)
+    }
+  })
+
   it('codex is guided-manual with platform-appropriate steps', () => {
     const c = byId('codex')
     expect(c.installMethod).toBe('manual')
