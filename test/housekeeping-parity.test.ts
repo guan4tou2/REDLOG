@@ -131,7 +131,12 @@ describe('housekeeping', () => {
 
     // The evidence predicate has a SQL twin too, and it is the one the
     // first-run screen and the sidebar both depend on.
-    const evidence = sql.slice(sql.indexOf('export const EVIDENCE_SQL'), sql.indexOf('export const HTTP_FLOW_SUBTYPES'))
+    // Sliced to the end of the template literal rather than to whatever
+    // export happened to follow it — the previous end marker was
+    // HTTP_FLOW_SUBTYPES, which existed only to answer a question the
+    // disclosure model asked, and went with it.
+    const evidenceStart = sql.indexOf('export const EVIDENCE_SQL')
+    const evidence = sql.slice(evidenceStart, sql.indexOf('export const', evidenceStart + 1))
     expect(evidence).toContain("agent_type NOT IN ('system', 'cleanup')")
     expect(evidence).toContain('session_end')
     expect(evidence).toContain('shell-bash-hook.sh')

@@ -151,12 +151,6 @@ export const EVIDENCE_SQL = `
   )
 `
 
-/** The subtypes the HTTP history page actually renders. Exported so a caller
- *  asking "does this project have HTTP traffic" cannot drift from what that
- *  page queries and unlock an empty screen — `scanner:connection` is a scanner
- *  row and is NOT one of these. */
-export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
-
 // Ingest now drops RedLog's own plumbing before it is written at all
 // (src/core/capture-plumbing.ts), which is the real fix — a chained row
 // cannot be removed from an export without breaking the chain. This filter
