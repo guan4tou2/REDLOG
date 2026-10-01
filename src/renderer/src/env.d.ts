@@ -251,6 +251,7 @@ interface RedLogAPI {
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
     setNote: (eventId: string, note: string) => Promise<EventNote | null>
     getNote: (eventId: string) => Promise<EventNote | null>
+    annotatedIds: () => Promise<string[]>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {

@@ -50,7 +50,8 @@ export function installTimelineBridge(): TimelineBridge {
     isDoNotExport: async () => false,
     toggleDoNotExport: async () => false,
     getNote: async () => null,
-    setNote: async () => null
+    setNote: async () => null,
+    annotatedIds: async () => []
   }
   const fallback = (): unknown => new Proxy({}, {
     get: (_t, prop: string) => prop.startsWith('on')

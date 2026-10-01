@@ -613,6 +613,8 @@
   "timeline.detail.note": "Note",
   "timeline.detail.notePlaceholder": "What you made of this — three weeks on, this is the part nobody can reconstruct",
   "timeline.detail.noteSavedAt": "written {{time}}",
+  "timeline.fold.count": "+{{count}} flows",
+  "timeline.fold.basis": "Basis: these connections' sockets were owned by this command's process — recorded, not inferred",
   "timeline.detail.causedBy": "▶ Caused by:",
   "timeline.detail.relatedCommands": "Possible related commands",
   "timeline.detail.relatedCommandsHint": "Based on working-directory and timing overlap; this does not prove which process wrote the file.",

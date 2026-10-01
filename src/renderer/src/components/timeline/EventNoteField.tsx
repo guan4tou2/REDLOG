@@ -17,6 +17,9 @@ import { formatDateTime } from '../../lib/time'
 // per character would put the operator's typing on the DB's hot path while a
 // scan is running.
 
+/** Fired after a note is written or cleared, so an open list re-reads. */
+export const EVENT_NOTE_SAVED = 'redlog:event-note-saved'
+
 export function EventNoteField({ eventId, t }: {
   eventId: string
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -39,7 +42,12 @@ export function EventNoteField({ eventId, t }: {
   const commit = (): void => {
     if (text.trim() === committed.current) return
     committed.current = text.trim()
-    void window.redlog.events.setNote(eventId, text).then((n) => setSaved(n)).catch(() => {})
+    void window.redlog.events.setNote(eventId, text).then((n) => {
+      setSaved(n)
+      // The list needs to know: an annotated event stops folding into a
+      // summary the moment somebody writes on it.
+      try { window.dispatchEvent(new CustomEvent(EVENT_NOTE_SAVED, { detail: { eventId } })) } catch { /* no window */ }
+    }).catch(() => {})
   }
 
   return (

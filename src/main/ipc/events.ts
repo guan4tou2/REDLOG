@@ -12,7 +12,7 @@ import {
 import { loadConfig, snapshotScope } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
-import { setEventNote, getEventNote } from '../../core/db/event-notes'
+import { setEventNote, getEventNote, getAnnotatedIds } from '../../core/db/event-notes'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
@@ -111,6 +111,14 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     // Bounded so a paste of a whole stdout cannot become an unreadable note
     // the operator has no way to shorten from the UI.
     return setEventNote(eventId, note.slice(0, 4000))
+  })
+
+  // Which events carry a note, in one read. The Timeline needs it per row —
+  // an annotated event never folds into a summary, because a row a person
+  // reached out and wrote on is not noise to be collapsed.
+  ipcMain.handle('events:annotatedIds', () => {
+    if (!ctx.getActiveProject()) return []
+    return [...getAnnotatedIds()]
   })
 
   ipcMain.handle('events:getNote', (_e, eventId: string) => {

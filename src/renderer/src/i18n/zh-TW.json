@@ -613,6 +613,8 @@
   "timeline.detail.note": "備註",
   "timeline.detail.notePlaceholder": "你對這筆的看法——三週後寫報告時，這是沒人補得回來的部分",
   "timeline.detail.noteSavedAt": "{{time}} 寫的",
+  "timeline.fold.count": "＋{{count}} 筆流量",
+  "timeline.fold.basis": "依據：這些連線的 socket 擁有者就是這個指令的程序（已記錄，非推測）",
   "timeline.detail.causedBy": "▶ 觸發自：",
   "timeline.detail.relatedCommands": "可能相關的指令",
   "timeline.detail.relatedCommandsHint": "依工作目錄與時間重疊推測，不能證明是哪個程序寫入此檔案。",

@@ -2,7 +2,10 @@
 // Moved out of Timeline.tsx (UI/UX audit F13) with every value it shows passed
 // in; the panel still owns selection and the events themselves.
 
+import { useMemo, useState } from 'react'
 import { formatTime } from '../../lib/time'
+import { foldByCause, statusSummary } from '../../lib/timelineFold'
+import type { RedLogEvent } from '../../../../core/db/event-types'
 import { LANE_COLORS, toLane, type PluginEventType } from '../../lib/timelineDomain'
 import { TierBadge } from '../TierBadge'
 
@@ -11,7 +14,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
   titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef,
-  hiddenByQuery = 0, showingAll = false, onToggleHidden
+  hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds
 }: {
   events: readonly RedLogEvent[]
   selectedId: string | null
@@ -33,7 +36,23 @@ export function TimelineEventLog({
   hiddenByQuery?: number
   showingAll?: boolean
   onToggleHidden?: () => void
+  /** Events carrying an operator note; those never fold. */
+  annotatedIds?: ReadonlySet<string>
 }): JSX.Element {
+  // Folds start closed and the operator opens the ones they want. Expansion
+  // is per parent and not remembered across a filter change: the row they
+  // opened may not even be in the next result.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const toggle = (id: string): void => setExpanded((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const rows = useMemo(
+    () => foldByCause(events, { annotated: annotatedIds, selected: selectedId }),
+    [events, annotatedIds, selectedId]
+  )
   // vh until the operator drags, so the DEFAULT scales with window height —
   // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
   // taken on somebody else's monitor. Once dragged, px wins.
@@ -69,14 +88,61 @@ export function TimelineEventLog({
           restate the vh literal in a calc(), which is why only the default
           height ever lined up. */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {events.map((evt) => {
+        {rows.map((row) => {
+          if (row.kind === 'fold') {
+            const { parent, children } = row.fold
+            const open = expanded.has(parent.id)
+            return (
+              <div key={parent.id}>
+                <div
+                  data-testid={`log-fold-${parent.id}`}
+                  className="flex items-center gap-2 px-3 py-1 cursor-pointer text-xs border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/20"
+                  onClick={() => toggle(parent.id)}
+                >
+                  <span className="text-redlog-text-faint shrink-0 w-1.5">{open ? '▾' : '▸'}</span>
+                  <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
+                    {formatTime(parent.timestamp, { seconds: true })}
+                  </span>
+                  <span title={titleOf(parent)} className="text-redlog-text truncate">{titleOf(parent)}</span>
+                  <span className="ml-auto flex items-center gap-2 shrink-0 font-mono text-redlog-text-faint">
+                    {/* The statuses, not just a total. 904 of the 920 are 404s
+                        nobody wants to read; what the operator came for is
+                        whether anything answered 200. */}
+                    {statusSummary(children).slice(0, 3).map(({ status, count }) => (
+                      <span key={status} className={status >= 200 && status < 300 ? 'text-redlog-safe' : ''}>
+                        {status}&times;{count}
+                      </span>
+                    ))}
+                    <span>{t('timeline.fold.count', { count: children.length })}</span>
+                  </span>
+                </div>
+                {/* The basis, named. A fold is the app asserting these
+                    requests came from that command, and a reader is entitled
+                    to know what it is asserting it from — here, the socket's
+                    owning process, which is recorded rather than inferred. */}
+                {open && (
+                  <p className="px-3 py-1 text-xs text-redlog-text-faint border-b border-redlog-border-subtle/30">
+                    {t('timeline.fold.basis')}
+                  </p>
+                )}
+                {open && children.map((c) => eventRow(c, true))}
+              </div>
+            )
+          }
+          return eventRow(row.event, false)
+        })}
+      </div>
+    </div>
+  )
+
+  function eventRow(evt: RedLogEvent, nested: boolean): JSX.Element {
           const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
           const isSel = selectedId === evt.id
           const amended = amendCountOf(evt.id)
           return (
             <div
               key={evt.id}
-              className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
+              className={`flex items-center gap-2 ${nested ? 'pl-7 pr-3' : 'px-3'} py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
                 isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
               }`}
               onClick={() => onSelect(evt)}
@@ -108,8 +174,5 @@ export function TimelineEventLog({
               )}
             </div>
           )
-        })}
-      </div>
-    </div>
-  )
+  }
 }
