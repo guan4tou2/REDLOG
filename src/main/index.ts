@@ -155,11 +155,21 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
 }
 
 async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
-  if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  // Every failure below goes through `noteStartFailure`, so it reaches the
+  // status every surface polls. These used to return a failed status object
+  // that nothing recorded: the proxy's snapshot stayed `stopped`, and the
+  // dashboard, the capture card and the status strip all reported "not
+  // running" for an attempt that had been made and had a reason.
+  //
+  // It was survivable while starting capture was a button — press it, see
+  // nothing happen, press it again. It stopped being survivable when capture
+  // began taking itself up at project open: a port already in use now means
+  // an engagement that records no HTTP and never says why.
+  if (!activeProject) return managedHttpProxy.noteStartFailure('No project open')
   // mitmdump is spawned by bare name; look it up on the operator's PATH.
   await loginPathReady
   const addonPath = getCaptureHookPath('mitmproxy')
-  if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
+  if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
   const config = loadConfig(getProjectPath(activeProject))
   const current = managedHttpProxy.status()
   const before = current.state
@@ -180,7 +190,9 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!proxyAlreadyOn(current, endpoint)) {
     const holder = await whoHoldsPort(endpoint)
     if (holder) {
-      const status: ManagedProxyStatus = { state: 'failed', url: null, error: holder }
+      // The event was already written here; what was missing is the status.
+      // An operator reading "stopped" has no reason to look for an event.
+      const status = managedHttpProxy.noteStartFailure(holder)
       publishManagedProxyEvent('http_proxy_failed', status)
       return status
     }

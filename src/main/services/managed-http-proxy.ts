@@ -91,6 +91,29 @@ export class ManagedHttpProxy {
     return () => this.listeners.delete(listener)
   }
 
+  /**
+   * An attempt to start failed before `start()` was ever reached.
+   *
+   * The caller does its own preflight — the addon has to exist, a project has
+   * to be open, the port has to be free — and each of those returned a failed
+   * status object that nothing recorded. `status()` reports this snapshot, so
+   * every surface reading it saw `stopped`: not "tried and could not", but
+   * "nothing has been tried". Those are different facts and the operator acts
+   * on them differently, which is the whole of §VI.
+   *
+   * It became reachable without anyone pressing a button when capture started
+   * taking itself up at project open — so a port already in use now means an
+   * engagement that quietly records no HTTP while the strip says stopped.
+   *
+   * A running proxy is never overwritten: a preflight that fails while the
+   * thing is up is the preflight being wrong, not the proxy stopping.
+   */
+  noteStartFailure(error: string): ManagedProxyStatus {
+    if (this.snapshot.state === 'running' || this.snapshot.state === 'starting') return this.status()
+    this.update({ state: 'failed', url: null, error })
+    return this.status()
+  }
+
   private update(next: ManagedProxyStatus): void {
     const previous = this.status()
     this.snapshot = next

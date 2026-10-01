@@ -273,3 +273,73 @@ describe('the capture endpoint is host and port', () => {
     })
   })
 })
+
+// A start that fails before `start()` is reached has to reach the status.
+//
+// The caller does its own preflight — the addon must exist, a project must be
+// open, the port must be free — and each of those returned a failed status
+// object that nothing recorded. `status()` reports the snapshot, so every
+// surface polling it read `stopped`: not "tried and could not", but "nothing
+// has been tried". The operator acts on those differently.
+//
+// It was survivable while starting capture was a button. It stopped being
+// survivable when capture began taking itself up at project open, because a
+// port already in use then means an engagement that records no HTTP and never
+// says why — observed on a real run, where auto-start returned
+// `127.0.0.1:6661 is already in use` and the strip said stopped for the rest
+// of the session.
+describe('a failure that never reached start()', () => {
+  it('puts the reason in the status, not just in the return value', () => {
+    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    expect(proxy.status()).toMatchObject({ state: 'stopped' })
+
+    const returned = proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
+    expect(returned).toMatchObject({ state: 'failed', url: null })
+    expect(proxy.status()).toMatchObject({
+      state: 'failed',
+      url: null,
+      error: '127.0.0.1:6661 is already in use.'
+    })
+  })
+
+  it('tells the listeners, so a live surface does not wait for its next poll', () => {
+    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    const seen: string[] = []
+    proxy.onStatusChange((next) => seen.push(next.state))
+    proxy.noteStartFailure('no addon')
+    expect(seen).toEqual(['failed'])
+  })
+
+  it('never overwrites a running proxy', async () => {
+    // A preflight that fails while the thing is up is the preflight being
+    // wrong, not the proxy stopping — and reporting `failed` over a working
+    // capture would be the same lie in the other direction.
+    const child = new FakeChild()
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
+    })
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+
+    proxy.noteStartFailure('No project open')
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+  })
+
+  it('can be cleared by a later successful start', async () => {
+    // The failure is a fact about the last attempt, not a latch.
+    const child = new FakeChild()
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
+    })
+    proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
+    expect(proxy.status()).toMatchObject({ state: 'failed' })
+
+    const started = proxy.start({ addonPath: '/addon.py', port: 8081 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+    expect(proxy.status().error, 'the old reason outlived the attempt it describes').toBeUndefined()
+  })
+})
