@@ -86,6 +86,63 @@ function AttachmentList({ rows, onToggle, busy, t }: {
   )
 }
 
+// These three are declared HERE, not inside ExportMenu.
+//
+// A component defined in another component's body is a new type on every
+// render, so React unmounts and remounts its whole subtree each time: focus
+// and state are lost on the keystroke that caused the render, and Fast Refresh
+// cannot reconcile the old tree with the new one — which shows up as a panel
+// that renders part of itself and stops. `Option` and `PreviewRow` had been
+// that way; `Toggle` was added that way beside them.
+
+function Option({ label, onPick, disabled: off, busy, hint }: {
+  label: string; onPick: () => void; disabled?: boolean; busy?: boolean; hint?: string
+}): JSX.Element {
+  return (
+    <button
+      onClick={onPick}
+      disabled={busy || off}
+      className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      <span className="block text-xs text-redlog-text">{label}</span>
+      {hint && <span className="block text-xs text-redlog-text-faint">{hint}</span>}
+    </button>
+  )
+}
+
+function PreviewRow({ label, value, warn }: {
+  label: string; value: number; warn?: boolean
+}): JSX.Element | null {
+  if (value === 0) return null
+  return (
+    <div className="flex justify-between text-xs px-3 py-0.5">
+      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
+      <span className={`font-mono tabular-nums ${warn ? 'text-amber-500' : 'text-redlog-text'}`}>{value}</span>
+    </div>
+  )
+}
+
+/** One of the two things the 自用 / 交付 pair was standing in for. A mode named
+ *  after an audience made the operator translate "who is this for" into "what
+ *  comes out" every time — and it translated badly: its tooltip promised
+ *  masked metadata, scrubbed PII and excluded infrastructure while the flag
+ *  set exactly one of the three. */
+function Toggle({ on, setOn, label, warn }: {
+  on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean
+}): JSX.Element {
+  return (
+    <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => setOn(e.target.checked)}
+        className="mt-0.5 accent-red-600"
+      />
+      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
+    </label>
+  )
+}
+
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const viewExport = useViewExport()
@@ -194,52 +251,10 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
   const empty = totalCount === 0
 
-  const Option = ({ label, onPick, disabled: off, hint }: {
-    label: string; onPick: () => void; disabled?: boolean; hint?: string
-  }): JSX.Element => (
-    <button
-      onClick={onPick}
-      disabled={busy || off}
-      className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      <span className="block text-xs text-redlog-text">{label}</span>
-      {hint && <span className="block text-xs text-redlog-text-faint">{hint}</span>}
-    </button>
-  )
   // A format that cannot scrub is refused by the plan resolver, so it is not
   // offered while scrubbing is on.
   const cannotShare = (format: ExportFormat): boolean => scrubPii && !capabilitiesFor(format).piiScrubbing
   const shareHint = (format: ExportFormat): string | undefined => cannotShare(format) ? t('export.cannotScrub') : undefined
-
-  const PreviewRow = ({ label, value, warn }: { label: string; value: number; warn?: boolean }): JSX.Element | null => {
-    if (value === 0) return null
-    return (
-      <div className="flex justify-between text-xs px-3 py-0.5">
-        <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
-        <span className={`font-mono tabular-nums ${warn ? 'text-amber-500' : 'text-redlog-text'}`}>{value}</span>
-      </div>
-    )
-  }
-
-  // The 自用 / 交付 pair is gone. A mode named after an audience asks the
-  // operator to translate "who is this for" into "what comes out", every
-  // time -- and it translated badly: its own tooltip promised masked
-  // metadata, scrubbed PII and excluded infrastructure, while the flag set
-  // exactly one of those three. What it really did is now the checkbox it
-  // really was, beside the one that was already here.
-  const Toggle = ({ on, setOn, label, warn }: {
-    on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean
-  }): JSX.Element => (
-    <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
-      <input
-        type="checkbox"
-        checked={on}
-        onChange={(e) => setOn(e.target.checked)}
-        className="mt-0.5 accent-red-600"
-      />
-      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
-    </label>
-  )
 
   return (
     <div className="relative">
@@ -440,6 +455,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 )}
                 {viewExport && (
                   <Option
+                    busy={busy}
                     label={viewExport.label}
                     disabled={empty || cannotShare(viewExport.request.format)}
                     hint={shareHint(viewExport.request.format)}
@@ -447,11 +463,13 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   />
                 )}
                 <Option
+                  busy={busy}
                   label={t('export.all')}
                   disabled={empty}
                   onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', scrubPii, maskOutOfScope: maskScope } })}
                 />
                 <Option
+                  busy={busy}
                   label={t('export.ndjson')}
                   disabled={empty}
                   onPick={() => void loadPreview({
@@ -463,6 +481,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 <div className="border-t border-redlog-border my-1" />
                 {/* ── Evidence bundle (separate — different semantics) ── */}
                 <Option
+                  busy={busy}
                   label={t('export.bundle')}
                   disabled={empty || cannotShare('bundle')}
                   hint={shareHint('bundle')}
