@@ -1045,7 +1045,6 @@
   "timeline.detail.cookies": "已發送 Cookie",
   "timeline.detail.setCookies": "Set-Cookie",
   "httpHistory.title": "HTTP 歷程",
-  "httpHistory.viewSitemap": "站點樹",
   "httpHistory.colMethod": "方法",
   "httpHistory.colHost": "主機",
   "httpHistory.colUrl": "URL",
