@@ -126,6 +126,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.externalIdle',
     'settings.externalNotRunning',
     'settings.externalDesc.c2-tailers',
+    'settings.externalDesc.pack-ai-agents',
     'settings.externalDesc.pcap-capture',
     'settings.externalDesc.transparent-proxy'
   ],
