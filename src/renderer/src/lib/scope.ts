@@ -15,12 +15,3 @@ export function hostInScope(
   return d.status === 'in-scope' || d.status === 'no-scope'
 }
 
-export function hostOutOfScope(
-  host: string,
-  targets: string[],
-  excludeTargets: string[] = []
-): boolean {
-  if (!host) return false
-  if (targets.length === 0 && excludeTargets.length === 0) return false
-  return !hostInScope(host, targets, excludeTargets)
-}

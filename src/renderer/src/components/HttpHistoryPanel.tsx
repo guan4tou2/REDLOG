@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { hostOutOfScope } from '../lib/scope'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, ChevronDown, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime, formatSize } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
-import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
@@ -13,6 +11,17 @@ import { UnappliedFilterNotice, EmptyByConstructionNotice } from './FilterNotice
 
 /** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
 const HTTP_FLOW_AGENT_TYPE = 'scanner'
+
+// §US2 revisited (spec 010): the recent-subset state is a backstop, not the
+// resting state. HTTP History auto-follows the cursor to completion, so a
+// session of a few thousand flows loads whole without a click — "全部載入".
+// The Load More button and the amber subset marker appear only once the loaded
+// set passes this cap, the point past which pulling everything into the
+// renderer would cost more than the operator asked for; a 40k-request brute
+// force stops here and is continued by hand rather than freezing the panel.
+// Ten pages of 500 (the flow-query page size below). Exported so the auto-load
+// test asserts against the real cap rather than a copy that could drift.
+export const AUTO_LOAD_MAX_FLOWS = 5000
 
 interface HttpFlow {
   flowId: string
@@ -30,8 +39,6 @@ interface HttpFlow {
   hasResponseBody: boolean
   httpVersion: string
   streamId: number | null
-  /** First `_causes` entry on the request — the command that produced this. */
-  causeEventId: string | null
 }
 
 const formatBytes = formatSize
@@ -44,26 +51,6 @@ const STATUS_COLORS: Record<string, string> = {
   '3': 'text-redlog-text-dim',
   '4': 'text-redlog-warn',
   '5': 'text-redlog-danger'
-}
-
-/**
- * The command that produced this flow, if the record links one.
- *
- * Only the *request* can carry that link. A response's `_causes` points at its
- * own request — the api-server pairs the two by `flow_id` — so reading it as
- * parentage gives every flow a unique "parent" and grouping degenerates into
- * one group per connection, which is the shape §3 exists to remove. The unit
- * tests could not catch that, because they hand `causeEventId` in directly;
- * e2e/http-activity-view.spec.ts did, immediately.
- */
-function parentCommandOf(
-  request: RedLogEvent | null,
-  response: RedLogEvent | null
-): string | null {
-  const causes = request?.data?._causes as string[] | undefined
-  if (!Array.isArray(causes) || causes.length === 0) return null
-  const self = new Set([request?.id, response?.id].filter(Boolean) as string[])
-  return causes.find((c) => !self.has(c)) ?? null
 }
 
 function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
@@ -95,139 +82,22 @@ function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
       hasRequestBody: !!(req?.request_body || req?.request_body_ref),
       hasResponseBody: !!(resp?.response_body || resp?.response_body_ref),
       httpVersion: String(resp?.http_version ?? req?.http_version ?? ''),
-      streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null,
-      causeEventId: parentCommandOf(request, response)
+      streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null
     }
   })
 }
 
 // ---------------------------------------------------------------------------
-// Activity row — §3's point-or-span
-// ---------------------------------------------------------------------------
-//
-// One line per thing the operator did, not per connection it produced. The
-// connections are still all here, one disclosure down; what changed is which
-// level the eye lands on. A 40,000-request brute force and a single curl both
-// occupy one row, which is the point: they were both one action.
-
-function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, onOpenDetail, outOfScope }: {
-  activity: Activity<HttpFlow>
-  t: (k: string, vars?: Record<string, string | number>) => string
-  rowProps: ReturnType<ReturnType<typeof useListKeyboard>['itemProps']>
-  open: boolean
-  onToggle: () => void
-  onOpenInTimeline?: (eventId: string, ts: number) => void
-  onOpenDetail?: (eventId: string | null) => void
-  outOfScope?: (host: string) => boolean
-}): JSX.Element {
-  const { statusBuckets: sb, flows } = activity
-  const spanSec = Math.round((activity.endMs - activity.startMs) / 1000)
-  const jumpId = activity.causeEventId ?? flows[0]?.responseEventId ?? flows[0]?.requestEventId
-
-  return (
-    <div className="rounded border border-redlog-border-subtle">
-      <div
-        {...rowProps}
-        ref={(el) => rowProps.ref(el)}
-        onClick={() => { rowProps.onClick(); onToggle() }}
-        aria-expanded={open}
-        data-testid="http-activity-row"
-        data-kind={activity.kind}
-        className="flex items-center gap-2 px-2 py-1.5 text-xs cursor-pointer hover:bg-redlog-elevated/30 focus-visible:outline-none focus-visible:bg-redlog-elevated/50 rounded"
-      >
-        {/* Shape carries the point/span distinction, and the label repeats it,
-            because shape alone is not an accessible channel (§5.7). */}
-        <span
-          aria-hidden
-          className={`shrink-0 ${activity.kind === 'span'
-            ? 'w-4 h-[3px] rounded-sm bg-redlog-cyan'
-            : 'w-[7px] h-[7px] rounded-full bg-redlog-cyan'}`}
-        />
-        <span className="sr-only">{t(`httpHistory.kind.${activity.kind}`)}</span>
-
-        <span
-          className={`font-mono truncate max-w-[220px] ${outOfScope?.(activity.host) ? 'text-redlog-text-faint' : 'text-redlog-text'}`}
-          title={activity.host}
-        >
-          {activity.host || t('httpHistory.noHost')}
-        </span>
-        {outOfScope?.(activity.host) && (
-          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
-            {t('httpHistory.outOfScope')}
-          </span>
-        )}
-
-        <span className="font-mono text-redlog-text-dim shrink-0">{activity.methods.join(' ')}</span>
-
-        <span className="font-mono text-redlog-text-dim shrink-0 tabular-nums">
-          {t('httpHistory.requestCount', { n: flows.length })}
-        </span>
-
-        <span className="flex items-center gap-1 shrink-0 font-mono tabular-nums">
-          {(['2', '3', '4', '5'] as const).filter((b) => sb[b]).map((b) => (
-            <span key={b} className={STATUS_COLORS[b] ?? 'text-redlog-text-dim'}>{b}xx·{sb[b]}</span>
-          ))}
-        </span>
-
-        <span className="ml-auto shrink-0 text-redlog-text-faint tabular-nums">
-          {formatTime(activity.startMs, { seconds: true })}
-          {activity.kind === 'span' && spanSec > 0 && ` +${spanSec}s`}
-        </span>
-
-        {activity.causeEventId && (
-          <span
-            title={t('httpHistory.hasParentCommand')}
-            className="shrink-0 text-redlog-text-faint"
-          >⌘</span>
-        )}
-
-        {jumpId && onOpenInTimeline && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onOpenInTimeline(jumpId, activity.startMs) }}
-            title={t('httpHistory.openAtMoment')}
-            aria-label={t('httpHistory.openAtMoment')}
-            className="shrink-0 text-redlog-text-dim hover:text-redlog-text px-1 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50"
-          >↗</button>
-        )}
-      </div>
-
-      {open && (
-        <ul className="border-t border-redlog-border-subtle divide-y divide-redlog-border-subtle/50">
-          {flows.map((f) => {
-            const path = (() => {
-              try { const u = new URL(f.url); return u.pathname + (u.search || '') } catch { return f.url }
-            })()
-            const sc = f.status !== null ? STATUS_COLORS[String(f.status)[0]] : undefined
-            return (
-              <li
-                key={f.flowId}
-                className="flex items-center gap-2 px-2 py-1 text-xs font-mono cursor-pointer hover:bg-redlog-elevated/30"
-                onClick={() => onOpenDetail?.(f.responseEventId ?? f.requestEventId)}
-              >
-                <span className="text-redlog-text-dim shrink-0 w-12">{f.method}</span>
-                <span className={`shrink-0 w-8 tabular-nums ${sc ?? 'text-redlog-text-faint'}`}>{f.status ?? '—'}</span>
-                <span className="text-redlog-text truncate flex-1" title={f.url}>{path}</span>
-                <span className="text-redlog-text-faint shrink-0 tabular-nums">
-                  {formatTime(f.timestamp, { seconds: true })}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Main panel
+// Main panel — a flat HTTP log (Burp Proxy > HTTP history), one row per flow.
+// Grouping traffic under the command that produced it is the Timeline's job;
+// this panel only presents the HTTP record.
 // ---------------------------------------------------------------------------
 
 export function HttpHistoryPanel({ onOpenInTimeline }: {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets: excludeTargets } = useSharedFilter()
+  const { filter: sharedFilter } = useSharedFilter()
   const [flows, setFlows] = useState<HttpFlow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -239,11 +109,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<'timestamp' | 'status' | 'size' | 'durationMs'>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
-  // §3: the activity is the row, not the connection. 'flows' is still here
-  // as an explicit escape hatch, because a record has to let you get at the
-  // raw thing — it is just no longer what you land on.
-  const [viewMode, setViewMode] = useState<'activity' | 'flows'>('activity')
-  const [openActivity, setOpenActivity] = useState<string | null>(null)
   const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
@@ -258,13 +123,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       setDetailLoading(false)
     }).catch(() => { setDetailLoading(false) })
   }, [detailEvent?.id])
-  // §7a: mark out-of-scope (non-attack) hosts. Scope comes from project config;
-  // an empty allow list means nothing is "out of scope" (no rule to violate),
-  // so the marker never appears on an unscoped engagement.
-  const outOfScope = useCallback(
-    (host: string) => hostOutOfScope(host, scopeTargets, excludeTargets),
-    [scopeTargets, excludeTargets]
-  )
 
   const loadSeqRef = useRef(0)
   const nextCursorRef = useRef<string | null>(null)
@@ -318,6 +176,23 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     debounceRef.current = setTimeout(() => { debounceRef.current = null; loadFlows() }, 300)
   }, [loadFlows])
 
+  // Auto-follow the cursor to completion. Each append grows `flows` and
+  // refreshes `hasMore`, re-running this effect until the record is whole or
+  // the cap is reached. `loadError` stops the chain so a failed page surfaces
+  // its retry (§US3) instead of being re-requested in a tight loop; the live
+  // guards on `loading`/`loadingMore` keep only one page in flight.
+  const autoFollowPending = hasMore && flows.length < AUTO_LOAD_MAX_FLOWS && !loadError
+  // One page in flight, or the gap between pages before the next dispatch. The
+  // completeness strip reads this as "loading", so the resting subset marker
+  // and Load More button only appear once the cap is actually reached.
+  const busy = loadingMore || autoFollowPending
+
+  useEffect(() => {
+    if (loading || loadingMore || loadError) return
+    if (!hasMore || flows.length >= AUTO_LOAD_MAX_FLOWS) return
+    void loadFlows(true)
+  }, [hasMore, loading, loadingMore, loadError, flows.length, loadFlows])
+
   useEffect(() => {
     loadFlows()
     const unsub = window.redlog.events.onNewBatch((events) => {
@@ -348,9 +223,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       .map(([h]) => h)
   }, [flows])
 
-  // Debounce the filter text: `filtered` (a sort) and `activities` (groupFlows)
-  // both derive from it, so recomputing them on every keystroke — even in
-  // `flows` view where the activity list isn't shown — is wasted work on
+  // Debounce the filter text: `filtered` (a sort over every loaded flow)
+  // derives from it, so recomputing on every keystroke is wasted work on
   // thousands of rows. The input stays bound to `filterText` for
   // responsiveness; the heavy derivation waits on the debounced value.
   const [filterTextDebounced, setFilterTextDebounced] = useState('')
@@ -417,22 +291,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
-  const activities = useMemo(() => groupFlows(filtered), [filtered])
-
-  const activityNav = useListKeyboard({
-    count: activities.length,
-    onActivate: (i) => {
-      const a = activities[i]
-      if (a) setOpenActivity((cur) => (cur === a.id ? null : a.id))
-    },
-    onJumpToTimeline: (i) => {
-      const a = activities[i]
-      const id = a?.causeEventId ?? a?.flows[0]?.responseEventId ?? a?.flows[0]?.requestEventId
-      if (id && a) onOpenInTimeline?.(id, a.startMs)
-    },
-    onEscape: () => { if (detailEvent) setDetailEvent(null); else setOpenActivity(null) }
-  })
-
   // A shared-filter notice above already says why there are no flows (spec
   // 033 FR-012). "No HTTP traffic captured yet" beside it would claim what
   // this view cannot know under that condition, so it is not shown.
@@ -487,23 +345,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
         <span className="text-sm font-semibold text-redlog-text">{t('httpHistory.title')}</span>
         <span className="text-xs text-redlog-text-dim font-mono tabular-nums">
-          {t('httpHistory.counts', { activities: activities.length, flows: filtered.length })}
+          {t('httpHistory.counts', { flows: filtered.length })}
         </span>
-
-        <div className="flex items-center gap-0.5 ml-3 bg-redlog-elevated/60 rounded p-0.5">
-          <button
-            onClick={() => setViewMode('activity')}
-            data-http-view="activity"
-            aria-pressed={viewMode === 'activity'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
-          >{t('httpHistory.viewActivity')}</button>
-          <button
-            onClick={() => setViewMode('flows')}
-            data-http-view="flows"
-            aria-pressed={viewMode === 'flows'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
-          >{t('httpHistory.viewFlows')}</button>
-        </div>
 
         <div className="flex-1" />
         <input
@@ -563,12 +406,25 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       )}
 
       <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
-        <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>
-          {t(hasMore ? 'httpHistory.recentSubset' : 'httpHistory.complete')}
-        </span>
-        {hasMore && (
-          <button type="button" onClick={() => void loadFlows(true)} disabled={loadingMore} className="text-redlog-cyan underline disabled:text-redlog-text-faint">
-            {loadingMore ? t('httpHistory.loadingMore') : t('httpHistory.loadMore')}
+        {busy ? (
+          // Auto-following to completion: either a page is in flight, or the
+          // last one settled and the next is about to be dispatched. Held as
+          // one "loading" state (§FR-004) so the Load More button does not
+          // flicker into the gap between pages.
+          <span data-testid="http-completeness" className="flex items-center gap-1.5 text-redlog-text-dim">
+            <span aria-hidden className="animate-spin w-3 h-3 border-2 border-redlog-border border-t-transparent rounded-full" />
+            {t('httpHistory.loadingMore')}
+          </span>
+        ) : (
+          // At rest: complete, or — only past AUTO_LOAD_MAX_FLOWS — the capped
+          // subset with a manual continue.
+          <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>
+            {t(hasMore ? 'httpHistory.recentSubset' : 'httpHistory.complete', { max: AUTO_LOAD_MAX_FLOWS })}
+          </span>
+        )}
+        {hasMore && !busy && (
+          <button type="button" onClick={() => void loadFlows(true)} className="text-redlog-cyan underline">
+            {t('httpHistory.loadMore')}
           </button>
         )}
         {loadError && (
@@ -579,29 +435,14 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         )}
       </div>
 
-      {viewMode === 'activity' ? (
-        <div className="flex-1 overflow-auto p-2 space-y-1" {...activityNav.containerProps}>
-          {activities.length === 0 ? (
-            emptyText && <p className="text-xs text-redlog-text-faint px-1 py-2">{emptyText}</p>
-          ) : activities.map((a, i) => (
-            <ActivityRow
-              key={a.id}
-              activity={a}
-              t={t}
-              rowProps={activityNav.itemProps(i)}
-              open={openActivity === a.id}
-              onToggle={() => setOpenActivity((cur) => (cur === a.id ? null : a.id))}
-              onOpenInTimeline={onOpenInTimeline}
-              onOpenDetail={openDetail}
-              outOfScope={outOfScope}
-            />
-          ))}
-        </div>
-      ) : (
+      {(
         <div ref={scrollRef} className="flex-1 overflow-auto">
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
+                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-20" onClick={() => toggleSort('timestamp')}>
+                  When{sortArrow('timestamp')}
+                </th>
                 <th className="px-2 py-1.5 font-medium w-16">{t('httpHistory.colMethod')}</th>
                 <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-14" onClick={() => toggleSort('status')}>
                   Status{sortArrow('status')}
@@ -614,9 +455,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 </th>
                 <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-16 text-right" onClick={() => toggleSort('durationMs')}>
                   Time{sortArrow('durationMs')}
-                </th>
-                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-20 text-right" onClick={() => toggleSort('timestamp')}>
-                  When{sortArrow('timestamp')}
                 </th>
               </tr>
             </thead>
@@ -654,6 +492,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
+                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
                     <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
                     <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
                     <td className="px-2 py-1 text-redlog-text-dim max-w-[160px] truncate" title={f.host}>{f.host}</td>
@@ -663,7 +502,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     </td>
                     <td className="px-2 py-1 text-redlog-text-dim text-right">{f.size !== null ? formatBytes(f.size) : '—'}</td>
                     <td className="px-2 py-1 text-redlog-text-dim text-right">{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-faint text-right tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
                   </tr>
                 )
                     })}
