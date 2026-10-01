@@ -252,6 +252,7 @@ interface RedLogAPI {
     setNote: (eventId: string, note: string) => Promise<EventNote | null>
     getNote: (eventId: string) => Promise<EventNote | null>
     annotatedIds: () => Promise<string[]>
+    attributionStats: () => Promise<{ attempted: number; resolved: number }>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {

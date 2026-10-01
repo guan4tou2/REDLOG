@@ -133,6 +133,8 @@ const api: RedLogAPI = {
     getNote: (eventId: string) =>
       ipcRenderer.invoke('events:getNote', eventId) as Promise<EventNote | null>,
     annotatedIds: () => ipcRenderer.invoke('events:annotatedIds') as Promise<string[]>,
+    attributionStats: () =>
+      ipcRenderer.invoke('events:attributionStats') as Promise<{ attempted: number; resolved: number }>,
     isDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },

@@ -14,7 +14,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
   titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef,
-  hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds
+  hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false
 }: {
   events: readonly RedLogEvent[]
   selectedId: string | null
@@ -38,6 +38,9 @@ export function TimelineEventLog({
   onToggleHidden?: () => void
   /** Events carrying an operator note; those never fold. */
   annotatedIds?: ReadonlySet<string>
+  /** Traffic has been seen and the command join has resolved none of it —
+   *  a capability this host does not have, not a fact about the engagement. */
+  attributionBlind?: boolean
 }): JSX.Element {
   // Folds start closed and the operator opens the ones they want. Expansion
   // is per parent and not remembered across a filter change: the row they
@@ -87,6 +90,16 @@ export function TimelineEventLog({
       {/* The header above is a fixed row; this takes the rest. It used to
           restate the vh literal in a calc(), which is why only the default
           height ever lined up. */}
+      {/* Nothing folded, and the reason is not "nothing was caused".
+          Without this line a host that cannot answer who owns a socket looks
+          exactly like an engagement where every request stood alone — which
+          is how the join below sat broken for a year — and the next person to
+          notice is tempted to put the time-window guess back. */}
+      {attributionBlind && (
+        <p data-testid="log-attribution-blind" className="shrink-0 px-3 py-1 text-xs text-redlog-warn border-b border-redlog-border-subtle/30">
+          {t('timeline.fold.blind')}
+        </p>
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {rows.map((row) => {
           if (row.kind === 'fold') {

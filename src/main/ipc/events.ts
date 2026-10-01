@@ -13,6 +13,7 @@ import { loadConfig, snapshotScope } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
 import { setEventNote, getEventNote, getAnnotatedIds } from '../../core/db/event-notes'
+import { attributionStats } from '../../core/socket-attribution'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
@@ -116,6 +117,11 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // Which events carry a note, in one read. The Timeline needs it per row —
   // an annotated event never folds into a summary, because a row a person
   // reached out and wrote on is not noise to be collapsed.
+  // Whether the command→traffic join has produced anything this session. The
+  // Timeline needs it to tell "nothing was caused" apart from "this host
+  // cannot answer who owns a socket" — the two look identical on screen.
+  ipcMain.handle('events:attributionStats', () => attributionStats())
+
   ipcMain.handle('events:annotatedIds', () => {
     if (!ctx.getActiveProject()) return []
     return [...getAnnotatedIds()]

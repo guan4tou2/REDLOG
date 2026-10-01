@@ -72,6 +72,22 @@ const parentOf = new BoundedMap<number, number>()
  *  unknown cannot walk to an unrelated ancient process and cite it. */
 export const MAX_ANCESTRY_DEPTH = 8
 
+// How this join is actually doing, so the UI can tell "nothing was caused"
+// apart from "this host cannot answer who owns a socket".
+//
+// Those look identical on screen — no edges either way — and they are not the
+// same thing. One is a true statement about the engagement; the other is a
+// capability the host does not have (no `ss`, no `lsof`, a connection shorter
+// than the snapshot interval). Leaving them indistinguishable is how a broken
+// join sits unnoticed for a year, which is exactly what happened here.
+let attempted = 0
+let resolved = 0
+
+/** Attribution attempts and successes since the project opened. */
+export function attributionStats(): { attempted: number; resolved: number } {
+  return { attempted, resolved }
+}
+
 /** connection-monitor: this local ephemeral port is owned by this pid. */
 export function notePortPid(localPort: number | undefined, pid: number | undefined): void {
   if (typeof localPort === 'number' && localPort > 0 && typeof pid === 'number' && pid > 0) {
@@ -139,12 +155,14 @@ export function portOfSourceAddr(addr: unknown): number | undefined {
  */
 export function socketCausesFor(agentType: string, data: Record<string, unknown>): string[] {
   if (agentType !== 'scanner' && agentType !== 'dns' && agentType !== 'http_navigation') return []
+  attempted++
   const byPid = resolveByPid(data.pid as number | undefined)
-  if (byPid) return [byPid]
+  if (byPid) { resolved++; return [byPid] }
   const byPort = resolveByLocalPort(
     (data.local_port as number | undefined) ?? portOfSourceAddr(data.source_addr)
   )
-  return byPort ? [byPort] : []
+  if (byPort) { resolved++; return [byPort] }
+  return []
 }
 
 /** Test helper. */
@@ -152,4 +170,6 @@ export function _resetSocketAttribution(): void {
   portPid.clear()
   pidCmd.clear()
   parentOf.clear()
+  attempted = 0
+  resolved = 0
 }

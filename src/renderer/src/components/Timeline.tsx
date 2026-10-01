@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fra
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
@@ -1202,6 +1203,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     window.addEventListener(EVENT_NOTE_SAVED, read)
     return () => window.removeEventListener(EVENT_NOTE_SAVED, read)
   }, [])
+
+  // Has the command→traffic join resolved anything at all? Re-read on focus:
+  // the operator may have installed `lsof`, or turned a pack on, and come
+  // back.
+  const [attribution, setAttribution] = useState({ attempted: 0, resolved: 0 })
+  const readAttribution = useCallback(() => {
+    void window.redlog.events.attributionStats().then(setAttribution).catch(() => {})
+  }, [])
+  useEffect(readAttribution, [readAttribution])
+  useRevalidateOnFocus(readAttribution)
+  // Said only when there is something it should have resolved: traffic has
+  // arrived, the join has been asked, and it has never once answered.
+  const attributionBlind = attribution.attempted > 0 && attribution.resolved === 0
 
   const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
   useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
@@ -2647,6 +2661,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           heightPx={logPanel.px}
           hiddenByQuery={hiddenByQuery}
           annotatedIds={annotatedIds}
+          attributionBlind={attributionBlind}
           showingAll={showAllDespiteQuery && filterMatches !== null}
           onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
           events={recentEvents}
