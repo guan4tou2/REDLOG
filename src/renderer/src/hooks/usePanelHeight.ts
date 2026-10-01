@@ -14,6 +14,16 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 // default responsive to window height instead of freezing a pixel count taken
 // on somebody else's monitor.
 
+/** A stored size, or null when there is none to trust: nothing written, a
+ *  value this panel's floor rejects, or storage that cannot be read at all. */
+function readStored(storageKey: string, min: number): number | null {
+  try {
+    const raw = localStorage.getItem(storageKey)
+    const n = raw ? parseInt(raw, 10) : NaN
+    return Number.isFinite(n) && n > min && n < 2000 ? n : null
+  } catch { return null }
+}
+
 interface PanelSize {
   /** Chosen size in px, or null while the CSS default applies. */
   px: number | null
@@ -34,13 +44,25 @@ export function usePanelHeight(
   const maxRatio = opts.maxRatio ?? 0.85
   const axis = opts.axis ?? 'y'
 
-  const [px, setPx] = useState<number | null>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey)
-      const n = raw ? parseInt(raw, 10) : NaN
-      return Number.isFinite(n) && n > min && n < 2000 ? n : null
-    } catch { return null }
-  })
+  const [px, setPx] = useState<number | null>(() => readStored(storageKey, min))
+  // The key is the panel AND the axis it is laid out on. The Timeline's detail
+  // pane passes `…-detail-h` below the list and `…-detail-w` beside it,
+  // precisely because 320px of height and 320px of width are not the same
+  // request. Reading storage only in the initializer above meant the key could
+  // change and the NUMBER could not: switching layouts carried the height
+  // across as a width, so a pane dragged to 320px tall came back 320px wide —
+  // under the 440px the side layout is drawn for, which is how the operator
+  // first met it, with its header squeezed to one character per line.
+  //
+  // Set during render rather than in an effect: React re-runs this call before
+  // committing, so the pane never paints one frame at the other axis's size.
+  const lastKey = useRef(storageKey)
+  if (lastKey.current !== storageKey) {
+    lastKey.current = storageKey
+    // The new key's floor, not the old one's — the two layouts have different
+    // minimums (the side pane cannot be narrower than 280).
+    setPx(readStored(storageKey, min))
+  }
   const drag = useRef<{ start: number; size: number } | null>(null)
   // The live value, so the mouseup listener persists what the last mousemove
   // set rather than what the render that installed it had. Without it the
