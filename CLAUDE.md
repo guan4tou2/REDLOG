@@ -58,6 +58,28 @@ returns **device** pixels; `offsetLeft`, `offsetWidth` and `clientWidth` return
 factor — a dot at 1898 inside a 2000px track reads as 98px outside it. Pick one
 family and stay in it; `offset*` is usually the one you want.
 
+## React
+
+**Never declare a component inside another component's body.** A function
+defined there is a new type on every render, so React unmounts and remounts its
+entire subtree each time. Three things follow, and only the first is obvious:
+
+- focus and state are lost on the keystroke that caused the render
+- Fast Refresh cannot reconcile the old tree against the new one, so a panel
+  renders part of itself and stops — which is how this was reported, not as a
+  focus bug
+- it is invisible in tests, because a test renders once
+
+Declare them at module scope and pass what they closed over. `ExportMenu` had
+three such components and shipped broken; the unit suite was green.
+
+The same shape, different symptom: anything a component reads at render time
+must exist before the render that reads it. This repo has been bitten by both
+the TDZ version (a `const` below the JSX that uses it — see the contract note
+in `Timeline.tsx`) and the stale-bridge version (a renderer calling a preload
+method that the running window's preload predates; it needs a full reload, not
+HMR).
+
 ## Staging
 
 Do not `git add -A` or `git add .`. Parallel sessions write to this checkout,
