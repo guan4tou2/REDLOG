@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { X } from 'lucide-react'
+import { X, PanelBottom, PanelRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime, formatSize } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { usePanelHeight } from '../hooks/usePanelHeight'
+import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
@@ -111,6 +113,21 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const [sortAsc, setSortAsc] = useState(false)
   const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+
+  // The detail pane docks under the table or beside it — the SAME choice the
+  // Timeline's inspector uses (shared via detailLayout), so switching it in
+  // either place moves both. Size is kept per layout and per panel.
+  const [layout, setLayout] = useState<DetailLayout>(storedDetailLayout)
+  useEffect(() => {
+    const onChange = (): void => setLayout(storedDetailLayout())
+    window.addEventListener(DETAIL_LAYOUT_EVENT, onChange)
+    return () => window.removeEventListener(DETAIL_LAYOUT_EVENT, onChange)
+  }, [])
+  const detailPanelRef = useRef<HTMLDivElement | null>(null)
+  const detailPanel = usePanelHeight(
+    layout === 'right' ? 'redlog-http-detail-w' : 'redlog-http-detail-h',
+    layout === 'right' ? { axis: 'x', min: 280, maxRatio: 0.6 } : {}
+  )
 
   const openDetail = useCallback((eventId: string | null) => {
     if (!eventId) return
@@ -291,6 +308,23 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
+  // Step the open detail to the previous/next flow in the filtered list — the
+  // ◀ ▶ the Timeline inspector has, so the operator reads neighbouring requests
+  // without going back to the table. The row is scrolled into view so a step
+  // past the virtualised window still lands somewhere visible.
+  const detailIndex = useMemo(
+    () => (detailEvent ? filtered.findIndex((f) => (f.responseEventId ?? f.requestEventId) === detailEvent.id) : -1),
+    [filtered, detailEvent]
+  )
+  const stepDetail = useCallback((delta: -1 | 1) => {
+    if (detailIndex < 0) return
+    const target = filtered[detailIndex + delta]
+    const id = target?.responseEventId ?? target?.requestEventId
+    if (!id) return
+    rowVirtualizer.scrollToIndex(detailIndex + delta)
+    openDetail(id)
+  }, [filtered, detailIndex, rowVirtualizer, openDetail])
+
   // A shared-filter notice above already says why there are no flows (spec
   // 033 FR-012). "No HTTP traffic captured yet" beside it would claim what
   // this view cannot know under that condition, so it is not shown.
@@ -435,8 +469,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         )}
       </div>
 
-      {(
-        <div ref={scrollRef} className="flex-1 overflow-auto">
+      <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
+        <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-auto">
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
@@ -517,39 +551,106 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             </div>
           )}
         </div>
-      )}
 
-      {(detailEvent || detailLoading) && (
-        <div className="shrink-0 border-t border-redlog-border bg-redlog-surface overflow-auto" style={{ maxHeight: '50%' }}>
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-bg/50 sticky top-0 z-10">
-            <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
-            {detailEvent && onOpenInTimeline && (
-              <button
-                onClick={() => { const d = detailEvent.data; onOpenInTimeline(detailEvent.id, typeof d.timestamp === 'number' ? d.timestamp : Date.now()) }}
-                title={t('httpHistory.openAtMoment')}
-                className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-1.5 py-0.5 rounded border border-redlog-border/60 hover:bg-redlog-elevated/40"
-              >↗ {t('httpHistory.openInTimeline')}</button>
-            )}
-            <div className="flex-1" />
-            <button
-              onClick={() => setDetailEvent(null)}
-              className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
-              aria-label={t('httpHistory.closeDetail')}
+        {(detailEvent || detailLoading) && (
+          <>
+            {/* Resize handle on the edge the pane grows from — same as the Timeline. */}
+            <div
+              data-testid="http-detail-resize"
+              className={`shrink-0 bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative ${
+                layout === 'bottom' ? 'h-1 cursor-row-resize' : 'w-1 cursor-col-resize'
+              }`}
+              title={t('timeline.resizeDetailPanel')}
+              onMouseDown={(e) => {
+                const box = detailPanelRef.current?.getBoundingClientRect()
+                detailPanel.beginResize(e, layout === 'bottom' ? box?.height ?? 320 : box?.width ?? 440)
+              }}
+              onDoubleClick={detailPanel.reset}
             >
-              <X size={14} />
-            </button>
-          </div>
-          {detailLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <div className="animate-spin w-4 h-4 border-2 border-redlog-border border-t-transparent rounded-full" />
+              <div className={`absolute rounded bg-redlog-elevated-hover/50 pointer-events-none ${
+                layout === 'bottom'
+                  ? 'left-1/2 top-0 -translate-x-1/2 h-1 w-8'
+                  : 'top-1/2 left-0 -translate-y-1/2 w-1 h-8'
+              }`} />
             </div>
-          ) : detailEvent ? (
-            <div className="px-3 py-2">
-              <HttpDetail data={detailEvent.data} eventId={detailEvent.id} />
+            <div
+              ref={detailPanelRef}
+              data-testid="http-detail-panel"
+              className={`shrink-0 bg-redlog-surface overflow-auto ${
+                layout === 'bottom'
+                  ? `border-t border-redlog-border${detailPanel.px == null ? ' max-h-[50%]' : ''}`
+                  : 'border-l border-redlog-border h-full'
+              }`}
+              style={detailPanel.px == null
+                ? (layout === 'right' ? { width: 440 } : undefined)
+                : (layout === 'bottom' ? { height: detailPanel.px } : { width: detailPanel.px })}
+            >
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-bg/50 sticky top-0 z-10">
+                <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
+
+                {/* ◀ ▶ step to the previous/next request without returning to the table. */}
+                <div className="flex items-center">
+                  <button
+                    data-testid="http-detail-step-prev"
+                    onClick={() => stepDetail(-1)}
+                    disabled={detailIndex <= 0}
+                    title={t('timeline.stepPrev')}
+                    aria-label={t('timeline.stepPrev')}
+                    className="text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
+                  ><ChevronLeft size={14} aria-hidden /></button>
+                  <button
+                    data-testid="http-detail-step-next"
+                    onClick={() => stepDetail(1)}
+                    disabled={detailIndex < 0 || detailIndex >= filtered.length - 1}
+                    title={t('timeline.stepNext')}
+                    aria-label={t('timeline.stepNext')}
+                    className="text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
+                  ><ChevronRight size={14} aria-hidden /></button>
+                </div>
+
+                {detailEvent && onOpenInTimeline && (
+                  <button
+                    onClick={() => { const d = detailEvent.data; onOpenInTimeline(detailEvent.id, typeof d.timestamp === 'number' ? d.timestamp : Date.now()) }}
+                    title={t('httpHistory.openAtMoment')}
+                    className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-1.5 py-0.5 rounded border border-redlog-border/60 hover:bg-redlog-elevated/40"
+                  >↗ {t('httpHistory.openInTimeline')}</button>
+                )}
+                <div className="flex-1" />
+
+                {/* Dock under the table or beside it — the same choice (and store) as the Timeline. */}
+                <button
+                  data-testid="http-detail-layout-toggle"
+                  onClick={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
+                  title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+                  aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+                  aria-pressed={layout === 'right'}
+                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+                >
+                  {layout === 'bottom'
+                    ? <PanelBottom size={14} aria-hidden />
+                    : <PanelRight size={14} aria-hidden />}
+                </button>
+                <button
+                  onClick={() => setDetailEvent(null)}
+                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+                  aria-label={t('httpHistory.closeDetail')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              {detailLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="animate-spin w-4 h-4 border-2 border-redlog-border border-t-transparent rounded-full" />
+                </div>
+              ) : detailEvent ? (
+                <div className="px-3 py-2">
+                  <HttpDetail data={detailEvent.data} eventId={detailEvent.id} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   )
 }
