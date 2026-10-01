@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
+import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
 import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
@@ -1188,6 +1189,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // interesting thing is sometimes a stack trace inside a 404 body that no
   // query would have matched, and a filter that hides without saying how much
   // is a filter that loses evidence quietly.
+  // Annotated events never fold. Read once per project and again whenever a
+  // note is written, which is the only thing that changes the set.
+  const [annotatedIds, setAnnotatedIds] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    const read = (): void => {
+      void window.redlog.events.annotatedIds()
+        .then((ids) => setAnnotatedIds(new Set(ids)))
+        .catch(() => { /* a note that cannot be read only costs a fold */ })
+    }
+    read()
+    window.addEventListener(EVENT_NOTE_SAVED, read)
+    return () => window.removeEventListener(EVENT_NOTE_SAVED, read)
+  }, [])
+
   const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
   useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
   const queryActive = filterMatches !== null && !showAllDespiteQuery
@@ -2631,6 +2646,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           rootRef={logPanelRef}
           heightPx={logPanel.px}
           hiddenByQuery={hiddenByQuery}
+          annotatedIds={annotatedIds}
           showingAll={showAllDespiteQuery && filterMatches !== null}
           onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
           events={recentEvents}
