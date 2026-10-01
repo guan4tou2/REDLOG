@@ -123,3 +123,36 @@ describe('ExportMenu as a dialog', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 })
+
+// A component declared inside another component's body is a new type on every
+// render, so React unmounts and remounts its subtree each time — focus and
+// state are lost on the keystroke that caused the render, and Fast Refresh
+// cannot reconcile the old tree against the new one, which shows up as a panel
+// that renders part of itself and stops. `Option` and `PreviewRow` were
+// written that way and `Toggle` was added beside them.
+describe('the menu renders all of itself', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('shows both choices and every format, not just the first row', () => {
+    install(vi.fn())
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    fireEvent.click(screen.getByLabelText('Export'))
+    expect(screen.getByLabelText(/scrub operator pii/i)).toBeTruthy()
+    expect(screen.getByLabelText(/masked \(recommended\)/i)).toBeTruthy()
+    expect(screen.getByText('Everything')).toBeTruthy()
+    expect(screen.getByText('Evidence bundle (with verifier)')).toBeTruthy()
+  })
+
+  it('keeps one toggle checked while the other is clicked', () => {
+    // The remount symptom, made observable: ticking one box re-renders the
+    // menu, and an inline component definition would rebuild the other from
+    // scratch.
+    install(vi.fn())
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    fireEvent.click(screen.getByLabelText('Export'))
+    const mask = screen.getByLabelText(/masked \(recommended\)/i) as HTMLInputElement
+    expect(mask.checked).toBe(true)
+    fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
+    expect((screen.getByLabelText(/masked \(recommended\)/i) as HTMLInputElement).checked).toBe(true)
+  })
+})
