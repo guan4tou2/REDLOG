@@ -1045,7 +1045,6 @@
   "timeline.detail.cookies": "Cookies sent",
   "timeline.detail.setCookies": "Set-Cookie",
   "httpHistory.title": "HTTP History",
-  "httpHistory.viewSitemap": "Sitemap",
   "httpHistory.colMethod": "Method",
   "httpHistory.colHost": "Host",
   "httpHistory.colUrl": "URL",

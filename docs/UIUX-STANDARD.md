@@ -458,7 +458,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 | **2b 終端機 per-pane〈記錄中／未記錄〉chip** | 2b | 🔴 未做 | `TerminalView.tsx:164` 只有存活點 | 這是該畫面的核心設計（「每個窗格說明自己有沒有在記錄」）；連 `.cast` 用量條、互動式工作階段標未記錄、底部 stale-hook 橫幅都缺 |
 | **5b 終端機設定頁** | 5b | 🔴 未做（**誤標「已繪出」**）| `Settings.tsx:81-88` union 無 `terminal` | 字型／scrollback／50MB 上限與用量都無 UI（後端有 `terminal-manager.ts:107`）|
 | **4d 逐字稿 輸出首行預覽 + 條件自動展開** | 4d | 🔴 未做 | `TranscriptView.tsx:238`/`:353-410` | shell 輸出完全藏在 ▶ 後；無「exit≠0 或含戰利品自動展開」 |
-| **7a 流量歷史 範圍外 host 標示** | 7a | 🔴 未做 | `HttpHistoryPanel.tsx`/`httpActivity.ts` scope 零命中 | 活動列/站點樹看不出哪些範圍外（非攻擊）；亦屬隱私缺口（見下）|
+| **7a 流量歷史 範圍外 host 標示** | 7a | 🔴 未做 | `HttpHistoryPanel.tsx`/`httpActivity.ts` scope 零命中 | 活動列看不出哪些範圍外（非攻擊）；亦屬隱私缺口（見下）|
 | **設定側欄「需要處理」徽章** | 4a | 🔴 未做 | `Settings.tsx:224-240` 只印 label | 設計要「擷取來源 2」式徽章 |
 | **2f 回放器 標記紅刻度** | 2f | 🔴 未做 | `SessionReplayPlayer.tsx:197` 無 tick | 抽屜本身已做（#74）|
 | **2g DB 損毀/被鎖 復原畫面** | 2g | 🔴 未做 | 無此 UI | 第二實例已擋、WSL 已處理；只缺 DB 損毀狀態畫面 |

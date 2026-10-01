@@ -220,160 +220,6 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, 
 }
 
 // ---------------------------------------------------------------------------
-// Sitemap tree data structure
-// ---------------------------------------------------------------------------
-
-interface SitemapNode {
-  name: string
-  fullPath: string
-  children: Map<string, SitemapNode>
-  flows: HttpFlow[]
-  methods: Set<string>
-  statuses: Set<number>
-}
-
-function buildSitemapTree(flows: HttpFlow[]): Map<string, SitemapNode> {
-  const roots = new Map<string, SitemapNode>()
-
-  for (const f of flows) {
-    let host: string
-    let pathname: string
-    let query: string
-    try {
-      const u = new URL(f.url)
-      host = u.host
-      pathname = u.pathname
-      query = u.search
-    } catch {
-      host = f.host || '(unknown)'
-      pathname = f.url
-      query = ''
-    }
-
-    if (!roots.has(host)) {
-      roots.set(host, { name: host, fullPath: host, children: new Map(), flows: [], methods: new Set(), statuses: new Set() })
-    }
-    const hostNode = roots.get(host)!
-    hostNode.flows.push(f)
-    hostNode.methods.add(f.method)
-    if (f.status !== null) hostNode.statuses.add(f.status)
-
-    const segments = pathname.split('/').filter(Boolean)
-    let current = hostNode
-    let builtPath = host
-
-    for (const seg of segments) {
-      builtPath += '/' + seg
-      if (!current.children.has(seg)) {
-        current.children.set(seg, { name: seg, fullPath: builtPath, children: new Map(), flows: [], methods: new Set(), statuses: new Set() })
-      }
-      const child = current.children.get(seg)!
-      child.flows.push(f)
-      child.methods.add(f.method)
-      if (f.status !== null) child.statuses.add(f.status)
-      current = child
-    }
-
-    if (query) {
-      const qKey = query
-      if (!current.children.has(qKey)) {
-        current.children.set(qKey, { name: qKey, fullPath: builtPath + qKey, children: new Map(), flows: [], methods: new Set(), statuses: new Set() })
-      }
-      const qNode = current.children.get(qKey)!
-      qNode.flows.push(f)
-      qNode.methods.add(f.method)
-      if (f.status !== null) qNode.statuses.add(f.status)
-    }
-  }
-
-  return roots
-}
-
-function SitemapTreeNode({ node, depth, onOpenInTimeline, onOpenDetail, outOfScope }: {
-  node: SitemapNode
-  depth: number
-  onOpenInTimeline?: (eventId: string, ts: number) => void
-  onOpenDetail?: (eventId: string | null) => void
-  outOfScope?: (host: string) => boolean
-}): JSX.Element {
-  const { t } = useI18n()
-  const [expanded, setExpanded] = useState(depth < 2 && !(depth === 0 && outOfScope?.(node.name)))
-  const hasChildren = node.children.size > 0
-  const sortedChildren = useMemo(() =>
-    Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name)),
-    [node.children]
-  )
-
-  const uniqueFlowCount = node.flows.length
-  const methodArr = Array.from(node.methods)
-  const statusArr = Array.from(node.statuses).sort()
-
-  const handleClick = () => {
-    if (hasChildren) {
-      setExpanded(!expanded)
-    } else if (node.flows.length === 1) {
-      const f = node.flows[0]
-      const eid = f.responseEventId ?? f.requestEventId
-      if (eid) onOpenDetail?.(eid)
-    }
-  }
-
-  return (
-    <div>
-      <div
-        className="flex items-center gap-1 px-1 py-0.5 hover:bg-redlog-elevated/40 cursor-pointer select-none"
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
-        onClick={handleClick}
-      >
-        <span className="w-3 text-xs text-redlog-text-faint flex-shrink-0 flex items-center">
-          {hasChildren
-            ? (expanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />)
-            : '·'}
-        </span>
-        <span
-          title={node.fullPath}
-          className={`text-xs font-mono truncate ${
-            depth === 0
-              ? (outOfScope?.(node.name) ? 'text-redlog-text-faint font-semibold' : 'text-redlog-accent font-semibold')
-              : 'text-redlog-text'
-          }`}
-        >
-          {depth === 0 ? node.name : '/' + node.name}
-        </span>
-        {depth === 0 && outOfScope?.(node.name) && (
-          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
-            {t('httpHistory.outOfScope')}
-          </span>
-        )}
-        <span className="flex-shrink-0 flex items-center gap-1 ml-auto">
-          {methodArr.map(m => (
-            <span key={m} className="text-xs font-mono px-1 rounded text-redlog-text-dim/70 bg-redlog-elevated/40">{m}</span>
-          ))}
-          {statusArr.length > 0 && statusArr.length <= 3 && statusArr.map(s => (
-            <span key={s} className={`text-xs font-mono ${STATUS_COLORS[String(s)[0]] ?? 'text-redlog-text-dim'}`}>
-              {s}
-            </span>
-          ))}
-          <span className="text-xs text-redlog-text-faint font-mono min-w-[24px] text-right">
-            {uniqueFlowCount}
-          </span>
-        </span>
-      </div>
-      {expanded && sortedChildren.map(child => (
-        <SitemapTreeNode
-          key={child.fullPath}
-          node={child}
-          depth={depth + 1}
-          outOfScope={outOfScope}
-          onOpenInTimeline={onOpenInTimeline}
-          onOpenDetail={onOpenDetail}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main panel
 // ---------------------------------------------------------------------------
 
@@ -396,7 +242,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // §3: the activity is the row, not the connection. 'flows' is still here
   // as an explicit escape hatch, because a record has to let you get at the
   // raw thing — it is just no longer what you land on.
-  const [viewMode, setViewMode] = useState<'activity' | 'flows' | 'sitemap'>('activity')
+  const [viewMode, setViewMode] = useState<'activity' | 'flows'>('activity')
   const [openActivity, setOpenActivity] = useState<string | null>(null)
   const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -502,11 +348,11 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       .map(([h]) => h)
   }, [flows])
 
-  // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
-  // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
-  // every keystroke — even in `flows` view where the tree/activity aren't shown —
-  // is wasted work on thousands of rows. The input stays bound to `filterText`
-  // for responsiveness; the heavy derivation waits on the debounced value.
+  // Debounce the filter text: `filtered` (a sort) and `activities` (groupFlows)
+  // both derive from it, so recomputing them on every keystroke — even in
+  // `flows` view where the activity list isn't shown — is wasted work on
+  // thousands of rows. The input stays bound to `filterText` for
+  // responsiveness; the heavy derivation waits on the debounced value.
   const [filterTextDebounced, setFilterTextDebounced] = useState('')
   useEffect(() => {
     const id = setTimeout(() => setFilterTextDebounced(filterText), 150)
@@ -587,8 +433,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onEscape: () => { if (detailEvent) setDetailEvent(null); else setOpenActivity(null) }
   })
 
-  const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
-
   // A shared-filter notice above already says why there are no flows (spec
   // 033 FR-012). "No HTTP traffic captured yet" beside it would claim what
   // this view cannot know under that condition, so it is not shown.
@@ -659,12 +503,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             aria-pressed={viewMode === 'flows'}
             className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewFlows')}</button>
-          <button
-            onClick={() => setViewMode('sitemap')}
-            data-http-view="sitemap"
-            aria-pressed={viewMode === 'sitemap'}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
-          >{t('httpHistory.viewSitemap')}</button>
         </div>
 
         <div className="flex-1" />
@@ -759,7 +597,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             />
           ))}
         </div>
-      ) : viewMode === 'flows' ? (
+      ) : (
         <div ref={scrollRef} className="flex-1 overflow-auto">
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
@@ -839,29 +677,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
               {emptyText}
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto py-1">
-          {sitemapTree.size === 0 ? (
-            emptyText && (
-              <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
-                {emptyText}
-              </div>
-            )
-          ) : (
-            Array.from(sitemapTree.values())
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map(node => (
-                <SitemapTreeNode
-                  key={node.fullPath}
-                  node={node}
-                  depth={0}
-                  onOpenInTimeline={onOpenInTimeline}
-                  onOpenDetail={openDetail}
-                  outOfScope={outOfScope}
-                />
-              ))
           )}
         </div>
       )}
