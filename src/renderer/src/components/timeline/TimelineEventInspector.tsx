@@ -6,7 +6,7 @@
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { EventNoteField } from './EventNoteField'
-import { formatTime } from '../../lib/time'
+import { formatDateTime, formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
 import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
@@ -154,6 +154,22 @@ export function TimelineEventInspector({
         <dd className="font-mono text-redlog-text-dim text-right tabular-nums">
           {formatTime(event.timestamp, { seconds: true })}
         </dd>
+        {/* `timestamp` is when the thing happened at its source; `created_at`
+            is when RedLog wrote it down. They are the same number for anything
+            captured live, and this row would then be the same value twice — so
+            it appears only when a replay actually pulled them apart, which is
+            also the only time Invariant #8 has anything to keep distinct. */}
+        {event.createdAt !== event.timestamp && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.recorded')}</dt>
+            <dd
+              className="font-mono text-amber-400 text-right tabular-nums"
+              title={formatDateTime(event.createdAt, { seconds: true })}
+            >
+              {formatTime(event.createdAt, { seconds: true })}
+            </dd>
+          </>
+        )}
         <dt className="text-redlog-text-faint">{t('timeline.detail.source')}</dt>
         <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.hostname}>
           {event.hostname}

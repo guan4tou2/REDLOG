@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
-import { formatTime, formatSize } from '../lib/time'
+import { formatTime, formatDateTime, formatLag, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { UnappliedFilterNotice } from './FilterNotice'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
@@ -673,16 +673,48 @@ export default function TranscriptView({ onOpenInTimeline }: {
           const body = revealed ? (big ? b.output?.slice(0, MAX_INLINE) : b.output) : undefined
           const fullyExpanded = expanded.has(`${b.id}:full`)
           const displayBody = fullyExpanded && b.output ? b.output : body
+          // Source time and receipt time (Domain Invariant #8). They are equal
+          // for anything captured live, which is almost everything — so the row
+          // shows one time, and the second only earns its place in the row when
+          // the two actually diverge: a replayed transcript, a spool that was
+          // offline. Printing both unconditionally cost ~150px of a header
+          // whose only flexible element is the actor name, to say the same
+          // thing twice.
+          const recordedAt = b.events[0]?.createdAt ?? b.ts
+          // `lag` gates the badge and has a floor, because a sub-second gap is
+          // not worth a mark in the row. `diverged` gates the tooltip and has
+          // none: Invariant #8 is about every displayed result, so whenever the
+          // two times are not the same number the row has to be able to say so.
+          const diverged = recordedAt !== b.ts
+          const lag = formatLag(recordedAt - b.ts, t)
+          const timeTitle = diverged
+            ? t('transcript.lagTitle', {
+              occurred: formatDateTime(b.ts, { seconds: true }),
+              recorded: formatDateTime(recordedAt, { seconds: true })
+            })
+            : formatDateTime(b.ts, { seconds: true })
           return (
             <div key={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
-                <span data-testid="transcript-source-time" title={t('transcript.sourceTime')} className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
-                  {t('transcript.sourceTime')} {formatTime(b.ts, { seconds: true })}
+                <span
+                  data-testid="transcript-source-time"
+                  data-occurred-at={b.ts}
+                  title={timeTitle}
+                  className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 w-16"
+                >
+                  {formatTime(b.ts, { seconds: true })}
                 </span>
-                <span data-testid="transcript-receipt-time" title={t('transcript.receiptTime')} className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0">
-                  {t('transcript.receiptTime')} {formatTime(b.events[0]?.createdAt ?? b.ts, { seconds: true })}
-                </span>
+                {lag && (
+                  <span
+                    data-testid="transcript-receipt-time"
+                    data-recorded-at={recordedAt}
+                    title={timeTitle}
+                    className="text-xs text-amber-400 font-mono tabular-nums shrink-0"
+                  >
+                    {lag}
+                  </span>
+                )}
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && (
                   <span

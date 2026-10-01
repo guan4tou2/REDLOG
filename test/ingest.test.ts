@@ -284,4 +284,61 @@ describeDB('ingest', () => {
       eventBus.resume('api')
     }
   })
+
+  // Spec 017 FR-014 / Domain Invariant #8. `timestamp` is when the thing
+  // happened at its source, `created_at` is when RedLog wrote it down. Before
+  // this they were the same `Date.now()` on every path, so a transcript
+  // replayed hours later claimed to have happened at the moment of replay.
+  describe('source occurrence time', () => {
+    const marker = (data: Record<string, unknown>, occurredAt?: number) =>
+      ingestMod.ingest({ ...base, agentType: 'marker', data, ...(occurredAt ? { occurredAt } : {}) })
+
+    it("takes the producer's own time into `timestamp` and keeps `created_at` as receipt", () => {
+      const occurred = Date.now() - 3 * 60 * 60 * 1000
+      const before = Date.now()
+      const ev = marker({ title: 'replayed', source_timestamp: occurred }).event!
+
+      expect(ev.timestamp).toBe(occurred)
+      expect(ev.createdAt).toBeGreaterThanOrEqual(before)
+      expect(ev.createdAt).not.toBe(ev.timestamp)
+    })
+
+    it('an explicit occurredAt outranks what the producer left in `data`', () => {
+      const explicit = Date.now() - 60_000
+      const ev = marker({ title: 'both', source_timestamp: Date.now() - 7_200_000 }, explicit).event!
+      expect(ev.timestamp).toBe(explicit)
+    })
+
+    it('equal times for anything captured live', () => {
+      const ev = marker({ title: 'live' }).event!
+      expect(ev.timestamp).toBe(ev.createdAt)
+    })
+
+    it('refuses a source time it cannot believe, and the refusal is inside the hash', () => {
+      // Seconds-precision epoch read as milliseconds: lands in 1970 and would
+      // drag the row to the far left of every timeline, permanently — the
+      // column is immutable.
+      const before = Date.now()
+      const ev = marker({ title: 'bad clock', source_timestamp: 1_700_000_000 }).event!
+
+      expect(ev.timestamp).toBeGreaterThanOrEqual(before)
+      expect(ev.timestamp).toBe(ev.createdAt)
+      expect(ev.data._source_time_rejected).toMatchObject({ value: 1_700_000_000 })
+    })
+
+    it('a backfilled row is not mistaken for a clock that ran backwards', async () => {
+      // The anomaly detectors compare monotonic counters against the RECEIPT
+      // clock. Pointed at `timestamp` instead, every row of a replayed
+      // transcript reads as the wall clock jumping, and verification screams
+      // about exactly the data this feature exists to represent.
+      marker({ title: 'backfill a', source_timestamp: Date.now() - 86_400_000 })
+      marker({ title: 'backfill b', source_timestamp: Date.now() - 43_200_000 })
+      const live = marker({ title: 'live again' }).event!
+
+      expect(live.data._clock_anomaly).toBeUndefined()
+      const res = await chain.verifyChainFullAsync()
+      expect(res.ok, res.brokenReason ?? '').toBe(true)
+      expect(res.clockAnomalies).toHaveLength(0)
+    })
+  })
 })
