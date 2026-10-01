@@ -223,9 +223,18 @@ export default function App(): JSX.Element {
           {t('artifacts.dropHere')}
         </div>
       )}
-      {/* Title bar */}
+      {/* Title bar.
+
+          No `overflow-hidden` on this strip. It is 40px tall and the controls
+          on it open downward — the export menu is `absolute top-7` inside it —
+          so clipping to the strip clips the popover to a single row and cuts
+          it off at the border below. That is what shipped: a menu that drew
+          its first checkbox and nothing else, which read as a broken component
+          and was not one. Wrapping is held off by `whitespace-nowrap`,
+          `shrink-0` and the project name's own `truncate`; overflow was never
+          the thing carrying it. */}
       <div
-        className="h-10 flex items-center gap-2 px-4 select-none shrink-0 overflow-hidden border-b border-redlog-border bg-redlog-bg whitespace-nowrap"
+        className="h-10 flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
