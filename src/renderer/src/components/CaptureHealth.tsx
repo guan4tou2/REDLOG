@@ -115,10 +115,13 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
 
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
- *  vocabulary from httpCaptureState. */
-function CoreCaptureLine({ readiness, http, t }: {
+ *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
+ *  to say beneath it — that row is not repeated while this line is shown. */
+function CoreCaptureLine({ readiness, http, source, proxyError, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
+  source: CaptureSourceInfo | undefined
+  proxyError: string | undefined
   t: (key: string) => string
 }): JSX.Element {
   const commands = readiness.groups.find((g) => g.id === 'commands')
@@ -145,9 +148,27 @@ function CoreCaptureLine({ readiness, http, t }: {
           <span className="flex-1 text-redlog-text">{t('capture.group.commands')}</span>
           <span className="text-redlog-text-faint">{t(`capture.core.commands.${cmd}`)}</span>
         </li>
-        <li data-testid="capture-core-http" data-state={http} className="flex items-center gap-2">
+        <li data-testid="capture-core-http" data-state={http} className="flex items-start gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
-          <span className="flex-1 text-redlog-text">{t('capture.group.http')}</span>
+          <span className="flex-1 min-w-0 text-redlog-text">
+            {t('capture.group.http')}
+            {http === 'listening' && (
+              <span data-testid="capture-http-listening" className="block text-amber-400">
+                {t('capture.http.listeningWhy')}
+              </span>
+            )}
+            {proxyError && <span className="block text-red-400">{proxyError}</span>}
+            {source?.lastError && (
+              <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
+            )}
+            {source?.streams && (source.streams.http || source.streams.dns) && (
+              <span data-testid="capture-streams-mitmproxy" className="block text-redlog-text-faint">
+                {source.streams.http && source.streams.dns
+                  ? t('capture.streamsBoth')
+                  : source.streams.http ? t('capture.streamsHttpOnly') : t('capture.streamsDnsOnly')}
+              </span>
+            )}
+          </span>
           <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>
         </li>
       </ul>
@@ -291,7 +312,6 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))))
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'active')
-  const shown = manage ? sources : problems
   const hiddenCount = sources.length - problems.length
 
   // HTTP capture had two vocabularies on this card: the mitmproxy row's
@@ -405,6 +425,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // the single primary CTA below, replacing the old one-line "go to Settings"
   // hint that dropped a first-run operator into a 2600-line page with no order.
   const readiness = computeCaptureReadiness({ ...capture, sources })
+  // Once the Core capture line is on screen it already carries HTTP(S), from
+  // the same derived state — so a mitmproxy problem row beneath it said
+  // 未安裝 mitmproxy twice. The row's detail moved up onto the core line; the
+  // full inventory still lists it. A rogue mitmproxy stays, because the core
+  // line has no word for "switched off and still writing".
+  const coreShown = readiness.level === 'recording'
+  const shown = manage ? sources
+    : coreShown ? problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
+      : problems
+  const mitmSource = sources.find((s) => s.id === 'mitmproxy')
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
     : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
@@ -437,8 +467,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             named. An operator who left first-run with Commands verified and
             HTTP(S) not set up must keep seeing that, not have it fold into an
             exception list that only shows sources which were switched on. */}
-        {readiness.level === 'recording' && (
-          <CoreCaptureLine readiness={readiness} http={http} t={t} />
+        {coreShown && (
+          <CoreCaptureLine
+            readiness={readiness}
+            http={http}
+            source={mitmSource}
+            proxyError={capture.managedHttpProxy?.error}
+            t={t}
+          />
         )}
         {readiness.level !== 'recording' && (
           <CaptureOnboarding
@@ -451,7 +487,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           />
         )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
-          {shown.map((s) => (
+          {shown.map((s) => {
+            // The core line already says this about mitmproxy; the inventory
+            // row keeps its state word and controls, not a second copy.
+            const detail = !(coreShown && s.id === 'mitmproxy')
+            return (
             <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
               <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
@@ -468,12 +508,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                     RedLog is misconfigured, the operator's browser or tool is
                     simply not using it. It used to be indistinguishable from a
                     healthy quiet proxy. */}
-                {s.id === 'mitmproxy' && http === 'listening' && (
+                {detail && s.id === 'mitmproxy' && http === 'listening' && (
                   <span data-testid="capture-http-listening" className="block text-amber-400">
                     {t('capture.http.listeningWhy')}
                   </span>
                 )}
-                {s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
+                {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
                   <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
                 )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
@@ -488,12 +528,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                 )}
                 {/* Why it failed, not just that it did — the operator cannot
                     act on a red dot alone. */}
-                {s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+                {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
 
                 {/* Which streams this row is actually carrying. `mitmproxy`
                     covers HTTP and DNS, and they are two processes: an
                     operator who started the proxy assumes DNS came with it. */}
-                {s.streams && (s.streams.http || s.streams.dns) && (
+                {detail && s.streams && (s.streams.http || s.streams.dns) && (
                   <span data-testid={`capture-streams-${s.id}`} className="block text-redlog-text-faint">
                     {s.streams.http && s.streams.dns
                       ? t('capture.streamsBoth')
@@ -565,8 +605,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                 </span>
               )}
             </div>
-          ))}
-          {!manage && shown.length === 0 && (
+            )
+          })}
+          {/* Not when the only problem was folded into the core line: 一切正常
+              directly under "! HTTP(S) 未安裝 mitmproxy" contradicts it. */}
+          {!manage && shown.length === 0 && problems.length === 0 && (
             <p className="text-xs text-redlog-text-dim col-span-2">
               {healthy.length > 0
                 ? t('capture.allGood', { active: healthy.length })
