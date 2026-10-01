@@ -506,10 +506,21 @@ async function checkAvailableAsync(plugin: PluginManifest): Promise<boolean> {
 // setup nobody performs, on a panel labelled "manual" for something that is
 // not. What is left is the one case the managed proxy genuinely does not
 // cover.
-function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | undefined {
+function buildManualSteps(pluginId: string, hookFile: string, available: boolean): ManualStep[] | undefined {
   switch (pluginId) {
     case 'mitmproxy':
       return [
+        // Every command below is `mitmdump …`, and on a machine without it
+        // they are all "command not found" — most often on Windows, where
+        // nothing brings mitmproxy in. The card said none of that: it opened
+        // on step 1 of a sequence whose unstated step 0 was an install. The
+        // managed proxy installs mitmproxy for the operator from the capture
+        // check, so say where rather than only how.
+        ...(available ? [] : [{
+          label: 'This needs mitmdump, which is not on this machine. The HTTP capture '
+            + 'check on the dashboard installs mitmproxy in one click; to do it yourself:',
+          command: 'uv tool install mitmproxy'
+        }]),
         {
           // One mitmdump serves one mode, so DNS needs a second instance
           // alongside the managed HTTP one. Nothing else in RedLog starts it.
@@ -585,8 +596,9 @@ export function detectHooks(): PluginInfo[] {
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   return listableManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
+    const available = checkAvailable(plugin)
     const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
       : undefined
 
     return {
@@ -596,7 +608,7 @@ export function detectHooks(): PluginInfo[] {
       agentType: plugin.agentType,
       emits: plugin.emits,
       installed: checkInstalled(plugin),
-      available: checkAvailable(plugin),
+      available,
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
@@ -617,8 +629,9 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   const results = await Promise.all(manifests.map(async (plugin) => {
     const hookFile = srcPathFor(plugin)
+    const available = await checkAvailableAsync(plugin)
     const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
       : undefined
     return {
       id: plugin.id,
@@ -627,7 +640,7 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       agentType: plugin.agentType,
       emits: plugin.emits,
       installed: checkInstalled(plugin),
-      available: await checkAvailableAsync(plugin),
+      available,
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
