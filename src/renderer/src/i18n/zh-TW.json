@@ -1444,7 +1444,7 @@
   "artifacts.pickerFailed": "無法加入證據檔案",
   "marker.category.key_step": "關鍵步驟",
   "marker.category.failed_attempt": "失敗嘗試",
-  "transcript.pick": "挑選此步驟供報告使用（會記錄一個引用它的標記）",
+  "transcript.pick": "標記此步驟 — 在紀錄中寫入一個引用它的標記",
   "transcript.picked": "已挑選為「{{kind}}」",
   "transcript.pickFailed": "無法挑選此步驟",
   "transcript.copyStep": "以 Markdown 複製此步驟，附目標、時間與 ID",

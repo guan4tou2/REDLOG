@@ -1444,7 +1444,7 @@
   "artifacts.pickerFailed": "Could not add evidence files",
   "marker.category.key_step": "Key step",
   "marker.category.failed_attempt": "Failed attempt",
-  "transcript.pick": "Pick this step for the write-up (records a marker citing it)",
+  "transcript.pick": "Mark this step — writes a marker into the record citing it",
   "transcript.picked": "Picked as {{kind}}",
   "transcript.pickFailed": "Could not pick this step",
   "transcript.copyStep": "Copy this step as Markdown, with its target, time and IDs",
