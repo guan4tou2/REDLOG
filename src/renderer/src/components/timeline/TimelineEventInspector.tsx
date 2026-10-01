@@ -62,7 +62,16 @@ export function TimelineEventInspector({
 }: TimelineEventInspectorProps): JSX.Element {
   return (
     <>
-      <div className="flex items-center justify-between">
+      {/* Pinned to the top of the pane, not scrolled with the body. The two
+          things on this row are how you leave the event — step to the next
+          one, exclude it, ask what else was running — and they used to go off
+          the top as soon as you read past the first screen, so stepping meant
+          scrolling back up first. `-top-3`/`-mx-4` cancel the pane's own
+          `py-3 px-4`: at `top-0` the pane's padding stays above the bar and
+          the body scrolls through the gap. The background is opaque for the
+          same reason — the pane is translucent, and a translucent bar shows
+          the text passing underneath it. */}
+      <div className="sticky -top-3 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {/* Reading a capture is reading a sequence — what ran before this,
               what came back after. The keyboard could already walk it, lane by
