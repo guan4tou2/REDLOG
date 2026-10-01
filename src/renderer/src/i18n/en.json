@@ -611,7 +611,6 @@
   "timeline.detail.tabRequest": "Request",
   "timeline.detail.tabResponse": "Response",
   "timeline.detail.note": "Note",
-  "timeline.detail.notePlaceholder": "What you made of this",
   "timeline.detail.noteSavedAt": "written {{time}}",
   "timeline.fold.blind": "This host cannot read which process owns a socket, so no traffic folds under its command. That is not “nothing caused anything” — it is unanswerable here. Linux needs ss, macOS needs lsof.",
   "timeline.fold.count": "+{{count}} flows",
