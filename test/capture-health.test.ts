@@ -32,12 +32,15 @@ const describeDB = dbAvailable ? describe : describe.skip
 const ins = (agentType: string, data: Record<string, unknown>) =>
   insertEventRaw(agentType, data, { operatorId: 'op' })
 
-function mockHooks(installed: Record<string, boolean>): void {
+/** `unavailable` lists the ids whose runtime is NOT on this machine —
+ *  `available` is a second axis, and the mitmproxy row reads that one. */
+function mockHooks(installed: Record<string, boolean>, unavailable: string[] = []): void {
   invalidateHooksCache()
   vi.spyOn(hooksMod, 'detectHooks').mockReturnValue(
     Object.entries(installed).map(([id, inst]) => ({
       id, name: id, description: '', agentType: 'shell',
-      installed: inst, available: true, installMethod: 'shell-source' as const, hookFile: ''
+      installed: inst, available: !unavailable.includes(id),
+      installMethod: 'shell-source' as const, hookFile: ''
     }))
   )
 }
@@ -60,7 +63,7 @@ describeDB('capture-health', () => {
     ins('system', { subtype: 'session_start' })
     const h = getCaptureHealth()
     expect(h.verdict).toBe('dark')
-    expect(h.recording).toBe(false)
+    expect(h.hasRecorded).toBe(false)
   })
 
   it('E3: a plugin producer that declares `emits` gets a real active/idle feed readout', () => {
@@ -77,7 +80,7 @@ describeDB('capture-health', () => {
 
     const pcap = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
     expect(pcap?.informational).toBe(true)
-    expect(pcap?.state).toBe('active')       // fed within the window
+    expect(pcap?.state).toBe('ready')        // it has delivered
     expect(pcap?.lastEventAt).not.toBeNull()
 
     const tproxy = h.sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
@@ -86,7 +89,7 @@ describeDB('capture-health', () => {
 
     // A live plugin producer counts as recording (capture IS happening), and an
     // idle sibling still can't drag the verdict down.
-    expect(h.recording).toBe(true)
+    expect(h.hasRecorded).toBe(true)
     expect(h.verdict).not.toBe('dark')
   })
 
@@ -105,8 +108,11 @@ describeDB('capture-health', () => {
 
     const pcap = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
     expect(pcap?.running).toBe(true)
-    expect(pcap?.state).toBe('idle')   // running but not feeding
-    expect(h.verdict).toBe('partial')  // a running-but-silent producer is a fault
+    expect(pcap?.state).toBe('ready')  // it is running, so it can record
+    // The one silence that still means something: this producer says it is
+    // running, every 15 seconds, and is delivering nothing. That is a fault —
+    // and it is the only clock left in the verdict.
+    expect(h.verdict).toBe('partial')
   })
 
   it('E3: WITHOUT a heartbeat, an idle plugin producer still never tips the verdict', () => {
@@ -159,30 +165,53 @@ describeDB('capture-health', () => {
     expect(h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')?.informational).toBe(true)
   })
 
-  it('partial when a hook is installed but nothing has fed recently', () => {
+  // Set up and nothing has come through is not a fault. A proxy with no
+  // traffic is a proxy nobody has sent traffic to; a terminal with no commands
+  // is an operator who has not typed. The verdict grades whether capture CAN
+  // run, and `recording` reports, separately, whether anything has.
+  it('is healthy when set up, even with nothing recorded yet', () => {
     mockHooks({ 'shell-zsh': true, 'claude-code': false })
     const h = getCaptureHealth()
-    expect(h.verdict).toBe('partial') // wired but idle
-    expect(h.sources.find((s) => s.id === 'shell-hook')?.state).toBe('idle')
+    expect(h.verdict).toBe('healthy')
+    expect(h.hasRecorded).toBe(false)
+    expect(h.sources.find((s) => s.id === 'terminal')?.state).toBe('ready')
   })
 
-  it('healthy when a source produced an event within the active window', () => {
+  it('healthy once a source has recorded something', () => {
     mockHooks({ 'shell-zsh': true, 'claude-code': false })
     ins('shell', { subtype: 'command_start', command: 'nmap', source: 'zsh' })
     const h = getCaptureHealth()
     expect(h.verdict).toBe('healthy')
-    expect(h.recording).toBe(true)
-    expect(h.sources.find((s) => s.id === 'shell-hook')?.state).toBe('active')
+    expect(h.hasRecorded).toBe(true)
+    expect(h.sources.find((s) => s.id === 'terminal')?.state).toBe('ready')
   })
 
-  it('does not count builtin-terminal shell events as the shell hook', () => {
+  // One row for both terminals: RedLog's own panes and the operator's own
+  // shell are the same capture in two places, and which one a command came
+  // from is on the command (`data.source`), not on a capture source.
+  it('feeds the terminal row from a RedLog pane as readily as from the shell hook', () => {
+    mockHooks({ 'shell-zsh': false, 'claude-code': false })
+    ins('shell', { subtype: 'command_end', command: 'id', source: 'builtin-terminal' })
+    const h = getCaptureHealth()
+    const terminal = h.sources.find((s) => s.id === 'terminal')
+    expect(terminal?.state).toBe('ready')
+    // No hook installed, and the row still does not read "not set up":
+    // RedLog's own pane is the capability, and it is recording.
+    expect(terminal?.installed).toBe(false)
+    expect(h.sources.find((s) => s.id === 'builtin-terminal')).toBeUndefined()
+  })
+
+  it('does not count opening a pane as having recorded a command', () => {
+    // Opening a pane writes a session_start. The terminal can record — that is
+    // what `ready` says — but nothing has been recorded, which is what an
+    // empty `lastEventAt` says. Two facts, two fields.
     mockHooks({ 'shell-zsh': false, 'claude-code': false })
     ins('shell', { subtype: 'session_start', source: 'builtin-terminal' })
     const h = getCaptureHealth()
-    const shell = h.sources.find((s) => s.id === 'shell-hook')
-    expect(shell?.lastEventAt).toBeNull() // builtin terminal is a separate source
-    const builtin = h.sources.find((s) => s.id === 'builtin-terminal')
-    expect(builtin?.state).toBe('active')
+    const terminal = h.sources.find((s) => s.id === 'terminal')
+    expect(terminal?.lastEventAt).toBeNull()
+    expect(terminal?.state).toBe('ready')
+    expect(h.hasRecorded).toBe(false)
   })
 
   // v0.9.7: the `claude-code` row is gone. That hook was retired in v0.7.3 —
@@ -196,7 +225,7 @@ describeDB('capture-health', () => {
     ins('agent', { subtype: 'tool_call', tool_name: 'Bash' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('active')
+    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
   })
 
   // v0.9.7: DNS and HTTP are the same addon (hooks/mitmproxy-addon.py),
@@ -206,19 +235,21 @@ describeDB('capture-health', () => {
     ins('dns', { subtype: 'dns_query', query: 'example.test' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'dns')).toBeUndefined()
-    expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('active')
+    expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('ready')
   })
 
   // v0.9.7: installation and activation are separate axes.
-  it('reports a switched-off source as off, not idle', () => {
+  it('reports a switched-off source as off, not merely unset', () => {
     mockHooks({ 'shell-zsh': false })
     // Spec 035: sources switch by pack. Host monitors off, AI agents on.
     configureCaptureHealth({ packs: { hostMonitors: false, aiAgents: true } })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'clipboard')?.state).toBe('off')
     expect(h.sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
-    // enabled-but-silent stays idle — that one is a real signal
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('idle')
+    // Switched on and nothing has come through it yet: it can record, which
+    // is all this axis claims. Its silence is reported as an empty
+    // `lastEventAt`, not as a second state.
+    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
   })
 
   it('a switched-off source does not drag the verdict to partial', () => {
@@ -238,7 +269,7 @@ describeDB('capture-health', () => {
     ins('scanner', { subtype: 'http_request', url: 'https://x' })
     const h = getCaptureHealth()
     expect(h.verdict).toBe('healthy')
-    expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('active')
+    expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('ready')
   })
 
   // v0.9.8: getCaptureHealth is cached for 750 ms — it runs eleven indexed
@@ -283,21 +314,42 @@ describeDB('capture-health tells the truth about live sources', () => {
   it('counts the shell hook installed when ANY shell hook is, not just the first', () => {
     mockHooks({ 'shell-zsh': false, 'shell-bash': false, 'shell-powershell': true })
     ins('shell', { subtype: 'command_end', command: 'whoami' })
-    const shell = getCaptureHealth().sources.find((s) => s.id === 'shell-hook')
-    expect(shell?.installed).toBe(true)
-    expect(shell?.state).toBe('active')
+    const terminal = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(terminal?.installed).toBe(true)
+    expect(terminal?.state).toBe('ready')
   })
 
   // The managed proxy runs the mitmproxy addon with `-s <path>` rather than
-  // installing the standalone hook, so `installed` is false by design while
-  // HTTP events pour in. "absent" over a source that fed seconds ago is the
-  // one reading this panel must never produce.
-  it('never calls a source absent while it is still feeding', () => {
-    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+  // installing the standalone hook, so the hook's own `installed` is false by
+  // design while HTTP events pour in. "absent" over a source that fed seconds
+  // ago is the one reading this panel must never produce.
+  it('never calls a source unset while it is still feeding', () => {
+    mockHooks({ 'shell-zsh': false, mitmproxy: false }, ['mitmproxy'])
     ins('scanner', { subtype: 'http_request_start', url: 'https://example.com/', method: 'GET' })
     const mitm = getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
     expect(mitm?.installed).toBe(false)
-    expect(mitm?.state).toBe('active')
+    expect(mitm?.state).toBe('ready')
+  })
+
+  // mitmproxy's installMethod is `manual`, and checkInstalled() returns false
+  // for every manual hook unconditionally — so this row's `installed` said
+  // nothing about the machine it was running on. It was false with mitmdump on
+  // PATH, the managed proxy up and requests landing, and the Dashboard's
+  // HTTP(S) line read 未安裝 mitmproxy through all of it. The honest question
+  // is whether mitmdump is here, which is `available`.
+  it('calls mitmproxy installed when mitmdump is on the machine, not when a manual hook says so', () => {
+    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+    const mitm = getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
+    expect(mitm?.installed).toBe(true)
+    // Able, not missing: there is nothing left for the operator to install.
+    expect(mitm?.state).toBe('ready')
+  })
+
+  it('calls mitmproxy unset only when mitmdump is missing', () => {
+    mockHooks({ 'shell-zsh': false, mitmproxy: false }, ['mitmproxy'])
+    const mitm = getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
+    expect(mitm?.installed).toBe(false)
+    expect(mitm?.state).toBe('unset')
   })
 
   // A camera that cannot see the screen is not a dark log.
@@ -321,11 +373,12 @@ describeDB('capture-health tells the truth about live sources', () => {
   })
 })
 
-// HTTP and DNS share one `mitmproxy` row — the addon serves both — but they
-// are two mitmdump processes in two modes, and an operator who started the
-// proxy assumes DNS came with it. The row went green on HTTP traffic alone,
-// and a DNS-less timeline reads as "the target resolved nothing".
-describeDB('the mitmproxy row says which stream is feeding it', () => {
+// HTTP and DNS share one `mitmproxy` row — the addon serves both, in two
+// modes, from two mitmdump processes. The row used to carry a `streams` note
+// saying which of them had traffic in the last ten minutes; that reported the
+// target's traffic rather than RedLog's capture, and it was the last of that
+// family left on the card.
+describeDB('the mitmproxy row is fed by either of its two modes', () => {
   let tmp: string
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-streams-')); initDB(tmp)
@@ -339,31 +392,22 @@ describeDB('the mitmproxy row says which stream is feeding it', () => {
 
   const mitm = () => getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
 
-  it('reports HTTP alone as HTTP alone', () => {
+  it('counts an HTTP request', () => {
     ins('scanner', { subtype: 'http_request_start', url: 'https://example.com/', method: 'GET' })
-    expect(mitm()?.state).toBe('active')
-    expect(mitm()?.streams).toEqual({ http: true, dns: false })
+    expect(mitm()?.state).toBe('ready')
+    expect(mitm()?.lastEventAt).not.toBeNull()
   })
 
-  it('reports DNS alone as DNS alone', () => {
+  it('counts a DNS query, with no separate row for it', () => {
     ins('dns', { subtype: 'dns_query', query_name: 'example.com' })
-    expect(mitm()?.streams).toEqual({ http: false, dns: true })
+    expect(mitm()?.lastEventAt).not.toBeNull()
+    expect(getCaptureHealth().sources.find((s) => s.id === 'dns')).toBeUndefined()
   })
 
-  it('reports both when both are running', () => {
-    ins('scanner', { subtype: 'http_response', url: 'https://example.com/', status_code: 200 })
-    ins('dns', { subtype: 'dns_response', query_name: 'example.com' })
-    expect(mitm()?.streams).toEqual({ http: true, dns: true })
-  })
-
-  it('claims no stream when nothing has fed it', () => {
-    expect(mitm()?.streams).toEqual({ http: false, dns: false })
-  })
-
-  // The connection monitor also writes agent_type='scanner'; it must not light
-  // the HTTP stream.
+  // The connection monitor also writes agent_type='scanner'; it must not read
+  // as HTTP traffic.
   it('does not read a socket-table row as HTTP traffic', () => {
     ins('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' })
-    expect(mitm()?.streams).toEqual({ http: false, dns: false })
+    expect(mitm()?.lastEventAt).toBeNull()
   })
 })

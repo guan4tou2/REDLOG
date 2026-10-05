@@ -206,12 +206,11 @@ function installBridge(): void {
       health: async () => ({
         verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),
         sources: [
-          { id: 'shell-hook', installed: true, lastEventAt: Date.now(), state: 'active' },
-          { id: 'claude-code', installed: true, lastEventAt: null, state: 'idle' },
-          { id: 'mitmproxy', lastEventAt: null, state: 'idle' },
-          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' },
+          { id: 'terminal', installed: true, lastEventAt: Date.now(), state: 'ready' },
+          { id: 'claude-code', installed: true, lastEventAt: null, state: 'ready' },
+          { id: 'mitmproxy', lastEventAt: null, state: 'ready' },
           // E3 (#49): an informational plugin producer — display only, read-only.
-          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'active' }
+          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'ready' }
         ]
       })
     },
