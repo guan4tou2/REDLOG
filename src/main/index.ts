@@ -3,6 +3,7 @@ import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
+import { visibleWindowBounds } from './window-bounds'
 import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
@@ -1200,7 +1201,13 @@ app.whenReady().then(() => {
   })
 
   const savedState = loadWindowState()
-  mainWindow = createMainWindow(savedState?.bounds)
+  // Only onto a display that exists. The saved position outlives the monitor
+  // it was saved on — unplug one, rearrange them, or reconnect over RDP into a
+  // different desktop geometry, and the window opens off the screen: running,
+  // in the task bar, drawing nothing. See window-bounds.ts.
+  mainWindow = createMainWindow(
+    visibleWindowBounds(savedState?.bounds, screen.getAllDisplays().map((d) => d.workArea))
+  )
   if (savedState?.isMaximized) mainWindow.maximize()
 
   setTerminalWindow(mainWindow)
