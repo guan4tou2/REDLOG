@@ -15,14 +15,16 @@ import CaptureControlPage from './settings/CaptureControlPage'
 import HooksPanel from './settings/HooksPanel'
 import PluginsPanel from './settings/PluginsPanel'
 import IntegrityPanel from './settings/IntegrityPanel'
-import AgentsPanel, { HookWatchPathsPanel } from './settings/AgentsPanel'
+import { HookWatchPathsPanel } from './settings/AgentsPanel'
+import LootRulesGroup from './settings/LootRulesGroup'
+import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
 
 // The thirteen pages §10 asks for. Declared as a union so a typo in a route
 // is a compile error rather than a page that silently never renders.
 export type SettingsPage =
-  | 'hooks' | 'agents' | 'captureControl' | 'browser'
-  | 'scope' | 'network' | 'integrity'
+  | 'hooks' | 'captureControl' | 'browser'
+  | 'scope' | 'network' | 'loot' | 'retention' | 'integrity'
   | 'general' | 'hud' | 'plugins' | 'about'
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
@@ -186,8 +188,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         // record. They used to sit on Network, beside the VPN and
         // IP-exposure settings, which answer a different question entirely.
         { id: 'browser', label: t('settings.pageBrowser') },
-        { id: 'captureControl', label: t('settings.pageCaptureControl') },
-        { id: 'agents', label: t('settings.pageAgents') }
+        { id: 'captureControl', label: t('settings.pageCaptureControl') }
       ]
     },
     {
@@ -195,6 +196,13 @@ export default function Settings({ request = null }: { request?: { page: Setting
       pages: [
         { id: 'scope', label: t('settings.pageScope') },
         { id: 'network', label: t('settings.pageNetwork') },
+        // Spec 049: neither answers "what is being recorded". Loot detection
+        // classifies what already was; retention decides what stops being
+        // kept. Both sat under Capture sources, and retention — a deletion
+        // policy — sat there as the last block of the page that held every
+        // capture switch.
+        { id: 'loot', label: t('settings.pageLoot') },
+        { id: 'retention', label: t('settings.pageRetention') },
         // Chain verification is the other half of "can this record be handed
         // over": what was in bounds, and whether the record is intact. It used
         // to be the only page under its own heading, as Plugins was — a heading
@@ -322,8 +330,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
             <HookWatchPathsPanel t={t} />
           </>
         )}
-        {tab === 'agents' && <AgentsPanel t={t} config={config} setConfig={setConfig} />}
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}
+        {tab === 'loot' && <LootRulesGroup config={config} setConfig={setConfig} t={t} />}
+        {tab === 'retention' && <RetentionPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} />}
         {tab === 'about' && <AboutPage t={t} />}

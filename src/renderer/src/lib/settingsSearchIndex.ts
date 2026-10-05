@@ -58,22 +58,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.hookWatchPaths.remove',
     'settings.hookWatchPaths.pickFolder'
   ],
-  agents: [
-    'settings.agents',
-    'settings.agents.hint',
-    'settings.agents.enable',
-    'settings.agents.enableHint',
-    'settings.agents.emitThinking',
-    'settings.agents.emitThinkingHint',
-    'settings.agents.selfExclusionHint'
-  ],
   captureControl: [
-    'settings.essentialGroup',
-    'settings.essentialHint',
-    'settings.essentialShell',
-    'settings.essentialHttp',
-    'settings.essentialPty',
-    'settings.essentialTerminal',
     'settings.packHostMonitors',
     'settings.packHostMonitorsHint',
     'settings.clipboardGroup',
@@ -96,8 +81,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.connectionMonitorGroup',
     'settings.connectionMonitorEnableHint',
     'settings.connectionMonitorSynNote',
-    'settings.packAiAgents',
-    'settings.packAiAgentsHint',
     'settings.packWindowsOutput',
     'settings.powershellTranscriptEnableHint',
     'settings.screenshotGroup',
@@ -108,15 +91,12 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.screenshot.diffHint',
     'settings.screenshot.onCommand',
     'settings.screenshot.onCommandHint',
-    'settings.retentionGroup',
-    'settings.rotationHint',
-    'settings.retentionLoggedTierHint',
-    'settings.retentionLoggedTier',
-    'settings.lootGroup',
-    'settings.lootHint',
-    'settings.lootRulesFailed',
-    'settings.lootBuiltin',
-    'settings.lootRuleStopped',
+    'settings.agents',
+    'settings.agents.hint',
+    'settings.agents.enableHint',
+    'settings.agents.emitThinking',
+    'settings.agents.emitThinkingHint',
+    'settings.agents.selfExclusionHint',
     'settings.externalCapture',
     'settings.externalCaptureHint',
     'settings.externalDisabledFeeding',
@@ -129,6 +109,19 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.externalDesc.pack-ai-agents',
     'settings.externalDesc.pcap-capture',
     'settings.externalDesc.transparent-proxy'
+  ],
+  loot: [
+    'settings.lootGroup',
+    'settings.lootHint',
+    'settings.lootRulesFailed',
+    'settings.lootBuiltin',
+    'settings.lootRuleStopped'
+  ],
+  retention: [
+    'settings.retentionGroup',
+    'settings.rotationHint',
+    'settings.retentionLoggedTierHint',
+    'settings.retentionLoggedTier'
   ],
   browser: [
     'settings.cdp',
