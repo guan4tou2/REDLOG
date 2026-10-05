@@ -1,10 +1,25 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { numberCollisions } from './spec-numbers.mjs'
 
 const root = process.cwd()
 const specsRoot = path.join(root, 'specs')
 const failures = []
+
+const specDirs = fs.readdirSync(specsRoot).sort()
+  .filter((name) => fs.statSync(path.join(specsRoot, name)).isDirectory())
+
+// The numbers two branches picked independently. Unreachable `origin/main`
+// (shallow CI checkout, clone without a remote) checks the local half only.
+let specsOnMain = null
+try {
+  specsOnMain = execFileSync('git', ['ls-tree', '-d', '--name-only', 'origin/main', 'specs/'],
+    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    .split(/\r?\n/).filter(Boolean).map((line) => line.split('/').pop())
+} catch { /* no origin/main here */ }
+failures.push(...numberCollisions(specDirs, specsOnMain))
 
 const STATUSES = ['Draft', 'Implemented', 'Verified', 'Withdrawn']
 // Constitution 1.1.0: verification.md follows the template from this spec on.
@@ -41,9 +56,8 @@ const hasRedRecord = (text) =>
 
 const verifiedSpecs = new Set()
 
-for (const name of fs.readdirSync(specsRoot).sort()) {
+for (const name of specDirs) {
   const dir = path.join(specsRoot, name)
-  if (!fs.statSync(dir).isDirectory()) continue
   const spec = read(path.join(dir, 'spec.md'))
   if (spec === null) {
     failures.push(`${name}: no spec.md`)
@@ -124,4 +138,7 @@ if (failures.length) {
   console.error(failures.join('\n'))
   process.exit(1)
 }
-console.log('Spec Kit gates passed: statuses are known, Verified specs carry complete tasks, a plan and a verification record, and executable aliases are current.')
+console.log(
+  'Spec Kit gates passed: numbers are unique' + (specsOnMain === null ? ' locally (origin/main not reachable)' : ' here and against origin/main')
+  + ', statuses are known, Verified specs carry complete tasks, a plan and a verification record, and executable aliases are current.'
+)
