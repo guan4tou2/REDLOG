@@ -1,0 +1,170 @@
+---
+
+description: "Task list for 052 terminal auto-capture"
+---
+
+# Tasks: Terminal Auto-Capture
+
+**Input**: Design documents from `/specs/052-terminal-auto-capture/`
+
+**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
+
+**Tests**: Required, not optional. Constitution VIII — this feature changes
+capture semantics, so every behaviour starts from a test that fails for the
+intended reason. The pty-driven suite is where most of them live, because these
+hooks do not fire under `zsh -c`.
+
+**This is a refactor.** The output relay exists (`redlog-run`,
+`hooks/shell-common.sh:127`) and the PTY recorder exists
+(`hooks/redlog-session.py`, spec 022, Verified). Tasks that say "extract" mean
+move working code, keep its behaviour, and prove it with the tests that already
+cover `redlog-run`. Nothing here ports `tlogger-v2`; research.md D7 lists where
+this deliberately differs.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependency on an unfinished task)
+- **[Story]**: US1 / US2 / US3 from spec.md
+
+---
+
+## Phase 1: Decisions that change the shape of everything after them
+
+**Purpose**: research.md's open questions. Each is an experiment, not an
+implementation. Doing these later means writing the adapter twice.
+
+- [ ] T001 Decide where the pty-driven suite runs and write the decision into `specs/052-terminal-auto-capture/research.md` (O5): a vitest file skipped on win32 like `test/external-session.test.ts`, or a Playwright journey. CI runs e2e on ubuntu only, and the unit job is where `test.skip(process.platform === 'win32', …)` already lives
+- [ ] T002 Build the pty harness that drives a real interactive zsh and assert it fails without the adapter, in `test/helpers/zsh-pty.ts` — spawn zsh on a pty, send a line, read until the prompt returns, with a settle timeout that a slow machine can raise
+- [ ] T003 [P] Experiment O1: capture `stty -g` before and after a paged command under the harness, and record in research.md whether a relay that forwards raw-mode keys restores terminal settings
+- [ ] T004 [P] Experiment O2: a command that writes a large burst and exits immediately; record whether ordering can be guaranteed by `seq` alone or needs an explicit flush-before-end handshake
+- [ ] T005 [P] Experiment O3: a background writer plus a foreground command; record what identifies the background bytes so FR-007 can be enforced rather than hoped for
+- [ ] T006 Decide the output bound for an always-on relay and record it in research.md: `redlog-run`'s 100 KB per stream was chosen for a wrapper used a few times per engagement, and `nmap -A` will hit it routinely. Decide head-only vs. head+tail, and what `limit_hit` says
+- [ ] T007 Decide the nested-shell rule (O4) and record it: a `zsh` inside an enrolled terminal gets its own session id, or declines with a reason. Silently folding into the parent's record is not an option
+
+**Checkpoint**: research.md has no open questions. Only now does code change.
+
+---
+
+## Phase 2: Foundational — the pieces every story needs
+
+**⚠️ No user-story work begins until this phase is complete.**
+
+- [ ] T008 Write the failing test for the extracted relay in `test/relay-contract.test.ts`: same bytes to the terminal, same truncation flags, same byte counts as `redlog-run` produces today
+- [ ] T009 Extract the relay body from `hooks/shell-common.sh` (the named-pipe tee block and its Python event builder, lines ~160-200) into `hooks/redlog-relay.py`, stdlib only, reading the temp files directly as the current code does — this is the quoting/argv/binary hazard it already avoids
+- [ ] T010 Rewire `redlog-run` in `hooks/shell-common.sh` to call `hooks/redlog-relay.py`, and confirm `test/shell-redlog-run.test.ts` still passes unchanged — if it needs changing, the extraction changed behaviour
+- [ ] T011 [P] Add `command_id` and `seq` to the event contract in `hooks/shell-common.sh` per `contracts/events.md`, and the `command_output` subtype, keeping the existing envelope (`agent_type: 'shell'`, bearer token, identity block)
+- [ ] T012 [P] Write the failing test for ingest of `command_output` in `test/ingest.test.ts`: chunks correlate to a command by id only, out-of-order arrival is ordered by `seq`, and a chunk whose `command_id` matches no open command is stored `unattributed: true` rather than dropped
+- [ ] T013 Implement `command_output` ingest in `src/core/ingest.ts` per T012, including the `completeness` / `output_disposition` fields on `command_end` from `contracts/events.md`
+- [ ] T014 [P] Write the failing test for the pure classifier in `test/command-class.test.ts`: `relayed | pty | native` for every default in research.md D3, the prefix walk through `sudo`, `env`, `proxychains` and an absolute path (FR-027), and bare-vs-argv REPL forms
+- [ ] T015 Implement the classifier in `src/core/terminal-class.ts` as a pure function over argv, with the default lists from research.md D3 — `nc`/`ncat` native (FR-025), `ssh`/`socat`/`pwncat-cs` pty, editors and pagers native (FR-026)
+- [ ] T016 [P] Write the failing test for the enrollment state machine in `test/terminal-enrollment.test.ts`: mode `auto` ⇄ `manual`, a stop that survives the next prompt (FR-022), identity pinned at terminal start, and a project switch that stops rather than re-attributes (FR-010)
+- [ ] T017 Implement the enrollment and per-terminal state in `src/core/terminal-enrollment.ts` plus its state file under `~/.redlog/`, readable by both the shell and RedLog so `redlog status` and the capture card answer from one source
+
+**Checkpoint**: the relay, the contract, the classifier and the state machine
+exist and are tested without a shell involved.
+
+---
+
+## Phase 3: User Story 1 — Enroll once, then just work (P1) 🎯 MVP
+
+**Goal**: a command run in a new terminal is recorded with its output, with
+nothing typed before it.
+
+**Independent test**: on Kali, install from the card, open a new terminal, run
+`whoami` and `nmap -sV 127.0.0.1`; both appear with output, exit code, cwd and
+duration (quickstart.md §3b).
+
+- [ ] T018 [US1] Write the failing pty test in `test/zsh-auto-capture.pty.test.ts`: an enrolled interactive zsh records command, output, exit code and cwd for a plain command with nothing typed before it (FR-001)
+- [ ] T019 [US1] Write the failing pty test for FR-002 in the same file: output arrives as `command_output` chunks correlated by id, and a command whose *output* prints a convincing fake header does not move or split any record
+- [ ] T020 [US1] Extend `hooks/shell-zsh-hook.zsh` to route a `relayed` command's stdout and stderr through `hooks/redlog-relay.py` from `preexec` and restore in `precmd`, per research.md D1 — the command itself is not launched in a subshell or a PTY (FR-006)
+- [ ] T021 [US1] Write the failing pty test for truncation (FR-004) with the bound decided in T006, then make `command_end` carry `completeness` and `limit_hit`
+- [ ] T022 [US1] Write the failing pty test for `cmd > out.txt` (FR-008), then record `output_disposition: redirected` — a redirected command is not a silent one
+- [ ] T023 [US1] Write the failing pty test for a `native`-class command (FR-025/FR-026), then emit the command with `output_disposition: interactive` and `completeness: metadata-only`; the body is absent and the record says why
+- [ ] T024 [US1] Wire the `pty`-class path to `hooks/redlog-session.py` rather than `script(1)` (research.md D7), reusing its bounded output, pinned identity and pause-at-receipt
+- [ ] T025 [P] [US1] Add the install action to the capture card's `terminal` row in `src/renderer/src/components/CaptureHealth.tsx`, replacing the "your own terminal is not in the record" line with the one-action install (FR-014)
+- [ ] T026 [P] [US1] Extend `src/core/hooks-manager.ts` to install, detect and uninstall the enrolled adapter through the existing `shell-source` method, and to leave `.zshrc` byte-identical on uninstall (FR-016)
+- [ ] T027 [US1] Make setup prove itself: the install flow is not "done" until a real recorded command has arrived (FR-015), reusing the first-run verification contract from spec 039 rather than a second one
+- [ ] T028 [US1] Report enrollment on the `terminal` source in `src/core/capture-health.ts` so the card distinguishes "RedLog's panes only" from "this machine's terminals too"
+
+**Checkpoint**: US1 is the MVP. Everything after this is control and honesty.
+
+---
+
+## Phase 4: User Story 2 — Know what it is recording, and stop it (P2)
+
+**Goal**: the terminal says what it is doing, and the operator can stop it.
+
+**Independent test**: quickstart.md §3e — status, stop, a command that is not
+recorded, status again, start, a command that is.
+
+- [ ] T029 [US2] Write the failing pty test: `redlog status` prints recording state, mode and bound project, read from the state file and not from a shell variable (FR-023, contracts/shell-commands.md)
+- [ ] T030 [US2] Write the failing pty test: `redlog stop`, then a command, then a *new prompt*, then another command — neither is recorded (FR-022, the durable stop)
+- [ ] T031 [US2] Implement the single `redlog` shell function with subcommands `status`, `start`, `stop`, `mode`, `class` in `hooks/shell-zsh-hook.zsh` — one name defined, which is what makes uninstall verifiable (contracts/shell-commands.md)
+- [ ] T032 [US2] Write the failing test then implement `redlog mode auto|manual` switching at runtime without reinstalling (FR-021), with `auto` the installed default
+- [ ] T033 [US2] Write the failing test then implement `redlog class list|add|remove`, reading the policy RedLog wrote rather than a shell array (research.md D7), and warning that moving a command into the pty class costs local suspension (FR-028)
+- [ ] T034 [P] [US2] Surface mode and the class policy in `src/renderer/src/components/settings/HooksPanel.tsx` so the card, Settings and the shell all read one policy
+- [ ] T035 [US2] Write the failing pty test then implement the pause gap: a stop is visible in the record as an attributable gap, not as silence (FR-012)
+
+---
+
+## Phase 5: User Story 3 — Fail loudly, never take the shell down (P3)
+
+**Goal**: a broken recorder costs the operator nothing but the recording.
+
+**Independent test**: quickstart.md §3 — kill RedLog mid-session, keep working,
+one message, spool fills, restart and recording resumes without re-enrolling.
+
+- [ ] T036 [US3] Write the failing pty test: with RedLog unreachable, commands run normally, the operator is told once, and the message does not repeat on every prompt (FR-009)
+- [ ] T037 [US3] Write the failing pty test: the shell reports the *command's* exit status, never the relay's, including when the relay dies mid-command
+- [ ] T038 [US3] Implement the stand-down path in `hooks/shell-zsh-hook.zsh`: no Python 3, a failed `mkfifo`, an unwritable temp dir, recording off, a pipeline, or a redirection — run the command untouched (FR-029), the shape `redlog-run` already uses when `mkfifo` fails
+- [ ] T039 [US3] Write the failing test then implement the project-switch stop (FR-010): `session_end` with a reason, no writes into the new project, and the terminal says so
+- [ ] T040 [P] [US3] Confirm spool behaviour end to end with the existing `~/.redlog/pending` replay — a test that fills the spool while RedLog is down and asserts the events arrive on next project open, with their original occurrence times
+
+---
+
+## Phase 6: Polish, domain contracts, and the things only Kali can prove
+
+- [ ] T041 Update `docs/domain/SPEC-capture-source-lifecycle.md` with the states this feature introduces — enrolled vs. not, mode, per-terminal stop — and make its Coverage checklist name the native class explicitly, since "the UI says what it does **not** record" is exactly what FR-025 has to satisfy. (The part of this task that was *already overdue* — the retired `Active / Idle` pair from `d6e60e9` — was corrected on 2026-10-05, with the reasoning recorded under "Quiet is not a state".)
+- [ ] T042 [P] Update `docs/USER-GUIDE.md` and `README.md` for the new setup path, naming what is *not* recorded (native class) as plainly as what is (Coverage checklist in the lifecycle contract)
+- [ ] T043 [P] Add the e2e install journey in `e2e/terminal-enrollment.spec.ts` (ubuntu CI): card → install → verification arrives → card says enrolled
+- [ ] T044 Run quickstart.md §3 by hand on a real Kali VM, including the `nc` → `Ctrl-Z` → `stty raw -echo` → `fg` upgrade (SC-004). **A run that cannot do this is not a verified feature**, whatever the unit suite says
+- [ ] T045 Measure SC-001 (under 5 minutes, one install action) and SC-002/SC-003 over a scripted engagement of ≥100 commands, and record both in `specs/052-terminal-auto-capture/verification.md`
+- [ ] T046 Write `specs/052-terminal-auto-capture/verification.md` from `.specify/templates/overrides/verification-template.md`: the RED failure reason for each behaviour, the final evidence, and the outcome of every workflow gate including the ones that ran clean
+- [ ] T047 Run the four gates before the PR — `npm run typecheck && npm run verify:specs && npm run verify:architecture && npm test` — then `npm run build && npx playwright test e2e/terminal-enrollment.spec.ts`
+
+---
+
+## Dependencies
+
+```
+Phase 1 (decisions)  ─────────────► blocks everything
+        │
+Phase 2 (foundational) ───────────► blocks all user stories
+        │
+        ├── Phase 3 US1 (MVP) ────► independently shippable
+        │        │
+        │        ├── Phase 4 US2 ─► needs US1's state file, not its UI
+        │        └── Phase 5 US3 ─► needs US1's relay, not US2
+        │
+        └── Phase 6 (polish) ─────► T041 can start any time; T044-T047 last
+```
+
+**Story independence**: US1 ships alone and delivers the feature. US2 and US3
+each extend it and are independently testable against an enrolled machine. US3
+does not depend on US2.
+
+## Parallel opportunities
+
+- Phase 1: T003, T004, T005 are three separate experiments under one harness
+- Phase 2: T011, T012, T014, T016 touch different files — the contract, ingest, the classifier, the state machine
+- Phase 3: T025 and T026 (renderer and hooks-manager) run beside the shell work
+- Phase 6: T041, T042, T043 are three different documents and one spec file
+
+## Implementation strategy
+
+Ship US1 alone first. It is the whole user-visible promise — install once, then
+work — and it is testable on a Kali VM the day it lands. US2 and US3 make it
+safe to leave installed; without them an operator who needs to stop recording
+has to uninstall, and a broken recorder is a mystery. Do not start Phase 3
+before Phase 1 is answered: every one of those open questions changes the
+adapter's shape, and the adapter is the expensive part to rewrite.
