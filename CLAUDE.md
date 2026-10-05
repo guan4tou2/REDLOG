@@ -2,12 +2,12 @@
 
 ## Before you push
 
-Run all four, in this order. `npm test` passing is not the bar — CI runs two
-gates that Vitest does not, and both have caught real problems that a green
+Run all five, in this order. `npm test` passing is not the bar — CI runs three
+gates that Vitest does not, and each has caught a real problem that a green
 suite did not.
 
 ```bash
-npm run typecheck && npm run verify:specs && npm run verify:architecture && npm test
+npm run typecheck && npm run verify:specs && npm run verify:architecture && npm run verify:i18n && npm test
 ```
 
 The order is CI's, and it is deliberate:
@@ -21,6 +21,12 @@ The order is CI's, and it is deliberate:
 - **verify:architecture** — every export is reachable from production code. This
   is how dead code is found here. Deleting a feature usually orphans something
   one file away from the thing you deleted, and nothing else will tell you.
+- **verify:i18n** — nothing in `test/` or `e2e/` asserts a UI string this branch
+  deleted. Typecheck cannot see a string literal in a test, and the i18n key
+  test checks the opposite direction, so until this existed the only thing that
+  caught it was a full e2e round — six minutes in, and only when every gate
+  before it was green. It compares against the merge base with `origin/main`,
+  so a stale `origin/main` checks less than you think; `git fetch` first.
 - **npm test** last.
 
 A green `npm test` with a red gate is the normal shape of this mistake, because
