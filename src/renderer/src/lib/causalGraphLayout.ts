@@ -64,7 +64,20 @@ export interface CausalGraphLayoutOptions {
 // Not exported: the architecture gate counts an export production code does
 // not reach as dead, and these are defaults, not a contract. A caller that
 // needs a different size passes one.
-const DEFAULT_NODE_WIDTH = 186
+//
+// The width is sized so a rank of TWO fits the right-docked pane without a
+// horizontal scrollbar, which is the commonest branch: one request with a
+// response and a scope violation hanging off it. Measured in the running app,
+// the right dock's inner width is 396px, and at 186 a two-node rank came to
+// 414 — eighteen pixels over, enough to clip the second node and raise a
+// scrollbar under a graph that otherwise fits.
+//
+//   2 × 172 + 14 (nodesep) + 2 × 14 (margin) = 386 ≤ 396
+//
+// Three siblings still exceed it, and that is left to scroll: a rank that
+// wide genuinely does not fit, and shrinking every node to the worst case
+// would cost the common one its title.
+const DEFAULT_NODE_WIDTH = 172
 const DEFAULT_NODE_HEIGHT = 44
 
 /** Build an SVG path from dagre's polyline points, smoothed into a curve.
