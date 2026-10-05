@@ -54,8 +54,8 @@ export default function StatusBar(): JSX.Element {
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
 
-    // Capture health polls — surfaces the "recording indicator says ON but no
-    // source is producing events" case (P1b from the v0.6.85 audit). Dashboard
+    // Capture health polls — surfaces the "recording indicator says ON but
+    // capture is broken" case (P1b from the v0.6.85 audit). Dashboard
     // has its own richer CaptureHealthCard; the StatusBar dot is the always-
     // visible indicator so operators on the Timeline view still see a change
     // from healthy → partial → dark.
@@ -198,7 +198,9 @@ export default function StatusBar(): JSX.Element {
       {issues.length > 0 && <Sep />}
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
-        // Recording ON + capture partial → amber (some sources active, some idle).
+        // Recording ON + capture partial → amber (a source is failing, or a
+        // producer the operator is running has stopped delivering; quiet
+        // sources have not meant anything since the state model lost `idle`).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
         const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
         const dotColor = !recording

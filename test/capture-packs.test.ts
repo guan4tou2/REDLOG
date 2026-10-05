@@ -204,6 +204,6 @@ describeDB('capture packs: health', () => {
     const ids = ch.getCaptureHealth().sources.map((s) => s.id)
     for (const gone of ['process-monitor', 'connection-monitor', 'file-watcher', 'clipboard']) expect(ids).not.toContain(gone)
     expect(ids).toContain('agent-tailer')
-    expect(ids).toContain('shell-hook')
+    expect(ids).toContain('terminal')
   })
 })

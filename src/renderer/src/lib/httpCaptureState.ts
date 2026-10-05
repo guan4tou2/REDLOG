@@ -19,26 +19,27 @@
 
 export type HttpCaptureState =
   /** mitmproxy is not on this machine, or its addon was never installed */
-  | 'absent'
+  | 'unset'
   /** installed, and the operator switched it off */
   | 'off'
   /** ready to run; the proxy is not started */
   | 'stopped'
   /** the proxy process is coming up */
   | 'starting'
-  /** the proxy is up and NOTHING has ever reached RedLog through it */
-  | 'listening'
-  /** a request or response landed inside the active window */
-  | 'active'
-  /** it has captured before and is quiet now */
-  | 'idle'
+  /** the proxy is up — HTTP capture is operating.
+   *
+   *  Whether anything has come through it is not part of this: a proxy with no
+   *  traffic is a proxy nobody has sent traffic to, the same way Burp's
+   *  listener is simply "running". How long ago the last request landed is
+   *  reported beside this, as an age, and that is where a quiet proxy shows. */
+  | 'ready'
   /** the proxy could not start, or capture itself failed */
   | 'failed'
 
 export interface HttpCaptureSource {
   installed?: boolean
   enabled?: boolean
-  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
+  state: 'ready' | 'unset' | 'off' | 'error'
   lastEventAt: number | null
 }
 
@@ -56,20 +57,27 @@ export function httpCaptureState(
   // A health payload without the row at all (version drift) reads as "nothing
   // is set up" rather than throwing. Readiness must never be the thing that
   // crashes the card.
-  if (!source) return proxy?.state === 'unavailable' ? 'absent' : 'stopped'
+  if (!source) return proxy?.state === 'unavailable' ? 'unset' : 'stopped'
 
+  // The operator's own choice outranks every diagnosis below it.
+  if (source.state === 'off' || source.enabled === false) return 'off'
+  // Evidence beats detection, and beats process state — the same rule
+  // capture-health's stateFrom applies to the source row, which this function
+  // used to contradict. A request that has come through proves HTTP capture
+  // works, whatever the install probe believes; an operator running their own
+  // mitmproxy outside RedLog has no managed process and gets exactly that
+  // combination, `installed: false` over real traffic. "Not installed" is the
+  // one reading this line must never give over recorded requests.
+  if (source.lastEventAt !== null && source.state !== 'error') return 'ready'
   // `unavailable` is mitmdump's ENOENT, not a crash: the binary is missing.
   // Reporting that as a failure sends the operator reading an error message
   // when the answer is an install command.
-  if (proxy?.state === 'unavailable' || source.installed === false) return 'absent'
-  // The operator's own choice outranks every diagnosis below it.
-  if (source.state === 'off' || source.enabled === false) return 'off'
+  if (proxy?.state === 'unavailable' || source.installed === false) return 'unset'
   if (proxy?.state === 'failed' || source.state === 'error') return 'failed'
   if (proxy?.state === 'starting') return 'starting'
-  // Events beat process state: an operator running their own mitmproxy outside
-  // RedLog has no managed process, and traffic is landing regardless.
-  if (source.state === 'active') return 'active'
-  if (proxy?.state === 'running') return source.lastEventAt === null ? 'listening' : 'idle'
-  if (proxy?.state === 'stopped') return 'stopped'
-  return source.lastEventAt === null ? 'stopped' : 'idle'
+  // Up. Not "up but nothing has come through" — that distinction used to be
+  // its own amber state, and it reported the operator's traffic rather than
+  // RedLog's capture. The proxy either runs or it does not.
+  if (proxy?.state === 'running') return 'ready'
+  return 'stopped'
 }
