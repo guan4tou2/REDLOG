@@ -1,48 +1,34 @@
-# Feature Specification: Session Target Binding
+# Feature Specification: Session Target Binding (withdrawn)
 
-**Feature Branch**: `claude/review-issue-8gg2w7` (PR #232)
-**Created**: 2026-09-30
-**Status**: Verified
-**Input**: #219. The current target was one global value. With parallel panes
-on different hosts, switching it for one pane re-attributed what the others
-recorded next: a command with no host in it, a marker, a late `command_end`.
+**Status**: Withdrawn
 
-> Written after the change merged. The behaviour, tests and code already existed; the RED record below re-ran this feature's tests against the commit before it on 2026-09-30.
+The operator withdrew the per-session target layer on 2026-10-01. The
+reasoning that retired it:
 
-Domain contract: `docs/domain/SPEC-target-identity.md` (precedence and
-session target).
+- It adds no fact the log did not already hold. A pane's events share a
+  `terminalId` and are ordered, so `ssh user@10.10.11.7` followed by `whoami`
+  already says which host the second command ran on — a reader recovers it by
+  reading. The same is true of a reverse shell: `nc -lvnp 4444` prints the
+  peer address into captured output.
+- It does not protect scope. `scopeSignalFor` judges `data.detectedTarget`,
+  the extractor's observation, and deliberately never `target_id` — so a wrong
+  binding cannot hide an out-of-scope command, and a right one cannot catch
+  one (`src/core/alert/scope-signal.ts`).
+- What it actually served was per-target grouping in reports, which is a
+  derivation and should be computed from the pane's own sequence at read time
+  rather than declared at write time by an operator who has to remember.
+- It was never uniformly available: external shells had only a static
+  `REDLOG_TARGET` exported once at shell start. A mechanism load-bearing for
+  record integrity would not be optional on a first-class capture path.
 
-## User Scenarios & Testing
+Removed: `src/core/session-targets.ts`, the `targetContext:getSession` /
+`targetContext:bindSession` IPC and its preload bridge, `SessionTargetControl`
+and its `terminal.sessionTarget*` strings, support for `REDLOG_TARGET` /
+`data.session_target`, and the `system.session_target_changed` event. No
+compatibility shim. Historical commits preserve the implementation.
 
-### User Story 1 - Bind a terminal tab to a target (Priority: P1)
+Attribution precedence is now: explicit producer target > observed/enriched
+target > active-target fallback > null. Read-time derivation of a pane's
+target is a separate design and is not part of this withdrawal.
 
-**Independent Test**: Two built-in panes. Pane 1 is bound to A. The global
-target switches to B while pane 1's command runs; pane 1's late `command_end`
-is attributed to A and stamped `target_source=session`.
-
-### User Story 2 - An external shell declares its own target (Priority: P2)
-
-**Independent Test**: A hooked shell with `REDLOG_TARGET=A` while the global
-target is B records its commands against A.
-
-### Edge Cases
-
-- A host named in the command still wins over the session target.
-- Unbinding returns the pane to the global target.
-- Bindings are cleared when the project closes.
-
-## Requirements
-
-- **FR-001**: Ingest MUST resolve a target in this order: the event's own
-  target, an enriched host, the session target, the global target.
-- **FR-002**: The session target MUST apply only to the row types the global
-  fallback applies to (shell, marker, screenshot).
-- **FR-003**: Binding or unbinding MUST append `system.session_target_changed`
-  and MUST NOT re-attribute earlier rows.
-- **FR-004**: Each built-in terminal tab MUST show whether it follows the
-  current target or which target it is bound to, and let the operator change it.
-
-## Success Criteria
-
-- **SC-001**: The two-pane race, `REDLOG_TARGET`, enrichment precedence,
-  unbinding and the tab control each have a test that failed before the change.
+Domain contract: `docs/domain/SPEC-target-identity.md`.

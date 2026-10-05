@@ -159,39 +159,21 @@ describeDB('ingest', () => {
     expect(system.targetId).toBeNull()
   })
 
-  // #219: two panes on two hosts. Switching the global target for one must
-  // not re-attribute the other, including a late command_end that arrives
-  // after the switch.
-  it('attributes by session target before the global one, in two parallel panes', async () => {
-    const { bindSessionTarget } = await import('../src/core/session-targets')
-    bindSessionTarget('pane-1', '10.10.11.5')
+  // Spec 041 retired: there is no per-session target layer any more. A
+  // terminal pane declares nothing, and neither does an external shell — what
+  // host a command touched is read from the command itself, and the sequence
+  // in the pane's own events carries the rest.
+  it('ignores a declared session_target and falls back to the global one', () => {
     ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const start = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    // The operator switches the global target for pane 2 while pane 1's
-    // command is still running.
-    ingestMod.configureIngest({ activeTarget: '10.10.11.7' })
-    const lateEnd = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_end', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    const pane2 = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s219b', terminalId: 'pane-2' } }).event!
-    // A host named in the command still wins over the session.
+    const declared = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s041a', pid: 4242, session_target: '10.10.11.8' } }).event!
+    const pane = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s041b', terminalId: 'pane-1' } }).event!
+    // A host named in the command still outranks the fallback.
     const named = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.200/', terminalId: 'pane-1' } }).event!
 
-    expect(start.targetId).toBe('10.10.11.5')
-    expect(start.data.target_source).toBe('session')
-    expect(lateEnd.targetId).toBe('10.10.11.5')
-    expect(pane2.targetId).toBe('10.10.11.7')
-    expect(pane2.data.target_source).toBeUndefined()
+    expect(declared.targetId).toBe('10.10.11.99')
+    expect(pane.targetId).toBe('10.10.11.99')
+    expect(pane.data.target_source).toBeUndefined()
     expect(named.targetId).toBe('10.10.11.200')
-
-    // Unbinding returns the pane to the global target, from then on only.
-    bindSessionTarget('pane-1', null)
-    const after = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uptime -s219c', terminalId: 'pane-1' } }).event!
-    expect(after.targetId).toBe('10.10.11.7')
-  })
-
-  it('takes an external shell\'s own REDLOG_TARGET over the global target', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const ev = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s219d', pid: 4242, session_target: '10.10.11.8' } }).event!
-    expect(ev.targetId).toBe('10.10.11.8')
   })
 
   it('clearing active target stops fallback attribution', () => {
