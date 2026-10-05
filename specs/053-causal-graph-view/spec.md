@@ -77,6 +77,14 @@ than presenting a partial component as complete.
 - **FR-005**: Layout MUST be top-to-bottom. The view lives in the detail pane,
   440px by default and 280px at its narrowest; left-to-right puts a ten-rank
   chain across ~2400px, which is unreadable at pane width.
+- **FR-005a**: A rank of two MUST fit the right-docked pane without a
+  horizontal scrollbar. That is the commonest branch — a request with both a
+  response and a scope violation hanging off it — and it was the first shape
+  tried in the running app. Measured there: the dock's inner width is 396px,
+  and a 186px node made the rank 414px, clipping the second node. Node width
+  is 172px so the rank comes to 386px. A rank of three or more does not fit
+  and is left to scroll; shrinking every node to that case would cost the
+  common one its title.
 - **FR-006**: Colour MUST follow UIUX-STANDARD §1 — hue is status, not
   category. Nodes MUST NOT carry a per-lane colour; the lane is named in the
   node's own meta line. The anchor's ring is the one status mark.

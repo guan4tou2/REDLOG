@@ -60,9 +60,9 @@ const NODE_FONT_PX = 12
  *  (which squeezes glyphs instead of cutting them) or a clipPath per node
  *  (200 of those is a lot of defs for no gain at this size).
  *
- *  Units, not characters, because the UI ships zh-TW: 26 Latin characters fit
- *  a 186px node and 26 Han characters are twice that wide. */
-const TITLE_UNITS = 25
+ *  Units, not characters, because the UI ships zh-TW: 23 Latin characters fit
+ *  a 172px node and 23 Han characters are twice that wide. */
+const TITLE_UNITS = 23
 
 /** Fullwidth ranges that occupy two half-width cells: CJK ideographs and
  *  kana, Hangul, and the fullwidth/CJK punctuation forms around them. */

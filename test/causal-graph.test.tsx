@@ -153,8 +153,8 @@ describe('CausalGraph', () => {
     await waitFor(() => expect(screen.getAllByTestId('causal-node')).toHaveLength(2))
     const drawn = screen.getByTestId('causal-graph').querySelectorAll('text')[0].textContent!
     expect(drawn.endsWith('…')).toBe(true)
-    // 25 half-width units: 12 wide characters plus the ellipsis.
-    expect([...drawn].filter((c) => c !== '…')).toHaveLength(12)
+    // 23 half-width units: 11 wide characters plus the ellipsis.
+    expect([...drawn].filter((c) => c !== '…')).toHaveLength(11)
   })
 
   it('surfaces the bound when the backend truncated the walk', async () => {
