@@ -5,7 +5,8 @@
       "name": "redlog-dev",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["electron-vite", "dev", "--", "--remote-debugging-port=9222"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
@@ -36,11 +36,11 @@ import { isHookSource } from '../lib/housekeeping'
 import { isMac } from '../lib/platform'
 import { useContributeExport } from '../lib/exportScope'
 import {
-  LANES, LANE_LABEL_KEYS, type LaneId, BANDS, type BandId, BAND_OF, EXTERNAL_ONLY_LANES, LANE_COLORS,
+  LANES, LANE_LABEL_KEYS, type LaneId, BANDS, type BandId, BAND_OF, LANE_COLORS,
   type PluginEventType, type DotShape, IO_MARK_COLOR,
   displayTs, toLane, eventCompare, binarySearchInsert,
   axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
-  subagentIndentPx, LANE_OFF_COLOR, SESSION_BAND_LABEL_COLOR
+  subagentIndentPx, SESSION_BAND_LABEL_COLOR
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
 
@@ -54,7 +54,12 @@ const MIN_LANE_H = 36
 // band 168px to draw nine pixels in — 159px of nothing per row, four rows
 // deep, while the list under it showed six lines.
 const MAX_LANE_H = 44
-const LABEL_W = 92
+// Wide enough for an indented lane label: the column carries a caret, a band
+// name, and under it a dot plus a lane name at a 24px indent. At 92px that
+// left ~60px for the name and every label past six characters rendered as an
+// ellipsis ("Artifa…", "Scree…", "Clipb…") — a row of labels nobody can read
+// is a label column that is not doing its job.
+const LABEL_W = 132
 // v0.11.6 (AUDIT V8): a floor, not a fixed width. The track used to be exactly
 // 2000px at zoom 1 regardless of the window, so on a 2560px or 4K display the
 // operator got a track narrower than the space available and a band of empty
@@ -226,13 +231,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const logPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
-  // v0.6.89.5: focus chain / anomaly filter / broken-chain state.
+  // v0.6.89.5: focus chain / broken-chain state.
   //
   // `focusChain` (feature 2) is a set of every event id in the causal
   // component of the anchor — null means the filter is off. Persisted as
   // just the anchor id so a stale set can't leak across mounts.
-  // `anomalyFilter` (feature 4) toggles "dim everything without a badge".
-  // These two are mutually exclusive — enabling one clears the other.
   // `verifyResult` (feature 5) is the last full-chain-verify outcome; read
   // from the module cache on mount and refreshed via a window event.
   const [focusChain, setFocusChain] = useState<Set<string> | null>(null)
@@ -261,7 +264,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   }, [projectIdForKeys])
 
   const settingsLoadedFor = useRef<string | null>(null)
-  const [anomalyFilter, setAnomalyFilter] = useState(false)
   useEffect(() => {
     // v0.6.100 F5: fall back to `__global__` sentinel when there's no active
     // project (or the call rejects). Anything downstream that reads
@@ -281,7 +283,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         if (stored !== null) apply(decode(stored))
       } catch { /* ignore */ }
     }
-    load('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
     load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
     load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
     load('redlog-timeline-hidden-lanes', (s) => {
@@ -309,12 +310,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       else localStorage.removeItem(scoped)
     } catch { /* ignore */ }
   }, [focusAnchorId, projectIdForKeys])
-  useEffect(() => {
-    if (!projectIdForKeys) return
-    try {
-      localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
-    } catch { /* ignore */ }
-  }, [anomalyFilter, projectIdForKeys])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
@@ -401,14 +396,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // listing eight flat toggles (DESIGN-core-and-capture.md §6).
   const [moreOpen, setMoreOpen] = useState(false)
 
-  // v0.6.91 W1 mutual exclusion: enabling any of the three dim modes clears
-  // the others. Kept as a set of effects so keyboard, click, and event-listener
-  // paths all converge. `focusChain` mutual exclusion with `anomalyFilter`
-  // was already handled below — extending with filterQuery here.
+  // v0.6.91 W1 mutual exclusion: enabling either dim mode clears the other.
   useEffect(() => {
     if (!filterQuery) return
     if (focusAnchorId) setFocusAnchorId(null)
-    if (anomalyFilter) setAnomalyFilter(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterQuery])
 
@@ -529,19 +520,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   )
 
   // The rows actually rendered, in band order. A band with any populated lane
-  // contributes either one aggregate row (collapsed) or its populated,
-  // non-hidden lanes (expanded). Empty bands contribute nothing, exactly as
-  // empty lanes did.
+  // always contributes its own row, then — when expanded — its populated
+  // lanes beneath it. Empty bands contribute nothing, exactly as empty lanes
+  // did.
+  //
+  // The band row is unconditional because it is the grouping the operator
+  // navigates by: expanding used to REPLACE "Commands" with its lanes, so the
+  // category vanished at the moment it gained children.
+  //
+  // A hidden lane keeps its row, struck through and empty. Dropping the row
+  // meant the only control that could restore the lane was the one that had
+  // just removed itself from the screen, which needed a second "+N" control
+  // elsewhere to undo it — two numbers deep in a 92px column, neither legible.
+  // Hiding is for the lane's dots, which are the noise; the row is the label
+  // that says it is off, and clicking it again is the way back.
   const visibleRows = useMemo(() => {
     const rows: string[] = []
     for (const band of BANDS) {
       const popLanes = band.lanes.filter((l) => populatedLanes.has(l))
       if (popLanes.length === 0) continue
-      if (collapsedBands.has(band.id)) rows.push(band.id)
-      else for (const l of popLanes) if (!hiddenLanes.has(l)) rows.push(l)
+      rows.push(band.id)
+      if (!collapsedBands.has(band.id)) rows.push(...popLanes)
     }
     return rows
-  }, [populatedLanes, hiddenLanes, collapsedBands])
+  }, [populatedLanes, collapsedBands])
 
   // Still keyed on individual lanes; retained for the zoom-ceiling scan below.
   const visibleLanes = useMemo(
@@ -793,8 +795,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   )
 
   const rowEvents = useMemo(
-    () => distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes),
-    [events, visibleRows, collapsedBands, pluginTypes]
+    () => distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes, hiddenLanes),
+    [events, visibleRows, collapsedBands, pluginTypes, hiddenLanes]
   )
 
   // Spec 038 US3: the box is read by the query contract — the same parse,
@@ -937,7 +939,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     () => buildBadgeIndex(events, brokenAtId, violationStanding.cleared, violationStanding.superseded),
     [events, brokenAtId, violationStanding]
   )
-  const anomalyCount = badgesById.size
 
   // Project-wide causal focus. The old implementation walked only the 200 rows
   // currently loaded in Timeline, so an ordinary unpaged cause looked like a
@@ -993,23 +994,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     return () => { cancelled = true }
   }, [focusAnchorId])
 
-  // Mutual exclusion: enabling focus chain implicitly turns anomaly filter off,
-  // and vice versa. Done here (rather than at each toggle site) so keyboard
-  // shortcuts and clicks stay in sync. Extended in v0.6.91 W1: enabling either
-  // also clears the `/` filter query, since three overlapping dim modes are
-  // impossible to reason about.
   useEffect(() => {
     if (!focusChain) return
-    if (anomalyFilter) setAnomalyFilter(false)
     if (filterQuery) setFilterQuery('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusChain])
-  useEffect(() => {
-    if (!anomalyFilter) return
-    if (focusAnchorId) setFocusAnchorId(null)
-    if (filterQuery) setFilterQuery('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anomalyFilter])
 
   // v0.6.91 S4: persist zoom, hidden lanes, and selected-event id so a
   // Timeline reload lands the operator back where they were.
@@ -1423,7 +1412,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       return isSolo ? new Set() : others
     })
   }, [])
-  const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
 
   // One keydown listener for the Timeline's global single-key surface. This
   // replaced four separate window listeners that each re-implemented the "am I
@@ -1889,38 +1877,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           )
         })()}
 
-        {/* Lane filter toggles — click toggles; Alt/Option-click solos the
-            lane (hides every other populated lane); solo'd-lane Alt-click
-            again shows all. Audit finding #4.
-            `overflow-x-auto` + `min-w-0` + `flex-nowrap` means when the
-            header narrows the chips scroll horizontally instead of wrapping
-            onto a second row — reported when running at 1280 wide with the
-            full lane list open. */}
-        <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
-          {/* v0.6.89.5 feature 4: anomaly filter (§27.1: renamed 鏈警示) — dims every event without an
-              integrity badge (clock anomaly / recovery / evidence removal /
-              anchor failure / chain break). First chip so it's the fastest
-              thing to reach when a verify caught something. Disabled at
-              opacity 0.25 when there's nothing to filter. Mutually exclusive
-              with focus-chain mode (both use dim opacity 0.15). */}
-          <button
-            data-testid="timeline-anomaly-chip"
-            onClick={() => {
-              if (anomalyCount === 0) return
-              setAnomalyFilter((v) => !v)
-            }}
-            disabled={anomalyCount === 0}
-            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 ${
-              anomalyCount === 0
-                ? 'opacity-25 cursor-default text-redlog-text-faint'
-                : anomalyFilter
-                  ? 'text-amber-200 bg-amber-500/25 ring-1 ring-amber-500/40'
-                  : 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
-            }`}
-            title={anomalyCount === 0 ? t('timeline.anomalies.tooltip') : t('timeline.anomalies.tooltip')}
-          >
-            {t('timeline.anomalies.chip', { count: anomalyCount })}
-          </button>
+        {/* Lane visibility moved onto the lane labels themselves (left of the
+            track), where the control sits on the same row as the thing it
+            controls. The chip row that used to live here duplicated the band
+            carets and, with every band collapsed by default, appeared to do
+            nothing to the track at all. */}
+        <div className="ml-auto shrink-0">
           {/* §27.1: More menu — 隱藏 AI 逐輪, 略過閒置, 工作階段邊界, 稽核檢視, 時區 */}
           <div className="relative shrink-0">
             <button
@@ -1977,47 +1939,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
               </>
             )}
           </div>
-          {hiddenLanes.size > 0 && (
-            <button
-              onClick={showAllLanes}
-              className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-              title={t('timeline.showAllLanes')}
-            >{t('timeline.showAll')}</button>
-          )}
-          {LANES.map((id) => {
-            const empty = !populatedLanes.has(id)
-            const hidden = hiddenLanes.has(id)
-            const off = empty || hidden
-            const externalOnly = EXTERNAL_ONLY_LANES.has(id)
-            // A lane that has captured nothing is hidden from the chip row
-            // rather than shown dimmed: an empty chip is noise, and the lane
-            // reappears the instant a real event lands (populatedLanes shifts).
-            // v0.6.97 did this only for external-only lanes (credential_use,
-            // c2_checkin); v0.15 extends it to every not-yet-captured lane. A
-            // populated lane the operator toggled OFF still renders (struck
-            // through) so it can be restored — that's `hidden`, not `empty`.
-            if (empty) return null
-            return (
-              <Fragment key={id}>
-              <button
-                onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
-                disabled={empty}
-                className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
-                  hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
-                }`}
-                style={{
-                  color: off ? LANE_OFF_COLOR : LANE_COLORS[id],
-                  backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
-                }}
-                title={empty
-                  ? externalOnly ? t('timeline.laneExternalOnly', { lane: laneLabels[id] }) : t('timeline.laneEmpty', { lane: laneLabels[id] })
-                  : t('timeline.laneChipHint', { lane: laneLabels[id] })}
-              >
-                {laneLabels[id]}
-              </button>
-              </Fragment>
-            )
-          })}
         </div>
       </div>
 
@@ -2179,10 +2100,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             found. With a max-height flexbox freezes this box at its content
             and hands the remainder to the list below, which is where rows are
             actually read. */}
+        {/* The measured box and the capped box have to be different elements.
+            `containerH` feeds `laneH`, which feeds this `maxHeight` — observing
+            the capped box made that a loop reading its own output, and it
+            settled wherever the first frame happened to land. Adding the band
+            heading row was enough to push it somewhere the first lane sat
+            scrolled off the top under the track's horizontal scrollbar. The
+            wrapper is never capped, so it reports the space that is actually
+            available and the loop is cut. */}
+        <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
         <div
-          ref={containerRef}
           data-testid="timeline-lane-scroll"
-          className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto"
+          className="min-h-0 flex overflow-x-hidden overflow-y-auto"
           style={{ maxHeight: visibleRows.length * laneH + 28 }}
         >
           {/* Lane labels */}
@@ -2191,9 +2120,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             {visibleRows.map((rowKey) => {
               const band = BANDS.find((b) => b.id === rowKey)
               if (band) {
-                // A collapsed band row: caret + name + how many of its lanes
-                // have events, clickable to expand. Dots for its events render
-                // in the track at this row, each keeping its lane colour.
+                // The band row, rendered whether or not the band is expanded.
+                // Collapsed, the track draws its lanes' dots here and the count
+                // says how many lanes are folded into them; expanded, the lanes
+                // are listed below and counting them again is noise.
+                const expanded = !collapsedBands.has(band.id)
                 const popCount = band.lanes.filter((l) => populatedLanes.has(l)).length
                 return (
                   <button
@@ -2202,33 +2133,36 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     onClick={() => toggleBand(band.id)}
                     className="w-full flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs text-left hover:bg-white/[0.04] focus-visible:outline-none focus-visible:bg-white/[0.04]"
                     style={{ height: laneH }}
-                    title={t('timeline.band.expandHint', { band: t(`timeline.band.${band.id}`) })}
-                    aria-expanded={false}
+                    title={t(expanded ? 'timeline.band.collapseHint' : 'timeline.band.expandHint', { band: t(`timeline.band.${band.id}`) })}
+                    aria-expanded={expanded}
                   >
-                    <span className="text-redlog-text-faint w-2 shrink-0">▸</span>
+                    <span className="text-redlog-text-faint w-2 shrink-0">{expanded ? '▾' : '▸'}</span>
                     <span title={t(`timeline.band.${band.id}`)} className="text-redlog-text truncate">{t(`timeline.band.${band.id}`)}</span>
-                    <span className="text-redlog-text-faint tabular-nums ml-auto">{popCount}</span>
+                    {!expanded && <span className="text-redlog-text-faint tabular-nums ml-auto shrink-0">{popCount}</span>}
                   </button>
                 )
               }
               const id = rowKey as LaneId
-              // An expanded lane row: indented under its band, with a caret on
-              // the band-owning first lane so the operator can collapse back.
+              // A lane row, indented under the band heading above it. The whole
+              // row is the lane's hide/solo control, carrying the gestures the
+              // header chips used to. Hidden reads as struck through, the way
+              // the chips did, and clicking it again brings the dots back.
+              const hidden = hiddenLanes.has(id)
               return (
-                <div
+                <button
                   key={rowKey}
-                  className="group flex items-center gap-1.5 pl-4 pr-2 border-b border-redlog-border/30 font-mono text-xs"
+                  data-testid={`timeline-lane-${rowKey}`}
+                  onClick={(e) => { if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
+                  title={t('timeline.laneChipHint', { lane: laneLabels[id] })}
+                  aria-pressed={!hidden}
+                  className={`w-full flex items-center gap-1.5 pl-6 pr-2 border-b border-redlog-border/30 font-mono text-xs text-left hover:bg-white/[0.04] focus-visible:outline-none focus-visible:bg-white/[0.04] ${
+                    hidden ? 'opacity-40 line-through' : ''
+                  }`}
                   style={{ height: laneH }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
                   <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
-                  <button
-                    onClick={() => toggleBand(BAND_OF[id])}
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-xs shrink-0"
-                    title={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
-                    aria-label={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
-                  >▾</button>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -2404,20 +2338,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
                   const hit = Math.max(20, dot + 8)
-                  // v0.6.89.5: filter dimming. Focus-chain and anomaly-filter
+                  // v0.6.89.5: filter dimming. Focus-chain and filter query
                   // are mutually exclusive (enforced by the effects above), so
-                  // at most one of these is truthy at any time. A cluster is
-                  // "active" (not dimmed) if ANY event in it is in the
-                  // active set — so a 20-event burst that contains a chain
-                  // link doesn't disappear.
-                  // v0.6.91 W1: filter query joins focus-chain and anomaly-filter
-                  // as the third dim mode. The three are mutually exclusive
-                  // (enforced by the effects above), so at most one branch fires.
+                  // at most one branch fires. A cluster is "active" (not
+                  // dimmed) if ANY event in it is in the active set.
                   let dimmed = false
                   if (focusChain) {
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
-                  } else if (anomalyFilter) {
-                    dimmed = !c.events.some((e) => badgesById.has(e.id))
                   } else if (filterMatches) {
                     // The shared filter never reaches here: rows it excludes
                     // are not loaded. Only the filter box dims.
@@ -2425,7 +2352,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                   }
                   // FR-018: a dimmed dot says so to assistive technology too,
                   // not only by its opacity.
-                  const notMatching = dimmed && !!filterMatches && !focusChain && !anomalyFilter
+                  const notMatching = dimmed && !!filterMatches && !focusChain
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
                   const anchorEvt = focusAnchorId ? eventsMapRef.current.get(focusAnchorId) : null
@@ -2652,6 +2579,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
               </div>
             </div>
           </div>
+        </div>
         </div>
 
         {/* The lanes above and the log below are the split an operator looks

@@ -290,9 +290,12 @@ describe('renderer views render without throwing', () => {
   })
 
   it('Timeline renders a row for every agent_type without a missing-lane crash', async () => {
-    const { findAllByText } = render(<I18nProvider><TimelinePanel /></I18nProvider>)
-    // Lane labels only appear once events land, so waiting for one proves the
-    // events flowed through toLane()/laneEvents without an undefined bucket.
+    const { findAllByText, findByTestId } = render(<I18nProvider><TimelinePanel /></I18nProvider>)
+    // Bands start collapsed, so a lane's own label only renders once its band
+    // is expanded. Expanding is what puts the per-lane rows on screen, and a
+    // lane label appearing proves the events flowed through toLane() into
+    // populatedLanes without an undefined bucket.
+    fireEvent.click(await findByTestId('timeline-band-commands'))
     const shellLabels = await findAllByText('Shell')
     expect(shellLabels.length).toBeGreaterThan(0)
   })

@@ -163,17 +163,23 @@ export function distributeLaneEvents(
  * Group events by the row they render in. A collapsed band's row
  * absorbs every event from its constituent lanes; hidden lanes'
  * events fall out entirely.
+ *
+ * Hiding is checked here rather than relying on the lane having no row,
+ * because a collapsed band's row would otherwise re-absorb the events of a
+ * lane the operator hid — collapsing the band would silently undo the hide.
  */
 export function distributeRowEvents(
   events: readonly RedLogEvent[],
   visibleRows: readonly string[],
   collapsedBands: ReadonlySet<string>,
-  pluginTypes: PluginEventType[] | undefined
+  pluginTypes: PluginEventType[] | undefined,
+  hiddenLanes: ReadonlySet<LaneId>
 ): Record<string, RedLogEvent[]> {
   const map: Record<string, RedLogEvent[]> = {}
   for (const r of visibleRows) map[r] = []
   for (const e of events) {
     const lane = toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)
+    if (hiddenLanes.has(lane)) continue
     const key = collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane
     const bucket = map[key]
     if (bucket) bucket.push(e)

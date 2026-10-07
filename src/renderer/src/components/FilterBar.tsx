@@ -27,7 +27,7 @@ export function FilterBar(): JSX.Element | null {
 
   return (
     <div ref={barRef} className="shrink-0 border-b border-redlog-border bg-redlog-bg/50">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
+      <div className="flex items-center gap-2 px-4 py-1.5 text-xs">
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
@@ -110,7 +110,7 @@ export function FilterBar(): JSX.Element | null {
       </div>
 
       {expanded && (
-        <div id="filter-bar-panel" className="px-3 pb-2 flex flex-wrap gap-3">
+        <div id="filter-bar-panel" className="px-4 pb-2 flex flex-wrap gap-3">
           {/* An empty menu and a menu that failed to load look identical, and
               the difference matters: one says this project has no targets, the
               other says we do not know. Whatever loaded before is kept and
