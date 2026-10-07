@@ -293,7 +293,11 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             aria-label={pending ? `${t('export.title')} · ${pending.label}` : t('export.title')}
             data-testid={pending ? 'export-dialog' : 'export-menu'}
             className={pending
-              ? 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] overflow-y-auto bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl py-1'
+              // whitespace-normal: the toolbar above sets nowrap and the
+              // dialog inherits it through the DOM despite being `fixed`. The
+              // preview is prose — the projection notice and the condition
+              // list — and without this it runs past 560px instead of wrapping.
+              ? 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] overflow-y-auto whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl py-1'
               : 'absolute right-0 top-7 z-[91] w-[280px] bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl overflow-hidden py-1'}
           >
             {pending ? (
@@ -322,7 +326,12 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                           {/* The actual boundary, not just "bounded": an
                               operator checking a delivery needs the dates and
                               the target they are about to hand over. */}
-                          <span data-testid="export-preview-subset" className="text-right text-redlog-text">
+                          {/* min-w-0: a flex item will not shrink below its
+                              content's intrinsic minimum, so without this the
+                              joined condition line pushes the dialog wider than
+                              the window instead of wrapping. English only —
+                              CJK breaks anywhere and hid this in zh-TW. */}
+                          <span data-testid="export-preview-subset" className="min-w-0 text-right text-redlog-text">
                             {resolvedPlan.request.subset.kind === 'all'
                               ? t('export.preview.subsetAll')
                               : resolvedPlan.request.subset.kind === 'selection'
