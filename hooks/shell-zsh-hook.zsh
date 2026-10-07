@@ -34,15 +34,148 @@ unset _redlog_adapter_dir
 _redlog_class_of() {
   local -a words
   words=(${(z)1})
-  python3 "$_REDLOG_RELAY" classify -- "${words[@]}" 2>/dev/null
+  python3 "$_REDLOG_RELAY" classify --home "$(_redlog_home)" -- "${words[@]}" 2>/dev/null
+}
+
+# --- This terminal's own state (spec 052 US2) ---
+#
+# One id per shell, minted once, naming the file this terminal and RedLog both
+# read. `redlog stop` writes it and the next `preexec` reads it — which is the
+# whole of FR-022: a stop held in a shell variable survives neither a subshell
+# nor a prompt, and an operator who types `redlog stop` before a client's
+# credential and sees it recorded anyway uninstalls the tool.
+_REDLOG_SESSION_ID=$(_redlog_new_command_id)
+_REDLOG_STATE_FILE=""
+
+_redlog_state_file() {
+  if [[ -z "$_REDLOG_STATE_FILE" ]]; then
+    local home="${_REDLOG_DIR:-$HOME/.redlog}"
+    _REDLOG_STATE_FILE="$home/terminals/${_REDLOG_SESSION_ID}.json"
+  fi
+  printf '%s' "$_REDLOG_STATE_FILE"
+}
+
+# `_REDLOG_DIR` is the `.redlog` directory itself — under WSL it resolves to
+# the one in the Windows profile, which is the one RedLog reads. Its parent is
+# the home the relay wants.
+_redlog_home() {
+  if [[ -n "${_REDLOG_DIR:-}" ]]; then printf '%s' "${_REDLOG_DIR:h}"
+  else printf '%s' "$HOME"
+  fi
+}
+
+_redlog_state() {
+  python3 "$_REDLOG_RELAY" state --home "$(_redlog_home)" \
+    --session "$_REDLOG_SESSION_ID" "$@" 2>/dev/null
+}
+
+# Read at every prompt, by the shell itself. A `python3` per command to answer
+# a yes/no that is one line of JSON would be paid on the operator's prompt
+# forever; `grep` on the same file is the same answer from the same place,
+# which is what rule 2 of contracts/shell-commands.md asks for — not a shell
+# variable. No file yet means a terminal that has not been told otherwise,
+# and the installed default is auto (research.md D4).
+_redlog_is_recording() {
+  local file
+  file=$(_redlog_state_file)
+  [[ -f "$file" ]] || return 0
+  grep -q '"recording"[[:space:]]*:[[:space:]]*true' "$file"
+}
+
+redlog() {
+  local sub="${1:-status}"
+  shift 2>/dev/null
+  case "$sub" in
+    status)
+      _redlog_state --action show --format human
+      print
+      ;;
+    stop)
+      _redlog_state --action stop --reason operator >/dev/null
+      print -- "[redlog] recording stopped in this terminal — redlog start to resume"
+      ;;
+    start)
+      _redlog_state --action start >/dev/null
+      print -- "[redlog] recording in this terminal"
+      ;;
+    mode)
+      case "${1:-}" in
+        auto|manual)
+          _redlog_state --action mode --mode "$1" >/dev/null
+          print -- "[redlog] mode $1"
+          ;;
+        *)
+          print -u2 -- 'usage: redlog mode auto|manual'
+          return 2
+          ;;
+      esac
+      ;;
+    class)
+      case "${1:-list}" in
+        list)
+          python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --action list
+          print
+          ;;
+        add)
+          if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            print -u2 -- 'usage: redlog class add relayed|pty|native <command>'
+            return 2
+          fi
+          python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
+            --action add --field "$2" --command "$3" >/dev/null || {
+            print -u2 -- "[redlog] no such class: $2"; return 2
+          }
+          print -- "[redlog] $3 is now $2"
+          # FR-028. The cost is not obvious and it is paid in the middle of an
+          # engagement, on the command the operator cares most about.
+          [[ "$2" == "pty" ]] && print -- \
+            "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          ;;
+        remove)
+          if [[ -z "${2:-}" ]]; then
+            print -u2 -- 'usage: redlog class remove <command>'
+            return 2
+          fi
+          python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
+            --action remove --command "$2" >/dev/null
+          print -- "[redlog] $2 is back to the default"
+          ;;
+        *)
+          print -u2 -- 'usage: redlog class list|add relayed|pty|native <command>|remove <command>'
+          return 2
+          ;;
+      esac
+      ;;
+    *)
+      # Rule 3: an unknown subcommand prints the list and exits non-zero, so a
+      # typo is not silently a no-op.
+      print -u2 -- 'usage: redlog status|start|stop|mode auto|manual|class list|add|remove <command>'
+      return 2
+      ;;
+  esac
 }
 
 _redlog_preexec() {
+  _REDLOG_LAST_CMD=""
+  _REDLOG_CMD_START=""
+  _REDLOG_CMD_ID=""
+  _REDLOG_CMD_CLASS=""
+  _REDLOG_RELAY_DIR=""
+
+  # The operator said stop. Nothing below runs: no command_start, no relay, no
+  # command_end — not a row marked "not captured", because they did not ask for
+  # a record of what they were doing with the recording off. The stop itself is
+  # in the record and accounts for the gap (FR-012, FR-022).
+  #
+  # `redlog` is the exception: an operator who has stopped recording must still
+  # be able to see that they have, and to start again.
+  if [[ "$1" != redlog(| *) ]] && ! _redlog_is_recording; then
+    return
+  fi
+
   _REDLOG_LAST_CMD="$1"
   _REDLOG_CMD_START=$EPOCHSECONDS
   _REDLOG_CMD_ID=$(_redlog_new_command_id)
-  _REDLOG_CMD_CLASS=""
-  _REDLOG_RELAY_DIR=""
 
   if _redlog_is_running && [[ "${REDLOG_EXTERNAL_SESSION:-}" != "1" ]]; then
     _REDLOG_CMD_CLASS=$(_redlog_class_of "$1")
@@ -138,7 +271,7 @@ _redlog_precmd() {
 # go to the native path and are recorded as `interactive`.
 _redlog_install_pty_wrappers() {
   local prog
-  for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --field pty 2>/dev/null)"}; do
+  for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
     [[ -n "$prog" ]] || continue
     # Only wrap what is actually here. A function named `ssh` on a machine
     # without ssh turns "command not found" into a confusing python error.
@@ -151,6 +284,11 @@ _redlog_install_pty_wrappers() {
       fi'
   done
 }
+
+# Pin this terminal's identity and its starting state before the first prompt.
+# `begin` is idempotent — a state file that already exists is left alone, so
+# re-sourcing the adapter does not undo a `redlog stop`.
+_redlog_state --action begin >/dev/null 2>&1
 
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec

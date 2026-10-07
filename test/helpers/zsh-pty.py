@@ -66,6 +66,13 @@ class Session:
         """
         home = tempfile.mkdtemp(prefix="redlog-zsh-")
         with open(os.path.join(home, ".zshrc"), "w") as fh:
+            # PROMPT_SP makes zsh print a reverse-video `%` and a line of
+            # spaces whenever the previous output did not end with a newline,
+            # so the terminal shows where the output stopped. It is a feature
+            # for a human and noise for an assertion — a test comparing a
+            # one-word file's contents reads `auto\n%` and fails on the
+            # prompt's politeness rather than on anything the product did.
+            fh.write("unsetopt PROMPT_SP 2>/dev/null\n")
             fh.write(self.job.get("rc", "") + "\n")
         redlog = self.job.get("redlog")
         if redlog:
