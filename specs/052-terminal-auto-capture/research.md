@@ -180,17 +180,53 @@ be re-argued the first time someone ran a full-port scan.
 
 ## Open questions (settled by experiment, first tasks)
 
-- **O1. Descriptor restore across an interactive pager.** A pager such as Git's
-  `less` may put the output terminal into raw/cbreak mode. The relay must
-  forward those keys and restore terminal settings on exit. Experiment: drive
-  `git log` with a real pty, check `stty -g` before and after.
-- **O2. End-of-output ordering.** `command_end` must not be written before the
-  relay has flushed the command's output, or the body lands under the next
-  command. Experiment: a command that writes a large burst and exits
-  immediately; assert ordering by sequence number, not by wall clock.
-- **O3. Background output.** Output from `cmd &` must not be attributed to the
-  foreground command (FR-007). Experiment: start a background writer, run a
-  foreground command, assert the background bytes carry no command id.
+All three of O1-O3 were measured on 2026-10-07 against a **toy relay** — D1's
+shape in six lines of zsh, redirecting the shell's own descriptors in
+`preexec` and restoring them in `precmd`, with `tee` into a log through
+process substitution — driven by the T002 harness on Kali/zsh 5.9. The point
+was to learn what the shape does before building on it, and it moved two of
+the three answers.
+
+- **O1. Terminal modes — SETTLED (T003): the redirection does not disturb
+  them, and `stty sane` is not a restore.** `stty -g` before and after a
+  command under the relay is byte-identical, so diverting descriptors costs
+  nothing in line discipline — the command keeps the terminal itself, which is
+  the whole reason D1 refused a PTY for the ordinary path. Job control came
+  through the same way: `sleep 30 &`, `jobs` and `kill %1` all behave.
+
+  The second half is a trap for the PTY class rather than the relay:
+  `stty raw -echo; stty sane` leaves settings that **differ** from the
+  original. `sane` is a known-good default, not what was there. Anything that
+  changes modes has to save `stty -g` and put that back.
+
+- **O2. End-of-output ordering — SETTLED (T004): complete by the next command,
+  not provably complete at `precmd`.** A 300 KB burst written straight to the
+  terminal is fully in the log — 300,000 bytes, exactly — when the *next*
+  command reads it. That rules out the cheap failure where the body lands
+  under the following command.
+
+  It does **not** establish that the bytes are there at `precmd` time, which
+  is where a naive implementation would send `command_end`, and the experiment
+  cannot distinguish the two. So the contract is the stronger one:
+  **`command_end` is emitted by the component that owns the bytes, after it
+  has drained** — not by `precmd` racing the relay. `tlogger-v2` reports the
+  same arrangement ("the relay writes cleaned output before acknowledging the
+  end of a foreground command"), which is some evidence the race is real.
+
+- **O3. Background output — SETTLED (T005): the relay cannot tell, so the
+  record must say so.** A job started with `&` inherits the relay's descriptor
+  at fork time, so its output goes to the `tee` of whichever command was
+  running when it started, and arrives inside whichever command is running
+  when it writes. Measured twice: a writer started before `echo FOREGROUND_ONE`
+  surfaced inside the following `sleep 1`, and one sleeping two seconds
+  surfaced inside `sleep 3`, both landing in the log.
+
+  There is no fd-level signal to separate them — the bytes are
+  indistinguishable from the foreground command's own. FR-007 therefore cannot
+  be met by attribution logic in the relay. The data model's
+  `unattributed: true` chunk is not a defensive extra; it is the only honest
+  representation, and the UI has to be able to show output that belongs to the
+  terminal rather than to a command.
 - **O4. Nested shell — SETTLED 2026-10-07 (T007): its own session, with the
   nesting recorded.** The adapter is sourced from `.zshrc`, so a nested `zsh`
   runs it again and naturally mints a second terminal session; the work is to

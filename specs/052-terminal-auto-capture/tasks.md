@@ -33,14 +33,14 @@ this deliberately differs.
 **Purpose**: research.md's open questions. Each is an experiment, not an
 implementation. Doing these later means writing the adapter twice.
 
-- [ ] T001 Decide where the pty-driven suite runs and write the decision into `specs/052-terminal-auto-capture/research.md` (O5): a vitest file skipped on win32 like `test/external-session.test.ts`, or a Playwright journey. CI runs e2e on ubuntu only, and the unit job is where `test.skip(process.platform === 'win32', …)` already lives
+- [x] T001 Decide where the pty-driven suite runs and write the decision into `specs/052-terminal-auto-capture/research.md` (O5): a vitest file skipped on win32 like `test/external-session.test.ts`, or a Playwright journey. CI runs e2e on ubuntu only, and the unit job is where `test.skip(process.platform === 'win32', …)` already lives
 - [x] T002 Build the pty harness that drives a real interactive zsh and assert it fails without the adapter — `test/helpers/zsh-pty.py` (the driver, stdlib `pty`), `test/helpers/zsh-pty.ts` (shell discovery, the collector, the job) and `test/zsh-pty-harness.test.ts` (four tests: it drives an interactive shell, it reports the command's own exit status, **it records nothing with no adapter installed**, and the existing command-line hook reaches the collector metadata-only)
 - [ ] T002a Bound the health probe in `hooks/shell-common.sh:40` and `:47`: `--connect-timeout 1` without `--max-time` waits forever on a RedLog that accepts the connection and never answers, hanging the operator's prompt on every command. FR-009. Found by T002; see research.md
-- [ ] T003 [P] Experiment O1: capture `stty -g` before and after a paged command under the harness, and record in research.md whether a relay that forwards raw-mode keys restores terminal settings
-- [ ] T004 [P] Experiment O2: a command that writes a large burst and exits immediately; record whether ordering can be guaranteed by `seq` alone or needs an explicit flush-before-end handshake
-- [ ] T005 [P] Experiment O3: a background writer plus a foreground command; record what identifies the background bytes so FR-007 can be enforced rather than hoped for
-- [ ] T006 Decide the output bound for an always-on relay and record it in research.md: `redlog-run`'s 100 KB per stream was chosen for a wrapper used a few times per engagement, and `nmap -A` will hit it routinely. Decide head-only vs. head+tail, and what `limit_hit` says
-- [ ] T007 Decide the nested-shell rule (O4) and record it: a `zsh` inside an enrolled terminal gets its own session id, or declines with a reason. Silently folding into the parent's record is not an option
+- [x] T003 [P] Experiment O1: capture `stty -g` before and after a paged command under the harness, and record in research.md whether a relay that forwards raw-mode keys restores terminal settings
+- [x] T004 [P] Experiment O2: a command that writes a large burst and exits immediately; record whether ordering can be guaranteed by `seq` alone or needs an explicit flush-before-end handshake
+- [x] T005 [P] Experiment O3: a background writer plus a foreground command; record what identifies the background bytes so FR-007 can be enforced rather than hoped for
+- [x] T006 Decide the output bound for an always-on relay and record it in research.md: `redlog-run`'s 100 KB per stream was chosen for a wrapper used a few times per engagement, and `nmap -A` will hit it routinely. Decide head-only vs. head+tail, and what `limit_hit` says
+- [x] T007 Decide the nested-shell rule (O4) and record it: a `zsh` inside an enrolled terminal gets its own session id, or declines with a reason. Silently folding into the parent's record is not an option
 
 **Checkpoint**: research.md has no open questions. Only now does code change.
 
