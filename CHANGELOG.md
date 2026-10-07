@@ -5,6 +5,63 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **A command typed into your own terminal is now recorded with its output,
+  with nothing typed in front of it.** `redlog-run nmap -sV host` has worked
+  for releases and gets used a handful of times per engagement, because nobody
+  mid-engagement remembers a prefix — and the commands worth having are the
+  ones typed without thinking about the logger. Enrol a terminal from the
+  capture card and the prefix is gone.
+
+  The shell's own stdout and stderr are diverted through a relay and put back
+  before the next prompt. The command itself is launched by nothing new: it
+  keeps the terminal, its stdin and its job control, so `nc` can still be
+  suspended and `vim` still works. If anything in the setup fails the
+  descriptors are left alone and the command runs unrecorded — not recorded is
+  bad, a wedged prompt is worse.
+
+  Three things that used to look identical now read differently, because an
+  empty `stdout` marked `complete` is a claim a reader will believe:
+
+  | What you ran | What the record says |
+  |---|---|
+  | `nmap -oN scan.txt` | `redirected` — the output went to a file |
+  | `vim /etc/shadow` | `interactive` — metadata only, by design |
+  | the relay could not start | `not-captured` — and why |
+
+  Output over the inline threshold is kept whole in the body store rather than
+  truncated: every command is relayed now, so `nmap -A` and `ffuf` reach the
+  old 100 KB bound routinely, and a cut-off scan is the evidence you most
+  wanted. Nothing in a command's output decides where a record begins, ends or
+  belongs — every identifier is minted out of band, so a target cannot write
+  RedLog's evidence by printing something that looks like it.
+
+  The capture card now tells **installed** from **working**: the third state is
+  a command that actually arrived from a terminal that is not one of RedLog's
+  own panes. Uninstalling leaves `.zshrc` byte-identical, which it did not
+  before.
+
+- **Lane visibility moved onto the lanes, and "chain alerts" stopped counting
+  things that were not.** The toolbar chip counted every badge on the timeline
+  — clock anomalies, session recovery, retention deletions, scope violations,
+  subagent turns — and called them chain alerts, so a sound chain could read as
+  nineteen integrity faults. A real chain fault already stops you with a banner
+  across the panel. The chip is gone.
+
+  The seven lane chips sat in the top right and controlled rows on the far
+  left, and with every band collapsed — the default — clicking one changed
+  nothing on the track at all. Those gestures now live on the lane labels, on
+  the row they control: click to hide, Alt-click to solo. Three things had to
+  be fixed first: expanding a band no longer replaces it (the grouping stayed
+  put instead of vanishing the moment it gained children), a hidden lane keeps
+  a struck-through row so the control that hid it can bring it back, and
+  collapsing a band no longer re-absorbs a hidden lane's events and silently
+  undoes the hide.
+
+  Also: the notice shown when traffic cannot be attributed to a command told
+  Windows operators to enable the process pack, which does not run on Windows.
+  It now names a remedy that exists on each platform, or says plainly that
+  there is none here yet.
+
 - **The causal links were being computed and then thrown away.** The backend
   has returned a finding's whole causal component — events *and* the edges
   between them — since v0.6.89.5. The renderer kept the ids for dimming the
@@ -16,6 +73,13 @@ for full commit body + generated notes.
   placeholder rather than as the end of a chain — nothing can tell those two
   apart, so the graph does not guess. Collapsed by default: it costs a query,
   which should not happen just because a row was selected.
+
+  A branch of three is already 658px wide and the inspector is 387px docked
+  right, so anything past a two-way branch had to be read sideways through a
+  column too narrow for it. **Enlarge** opens the same graph in a dialog about
+  three times the width. Scaling to fit was the alternative and it fails on
+  type: 658 into 387 is 12px text at 7px, and it would shrink exactly as the
+  chain grew.
 
 - **Every evidence bundle made from the Export menu failed its own
   verifier.** The menu previews a plan and then exports against the plan's
