@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // Design turn 8a, end to end. The unit and DB suites prove the decision and the
 // writes; what only the real app can show is that a save actually triggers the
@@ -65,7 +65,7 @@ test.describe.serial('recomputing scope after the boundary moves', () => {
     await post('shell', { subtype: 'command_start', detectedTarget: 'www.target.com', command: 'curl https://www.target.com/' })
     await post('dns', { subtype: 'dns_query', query_name: 'evil.example.', query_type: 'A' })
     await page.waitForTimeout(1500)
-    await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
+    await resizeMainWindow(app, 1500, 1000)
   })
 
   test.afterAll(async () => { if (app) await app.close() })
