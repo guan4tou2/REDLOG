@@ -36,6 +36,22 @@ test('an empty screen-source list is reported, not swallowed', async () => {
   const before = await health()
   console.log('BEFORE lastDbError=' + JSON.stringify(before.lastDbError ?? null))
 
+  // The claim below is that a camera which cannot see the screen does not make
+  // the whole log dark — "every other source is still recording". That premise
+  // has to be true for the assertion to mean anything, and in a fresh temp HOME
+  // it is not: no hook is installed and nothing has ever fed the record, so
+  // `verdict` is `dark` on its own terms (capture-health: `!anyWired &&
+  // !everFed`) whatever the screenshot agent does. The spec read that as the
+  // failure it was staging and passed only on a machine that happened to have
+  // capture wired up — on CI, which is the pristine case, it failed every run.
+  //
+  // So give it one source that has recorded, and the only thing left that can
+  // darken the verdict is the one under test.
+  await fetch(`${base}/api/events`, {
+    method: 'POST', headers: hdr,
+    body: JSON.stringify({ agent_type: 'browser', data: { subtype: 'console_error', message: 'something was recorded' } })
+  })
+
   // Stage the condition: screen enumeration comes back empty.
   await app.evaluate(async ({ desktopCapturer }) => {
     ;(desktopCapturer as unknown as { getSources: unknown }).getSources = async () => []
@@ -60,7 +76,11 @@ test('an empty screen-source list is reported, not swallowed', async () => {
   // log, and spending that signal here teaches operators to ignore it.
   expect(shot?.state).toBe('error')
   expect(String(shot?.lastError?.message)).toContain('no screen sources')
-  expect(after.verdict).not.toBe('dark')
+  // `partial`, named rather than "not dark": with another source recording and
+  // this one in error, that is the only verdict the rule produces, and saying
+  // so keeps the test from passing on a `healthy` that would mean the error
+  // never reached the card at all.
+  expect(after.verdict).toBe('partial')
   // `lastDbError` means evidence cannot be written at all. This is not that.
   expect(after.lastDbError).toBeUndefined()
   await app.close()
