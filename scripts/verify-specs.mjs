@@ -1,10 +1,25 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { numberCollisions } from './spec-numbers.mjs'
 
 const root = process.cwd()
 const specsRoot = path.join(root, 'specs')
 const failures = []
+
+const specDirs = fs.readdirSync(specsRoot).sort()
+  .filter((name) => fs.statSync(path.join(specsRoot, name)).isDirectory())
+
+// The numbers two branches picked independently. Unreachable `origin/main`
+// (shallow CI checkout, clone without a remote) checks the local half only.
+let specsOnMain = null
+try {
+  specsOnMain = execFileSync('git', ['ls-tree', '-d', '--name-only', 'origin/main', 'specs/'],
+    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    .split(/\r?\n/).filter(Boolean).map((line) => line.split('/').pop())
+} catch { /* no origin/main here */ }
+failures.push(...numberCollisions(specDirs, specsOnMain))
 
 const STATUSES = ['Draft', 'Implemented', 'Verified', 'Withdrawn']
 // Constitution 1.1.0: verification.md follows the template from this spec on.
@@ -41,9 +56,8 @@ const hasRedRecord = (text) =>
 
 const verifiedSpecs = new Set()
 
-for (const name of fs.readdirSync(specsRoot).sort()) {
+for (const name of specDirs) {
   const dir = path.join(specsRoot, name)
-  if (!fs.statSync(dir).isDirectory()) continue
   const spec = read(path.join(dir, 'spec.md'))
   if (spec === null) {
     failures.push(`${name}: no spec.md`)
@@ -98,11 +112,10 @@ for (const name of Object.keys(KNOWN_GAPS)) {
 
 const executableRoots = ['README.md', 'electron-builder.yml', 'package.json', 'src', 'hooks', 'plugins', 'cli', '.github']
 const forbidden = ['shell-preexec-hook.sh', 'redlog-hook.zsh', 'claude-code-hook.sh']
-// The one file allowed to name them: it holds the Spec 036 legacy-hook
-// DETECTION list (RETIRED_HOOK_FILES), which finds and removes the retired
-// source lines from operators' shell profiles. It is not an entry point or a
-// compatibility shim. Exact path match — no directory or glob.
-const forbiddenExempt = new Set(['src/core/runtime-preflight.ts'])
+// Nothing is exempt any more. The one file that named them held Spec 036's
+// legacy-hook detection list, and that detection is gone with the rest of the
+// pre-1.0 compatibility path.
+const forbiddenExempt = new Set([])
 const textExtensions = new Set(['.md', '.yml', '.yaml', '.json', '.ts', '.tsx', '.js', '.mjs', '.sh', '.zsh', '.ps1'])
 
 function visit(candidate) {
@@ -125,4 +138,7 @@ if (failures.length) {
   console.error(failures.join('\n'))
   process.exit(1)
 }
-console.log('Spec Kit gates passed: statuses are known, Verified specs carry complete tasks, a plan and a verification record, and executable aliases are current.')
+console.log(
+  'Spec Kit gates passed: numbers are unique' + (specsOnMain === null ? ' locally (origin/main not reachable)' : ' here and against origin/main')
+  + ', statuses are known, Verified specs carry complete tasks, a plan and a verification record, and executable aliases are current.'
+)

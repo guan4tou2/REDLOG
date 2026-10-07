@@ -7,7 +7,6 @@ import { useI18n } from '../i18n'
 import { takePendingCommand, onRunInTerminal } from '../lib/terminalRunner'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
-import { SessionTargetControl } from './SessionTargetControl'
 import { usePersistentState } from '../lib/usePersistentState'
 
 interface Tab {
@@ -343,7 +342,6 @@ export default function TerminalView(): JSX.Element {
         {/* Font-size + search on the right — audit findings #14 (SearchAddon)
             and #15 (font size adjustable). */}
         <div className="ml-auto flex items-center gap-1 pr-1">
-          {activeTab && <SessionTargetControl terminalId={activeTab} />}
           <button
             onClick={() => setFontSize((s) => Math.max(8, s - 1))}
             className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"

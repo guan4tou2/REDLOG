@@ -166,6 +166,23 @@ export default function OverlayApp(): JSX.Element {
   // same factor. Without this the middle gap stays fixed while text shrinks —
   // small scale looks loose, large scale looks cramped.
   const px = (n: number): number => Math.round(n * s)
+  const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
+  // The action row was two buttons on `flex: 1` beside two on their own
+  // padding, at a different font size — so the pair of toggles came out a
+  // width nobody chose and a height that did not match the verbs beside them.
+  // One height for all four; the verbs share what is left; the toggles are
+  // square, which is what a toggle looks like.
+  const rowH = px(26)
+  const hudVerb: React.CSSProperties = {
+    flex: 1, height: rowH, padding: 0, fontSize: fs(10), fontWeight: 700,
+    letterSpacing: '0.12em', clipPath: BTN_CLIP, cursor: 'pointer',
+    fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s'
+  }
+  const hudToggle: React.CSSProperties = {
+    width: rowH, height: rowH, flex: 'none', padding: 0, fontSize: fs(11),
+    fontWeight: 700, clipPath: BTN_CLIP, cursor: 'pointer',
+    fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s'
+  }
   const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
 
   const safety = status?.ipSafety ?? 'unknown'
@@ -180,11 +197,10 @@ export default function OverlayApp(): JSX.Element {
   // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
   const alarm = safety === 'exposed' && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
-  const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
   const ptChord = navigator.platform?.includes('Mac') ? '⌘⇧P' : 'Ctrl+Shift+P'
 
   const bracket = (pos: React.CSSProperties): JSX.Element => (
-    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...pos }} />
+    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...noDrag, ...pos }} />
   )
   const iconBtn: React.CSSProperties = {
     color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
@@ -230,20 +246,6 @@ export default function OverlayApp(): JSX.Element {
         >
           {/* scanlines */}
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
-
-          {/* buttons (top-right): expand + hide only. The pin toggle used to
-              live here too, but the operator asked to move it into the
-              expanded pane's bottom row — it's a low-frequency action and
-              a fixed-position icon in the corner competed with the more
-              important expand button for glances. */}
-          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
-            {/* Real <button>s, not onClick divs: keyboard-reachable and
-                announced as controls, matching the mark/pin buttons below
-                (§21 — icon-only controls must be focusable; the focus ring is
-                the .hudBtn rule in the <style> block). */}
-            <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
-            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
-          </div>
 
           {/* measured content — window auto-sizes to this */}
           <div ref={contentRef}>
@@ -371,7 +373,7 @@ export default function OverlayApp(): JSX.Element {
                       type="button"
                       className="hudBtn"
                       onClick={() => { void doInstantMark() }}
-                      style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: justMarked ? HUD.green : CYAN, background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09), border: `1px solid ${justMarked ? HUD.green : CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55`, transition: 'background 0.12s, color 0.12s' }}
+                      style={{ ...hudVerb, color: justMarked ? HUD.green : CYAN, background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09), border: `1px solid ${justMarked ? HUD.green : CYAN}55`, textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55` }}
                       title={t('overlay.markQuickHint')}
                     >
                       {justMarked ? `✓ ${t('overlay.marked').toUpperCase()}` : `⚡ ${t('overlay.markQuick').toUpperCase()}`}
@@ -380,7 +382,7 @@ export default function OverlayApp(): JSX.Element {
                       type="button"
                       className="hudBtn"
                       onClick={() => window.redlog.overlay.quickMark!()}
-                      style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
+                      style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, textShadow: `0 0 7px ${CYAN}55` }}
                       title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
                     >
                       ✎ {t('overlay.markDetail').toUpperCase()}
@@ -405,7 +407,7 @@ export default function OverlayApp(): JSX.Element {
                   type="button"
                   className="hudBtn"
                   onClick={() => window.redlog.overlay.setPassThrough!(true)}
-                  style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)', clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
+                  style={{ ...hudToggle, color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}
                   title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint')}`}
                   aria-label={t('overlay.passThrough')}
                 >
@@ -415,7 +417,7 @@ export default function OverlayApp(): JSX.Element {
                   type="button"
                   className="hudBtn"
                   onClick={() => setPinned((p) => !p)}
-                  style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
+                  style={{ ...hudToggle, color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}` }}
                   title={`${t('overlay.keepOpen')} — ${pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}`}
                   aria-label={t('overlay.keepOpen')}
                   aria-pressed={pinned}
@@ -426,13 +428,39 @@ export default function OverlayApp(): JSX.Element {
             </div>
           )}
           </div>
+
+          {/* buttons (top-right): expand + hide only. The pin toggle used to
+              live here too, but the operator asked to move it into the
+              expanded pane's bottom row — it's a low-frequency action and
+              a fixed-position icon in the corner competed with the more
+              important expand button for glances.
+
+              Rendered LAST inside the panel, and it has to stay last. Chromium
+              inherits `-webkit-app-region`, so every descendant of the dragging
+              root declares `drag` too, and Electron replays those rects in tree
+              order — union for drag, difference for no-drag. A `drag` rect that
+              comes after this cluster and overlaps it hands the area back to the
+              window, and the compact bar (full width, the button row's own row)
+              did exactly that: WM_NCHITTEST over ✕ answered HTCAPTION, so every
+              click started a window drag and the HUD could only be moved.
+              Playwright cannot see this — CDP clicks are delivered straight to
+              the renderer, below the hit test — so the guard is the region-order
+              test in renderer-smoke. */}
+          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
+            {/* Real <button>s, not onClick divs: keyboard-reachable and
+                announced as controls, matching the mark/pin buttons below
+                (§21 — icon-only controls must be focusable; the focus ring is
+                the .hudBtn rule in the <style> block). */}
+            <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
+            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
+          </div>
         </div>
 
         {/* §8 pass-through hint — opaque and outside the dimmed chrome so it
             stays readable exactly when everything else has just gone ghost.
             Auto-hides after 3s (ptHint effect). */}
         {ptHint && (
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 6, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30 }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 6, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30, ...noDrag }}>
             <span style={{ padding: '3px 10px', fontSize: fs(9.5), fontWeight: 600, letterSpacing: '0.04em', color: '#d6f7fd', background: 'rgba(7,12,17,0.92)', border: `1px solid ${hexA(CYAN, 0.6)}`, clipPath: BTN_CLIP, boxShadow: `0 0 8px ${hexA(CYAN, 0.3)}` }}>
               {t('overlay.passThroughActive', { chord: ptChord })}
             </span>

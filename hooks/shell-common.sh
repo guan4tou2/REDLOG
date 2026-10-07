@@ -6,6 +6,7 @@
 _REDLOG_LAST_CMD=""
 _REDLOG_CMD_START=""
 _REDLOG_SESSION_HELPER="${_redlog_adapter_dir:-}/redlog-session.py"
+_REDLOG_RELAY="${_redlog_adapter_dir:-}/redlog-relay.py"
 
 redlog-session() {
   python3 "$_REDLOG_SESSION_HELPER" "$@"
@@ -35,21 +36,46 @@ _redlog_resolve_dir() {
 }
 
 # --- Resolve reachable host ---
+# Both probes are bounded by --max-time, not only by --connect-timeout. A
+# connect timeout expires when nothing *accepts*; a process that accepts the
+# socket and then never answers — RedLog mid-crash, a port inherited by
+# something else, an SSH forward whose far end is gone — satisfies the connect
+# and then waits forever. This runs from preexec on the operator's prompt, so
+# "forever" means the engagement's shell is wedged by its own logger. Bounded,
+# the worst case is 127.0.0.1 and the gateway in turn, once per shell:
+# _REDLOG_HOST is exported after the first resolve.
 _redlog_resolve_host() {
   local port="$1"
-  if curl --noproxy '*' -sf --connect-timeout 1 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
+  if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     echo "127.0.0.1"
     return
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
     local gw
     gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-    if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
+    if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
       echo "$gw"
       return
     fi
   fi
   echo "127.0.0.1"
+}
+
+# The correlation key for one command. `command_start`, every `command_output`
+# chunk and `command_end` carry it, and it is the ONLY thing that says which
+# command a chunk belongs to — never a marker in the bytes, which the command's
+# own output can forge (FR-002, contracts/events.md).
+#
+# Nanoseconds, pid and $RANDOM: unique within a machine without reaching for
+# uuidgen, which is not everywhere. `date +%s%N` prints a literal N where it is
+# not GNU date, so that case falls back rather than minting a shared id.
+_redlog_new_command_id() {
+  local stamp
+  stamp=$(date +%s%N 2>/dev/null)
+  case "$stamp" in
+    ''|*N*) stamp="$(date +%s)${RANDOM:-0}" ;;
+  esac
+  printf '%s-%s-%s' "$stamp" "$$" "${RANDOM:-0}"
 }
 
 _redlog_is_running() {
@@ -87,11 +113,6 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
 tid = os.environ.get('REDLOG_TERMINAL_ID')
 if tid:
     d['data']['terminalId'] = tid
-# #219: this shell's own target. It outranks RedLog's global current target,
-# so another pane switching the global target does not re-attribute this one.
-st = os.environ.get('REDLOG_TARGET', '').strip()
-if st:
-    d['data']['session_target'] = st[:253]
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
 # Embed active project identity so spooled events can be attributed correctly.
@@ -128,6 +149,21 @@ print(json.dumps(d))
   fi
 }
 
+# True only for something the relay can actually launch as a process. A path
+# is taken at its word; a bare name must resolve to an absolute path, which
+# `command -v` gives for an external command and not for a builtin, function,
+# keyword or alias — in both bash and zsh.
+_redlog_is_external() {
+  case "$1" in
+    */*) [[ -x "$1" ]] ;;
+    *)
+      local resolved
+      resolved=$(command -v -- "$1" 2>/dev/null) || return 1
+      [[ "$resolved" == /* ]]
+      ;;
+  esac
+}
+
 # --- Opt-in structured capture wrapper ---
 # Usage: redlog-run <command> [args...]
 # Runs the given command with stdout and stderr streamed through separate
@@ -152,102 +188,66 @@ redlog-run() {
 
   local cmd_string="$*"
   local start_ts=${EPOCHSECONDS:-$(date +%s)}
-  local stdout_file stderr_file pipe_dir stdout_pipe stderr_pipe
-  stdout_file=$(mktemp -t redlog-stdout.XXXXXX) || { command "$@"; return $?; }
-  stderr_file=$(mktemp -t redlog-stderr.XXXXXX) || { rm -f "$stdout_file"; command "$@"; return $?; }
-  pipe_dir=$(mktemp -d -t redlog-stream.XXXXXX) || {
-    rm -f "$stdout_file" "$stderr_file"
+  local command_id
+  command_id=$(_redlog_new_command_id)
+
+  # Emit command_start so the timeline shows the row entering flight.
+  _redlog_send_event "command_start" "$cmd_string" \
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
+
+  # A builtin, function or keyword has to run in THIS shell or it does
+  # nothing: `redlog-run cd /tmp` through a relay would change a directory
+  # that exits a millisecond later. It runs where it always did, and the
+  # record says plainly that there is no body and why — `not-captured`,
+  # `metadata-only`, the vocabulary contracts/events.md already defines for a
+  # command whose output the relay never held.
+  if ! _redlog_is_external "$1"; then
     command "$@"
-    return $?
-  }
-  stdout_pipe="$pipe_dir/stdout"
-  stderr_pipe="$pipe_dir/stderr"
-  if ! mkfifo "$stdout_pipe" "$stderr_pipe"; then
-    rm -f "$stdout_file" "$stderr_file"
-    rm -rf "$pipe_dir"
+    local builtin_code=$?
+    local builtin_duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
+    _redlog_send_event "command_end" "$cmd_string" \
+      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+    return $builtin_code
+  fi
+
+  local event_file
+  event_file=$(mktemp -t redlog-event.XXXXXX) || { command "$@"; return $?; }
+
+  # The descriptors, the cap and the event JSON belong to the relay — see
+  # hooks/redlog-relay.py. This was two named pipes, two `tee`s and an inline
+  # python heredoc right here; spec 052 needs the same capture from preexec
+  # for every command, and two of them would drift (research.md D2).
+  python3 "$_REDLOG_RELAY" run \
+    --event-out "$event_file" \
+    --max-bytes "$_REDLOG_MAX_BYTES" \
+    --cwd "$PWD" \
+    --captured-by redlog-run \
+    --command-id "$command_id" \
+    -- "$@"
+  local exit_code=$?
+
+  if [[ ! -e "$event_file.started" ]]; then
+    # The relay never reached the command: no python3, no relay file, an
+    # unwritable temp dir. The command has NOT run — the same fall-through
+    # this wrapper has always had when `mkfifo` failed. Unrecorded is bad;
+    # not run at all is worse.
+    rm -f "$event_file"
     command "$@"
     return $?
   fi
 
-  # Emit command_start so the timeline shows the row entering flight.
-  _redlog_send_event "command_start" "$cmd_string" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\"}"
-
-  # Stream each descriptor back to the same terminal descriptor while teeing
-  # the bytes to disk. Named pipes let us wait for both tee processes before
-  # reading the files, avoiding a race at command exit.
-  tee "$stdout_file" <"$stdout_pipe" &
-  local stdout_tee_pid=$!
-  tee "$stderr_file" <"$stderr_pipe" >&2 &
-  local stderr_tee_pid=$!
-  command "$@" 1>"$stdout_pipe" 2>"$stderr_pipe"
-  local exit_code=$?
-  wait "$stdout_tee_pid" 2>/dev/null || true
-  wait "$stderr_tee_pid" 2>/dev/null || true
-  local end_ts=${EPOCHSECONDS:-$(date +%s)}
-  local duration=$(( end_ts - start_ts ))
-
-  # Byte counts (before any truncation).
-  local stdout_bytes stderr_bytes
-  stdout_bytes=$(wc -c <"$stdout_file" 2>/dev/null | tr -d ' ')
-  stderr_bytes=$(wc -c <"$stderr_file" 2>/dev/null | tr -d ' ')
-  stdout_bytes=${stdout_bytes:-0}
-  stderr_bytes=${stderr_bytes:-0}
-
-  # Build the event JSON in python. Python reads the temp files DIRECTLY —
-  # this avoids every quoting/argv-size/binary hazard of stuffing 100 KB
-  # of arbitrary bytes through bash argv. Invalid UTF-8 is replaced with
-  # U+FFFD so the JSON encoder never explodes on binary output.
   local extra
-  extra=$(REDLOG_STDOUT_FILE="$stdout_file" \
-          REDLOG_STDERR_FILE="$stderr_file" \
-          REDLOG_EXIT_CODE="$exit_code" \
-          REDLOG_DURATION_SEC="$duration" \
-          REDLOG_STDOUT_BYTES="$stdout_bytes" \
-          REDLOG_STDERR_BYTES="$stderr_bytes" \
-          REDLOG_MAX_BYTES="$_REDLOG_MAX_BYTES" \
-          REDLOG_CWD="$PWD" \
-          python3 -c '
-import json, os
-CAP = int(os.environ.get("REDLOG_MAX_BYTES", "102400"))
-
-def read_capped(path):
-    try:
-        with open(path, "rb") as f:
-            raw = f.read(CAP + 1)
-    except OSError:
-        return "", False
-    truncated = len(raw) > CAP
-    if truncated:
-        raw = raw[:CAP]
-    return raw.decode("utf-8", errors="replace"), truncated
-
-so, so_t = read_capped(os.environ["REDLOG_STDOUT_FILE"])
-se, se_t = read_capped(os.environ["REDLOG_STDERR_FILE"])
-print(json.dumps({
-    "exit_code": int(os.environ.get("REDLOG_EXIT_CODE", "0")),
-    "duration_sec": int(os.environ.get("REDLOG_DURATION_SEC", "0")),
-    "cwd": os.environ.get("REDLOG_CWD", ""),
-    "stdout": so,
-    "stderr": se,
-    "stdout_bytes": int(os.environ.get("REDLOG_STDOUT_BYTES", "0")),
-    "stderr_bytes": int(os.environ.get("REDLOG_STDERR_BYTES", "0")),
-    "stdout_truncated": so_t,
-    "stderr_truncated": se_t,
-    "captured_by": "redlog-run"
-}))
-' 2>/dev/null) || extra=""
-
+  extra=$(cat "$event_file" 2>/dev/null)
   if [[ -z "$extra" ]]; then
-    # Python failed for some reason — fall back to bare metadata so the
-    # event still lands with the right exit code.
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\"}"
+    # The relay ran the command but could not write the event — fall back to
+    # bare metadata so the row still lands with the right exit code.
+    local duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
   fi
 
   _redlog_send_event "command_end" "$cmd_string" "$extra"
 
-  rm -f "$stdout_file" "$stderr_file"
-  rm -rf "$pipe_dir"
+  rm -f "$event_file" "$event_file.started"
   return $exit_code
 }
 

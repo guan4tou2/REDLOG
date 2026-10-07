@@ -2,7 +2,7 @@
 
 > Domain: Engagement / Evidence
 > Invariant: Every target-oriented query MUST use the same canonical target identity semantics.
-> Status: Implemented — canonical identity and active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 038).
+> Status: Implemented — canonical identity and the active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 038).
 
 ## Canonical Definition
 
@@ -31,8 +31,16 @@ Target assignment precedence at ingest is:
 explicit producer target > observed/enriched target > active-target fallback > null
 ```
 
-Changing or clearing the active target appends `system.active_target_changed`;
-existing rows are never re-attributed.
+There is no per-session layer between the two. Spec 041 added one — a terminal
+tab bound from its toolbar, or an external shell exporting `REDLOG_TARGET` —
+and it was withdrawn on 2026-10-01: it declared at write time what the pane's
+own event sequence already carries, and it never guarded scope, which judges
+`data.detectedTarget` and not `target_id`. A `data.session_target` on an
+incoming event is now ignored. Deriving a pane's target at read time, from the
+events of that pane, is a separate design.
+
+Changing or clearing the active target appends `system.active_target_changed`.
+Existing rows are never re-attributed.
 
 ## Normalization
 

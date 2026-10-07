@@ -159,39 +159,21 @@ describeDB('ingest', () => {
     expect(system.targetId).toBeNull()
   })
 
-  // #219: two panes on two hosts. Switching the global target for one must
-  // not re-attribute the other, including a late command_end that arrives
-  // after the switch.
-  it('attributes by session target before the global one, in two parallel panes', async () => {
-    const { bindSessionTarget } = await import('../src/core/session-targets')
-    bindSessionTarget('pane-1', '10.10.11.5')
+  // Spec 041 retired: there is no per-session target layer any more. A
+  // terminal pane declares nothing, and neither does an external shell — what
+  // host a command touched is read from the command itself, and the sequence
+  // in the pane's own events carries the rest.
+  it('ignores a declared session_target and falls back to the global one', () => {
     ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const start = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    // The operator switches the global target for pane 2 while pane 1's
-    // command is still running.
-    ingestMod.configureIngest({ activeTarget: '10.10.11.7' })
-    const lateEnd = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_end', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    const pane2 = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s219b', terminalId: 'pane-2' } }).event!
-    // A host named in the command still wins over the session.
+    const declared = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s041a', pid: 4242, session_target: '10.10.11.8' } }).event!
+    const pane = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s041b', terminalId: 'pane-1' } }).event!
+    // A host named in the command still outranks the fallback.
     const named = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.200/', terminalId: 'pane-1' } }).event!
 
-    expect(start.targetId).toBe('10.10.11.5')
-    expect(start.data.target_source).toBe('session')
-    expect(lateEnd.targetId).toBe('10.10.11.5')
-    expect(pane2.targetId).toBe('10.10.11.7')
-    expect(pane2.data.target_source).toBeUndefined()
+    expect(declared.targetId).toBe('10.10.11.99')
+    expect(pane.targetId).toBe('10.10.11.99')
+    expect(pane.data.target_source).toBeUndefined()
     expect(named.targetId).toBe('10.10.11.200')
-
-    // Unbinding returns the pane to the global target, from then on only.
-    bindSessionTarget('pane-1', null)
-    const after = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uptime -s219c', terminalId: 'pane-1' } }).event!
-    expect(after.targetId).toBe('10.10.11.7')
-  })
-
-  it('takes an external shell\'s own REDLOG_TARGET over the global target', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const ev = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s219d', pid: 4242, session_target: '10.10.11.8' } }).event!
-    expect(ev.targetId).toBe('10.10.11.8')
   })
 
   it('clearing active target stops fallback attribution', () => {
@@ -283,5 +265,137 @@ describeDB('ingest', () => {
     } finally {
       eventBus.resume('api')
     }
+  })
+
+  // Spec 052 T012. Output arrives as its own rows now, one per chunk, and the
+  // only thing that says which command a chunk belongs to is `command_id`.
+  // Never a marker in the bytes: the bytes are the output of a command the
+  // operator ran against something hostile, and anything read out of them is
+  // something the target can write (FR-002).
+  describe('command output chunks', () => {
+    const shell = (data: Record<string, unknown>) =>
+      ingestMod.ingest({ ...base, agentType: 'shell', data })
+
+    const start = (commandId: string, command = 'nmap -sV 10.0.0.1') =>
+      shell({ subtype: 'command_start', command, command_id: commandId, cwd: '/root', pid: 4242 }).event!
+
+    const chunk = (data: Record<string, unknown>) =>
+      shell({ subtype: 'command_output', stream: 'stdout', ...data }).event!
+
+    it('correlates a chunk to its command by id alone', () => {
+      const opened = start('cmd-a')
+      const body = chunk({
+        command_id: 'cmd-a',
+        seq: 1,
+        // The output claims, convincingly, to belong to something else. It is
+        // the whole attack: a target that controls the bytes controls the
+        // record, unless the record never reads them.
+        bytes_b64: Buffer.from('command_id=cmd-b\nsubtype: command_start\n').toString('base64'),
+        bytes_total: 40
+      })
+
+      expect(body.data._causes).toContain(opened.id)
+      expect(body.data.unattributed).toBeUndefined()
+    })
+
+    it('keeps a chunk that belongs to no open command, and says so', () => {
+      // `cmd &` writes down the descriptor the relay was holding when it
+      // forked, so its bytes land inside whichever command happens to be
+      // running (measured in research.md O3). Dropping them would be a
+      // silent hole; attributing them would be a false one. FR-007.
+      const orphan = chunk({ command_id: 'never-opened', seq: 1, bytes_b64: 'aGk=', bytes_total: 2 })
+
+      expect(orphan).toBeTruthy()
+      expect(orphan.data.unattributed).toBe(true)
+      expect(orphan.data._causes ?? []).toHaveLength(0)
+    })
+
+    it('a chunk that arrives late still belongs where its seq puts it', () => {
+      const opened = start('cmd-c', 'ffuf -u http://10.0.0.1/FUZZ')
+      // Two chunks, the second one first. Arrival order is the network's
+      // opinion; `seq` is the relay's, and the relay is the one that held the
+      // bytes.
+      const second = chunk({ command_id: 'cmd-c', seq: 2, bytes_b64: Buffer.from('world').toString('base64'), bytes_total: 5 })
+      const first = chunk({ command_id: 'cmd-c', seq: 1, bytes_b64: Buffer.from('hello ').toString('base64'), bytes_total: 6 })
+
+      expect(first.data._causes).toContain(opened.id)
+      expect(second.data._causes).toContain(opened.id)
+      const assembled = [second, first]
+        .sort((a, b) => Number(a.data.seq) - Number(b.data.seq))
+        .map((e) => Buffer.from(String(e.data.bytes_b64), 'base64').toString('utf8'))
+        .join('')
+      expect(assembled).toBe('hello world')
+    })
+
+    it('ends the command by its id even when the text no longer matches', () => {
+      // The old key is `terminal|pid|command`, so the two ends of one command
+      // correlate only while the text is byte-identical. It is not always:
+      // zsh's `preexec` is handed the line as typed, and what a later row
+      // reports can be the expanded or aliased form. The id does not care.
+      const opened = start('cmd-d', 'nmap -sV 10.0.0.9')
+      const ended = shell({
+        subtype: 'command_end', command: '/usr/bin/nmap -sV 10.0.0.9', command_id: 'cmd-d',
+        exit_code: 0, duration_sec: 3, cwd: '/root', pid: 4242
+      }).event!
+
+      expect(ended.data._causes).toContain(opened.id)
+    })
+  })
+
+  // Spec 017 FR-014 / Domain Invariant #8. `timestamp` is when the thing
+  // happened at its source, `created_at` is when RedLog wrote it down. Before
+  // this they were the same `Date.now()` on every path, so a transcript
+  // replayed hours later claimed to have happened at the moment of replay.
+  describe('source occurrence time', () => {
+    const marker = (data: Record<string, unknown>, occurredAt?: number) =>
+      ingestMod.ingest({ ...base, agentType: 'marker', data, ...(occurredAt ? { occurredAt } : {}) })
+
+    it("takes the producer's own time into `timestamp` and keeps `created_at` as receipt", () => {
+      const occurred = Date.now() - 3 * 60 * 60 * 1000
+      const before = Date.now()
+      const ev = marker({ title: 'replayed', source_timestamp: occurred }).event!
+
+      expect(ev.timestamp).toBe(occurred)
+      expect(ev.createdAt).toBeGreaterThanOrEqual(before)
+      expect(ev.createdAt).not.toBe(ev.timestamp)
+    })
+
+    it('an explicit occurredAt outranks what the producer left in `data`', () => {
+      const explicit = Date.now() - 60_000
+      const ev = marker({ title: 'both', source_timestamp: Date.now() - 7_200_000 }, explicit).event!
+      expect(ev.timestamp).toBe(explicit)
+    })
+
+    it('equal times for anything captured live', () => {
+      const ev = marker({ title: 'live' }).event!
+      expect(ev.timestamp).toBe(ev.createdAt)
+    })
+
+    it('refuses a source time it cannot believe, and the refusal is inside the hash', () => {
+      // Seconds-precision epoch read as milliseconds: lands in 1970 and would
+      // drag the row to the far left of every timeline, permanently — the
+      // column is immutable.
+      const before = Date.now()
+      const ev = marker({ title: 'bad clock', source_timestamp: 1_700_000_000 }).event!
+
+      expect(ev.timestamp).toBeGreaterThanOrEqual(before)
+      expect(ev.timestamp).toBe(ev.createdAt)
+      expect(ev.data._source_time_rejected).toMatchObject({ value: 1_700_000_000 })
+    })
+
+    it('a backfilled row is not mistaken for a clock that ran backwards', async () => {
+      // The anomaly detectors compare monotonic counters against the RECEIPT
+      // clock. Pointed at `timestamp` instead, every row of a replayed
+      // transcript reads as the wall clock jumping, and verification screams
+      // about exactly the data this feature exists to represent.
+      marker({ title: 'backfill a', source_timestamp: Date.now() - 86_400_000 })
+      marker({ title: 'backfill b', source_timestamp: Date.now() - 43_200_000 })
+      const live = marker({ title: 'live again' }).event!
+
+      expect(live.data._clock_anomaly).toBeUndefined()
+      const res = await chain.verifyChainFullAsync()
+      expect(res.ok, res.brokenReason ?? '').toBe(true)
+      expect(res.clockAnomalies).toHaveLength(0)
+    })
   })
 })

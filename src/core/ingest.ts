@@ -31,7 +31,6 @@ import { redact, getRules } from './redaction'
 import { extractBodyToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
-import { clearSessionTargets, sessionTargetFor } from './session-targets'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -87,6 +86,13 @@ export interface IngestInput {
   bypassPause?: boolean
   /** Envelope: raw bytes / ref, mapper, producer id, producer timestamp. */
   envelope?: EnvelopeInput
+  /** When the reported thing actually happened at the source, if the producer
+   *  knows and it is not simply "now" — a replayed transcript, a spool that sat
+   *  offline. Lands in `timestamp`; `created_at` stays RedLog's receipt clock.
+   *  Producers that already carry it in `data.source_timestamp` or
+   *  `envelope.tsSource` need not repeat it here. See resolveOccurredAt in
+   *  db/event-write.ts for the precedence and the validation. */
+  occurredAt?: number
   /** A companion emitted by the pipeline itself. Skips enrichment so a
    *  derived row cannot derive further rows (no pivot-of-a-pivot). */
   derived?: boolean
@@ -109,7 +115,7 @@ export interface IngestResult {
 export function ingestEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   return ingest({ agentType, data, ...opts }).event
 }
@@ -145,6 +151,15 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 2. Causal links from fields the producer already sent (flow_id,
   //    terminal_id + pid).
+  // 2a. An output chunk that found no open command is kept and labelled, not
+  //    dropped and not guessed at. Background output inherits the descriptor
+  //    the relay held when it forked, so it lands inside whichever command is
+  //    running (research.md O3); a hole in the evidence and a wrong
+  //    attribution are both worse than saying which it was. FR-007.
+  if (agentType === 'shell' && data.subtype === 'command_output' && lifecycleCauseIds.length === 0) {
+    data.unattributed = true
+  }
+
   const causeIds = [...lifecycleCauseIds, ...socketCausesFor(agentType, data)]
   if (causeIds.length > 0) {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
@@ -175,17 +190,8 @@ export function ingest(input: IngestInput): IngestResult {
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
   if (plan.targetId && !targetId) targetId = plan.targetId
-  // #219: a session's own target outranks the global one, so switching the
-  // current target for one pane does not re-attribute what another records.
-  // Explicit and enriched targets still win; see session-targets.ts.
-  if (!targetId && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)) {
-    const sessionTarget = sessionTargetFor(data)
-    if (sessionTarget) {
-      targetId = sessionTarget
-      data.target_source = 'session'
-    } else if (activeTarget) {
-      targetId = activeTarget
-    }
+  if (!targetId && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType) && activeTarget) {
+    targetId = activeTarget
   }
 
   // 4. Redaction spans (docs/redaction-design.md layer 2). Detect only; the
@@ -195,7 +201,8 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 5. Write. insertEvent stores the raw bytes and hashes the envelope.
   const event = insertEvent(agentType, data, {
-    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope
+    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope,
+    occurredAt: input.occurredAt
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
 
@@ -497,5 +504,4 @@ export function _resetIngest(): void {
   alertRuntimeRef = null
   castProbe = null
   activeTarget = null
-  clearSessionTargets()
 }

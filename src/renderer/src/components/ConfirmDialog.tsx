@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
+import { Button } from './Button'
 import { useFocusTrap } from '../lib/useFocusTrap'
 
 // Confirmation, graded by consequence (docs/UIUX-STANDARD.md §5.5).
@@ -158,8 +159,17 @@ function ConfirmDialogInner({ state, close, t }: {
 
         {level === 'chain' && (
           <div className="mt-4">
+            {/* The name to type is set in the same prose as the instruction
+                around it, so the exact string -- where it starts, where it
+                ends, whether the punctuation is part of it -- had to be
+                guessed on the app's most destructive action. It is a value
+                now, and it looks like one. */}
             <label htmlFor="confirm-typed" className="block text-xs text-redlog-text-dim mb-1">
-              {t('confirm.typeToConfirm', { value: state.requireTyped ?? '' })}
+              {t('confirm.typeToConfirmBefore')}{' '}
+              <code className="font-mono text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 select-all">
+                {state.requireTyped ?? ''}
+              </code>{' '}
+              {t('confirm.typeToConfirmAfter')}
             </label>
             <input
               id="confirm-typed"
@@ -174,24 +184,20 @@ function ConfirmDialogInner({ state, close, t }: {
         )}
 
         <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={() => close(false)}
-            className="px-3 py-1.5 text-xs rounded-md bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-text-dim transition-colors"
-          >
+          {/* Both carry the app's button geometry rather than a second,
+              smaller one invented here: a dialog is where the two controls are
+              compared most closely, and Cancel had no edge at all. */}
+          <Button level="secondary" onClick={() => close(false)}>
             {t('confirm.cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             ref={confirmBtn}
+            level={level === 'plain' ? 'secondary' : 'danger'}
             onClick={() => close(true)}
             disabled={!armed}
-            className={`px-3 py-1.5 text-xs rounded-md font-medium focus-visible:outline-none focus-visible:ring-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              level === 'plain'
-                ? 'bg-redlog-elevated-hover text-redlog-text focus-visible:ring-redlog-text-dim'
-                : 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger'
-            }`}
           >
             {state.confirmLabel || (level === 'plain' ? t('confirm.confirm') : t('confirm.delete'))}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

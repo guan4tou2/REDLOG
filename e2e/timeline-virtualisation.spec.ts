@@ -52,7 +52,11 @@ test('the track renders only the clusters near the viewport', async () => {
     const scroll = document.querySelector('div.cursor-grab') as HTMLElement
     const track = scroll.firstElementChild as HTMLElement
     return {
-      trackW: Math.round(track.getBoundingClientRect().width),
+      // Both in CSS pixels. `getBoundingClientRect()` is in device pixels and
+      // the app renders at `body { zoom: 0.9 }`, so pairing it with
+      // `clientWidth` compares two different units. It survived here only
+      // because the assertion below has an order of magnitude of headroom.
+      trackW: track.offsetWidth,
       viewportW: scroll.clientWidth,
       domDots: document.querySelectorAll('[data-timeline-event]').length,
       scrollLeft: scroll.scrollLeft

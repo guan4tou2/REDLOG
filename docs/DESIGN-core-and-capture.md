@@ -83,8 +83,10 @@ Several earlier judgements were built on the old core and invert:
 
 ## 2. Capture coverage — four gaps
 
-Nine sources exist: shell-hook, agent-tailer, builtin-terminal, mitmproxy,
-browser-console, screenshot, clipboard, file-watcher, process-monitor.
+Eight sources exist: terminal (RedLog's own panes and, once the shell hook is
+installed, the operator's own shell — one capability, and the event says which
+terminal a command came from), agent-tailer, mitmproxy, browser-console,
+screenshot, clipboard, file-watcher, process-monitor.
 Measured against "come back to the timeline and see what was done at that
 moment", four gaps. All four are to be closed.
 

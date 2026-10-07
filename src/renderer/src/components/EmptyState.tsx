@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { Button } from './Button'
 
 // The empty state, in three parts (docs/UIUX-STANDARD.md §5.4).
 //
@@ -43,16 +44,13 @@ export function EmptyState({
       </p>
       {(action || secondary) && (
         <div className="flex items-center gap-3 mt-1">
+          {/* §4's primary: the only action on the screen, so it is the primary
+              one by definition. It used to copy the level's styles by hand,
+              which is how a design system drifts. */}
           {action && (
-            <button
-              onClick={action.onClick}
-              // §4's primary: this is the only action on the screen, so it is
-              // the primary one by definition. `h-[34px]`, 8px radius, and the
-              // focus ring the standard specifies.
-              className="h-[34px] px-4 text-sm font-medium rounded-lg bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg transition-colors"
-            >
+            <Button level="primary" onClick={action.onClick}>
               {action.label}
-            </button>
+            </Button>
           )}
           {secondary && (
             <button

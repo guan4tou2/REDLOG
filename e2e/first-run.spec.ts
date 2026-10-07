@@ -54,12 +54,19 @@ test.describe.serial('the first run', () => {
     await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-core-ready', 'false')
   })
 
-  test('keeps the ten capture sources one disclosure away', async () => {
+  test('keeps the other capture sources one disclosure away', async () => {
+    // The disclosure opens the capture card, which names the two core
+    // captures and keeps everything else behind "all sources". It used to
+    // assert the shell hook's capability line from the onboarding checklist;
+    // that checklist is gone — it described the same two capabilities a second
+    // time, in a third vocabulary — so the assertion is now the card itself.
     await expect(page.locator('[data-testid="first-run-more-sources"]')).toBeVisible()
     await page.click('[data-testid="first-run-more-sources"]')
-    await page.waitForTimeout(500)
-    expect(await page.locator('text=/capture|Capture/').count()).toBeGreaterThan(0)
-    await expect(page.getByText('commands only · redlog-run adds stdout/stderr').first()).toBeVisible()
+    const core = page.locator('[data-testid="capture-core"]')
+    await expect(core).toBeVisible()
+    await expect(core.locator('[data-testid="capture-core-commands"]')).toBeVisible()
+    await expect(core.locator('[data-testid="capture-core-http"]')).toBeVisible()
+    await expect(page.getByRole('button', { name: /all sources/ })).toBeVisible()
     await page.click('[data-testid="first-run-more-sources"]')
   })
 

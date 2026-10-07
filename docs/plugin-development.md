@@ -256,7 +256,7 @@ Read the current shell adapter and wrapper patterns:
 
 - [`hooks/shell-common.sh`](../hooks/shell-common.sh) — shared transport,
   redaction gate, recording-state check, and spool behavior for POSIX shells.
-- [`hooks/codex-wrapper.sh`](../hooks/codex-wrapper.sh) — Tier B. Wraps every
+- [`plugins/pack-ai-agents/hooks/codex-wrapper.sh`](../plugins/pack-ai-agents/hooks/codex-wrapper.sh) — Tier B. Wraps every
   shell command spawned by Codex; fires a command_start before and a
   command_end after with exit code + duration.
 

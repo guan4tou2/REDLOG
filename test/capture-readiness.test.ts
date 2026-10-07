@@ -29,26 +29,25 @@ function health(sources: ReadinessSource[], _over: Record<string, unknown> = {})
   return { sources }
 }
 
-// The three sources a solo operator wires first, in the order the README tells
-// them to: the shell hook is the backbone, the agent tailer covers AI agents,
-// the built-in terminal is the zero-setup fallback.
-const CORE = ['shell-hook', 'agent-tailer', 'builtin-terminal']
+// What a solo operator wires for commands: the terminal — RedLog's own panes,
+// plus the operator's own shell once the hook is installed — and the agent
+// tailer for AI agents. The two terminals are one source because they are one
+// capture in two places; which one a command came from is on the command.
+const CORE = ['terminal', 'agent-tailer']
 
 describe('computeCaptureReadiness', () => {
   it('is dark with a clear first step when nothing is wired', () => {
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
-      src('builtin-terminal', { state: 'idle' })
+      src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('dark')
     // Every core step is still to-do.
     expect(r.steps.filter((s) => s.core).every((s) => s.status === 'todo')).toBe(true)
-    // The one action surfaced is installing the shell hook — the highest-impact,
-    // lowest-effort setup step, and the one the README leads with.
-    expect(r.nextStep?.id).toBe('shell-hook')
+    // The one action surfaced is the terminal — and because RedLog's own pane
+    // needs nothing installed, that action is "open one and type", not a setup.
+    expect(r.nextStep?.id).toBe('terminal')
   })
 
   it('groups sources by what they capture, and claims no order within a group', () => {
@@ -57,9 +56,8 @@ describe('computeCaptureReadiness', () => {
     // first and may never install a shell hook — and was told they were dark
     // while HTTP events landed on the timeline.
     const h = health([
-      src('builtin-terminal', { state: 'idle' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
-      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' })
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' }),
+      src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' })
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
@@ -78,31 +76,28 @@ describe('computeCaptureReadiness', () => {
 
   it('is recording when HTTP alone is feeding the timeline', () => {
     // The case the ordered model got wrong: events are landing, so the app is
-    // not dark, whatever the shell hook is doing.
+    // not dark, whatever the terminal is doing.
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
+      src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
       src('mitmproxy', { state: 'active', lastEventAt: 1 })
     ], { verdict: 'partial' })
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('recording')
-    expect(r.groups.find((g) => g.id === 'http')?.activeCount).toBe(1)
+    expect(r.steps.find((s) => s.id === 'mitmproxy')?.status).toBe('active')
   })
 
-  it('counts an installed-but-silent hook as wired, and points at the next unset source', () => {
+  it('counts an installed-but-silent hook as wired, and still points at the terminal', () => {
     const h = health([
       // shell hook installed but no command has run yet
-      src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'idle' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
-      src('builtin-terminal', { state: 'idle' })
+      src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('setup')
-    expect(r.steps.find((s) => s.id === 'shell-hook')?.status).toBe('wired')
+    expect(r.steps.find((s) => s.id === 'terminal')?.status).toBe('wired')
     // Chosen by state, not position: a wired source needs an event, a todo one
     // needs an installation first. The wired one is the shorter route out of
     // dark, which is the only thing this model is for.
-    expect(r.nextStep?.id).toBe('shell-hook')
+    expect(r.nextStep?.id).toBe('terminal')
     expect(r.nextStep?.status).toBe('wired')
   })
 
@@ -111,82 +106,74 @@ describe('computeCaptureReadiness', () => {
     // visible in Capture Health, but onboarding never sends anyone to it —
     // not even when it is the only wired source.
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'idle' }),
-      src('builtin-terminal', { state: 'idle' })
+      src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
     ])
     const r = computeCaptureReadiness(h)
     expect(r.steps.find((s) => s.id === 'agent-tailer')?.status).toBe('wired')
     expect(r.groups.find((g) => g.id === 'commands')?.steps.map((s) => s.id)).toContain('agent-tailer')
-    expect(r.nextStep?.id).toBe('shell-hook')
+    expect(r.nextStep?.id).toBe('terminal')
   })
 
   it('never picks the agent tailer or an HTTP source as the next step, in any state', () => {
-    const states: ReadinessSource['state'][] = ['active', 'idle', 'absent', 'off']
-    for (const shell of states) for (const builtin of states) for (const tailer of states) for (const mitm of states) {
+    const states: ReadinessSource['state'][] = ['ready', 'unset', 'off', 'error']
+    for (const terminal of states) for (const tailer of states) for (const mitm of states) {
       const r = computeCaptureReadiness(health([
-        src('shell-hook', { state: shell, installed: shell !== 'absent' }),
-        src('builtin-terminal', { state: builtin }),
+        src('terminal', { state: terminal, installed: terminal !== 'absent' }),
         src('agent-tailer', { state: tailer, enabled: tailer !== 'off' }),
         src('mitmproxy', { state: mitm, enabled: mitm !== 'off' })
       ]))
-      expect(['shell-hook', 'builtin-terminal', undefined]).toContain(r.nextStep?.id)
+      expect(['terminal', undefined]).toContain(r.nextStep?.id)
     }
   })
 
-  it('completes onboarding when the built-in terminal OR the shell hook is active, and only then', () => {
+  it('completes onboarding when a command has been recorded, from either terminal', () => {
+    // Either terminal: the row is fed by RedLog's own panes and by the
+    // operator's own shell, and the model no longer asks which — the event
+    // does, in `data.source`.
     const base = [
       src('agent-tailer', { state: 'active', lastEventAt: 1 }),
       src('mitmproxy', { state: 'active', lastEventAt: 1 })
     ]
-    const shellOnly = computeCaptureReadiness(health([...base, src('shell-hook', { state: 'active', lastEventAt: 1 }), src('builtin-terminal', { state: 'idle' })]))
-    const builtinOnly = computeCaptureReadiness(health([...base, src('shell-hook', { state: 'absent' }), src('builtin-terminal', { state: 'active', lastEventAt: 1 })]))
-    const neither = computeCaptureReadiness(health([...base, src('shell-hook', { state: 'absent' }), src('builtin-terminal', { state: 'idle' })]))
-    expect(shellOnly.onboardingComplete).toBe(true)
-    expect(shellOnly.nextStep).toBeNull()
-    expect(builtinOnly.onboardingComplete).toBe(true)
-    expect(builtinOnly.nextStep).toBeNull()
-    // Agent turns and HTTP are landing, but no command source has proved itself.
-    expect(neither.onboardingComplete).toBe(false)
-    expect(neither.nextStep?.id).toBe('shell-hook')
+    const recorded = computeCaptureReadiness(health([...base, src('terminal', { state: 'active', lastEventAt: 1 })]))
+    const quiet = computeCaptureReadiness(health([...base, src('terminal', { state: 'ready' })]))
+    expect(recorded.steps.find((s) => s.id === 'terminal')?.status).toBe('active')
+    expect(recorded.nextStep).toBeNull()
+    // Agent turns and HTTP are landing, but no command has proved itself.
+    expect(quiet.nextStep?.id).toBe('terminal')
   })
 
   it('never lets HTTP make onboarding incomplete', () => {
     const r = computeCaptureReadiness(health([
-      src('builtin-terminal', { state: 'active', lastEventAt: 1 }),
+      src('terminal', { state: 'active', lastEventAt: 1 }),
       src('mitmproxy', { state: 'off', enabled: false })
     ]))
-    expect(r.onboardingComplete).toBe(true)
     expect(r.nextStep).toBeNull()
   })
 
   it('is recording, with no urgent next step, once any core source is active', () => {
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
-      src('builtin-terminal', { state: 'idle' })
+      src('terminal', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'healthy', recording: true })
 
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('recording')
-    expect(r.activeCount).toBe(1)
+    expect(r.steps.filter((s) => s.status === 'active')).toHaveLength(1)
     expect(r.nextStep).toBeNull()
-    expect(r.steps.find((s) => s.id === 'shell-hook')?.status).toBe('active')
+    expect(r.steps.find((s) => s.id === 'terminal')?.status).toBe('active')
   })
 
-  it('once everything is wired but nothing active, nudges the operator to generate activity', () => {
+  it('once everything is set up but nothing has been recorded, nudges the operator to generate activity', () => {
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'idle' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'idle' }),
-      src('builtin-terminal', { state: 'idle', lastEventAt: 5 })
+      src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('setup')
     // No core step needs setup any more, so the next step is the first wired
     // source, waiting for activity — the UI copy becomes "run a command".
     expect(r.steps.filter((s) => s.group === 'commands').every((s) => s.status === 'wired')).toBe(true)
-    expect(r.nextStep?.id).toBe('shell-hook')
+    expect(r.nextStep?.id).toBe('terminal')
     expect(r.nextStep?.status).toBe('wired')
   })
 
@@ -194,9 +181,8 @@ describe('computeCaptureReadiness', () => {
     // An operator who turned the tailer off has not "set it up" for onboarding
     // purposes — offering to enable it is exactly the right nudge.
     const h = health([
-      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: false, state: 'off' }),
-      src('builtin-terminal', { state: 'idle' })
+      src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: false, state: 'off' })
     ], { verdict: 'dark' })
     const r = computeCaptureReadiness(h)
     expect(r.steps.find((s) => s.id === 'agent-tailer')?.status).toBe('todo')
@@ -204,11 +190,10 @@ describe('computeCaptureReadiness', () => {
 
   it('is resilient to a health payload missing a core source', () => {
     // Defensive: never throw if the sources list drifts from the core list.
-    const h = health([src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 })],
+    const h = health([src('terminal', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 })],
       { verdict: 'healthy', recording: true })
     const r = computeCaptureReadiness(h)
-    expect(r.level).toBe('recording')
-    expect(r.steps.map((s) => s.id)).toContain('shell-hook')
+    expect(r.steps.find((s) => s.id === 'terminal')?.status).toBe('active')
   })
 })
 
@@ -233,11 +218,12 @@ describe('primaryCaptureAction', () => {
     // Its buttons are for undoing at that point, and undo is never the thing
     // to emphasise.
     expect(primaryCaptureAction(src({ installed: true, enabled: true, state: 'active' }))).toBe('none')
-    expect(primaryCaptureAction(src({ installed: true, enabled: true, state: 'idle' }))).toBe('none')
+    expect(primaryCaptureAction(src({ installed: true, enabled: true, state: 'ready' }))).toBe('none')
   })
 
   it('never says install for a source with nothing to install', () => {
-    // The built-in terminal has no hook — it is either on or off.
+    // A source with no hook — the screenshot agent, the launched browser — is
+    // either on or off.
     expect(primaryCaptureAction({ state: 'absent', hookId: undefined, enabled: false })).toBe('enable')
     expect(primaryCaptureAction({ state: 'active', hookId: undefined, enabled: true })).toBe('none')
   })

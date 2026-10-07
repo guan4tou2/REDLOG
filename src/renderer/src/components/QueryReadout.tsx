@@ -39,7 +39,7 @@ export function QueryReadout({ outcome, testId, unparsableTitle }: {
           title={t(token.read === 'condition' ? 'query.tokenCondition' : 'query.tokenText')}
           className={`font-mono px-1 py-0.5 rounded border ${
             token.read === 'condition'
-              ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10'
+              ? 'text-redlog-cyan border-redlog-cyan/40 bg-redlog-cyan/10'
               : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'
           }`}
         >{token.raw}</span>

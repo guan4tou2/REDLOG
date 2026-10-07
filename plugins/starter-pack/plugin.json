@@ -2,7 +2,7 @@
   "id": "starter-pack",
   "name": "Starter Producers",
   "version": "1.0.0",
-  "description": "Bundled pack (§8-2): the built-in capture producers RedLog ships preinstalled — the shell hooks (zsh/bash/PowerShell/WSL), the Codex wrapper, and the mitmproxy addon. This manifest is their DECLARATION; the list used to be a hardcoded array in hooks-manager. It carries no plugin contributions of its own (the producers live under `builtinProducers`, which only hooks-manager reads), so the loader lists it here for visibility without double-registering anything. These producers are always available: if this manifest is missing or unreadable, hooks-manager falls back to its built-in copy, so packaging a bad starter-pack can never take capture dark.",
+  "description": "Bundled pack (§8-2): the built-in capture producers RedLog ships preinstalled — the shell hooks (zsh/bash/PowerShell/WSL) and the mitmproxy addon. These are the sources RedLog owns: the operator's own shell and RedLog's own proxy. Wrapping somebody else's agent is a plugin's job, so the Codex wrapper moved to pack-ai-agents. This manifest is their DECLARATION; the list used to be a hardcoded array in hooks-manager. It carries no plugin contributions of its own (the producers live under `builtinProducers`, which only hooks-manager reads), so the loader lists it here for visibility without double-registering anything. These producers are always available: if this manifest is missing or unreadable, hooks-manager falls back to its built-in copy, so packaging a bad starter-pack can never take capture dark.",
   "author": "RedLog",
   "redlogApi": 1,
   "contributes": {},
@@ -15,7 +15,7 @@
       "requires": [],
       "requiresAll": ["python3", "curl"],
       "hookFile": "hooks/shell-zsh-hook.zsh",
-      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py"],
+      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py", "hooks/redlog-relay.py"],
       "installMethod": "shell-source",
       "installTarget": "~/.redlog/shell-hook.zsh",
       "shellRcFile": ".zshrc"
@@ -28,19 +28,10 @@
       "requires": [],
       "requiresAll": ["python3", "curl"],
       "hookFile": "hooks/shell-bash-hook.sh",
-      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py"],
+      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py", "hooks/redlog-relay.py"],
       "installMethod": "shell-source",
       "installTarget": "~/.redlog/shell-bash-hook.sh",
       "shellRcFile": ".bashrc"
-    },
-    {
-      "id": "codex",
-      "name": "Codex",
-      "description": "Wraps Codex shell to capture agent commands",
-      "agentType": "shell",
-      "requires": ["codex"],
-      "hookFile": "hooks/codex-wrapper.sh",
-      "installMethod": "manual"
     },
     {
       "id": "mitmproxy",
@@ -68,7 +59,7 @@
       "agentType": "shell",
       "requires": [],
       "hookFile": "hooks/shell-bash-hook.sh",
-      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py"],
+      "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py", "hooks/redlog-relay.py"],
       "installMethod": "manual"
     }
   ]

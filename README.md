@@ -255,10 +255,10 @@ project isolation, truncation and platform limits.
 
 ```bash
 # Wrap the agent's shell:
-SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
+SHELL=/path/to/redlog/plugins/pack-ai-agents/hooks/codex-wrapper.sh codex run "scan the target"
 
 # Or wrap a single command:
-./hooks/codex-wrapper.sh nmap -sV target.com
+./plugins/pack-ai-agents/hooks/codex-wrapper.sh nmap -sV target.com
 ```
 
 ### Layer 2: HTTP API (Universal)
@@ -364,8 +364,10 @@ Overlay Window
 Hooks
   ├── shell-zsh-hook.zsh   zsh preexec/precmd integration
   ├── shell-bash-hook.sh   bash DEBUG/PROMPT_COMMAND integration
-  ├── shell-common.sh      shared transport, spool and redlog-run
-  └── codex-wrapper.sh      Shell wrapper for Codex/GPT
+  └── shell-common.sh      shared transport, spool and redlog-run
+
+Plugin hooks
+  └── pack-ai-agents/hooks/codex-wrapper.sh   Shell wrapper for Codex/GPT
 ```
 
 ## Project Structure
@@ -408,7 +410,9 @@ hooks/
   shell-zsh-hook.zsh         zsh preexec/precmd → RedLog
   shell-bash-hook.sh         bash DEBUG/PROMPT_COMMAND → RedLog
   shell-common.sh            shared POSIX transport and redlog-run
-  codex-wrapper.sh           shell wrapper for any agent
+plugins/
+  pack-ai-agents/
+    hooks/codex-wrapper.sh   shell wrapper for any agent
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

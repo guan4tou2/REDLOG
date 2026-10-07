@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { SectionLabel } from '../SectionLabel'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 
@@ -75,64 +76,137 @@ export interface HookInfo {
   installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]
+  /** How to undo it. Computed in core for every hook and, until now, rendered
+   *  by nothing — including the mitmproxy CA removal, which is the longest
+   *  lived thing RedLog can leave on a machine. */
+  removalSteps?: ManualStep[]
+  /** Shipped with RedLog, rather than contributed by an installed plugin. */
+  builtin?: boolean
+  /** Contributed by a plugin that has been switched off. Still listed: these
+   *  producers run outside RedLog, so switching them off here does not stop
+   *  them, and a row that disappears reads as one that is not happening. */
+  disabled?: boolean
+  /** The steps are an extra, not a setup RedLog needs the operator to do. */
+  stepsAreOptional?: boolean
 }
 
 export function FieldGroup({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{title}</h3>
+      <SectionLabel>{title}</SectionLabel>
       <div className="space-y-2">{children}</div>
     </div>
   )
 }
 
-export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false }: {
-  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; type?: string; readOnly?: boolean
+// `hint` is the tooltip on a ⓘ beside the label, not a line of prose under the
+// field. Four fields on the General page are labelled ID and 名稱, twice over,
+// and the labels alone do not say which of them is stamped on every event and
+// which is a display string -- so the operator cannot tell the evidence field
+// from the cosmetic one sitting directly beneath it.
+export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false, hint }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void
+  type?: string; readOnly?: boolean; hint?: string
 }): JSX.Element {
   const id = useId()
+  const hintId = `${id}-hint`
   return (
     <div>
-      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
+      <div className="flex items-center gap-1 mb-1">
+        <label htmlFor={id} className="text-xs text-redlog-text-dim">{label}</label>
+        {hint && (
+          <span
+            id={hintId}
+            title={hint}
+            aria-label={hint}
+            tabIndex={0}
+            className="text-xs leading-none text-redlog-text-faint hover:text-redlog-text cursor-help focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/40 rounded"
+          >&#9432;</span>
+        )}
+      </div>
       <input
         id={id}
         type={type}
         value={value}
         readOnly={readOnly}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
-        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim cursor-not-allowed' : 'text-redlog-text focus:border-red-500'}`}
+        // `cursor-not-allowed` on a read-only field was wrong twice over: it is
+        // not disabled, and copying the value is the first thing anyone does
+        // with it -- a bug report starts there.
+        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
       />
     </div>
   )
 }
 
-export function ListField({ label, items, onChange, placeholder }: {
+export function ListField({ label, items, onChange, placeholder, parse }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
+  /** Spec 037 FR: a field that takes pasted scope splits the text on newline,
+   *  comma or space, validates each entry against the scope evaluator, and
+   *  shows the rejects inline. An entry the evaluator can never match --
+   *  `10.0.0.0/33`, `host:8080`, a URL -- would be stored as a rule that
+   *  silently never fires. Fields that are not scope leave this off and keep
+   *  the one-entry-per-Enter behaviour. */
+  parse?: (text: string) => { valid: string[]; invalid: string[] }
 }): JSX.Element {
   const { t } = useI18n()
   const [input, setInput] = useState('')
+  const [rejected, setRejected] = useState<string[]>([])
 
   const addItem = (): void => {
     const trimmed = input.trim()
-    if (trimmed && !items.includes(trimmed)) {
-      onChange([...items, trimmed])
-      setInput('')
+    if (!trimmed) return
+    if (!parse) {
+      if (!items.includes(trimmed)) {
+        onChange([...items, trimmed])
+        setInput('')
+      }
+      return
     }
+    const { valid, invalid } = parse(trimmed)
+    const added = valid.filter((entry) => !items.includes(entry))
+    if (added.length > 0) onChange([...items, ...added])
+    setRejected(invalid)
+    // Leave the rejects in the box, and only the rejects: the operator fixes
+    // them where they typed them instead of retyping the whole paste.
+    setInput(invalid.join(' '))
   }
 
   return (
     <div>
       <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <div className="flex gap-1 mb-1">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addItem()}
-          placeholder={placeholder}
-          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
-        />
-        <button onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
+        {/* A validating field takes a paste, and the requirement splits it on
+            newlines -- which a single-line <input> sanitises away, gluing the
+            last entry of one line to the first of the next. So it gets a
+            textarea, and Enter stays a newline: ⌘/Ctrl+Enter or + commits. */}
+        {parse ? (
+          <textarea
+            rows={2}
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setRejected([]) }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addItem() } }}
+            placeholder={placeholder}
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500"
+          />
+        ) : (
+          <input
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setRejected([]) }}
+            onKeyDown={(e) => e.key === 'Enter' && addItem()}
+            placeholder={placeholder}
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+          />
+        )}
+        <IconButton label={t('common.addItem')} onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
       </div>
+      {rejected.length > 0 && (
+        <p data-testid="list-field-rejected" role="alert" className="text-xs text-redlog-warn mb-1 font-mono">
+          {t('settings.scopeRejected', { entries: rejected.join(', ') })}
+        </p>
+      )}
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {items.map((item, i) => (

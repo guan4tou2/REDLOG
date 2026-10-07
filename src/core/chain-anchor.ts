@@ -596,7 +596,13 @@ function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | 
     const pr = parse(prev.monotonic_ns)
     const cur = parse(row.monotonic_ns)
     if (pr && cur && pr.boot === cur.boot) {
-      const wallDelta = row.timestamp - prev.timestamp
+      // `created_at`, not `timestamp`: an event may carry the producer's own
+      // occurrence time (see resolveOccurredAt in db/event-write.ts), so
+      // `timestamp` is not always a reading of this machine's clock. Comparing
+      // one against a monotonic counter would flag every row of a backfilled
+      // transcript as a clock anomaly. `created_at` is the receipt clock and is
+      // inside the same hash, so it is no less attested.
+      const wallDelta = row.created_at - prev.created_at
       const monoDelta = Number((cur.ns - pr.ns) / 1000000n)
       const diff = Math.abs(wallDelta - monoDelta)
       if (diff > CLOCK_TOLERANCE_MS) {

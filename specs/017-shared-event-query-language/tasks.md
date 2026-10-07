@@ -42,6 +42,9 @@
 - [x] T014a Fetch absent counterparts for a page in one batched lookup.
 - [x] T014b Mark pairs whose counterpart stays unresolved.
 - [x] T015 Keep source and receipt time distinguishable through the projection.
+      Carried the projection only; the two values stayed identical on every
+      write path, so nothing downstream could tell them apart. Phase 5 finishes
+      it.
 - [x] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.
 - [x] T017 Render unparsable, failed and no-match as three distinct recoverable
@@ -58,3 +61,46 @@
       with the capture-session / agent-session distinction.
 - [x] T022 Record in Spec 009 that its local-text-filter exception is superseded.
 - [x] T023 Analyze and converge artifacts; record verification and mark Verified.
+
+## Phase 5 — FR-014 made real (2026-10-01)
+
+T015 shipped the projection but not the distinction: `insertEvent` and
+`insertLoggedEvent` both stamped `timestamp` and `created_at` from one
+`Date.now()`, so Transcript's two labelled spans always printed the same
+number and the covering test asserted only that two nodes existed. See the
+amendment in `verification.md`.
+
+- [x] T024 Add failing tests that a producer's occurrence time reaches
+      `timestamp` while `created_at` stays the receipt clock, that an explicit
+      `occurredAt` outranks `data.source_timestamp`, and that live capture
+      leaves the two equal.
+- [x] T025 Add a failing test that an unbelievable source time is refused,
+      falls back to the receipt clock, and records the refusal inside the hash.
+- [x] T026 Add a failing test that a backfilled run still verifies with no
+      clock anomalies.
+- [x] T027 Add failing Transcript tests that the two times are distinguishable
+      when a replay pulls them apart, and that the second one is absent for an
+      event captured live. The previous assertion could not fail.
+- [x] T028 Implement `resolveOccurredAt` on both tiers: precedence, validation,
+      `_source_time_rejected` folded in before hashing. The source time lands in
+      `timestamp`, not `ts_source` — `timestamp` is the sort key, is inside the
+      chain hash and is in the immutability trigger's column list, and
+      `ts_source` is none of those. `ts_source` becomes provenance only.
+- [x] T029 Point both clock-anomaly detectors at the receipt clock. Against
+      `timestamp` they read a replayed transcript as a wall clock running
+      backwards and fail verification on exactly the data this change
+      represents. No-op for existing rows, where the two are equal.
+- [x] T030 Thread `occurredAt` through `IngestInput` and `ingestEvent`.
+      Producers already carrying `data.source_timestamp` — the tailer, at every
+      one of its call sites — need no change.
+- [x] T031 Transcript row: one time, `w-16`, no label, matching the Timeline
+      event log; an amber lag badge only when the two differ by at least a
+      second; a tooltip naming both whenever they differ at all, so Invariant #8
+      holds per displayed result rather than per row-of-two-numbers.
+- [x] T032 Timeline inspector: a `Recorded` row beside `Time`, on the same
+      condition. It is a displayed result too, and its single time had become
+      the occurrence time without saying so.
+- [x] T033 Rename the receipt label away from 「收件」 — postal vocabulary for
+      something that is not mail. 「寫入」 / `recorded`.
+- [x] T034 Run typecheck, `verify:specs`, `verify:architecture` and the unit
+      suite; record the amendment.

@@ -50,17 +50,152 @@
   --color-cyan-400: #3fc7d6;
   --color-cyan-500: #2ba9b8;
 
+  /* ── Derived shades (UI/UX audit F24) ───────────────────────────────
+     Shades the palette above does not set used to fall back to Tailwind's
+     stock colours — vivid, and from another palette. Every shade is now
+     derived from its hue's softened 400: lighter ones mixed toward white,
+     darker ones toward the app background. Shades set above are untouched.
+     test/design-palette.test.ts keeps every colour class on a defined shade. */
+  --color-blue-400: #6f9fdc;
+  --color-indigo-400: #8a8fe0;
+  --color-purple-400: #a88bd9;
+  --color-pink-400: #d58ab4;
+  --color-orange-400: #d9894f;
+  --color-lime-400: #a9cf6a;
+  --color-red-100: color-mix(in oklab, var(--color-red-400) 25%, #ffffff);
+  --color-red-200: color-mix(in oklab, var(--color-red-400) 45%, #ffffff);
+  --color-red-700: color-mix(in oklab, var(--color-red-400) 60%, #121214);
+  --color-red-800: color-mix(in oklab, var(--color-red-400) 45%, #121214);
+  --color-red-900: color-mix(in oklab, var(--color-red-400) 30%, #121214);
+  --color-red-950: color-mix(in oklab, var(--color-red-400) 18%, #121214);
+  --color-rose-100: color-mix(in oklab, var(--color-red-400) 25%, #ffffff);
+  --color-rose-200: color-mix(in oklab, var(--color-red-400) 45%, #ffffff);
+  --color-rose-300: color-mix(in oklab, var(--color-red-400) 70%, #ffffff);
+  --color-rose-500: color-mix(in oklab, var(--color-red-400) 88%, #121214);
+  --color-rose-600: color-mix(in oklab, var(--color-red-400) 74%, #121214);
+  --color-rose-700: color-mix(in oklab, var(--color-red-400) 60%, #121214);
+  --color-rose-800: color-mix(in oklab, var(--color-red-400) 45%, #121214);
+  --color-rose-900: color-mix(in oklab, var(--color-red-400) 30%, #121214);
+  --color-rose-950: color-mix(in oklab, var(--color-red-400) 18%, #121214);
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-400) 25%, #ffffff);
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-400) 45%, #ffffff);
+  --color-emerald-600: color-mix(in oklab, var(--color-emerald-400) 74%, #121214);
+  --color-emerald-700: color-mix(in oklab, var(--color-emerald-400) 60%, #121214);
+  --color-emerald-800: color-mix(in oklab, var(--color-emerald-400) 45%, #121214);
+  --color-emerald-900: color-mix(in oklab, var(--color-emerald-400) 30%, #121214);
+  --color-emerald-950: color-mix(in oklab, var(--color-emerald-400) 18%, #121214);
+  --color-green-100: color-mix(in oklab, var(--color-emerald-400) 25%, #ffffff);
+  --color-green-200: color-mix(in oklab, var(--color-emerald-400) 45%, #ffffff);
+  --color-green-600: color-mix(in oklab, var(--color-emerald-400) 74%, #121214);
+  --color-green-700: color-mix(in oklab, var(--color-emerald-400) 60%, #121214);
+  --color-green-800: color-mix(in oklab, var(--color-emerald-400) 45%, #121214);
+  --color-green-900: color-mix(in oklab, var(--color-emerald-400) 30%, #121214);
+  --color-green-950: color-mix(in oklab, var(--color-emerald-400) 18%, #121214);
+  --color-amber-100: color-mix(in oklab, var(--color-amber-400) 25%, #ffffff);
+  --color-amber-200: color-mix(in oklab, var(--color-amber-400) 45%, #ffffff);
+  --color-amber-600: color-mix(in oklab, var(--color-amber-400) 74%, #121214);
+  --color-amber-700: color-mix(in oklab, var(--color-amber-400) 60%, #121214);
+  --color-amber-800: color-mix(in oklab, var(--color-amber-400) 45%, #121214);
+  --color-amber-900: color-mix(in oklab, var(--color-amber-400) 30%, #121214);
+  --color-amber-950: color-mix(in oklab, var(--color-amber-400) 18%, #121214);
+  --color-yellow-100: color-mix(in oklab, var(--color-amber-400) 25%, #ffffff);
+  --color-yellow-200: color-mix(in oklab, var(--color-amber-400) 45%, #ffffff);
+  --color-yellow-600: color-mix(in oklab, var(--color-amber-400) 74%, #121214);
+  --color-yellow-700: color-mix(in oklab, var(--color-amber-400) 60%, #121214);
+  --color-yellow-800: color-mix(in oklab, var(--color-amber-400) 45%, #121214);
+  --color-yellow-900: color-mix(in oklab, var(--color-amber-400) 30%, #121214);
+  --color-yellow-950: color-mix(in oklab, var(--color-amber-400) 18%, #121214);
+  --color-cyan-100: color-mix(in oklab, var(--color-cyan-400) 25%, #ffffff);
+  --color-cyan-200: color-mix(in oklab, var(--color-cyan-400) 45%, #ffffff);
+  --color-cyan-600: color-mix(in oklab, var(--color-cyan-400) 74%, #121214);
+  --color-cyan-700: color-mix(in oklab, var(--color-cyan-400) 60%, #121214);
+  --color-cyan-800: color-mix(in oklab, var(--color-cyan-400) 45%, #121214);
+  --color-cyan-900: color-mix(in oklab, var(--color-cyan-400) 30%, #121214);
+  --color-cyan-950: color-mix(in oklab, var(--color-cyan-400) 18%, #121214);
+  --color-blue-100: color-mix(in oklab, var(--color-blue-400) 25%, #ffffff);
+  --color-blue-200: color-mix(in oklab, var(--color-blue-400) 45%, #ffffff);
+  --color-blue-300: color-mix(in oklab, var(--color-blue-400) 70%, #ffffff);
+  --color-blue-500: color-mix(in oklab, var(--color-blue-400) 88%, #121214);
+  --color-blue-600: color-mix(in oklab, var(--color-blue-400) 74%, #121214);
+  --color-blue-700: color-mix(in oklab, var(--color-blue-400) 60%, #121214);
+  --color-blue-800: color-mix(in oklab, var(--color-blue-400) 45%, #121214);
+  --color-blue-900: color-mix(in oklab, var(--color-blue-400) 30%, #121214);
+  --color-blue-950: color-mix(in oklab, var(--color-blue-400) 18%, #121214);
+  --color-indigo-100: color-mix(in oklab, var(--color-indigo-400) 25%, #ffffff);
+  --color-indigo-200: color-mix(in oklab, var(--color-indigo-400) 45%, #ffffff);
+  --color-indigo-300: color-mix(in oklab, var(--color-indigo-400) 70%, #ffffff);
+  --color-indigo-500: color-mix(in oklab, var(--color-indigo-400) 88%, #121214);
+  --color-indigo-600: color-mix(in oklab, var(--color-indigo-400) 74%, #121214);
+  --color-indigo-700: color-mix(in oklab, var(--color-indigo-400) 60%, #121214);
+  --color-indigo-800: color-mix(in oklab, var(--color-indigo-400) 45%, #121214);
+  --color-indigo-900: color-mix(in oklab, var(--color-indigo-400) 30%, #121214);
+  --color-indigo-950: color-mix(in oklab, var(--color-indigo-400) 18%, #121214);
+  --color-purple-100: color-mix(in oklab, var(--color-purple-400) 25%, #ffffff);
+  --color-purple-200: color-mix(in oklab, var(--color-purple-400) 45%, #ffffff);
+  --color-purple-300: color-mix(in oklab, var(--color-purple-400) 70%, #ffffff);
+  --color-purple-500: color-mix(in oklab, var(--color-purple-400) 88%, #121214);
+  --color-purple-600: color-mix(in oklab, var(--color-purple-400) 74%, #121214);
+  --color-purple-700: color-mix(in oklab, var(--color-purple-400) 60%, #121214);
+  --color-purple-800: color-mix(in oklab, var(--color-purple-400) 45%, #121214);
+  --color-purple-900: color-mix(in oklab, var(--color-purple-400) 30%, #121214);
+  --color-purple-950: color-mix(in oklab, var(--color-purple-400) 18%, #121214);
+  --color-pink-100: color-mix(in oklab, var(--color-pink-400) 25%, #ffffff);
+  --color-pink-200: color-mix(in oklab, var(--color-pink-400) 45%, #ffffff);
+  --color-pink-300: color-mix(in oklab, var(--color-pink-400) 70%, #ffffff);
+  --color-pink-500: color-mix(in oklab, var(--color-pink-400) 88%, #121214);
+  --color-pink-600: color-mix(in oklab, var(--color-pink-400) 74%, #121214);
+  --color-pink-700: color-mix(in oklab, var(--color-pink-400) 60%, #121214);
+  --color-pink-800: color-mix(in oklab, var(--color-pink-400) 45%, #121214);
+  --color-pink-900: color-mix(in oklab, var(--color-pink-400) 30%, #121214);
+  --color-pink-950: color-mix(in oklab, var(--color-pink-400) 18%, #121214);
+  --color-orange-100: color-mix(in oklab, var(--color-orange-400) 25%, #ffffff);
+  --color-orange-200: color-mix(in oklab, var(--color-orange-400) 45%, #ffffff);
+  --color-orange-300: color-mix(in oklab, var(--color-orange-400) 70%, #ffffff);
+  --color-orange-500: color-mix(in oklab, var(--color-orange-400) 88%, #121214);
+  --color-orange-600: color-mix(in oklab, var(--color-orange-400) 74%, #121214);
+  --color-orange-700: color-mix(in oklab, var(--color-orange-400) 60%, #121214);
+  --color-orange-800: color-mix(in oklab, var(--color-orange-400) 45%, #121214);
+  --color-orange-900: color-mix(in oklab, var(--color-orange-400) 30%, #121214);
+  --color-orange-950: color-mix(in oklab, var(--color-orange-400) 18%, #121214);
+  --color-lime-100: color-mix(in oklab, var(--color-lime-400) 25%, #ffffff);
+  --color-lime-200: color-mix(in oklab, var(--color-lime-400) 45%, #ffffff);
+  --color-lime-300: color-mix(in oklab, var(--color-lime-400) 70%, #ffffff);
+  --color-lime-500: color-mix(in oklab, var(--color-lime-400) 88%, #121214);
+  --color-lime-600: color-mix(in oklab, var(--color-lime-400) 74%, #121214);
+  --color-lime-700: color-mix(in oklab, var(--color-lime-400) 60%, #121214);
+  --color-lime-800: color-mix(in oklab, var(--color-lime-400) 45%, #121214);
+  --color-lime-900: color-mix(in oklab, var(--color-lime-400) 30%, #121214);
+  --color-lime-950: color-mix(in oklab, var(--color-lime-400) 18%, #121214);
+  /* Neutral zinc follows the RedLog greys. */
+  --color-zinc-400: var(--color-redlog-text-dim);
+  --color-zinc-500: var(--color-redlog-muted);
+  --color-zinc-700: var(--color-redlog-border);
+
   /* ── RedLog design tokens (§1) ──────────────────────────────────────── */
   --color-redlog-bg: #121214;
   --color-redlog-surface: #1a1a1d;
   --color-redlog-elevated: #212126;
   --color-redlog-elevated-hover: #2a2a30;
-  --color-redlog-border-subtle: #26262c;
-  --color-redlog-border: #33333a;
+  /* WCAG 1.4.11 wants 3:1 for a control's boundary when the boundary is the
+     only thing identifying it -- and here it is: `elevated` sits 1.17:1 from
+     `bg`, so the fill of an input or a quiet button says nothing, and the
+     hairline was carrying the whole depth model at 1.49:1. That is the
+     mechanism behind "these controls have no visible extent".
+     `border-subtle` stays deliberately under 3:1. It separates rows inside a
+     list, which is decoration rather than a component boundary; held to the
+     same line it would draw a grid over every table in the app. It was still
+     1.24:1 -- a line nobody could see -- so it roughly doubles. */
+  --color-redlog-border-subtle: #4a4a53;
+  --color-redlog-border: #74747c;
   --color-redlog-text: #ececf0;
-  --color-redlog-text-dim: #9a9aa4;
-  --color-redlog-text-faint: #93939d;
-  --color-redlog-muted: #7e7e88;
+  /* Lifted when the default zoom dropped to 0.9 (lib/uiScale). WCAG's 4.5:1
+     is calibrated at ~16px; the ramp sat at 4.0–6.7:1, which reads as grey
+     mush at an effective 11.7px on a near-black field. `dim` and `faint` were
+     also 2.7 L* apart -- three declared tiers, two visible ones -- so the gap
+     between them is now 7.7 L*, which is a step you can actually see. */
+  --color-redlog-text-dim: #bebec8;
+  --color-redlog-text-faint: #a9a9b4;
+  --color-redlog-muted: #91919c;
   --color-redlog-on-accent: #16090a;
   --color-redlog-on-danger: #1a0303;
   --color-redlog-on-warn: #1a1203;
@@ -70,6 +205,12 @@
   --color-redlog-accent-dim: #b84d51;
   --color-redlog-danger: #ff4d4f;
   --color-redlog-danger-hover: #ff6a6c;
+  /* §1's state colours. `on-safe` and `on-warn` were already here -- the dark
+     text that sits on these two fills -- while the fills themselves were not,
+     so every "healthy" and every "unknown" in the app reached for a raw
+     Tailwind emerald or amber instead. */
+  --color-redlog-safe: #5ecf9c;
+  --color-redlog-warn: #d4ac5a;
   --color-redlog-cyan: #3fc7d6;
   --color-redlog-cyan-dim: #0e7490;
   --color-redlog-lane: #6e6e78;
@@ -126,8 +267,8 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  zoom: var(--app-zoom, 1);
-  height: calc(100vh / var(--app-zoom, 1));
+  zoom: var(--app-zoom, 0.9);
+  height: calc(100vh / var(--app-zoom, 0.9));
 }
 
 @media (-webkit-min-device-pixel-ratio: 1) and (max-resolution: 143dpi) {
@@ -162,11 +303,26 @@ select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #33333a;
+  background: var(--color-redlog-border);
   border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a54;
+  background: var(--color-redlog-muted);
+}
+
+/* The nav scrolls by a few pixels on a short window, and a 10px bar inside a
+   48px icon rail is a fifth of the rail spent saying so — it sat against the
+   icons and made the one column the eye tracks look crowded. Four pixels is
+   still an affordance; it is just not a column of its own. */
+.rl-thin-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.rl-thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border-subtle);
+}
+.rl-thin-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--color-redlog-border);
 }
 
 .drag-over {

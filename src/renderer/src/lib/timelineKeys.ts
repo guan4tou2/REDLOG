@@ -30,8 +30,10 @@ export type TimelineKeyAction =
   | 'exit-focus' // Escape, focus-chain active
   | 'close-detail' // Escape, detail panel open
   | 'clear-selection' // Escape, an event selected but no panel open
-  | 'nav-prev' // ←  previous event in the same lane
-  | 'nav-next' // →  next event in the same lane
+  | 'nav-prev' // ←  previous event in time, across lanes
+  | 'nav-next' // →  next event in time, across lanes
+  | 'nav-lane-prev' // ⌥← previous event from the same producer
+  | 'nav-lane-next' // ⌥→ next event from the same producer
   | 'nav-lane-up' // ↑  nearest event in time, one lane up
   | 'nav-lane-down' // ↓  nearest event in time, one lane down
   | 'nav-state-prev' // ⇧← previous event carrying state
@@ -79,8 +81,17 @@ export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): Timelin
   //   ⇧← ⇧→ skip to the next event that carries state — a non-zero exit, a
   //        scope violation, loot. The dense middle of a run is mostly noise.
   if (e.metaKey || e.ctrlKey || e.altKey) return 'none'
-  if (e.key === 'ArrowLeft') return e.shiftKey ? 'nav-state-prev' : 'nav-prev'
-  if (e.key === 'ArrowRight') return e.shiftKey ? 'nav-state-next' : 'nav-next'
+  // Bare arrows follow time; the modified ones narrow it. ⇧ skips to what
+  // changed, ⌥ stays with one producer — both are questions about a subset,
+  // and the unmodified key answers the one everybody has first.
+  if (e.key === 'ArrowLeft') {
+    if (e.shiftKey) return 'nav-state-prev'
+    return e.altKey ? 'nav-lane-prev' : 'nav-prev'
+  }
+  if (e.key === 'ArrowRight') {
+    if (e.shiftKey) return 'nav-state-next'
+    return e.altKey ? 'nav-lane-next' : 'nav-next'
+  }
   if (e.key === 'ArrowUp') return 'nav-lane-up'
   if (e.key === 'ArrowDown') return 'nav-lane-down'
   if (e.key === 'Home') return 'nav-first'
