@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "What happens to a command before it runs: relayed, pty, or native.",
+    "Spec 052, research.md D3/D7. One list, two readers: the shell adapter",
+    "reads this file at the prompt (through hooks/redlog-relay.py), and RedLog",
+    "reads it through src/core/terminal-class.ts. Two copies of these names",
+    "would drift, and the drift would be silent until the day an operator's",
+    "reverse shell went through a relay mid-engagement.",
+    "",
+    "native: leave it completely alone. nc/ncat must stay locally suspendable",
+    "for the Ctrl-Z / stty raw -echo / fg upgrade (FR-025); an editor or pager",
+    "records redraws and no content (FR-026).",
+    "",
+    "pty: brings its own TTY, so a PTY capture is lossless and the loss of",
+    "local suspension is a cost worth paying for these.",
+    "",
+    "repl: interactive when bare, an ordinary command when handed a script or",
+    "one of replScriptFlags (FR-027).",
+    "",
+    "wrappers: names that stand in front of the real command, mapped to the",
+    "flags of theirs that take a separate value — so `sudo -u root nc` is",
+    "classified as nc and not as root. FR-027."
+  ],
+  "native": ["nc", "ncat", "vim", "vi", "nvim", "nano", "emacs", "less", "more"],
+  "pty": ["ssh", "socat", "pwncat-cs"],
+  "repl": ["python", "python2", "python3", "ipython", "node", "irb", "ruby", "perl", "php", "lua"],
+  "replScriptFlags": ["-c", "-m", "-e"],
+  "wrappers": {
+    "sudo": ["-u", "-g", "-p", "-C", "-h", "-r", "-t", "-U"],
+    "env": ["-u", "-C", "-S"],
+    "proxychains": ["-f"],
+    "proxychains4": ["-f"]
+  }
+}

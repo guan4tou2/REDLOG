@@ -11,7 +11,7 @@ const read = (relative: string): string => fs.readFileSync(path.resolve(relative
 // `redlog-relay.py` joined the list in spec 052, when `redlog-run`'s own copy
 // of the capture loop moved there: absent, the wrapper silently falls through
 // to running the command unrecorded.
-const SUPPORT_FILES = ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py']
+const SUPPORT_FILES = ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py', 'hooks/command-class.json']
 
 describe('shell adapter boundaries', () => {
   it('declares distinct bash and zsh adapters with their shared transport and session recorder', () => {
