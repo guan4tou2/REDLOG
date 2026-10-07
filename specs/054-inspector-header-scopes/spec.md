@@ -74,8 +74,17 @@ the row. Moving them is also the cheapest fix for the wrap.
 ## Requirements *(mandatory)*
 
 - **FR-001**: The inspector's pane header MUST carry only identity and pane
-  controls. "Pane controls" are the ones whose effect ends when the pane
-  closes: step, dock, close.
+  controls. "Pane controls" are the ones that act on **what the pane is showing
+  or how it is shown**: step, dock, close.
+
+  The first wording of this was "the ones whose effect ends when the pane
+  closes", and that line does not do the work it was asked to. `‹ ›` sets the
+  Timeline's selection, and the selection outlives the pane — `selectedEvent`
+  and `detailOpen` are independent, so closing the pane leaves the row
+  selected. By the outlives-it reading, step falls on the same side as
+  `這筆前後的事件`, and FR-002 loses its footing. What actually separates them
+  is the object: step changes **which row this pane is about**, the filter
+  control changes **what the Timeline behind it contains**.
 - **FR-002**: `這筆前後的事件` MUST move to the event's own time, so a control
   that sets a window around a timestamp sits beside the timestamp it is about.
 - **FR-003**: `匯出時排除` MUST move out of the header and MUST NOT be adjacent
@@ -94,6 +103,25 @@ the row. Moving them is also the cheapest fix for the wrap.
   `timeline-layout-toggle`, `timeline-detail-close`, `detail-step-prev/next`)
   MUST survive the move. e2e asserts on them; a rename is a separate change
   with its own reason.
+- **FR-008**: `e2e/timeline-detail-header.spec.ts` MUST be updated **as part of
+  this change**, not after it. Its last assertion is
+
+  ```ts
+  await expect(page.getByTestId('detail-around-event')).toBeVisible()
+  ```
+
+  made **after the pane has been scrolled to its end**, and it passes today
+  because the control is pinned in the header. FR-002 moves it into the
+  scrolling body, where at the foot of a long event it is out of view and that
+  assertion is false. The test is not wrong — it pins the contract that the
+  ways out of an event stay reachable — so what the move owes it is a new
+  statement of that contract, not a deletion.
+
+  FR-007 pins the ids; this pins their reachability. Keeping both is what stops
+  "the id still exists" from standing in for "the operator can still get to
+  it". CLAUDE.md: a change that replaces a contract owns the tests that assert
+  the old one, and e2e only reports six minutes in, and only when every gate
+  before it is green.
 
 ## Non-Goals
 
