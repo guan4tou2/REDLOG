@@ -44,7 +44,7 @@ describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => 
     expect(report.transcript, 'preexec did not fire — this is not an interactive shell')
       .toContain('PREEXEC<echo marco>')
     expect(report.transcript).toContain('PRECMD<')
-  }, 60_000)
+  }, 240_000)
 
   it('reports a failing command by its own exit status, not the harness\'s', async () => {
     const report = await runZsh(target!, {
@@ -54,7 +54,7 @@ describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => 
     expect(report.ok).toBe(true)
     expect(report.transcript).toContain('EXIT<1>')
     expect(report.transcript).toContain('EXIT<0>')
-  }, 60_000)
+  }, 240_000)
 
   it('RED: with no adapter installed, nothing is recorded', async () => {
     const before = collector.events.length
@@ -69,7 +69,7 @@ describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => 
     // measured against this line.
     expect(collector.events.length - before,
       'events arrived with no adapter installed — the harness is lying').toBe(0)
-  }, 60_000)
+  }, 240_000)
 
   it('the adapter reaches the collector, and carries the output with it', async () => {
     // This proves the HOME, the token, the port and (under WSL) the host
@@ -101,5 +101,5 @@ describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => 
     // side of the WSL boundary. Alone that is three seconds; with the rest of
     // the suite running in parallel it is fifteen, and the default budget
     // turns a slow machine into a failure that names nothing.
-  }, 180_000)
+  }, 240_000)
 })

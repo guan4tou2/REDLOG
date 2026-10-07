@@ -90,15 +90,26 @@ _redlog_precmd() {
       --stderr-part "$_REDLOG_RELAY_DIR/stderr.json" \
       --exit-code "$exit_code" --duration-sec "$duration" \
       --cwd "$PWD" --command-id "$_REDLOG_CMD_ID" \
+      --command-line "$_REDLOG_LAST_CMD" \
       --captured-by auto-relay --source auto-relay 2>/dev/null)
     rm -rf "$_REDLOG_RELAY_DIR"
     _REDLOG_RELAY_DIR=""
   fi
 
   if [[ -z "$extra" ]]; then
-    # Either nothing was relayed, or the merge failed. Either way the row
-    # lands with the right status and says plainly that no body was held.
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"auto-relay\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+    # No body — and WHY there is no body is the part a reader needs. A command
+    # that owns the terminal was never going to be relayed: recording `vim`
+    # would store redraws and none of the file, and relaying `nc` would cost
+    # the operator the shell upgrade they are in the middle of (FR-026,
+    # FR-025). That is `interactive`, a decision. A relay that could not run
+    # is `not-captured`, a failure (contracts/events.md). Collapsing the two
+    # would make every deliberate silence look like a broken capture, and
+    # every broken capture look deliberate.
+    local disposition="not-captured"
+    case "$_REDLOG_CMD_CLASS" in
+      native|pty) disposition="interactive" ;;
+    esac
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"auto-relay\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
   fi
 
   _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"

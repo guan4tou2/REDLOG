@@ -45,7 +45,7 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       redlog: { port: collector.port, token },
       timeoutSeconds: 40
     })
-  }, 120_000)
+  }, 300_000)
   afterAll(async () => { await collector?.close() })
 
   it('records a plain command with its output, status and cwd', () => {
@@ -117,7 +117,7 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
         redlog: { port: collector.port, token },
         timeoutSeconds: 40
       })
-    }, 120_000)
+    }, 300_000)
 
     it('is recorded as what it is, and read as nothing', () => {
       expect(forged.ok, forged.error).toBe(true)
@@ -150,6 +150,78 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
 
       const ends = shellEvents(collector.events, 'command_end', 'forged-by-the-target')
       expect(String(ends[0].data.stdout)).not.toContain('second-command-output')
+    })
+  })
+
+  // T022/T023 — the two ways a command legitimately has no body, and why
+  // telling them apart matters more than either one on its own.
+  //
+  // Principle VI: no-event, not-captured, stopped and failed stay distinct all
+  // the way to the timeline. An empty `stdout` with `completeness: complete`
+  // says "this command printed nothing", and a reader believes it. For
+  // `nmap -oN scan.txt` that is false — the output went to a file — and for
+  // `vim /etc/shadow` it is false twice over, because what was not recorded is
+  // the one thing anyone would want to know about that command.
+  describe('commands whose output was never the relay’s to hold', () => {
+    const SPOOL = '/tmp/redlog-t022-redirect.txt'
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: [
+          `echo redirected-body > ${SPOOL}`,
+          `cat ${SPOOL}`,
+          'vim --version'
+        ],
+        redlog: { port: collector.port, token },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('says a redirected command was redirected, not that it was silent', () => {
+      expect(run.ok, run.error).toBe(true)
+
+      const end = shellEvents(collector.events, 'command_end', `> ${SPOOL}`)[0]
+      expect(end, 'no command_end for the redirected command').toBeTruthy()
+      expect(end.data).toMatchObject({
+        output_disposition: 'redirected',
+        completeness: 'metadata-only'
+      })
+      expect(String(end.data.stdout ?? '')).toBe('')
+
+      // And the operator's redirection still did what they asked — the bytes
+      // are in the file. A relay that swallowed them would be a capture tool
+      // that broke the capture.
+      const read = shellEvents(collector.events, 'command_end', `cat ${SPOOL}`)[0]
+      expect(read, 'no command_end for the read-back').toBeTruthy()
+      expect(String(read.data.stdout)).toContain('redirected-body')
+    })
+
+    it('says an interactive command was interactive, and leaves it alone', () => {
+      // `vim` is in the native class: relaying it would record cursor
+      // movements and none of the file (FR-026), and the same list keeps `nc`
+      // suspendable for the shell upgrade (FR-025). `--version` is used only
+      // so the thing exits; the classification is on the program name.
+      const start = shellEvents(collector.events, 'command_start', 'vim --version')[0]
+      const end = shellEvents(collector.events, 'command_end', 'vim --version')[0]
+      expect(start, 'no command_start for the native command').toBeTruthy()
+      expect(end, 'no command_end for the native command').toBeTruthy()
+
+      expect(start.data.class).toBe('native')
+      expect(end.data).toMatchObject({
+        output_disposition: 'interactive',
+        completeness: 'metadata-only'
+      })
+      expect(String(end.data.stdout ?? '')).toBe('')
+      // Still a recorded command, with its status and where it ran. The
+      // record says the body is absent and why; it does not go missing.
+      expect(end.data.exit_code).toBeDefined()
+      expect(String(end.data.cwd)).not.toBe('')
+      // `interactive` and `not-captured` are different words for different
+      // things: this one was never going to be held, the other means the
+      // relay could not run (contracts/events.md).
+      expect(end.data.output_disposition).not.toBe('not-captured')
     })
   })
 })

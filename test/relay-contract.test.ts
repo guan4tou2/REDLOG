@@ -123,7 +123,7 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
       output_disposition: 'captured',
       limit_hit: null
     })
-  }, 60_000)
+  }, 240_000)
 
   it('counts every byte and declares the cut when it caps', async () => {
     const r = await relay(target!, `sh -c "printf 'x%.0s' \\$(seq 1 200)"`, { maxBytes: 64 })
@@ -141,7 +141,7 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
     expect(r.event).toMatchObject({ completeness: 'truncated', limit_hit: 'stdout:64' })
     // The terminal is not capped — the cap is the record's, not the operator's.
     expect(r.terminalStdout).toContain('x'.repeat(200))
-  }, 60_000)
+  }, 240_000)
 
   it('survives bytes that are not text', async () => {
     const r = await relay(target!, `sh -c 'printf "A\\\\377\\\\376B"'`)
@@ -154,7 +154,7 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
     expect(r.event!.stdout_bytes).toBe(4)
     expect(String(r.event!.stdout)).toBe('A��B')
     expect(r.event!.stdout_truncated).toBe(false)
-  }, 60_000)
+  }, 240_000)
 
   it('reports a command that does not exist as the shell would, and says it tried', async () => {
     const r = await relay(target!, 'redlog-no-such-command-052')
@@ -172,7 +172,57 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
       output_disposition: 'not-captured'
     })
     expect(r.terminalStderr).toContain('redlog-no-such-command-052')
-  }, 60_000)
+  }, 240_000)
+})
+
+// T022. A redirected command is not a silent one (FR-008). Deciding which it
+// was means reading the command LINE — what the operator typed — and never the
+// command's output, which is the thing FR-002 forbids. The pty test covers the
+// one case end to end; this is the table, because the distinctions are fiddly
+// and getting one wrong is silent: `2> err` leaves stdout alone, `>&2` is a dup
+// onto a descriptor the relay still holds, and `| tee f` is not a redirection
+// at all.
+describeShell(`redirection detection (${target?.label ?? 'no shell reachable'})`, () => {
+  const CASES: Array<[string, boolean]> = [
+    ['echo hi > out.txt', true],
+    ['echo hi >> out.txt', true],
+    ['echo hi>out.txt', true],
+    ['echo hi &> both.txt', true],
+    ['nmap -oN scan.txt 10.0.0.1', false],   // its own flag, not the shell's
+    ['echo hi 2> err.txt', false],
+    ['echo hi 2>> err.txt', false],
+    ['echo hi >&2', false],
+    ['echo "a > b"', false],
+    ["echo 'a > b'", false],
+    ['echo 2 > out.txt', true],              // a word that happens to be `2`
+    ['cat f | tee g', false]
+  ]
+
+  it('tells a diverted stdout from a stdout that still comes past', async () => {
+    const quote = (word: string) => `'${word.replace(/'/g, `'\\''`)}'`
+    // No part files and no patience for them: `finish` then reports the
+    // redirected case as `redirected` and every other case as a drain
+    // timeout, which is the binary signal this table wants.
+    const script = CASES.map(([line]) =>
+      `printf '%s\\t' ${quote(line)}\n` +
+      `python3 "${hookPath(target!, 'redlog-relay.py')}" finish --drain-timeout 0 ` +
+      `--exit-code 0 --duration-sec 0 --cwd /tmp --command-id cid --command-line ${quote(line)}\n` +
+      `printf '\\n'`
+    ).join('\n')
+    const run = await runInShell(target!, script, { timeoutMs: 240_000 })
+
+    const seen = new Map(run.stdout.split('\n').filter((l) => l.includes('\t'))
+      .map((l) => {
+        const tab = l.indexOf('\t')
+        return [l.slice(0, tab), JSON.parse(l.slice(tab + 1)) as Record<string, unknown>] as const
+      }))
+    expect(seen.size, run.stderr.slice(0, 400)).toBe(CASES.length)
+
+    for (const [line, redirected] of CASES) {
+      expect(seen.get(line)?.output_disposition, line)
+        .toBe(redirected ? 'redirected' : 'captured')
+    }
+  }, 300_000)
 })
 
 // T010. `redlog-run` now calls the relay instead of carrying its own copy.
@@ -252,7 +302,7 @@ rm -rf "\$H"
       stderr_truncated: false,
       captured_by: 'redlog-run'
     })
-  }, 60_000)
+  }, 240_000)
 
   it('runs a builtin in this shell and says the output was never held', async () => {
     // The relay launches a process; a builtin in a process is a no-op, so
@@ -270,5 +320,5 @@ rm -rf "\$H"
       output_disposition: 'not-captured'
     })
     expect(end?.data.stdout).toBeUndefined()
-  }, 60_000)
+  }, 240_000)
 })
