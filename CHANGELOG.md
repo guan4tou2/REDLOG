@@ -5,6 +5,40 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **The causal links were being computed and then thrown away.** The backend
+  has returned a finding's whole causal component — events *and* the edges
+  between them — since v0.6.89.5. The renderer kept the ids for dimming the
+  track and discarded the edges, so the only structure on screen was one hop
+  up and one hop down, as chips. The event inspector now has a **Causal
+  graph** section that draws the component: what produced this event, what it
+  led to, and the shape between. Clicking a node opens that event. A cause
+  that retention removed, or that was never written, is drawn as an explicit
+  placeholder rather than as the end of a chain — nothing can tell those two
+  apart, so the graph does not guess. Collapsed by default: it costs a query,
+  which should not happen just because a row was selected.
+
+- **Every evidence bundle made from the Export menu failed its own
+  verifier.** The menu previews a plan and then exports against the plan's
+  snapshot. That path wrote the last event's own hash as `chainHead.hash` in
+  the manifest. The unplanned path, the chain anchors and `redlog-verify.py`
+  all use `sha256(lastHash || eventCount)`. So `verify.sh` / `verify.cmd` on
+  an untouched bundle reported `Chain : INTACT` and `Chain-head match : NO`,
+  and exited 1. The #226 Windows smoke test found it. The head formula now
+  lives in one place, `chainHeadHash()` in `src/core/chain-anchor.ts`, and the
+  snapshot path uses it.
+
+  Why the tests missed it:
+  - the one test that ran the Python verifier exported without a snapshot,
+    on an empty chain, where the head check does not apply;
+  - another test asserted the bare hash as the expected value.
+
+  `test/bundle-export.test.ts` now runs the verifier on a planned bundle and
+  an unplanned one, on a non-empty chain.
+
+  **Bundles already exported from v0.18.0 through the Export menu** show
+  this mismatch even though their events are intact. Export again after
+  upgrading to get one that verifies.
+
 - **One palette, and a smaller Timeline.** A UI/UX pass, third batch:
   - *Colour*: about 200 colour classes named shades the theme never set,
     such as `red-200`, `amber-900`, `indigo-*` and `blue-*`. They fell back
@@ -261,9 +295,6 @@ for full commit body + generated notes.
   go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
-
-> **Status:** tagged; the GitHub Release and its installers are not published
-> yet. Remove this note when they are.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one
