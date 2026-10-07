@@ -1,7 +1,9 @@
+import os from 'node:os'
 import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
+import { listTerminalEnrollments } from './terminal-enrollment'
 
 // "You are recording nothing" is the worst silent failure an audit tool can
 // have. This module answers, at a glance: can each capture source record, and
@@ -76,6 +78,13 @@ export interface CaptureSource {
    *  producer posts no heartbeat, so it stays out of the verdict (the #48/#49
    *  guarantee). */
   running?: boolean
+  /** Spec 052: the operator's own terminals that have enrolled, and how many
+   *  of them are recording right now. Absent when none have — which is the
+   *  state the `terminal` row has always silently been in, and the one the
+   *  card could not tell apart from "RedLog's own panes are covering it".
+   *  `total` without `recording` is an operator who stopped it on purpose,
+   *  not a capture that failed (FR-022). */
+  enrolled?: { total: number; recording: number }
 }
 
 export interface CaptureHealth {
@@ -463,12 +472,24 @@ function computeCaptureHealth(now: number): CaptureHealth {
     }
   }
 
+  // The operator's own terminals, from the state file they and RedLog share
+  // (`~/.redlog/terminals/`). Read here rather than inferred from events,
+  // because the thing worth saying is what a terminal WILL do at the next
+  // prompt — an enrolled terminal that nobody has typed in yet has produced
+  // no events and is working perfectly.
+  const enrolledTerminals = (): { enrolled?: CaptureSource['enrolled'] } => {
+    const all = listTerminalEnrollments(os.homedir())
+    if (all.length === 0) return {}
+    return { enrolled: { total: all.length, recording: all.filter((t) => t.recording).length } }
+  }
+
   const sources: CaptureSource[] = [
     // One row for both terminals. `installed` is the operator's own shell hook
     // — the only half there is anything to install — and `alwaysPresent` keeps
     // that from reading as "terminal capture is missing" when RedLog's own
     // panes are recording perfectly well without it.
-    mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
+    { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
+      ...enrolledTerminals() },
     mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
