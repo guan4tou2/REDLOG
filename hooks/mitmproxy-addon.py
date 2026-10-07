@@ -67,6 +67,7 @@ import base64
 import hashlib
 import json
 import os
+import sys
 import time
 import threading
 from pathlib import Path
@@ -419,6 +420,157 @@ def _is_static(url: str) -> bool:
     parsed = urlparse(url)
     path = parsed.path.lower()
     return any(path.endswith(ext) for ext in STATIC_EXTENSIONS)
+
+
+# ── Socket owner: which local process opened this connection ─────────────
+#
+# The port half of the command -> traffic join. `_client_addr` gives the
+# client's ip:port; RedLog then needs the pid that owns that port, and walks
+# that pid's ancestry to the shell command_start that forked it
+# (src/core/socket-attribution.ts).
+#
+# That port -> pid step used to be the connection monitor's job, and it could
+# not do it: it ships off by default, inside an opt-in pack, and polls every
+# two seconds. A dirb connection lives fifty milliseconds. So the join was
+# fed by a watcher that structurally could not see the thing it was watching
+# for, and the design shipped looking connected.
+#
+# Done here instead, because this process is holding the socket while it asks.
+#
+# NEVER ON THE HOT PATH. A scan opens hundreds of connections a second and
+# this addon runs on mitmproxy's event loop: a subprocess call inline would
+# stall the proxy, which means dropping traffic to find out who sent it. A
+# background thread keeps a recent snapshot and every lookup is a dict read.
+#
+# What that costs, stated plainly: a connection that opens and closes entirely
+# between two refreshes is never seen, and its flows go out unattributed. That
+# is the same failure as before, an order of magnitude narrower, and it fails
+# the same way — no edge, rather than a guessed one.
+
+_OWNER_REFRESH_SEC = 0.5
+_OWNER_IDLE_STOP_SEC = 30.0
+
+_owner_table: dict[int, int] = {}
+_owner_lock = threading.Lock()
+_owner_last_want = 0.0
+_owner_thread = None
+
+
+# Parsing is separated from shelling out so it can be tested against real
+# output from each platform without a socket, a subprocess, or mitmproxy
+# installed. A wrong pid here becomes a wrong claim about which command
+# produced a request, in a record that goes to a client, so the parsers skip
+# anything they do not fully understand rather than guessing at it.
+def _parse_owner_output(plat: str, out: str) -> dict:
+    """local port -> owning pid, from one platform's socket listing."""
+    table = {}
+    if plat.startswith("linux"):
+        # `ss -tnpH state established` carries the pid directly. Parsing
+        # /proc/net/tcp instead would give an inode, and resolving that needs
+        # a scan of every process's file descriptors.
+        #   ESTAB 0 0 127.0.0.1:54321 127.0.0.1:8080 users:(("dirb",pid=123,fd=3))
+        for line in out.splitlines():
+            if "pid=" not in line:
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            local = parts[3] if ":" in parts[3] else parts[2]
+            try:
+                port = int(local.rsplit(":", 1)[1])
+                pid = int(line.split("pid=", 1)[1].split(",", 1)[0])
+            except (ValueError, IndexError):
+                continue
+            table[port] = pid
+    elif plat == "darwin":
+        # `lsof -FpPn` is a field-per-line format: `p<pid>` then `n<addr>`.
+        pid = None
+        for line in out.splitlines():
+            if line.startswith("p"):
+                try:
+                    pid = int(line[1:])
+                except ValueError:
+                    pid = None
+            elif line.startswith("n") and pid is not None:
+                local = line[1:].split("->", 1)[0]
+                try:
+                    table[int(local.rsplit(":", 1)[1])] = pid
+                except (ValueError, IndexError):
+                    continue
+    elif plat.startswith("win"):
+        #   TCP    127.0.0.1:54321   127.0.0.1:8080   ESTABLISHED   1234
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) < 5 or parts[3] != "ESTABLISHED":
+                continue
+            try:
+                table[int(parts[1].rsplit(":", 1)[1])] = int(parts[4])
+            except (ValueError, IndexError):
+                continue
+    return table
+
+
+def _read_owner_table() -> dict:
+    """local port -> owning pid, for established TCP connections.
+
+    Best effort on every platform. No `ss`, no `lsof`, a timeout, a
+    locked-down host: attribution goes quiet, and must never be able to take
+    capture with it.
+    """
+    import subprocess
+    plat = sys.platform
+    try:
+        if plat.startswith("linux"):
+            argv, timeout = ["ss", "-tnpH", "state", "established"], 3
+        elif plat == "darwin":
+            argv, timeout = ["lsof", "-nP", "-iTCP", "-sTCP:ESTABLISHED", "-FpPn"], 3
+        elif plat.startswith("win"):
+            argv, timeout = ["netstat", "-ano", "-p", "TCP"], 5
+        else:
+            return {}
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout).stdout
+        return _parse_owner_output(plat, out)
+    except Exception:
+        return {}
+
+
+def _owner_loop():
+    global _owner_table
+    while True:
+        with _owner_lock:
+            idle = time.time() - _owner_last_want
+        if idle > _OWNER_IDLE_STOP_SEC:
+            # Nothing has asked in a while. Stop shelling out every half second
+            # for an answer nobody wants; the next lookup restarts the thread.
+            with _owner_lock:
+                globals()["_owner_thread"] = None
+            return
+        fresh = _read_owner_table()
+        if fresh:
+            with _owner_lock:
+                _owner_table = fresh
+        time.sleep(_OWNER_REFRESH_SEC)
+
+
+def _socket_owner_pid(addr: str):
+    """The pid that owns the local port in "ip:port", or None.
+
+    A dict read. The snapshot is refreshed on a background thread, started on
+    the first ask and stopped once nothing has asked for a while.
+    """
+    global _owner_thread, _owner_last_want
+    if not addr:
+        return None
+    try:
+        port = int(addr.rsplit(":", 1)[1])
+    except (ValueError, IndexError):
+        return None
+    with _owner_lock:
+        _owner_last_want = time.time()
+        if _owner_thread is None:
+            _owner_thread = threading.Thread(target=_owner_loop, daemon=True)
+            _owner_thread.start()
+        return _owner_table.get(port)
 
 
 def _client_addr(flow) -> str:
@@ -783,6 +935,12 @@ class RedLogAddon:
         client_addr = _client_addr(flow)
         if client_addr:
             event_data["source_addr"] = client_addr
+            # The owning pid, resolved while this process still holds the
+            # socket. Without it the port has to be matched against a snapshot
+            # taken somewhere else, later, by something that is off by default.
+            owner = _socket_owner_pid(client_addr)
+            if owner:
+                event_data["pid"] = owner
 
         if params:
             event_data["params"] = params
@@ -959,6 +1117,7 @@ class RedLogAddon:
         query_name = getattr(question, 'name', '') if question else ''
         query_type = _dns_type_name(getattr(question, 'type', 0) if question else 0)
         source_addr = _client_addr(flow)
+        source_pid = _socket_owner_pid(source_addr)
         transport = 'udp'
         try:
             if getattr(flow, 'client_conn', None) and getattr(flow.client_conn, 'transport_protocol', None):
@@ -974,6 +1133,8 @@ class RedLogAddon:
             'source_addr': source_addr,
             'flow_id': flow.id,
         }
+        if source_pid:
+            event_data['pid'] = source_pid
         payload = {
             'agent_type': 'dns',
             'data': event_data,
@@ -1072,6 +1233,12 @@ class RedLogAddon:
         client_addr = _client_addr(flow)
         if client_addr:
             event_data["source_addr"] = client_addr
+            # The owning pid, resolved while this process still holds the
+            # socket. Without it the port has to be matched against a snapshot
+            # taken somewhere else, later, by something that is off by default.
+            owner = _socket_owner_pid(client_addr)
+            if owner:
+                event_data["pid"] = owner
 
         if ws_preview:
             event_data["ws_preview"] = ws_preview
@@ -1133,6 +1300,12 @@ class RedLogAddon:
         client_addr = _client_addr(flow)
         if client_addr:
             event_data["source_addr"] = client_addr
+            # The owning pid, resolved while this process still holds the
+            # socket. Without it the port has to be matched against a snapshot
+            # taken somewhere else, later, by something that is off by default.
+            owner = _socket_owner_pid(client_addr)
+            if owner:
+                event_data["pid"] = owner
 
         if tcp_preview:
             event_data["tcp_preview"] = tcp_preview

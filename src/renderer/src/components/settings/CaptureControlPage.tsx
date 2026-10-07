@@ -1,6 +1,7 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
-import LootRulesGroup from './LootRulesGroup'
 import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
+import AgentsPanel from './AgentsPanel'
+import ExternalCaptureGroup from './ExternalCaptureGroup'
 
 export default function CaptureControlPage({
   config, setConfig, t
@@ -12,18 +13,11 @@ export default function CaptureControlPage({
   const packs = usePackAvailability()
   return (
     <>
-      {/* Spec 035: what every project records, then the optional packs —
-          one switch each, their members' tuning beneath while on. */}
-      <FieldGroup title={t('settings.essentialGroup')}>
-        <p className="text-xs text-redlog-text-faint">{t('settings.essentialHint')}</p>
-        <ul className="text-xs text-redlog-text space-y-1 list-disc pl-4" data-testid="essential-capture">
-          <li>{t('settings.essentialShell')}</li>
-          <li>{t('settings.essentialHttp')}</li>
-          <li>{t('settings.essentialPty')}</li>
-          <li>{t('settings.essentialTerminal')}</li>
-        </ul>
-      </FieldGroup>
-
+      {/* Spec 049: the four-bullet "what every project records" list is gone.
+          It had no control, no state and no link, and it held the first screen
+          of this page. The same four sources are rows in the Dashboard's
+          capture inventory, where they carry whether they are actually feeding
+          the record — which is what an operator came here to find out. */}
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t}
@@ -93,17 +87,24 @@ export default function CaptureControlPage({
         />
       </CapturePackGroup>
 
-      <CapturePackGroup
-        pack="aiAgents" title={t('settings.packAiAgents')} hint={t('settings.packAiAgentsHint')}
-        available={packs?.aiAgents} config={config} setConfig={setConfig} t={t}
-      />
+      {/* Spec 049: `packs.aiAgents` used to be written here AND by a bare
+          checkbox on a separate AI agents page. The same boolean, so they moved
+          together — but an operator who ticked one then met an identical,
+          unticked-looking control on the other had no way to tell that capture
+          was already on. One writer now, with the tuning it gates. */}
+      <AgentsPanel config={config} setConfig={setConfig} t={t} />
 
       <CapturePackGroup
         pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
         available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
       />
 
-      <LootRulesGroup config={config} setConfig={setConfig} t={t} />
+      {/* Last, and the one block on this page that is not per project: what
+          the operator wires up on the machine itself. It sits here rather
+          than on the Plugins page because the question it answers -- "is
+          anything actually recording" -- is this page's question, and because
+          what ships with RedLog is not a plugin. */}
+      <ExternalCaptureGroup t={t} />
 
       <FieldGroup title={t('settings.screenshotGroup')}>
         <div className="flex items-center gap-2 flex-wrap">
@@ -168,37 +169,6 @@ export default function CaptureControlPage({
         <p className="text-xs text-redlog-text-faint mt-1">{t('settings.screenshot.onCommandHint')}</p>
       </FieldGroup>
 
-      {/* Size-pressure eviction budgets. The rotation LOGIC shipped in
-          #43 (retention.ts); these are the knobs that switch it on. All
-          in MB (operators think in MB; config stores bytes). 0 = keep
-          everything. When a store is over budget the coldest out-of-scope
-          files are evicted first and in-scope evidence is pinned. */}
-      {/* One group for every store's retention (Spec 028's single model):
-          size budgets first, then the row tier's age. Merged in Spec 032,
-          which added the Loot group, so the group count holds. */}
-      <FieldGroup title={t('settings.retentionGroup')}>
-        <p className="text-xs text-redlog-text-faint">{t('settings.rotationHint')}</p>
-        {([
-          ['httpBodies', 'settings.rotationHttpBodies'],
-          ['casts', 'settings.rotationCastStore'],
-          ['screenshots', 'settings.rotationScreenshots']
-        ] as const).map(([store, label]) => (
-          <Field
-            key={store}
-            label={t(label)}
-            value={String(Math.round((config.retention?.[store]?.maxBytes ?? 0) / 1024 / 1024))}
-            onChange={(v) => setConfig({ ...config, retention: { ...config.retention, [store]: { ...config.retention?.[store], maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } } })}
-            type="number"
-          />
-        ))}
-        <p className="text-xs text-redlog-text-faint">{t('settings.retentionLoggedTierHint')}</p>
-        <Field
-          label={t('settings.retentionLoggedTier')}
-          value={String(config.retention?.loggedTier?.keepDays ?? 0)}
-          onChange={(v) => setConfig({ ...config, retention: { ...config.retention, loggedTier: { ...config.retention?.loggedTier, keepDays: Math.max(0, parseInt(v) || 0) } } })}
-          type="number"
-        />
-      </FieldGroup>
     </>
   )
 }

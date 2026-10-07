@@ -29,14 +29,11 @@
   - macOS：拖進 `/Applications`，右鍵 ▸ 打開。
   - 以上都照 README 的說明就過得去。
 - [ ] **啟動**。從選單 / Dock / 開始功能表開（**不是**從終端機），視窗出現。
-- [ ] **Runtime 就緒卡**。第一次啟動時，專案選擇畫面旁邊會出現：
-  - 列出 python3、curl、你的 shell、mitmproxy（選用）；
-  - 缺少的項目附上可複製的安裝指令；
-  - 「開始使用」永遠可以按。
-- [ ] **故意少一個**：移除或改名 python3 後重新檢查，就緒卡點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
-  - 失敗時查：`src/core/runtime-preflight.ts`、`RuntimeReadiness.tsx`。
-- [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app，就緒卡的 mitmproxy 顯示已找到。
-  - 失敗時查：`src/main/login-path.ts`。
+- [ ] **專案選擇畫面乾淨**。第一次啟動只有專案選擇畫面 —— 沒有浮動的就緒卡，沒有舊版 hook 橫幅。環境檢查在開專案後的首次執行畫面上。
+- [ ] **故意少一個**：移除或改名 python3，開一個專案，首次執行畫面的「指令」點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。裝回去之後**切到別的視窗再切回來**，畫面自己更新，不需要按任何按鈕。
+  - 失敗時查：`src/core/runtime-preflight.ts`、`FirstRunView.tsx`、`hooks/useRevalidateOnFocus.ts`。
+- [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app 並開專案，HTTP 擷取自動啟動。
+  - 失敗時查：`src/main/login-path.ts`、`src/core/http-autostart.ts`。
 
 ## PROJECT
 

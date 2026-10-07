@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 //
-// The onboarding block on the Capture Health card is what a first-run operator
-// sees when the timeline is dark. computeCaptureReadiness (which decides the
-// steps and the next action) is unit-tested separately; this proves the card
-// actually renders that model — the ordered checklist and the single primary
-// CTA — and that the CTA text tracks which core source is next. Without this,
-// the render path is only reached by the smoke test's healthy bridge, where the
-// block is hidden.
+// What a first-run operator sees on the Capture Health card while nothing has
+// been recorded yet: the two core captures, named, and one action to take.
+//
+// There used to be a second block below them — an ordered checklist of the
+// same two capabilities, in a third set of words (live / set up / to do),
+// shown only until something was recorded. It is gone; this file proves what
+// replaced it still answers the question it was there for: what is set up,
+// what is not, and what do I do about it.
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, cleanup, within } from '@testing-library/react'
@@ -15,7 +16,7 @@ import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
 
 type Source = {
   id: string
-  state: 'active' | 'idle' | 'absent' | 'off'
+  state: 'ready' | 'unset' | 'off' | 'error'
   installed?: boolean
   hookId?: string
   enabled?: boolean
@@ -34,14 +35,14 @@ function draw(capture: any): HTMLElement {
   return container
 }
 
-// A dark engagement: shell hook not installed, tailer never touched, no terminal.
+// A dark engagement: no command recorded from any terminal, the operator's own
+// shell hook not installed, tailer never touched, no mitmproxy row at all.
 const DARK = health([
-  { id: 'shell-hook', hookId: 'shell-zsh', installed: false, state: 'absent', lastEventAt: null },
-  { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
-  { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
+  { id: 'terminal', hookId: 'shell-zsh', installed: false, state: 'ready', lastEventAt: null },
+  { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
 ], 'dark')
 
-describe('CaptureHealthCard onboarding', () => {
+describe('CaptureHealthCard, before anything has been recorded', () => {
   beforeEach(() => {
     ;(window as unknown as { redlog: unknown }).redlog = {
       config: { get: async () => ({}), save: async () => true },
@@ -50,72 +51,54 @@ describe('CaptureHealthCard onboarding', () => {
   })
   afterEach(() => cleanup())
 
-  it('renders the sources grouped by what they capture, unnumbered', () => {
-    // This was an ordered <ol> of exactly three. The numbering described a
-    // sequence that does not exist — an operator on a proxied web assessment
-    // starts with traffic and may never install a shell hook — and the three
-    // excluded every other source from the model entirely.
+  it('names both core captures, and nothing else, in one list', () => {
     const el = draw(DARK)
-    expect(el.querySelectorAll('ol').length, 'a numbered list implies a sequence').toBe(0)
-    const text = el.textContent ?? ''
-    expect(text).toMatch(/Commands/)
+    const core = el.querySelector('[data-testid="capture-core"]')
+    const text = core?.textContent ?? ''
+    expect(text).toMatch(/Commands/)  // zh-TW reads 終端機; the en label is still Commands
     expect(text).toMatch(/HTTP\(S\) requests/)
-    expect(text).toMatch(/Screen & files/)
-    // The command group still holds the three, in the group's own order.
-    const groups = [...el.querySelectorAll('ul')]
-    expect(groups.length).toBeGreaterThanOrEqual(3)
-    expect(groups[0].textContent).toMatch(/Shell hook/)
+    // One list, not two: the checklist that used to repeat these is gone, and
+    // with it the third vocabulary and the ordered-sequence implication.
+    expect(el.querySelectorAll('ol').length, 'a numbered list implies a sequence').toBe(0)
+    expect(el.querySelectorAll('[data-testid="capture-core"] ul')).toHaveLength(1)
+    // The other sources are one click away under All sources, not advertised.
+    expect(el.textContent).not.toMatch(/more capture sources are available/)
   })
 
-  it('puts HTTP(S) at the same level as Commands, above "Additional sources"', () => {
-    // The whole point of the restructure. HTTP(S) used to be one line inside a
-    // "Traffic" group listed third, beside the browser console — and an
-    // operator who skims the top of a list and starts wiring reads that as
-    // "requests are a nice-to-have". On a web assessment the requests ARE the
-    // engagement record.
-    const text = draw(DARK).textContent ?? ''
-    const commands = text.indexOf('Commands')
-    const http = text.indexOf('HTTP(S) requests')
-    const additional = text.indexOf('Additional sources')
-    const screen = text.indexOf('Screen & files')
-    expect(commands).toBeGreaterThanOrEqual(0)
-    expect(http).toBeGreaterThan(commands)
-    expect(additional).toBeGreaterThan(http)
-    expect(screen).toBeGreaterThan(additional)
-    // And it says what installing it buys, because "mitmproxy" alone does not.
-    expect(text).toMatch(/requests and responses from any proxied tool/)
-  })
-
-  it('surfaces "Install shell hook" as the primary CTA when nothing is wired', () => {
+  it('says what HTTP(S) buys while it is not set up, because "mitmproxy" does not', () => {
     const el = draw(DARK)
-    expect(within(el).getByText('Install shell hook')).toBeTruthy()
+    expect(el.querySelector('[data-testid="capture-core-http"]')?.textContent)
+      .toMatch(/requests and responses from any proxied tool/)
   })
 
-  it('states that the ordinary shell hook is metadata-only and names the output path', () => {
+  it('offers the zero-install way out of dark, not an installation', () => {
+    // The terminal carries a hook id, so the generic rule would have made
+    // "Install shell hook" the action. It is not the shortest route: RedLog's
+    // own pane records with nothing installed, and opening one is what proves
+    // capture works. The hook widens that to the operator's own shell after.
     const el = draw(DARK)
-    expect(el.textContent).toContain('commands only · redlog-run adds stdout/stderr')
+    expect(within(el).getByText('Open a terminal')).toBeTruthy()
+    expect(within(el).queryByText('Install shell hook')).toBeNull()
   })
 
-  it('points at the wired source once one is set up, not the next unset one', () => {
-    // Chosen by state rather than position: the installed hook needs a
-    // command, the untouched tailer needs turning on first. The shorter step
-    // is the one that gets the operator out of dark.
+  it('asks for a command once the hook is installed and has never fired', () => {
     const wired = health([
-      { id: 'shell-hook', hookId: 'shell-zsh', installed: true, state: 'idle', lastEventAt: null },
-      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
-      { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
+      { id: 'terminal', hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null },
+      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
     ], 'partial')
-    const el = draw(wired)
-    expect(within(el).getByText('Run a command')).toBeTruthy()
+    expect(within(draw(wired)).getByText('Run a command')).toBeTruthy()
   })
 
-  it('hides the onboarding block once a core source is recording', () => {
+  it('drops the action entirely once a command has been recorded', () => {
     const live = health([
-      { id: 'shell-hook', hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 },
-      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
-      { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
+      { id: 'terminal', hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: 1 },
+      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
     ], 'healthy')
     const el = draw(live)
-    expect(el.querySelector('ol')).toBeNull()
+    expect(within(el).queryByText('Open a terminal')).toBeNull()
+    expect(within(el).queryByText('Run a command')).toBeNull()
+    // …and the core line is still there, which is the whole point of having
+    // kept it: it does not disappear the moment onboarding is over.
+    expect(el.querySelector('[data-testid="capture-core"]')).toBeTruthy()
   })
 })

@@ -196,7 +196,8 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
       rows: [
         { keys: 'f', label: 'timeline.help.focusChain' },
         { keys: 'click', label: 'timeline.help.selectDot' },
-        { keys: '← →', label: 'timeline.help.walkLane' },
+        { keys: '← →', label: 'timeline.help.walkTime' },
+        { keys: '⌥← ⌥→', label: 'timeline.help.walkLane' },
         { keys: '↑ ↓', label: 'timeline.help.walkCrossLane' },
         { keys: '⇧← ⇧→', label: 'timeline.help.walkState' },
         { keys: 'Home / End', label: 'timeline.help.walkEnds' },

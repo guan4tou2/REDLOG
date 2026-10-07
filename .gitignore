@@ -11,3 +11,7 @@ test-results/
 # Python capture helper bytecode
 __pycache__/
 *.pyc
+
+# PowerShell drops this beside the working directory when the sandboxed
+# shell runs; it is a binary cache of module metadata, not project state.
+Microsoft/

@@ -9,15 +9,11 @@ import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
 
-const TYPE_COLORS: Record<string, string> = {
-  shell: 'text-green-400',
-  screenshot: 'text-blue-400',
-  clipboard: 'text-yellow-400',
-  file_transfer: 'text-purple-400',
-  marker: 'text-red-400',
-  loot: 'text-orange-400',
-  system: 'text-redlog-text-dim'
-}
+// §1 collapsed the timeline's eighteen lane hues into one grey, because a
+// colour per category means colour says nothing when something is actually
+// wrong. The same map lived here and in TargetView, one hue per event type.
+// The type is already written next to the icon; the colour was decoration
+// competing with out-of-scope and error for the operator's eye.
 
 function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   const d = e.data
@@ -294,7 +290,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           </div>
         )}
         {toolSession && (
-          <div data-testid="search-tool-session" role="status" className="mb-3 rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+          <div data-testid="search-tool-session" role="status" className="mb-3 rounded border border-redlog-cyan/40 bg-redlog-cyan/10 px-3 py-2 text-xs text-redlog-cyan">
             {t('search.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}
           </div>
         )}
@@ -349,7 +345,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                     typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                   }`}
                 >
-                  <span className={TYPE_COLORS[type] || ''}>{type}</span>
+                  <span className="text-redlog-text-dim">{type}</span>
                   {count > 0 && <span className="text-redlog-text-faint"> ·{count}</span>}
                 </button>
               )
@@ -375,7 +371,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                   className="w-full text-left flex items-start gap-2 px-3 py-2 rounded hover:bg-redlog-elevated/50 text-xs disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                   title={onOpenInTimeline ? t('search.openInTimeline') : undefined}
                 >
-                  <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-redlog-text-dim'}`}>
+                  <span className="font-mono font-bold w-12 shrink-0 text-redlog-text-dim">
                     {e.agentType.slice(0, 6)}
                   </span>
                   <span
@@ -413,7 +409,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+                  className="mt-2 w-full text-xs text-redlog-cyan hover:text-redlog-text disabled:text-redlog-text-faint py-2"
                 >
                   {loadingMore ? t('search.loading') : t('search.loadMore')}
                 </button>

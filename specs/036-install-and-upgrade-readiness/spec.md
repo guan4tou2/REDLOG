@@ -5,6 +5,17 @@
 **Status**: Verified
 **Input**: After installing RedLog, can it start reliably, and does it know whether capture can actually work on this machine? Installation and first-engagement setup are separate concerns; this spec is only the first.
 
+> **Removed 2026-09-29 — the readiness card and the legacy-hook path.** The
+> first-launch card floated over the project picker, covered the recent-projects
+> column, and on Windows asserted "this machine can record shell commands" from
+> a check list that platform does not populate. It is gone, with its reopen
+> entry point, its copy-a-command install path, and its once-per-install flag;
+> preflight now surfaces only on the first-run screen, which proves capture with
+> real events. Legacy-hook detection, migration and the banner are gone too:
+> RedLog is pre-1.0 and no longer reads a shell profile it did not write. What
+> stands from this spec is the preflight contract itself, the login-PATH
+> resolution, PowerShell profile install, checksums and packaging.
+
 ## Problems (verified on main before this spec)
 
 1. **The shell hook's dependencies were not declared.** `hooks/shell-common.sh`

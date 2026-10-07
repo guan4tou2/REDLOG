@@ -126,7 +126,11 @@ test.describe.serial('timeline geometry + startup gates', () => {
     }
     await page.waitForTimeout(200)
     const geom = await page.evaluate(() => {
-      const outer = document.querySelector('div.overflow-y-auto.min-h-0') as HTMLElement | null
+      // By testid, not by class. `div.overflow-y-auto.min-h-0` matched the
+      // sidebar once it became scrollable too, and querySelector handed back
+      // the first match — so this read the nav's geometry and reported two
+      // lanes with no error.
+      const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement | null
       if (!outer) return null
       const labels = outer.firstElementChild as HTMLElement
       return {
@@ -142,7 +146,7 @@ test.describe.serial('timeline geometry + startup gates', () => {
 
     // And it must actually scroll — the bug was that it could not.
     const scrolled = await page.evaluate(() => {
-      const outer = document.querySelector('div.overflow-y-auto.min-h-0') as HTMLElement
+      const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement
       outer.scrollTop = 9999
       return outer.scrollTop
     })
@@ -153,14 +157,20 @@ test.describe.serial('timeline geometry + startup gates', () => {
   // ---------------------------------------------------------------- P0-3
   test('every dot renders inside the track (v0.9.4 P0-3)', async () => {
     await page.evaluate(() => {
-      const outer = document.querySelector('div.overflow-y-auto.min-h-0') as HTMLElement
+      const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement
       outer.scrollTop = 0
     })
     const res = await page.evaluate(() => {
       const scroll = document.querySelector('div.cursor-grab') as HTMLElement | null
       if (!scroll) return null
       const track = scroll.firstElementChild as HTMLElement
-      const trackW = track.getBoundingClientRect().width
+      // `offsetWidth`, not `getBoundingClientRect().width`. The app renders
+      // at `body { zoom: 0.9 }`, and the two disagree under zoom: the rect is
+      // in device pixels (2000 × 0.9 = 1800) while `offsetLeft` below is in
+      // CSS pixels. Comparing them made a dot at 1898 of a 2000px track read
+      // as 98px outside it — an assertion failing on arithmetic rather than
+      // on anything that was wrong with the track.
+      const trackW = track.offsetWidth
       const dots = Array.from(document.querySelectorAll('[data-timeline-event]')) as HTMLElement[]
       const xs = dots.map((d) => d.offsetLeft)
       return { trackW, count: dots.length, min: Math.min(...xs), max: Math.max(...xs) }
@@ -174,7 +184,7 @@ test.describe.serial('timeline geometry + startup gates', () => {
     // marker at the right — is on screen at once.
     for (let i = 0; i < 6; i++) await page.click('button:has-text("\u2212")').catch(() => {})
     await page.evaluate(() => {
-      const outer = document.querySelector('div.overflow-y-auto.min-h-0') as HTMLElement
+      const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement
       const scroll = document.querySelector('div.cursor-grab') as HTMLElement
       if (outer) outer.scrollTop = 0
       if (scroll) scroll.scrollLeft = 0

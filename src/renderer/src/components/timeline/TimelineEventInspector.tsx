@@ -4,7 +4,10 @@
 // Timeline value before it is declared.
 
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { formatTime } from '../../lib/time'
+import { ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
+import type { DetailLayout } from '../../lib/detailLayout'
+import { EventNoteField } from './EventNoteField'
+import { formatDateTime, formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
 import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
@@ -38,6 +41,17 @@ export interface TimelineEventInspectorProps {
   lookup: (id: string) => RedLogEvent | undefined
   /** Select an event and scroll the track to it. */
   onJump: (e: RedLogEvent) => void
+  /** Move the selection one row along the list the operator is reading.
+   *  Absent when there is no list to walk (a single filtered result). */
+  onStep?: (delta: -1 | 1) => void
+  canStepPrev?: boolean
+  canStepNext?: boolean
+  /** Dock position, and a toggle for it, so the control sits in the pane's own
+   *  header (as on the HTTP log) rather than off on the toolbar. */
+  layout?: DetailLayout
+  onToggleLayout?: () => void
+  /** Close the pane from its own header. */
+  onClose?: () => void
   /** Select an event without scrolling. */
   onSelect: (e: RedLogEvent) => void
   /** Fetch an event outside the loaded page and select it. */
@@ -50,35 +64,83 @@ export interface TimelineEventInspectorProps {
 export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, allLoaded, focusChainOn,
-  showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t
+  showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
+  onStep, canStepPrev = false, canStepNext = false,
+  layout, onToggleLayout, onClose
 }: TimelineEventInspectorProps): JSX.Element {
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
-          <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
+      {/* Pinned to the top of the pane, not scrolled with the body — so
+          step/close/exclude stay reachable past the first screen. `sticky
+          top-0` with the pane dropping its own top padding (`pb-3`, not
+          `py-3`): the bar sits flush at the pane's top and holds that position
+          as the body scrolls, rather than jumping up a padding's worth the
+          moment scrolling begins (the old `-top-3` trick did that, and it read
+          as the whole pane shifting). `-mx-4 px-4` still cancels the pane's
+          horizontal padding so the bar is full-bleed. The background is opaque
+          because the pane is translucent and the body scrolls underneath it.
+
+          It WRAPS. Beside the list the pane is 440px by default and 280px at
+          its narrowest, and a single non-wrapping row put both label buttons
+          under a few pixels each: `Exclude from export` came out one letter
+          per line, 匯出時排除 one character per line, and the bar grew taller
+          than the title it sits above. The identity chips keep their line and
+          the two actions drop to their own when there is no room for both. */}
+      <div className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Reading a capture is reading a sequence — what ran before this,
+              what came back after. The keyboard could already walk it, lane by
+              lane, and nothing on screen said so: an operator who opened the
+              pane from the list had to close it, move, and open the next one.
+              These step the list's own order, which is the order they were
+              just reading. */}
+          {onStep && (
+            <span className="flex items-center mr-0.5 shrink-0">
+              <button
+                type="button"
+                data-testid="detail-step-prev"
+                disabled={!canStepPrev}
+                onClick={() => onStep(-1)}
+                title={t('timeline.stepPrev')}
+                aria-label={t('timeline.stepPrev')}
+                className="w-5 h-5 flex items-center justify-center rounded-l border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronLeft size={12} strokeWidth={2} aria-hidden /></button>
+              <button
+                type="button"
+                data-testid="detail-step-next"
+                disabled={!canStepNext}
+                onClick={() => onStep(1)}
+                title={t('timeline.stepNext')}
+                aria-label={t('timeline.stepNext')}
+                className="w-5 h-5 flex items-center justify-center rounded-r border border-l-0 border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
+              ><ChevronRight size={12} strokeWidth={2} aria-hidden /></button>
+            </span>
+          )}
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
+          <span className="text-xs font-mono font-semibold uppercase tracking-wider shrink-0 whitespace-nowrap" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
             {event.agentType}
           </span>
-          <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60" title={event.operatorId}>
+          {/* The one thing here allowed to lose characters rather than lines:
+              an operator id is long, arbitrary, and already in the tooltip. */}
+          <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60 truncate" title={event.operatorId}>
             {operatorLabel(event.operatorId)}
           </span>
           <TierBadge tier={event.tier} variant="detail" show={tierChip} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* "What else was happening when this ran" is the commonest
               next question about an event, and there was no way to ask
               it: the bar offered only windows ending now. */}
           <button
             type="button"
             data-testid="detail-around-event"
-            className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
             title={t('filter.around')}
             onClick={onAround}
           >{t('filter.around')}</button>
           <button
             type="button"
-            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
+            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap ${
               dneFlag
                 ? 'border-red-500/60 bg-red-500/15 text-red-300'
                 : 'border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border'
@@ -88,9 +150,84 @@ export function TimelineEventInspector({
           >
             {dneFlag ? t('timeline.doNotExportActive') : t('timeline.doNotExport')}
           </button>
+          {/* Dock and close live in the pane's own header now, matching the
+              HTTP log, so every detail pane is driven from one place instead of
+              the dock control sitting off on the timeline toolbar. */}
+          {layout && onToggleLayout && (
+            <button
+              type="button"
+              data-testid="timeline-layout-toggle"
+              onClick={onToggleLayout}
+              title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+              aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
+              aria-pressed={layout === 'right'}
+              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            >
+              {layout === 'bottom'
+                ? <PanelBottom size={12} strokeWidth={1.75} aria-hidden />
+                : <PanelRight size={12} strokeWidth={1.75} aria-hidden />}
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              data-testid="timeline-detail-close"
+              onClick={onClose}
+              title={t('httpHistory.closeDetail')}
+              aria-label={t('httpHistory.closeDetail')}
+              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            ><X size={12} strokeWidth={1.75} aria-hidden /></button>
+          )}
         </div>
       </div>
-      <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{titleOf(event)}</p>
+      {/* The headline. One thing on this pane is the subject and everything
+          else describes it — the command, the METHOD and URL, the marker's
+          title. It used to render at the same 13px, the same weight and the
+          same colour as the six facts under it, so the eye had nowhere to
+          land first and the operator read the panel top to bottom every
+          time. `break-all` because a URL with a query string is longer than
+          any pane. */}
+      <p className="mt-2 font-mono text-sm leading-relaxed text-redlog-text break-all">{titleOf(event)}</p>
+      {/* The facts, as label/value rather than prose.
+          `目標：10.0.4.12` reads as a sentence and scans as nothing: every
+          line began with a different word at a different length, so finding
+          the target meant reading all of them. Labels left and dim, values
+          right and mono — the values line up, which is what makes a column
+          scannable rather than merely present. */}
+      <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+        <dt className="text-redlog-text-faint">{t('timeline.detail.when')}</dt>
+        <dd className="font-mono text-redlog-text-dim text-right tabular-nums">
+          {formatTime(event.timestamp, { seconds: true })}
+        </dd>
+        {/* `timestamp` is when the thing happened at its source; `created_at`
+            is when RedLog wrote it down. They are the same number for anything
+            captured live, and this row would then be the same value twice — so
+            it appears only when a replay actually pulled them apart, which is
+            also the only time Invariant #8 has anything to keep distinct. */}
+        {event.createdAt !== event.timestamp && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.recorded')}</dt>
+            <dd
+              className="font-mono text-amber-400 text-right tabular-nums"
+              title={formatDateTime(event.createdAt, { seconds: true })}
+            >
+              {formatTime(event.createdAt, { seconds: true })}
+            </dd>
+          </>
+        )}
+        <dt className="text-redlog-text-faint">{t('timeline.detail.source')}</dt>
+        <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.hostname}>
+          {event.hostname}
+        </dd>
+        {event.targetId && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.target')}</dt>
+            <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.targetId}>
+              {event.targetId}
+            </dd>
+          </>
+        )}
+      </dl>
       {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
           to the title so the operator sees every flag at once (the dot
           overlay only shows the first). Empty when the event has none. */}
@@ -272,9 +409,6 @@ export function TimelineEventInspector({
           {t('timeline.focusChain.enterHint')}
         </p>
       )}
-      {event.targetId && (
-        <p className="text-xs text-redlog-text-dim mt-1 font-mono">{t('timeline.target', { target: event.targetId })}</p>
-      )}
       {/* Structured stdout/stderr + metadata for shell command_end. */}
       {event.agentType === 'shell'
         && event.data?.subtype === 'command_end'
@@ -345,6 +479,8 @@ export function TimelineEventInspector({
           {JSON.stringify(event.data, null, 2)}
         </pre>
       )}
+      {/* Last, because it is the operator's words about everything above it. */}
+      <EventNoteField eventId={event.id} t={t} />
     </>
   )
 }

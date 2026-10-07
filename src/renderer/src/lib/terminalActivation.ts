@@ -21,6 +21,33 @@ export function missingDependencies(preflight: RuntimePreflight | null): Runtime
   return preflight.checks.filter((c) => DEPENDENCIES.includes(c.id) && !c.found)
 }
 
+/** What is stopping the operator's own terminal from recording, if anything.
+ *
+ *  This used to be `missingDependencies` alone, which made "what is wrong" a
+ *  question only POSIX could answer: win32 preflight checks neither python3
+ *  nor curl, so the list was empty on every Windows machine — working or
+ *  broken — and the screen fell back to a timer that says nothing is arriving.
+ *  The Windows cause is not a missing command at all; it is a policy that
+ *  stops `$PROFILE` from loading (see core/powershell-policy.ts). */
+export type CaptureBlocker =
+  | { kind: 'missing-command'; check: RuntimePreflight['checks'][number] }
+  | { kind: 'execution-policy'; policy: string; remediation: string }
+
+/** The fix, duplicated from core/powershell-policy.ts so the renderer does not
+ *  import a module that spawns processes. The test asserts they agree. */
+export const SET_EXECUTION_POLICY = 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned'
+
+export function commandCaptureBlockers(preflight: RuntimePreflight | null): CaptureBlocker[] {
+  if (!preflight) return []
+  const ps = preflight.powershell
+  // `null` is "not measured", not "measured and fine": naming a cause that was
+  // never observed is the same failure as hiding one that was.
+  if (ps?.blocksProfile) {
+    return [{ kind: 'execution-policy', policy: ps.policy, remediation: SET_EXECUTION_POLICY }]
+  }
+  return missingDependencies(preflight).map((check) => ({ kind: 'missing-command', check }))
+}
+
 export function activationNonce(): string {
   const bytes = new Uint8Array(4)
   crypto.getRandomValues(bytes)

@@ -7,7 +7,7 @@ import {
   computeSliceCount,
   type ViewportWindow
 } from '../src/renderer/src/lib/timelineFilters'
-import type { LaneId } from '../src/renderer/src/lib/timelineDomain'
+import { toLane, type LaneId } from '../src/renderer/src/lib/timelineDomain'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 function evt(
@@ -187,5 +187,40 @@ describe('computeSliceCount', () => {
     ]
     const vp = makeVp({ left: 40, width: 30, fromX: (px) => px })
     expect(computeSliceCount(events, vp)).toBe(1)
+  })
+})
+
+// The `/` search used to DIM non-matches and leave them in place. That is not
+// a filter on a half-screen window beside a terminal: a dirb run puts 920
+// rows in the list and all 920 keep their space, so searching `backup` left
+// the operator scrolling the same distance looking for a shade of grey.
+describe('computeRecentEvents under a / search', () => {
+  const vp = makeVp()
+
+  it('shows only the matches', () => {
+    const events = [evt('a', 'shell'), evt('b', 'shell'), evt('c', 'shell')]
+    const matched = new Set([events[0].id, events[2].id])
+    const rows = computeRecentEvents(events, new Set<LaneId>(), undefined, vp, 50, matched)
+    expect(rows.map((e) => e.id).sort()).toEqual([events[0].id, events[2].id].sort())
+  })
+
+  it('shows everything when there is no query', () => {
+    const events = [evt('a', 'shell'), evt('b', 'shell')]
+    expect(computeRecentEvents(events, new Set<LaneId>(), undefined, vp, 50, null)).toHaveLength(2)
+  })
+
+  it('shows nothing rather than everything when a query matches nothing', () => {
+    // Falling back to the unfiltered list would read as "these all match".
+    const events = [evt('a', 'shell'), evt('b', 'shell')]
+    expect(computeRecentEvents(events, new Set<LaneId>(), undefined, vp, 50, new Set())).toHaveLength(0)
+  })
+
+  it('still honours a hidden lane — the two filters compose', () => {
+    const shell = evt('a', 'shell')
+    const http = evt('b', 'http_navigation')
+    const matched = new Set([shell.id, http.id])
+    const hidden = new Set<LaneId>([toLane('http_navigation', undefined, undefined)])
+    const rows = computeRecentEvents([shell, http], hidden, undefined, vp, 50, matched)
+    expect(rows.map((e) => e.id)).toEqual([shell.id])
   })
 })

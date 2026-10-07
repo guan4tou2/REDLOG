@@ -52,6 +52,14 @@ jobs:
       - name: Architecture gate (every export reachable from production)
         run: npm run verify:architecture
 
+      - name: i18n assertion gate (no test asserts copy this branch deleted)
+        # Needs the merge base with main, which a shallow checkout does not
+        # have — the gate skips rather than fails when the ref is missing, so
+        # fetch it here or it quietly checks nothing.
+        run: |
+          git fetch --no-tags --depth=200 origin main
+          npm run verify:i18n
+
       - name: Vitest
         run: npm test
 

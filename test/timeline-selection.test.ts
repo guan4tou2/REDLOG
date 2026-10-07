@@ -22,22 +22,43 @@ const ctx = (events: RedLogEvent[], hidden: string[] = []): Parameters<typeof ne
   tsOf: (e) => e.timestamp
 })
 
-describe('same-lane movement', () => {
+describe('movement in time (the bare arrows)', () => {
   const shellA = ev('shell', 100)
   const httpB = ev('http_navigation', 150)
   const shellC = ev('shell', 200)
   const events = [shellA, httpB, shellC]
 
-  it('skips events in other lanes', () => {
-    // The interleaved http event sits between them in time and must not be
-    // what → lands on.
-    expect(nextSelection('nav-next', shellA, ctx(events))?.id).toBe(shellC.id)
-    expect(nextSelection('nav-prev', shellC, ctx(events))?.id).toBe(shellA.id)
+  it('lands on whatever happened next, whichever lane produced it', () => {
+    // ← → used to stay in the lane, which made the commonest key in the view
+    // answer a narrower question than the one an operator has: they are
+    // reading a sequence of things that happened, and the thing that happened
+    // next was not necessarily from the same producer.
+    expect(nextSelection('nav-next', shellA, ctx(events))?.id).toBe(httpB.id)
+    expect(nextSelection('nav-prev', shellC, ctx(events))?.id).toBe(httpB.id)
   })
 
-  it('stops at the ends of the lane rather than wrapping', () => {
+  it('stops at the ends rather than wrapping', () => {
     expect(nextSelection('nav-prev', shellA, ctx(events))).toBeNull()
     expect(nextSelection('nav-next', shellC, ctx(events))).toBeNull()
+  })
+})
+
+describe('movement within one producer (the modified arrows)', () => {
+  const shellA = ev('shell', 100)
+  const httpB = ev('http_navigation', 150)
+  const shellC = ev('shell', 200)
+  const events = [shellA, httpB, shellC]
+
+  it('skips events other lanes produced', () => {
+    // Still a real question — "what did this producer do next" — and still
+    // worth a chord. It is just not the first question.
+    expect(nextSelection('nav-lane-next', shellA, ctx(events))?.id).toBe(shellC.id)
+    expect(nextSelection('nav-lane-prev', shellC, ctx(events))?.id).toBe(shellA.id)
+  })
+
+  it('stops at the ends of the lane rather than falling through to another', () => {
+    expect(nextSelection('nav-lane-prev', shellA, ctx(events))).toBeNull()
+    expect(nextSelection('nav-lane-next', shellC, ctx(events))).toBeNull()
   })
 })
 

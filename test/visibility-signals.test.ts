@@ -5,11 +5,14 @@ import path from 'path'
 import { isEvidence } from '../src/renderer/src/lib/housekeeping'
 import type { RedLogEvent } from '../src/core/db/events'
 
-// docs/UIUX-STANDARD.md §22, the main-process half. The pure model is tested in
-// visibility.test.ts; what only a database can settle is whether each signal
-// actually means what its noun claims — every case here is one where the
-// obvious query would have unlocked a page onto an empty screen, or unlocked it
-// with no operator action at all.
+// The main-process half of the two surviving signals. The pure model is tested
+// in visibility.test.ts; what only a database can settle is whether
+// `evidenceSeen` really means the operator did something, rather than the app
+// talking to itself — every case here is one where the obvious query dismissed
+// the first-run screen within seconds of creating a project.
+//
+// The nine other signals are gone with the page hiding they fed, and so are
+// their cases.
 
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
@@ -49,7 +52,7 @@ describe.skipIf(!available)('visibility signals', () => {
     events!.insertEvent(agentType, data, { ...IDS, ...(targetId ? { targetId } : {}) })
   }
 
-  it('a virgin project has nothing to disclose', () => {
+  it('a virgin project has nothing to report', () => {
     expect(sig()).toEqual(vis!.EMPTY_VISIBILITY_SIGNALS)
   })
 
@@ -99,85 +102,6 @@ describe.skipIf(!available)('visibility signals', () => {
     })
   })
 
-  describe('目標 and 範圍', () => {
-    it('count only targets a COMMAND produced', () => {
-      // The proxy addon stamps a target on every HTTP flow and DNS query, and
-      // the connection monitor on every established socket. Counting targets
-      // across all types would unlock both pages from one browser page load
-      // with no command typed.
-      ins('scanner', { subtype: 'http_request_start', host: 'a.example' }, 'a.example')
-      ins('dns', { subtype: 'dns_query', query_name: 'b.example' }, 'b.example')
-      ins('scanner', { subtype: 'connection', remoteAddr: '10.0.0.9' }, '10.0.0.9')
-      expect(sig().targetCount).toBe(0)
-    })
-
-    it('reach one and then two as commands hit distinct hosts', () => {
-      ins('shell', { subtype: 'command_start', command: 'curl a' }, 'a.example')
-      expect(sig().targetCount).toBe(1)
-      vis!.resetVisibilitySignalsCache()
-      ins('shell', { subtype: 'command_start', command: 'curl a again' }, 'a.example')
-      expect(sig().targetCount, 'the same host twice is one target').toBe(1)
-      vis!.resetVisibilitySignalsCache()
-      ins('shell', { subtype: 'command_start', command: 'curl b' }, 'b.example')
-      expect(sig().targetCount).toBe(2)
-    })
-
-    it('cap at two — the only two answers that matter', () => {
-      for (const h of ['a', 'b', 'c', 'd']) ins('shell', { subtype: 'command_start', command: `curl ${h}` }, `${h}.example`)
-      expect(sig().targetCount).toBe(2)
-    })
-  })
-
-  describe('每個名詞等的是它自己那一頁的資料', () => {
-    it('HTTP waits for a logged flow, not for any scanner row', () => {
-      // The HTTP page queries the logged tier and the http_* subtypes. A
-      // chained `scanner:connection` from the connection monitor would unlock
-      // a permanently empty page.
-      ins('scanner', { subtype: 'connection', remoteAddr: '10.0.0.9' })
-      expect(sig().httpFlowSeen).toBe(false)
-      vis!.resetVisibilitySignalsCache()
-      ins('scanner', { subtype: 'http_request_start', host: 'a.example', method: 'GET' })
-      expect(sig().httpFlowSeen).toBe(true)
-    })
-
-    it('書籤 waits for a bookmark row, not for a marker event', () => {
-      // Two different stores. The page lists only the table — and `marker` is
-      // externally postable, so keying on the event would let an outside tool
-      // unlock an empty page.
-      ins('marker', { title: 'a finding', severity: 'info' })
-      expect(sig().bookmarkSeen).toBe(false)
-      vis!.resetVisibilitySignalsCache()
-      findings!.createBookmark({ title: 'bookmark', url: 'https://x', note: '' })
-      expect(sig().bookmarkSeen).toBe(true)
-    })
-
-    it('逐字稿 waits for a finished command or an agent turn', () => {
-      ins('shell', { subtype: 'command_start', command: 'sleep 60' })
-      expect(sig().transcriptSeen).toBe(false)
-      vis!.resetVisibilitySignalsCache()
-      ins('shell', { subtype: 'command_end', command: 'sleep 60', exitCode: 0 })
-      expect(sig().transcriptSeen).toBe(true)
-    })
-
-    it('戰利品 and 截圖 wait for their own chained rows', () => {
-      ins('loot', { subtype: 'credential_detected', count: 1 })
-      ins('screenshot', { trigger: 'manual', filename: 'a.jpg' })
-      const s = sig()
-      expect(s.lootSeen).toBe(true)
-      expect(s.screenshotSeen).toBe(true)
-    })
-  })
-
-  describe('scope violations (UI/UX audit F9)', () => {
-    it('opens on a real out-of-scope hit, not on the in-scope adherence rows', () => {
-      ins('system', { subtype: 'scope_violation', target: 'a.example', distance: 'in_scope' }, 'a.example')
-      expect(sig().scopeViolationSeen).toBe(false)
-      vis!.resetVisibilitySignalsCache()
-      ins('system', { subtype: 'scope_violation', target: 'b.example', distance: 'out_of_scope' }, 'b.example')
-      expect(sig().scopeViolationSeen).toBe(true)
-    })
-  })
-
   describe('the tier distinction', () => {
     it('appears with the first logged row', () => {
       expect(sig().loggedEver).toBe(false)
@@ -210,33 +134,19 @@ describe.skipIf(!available)('visibility signals', () => {
     })
 
     it('starts clean for the next project', () => {
-      ins('loot', { subtype: 'credential_detected' })
-      expect(sig().lootSeen).toBe(true)
+      ins('shell', { subtype: 'command_start', command: 'nmap 10.0.0.1' })
+      expect(sig().evidenceSeen).toBe(true)
       vis!.resetVisibilitySignalsCache()
       dbmod!.closeDB()
       const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-vis2-'))
       dbmod!.initDB(other)
-      expect(sig().lootSeen, 'a flag leaked across projects').toBe(false)
+      expect(sig().evidenceSeen, 'a flag leaked across projects').toBe(false)
       dbmod!.closeDB()
       fs.rmSync(other, { recursive: true, force: true })
       dbmod!.initDB(dir)
     })
   })
 
-  describe('cost', () => {
-    it('answers the target question with index seeks, not a scan', () => {
-      const plan = (sql: string, ...p: unknown[]): string =>
-        (dbmod!.getDB().prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...p) as Array<{ detail: string }>)
-          .map((r) => r.detail).join(' | ')
-      const detail = plan(
-        `SELECT target_id AS t FROM events
-         WHERE agent_type = 'shell' AND target_id IS NOT NULL AND target_id <> ''
-         ORDER BY target_id LIMIT 1`
-      )
-      expect(detail).not.toContain('SCAN events')
-      expect(detail, 'a temp b-tree here means the whole bucket was sorted').not.toContain('TEMP B-TREE')
-    })
-  })
 })
 
 describe('the two signal shapes are the same shape', () => {

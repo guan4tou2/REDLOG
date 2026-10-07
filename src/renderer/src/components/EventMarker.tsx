@@ -110,7 +110,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame }: EventMa
   }
 
   const severityColor = {
-    info: 'border-blue-500/50 text-blue-400',
+    info: 'border-redlog-cyan/50 text-redlog-cyan',
     important: 'border-yellow-500/50 text-yellow-400',
     critical: 'border-red-500/50 text-red-400'
   }

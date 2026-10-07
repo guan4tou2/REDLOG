@@ -28,17 +28,23 @@ describe('button levels', () => {
       expect(mod, `missing level: ${level}`).toMatch(new RegExp(`\\b${level}:`))
     }
     // Only two of the four fill, and they are the two the standard names.
-    expect(mod).toMatch(/primary: 'bg-redlog-accent/)
-    expect(mod).toMatch(/danger: 'bg-redlog-danger/)
+    expect(mod).toMatch(/primary: '[^']*bg-redlog-accent/)
+    expect(mod).toMatch(/danger: '[^']*bg-redlog-danger/)
+    // Every level paints a 1px box; only the colour differs. A level that set
+    // a border colour without the width drew nothing (the quiet button was
+    // invisible until its hover fill appeared).
+    expect(mod, 'the border width belongs on BASE').toMatch(/const BASE =[\s\S]*?border /)
   })
 
   it('never puts a filled primary next to a filled danger', () => {
     // The confirm dialog is the only surface that fills a button with danger,
-    // so it is the only place the constraint can be broken.
+    // so it is the only place the constraint can be broken. It now asks for
+    // the level rather than writing the fill, which is why this reads the
+    // level and not the class.
     const dialog = read('src/renderer/src/components/ConfirmDialog.tsx')
-    expect(dialog).toMatch(/bg-redlog-danger/)
+    expect(dialog).toMatch(/level=\{?['"]?.*danger/)
     expect(dialog, 'a primary fill would sit beside the destructive verb')
-      .not.toMatch(/bg-redlog-accent(?![-/])/)
+      .not.toMatch(/level="primary"|bg-redlog-accent(?![-/])/)
   })
 
   it('keeps at most one primary per component', () => {

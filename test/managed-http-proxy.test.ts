@@ -112,6 +112,43 @@ describe('managed HTTP proxy', () => {
     expect(transitions).toContain('running->failed')
   })
 
+  // A restart is a stop and a start, and the signal the stop sends is not
+  // acted on instantly: the replacement can be up and `running` before the
+  // old child's `exit` is delivered. That late event used to be allowed to
+  // speak for the status, so it rewrote the new proxy's `running` to
+  // `failed` — with the OLD process's output as the reason, which for one
+  // that had come up cleanly was its own readiness line. The capture was
+  // working; the only thing wrong was what the app said about it.
+  it('does not let a replaced child report a failure for the one that replaced it', async () => {
+    // `kill()` on the stock fake emits `exit` synchronously, which is the one
+    // case this race cannot happen in.
+    class LingeringChild extends FakeChild {
+      kill(): boolean { this.killed = true; return true }
+    }
+    const first = new LingeringChild()
+    const second = new LingeringChild()
+    const queue: LingeringChild[] = [first, second]
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => queue.shift() as never), exists: () => true, readinessTimeoutMs: 100
+    })
+
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    first.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8080'))
+    await started
+    expect(proxy.status().state).toBe('running')
+
+    proxy.stop()
+    const restarted = proxy.start({ addonPath: '/addon.py', port: 8081 })
+    second.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8081'))
+    await restarted
+    expect(proxy.status()).toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
+
+    first.exitCode = 0
+    first.emit('exit', null, 'SIGTERM')
+    expect(proxy.status()).toMatchObject({ state: 'running', url: 'http://127.0.0.1:8081' })
+    expect(proxy.status().error).toBeUndefined()
+  })
+
   it('reaches running only after mitmdump announces a listener', async () => {
     const child = new FakeChild()
     const proxy = new ManagedHttpProxy({
@@ -271,5 +308,75 @@ describe('the capture endpoint is host and port', () => {
       // Running with no URL says nothing about which endpoint it is on.
       expect(proxyAlreadyOn({ state: 'running', url: null }, endpoint)).toBe(false)
     })
+  })
+})
+
+// A start that fails before `start()` is reached has to reach the status.
+//
+// The caller does its own preflight — the addon must exist, a project must be
+// open, the port must be free — and each of those returned a failed status
+// object that nothing recorded. `status()` reports the snapshot, so every
+// surface polling it read `stopped`: not "tried and could not", but "nothing
+// has been tried". The operator acts on those differently.
+//
+// It was survivable while starting capture was a button. It stopped being
+// survivable when capture began taking itself up at project open, because a
+// port already in use then means an engagement that records no HTTP and never
+// says why — observed on a real run, where auto-start returned
+// `127.0.0.1:6661 is already in use` and the strip said stopped for the rest
+// of the session.
+describe('a failure that never reached start()', () => {
+  it('puts the reason in the status, not just in the return value', () => {
+    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    expect(proxy.status()).toMatchObject({ state: 'stopped' })
+
+    const returned = proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
+    expect(returned).toMatchObject({ state: 'failed', url: null })
+    expect(proxy.status()).toMatchObject({
+      state: 'failed',
+      url: null,
+      error: '127.0.0.1:6661 is already in use.'
+    })
+  })
+
+  it('tells the listeners, so a live surface does not wait for its next poll', () => {
+    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    const seen: string[] = []
+    proxy.onStatusChange((next) => seen.push(next.state))
+    proxy.noteStartFailure('no addon')
+    expect(seen).toEqual(['failed'])
+  })
+
+  it('never overwrites a running proxy', async () => {
+    // A preflight that fails while the thing is up is the preflight being
+    // wrong, not the proxy stopping — and reporting `failed` over a working
+    // capture would be the same lie in the other direction.
+    const child = new FakeChild()
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
+    })
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+
+    proxy.noteStartFailure('No project open')
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+  })
+
+  it('can be cleared by a later successful start', async () => {
+    // The failure is a fact about the last attempt, not a latch.
+    const child = new FakeChild()
+    const proxy = new ManagedHttpProxy({
+      spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
+    })
+    proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
+    expect(proxy.status()).toMatchObject({ state: 'failed' })
+
+    const started = proxy.start({ addonPath: '/addon.py', port: 8081 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    expect(proxy.status()).toMatchObject({ state: 'running' })
+    expect(proxy.status().error, 'the old reason outlived the attempt it describes').toBeUndefined()
   })
 })

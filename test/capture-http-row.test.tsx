@@ -15,7 +15,7 @@ const mitm = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: 'mitmproxy',
   hookId: 'mitmproxy',
   installed: true,
-  state: 'idle',
+  state: 'ready',
   lastEventAt: null,
   ...over
 })
@@ -47,13 +47,16 @@ describe('the mitmproxy row on the Capture Health card', () => {
   })
   afterEach(() => cleanup())
 
-  it('says the proxy is up and has captured nothing, and why that happens', () => {
+  it('says a running proxy is running, with nothing to add about traffic', () => {
+    // It used to read "listening, nothing captured" with an amber warning
+    // beneath it. That graded the operator's traffic, not RedLog's capture: a
+    // proxy nobody has sent a request to is working exactly as Burp's
+    // listener does. The card has no row for it at all now — nothing is wrong
+    // — and the inventory says it plainly.
     const el = draw([mitm()], { state: 'running', url: 'http://127.0.0.1:6661' })
-    expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent)
-      .toMatch(/listening, nothing captured/)
-    const why = el.querySelector('[data-testid="capture-http-listening"]')
-    expect(why, 'the operator cannot act on a status word alone').toBeTruthy()
-    expect(why?.textContent).toMatch(/CA is trusted/)
+    expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
+    fireEvent.click(within(el).getByText(/all sources/))
+    expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
   it('no longer carries a second, separate sentence about the same proxy', () => {
@@ -62,25 +65,33 @@ describe('the mitmproxy row on the Capture Health card', () => {
     expect(text).not.toMatch(/Managed HTTP proxy/)
   })
 
-  it('drops the explanation once traffic has actually come through', () => {
-    const el = draw([mitm({ state: 'active', lastEventAt: Date.now() })], { state: 'running', url: null })
+  it('keeps a working proxy out of the compact view entirely', () => {
+    const el = draw([mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
     // The card is an exception report, so a working source leaves the compact
-    // view entirely — and takes the amber warning with it.
+    // view entirely.
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
-    expect(el.querySelector('[data-testid="capture-http-listening"]')).toBeNull()
     // It is still listed, correctly, in the full inventory.
     fireEvent.click(within(el).getByText(/all sources/))
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
-  it('reports a missing mitmdump as not installed, and still shows a start failure', () => {
+  it('reports a missing mitmdump as not set up, and still shows a start failure', () => {
+    // Missing is not broken: nothing failed, mitmproxy was simply never
+    // installed, so it does not take a slot in the exception list. The full
+    // inventory still says so, in the one word the state axis now has for it.
     const absent = draw([mitm()], { state: 'unavailable', url: null, error: 'spawn mitmdump ENOENT' })
+    expect(absent.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
+    fireEvent.click(within(absent).getByText(/all sources/))
     expect(absent.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent)
       .toMatch(/not installed/)
+    cleanup()
 
+    // A proxy that could not start is on the core line, word and reason — not
+    // on a row of its own repeating it.
     const failed = draw([mitm()], { state: 'failed', url: null, error: '127.0.0.1:6661 is already in use by BurpSuite.exe' })
-    expect(failed.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/failed/)
-    // The reason has to survive the removal of the line that used to carry it.
-    expect(failed.textContent).toMatch(/already in use by BurpSuite\.exe/)
+    const core = failed.querySelector('[data-testid="capture-core-http"]')
+    expect(core?.textContent).toMatch(/failed/)
+    expect(core?.textContent).toMatch(/already in use by BurpSuite\.exe/)
+    expect(failed.textContent?.match(/already in use/g)).toHaveLength(1)
   })
 })

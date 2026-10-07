@@ -61,7 +61,7 @@ describe('turning a pack member on from the Capture Health card', () => {
     // The other three members are not this operator's to lose.
     ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
       async () => ({ packs: { hostMonitors: true } })
-    const el = draw([clipboard({ enabled: true, state: 'idle', lastEventAt: 1 })])
+    const el = draw([clipboard({ enabled: true, state: 'ready', lastEventAt: 1 })])
     fireEvent.click(within(el).getByText(/all sources/))
     fireEvent.click(within(el).getByText('turn off'))
     await waitFor(() => expect(saved).not.toBeNull())
