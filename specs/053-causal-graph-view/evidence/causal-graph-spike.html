@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Causal DAG Spike</title>
+<style>
+  :root {
+    --app-zoom: 0.9;
+    --bg: #121214;
+    --surface: #1a1a1d;
+    --elevated: #212126;
+    --elevated-hover: #2a2a30;
+    --border-subtle: #4a4a53;
+    --border: #74747c;
+    --text: #ececf0;
+    --text-dim: #bebec8;
+    --text-faint: #a9a9b4;
+    --muted: #91919c;
+    --accent: #d75f63;
+    --danger: #ff4d4f;
+    --safe: #5ecf9c;
+    --warn: #d4ac5a;
+    --cyan: #3fc7d6;
+    --violet: #9b8cf0;
+    --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  /* ── The thing under test ──────────────────────────────────────────────
+     This is RedLog's own rule, copied verbatim from
+     src/renderer/src/styles/index.css:270. Everything below renders inside
+     it, so the diagnostic measures the real condition. */
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    zoom: var(--app-zoom, 0.9);
+    height: calc(100vh / var(--app-zoom, 0.9));
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+
+  header { margin-bottom: 20px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin: 0; }
+  .sub code { font-family: var(--mono); font-size: 12px; color: var(--cyan); }
+
+  h2 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted);
+    margin: 0 0 10px; display: flex; align-items: center; gap: 8px;
+  }
+  h2::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+
+  section { margin-bottom: 28px; }
+
+  /* ── scale control ─────────────────────────────────────────────────── */
+  .scalebar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border-subtle);
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 20px;
+  }
+  .scalebar .label { font-size: 12px; color: var(--text-dim); }
+  .seg { display: flex; border: 1px solid var(--border-subtle); border-radius: 4px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-size: 12px; padding: 5px 11px; border: 0; cursor: pointer;
+    background: var(--elevated); color: var(--text-dim);
+    border-right: 1px solid var(--border-subtle); transition: background .12s, color .12s;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: var(--elevated-hover); color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #16090a; font-weight: 600; }
+  .scalebar .readout { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* ── graph ─────────────────────────────────────────────────────────── */
+  .graphbox {
+    position: relative; background: var(--surface);
+    border: 1px solid var(--border-subtle); border-radius: 6px;
+    overflow: auto; max-height: 560px;
+    /* 預設寬度 = TimelineEventInspector 的實際 dock 寬度 */
+    width: 440px; resize: horizontal; min-width: 280px; max-width: 100%;
+  }
+  .graphbox svg { display: block; cursor: default; }
+  .widthnote { font-size: 11px; color: var(--muted); margin: 6px 0 0; font-family: var(--mono); }
+
+  .node-card { cursor: pointer; }
+  .node-card rect.body { fill: var(--elevated); stroke: var(--border-subtle); stroke-width: 1; }
+  .node-card:hover rect.body { fill: var(--elevated-hover); stroke: var(--border); }
+  .node-card.anchor rect.body { stroke: var(--accent); stroke-width: 1.5; }
+  .node-card.ghost rect.body { fill: none; stroke: var(--border-subtle); stroke-dasharray: 3 3; }
+  .node-card.dim { opacity: 0.28; }
+  .node-title { font-size: 11.5px; fill: var(--text); }
+  .node-meta { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
+  .node-ghost-label { font-size: 10px; fill: var(--muted); font-style: italic; }
+
+  path.edge { fill: none; stroke: var(--border); stroke-width: 1.2; opacity: 0.5; }
+  path.edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 1.8; }
+  path.edge.dim { opacity: 0.12; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--text-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+  .chainmeta {
+    display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .chainmeta b { color: var(--text-dim); font-weight: 500; }
+
+  /* ── diagnostic ────────────────────────────────────────────────────── */
+  .diag { background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 14px; }
+  .probe {
+    position: relative; height: 150px; border-radius: 4px; margin-bottom: 14px;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 24px, rgba(116,116,124,.18) 24px 25px),
+      repeating-linear-gradient(90deg, transparent 0 24px, rgba(116,116,124,.18) 24px 25px),
+      var(--elevated);
+    border: 1px solid var(--border-subtle); cursor: crosshair; overflow: hidden;
+  }
+  .probe .hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--muted); pointer-events: none; transition: opacity .15s;
+  }
+  .probe.touched .hint { opacity: 0; }
+  .marker-d3 {
+    position: absolute; width: 15px; height: 15px; margin: -8px 0 0 -8px;
+    pointer-events: none; opacity: 0;
+  }
+  .marker-d3::before, .marker-d3::after {
+    content: ''; position: absolute; background: var(--accent);
+  }
+  .marker-d3::before { left: 7px; top: 0; width: 1px; height: 15px; }
+  .marker-d3::after { top: 7px; left: 0; height: 1px; width: 15px; }
+
+  table.m { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; }
+  table.m th {
+    text-align: left; font-weight: 500; color: var(--muted); padding: 5px 8px;
+    border-bottom: 1px solid var(--border-subtle); font-size: 10px;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  table.m td { padding: 5px 8px; border-bottom: 1px solid rgba(74,74,83,.45); color: var(--text-dim); }
+  table.m td.k { color: var(--muted); white-space: nowrap; }
+  table.m td.v { color: var(--text); text-align: right; white-space: nowrap; }
+  table.m tr:last-child td { border-bottom: 0; }
+
+  .verdict { margin-top: 12px; padding: 10px 12px; border-radius: 4px; font-size: 12.5px; line-height: 1.55; border: 1px solid; }
+  .verdict.ok { background: rgba(94,207,156,.08); border-color: rgba(94,207,156,.35); color: var(--safe); }
+  .verdict.bad { background: rgba(255,77,79,.08); border-color: rgba(255,77,79,.35); color: var(--danger); }
+  .verdict.idle { background: var(--elevated); border-color: var(--border-subtle); color: var(--muted); }
+  .verdict b { font-weight: 600; }
+
+  .note {
+    font-size: 12px; color: var(--text-dim); line-height: 1.65;
+    border-left: 2px solid var(--border-subtle); padding-left: 12px; margin-top: 14px;
+  }
+  .note code { font-family: var(--mono); font-size: 11px; color: var(--cyan); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>因果 DAG — 外觀與 zoom 風險</h1>
+    <p class="sub">
+      整頁套用 RedLog 自己的 <code>body { zoom: var(--app-zoom, 0.9) }</code>
+      （<code>styles/index.css:270</code>），所以下面的量測是在真實條件下做的。
+      上半是圖長什麼樣，下半是 d3-zoom 那套座標數學在 <code>zoom</code> 底下會不會偏。
+    </p>
+  </header>
+
+  <div class="scalebar">
+    <span class="label">介面縮放（對應 <code style="font-family:var(--mono)">uiScale.ts</code> 的級距）</span>
+    <div class="seg" id="seg"></div>
+    <span class="readout" id="zoomReadout">--app-zoom: 0.9</span>
+  </div>
+
+  <section>
+    <h2>一、圖的樣子</h2>
+    <div class="graphbox" id="graphbox">
+      <svg id="dag" aria-label="因果 DAG 示意"></svg>
+    </div>
+    <p class="widthnote" id="widthnote"></p>
+    <div class="legend" id="legend"></div>
+    <div class="chainmeta">
+      <span><b>anchor</b> marker:finding</span>
+      <span><b>events</b> 12</span>
+      <span><b>edges</b> 12</span>
+      <span><b>unavailable</b> 1</span>
+      <span><b>truncated</b> true</span>
+    </div>
+    <p class="note">
+      滑過節點會把它的因果邊亮起來，其餘調暗 —— 這就是 <code>edges</code> 現在被丟掉、
+      之後要用到的地方。虛線節點是 <code>unavailableCauseIds</code>：被 retention 清掉或根本沒寫入的
+      cause，後端已經和「存在但沒分頁進來」分得很清楚，圖上必須看得出差別。
+      佈局這裡是臨時的分層演算法；真的要做會換成 <code>@dagrejs/dagre</code>。
+    </p>
+  </section>
+
+  <section>
+    <h2>二、zoom 診斷（這才是 spike 的重點）</h2>
+    <div class="diag">
+      <div class="probe" id="probe">
+        <div class="hint">在這塊格線上移動滑鼠 —— 十字會畫在 d3 算出來的座標</div>
+        <div class="marker-d3" id="markerD3"></div>
+      </div>
+
+      <table class="m">
+        <thead>
+          <tr><th>量測</th><th style="text-align:right">值</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="k">getBoundingClientRect().width<span style="color:var(--text-faint)"> — 裝置像素</span></td><td class="v" id="mRect">—</td></tr>
+          <tr><td class="k">offsetWidth<span style="color:var(--text-faint)"> — CSS 像素</span></td><td class="v" id="mOffset">—</td></tr>
+          <tr><td class="k">兩者比值<span style="color:var(--text-faint)"> — 等於 zoom 就代表兩個單位系統並存</span></td><td class="v" id="mRatio">—</td></tr>
+          <tr><td class="k">d3.pointer 算法：clientX − rect.left</td><td class="v" id="mD3">—</td></tr>
+          <tr><td class="k">瀏覽器給的 offsetX<span style="color:var(--text-faint)"> — CSS 像素基準真值</span></td><td class="v" id="mOff">—</td></tr>
+          <tr><td class="k">偏移量<span style="color:var(--text-faint)"> — d3 座標 − 真值</span></td><td class="v" id="mDrift">—</td></tr>
+        </tbody>
+      </table>
+
+      <div class="verdict idle" id="verdict">移動滑鼠開始量測。</div>
+
+      <p class="note">
+        d3-zoom 的指標座標走 <code>d3.pointer()</code>，它的本體就是
+        <code>event.clientX − node.getBoundingClientRect().left</code>。
+        React Flow 的平移與節點拖曳全部建立在這之上。所以上表第 4 行和第 5 行要是對不起來，
+        React Flow 在這個 app 裡就會偏 —— 而且因為縮放級距可以調到 1.4，偏移會隨使用者設定變大。
+        十字跟著游標走就是沒事；愈往右下愈飄開就是確認中獎。
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── 介面縮放級距 ───────────────────────────────────────────────────────
+  // uiScale.ts: BASE_ZOOM = 0.9，選項是 1 / 1.1 / 1.25 / 1.4 的相對倍率。
+  var BASE_ZOOM = 0.9;
+  var SCALES = [
+    { value: 1,    label: '標準' },
+    { value: 1.1,  label: '大' },
+    { value: 1.25, label: '特大' },
+    { value: 1.4,  label: '超大' }
+  ];
+
+  var seg = document.getElementById('seg');
+  var zoomReadout = document.getElementById('zoomReadout');
+
+  function applyScale(rel) {
+    var zoom = +(BASE_ZOOM * rel).toFixed(4);
+    document.documentElement.style.setProperty('--app-zoom', String(zoom));
+    zoomReadout.textContent = '--app-zoom: ' + zoom;
+    Array.prototype.forEach.call(seg.children, function (b) {
+      b.setAttribute('aria-pressed', String(+b.dataset.rel === rel));
+    });
+    measureBox();
+  }
+
+  SCALES.forEach(function (s) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.label;
+    b.dataset.rel = String(s.value);
+    b.setAttribute('aria-pressed', String(s.value === 1));
+    b.addEventListener('click', function () { applyScale(s.value); });
+    seg.appendChild(b);
+  });
+
+  // ── 圖的資料 ───────────────────────────────────────────────────────────
+  // 一條真實形狀的橫向移動鏈，欄位名稱比照 events 表。
+  var TYPES = {
+    shell:      { color: '#3fc7d6', label: 'shell' },
+    scanner:    { color: '#5ecf9c', label: 'scanner' },
+    marker:     { color: '#d75f63', label: 'marker' },
+    loot:       { color: '#d4ac5a', label: 'loot' },
+    pivot:      { color: '#9b8cf0', label: 'pivot' },
+    scope:      { color: '#ff4d4f', label: 'scope' },
+    screenshot: { color: '#a9a9b4', label: 'screenshot' }
+  };
+
+  var NODES = [
+    { id: 'n1',  type: 'shell',      sub: 'command_start', title: 'nmap -sV -p- 10.10.0.5',        ts: '14:02:11', causes: [] },
+    { id: 'n2',  type: 'shell',      sub: 'command_end',   title: '3 ports open',                  ts: '14:04:47', causes: ['n1'] },
+    { id: 'n3',  type: 'scanner',    sub: 'http_response', title: '200 GET /login.php',            ts: '14:06:02', causes: ['n2'] },
+    { id: 'n4',  type: 'marker',     sub: 'finding',       title: 'HIGH: SQLi in login.php',       ts: '14:11:30', causes: ['n3'], anchor: true },
+    { id: 'n12', type: 'screenshot', sub: '',              title: 'evidence-0412.png',             ts: '14:12:05', causes: ['n4'] },
+    { id: 'n5',  type: 'shell',      sub: 'command_start', title: 'sqlmap -u …/login.php --dump',  ts: '14:14:19', causes: ['n4'] },
+    { id: 'n6',  type: 'shell',      sub: 'command_end',   title: '1 database dumped',             ts: '14:22:51', causes: ['n5'] },
+    { id: 'n7',  type: 'loot',       sub: 'credential',    title: 'svc_web / ••••••••',            ts: '14:23:04', causes: ['n6'] },
+    { id: 'n8',  type: 'shell',      sub: 'command_start', title: 'chisel client 10.10.0.5 R:socks', ts: '14:31:40', causes: ['n7'] },
+    { id: 'n9',  type: 'pivot',      sub: 'socks_up',      title: 'chisel → socks:1080  T1572',    ts: '14:31:58', causes: ['n8'] },
+    { id: 'n10', type: 'shell',      sub: 'command_start', title: 'nxc smb 10.20.0.0/24',          ts: '14:35:12', causes: ['n9', 'gx'] },
+    { id: 'n11', type: 'scope',      sub: 'violation',     title: '10.20.0.0/24 out of scope',     ts: '14:35:12', causes: ['n10'] },
+    { id: 'gx',  type: null,         sub: '',              title: 'cause 已不存在',                 ts: '',         causes: [], ghost: true }
+  ];
+
+  var byId = {};
+  NODES.forEach(function (n) { byId[n.id] = n; });
+
+  // ── 分層佈局（示意；正式版交給 dagre）──────────────────────────────────
+  // 最長路徑分層：rank = max(rank of causes) + 1。
+  // 方向是「上到下」：detail pane 只有 440px 寬，左右佈局在十層的鏈上會
+  // 拉到兩千多像素，壓進 pane 裡就是一條讀不出字的細帶。
+  var NODE_W = 186, NODE_H = 44, RANK_GAP = 30, COL_GAP = 14, PAD_X = 14, PAD_Y = 14;
+
+  function rankOf(n, seen) {
+    if (n._rank !== undefined) return n._rank;
+    seen = seen || {};
+    if (seen[n.id]) return 0;             // 破環
+    seen[n.id] = true;
+    var r = 0;
+    n.causes.forEach(function (cid) {
+      var c = byId[cid];
+      if (c) r = Math.max(r, rankOf(c, seen) + 1);
+    });
+    n._rank = r;
+    return r;
+  }
+  NODES.forEach(function (n) { rankOf(n); });
+
+  var ranks = {};
+  NODES.forEach(function (n) { (ranks[n._rank] = ranks[n._rank] || []).push(n); });
+
+  // 每一層水平置中，讀起來才像一條往下走的鏈
+  var maxCols = Math.max.apply(null, Object.keys(ranks).map(function (r) { return ranks[r].length; }));
+  var rowW = maxCols * (NODE_W + COL_GAP) - COL_GAP;
+  Object.keys(ranks).forEach(function (r) {
+    var cols = ranks[r];
+    var w = cols.length * (NODE_W + COL_GAP) - COL_GAP;
+    var shift = (rowW - w) / 2;
+    cols.forEach(function (n, i) {
+      n.x = PAD_X + shift + i * (NODE_W + COL_GAP);
+      n.y = PAD_Y + (+r) * (NODE_H + RANK_GAP);
+    });
+  });
+
+  var EDGES = [];
+  NODES.forEach(function (n) {
+    n.causes.forEach(function (cid) {
+      if (byId[cid]) EDGES.push({ from: cid, to: n.id });
+    });
+  });
+
+  // ── 繪圖 ───────────────────────────────────────────────────────────────
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('dag');
+
+  function el(name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function clip(s, max) { return s.length > max ? s.slice(0, max - 1) + '…' : s; }
+
+  var defs = el('defs');
+  var marker = el('marker', {
+    id: 'arrow', viewBox: '0 0 8 8', refX: '7', refY: '4',
+    markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse'
+  });
+  marker.appendChild(el('path', { d: 'M0,0 L8,4 L0,8 Z', fill: '#74747c' }));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  var edgeLayer = el('g', { 'class': 'edges' });
+  var nodeLayer = el('g', { 'class': 'nodes' });
+  svg.appendChild(edgeLayer);
+  svg.appendChild(nodeLayer);
+
+  var edgeEls = [];
+  EDGES.forEach(function (e) {
+    var a = byId[e.from], b = byId[e.to];
+    var x1 = a.x + NODE_W / 2, y1 = a.y + NODE_H;
+    var x2 = b.x + NODE_W / 2, y2 = b.y;
+    var my = (y1 + y2) / 2;
+    var p = el('path', {
+      'class': 'edge',
+      d: 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2,
+      'marker-end': 'url(#arrow)'
+    });
+    edgeLayer.appendChild(p);
+    edgeEls.push({ el: p, from: e.from, to: e.to });
+  });
+
+  var nodeEls = {};
+  NODES.forEach(function (n) {
+    var cls = 'node-card' + (n.anchor ? ' anchor' : '') + (n.ghost ? ' ghost' : '');
+    var g = el('g', { 'class': cls, transform: 'translate(' + n.x + ',' + n.y + ')' });
+
+    g.appendChild(el('rect', { 'class': 'body', x: 0, y: 0, width: NODE_W, height: NODE_H, rx: 4 }));
+
+    if (n.ghost) {
+      g.appendChild(el('text', { 'class': 'node-ghost-label', x: NODE_W / 2, y: NODE_H / 2 + 4, 'text-anchor': 'middle' }, n.title));
+    } else {
+      var t = TYPES[n.type];
+      // 左側色條 = agent_type，和 timeline 的 lane 顏色同一套
+      g.appendChild(el('rect', { x: 0, y: 0, width: 3, height: NODE_H, rx: 1.5, fill: t.color }));
+      g.appendChild(el('text', { 'class': 'node-title', x: 11, y: 19 }, clip(n.title, 30)));
+      g.appendChild(el('text', { 'class': 'node-meta', x: 11, y: 33 },
+        n.ts + '  ' + t.label + (n.sub ? ':' + n.sub : '')));
+      if (n.anchor) {
+        g.appendChild(el('circle', { cx: NODE_W - 9, cy: 10, r: 3, fill: '#d75f63' }));
+      }
+    }
+
+    nodeLayer.appendChild(g);
+    nodeEls[n.id] = g;
+
+    g.addEventListener('mouseenter', function () { highlight(n.id); });
+    g.addEventListener('mouseleave', function () { highlight(null); });
+  });
+
+  function highlight(id) {
+    if (!id) {
+      edgeEls.forEach(function (e) { e.el.classList.remove('hot', 'dim'); });
+      NODES.forEach(function (n) { nodeEls[n.id].classList.remove('dim'); });
+      return;
+    }
+    var keep = {};
+    keep[id] = true;
+    edgeEls.forEach(function (e) {
+      var hot = e.from === id || e.to === id;
+      e.el.classList.toggle('hot', hot);
+      e.el.classList.toggle('dim', !hot);
+      if (hot) { keep[e.from] = true; keep[e.to] = true; }
+    });
+    NODES.forEach(function (n) { nodeEls[n.id].classList.toggle('dim', !keep[n.id]); });
+  }
+
+  // 自然尺寸 + 容器捲動，而不是縮放塞進寬度 —— 壓扁的圖讀不出字
+  var maxX = 0, maxY = 0;
+  NODES.forEach(function (n) {
+    maxX = Math.max(maxX, n.x + NODE_W);
+    maxY = Math.max(maxY, n.y + NODE_H);
+  });
+  var W = maxX + PAD_X, H = maxY + PAD_Y;
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  svg.setAttribute('width', String(W));
+  svg.setAttribute('height', String(H));
+  document.getElementById('widthnote').textContent =
+    '容器 440px（= detail pane 預設寬）· 圖的自然尺寸 ' + W + '×' + H + 'px · 右下角可拖寬';
+
+  // 圖例
+  var legend = document.getElementById('legend');
+  Object.keys(TYPES).forEach(function (k) {
+    var s = document.createElement('span');
+    var i = document.createElement('i');
+    i.style.background = TYPES[k].color;
+    s.appendChild(i);
+    s.appendChild(document.createTextNode(TYPES[k].label));
+    legend.appendChild(s);
+  });
+
+  // ── 診斷 ───────────────────────────────────────────────────────────────
+  var probe = document.getElementById('probe');
+  var markerD3 = document.getElementById('markerD3');
+  var mRect = document.getElementById('mRect');
+  var mOffset = document.getElementById('mOffset');
+  var mRatio = document.getElementById('mRatio');
+  var mD3 = document.getElementById('mD3');
+  var mOff = document.getElementById('mOff');
+  var mDrift = document.getElementById('mDrift');
+  var verdict = document.getElementById('verdict');
+
+  function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+
+  function measureBox() {
+    var r = probe.getBoundingClientRect();
+    mRect.textContent = fmt(r.width) + ' px';
+    mOffset.textContent = probe.offsetWidth + ' px';
+    var ratio = r.width / probe.offsetWidth;
+    mRatio.textContent = fmt(ratio) + '×';
+    mRatio.style.color = Math.abs(ratio - 1) > 0.005 ? 'var(--warn)' : 'var(--safe)';
+  }
+
+  probe.addEventListener('pointermove', function (ev) {
+    probe.classList.add('touched');
+
+    // d3.pointer() 的本體
+    var rect = probe.getBoundingClientRect();
+    var d3x = ev.clientX - rect.left;
+    var d3y = ev.clientY - rect.top;
+
+    // 基準真值：瀏覽器直接給的、相對於目標元素的 CSS 像素座標
+    var ox = ev.offsetX;
+    var oy = ev.offsetY;
+
+    markerD3.style.left = d3x + 'px';
+    markerD3.style.top = d3y + 'px';
+    markerD3.style.opacity = '1';
+
+    mD3.textContent = fmt(d3x) + ', ' + fmt(d3y);
+    mOff.textContent = fmt(ox) + ', ' + fmt(oy);
+
+    var dx = d3x - ox, dy = d3y - oy;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    mDrift.textContent = fmt(dx) + ', ' + fmt(dy) + '  (' + fmt(dist) + ' px)';
+
+    if (dist > 1.5) {
+      mDrift.style.color = 'var(--danger)';
+      verdict.className = 'verdict bad';
+      verdict.innerHTML = '<b>偏了 ' + fmt(dist) + ' px。</b> d3-zoom 的座標和實際指標位置在 <code>body{zoom}</code> 底下對不起來，' +
+        'React Flow 的平移和節點拖曳會跟著偏。把縮放級距調大再看一次 —— 如果偏移跟著變大，就是單位系統混用確認。';
+    } else {
+      mDrift.style.color = 'var(--safe)';
+      verdict.className = 'verdict ok';
+      verdict.innerHTML = '<b>一致（偏移 ' + fmt(dist) + ' px）。</b> 這個瀏覽器把 <code>clientX</code> 和 ' +
+        '<code>getBoundingClientRect()</code> 放在同一個單位系統，d3-zoom 的數學成立。' +
+        '四個縮放級距都要各掃一次才算數。';
+    }
+  });
+
+  probe.addEventListener('pointerleave', function () { markerD3.style.opacity = '0'; });
+
+  measureBox();
+  window.addEventListener('resize', measureBox);
+})();
+</script>
+</body>
+</html>

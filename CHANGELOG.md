@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **The causal links were being computed and then thrown away.** The backend
+  has returned a finding's whole causal component — events *and* the edges
+  between them — since v0.6.89.5. The renderer kept the ids for dimming the
+  track and discarded the edges, so the only structure on screen was one hop
+  up and one hop down, as chips. The event inspector now has a **Causal
+  graph** section that draws the component: what produced this event, what it
+  led to, and the shape between. Clicking a node opens that event. A cause
+  that retention removed, or that was never written, is drawn as an explicit
+  placeholder rather than as the end of a chain — nothing can tell those two
+  apart, so the graph does not guess. Collapsed by default: it costs a query,
+  which should not happen just because a row was selected.
+
 - **One palette, and a smaller Timeline.** A UI/UX pass, third batch:
   - *Colour*: about 200 colour classes named shades the theme never set,
     such as `red-200`, `amber-900`, `indigo-*` and `blue-*`. They fell back

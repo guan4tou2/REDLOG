@@ -3,9 +3,11 @@
 // value arrives as a prop, so — like MarkerDetail — nothing here can read a
 // Timeline value before it is declared.
 
+import { useState } from 'react'
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
 import type { DetailLayout } from '../../lib/detailLayout'
+import { CausalGraph } from './CausalGraph'
 import { EventNoteField } from './EventNoteField'
 import { formatDateTime, formatTime } from '../../lib/time'
 import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
@@ -68,6 +70,11 @@ export function TimelineEventInspector({
   onStep, canStepPrev = false, canStepNext = false,
   layout, onToggleLayout, onClose
 }: TimelineEventInspectorProps): JSX.Element {
+  // Local, and deliberately not persisted: it survives stepping and following
+  // a node's selection (the pane stays mounted), and resets when the pane is
+  // closed. A remembered-open graph would fire a causal-chain query on every
+  // row an operator clicks through.
+  const [graphOpen, setGraphOpen] = useState(false)
   return (
     <>
       {/* Pinned to the top of the pane, not scrolled with the body — so
@@ -400,6 +407,36 @@ export function TimelineEventInspector({
           </div>
         )
       })()}
+      {/* The same relation as the two blocks above, at a different altitude:
+          those name one hop each, this draws the whole component. Collapsed by
+          default because most events are a link in a chain rather than the
+          question — and because it costs a round trip to the backend, which
+          should not happen just because a row was selected. */}
+      <div className="mt-3">
+        <button
+          type="button"
+          data-testid="causal-graph-toggle"
+          aria-expanded={graphOpen}
+          onClick={() => setGraphOpen((v) => !v)}
+          className="flex items-center gap-1 text-xs text-redlog-text-dim hover:text-redlog-text transition-colors"
+        >
+          {graphOpen
+            ? <ChevronDown size={12} strokeWidth={2} aria-hidden />
+            : <ChevronRight size={12} strokeWidth={2} aria-hidden />}
+          <span className="font-mono uppercase tracking-wider">{t('timeline.causalGraph.heading')}</span>
+        </button>
+        {graphOpen && (
+          <div className="mt-2">
+            <CausalGraph
+              anchorId={event.id}
+              pluginTypes={pluginTypes}
+              titleOf={titleOf}
+              onSelect={onSelect}
+              t={t}
+            />
+          </div>
+        )}
+      </div>
       {/* Focus-chain hint bubble (feature 2) — small nudge shown on the
           currently-selected event's detail panel when focus mode is OFF.
           Suppressed entirely once the operator is already in focus mode
