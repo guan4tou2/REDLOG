@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // Spec 052 US3, T036/T037. The rule the whole feature is subordinate to: an
@@ -117,6 +120,156 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
       })
       // And the operator's redirection did what they asked.
       expect(String(endFor('cat /tmp/redlog-t038.txt')?.data.stdout)).toContain('redirect-me')
+    })
+  })
+
+  // T039, FR-010. The dangerous outcome is not a missing command. It is a
+  // command from engagement A filed under engagement B — a lie in a document a
+  // client reads, written by the tool whose entire job is to be believable.
+  //
+  // So a terminal is pinned to the project it was opened against, and when the
+  // operator switches project in RedLog the terminal stops. It does not
+  // re-bind, and it cannot be talked back into recording: `redlog start` in
+  // that terminal is not the way around the guarantee. The safe answer is a
+  // new terminal (research.md D5).
+  describe('when the project changes under an open terminal', () => {
+    let collector: Awaited<ReturnType<typeof startCollector>>
+    let run: Awaited<ReturnType<typeof runZsh>>
+    const token = 'us3-switch'
+
+    beforeAll(async () => {
+      collector = await startCollector(token)
+      run = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: [
+          'echo before-the-switch',
+          // RedLog rewrites this file when the operator opens another
+          // project; the terminal finds out the same way it would then.
+          `printf '%s' '{"engagementId":"eng-after","operatorId":"op-a"}' > $HOME/.redlog/active-identity.json`,
+          'echo after-the-switch',
+          'redlog start',
+          'echo after-trying-to-start',
+          'redlog status'
+        ],
+        redlog: {
+          port: collector.port, token,
+          identity: { engagementId: 'eng-before', operatorId: 'op-a' }
+        },
+        timeoutSeconds: 90
+      })
+    }, 300_000)
+    afterAll(async () => { await collector?.close() })
+
+    const named = (match: string) => collector.events.filter((e) =>
+      String(e.data.command ?? '').includes(match))
+
+    it('stops, rather than writing the new project’s name on old work', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(named('before-the-switch').length).toBeGreaterThan(0)
+      expect(named('after-the-switch'), 'a command was recorded after the switch')
+        .toHaveLength(0)
+      // The operator's command still ran — stopping the recording is not
+      // stopping the engagement.
+      expect(run.steps[2].output).toContain('after-the-switch')
+    })
+
+    it('says why, in the record and in the terminal', () => {
+      const ended = collector.events.find((e) => e.data.subtype === 'session_end'
+        && e.data.reason === 'project-switched')
+      expect(ended, 'nothing in the record explains the gap').toBeTruthy()
+      // Attributed to the project it was recording, not the one now open:
+      // this row belongs to the engagement whose work just stopped.
+      expect(ended!.data.engagement_id).toBe('eng-before')
+      expect(run.transcript, 'the terminal never said anything')
+        .toMatch(/project changed|stopped recording/i)
+    })
+
+    it('cannot be talked back into recording', () => {
+      expect(named('after-trying-to-start'), '`redlog start` re-bound the terminal')
+        .toHaveLength(0)
+      expect(run.steps[5].output).toMatch(/project-switched/)
+    })
+  })
+
+  // T040, Domain Invariant #8. The spool already existed: a POST that fails
+  // writes the payload to `~/.redlog/pending` and RedLog replays it on the
+  // next project open. What it did not carry was WHEN — so a command run at
+  // 02:00 while RedLog was closed arrived claiming to have happened at 09:00,
+  // when the operator next opened the project. A record whose times are the
+  // times someone looked at it is not a record of the engagement.
+  describe('commands run while RedLog is closed', () => {
+    let run: Awaited<ReturnType<typeof runZsh>>
+    let payloads: Array<Record<string, unknown>> = []
+    let ranAt = 0
+
+    beforeAll(async () => {
+      // A port that is certainly dead: one the OS just gave us and we handed
+      // straight back.
+      const stillborn = await startCollector('unused')
+      const deadPort = stillborn.port
+      await stillborn.close()
+
+      ranAt = Date.now()
+      run = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: [
+          'echo spooled-while-down',
+          // One per line: the spool writes payloads with no trailing newline,
+          // so a plain `cat` of the directory runs them together.
+          'for f in $HOME/.redlog/pending/*.json; do print -r -- "$(<$f)"; done'
+        ],
+        redlog: {
+          port: deadPort, token: 'nobody-home',
+          identity: { engagementId: 'eng-spool', operatorId: 'op-spool' }
+        },
+        timeoutSeconds: 90
+      })
+      payloads = run.steps[1].output
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith('{'))
+        .map((l) => JSON.parse(l) as Record<string, unknown>)
+    }, 300_000)
+
+    it('keeps the command, and the operator keeps their shell', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(run.steps[0].output).toContain('spooled-while-down')
+      expect(payloads.length, 'nothing reached the spool').toBeGreaterThan(0)
+    })
+
+    it('stamps when it happened, not when it will be read', () => {
+      for (const payload of payloads) {
+        const data = payload.data as Record<string, unknown>
+        const stamp = data.source_timestamp
+        expect(typeof stamp, `no source_timestamp on ${String(data.subtype)}`).toBe('number')
+        // Within the window the shell actually ran in. `insertEvent` validates
+        // this field too — it refuses anything before 2015 or more than a
+        // minute in the future — so a wrong unit would be rejected rather
+        // than drag the row to 1970.
+        expect(stamp as number).toBeGreaterThanOrEqual(ranAt - 60_000)
+        expect(stamp as number).toBeLessThanOrEqual(Date.now() + 60_000)
+      }
+    })
+
+    it('carries that time through the replay', async () => {
+      const { replaySpoolDirectory } = await import('../src/core/spool-replay')
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-spool-'))
+      try {
+        payloads.forEach((p, i) => fs.writeFileSync(path.join(dir, `${i}.json`), JSON.stringify(p)))
+        const emitted: Array<Record<string, unknown>> = []
+        const result = replaySpoolDirectory(
+          dir,
+          { engagementId: 'eng-spool', operatorId: 'op-spool' },
+          (e) => { emitted.push(e.data); return true }
+        )
+        expect(result.replayed).toBe(payloads.length)
+        for (const data of emitted) {
+          expect(data.source_timestamp, 'the replay dropped the occurrence time').toBeTruthy()
+          expect(data.recovered_from_spool).toBe(true)
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
     })
   })
 

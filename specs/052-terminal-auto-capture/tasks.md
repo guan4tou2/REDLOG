@@ -172,11 +172,23 @@ recorded, status again, start, a command that is.
 **Independent test**: quickstart.md §3 — kill RedLog mid-session, keep working,
 one message, spool fills, restart and recording resumes without re-enrolling.
 
-- [ ] T036 [US3] Write the failing pty test: with RedLog unreachable, commands run normally, the operator is told once, and the message does not repeat on every prompt (FR-009)
-- [ ] T037 [US3] Write the failing pty test: the shell reports the *command's* exit status, never the relay's, including when the relay dies mid-command
-- [ ] T038 [US3] Implement the stand-down path in `hooks/shell-zsh-hook.zsh`: no Python 3, a failed `mkfifo`, an unwritable temp dir, recording off, a pipeline, or a redirection — run the command untouched (FR-029), the shape `redlog-run` already uses when `mkfifo` fails
-- [ ] T039 [US3] Write the failing test then implement the project-switch stop (FR-010): `session_end` with a reason, no writes into the new project, and the terminal says so
-- [ ] T040 [P] [US3] Confirm spool behaviour end to end with the existing `~/.redlog/pending` replay — a test that fills the spool while RedLog is down and asserts the events arrive on next project open, with their original occurrence times
+- [x] T036 [US3] Write the failing pty test: with RedLog unreachable, commands run normally, the operator is told once, and the message does not repeat on every prompt (FR-009)
+      → the commands already ran; silence was the bug. Told once on the way in, and again only if RedLog comes back and goes away — a warning on every prompt is one an operator learns to read past, and then the one that matters is read past too.
+      → the startup banner said "command metadata will be logged" and offered `redlog-run` for output. Both stopped being true at T020, so zsh now announces "commands and their output" and bash "commands". A banner that overstates what is recorded is worse than none: an operator who believes the output is in the record stops checking.
+      → making RedLog unreachable needed `WSL_DISTRO_NAME=''` in the test: under WSL the adapter deliberately falls back to the Windows profile's `.redlog`, which on a developer's machine is a real install, so omitting the credential files is not enough.
+- [x] T037 [US3] Write the failing pty test: the shell reports the *command's* exit status, never the relay's, including when the relay dies mid-command
+      → **it already did.** All three assertions passed on the first run: killing the relay underneath a running command leaves the shell alive and reports the command's own status to both the shell and the record. That is T020's design working, and it is now pinned rather than assumed.
+      → one note the test needed: `pkill -f` matches full command lines, so a command that kills its own relay matches *itself* and reports 143 — which looks exactly like the bug being tested for.
+- [x] T038 [US3] Implement the stand-down path in `hooks/shell-zsh-hook.zsh`: no Python 3, a failed `mkfifo`, an unwritable temp dir, recording off, a pipeline, or a redirection — run the command untouched (FR-029), the shape `redlog-run` already uses when `mkfifo` fails
+      → the first four already stood down. The two that did not: a pipeline, and a redirection.
+      → **not all pipelines.** `cat log | less` is the hazard — classified on `cat` it is relayed, and then the pager's stdout is a pipe instead of a terminal, so it stops being a pager. Any `native` or `pty` stage anywhere in the line stands the whole thing down. `nmap | tee f` is not a hazard and is worth capturing: the last stage still writes to the terminal, which is exactly what the relay holds. Standing down on every pipeline would have lost that.
+      → a redirection stands down because there is nothing to hold: the record says `redirected` either way (T022), and two processes are no longer started to watch an empty descriptor.
+- [x] T039 [US3] Write the failing test then implement the project-switch stop (FR-010): `session_end` with a reason, no writes into the new project, and the terminal says so
+      → detected by watching `active-identity.json`'s mtime with the `zstat` builtin: the common case, where nothing changed, costs a stat and no process. Only a changed mtime pays for the relay call.
+      → the `session_end` row lands in whichever project is open now — that is where someone wondering why the terminal went quiet will be looking — and names the engagement whose work stopped explicitly, rather than letting the attribution speak for it.
+- [x] T040 [P] [US3] Confirm spool behaviour end to end with the existing `~/.redlog/pending` replay — a test that fills the spool while RedLog is down and asserts the events arrive on next project open, with their original occurrence times
+      → "with their original occurrence times" was the half that did not work. The spool and the replay both existed; the payload carried no time, so a command run at 02:00 with RedLog closed arrived claiming 09:00 — the moment the operator next opened the project. A record whose times are the times someone read it is not a record of the engagement (Domain Invariant #8).
+      → one line: `source_timestamp` on every event the adapter sends. `insertEvent` already validates it and hashes the rejection, so a wrong unit is refused rather than dragging the row to 1970.
 
 ---
 
