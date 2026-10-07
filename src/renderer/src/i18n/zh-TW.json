@@ -617,6 +617,8 @@
   "timeline.causalGraph.unavailable": "成因無法取得",
   "timeline.causalGraph.unavailableCount": "{{count}} 個無法取得",
   "timeline.causalGraph.truncated": "結果已達安全上限",
+  "timeline.causalGraph.enlarge": "放大",
+  "timeline.causalGraph.dialogLabel": "因果圖，完整大小",
   "timeline.anomalies.chip": "鏈警示（{{count}}）",
   "timeline.anomalies.tooltip": "只顯示證據鏈有警示的事件",
   "timeline.brokenChain.banner": "⛓️‍💥 證據鏈在事件 {{brokenAtId}}… 之後斷開（走完 {{walked}} 個）。之後的所有事件皆未驗證。",
