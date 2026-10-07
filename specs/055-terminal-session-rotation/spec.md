@@ -11,8 +11,10 @@
 > **Relationship to the leave-project confirmation (PR #278, branch
 > `feat/project-switch-confirm`):** that change asks before the recording
 > stops, and lists "N open terminal panes close" as one of the consequences
-> because today it is true. This feature is what deletes that line. The dialog
-> itself stays: stopping the recording is still a thing to ask about.
+> because today it is true. This feature is what makes that line false. It is
+> replaced rather than removed — the panes stay and stop being recorded, which
+> is still worth naming. The dialog itself stays: stopping the recording is
+> the thing it was always about, and that does not change.
 
 ## Problems (verified on `89b6e102`)
 
@@ -54,6 +56,28 @@
    a cast file belonging to a project that is closed and a `_causes` reference
    pointing across a boundary. That is a record that cannot be walked, and it
    is why "just don't kill them" is not the feature.
+
+## Clarifications
+
+### Session 2026-10-07
+
+- Q: A command is in flight when the project is switched — does the switch
+  wait for it? → A: No. The switch happens immediately and the crossing is
+  recorded as what it is: the outgoing project keeps a command that was
+  started and not seen to finish, marked as having crossed a project switch,
+  and the incoming project's completion carries a reference back to it.
+  Waiting would make the switch's duration a function of whatever the operator
+  happens to be running, which is unbounded — a twenty-minute scan is a
+  twenty-minute switch — and the operator would be looking at an application
+  that appears to have ignored them.
+- Q: Leaving a project returns the operator to the project picker, where no
+  project is open. What happens to the panes? → A: They stay. The pane is
+  alive and explicitly not being recorded, and says so on itself, with the
+  condition raised the way persistent conditions are raised. Opening the next
+  project rotates them into it. This is the case FR-007 exists for, and it is
+  what makes the choice survivable: a pane that looks live while nothing is
+  written is the worst outcome available, so it is the one the feature is
+  required to make visible.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -173,14 +197,52 @@ switch, and check what the pane and the capture surfaces say.
 
 ---
 
+### User Story 5 - A pane at the project picker is alive and honest (Priority: P2)
+
+The operator leaves a project and lands on the project list. The panes are
+still there, and each one says plainly that nothing it does now is being
+recorded. When the operator opens the next project, the panes rotate into it
+and recording resumes without anything being reopened.
+
+**Why this priority**: Leaving to the picker is the same journey as switching
+for everything except where the operator lands, and it is the case with no
+incoming project to rotate into. Constitution II: a pane that looks exactly
+like a recording one while nothing is written is the failure this story
+exists to prevent.
+
+**Independent Test**: Leave a project with panes open, look at a pane, type in
+it, then open another project and check that the pane is recording there.
+
+**Acceptance Scenarios**:
+
+1. **Given** panes open, **When** the operator leaves to the project picker,
+   **Then** every pane is still alive and each states that it is not being
+   recorded.
+2. **Given** a pane in that state, **When** the operator types a command,
+   **Then** nothing claims it was recorded, and it does not appear in the
+   project that was just closed.
+3. **Given** panes at the picker, **When** a project is opened, **Then** each
+   pane begins recording in it and its record names the session it continues.
+4. **Given** panes at the picker, **When** the application is quit, **Then**
+   the outgoing project's halves were already complete and nothing is lost by
+   the panes ending unrecorded.
+
+---
+
 ### Edge Cases
 
-- **A command is in flight at the moment of the switch.** Its start was
-  recorded in project A and its completion will arrive while project B is
-  open. See [NEEDS CLARIFICATION: hold or cross — resolved below].
-- **There is no new project to rotate into.** Leaving a project returns the
-  operator to the project picker, where no project is open at all. See
-  [NEEDS CLARIFICATION: what happens to panes on leave — resolved below].
+- **A command is in flight at the moment of the switch.** The switch does not
+  wait. The outgoing project keeps a command that started and was not seen to
+  finish, marked as having crossed a switch rather than left dangling, and the
+  incoming project's completion refers back to it.
+- **The pane sits at the picker with no project open.** It stays alive, says
+  on itself that it is not being recorded, and is rotated into the next
+  project opened. Commands typed meanwhile are recorded nowhere, which is why
+  the pane has to say so.
+- **A command is in flight when the operator leaves to the picker.** Its
+  completion arrives while nothing is open and is recorded nowhere; the
+  outgoing project's dangling start is marked the same way as for a switch,
+  because from the record's side the two are the same event.
 - **The pane's recording was already truncated** by the size cap before the
   switch. The new project's recording starts fresh with its own budget, and
   the old half stays marked as truncated.
@@ -231,6 +293,24 @@ switch, and check what the pane and the capture surfaces say.
   the thing the confirmation asks about.
 - **FR-012**: The number of panes rotated MUST be observable in the record of
   both projects, so that an export can account for the boundary.
+- **FR-013**: A switch MUST NOT wait for commands running in panes to finish.
+- **FR-014**: A command that started in the outgoing project and was not seen
+  to finish there MUST be recorded as having crossed a project boundary, and
+  MUST be distinguishable from one that was never completed for any other
+  reason — a killed shell, a lost hook, a crash.
+- **FR-015**: Where the completion of such a command is recorded in the
+  incoming project, it MUST refer back to the start it completes and to the
+  project that start belongs to.
+- **FR-016**: Leaving a project to the project list MUST leave every pane
+  alive, under the same guarantees as a switch for the outgoing half.
+- **FR-017**: While no project is open, every pane MUST state on itself that
+  it is not being recorded, and the condition MUST be raised as a persistent
+  condition for as long as it lasts.
+- **FR-018**: Opening a project while panes are alive and unrecorded MUST
+  rotate them into it, with the same continuation reference a switch produces.
+- **FR-019**: Activity in a pane while no project is open MUST NOT be written
+  to the project that was just closed, and MUST NOT be replayed into the next
+  project opened.
 
 ### Key Entities
 
@@ -264,7 +344,16 @@ switch, and check what the pane and the capture surfaces say.
 - **SC-006**: When the incoming project cannot record, the pane is identifiable
   as not-recording from the pane itself, without consulting any other surface.
 - **SC-007**: The confirmation shown when leaving a project no longer lists
-  pane closure among its consequences, and nothing else in it becomes false.
+  pane closure among its consequences. What replaces it is true: the panes
+  stay and stop being recorded.
+- **SC-008**: A switch with a command running completes in the same time as a
+  switch with none, to within what an operator can perceive.
+- **SC-009**: Every command started in a project has, in that project, either
+  a completion or a recorded reason it has none. No command is simply missing
+  an end.
+- **SC-010**: With no project open, a pane is identifiable as not-recording
+  from the pane itself, and the same condition is visible from the surface
+  that lists what currently needs attention.
 
 ## Assumptions
 

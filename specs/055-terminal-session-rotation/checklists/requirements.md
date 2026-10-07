@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,23 +31,25 @@
 
 ## Notes
 
-Two clarifications are open, both in Edge Cases, and both change scope rather
-than detail:
+All items pass. Both clarifications were resolved in session 2026-10-07 and
+both widened the feature:
 
-1. **A command in flight at the moment of the switch.** Its start is in the
-   outgoing project and its completion will arrive while the incoming one is
-   open. Either the switch waits for the prompt to return, or the crossing is
-   recorded as what it is. Waiting makes the switch's duration a function of
-   whatever the operator happens to be running, which can be unbounded.
-
-2. **Leaving a project to the picker, where there is no incoming project.**
-   Either panes stay alive and visibly unrecorded until a project is opened,
-   or that path keeps today's behaviour and only project-to-project switching
-   rotates. The first is the better experience and the one that risks a pane
-   that looks live while nothing is being written; FR-007 exists for exactly
-   that case, which is what makes it survivable.
+1. **A command in flight at the switch** is recorded as crossing, not waited
+   for (FR-013 to FR-015). Waiting would have made the switch's duration a
+   function of whatever the operator happened to be running.
+2. **Leaving to the picker keeps the panes** (FR-016 to FR-019, User Story 5),
+   alive and explicitly unrecorded until a project is opened. This is the
+   choice that depends most on FR-007 and FR-017 being built properly: a pane
+   that looks live while nothing is written is the worst outcome in this
+   feature, worse than today's behaviour, because the operator keeps working
+   in it.
 
 The "Problems" section cites the implementation it was verified against, which
 is this repository's house style for a spec and not a leak of implementation
 into requirements: no FR, acceptance scenario or success criterion names a
 file, function or data structure.
+
+The second decision puts this feature on Constitution II in a way the first
+draft did not, and it is worth saying out loud at planning time: FR-017 is not
+a nicety attached to the picker case, it is the condition on which that case
+is allowed to exist.
