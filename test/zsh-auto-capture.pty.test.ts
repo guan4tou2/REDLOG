@@ -274,4 +274,48 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end.data.output_disposition).toBe('interactive')
     })
   })
+
+  // T021, FR-004. The bound is no longer a truncation limit: RedLog keeps a
+  // large body whole and references it (research.md T006, and
+  // `test/ingest.test.ts` covers that half). What is left in the relay is a
+  // MEMORY bound, so a runaway `yes` is stopped instead of growing until
+  // something else fails — and when it fires the record says so and names it.
+  //
+  // Driven by `REDLOG_MAX_BYTES` so the bound can be hit without producing
+  // eight megabytes through a pty.
+  describe('the bound, when it fires', () => {
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: [`printf 'x%.0s' $(seq 1 200)`],
+        redlog: { port: collector.port, token },
+        env: { REDLOG_MAX_BYTES: '64' },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('cuts the record, names the bound, and does not cut the terminal', () => {
+      expect(run.ok, run.error).toBe(true)
+
+      const end = shellEvents(collector.events, 'command_end', 'seq 1 200')[0]
+      expect(end, 'no command_end for the capped command').toBeTruthy()
+
+      expect(String(end.data.stdout)).toHaveLength(64)
+      // Counted in full. An operator reading `stdout_bytes: 64` of a 200-byte
+      // scan would believe the record is complete; the whole point of the
+      // field is to say it is not.
+      expect(end.data.stdout_bytes).toBe(200)
+      expect(end.data).toMatchObject({
+        stdout_truncated: true,
+        completeness: 'truncated',
+        limit_hit: 'stdout:64'
+      })
+
+      // The cap is the record's, not the operator's: all 200 bytes were on
+      // the terminal while the command ran.
+      expect(run.steps[0].output).toContain('x'.repeat(200))
+    })
+  })
 })

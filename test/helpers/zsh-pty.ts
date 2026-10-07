@@ -201,6 +201,8 @@ export interface ZshRunOptions {
    *  `identity` additionally writes `active-identity.json`, which only the
    *  PTY recorder needs — it pins identity when the session opens. */
   redlog?: { port: number; token: string; identity?: { engagementId: string; operatorId?: string } }
+  /** Extra environment for the shell, on the far side of the pty. */
+  env?: Record<string, string>
   timeoutSeconds?: number
 }
 
@@ -217,6 +219,7 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
     rc: opts.rc ?? '',
     redlog: opts.redlog,
     commands: opts.commands,
+    env: opts.env,
     timeout_s: opts.timeoutSeconds ?? 20
   })
 

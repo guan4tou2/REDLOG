@@ -15,6 +15,7 @@ import { deleteBookmarksOlderThan } from './db/bookmarks'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
+import { BODY_REF_FIELDS } from './http-body-store'
 import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
 import { pruneHttpBodyIndex } from './http-body-index'
@@ -369,7 +370,7 @@ function pinnedFiles(scopeTargets: string[]): Set<string> {
   if (scopeTargets.length === 0) return pinned
   let db: ReturnType<typeof getDB>
   try { db = getDB() } catch { return pinned }
-  const REF_FIELDS = ['request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref']
+  const REF_FIELDS = BODY_REF_FIELDS
   // Alias each extraction to a stable column name (f0..f3) rather than relying
   // on SQLite naming the column after the expression text.
   const selects = REF_FIELDS.map((f, i) => `json_extract(data,'$.${f}.file') AS f${i}`).join(', ')

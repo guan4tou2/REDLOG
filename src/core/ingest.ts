@@ -28,7 +28,7 @@ import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
 import { redact, getRules } from './redaction'
-import { extractBodyToSidecar } from './http-body-store'
+import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
 
@@ -407,6 +407,18 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
 
   if ((agentType === 'shell' || agentType === 'terminal') && typeof data.command === 'string' && data.command) {
     plan.commandCreds = detectCredentialUse(data.command)
+  }
+
+  // Spec 052 T021. Every command is relayed now, so an `nmap -A` body arrives
+  // here as a matter of course. Keeping it whole and referencing it is the
+  // same answer HTTP bodies already get; a truncation limit would have to be
+  // re-argued the first time someone ran a full-port scan (research.md T006).
+  //
+  // After the loot scan above, which reads `data.stdout` and would find
+  // nothing once this has moved it.
+  if (agentType === 'shell' && data.subtype === 'command_end') {
+    extractTextToSidecar(data, 'stdout', 'stdout_ref')
+    extractTextToSidecar(data, 'stderr', 'stderr_ref')
   }
 
   if (agentType === 'scanner') {
