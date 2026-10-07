@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // Timeline geometry + startup-gate regressions. These drive the real app
 // because none of them are reachable from unit tests: the hook-config read
@@ -109,9 +109,7 @@ test.describe.serial('timeline geometry + startup gates', () => {
     }
 
     // Shrink the window so 18 lanes cannot fit — this is the P0-2 condition.
-    await app.evaluate(async ({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setSize(1280, 620)
-    })
+    await resizeMainWindow(app, 1280, 620)
     await openView(page, 'timeline')
     await page.waitForTimeout(1500)
   })

@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // Design turn 9a. Two claims only the real app can settle: that the first
 // screen of a new engagement is the single-path one, and that it gets out of
@@ -33,7 +33,7 @@ test.describe.serial('the first run', () => {
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'first-run')
     await page.waitForTimeout(2000)
-    await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
+    await resizeMainWindow(app, 1500, 1000)
   })
 
   test.afterAll(async () => { if (app) await app.close() })
