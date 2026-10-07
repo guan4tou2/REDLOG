@@ -12,40 +12,22 @@
 // attacker-controlled (FR-002) — and nothing depends on the machine it runs
 // on, so RedLog and the shell adapter can reach the same verdict.
 
+import policy from '../../hooks/command-class.json'
+
 export type CommandClass = 'relayed' | 'pty' | 'native'
 
-/** Leave it alone entirely: it owns the terminal and recording it either
- *  breaks it or records redraws. */
-const NATIVE = new Set([
-  'nc', 'ncat',                              // FR-025: must stay suspendable
-  'vim', 'vi', 'nvim', 'nano', 'emacs',      // FR-026: redraws, not content
-  'less', 'more'
-])
-
-/** Brings its own TTY, so a PTY capture is lossless and the suspension cost
- *  is one the operator accepts for these. */
-const PTY = new Set(['ssh', 'socat', 'pwncat-cs'])
-
-/** Interactive when bare, an ordinary command when handed something to run. */
-const REPL = new Set([
-  'python', 'python2', 'python3', 'ipython',
-  'node', 'irb', 'ruby', 'perl', 'php', 'lua'
-])
-
-/** `-c`, `-m`, `-e`: the flags that turn a REPL into a command with output. */
-const REPL_SCRIPT_FLAGS = new Set(['-c', '-m', '-e'])
-
-/** Wrappers that stand in front of the real command. Classifying on the first
- *  word would put `sudo nc` in the relayed class and break the upgrade just as
- *  surely as classifying `nc` wrong would. FR-027. */
-const WRAPPERS: Record<string, Set<string>> = {
-  // name → flags that take a separate value, so the value is not mistaken
-  // for the wrapped command.
-  sudo: new Set(['-u', '-g', '-p', '-C', '-h', '-r', '-t', '-U']),
-  env: new Set(['-u', '-C', '-S']),
-  proxychains: new Set(['-f']),
-  proxychains4: new Set(['-f'])
-}
+// The lists live in `hooks/command-class.json`, beside the adapter that also
+// reads them (through `hooks/redlog-relay.py`). One list, two readers. A
+// second copy of these names here would drift from the shell's, and the drift
+// would be silent until the day an operator's reverse shell went through a
+// relay mid-engagement — which is the failure the list exists to prevent.
+const NATIVE = new Set(policy.native)
+const PTY = new Set(policy.pty)
+const REPL = new Set(policy.repl)
+const REPL_SCRIPT_FLAGS = new Set(policy.replScriptFlags)
+const WRAPPERS: Record<string, Set<string>> = Object.fromEntries(
+  Object.entries(policy.wrappers).map(([name, flags]) => [name, new Set(flags)])
+)
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
