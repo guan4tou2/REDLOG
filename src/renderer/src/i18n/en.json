@@ -617,6 +617,8 @@
   "timeline.causalGraph.unavailable": "cause not available",
   "timeline.causalGraph.unavailableCount": "{{count}} unavailable",
   "timeline.causalGraph.truncated": "bounded result",
+  "timeline.causalGraph.enlarge": "Enlarge",
+  "timeline.causalGraph.dialogLabel": "Causal graph, full size",
   "timeline.anomalies.chip": "Chain alerts ({{count}})",
   "timeline.anomalies.tooltip": "Show only events with chain-integrity alerts",
   "timeline.brokenChain.banner": "⛓️‍💥 Chain broken at event {{brokenAtId}}… (walked {{walked}}). All events after are unverified.",
