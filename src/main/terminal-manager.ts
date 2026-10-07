@@ -13,6 +13,7 @@ import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 import { indexCast } from '../core/cast-index'
+import { beginTerminal, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
 
 // The shells this machine can open, discovered asynchronously and read
 // synchronously by spawnTerminal. Probing is what must not happen on the main
@@ -471,8 +472,23 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     sendToWindow(`terminal:data:${id}`, data)
   })
 
+  // Spec 052: a RedLog pane is a terminal like any other, so it gets the same
+  // enrollment record as an operator's own shell — one file per terminal, in
+  // the place both sides read (`~/.redlog/terminals/`). It is what lets the
+  // capture card count terminals that have recorded nothing yet without
+  // mistaking them for terminals that are not there, and what will let
+  // `redlog status` answer inside a RedLog pane from the same source as
+  // everywhere else. `auto`, because a pane the operator opened inside the
+  // audit tool is not one they have to switch on.
+  try {
+    writeTerminalEnrollment(os.homedir(), beginTerminal({
+      sessionId: id, mode: 'auto', engagementId, operatorId, now: castStart
+    }))
+  } catch { /* a pane that cannot write its state still records; the card is poorer, not wrong */ }
+
   term.onExit(({ exitCode }) => {
     finaliseSession(session, exitCode)
+    removeTerminalEnrollment(os.homedir(), id)
     sessions.delete(id)
     sendToWindow(`terminal:exit:${id}`, exitCode)
   })

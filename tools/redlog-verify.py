@@ -280,7 +280,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
 
     # Optional: verify manifest.chainHead against the recomputed head. The
     # manifest's chainHead is `sha256(lastHash || walkedCount)` (see
-    # computeChainHead in src/core/chain-anchor.ts:66-79).
+    # chainHeadHash in src/core/chain-anchor.ts).
     head_ok: Optional[bool] = None
     manifest_head = manifest.get("chainHead") or {}
     manifest_head_hash = manifest_head.get("hash")

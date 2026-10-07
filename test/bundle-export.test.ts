@@ -14,6 +14,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
+let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 let mod: typeof import('../src/core/db/index')
 
 let dbAvailable = false
@@ -21,7 +22,9 @@ try {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const b = await import('../src/core/bundle-export')
+  const p = await import('../src/core/export-plan')
   initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle; mod = d
+  takeExportSnapshot = p.takeExportSnapshot
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
 
@@ -35,6 +38,34 @@ const seedFile = (sub: string, name: string, body: string): string => {
   fs.mkdirSync(d, { recursive: true })
   fs.writeFileSync(path.join(d, name), body)
   return path.join(d, name)
+}
+
+/** Every spawn below is bounded by this, so a hung interpreter is reported as
+ *  the spawn that hung rather than as the test running out of time. */
+const SPAWN_MS = 15_000
+
+/**
+ * An interpreter that actually runs Python, or null.
+ *
+ * Not `python3` on faith: on a Windows runner that name can be the Store's App
+ * Execution Alias, which runs no Python and need not exit. `spawnSync` then
+ * blocks until the test's own budget is gone and vitest reports a bare "Test
+ * timed out" with nothing in it about Python — which is how the verifier tests
+ * failed on windows-latest while passing on ubuntu, and why raising the budget
+ * could not have fixed it.
+ *
+ * `pythonLocation` is what actions/setup-python exports. It names the
+ * interpreter the workflow chose, rather than whatever PATH resolves to.
+ */
+function findPython(child: typeof import('node:child_process')): string | null {
+  const loc = process.env.pythonLocation
+  return [
+    ...(loc ? [path.join(loc, 'python.exe'), path.join(loc, 'bin', 'python3')] : []),
+    'python3', 'python'
+  ].find((exe) => {
+    const probe = child.spawnSync(exe, ['-c', 'print(1)'], { encoding: 'utf-8', timeout: SPAWN_MS })
+    return !probe.error && probe.status === 0 && probe.stdout.trim() === '1'
+  }) ?? null
 }
 
 describeDB('evidence bundle export', () => {
@@ -252,17 +283,70 @@ describeDB('private bookmarks stay out of the bundle', () => {
     const verifier = path.join(outDir, 'redlog-verify.py')
     if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
 
-    const clean = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
-    if (clean.error) return // python3 unavailable on this runner — skip
+    const python = findPython(child)
+    if (!python) return // no usable Python on this runner — skip, as before
+
+    const clean = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+    expect(clean.error, String(clean.error)).toBeUndefined()
     expect(clean.status, clean.stdout + clean.stderr).toBe(0)
     expect(clean.stdout).toMatch(/Manifest files\s+:\s+\d+ verified/)
 
     // Swap the bytes of a listed evidence file without touching the manifest.
     fs.writeFileSync(path.join(outDir, 'screenshots', 'shot.jpg'), 'SWAPPED-IMAGE')
-    const tampered = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+    const tampered = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+    expect(tampered.error, String(tampered.error)).toBeUndefined()
     expect(tampered.status).toBe(1)
     expect(tampered.stdout + tampered.stderr).toMatch(/MISMATCH|sha256 differs/)
-  }, 30000) // spawns python3 twice; the interpreter cold-start alone exceeds the
-  // 5s default on Windows CI runners (observed ~6s), so the test timed out there
-  // while asserting nothing wrong. Wall-clock budget, not a logic change.
+  }, 60_000) // a probe and two verifier runs, each bounded at 15s above; this is
+  // the budget they add up to, so a hang is reported as the spawn that hung
+  // rather than as the test running out of time.
+})
+
+describeDB('the chain head a recipient verifies', () => {
+  // The Export menu previews a plan and then runs it against the plan's
+  // snapshot, so every bundle an operator makes takes the snapshot branch of
+  // the head computation. That branch wrote the last event's own hash as
+  // chainHead.hash, where computeChainHead() and redlog-verify.py both use
+  // sha256(lastHash || eventCount). So a bundle nobody had touched reported
+  // "Chain-head match : NO" and verify.sh / verify.cmd exited 1 (#226). Every
+  // other test here exports without a snapshot, and the verifier test above
+  // runs on an empty chain, where the head check does not apply.
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-head-'))
+    initDB(dir)
+    ins('shell', { subtype: 'command_end', command: 'whoami', exit_code: 0 })
+    ins('marker', { title: 'finding', severity: 'info' })
+    ins('shell', { subtype: 'command_end', command: 'id', exit_code: 0 })
+  })
+  afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it('a planned export records the same chain head as an unplanned one, in the verifier\'s form', () => {
+    const planned = exportBundle('eng', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') })
+    const unplanned = exportBundle('eng', { outRoot: path.join(dir, 'unplanned') })
+    expect(planned.manifest.chainHead).toEqual(unplanned.manifest.chainHead)
+
+    const lines = fs.readFileSync(path.join(planned.outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const last = lines[lines.length - 1]
+    const recomputed = crypto.createHash('sha256').update(last.hash).update(String(lines.length)).digest('hex')
+    expect(planned.manifest.chainHead).toEqual({ hash: recomputed, eventCount: lines.length })
+  })
+
+  it('the python verifier passes a planned bundle and an unplanned one, chain head included', () => {
+    const child = require('node:child_process') as typeof import('node:child_process')
+    const python = findPython(child)
+    if (!python) return // no usable Python on this runner — skip
+    for (const [label, opts] of [
+      ['planned', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') }],
+      ['unplanned', { outRoot: path.join(dir, 'unplanned') }]
+    ] as const) {
+      const { outDir } = exportBundle('eng', opts)
+      const verifier = path.join(outDir, 'redlog-verify.py')
+      if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
+      const run = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+      expect(run.error, String(run.error)).toBeUndefined()
+      expect(run.stdout, label).toMatch(/Events walked\s+:\s+3/)
+      expect(run.stdout, label).toMatch(/Chain-head match\s+:\s+yes/)
+      expect(run.status, `${label}: ${run.stdout}${run.stderr}`).toBe(0)
+    }
+  }, 60_000) // a probe and two verifier runs, each bounded at SPAWN_MS
 })
