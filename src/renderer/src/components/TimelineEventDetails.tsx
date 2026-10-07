@@ -3,16 +3,72 @@
 // Reuses CollapsibleStream + MetadataGrid from HttpDetail for consistent
 // expand/copy affordances.
 
+import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } from './HttpDetail'
 
 // ── Shell command_end ────────────────────────────────────────────────
+
+interface BodyRef { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean }
+
+const asRef = (value: unknown): BodyRef | undefined => {
+  const ref = value as BodyRef | undefined
+  return ref && typeof ref.file === 'string' ? ref : undefined
+}
+
+/** A stream whose bytes are in the project's body store rather than on the row.
+ *
+ *  Spec 052 relays every command, so `nmap -A` output arrives as a matter of
+ *  course and anything over the inline threshold is kept whole on disk with a
+ *  reference on the event (research.md T006). Declared at module scope, not
+ *  inside CommandEndDetail: a component defined in another component's body is
+ *  a new type on every render, and React remounts its subtree each time.
+ */
+function RefBackedStream({ label, refValue, bytes, accent }: {
+  label: string
+  refValue: BodyRef
+  bytes?: number
+  accent: 'emerald' | 'amber'
+}): JSX.Element {
+  const { t } = useI18n()
+  const [content, setContent] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    window.redlog.httpBody.read(refValue)
+      .then((text) => { if (live) setContent(text) })
+      .catch(() => { if (live) setContent(null) })
+    return () => { live = false }
+  }, [refValue.sha256, refValue.file])
+
+  if (content === null) {
+    // Either still loading or gone from disk — retention and the disk-pressure
+    // sweep both reach these files. The event and its SHA-256 remain either
+    // way, which is what the note says.
+    return (
+      <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
+        {t('timeline.detail.httpBodyEvicted')}
+      </p>
+    )
+  }
+  return (
+    <CollapsibleStream
+      label={label}
+      content={content}
+      bytes={bytes ?? refValue.size}
+      truncated={refValue.truncated === true}
+      accent={accent}
+      startOpen={false}
+    />
+  )
+}
 
 /** Structured detail body for a shell command_end event. */
 export function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
+  const stdoutRef = asRef(data.stdout_ref)
+  const stderrRef = asRef(data.stderr_ref)
   return (
     <div className="mt-2 space-y-1.5">
       {hasStdout && (
@@ -25,6 +81,14 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
+      {!hasStdout && stdoutRef && (
+        <RefBackedStream
+          label={t('timeline.detail.stdout')}
+          refValue={stdoutRef}
+          bytes={typeof data.stdout_bytes === 'number' ? data.stdout_bytes : undefined}
+          accent="emerald"
+        />
+      )}
       {hasStderr && (
         <CollapsibleStream
           label={t('timeline.detail.stderr')}
@@ -35,8 +99,16 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
+      {!hasStderr && stderrRef && (
+        <RefBackedStream
+          label={t('timeline.detail.stderr')}
+          refValue={stderrRef}
+          bytes={typeof data.stderr_bytes === 'number' ? data.stderr_bytes : undefined}
+          accent="amber"
+        />
+      )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && (
+      {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && (
         <IoAbsenceNote
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}

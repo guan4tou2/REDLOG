@@ -199,11 +199,27 @@ def run(command, recorder):
     return os.waitstatus_to_exitcode(status)
 
 
+def run_unrecorded(command):
+    """Become the command. Nothing of this process survives to confuse the
+    caller's `$?` — the operator's exit status is the command's own."""
+    try:
+        os.execvp(command[0], command)
+    except FileNotFoundError:
+        print(f'[redlog] {command[0]}: command not found', file=sys.stderr)
+        return 127
+    except OSError as error:
+        print(f'[redlog] {command[0]}: {error.strerror or error}', file=sys.stderr)
+        return 126
+    return 126  # execvp does not return
+
+
 def main():
     parser = argparse.ArgumentParser(description='Explicit PTY output capture for the active RedLog project')
     parser.add_argument('--max-bytes', type=int, default=50 * 1024 * 1024)
     parser.add_argument('--nested', action='store_true',
                         help='record even inside another redlog-session (e.g. a tmux server that outlived it)')
+    parser.add_argument('--best-effort', action='store_true',
+                        help='if the recorder cannot start, run the command anyway, unrecorded')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if os.name != 'posix':
@@ -217,6 +233,12 @@ def main():
         print('[redlog] already inside a redlog-session: this terminal is being recorded. '
               'Not starting a second recorder (use --nested if the outer session has ended, '
               'e.g. in a tmux server started from it).', file=sys.stderr)
+        # Under the automatic wrapper this is the common case, not an error:
+        # the outer PTY already sees everything this command draws, so the
+        # right thing is to run it and record nothing twice.
+        if args.best_effort and args.command:
+            command = args.command[1:] if args.command[:1] == ['--'] else args.command
+            return run_unrecorded(command)
         return 2
     command = args.command
     if command[:1] == ['--']:
@@ -230,6 +252,14 @@ def main():
         recorder.start(' '.join(command))
     except Exception as error:
         print(f'[redlog] session not started: {error}', file=sys.stderr)
+        # Spec 052: the adapter wraps `ssh` and the other PTY-class programs
+        # automatically, so this path is now reached by a command the operator
+        # typed for their own reasons rather than by someone asking to record.
+        # Refusing to run their `ssh` because recording is paused would be a
+        # logger deciding what the engagement may do; the command runs, and
+        # the adapter's own `command_end` already says no body was held.
+        if args.best_effort:
+            return run_unrecorded(command)
         return 1
     print('[redlog] session recording; merged output only, exit shell to finish', file=sys.stderr)
     try:

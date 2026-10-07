@@ -21,7 +21,6 @@ describeShell(`shell hook against an unresponsive RedLog (${target?.label ?? 'no
   it('does not hang the prompt when RedLog accepts and never answers', async () => {
     const hole = await startBlackHole()
     try {
-      const started = Date.now()
       const report = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: ['echo still-alive'],
@@ -41,9 +40,14 @@ describeShell(`shell hook against an unresponsive RedLog (${target?.label ?? 'no
       // --max-time 2; the host resolution happens once per shell because
       // _REDLOG_HOST is exported. Generous on purpose: this asserts there is a
       // ceiling, and a tight one would measure the machine's load instead.
-      expect(Date.now() - started).toBeLessThan(40_000)
+      //
+      // `elapsedMs` and not a clock around the call: the harness serialises
+      // WSL work behind a lock, and timing from outside would include the
+      // queue — which is how this read 41.6s under a full-suite run and
+      // failed, having measured four other test files rather than the hook.
+      expect(report.elapsedMs).toBeLessThan(40_000)
     } finally {
       await hole.close()
     }
-  }, 70_000)
+  }, 240_000)
 })

@@ -6,6 +6,7 @@ import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
 import { isAttachmentId, storedArtifactOf, type ExportAttachment } from './export-attachments'
+import { BODY_REF_FIELDS } from './http-body-store'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -70,7 +71,7 @@ export function countReferencedAttachments(events: readonly RedLogEvent[]): numb
   const references = new Set<string>()
   for (const event of events) {
     if (event.agentType === 'screenshot' && typeof event.data.filename === 'string') references.add(`screenshot:${event.data.filename}`)
-    for (const key of ['request_body_ref', 'response_body_ref']) {
+    for (const key of BODY_REF_FIELDS) {
       const ref = event.data[key]
       if (ref && typeof ref === 'object' && typeof (ref as { sha256?: unknown }).sha256 === 'string') {
         references.add(`body:${(ref as { sha256: string }).sha256}`)
@@ -122,7 +123,7 @@ export function countExportAttachments(
         referencedScreenshots.add(filename)
       }
     }
-    for (const key of ['request_body_ref', 'response_body_ref']) {
+    for (const key of BODY_REF_FIELDS) {
       const ref = event.data[key]
       if (ref && typeof ref === 'object' && typeof (ref as { sha256?: unknown }).sha256 === 'string') {
         bodyHashes.add((ref as { sha256: string }).sha256)

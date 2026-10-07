@@ -21,6 +21,11 @@ export interface ZshReport {
   exit_code?: number
   transcript: string
   marker: string
+  /** Wall clock for the shell itself, measured INSIDE the WSL lock.
+   *  A caller timing `await runZsh(...)` from outside would be timing the
+   *  queue as much as the shell, and the one test that asserts a ceiling on
+   *  how long the hook may wait would be measuring this harness instead. */
+  elapsedMs: number
 }
 
 export interface ShellTarget {
@@ -33,9 +38,80 @@ export interface ShellTarget {
 
 const WSL_DISTRO = 'kali-linux'
 
-function wslHas(distro: string, cmd: string): boolean {
-  const r = spawnSync('wsl', ['-d', distro, '--', 'bash', '-lc', `command -v ${cmd}`], { encoding: 'utf8' })
-  return r.status === 0 && r.stdout.trim().length > 0
+// Only when the shell is on the other side of `wsl.exe`.
+//
+// Vitest runs test FILES in parallel, and there are now five of them driving a
+// shell. On Linux that is five zsh processes and nothing notices. Through WSL
+// interop it is five concurrent `wsl.exe` sessions, and the service starts
+// refusing them: `Wsl/Service/0x8007274c` (a timeout), returned as an error
+// message on stdout in the console code page, which then arrives spliced into
+// the next command line as mojibake. It presents as a python3 that cannot open
+// a garbled path — a failure that names everything except what went wrong.
+//
+// So the WSL work is serialised across processes by a directory, which is
+// atomic to create. CI is unaffected: on ubuntu `prefix` is empty, no lock is
+// taken, and the files run in parallel as before.
+const WSL_LOCK = path.join(os.tmpdir(), 'redlog-wsl-harness.lock')
+const LOCK_STALE_MS = 5 * 60_000
+
+async function withWslLock<T>(target: ShellTarget, fn: () => Promise<T>): Promise<T> {
+  if (target.prefix.length === 0) return fn()
+  const deadline = Date.now() + 10 * 60_000
+  for (;;) {
+    try {
+      fs.mkdirSync(WSL_LOCK)
+      break
+    } catch {
+      // A holder that died takes its lock with it, eventually: a worker killed
+      // mid-run would otherwise wedge every later file.
+      try {
+        if (Date.now() - fs.statSync(WSL_LOCK).mtimeMs > LOCK_STALE_MS) {
+          fs.rmSync(WSL_LOCK, { recursive: true, force: true })
+          continue
+        }
+      } catch { continue }
+      if (Date.now() > deadline) throw new Error('WSL harness lock never freed')
+      await new Promise((resolve) => setTimeout(resolve, 50 + Math.random() * 150))
+    }
+  }
+  try {
+    return await fn()
+  } finally {
+    try { fs.rmSync(WSL_LOCK, { recursive: true, force: true }) } catch { /* already gone */ }
+  }
+}
+
+/** One `wsl.exe` for the whole probe, retried.
+ *
+ *  It used to be one per command, run at module load, in five test files that
+ *  vitest starts at the same moment — ten concurrent interop sessions before
+ *  a single test had run. A refused probe does not fail: it makes
+ *  `findShellTarget` return null and the file SKIP, which reads as green.
+ *  That is the worst outcome available here, so it retries rather than
+ *  concluding the machine has no zsh. */
+function wslProbe(distro: string, commands: string[]): boolean {
+  const script = commands.map((c) => `command -v ${c} >/dev/null`).join(' && ')
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = spawnSync('wsl', ['-d', distro, '--', 'bash', '-lc', script], { encoding: 'utf8' })
+    if (r.status === 0) return true
+    // `wsl.exe` reports its own failures (`Wsl/Service/0x8007274c`) on stdout
+    // in the console code page, with a non-zero status — indistinguishable
+    // from "the command is not installed" except by trying again.
+    spawnSync('cmd', ['/c', 'timeout', '/t', '1', '/nobreak'], { stdio: 'ignore' })
+  }
+  return false
+}
+
+/** `C:\x\y` → `/mnt/c/x/y`, in process.
+ *
+ *  This was `wsl.exe wslpath`, one interop session per path, several per test
+ *  file and none of them under the lock below — the storm that the lock was
+ *  added to stop was mostly these. The translation is fixed and documented;
+ *  spawning a Linux process to perform it was never buying anything. */
+function toWslPath(p: string): string {
+  const win = path.resolve(p).replace(/\\/g, '/')
+  const drive = /^([A-Za-z]):\//.exec(win)
+  return drive ? `/mnt/${drive[1].toLowerCase()}/${win.slice(3)}` : win
 }
 
 /** The shell this machine can actually drive, or null — which is a skip, not
@@ -46,13 +122,10 @@ export function findShellTarget(): ShellTarget | null {
     if (zsh.status !== 0 || !zsh.stdout.trim()) return null
     return { prefix: [], toShellPath: (p) => p, label: 'local zsh' }
   }
-  if (!wslHas(WSL_DISTRO, 'zsh') || !wslHas(WSL_DISTRO, 'python3')) return null
+  if (!wslProbe(WSL_DISTRO, ['zsh', 'python3'])) return null
   return {
     prefix: ['wsl', '-d', WSL_DISTRO, '--'],
-    toShellPath: (p) => {
-      const r = spawnSync('wsl', ['-d', WSL_DISTRO, '--', 'wslpath', '-a', p.replace(/\\/g, '/')], { encoding: 'utf8' })
-      return r.stdout.trim()
-    },
+    toShellPath: toWslPath,
     label: `wsl ${WSL_DISTRO}`
   }
 }
@@ -124,8 +197,12 @@ export interface ZshRunOptions {
   /** Lines written into the generated .zshrc before the commands run. */
   rc?: string
   commands: string[]
-  /** Written into <home>/.redlog so the adapter believes RedLog is running. */
-  redlog?: { port: number; token: string }
+  /** Written into <home>/.redlog so the adapter believes RedLog is running.
+   *  `identity` additionally writes `active-identity.json`, which only the
+   *  PTY recorder needs — it pins identity when the session opens. */
+  redlog?: { port: number; token: string; identity?: { engagementId: string; operatorId?: string } }
+  /** Extra environment for the shell, on the far side of the pty. */
+  env?: Record<string, string>
   timeoutSeconds?: number
 }
 
@@ -142,6 +219,7 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
     rc: opts.rc ?? '',
     redlog: opts.redlog,
     commands: opts.commands,
+    env: opts.env,
     timeout_s: opts.timeoutSeconds ?? 20
   })
 
@@ -152,23 +230,29 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
   // as "no prompt after <command>" thirty seconds later, which looks like a
   // hung adapter and is not.
   const argv = [...target.prefix, 'python3', driver]
-  const run = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+  const run = await withWslLock(target, () => new Promise<
+    { status: number | null; stdout: string; stderr: string; elapsedMs: number }
+  >((resolve) => {
+    const startedAt = Date.now()
     const child = spawn(argv[0], argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     const killer = setTimeout(() => child.kill('SIGKILL'), (opts.timeoutSeconds ?? 20) * 1000 + 10_000)
     child.stdout.on('data', (c) => { stdout += String(c) })
     child.stderr.on('data', (c) => { stderr += String(c) })
-    child.on('close', (status) => { clearTimeout(killer); resolve({ status, stdout, stderr }) })
+    child.on('close', (status) => {
+      clearTimeout(killer)
+      resolve({ status, stdout, stderr, elapsedMs: Date.now() - startedAt })
+    })
     child.stdin.end(job)
-  })
+  }))
   if (run.status !== 0 || !run.stdout) {
     return {
-      ok: false, steps: [], transcript: run.stderr, marker: '',
+      ok: false, steps: [], transcript: run.stderr, marker: '', elapsedMs: run.elapsedMs,
       error: `driver exited ${run.status}: ${run.stderr.slice(0, 400)}`
     }
   }
-  return JSON.parse(run.stdout) as ZshReport
+  return { ...(JSON.parse(run.stdout) as ZshReport), elapsedMs: run.elapsedMs }
 }
 
 export interface ShellRun {
@@ -201,8 +285,10 @@ export async function runInShell(
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-script-')), 'run.sh')
   fs.writeFileSync(file, script.replace(/\r\n/g, '\n'), 'utf8')
   const argv = [...target.prefix, 'bash', target.toShellPath(file)]
-  const startedAt = Date.now()
-  return new Promise<ShellRun>((resolve) => {
+  // Inside the lock, so `startedAt` measures the shell and not the queue —
+  // the streaming assertions compare against it.
+  return withWslLock(target, () => new Promise<ShellRun>((resolve) => {
+    const startedAt = Date.now()
     const child = spawn(argv[0], argv.slice(1), {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...opts.env }
@@ -218,7 +304,7 @@ export async function runInShell(
       fs.rmSync(path.dirname(file), { recursive: true, force: true })
       resolve({ status, stdout, stderr, firstStdoutAt, startedAt, endedAt: Date.now() })
     })
-  })
+  }))
 }
 
 /** The repository's own hook files, as the shell sees them. */

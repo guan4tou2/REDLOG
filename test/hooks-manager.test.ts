@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import fs from 'fs'
-import { detectHooks, getHookInstallPlan, installHook } from '../src/core/hooks-manager'
+import { detectHooks, getHookInstallPlan, installHook, rcWithHook, rcWithoutHook } from '../src/core/hooks-manager'
 import { loadPlugins } from '../src/core/plugins/loader'
 import { applyContributions } from '../src/core/plugins/contributions'
 
@@ -37,7 +37,7 @@ describe('hooks-manager guided setup', () => {
       const plan = getHookInstallPlan(id)
       expect(plan?.map((file) => file.target.split(/[\\/]/).pop())).toEqual([
         id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-bash-hook.sh',
-        'shell-common.sh', 'redlog-session.py', 'redlog-relay.py'
+        'shell-common.sh', 'redlog-session.py', 'redlog-relay.py', 'command-class.json'
       ])
       expect(plan?.every((file) => fs.existsSync(file.source))).toBe(true)
     }
@@ -132,5 +132,60 @@ describe('installHook Windows refusal (Audit P0-3)', () => {
     const r = installHook('nonexistent-plugin')
     expect(r.success).toBe(false)
     expect(r.message).toMatch(/unknown/i)
+  })
+})
+
+// Spec 052 T026, FR-016. Uninstall must leave the operator's rc byte-identical
+// to what was there before. A red-team tool has no business leaving a
+// footprint on the machine it was run from, and "almost the same" is not a
+// property anyone can check a year later.
+//
+// Pure functions, tested here rather than through installHook, because that
+// one refuses outright on win32 — the inverse property would otherwise be
+// exercised for the first time on CI's ubuntu leg, which is exactly the round
+// trip this repository tries to avoid.
+describe('the rc edit is its own inverse', () => {
+  const dest = '/home/op/.redlog/shell-hook.zsh'
+
+  const originals = [
+    ['an rc with a trailing newline', 'export PATH=/opt/bin:$PATH\n'],
+    ['an rc without one', 'export PATH=/opt/bin:$PATH'],
+    ['an empty rc', ''],
+    ['an rc that is only blank lines', '\n\n'],
+    ['an rc that mentions redlog in passing', '# redlog notes\nalias r="cd ~/redlog"\n']
+  ] as const
+
+  for (const [name, original] of originals) {
+    it(`restores ${name}`, () => {
+      const installed = rcWithHook(original, dest)
+      expect(installed, 'nothing was added').not.toBe(original)
+      expect(installed).toContain(`source ${dest}`)
+      expect(rcWithoutHook(installed, dest)).toBe(original)
+    })
+  }
+
+  it('does not drift over repeated install/uninstall cycles', () => {
+    // The old removal replaced the whole run — leading newline included —
+    // with a single `\n`, so every cycle left one more blank line behind.
+    let content = 'autoload -Uz compinit\ncompinit\n'
+    const before = content
+    for (let i = 0; i < 5; i++) {
+      content = rcWithHook(content, dest)
+      content = rcWithoutHook(content, dest)
+    }
+    expect(content).toBe(before)
+  })
+
+  it('adds the line once, however many times install runs', () => {
+    const once = rcWithHook('setopt AUTO_CD\n', dest)
+    expect(rcWithHook(once, dest)).toBe(once)
+  })
+
+  it('leaves an rc it did not write alone', () => {
+    // The operator sourced the hook themselves, in their own words. Removing
+    // our block finds nothing, and theirs is not ours to edit.
+    const theirs = `# mine\n. ${dest}\n`
+    expect(rcWithoutHook(theirs, dest)).toBe(theirs)
+    expect(rcWithHook(theirs, dest)).toBe(theirs)
   })
 })

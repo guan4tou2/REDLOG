@@ -183,17 +183,64 @@ describe('the two terminals are one row', () => {
     expect(el.querySelector('[data-testid="capture-row-terminal"]')).toBeTruthy()
   })
 
-  it('says whether the operator\'s own terminal is in the record', () => {
+  it('says whether the operator\'s own terminal is in the record — in three states, not two', () => {
     // The only open question on the row: RedLog's panes always record, so
     // what is left to act on is whether the operator's own shell is included.
+    //
+    // Spec 052 FR-015 split the "yes" in half. A copied file and an appended
+    // rc line prove that a setup flow ran, not that anything is being
+    // captured — the rc has to be re-read, the adapter has to load, and the
+    // transport has to reach RedLog. Until a command arrives from a terminal
+    // that is not one of RedLog's panes, the card says setup is unfinished
+    // rather than reporting on itself.
     const without = draw([{ ...terminal, hookId: 'shell-powershell', installed: false }], { state: 'stopped', url: null })
     fireEvent.click(within(without).getByText(/all sources/))
     expect(without.textContent).toMatch(/Your own terminal is not in the record/)
     cleanup()
 
-    const withHook = draw([{ ...terminal, hookId: 'shell-powershell', installed: true }], { state: 'stopped', url: null })
-    fireEvent.click(within(withHook).getByText(/all sources/))
-    expect(withHook.textContent).toMatch(/Your own terminal is included/)
+    const installedOnly = draw(
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: null }],
+      { state: 'stopped', url: null })
+    fireEvent.click(within(installedOnly).getByText(/all sources/))
+    expect(installedOnly.textContent).toMatch(/open a new terminal and run a command/)
+    expect(installedOnly.textContent).not.toMatch(/Your own terminal is included/)
+    cleanup()
+
+    const proven = draw(
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now() }],
+      { state: 'stopped', url: null })
+    fireEvent.click(within(proven).getByText(/all sources/))
+    expect(proven.textContent).toMatch(/Your own terminal is included/)
+  })
+
+  // FR-014. The install was deliberately not the card's action, because
+  // RedLog's own pane records with nothing installed — it sat behind a
+  // "manage sources" click as a second-order concern. Spec 052 changed what
+  // the install buys: the hook is what brings the operator's OWN terminals
+  // in, with their output. An operator working in their own shell would
+  // otherwise read "healthy" on a machine whose real work is unrecorded.
+  it('makes the install the one action once there is a record at all', () => {
+    const el = draw(
+      [{ ...terminal, lastEventAt: Date.now(), hookId: 'shell-powershell', installed: false }],
+      { state: 'running', url: 'http://127.0.0.1:8080' })
+    expect(el.textContent).toMatch(/Install the shell hook/)
+  })
+
+  it('offers it no more once the hook is in', () => {
+    const el = draw(
+      [{ ...terminal, lastEventAt: Date.now(), hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now() }],
+      { state: 'running', url: 'http://127.0.0.1:8080' })
+    expect(el.textContent).not.toMatch(/Install the shell hook/)
+  })
+
+  // T028: "RedLog's panes only" and "this machine's terminals too" are
+  // different situations, and the card could not tell them apart.
+  it('counts the terminals that have enrolled', () => {
+    const el = draw(
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), enrolled: { total: 3, recording: 2 } }],
+      { state: 'stopped', url: null })
+    fireEvent.click(within(el).getByText(/all sources/))
+    expect(el.textContent).toMatch(/2 of 3 recording/)
   })
 
   it('a terminal recording with no hook installed is not "not installed"', () => {

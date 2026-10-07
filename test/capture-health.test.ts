@@ -201,6 +201,39 @@ describeDB('capture-health', () => {
     expect(h.sources.find((s) => s.id === 'builtin-terminal')).toBeUndefined()
   })
 
+  // Spec 052 T027, FR-015. An install is not finished because a file was
+  // copied and a line was appended: the rc has to be re-read, the adapter has
+  // to load, and the transport has to reach RedLog. The only evidence of all
+  // three is a command that arrived from a terminal that is not one of
+  // RedLog's own panes. Until then the card is reporting on its own setup
+  // flow rather than on capture.
+  it('does not count RedLog’s own pane as proof the shell hook works', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'id', source: 'builtin-terminal' })
+    const terminal = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    // The row is feeding — but not from the operator's own shell.
+    expect(terminal?.state).toBe('ready')
+    expect(terminal?.lastEventAt).not.toBeNull()
+    expect(terminal?.ownShellLastEventAt).toBeNull()
+  })
+
+  it('counts a command from the operator’s own terminal as proof', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay' })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
+      .not.toBeNull()
+  })
+
+  it('counts a command from an adapter too old to say where it came from', () => {
+    // `source` is absent on rows from adapters installed before this release.
+    // Reading that as "RedLog's pane" would tell an operator whose hook has
+    // worked for months that their setup is unfinished.
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'whoami' })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
+      .not.toBeNull()
+  })
+
   // Spec 052 T017. The terminal row has always been able to say whether a
   // command has arrived; it could not say whether this machine's terminals
   // are enrolled at all. Those are different questions — an enrolled terminal
