@@ -327,6 +327,44 @@ describeDB('ingest', () => {
       expect(assembled).toBe('hello world')
     })
 
+    // T021, research.md T006. Once every command is relayed, `nmap -A` and
+    // `ffuf` bodies arrive as a matter of course, and a truncated scan is the
+    // evidence the operator most wanted. RedLog already solves this for HTTP
+    // bodies — keep it whole, reference it — so command output takes the same
+    // path rather than a bigger truncation limit that would have to be
+    // re-argued the first time someone ran a full-port scan.
+    it('keeps a large body whole, on disk, and leaves a reference', () => {
+      const body = 'A'.repeat(60_000)
+      const ev = shell({
+        subtype: 'command_end', command: 'nmap -A 10.0.0.1', command_id: 'cmd-big',
+        exit_code: 0, duration_sec: 40, cwd: '/root',
+        stdout: body, stdout_bytes: body.length, stdout_truncated: false,
+        completeness: 'complete', output_disposition: 'captured'
+      }).event!
+
+      const ref = ev.data.stdout_ref as { sha256: string; size: number; file: string } | undefined
+      expect(ref, 'the body was not externalised').toBeTruthy()
+      expect(ref!.size).toBe(body.length)
+      expect(ref!.sha256).toMatch(/^[0-9a-f]{64}$/)
+      // The bytes are not on the row — that is the point — and the row still
+      // says the record is complete, because it is.
+      expect(ev.data.stdout).toBeUndefined()
+      expect(ev.data.completeness).toBe('complete')
+      expect(ev.data.stdout_bytes).toBe(body.length)
+    })
+
+    it('leaves a small body where every reader already looks for it', () => {
+      // Under the threshold nothing moves. A reference for forty bytes would
+      // be a file per command and a second place to look for the common case.
+      const ev = shell({
+        subtype: 'command_end', command: 'whoami', command_id: 'cmd-small',
+        exit_code: 0, duration_sec: 0, cwd: '/root', stdout: 'root\n'
+      }).event!
+
+      expect(ev.data.stdout).toBe('root\n')
+      expect(ev.data.stdout_ref).toBeUndefined()
+    })
+
     it('ends the command by its id even when the text no longer matches', () => {
       // The old key is `terminal|pid|command`, so the two ends of one command
       // correlate only while the text is byte-identical. It is not always:

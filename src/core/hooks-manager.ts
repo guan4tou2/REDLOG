@@ -143,7 +143,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-zsh-hook.zsh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py', 'hooks/command-class.json'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-hook.zsh'),
     shellRcFile: '.zshrc'
@@ -156,7 +156,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py', 'hooks/command-class.json'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
@@ -192,7 +192,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py', 'hooks/command-class.json'],
     installMethod: 'manual'
   }
 ]
@@ -322,6 +322,36 @@ function srcPathForRelative(plugin: PluginManifest, relative: string): string {
 
 function srcPathFor(plugin: PluginManifest): string {
   return srcPathForRelative(plugin, plugin.hookFile)
+}
+
+// The exact bytes a shell-source install appends to the operator's rc, and the
+// exact bytes an uninstall takes back out.
+//
+// FR-016: uninstall must leave the file byte-identical to what was there
+// before. It did not. Install appended `\n# RedLog shell hook\nsource <dest>\n`
+// and uninstall replaced that whole run — leading newline included — with a
+// single `\n`, so every install/uninstall cycle left one more blank line in
+// the operator's `.zshrc`, and a file that had not ended with a newline came
+// back with one. A red-team tool has no business leaving a footprint on the
+// machine it was run from, and "almost the same" is not a property that can be
+// checked a year later.
+//
+// Pure, and separate from the file I/O, so the inverse property can be tested
+// on any platform. `installHook` refuses outright on win32, which would
+// otherwise mean this was first exercised on CI's ubuntu leg.
+const hookBlock = (dest: string): string => `\n# RedLog shell hook\nsource ${dest}\n`
+
+export function rcWithHook(content: string, dest: string): string {
+  // Already there — by our line or by the operator's own — so nothing is added
+  // and nothing will be taken away.
+  if (content.includes(dest)) return content
+  return content + hookBlock(dest)
+}
+
+export function rcWithoutHook(content: string, dest: string): string {
+  // An exact string, not a pattern with optional newlines around it: the
+  // optional parts are what made the removal lossy.
+  return content.split(hookBlock(dest)).join('')
 }
 
 export function getCaptureHookPath(pluginId: string): string | null {
@@ -724,12 +754,9 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         }
         const rcFile = shellRcFor(plugin)
         const rcPath = join(homedir(), rcFile)
-        let content = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
-        const hookName = dest.split(/[\\/]/).pop()
-        if (!content.includes(hookName!)) {
-          content += `\n# RedLog shell hook\nsource ${dest}\n`
-          writeFileSync(rcPath, content)
-        }
+        const before = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
+        const after = rcWithHook(before, dest)
+        if (after !== before) writeFileSync(rcPath, after)
         return { success: true, message: `${plugin.name} hook installed. Run: source ~/${rcFile}` }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
@@ -802,10 +829,15 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         const rcPath = join(homedir(), rcFile)
         const dest = installTargetFor(plugin)
         if (existsSync(rcPath)) {
-          let content = readFileSync(rcPath, 'utf-8')
-          const escapedDest = dest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          content = content.replace(new RegExp(`\\n?# RedLog shell hook\\nsource ${escapedDest}\\n?`, 'g'), '\n')
-          writeFileSync(rcPath, content)
+          const before = readFileSync(rcPath, 'utf-8')
+          const after = rcWithoutHook(before, dest)
+          if (after !== before) {
+            // An rc that holds nothing but our block was created by the
+            // install. Leaving a 0-byte file behind is a footprint, the same
+            // one the PowerShell branch below already refuses to leave.
+            if (after === '') rmSync(rcPath, { force: true })
+            else writeFileSync(rcPath, after)
+          }
         }
         return { success: true, message: `${plugin.name} hook removed. Run: source ~/${rcFile}` }
       } catch (e) {

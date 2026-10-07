@@ -16,6 +16,7 @@ import fs from 'fs'
 import path from 'path'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
+import { BODY_REF_FIELDS } from './http-body-store'
 
 export type ExportAttachmentKind = 'screenshot' | 'cast' | 'httpBody' | 'artifact'
 
@@ -151,7 +152,7 @@ export function listExportAttachments(
   // HTTP bodies stored beside the events that reference them.
   const bodyTargets = new Map<string, Set<string>>()
   for (const e of events) {
-    for (const key of ['request_body_ref', 'response_body_ref']) {
+    for (const key of BODY_REF_FIELDS) {
       const ref = e.data[key] as { sha256?: unknown } | undefined
       if (!ref || typeof ref.sha256 !== 'string') continue
       const set = bodyTargets.get(ref.sha256) ?? new Set<string>()

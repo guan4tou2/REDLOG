@@ -57,6 +57,29 @@ describe('listExportAttachments', () => {
     expect(byId.get('http-bodies/gone.body')).toMatchObject({ status: 'missing', bytes: null })
   })
 
+  // Spec 052 T021. A command's output over the inline threshold is kept whole
+  // in the body store and referenced from the event, the way an HTTP body
+  // already is (research.md T006). A ref the export does not know about is a
+  // body that exists on the operator's disk and not in the bundle the client
+  // reads — the quietest kind of evidence loss there is, because every count
+  // still adds up.
+  it('carries a command body the same way it carries an HTTP one', () => {
+    fs.writeFileSync(path.join(dir, 'http-bodies', 'scan.body'), 'x'.repeat(60_000))
+    const withScan = [
+      ...events(),
+      ev('big', 'shell', '10.0.0.1', {
+        subtype: 'command_end', command: 'nmap -A 10.0.0.1',
+        stdout_ref: { sha256: 'scan', size: 60_000, file: 'scan.body', encoding: 'text' }
+      })
+    ]
+    const rows = listExportAttachments(dir, withScan as never, {
+      scope: { targets: ['10.0.0.1'], excludeTargets: [], personalDomains: [] }, maskOutOfScope: true
+    })
+    const row = rows.find((r) => r.id === 'http-bodies/scan.body')
+    expect(row, 'the command body is not in the bundle').toBeTruthy()
+    expect(row).toMatchObject({ status: 'included', bytes: 60_000, targets: ['10.0.0.1'] })
+  })
+
   it('marks what the operator left out, without touching the file', () => {
     const rows = listExportAttachments(dir, events() as never, { exclude: new Set(['casts/term-1.cast']) })
     expect(rows.find((r) => r.id === 'casts/term-1.cast')?.status).toBe('excluded-by-operator')

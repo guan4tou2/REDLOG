@@ -21,6 +21,10 @@ const required = [
   // through to running the command unrecorded — a degradation quiet enough
   // that only a packaged build would show it.
   'hooks/redlog-relay.py',
+  // The class policy both readers share. Missing, the relay cannot classify
+  // and every command falls back to `native` — the adapter stops capturing
+  // output with no error anywhere.
+  'hooks/command-class.json',
   // Copied into every evidence bundle; an export refuses to run without it.
   'tools/redlog-verify.py',
   'plugins/starter-pack/plugin.json',
