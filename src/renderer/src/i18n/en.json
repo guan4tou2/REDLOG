@@ -116,7 +116,6 @@
   "timeline.emptyFiltered": "No events match the current filter:",
   "timeline.liveAdmissionFailed": "New events could not be checked against the filter, so they are not shown yet.",
   "timeline.outsideFilter": "That event is outside the current filter.",
-  "timeline.exportSliceUnfiltered": "Visible time range, filter not applied",
   "timeline.referenceFailed": "The referenced event could not be opened.",
   "timeline.queryUnparsable": "This input was not applied",
   "timeline.matching": "Matching…",

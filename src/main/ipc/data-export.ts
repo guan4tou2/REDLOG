@@ -248,6 +248,7 @@ export function registerDataExportIpc(
           ...(subset.kind === 'time-range' ? { since: subset.since, before: subset.before, targetId: subset.targetId } : {}),
           snapshot: plan.snapshot,
           scope: plan.scopeSnapshot,
+          includeEventIds: selectedIds,
           doNotExportIds: new Set()
         })
         const outDir = path.join(getProjectPath(project), 'exports')

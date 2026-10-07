@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 vi.mock('electron', () => ({ shell: { showItemInFolder: vi.fn() } }))
 import { initDB, closeDB } from '../src/core/db/index'
+import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import { addExportEvent as insertFixture } from './helpers/export-fixtures'
 function addExportEvent(table: 'events' | 'events_logged', id: string, ts: number, targetId: string, data: Record<string, unknown> = {}): void {
@@ -17,7 +18,10 @@ beforeEach(() => {
  registerDataExportIpc({ handle: (name: string, fn: any) => handlers.set(name, fn) } as never,
  { getActiveProject: () => ({ id: 'filtered', path: dir }) } as never)
 })
-afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+// closeDB() does not close the body index — it holds its own handle, and on
+// Windows that keeps http-body-index.db locked, so the rmSync below throws
+// EBUSY and fails a test whose assertions all passed.
+afterEach(() => { closeDB(); closeHttpBodyIndex(); fs.rmSync(dir, { recursive: true, force: true }) })
 const resolve = (request: unknown) => handlers.get('data:resolveExportPlan')!({}, request)
 const execute = (id: string) => handlers.get('data:executeExportPlan')!({}, { planId: id })
 it('exports all matching rows beyond the screen page and freezes preview membership', () => {
