@@ -171,6 +171,97 @@ bring one up to date, merge `main` *into* it on a branch of your own and push
 that as a fast-forward — no history is rewritten and the other worktree is
 merely behind.
 
+**Switching branches moves everyone's uncommitted work with you.** In this
+checkout the branch is global and the working tree is shared: `git checkout`
+carries every modified file across, including the ones other sessions are
+mid-edit on. Nothing is lost and git says nothing, because from git's side
+nothing happened — but work now sits on a branch its author never chose, and
+the author is usually the last to find out.
+
+It has happened both ways in one afternoon: this session moved the checkout to
+`main` and carried another session's twelve files over, and that session then
+opened a branch of its own and carried a third session's nine-file e2e change
+onto it.
+
+- Before `git checkout <branch>` here, run `git status` and see whose work is
+  in flight. If it is not yours, say so to that session first (`ListAgents` /
+  `SendMessage`) — switching is not destructive, but it is not yours to decide
+  silently either.
+- A switch that git **refuses** ("Your local changes would be overwritten") is
+  the good case: it means the two branches disagree about a file someone is
+  editing. Do not reach for `git stash` — see the memory note; the pop
+  conflicts and recovery is manual. Save a patch and the raw files somewhere
+  outside the repo, restore just the blocking paths, switch, then re-apply
+  with `git apply -3` and resolve by hand.
+- If the local `main` ref is stale the switch spans more history than you
+  expect and collides with files it otherwise would not. `git branch -f main
+  origin/main` first (check `git merge-base --is-ancestor main origin/main` so
+  it is lossless), then switch.
+- When you commit afterwards, name only your own paths. The §Staging rule is
+  doing twice the work here: the tree in front of you may hold three sessions'
+  changes, and one of the files may hold two of them at once — then it is
+  `git apply --cached` of your own hunks, not `git add <file>`.
+
+**The index is shared too, and it has no author.** The working tree is the
+obvious hazard; `.git/index` is the quiet one. Two sessions staging at once are
+writing to one file, and `git commit` takes whatever is in it — so a commit can
+carry content its author never staged, on a path they never touched, and
+nothing in the result says so.
+
+It happened here within the same minute. One session ran
+`git apply --cached` to stage its own hunk of
+`e2e/timeline-geometry.spec.ts`; another committed a nine-file e2e change a few
+seconds later and, for that one path, got the first session's staged version
+instead of its own. The commit reads as a clean change; the author's own two
+hunks are still sitting unstaged, and the other session's assertion is now on a
+branch it does not belong to.
+
+- **Commit with a pathspec**: `git commit -- <paths>` builds the commit from
+  the *working tree* at those paths and ignores whatever else is in the index.
+  It is the one-line defence against all of this, and it costs nothing.
+- For anything more than that — staging selected hunks, or any sequence where
+  another session could land between your `add` and your `commit` — use a
+  private index and plumbing, which touches no shared state at all:
+
+  ```bash
+  export GIT_INDEX_FILE=$(mktemp)        # not .git/index
+  git read-tree HEAD && git apply --cached mine.patch
+  tree=$(git write-tree)
+  commit=$(git commit-tree "$tree" -p HEAD -m "…")
+  git update-ref refs/heads/<your-branch> "$commit"
+  ```
+
+- **Only ever move your own ref.** `update-ref`, `checkout -B` and `reset` on a
+  branch someone else opened will silently relocate their work; one branch was
+  moved onto another session's commit this way and had to be restored from a
+  `wip/` tag its owner had the sense to plant.
+
+**The one symptom you can catch at the time: the two counts disagree.** Stage,
+then read `git diff --cached --stat`, then read what `git commit` reports back.
+They are the same numbers unless the index changed in between.
+
+```
+git diff --cached --stat   →  44 insertions / 16 deletions
+git commit                 →  45 / 13          ← someone else staged in the gap
+```
+
+That is the whole tell, and it is the only one available before the fact —
+everything else needs the commit read back afterwards against what you meant to
+write. The gap can be a single edit: the session this happened to made one
+`Edit` call between the two commands.
+
+It verifies the repair too. After the owner rebuilt that commit, the branch's
+net diff against `origin/main` came back to exactly `44 insertions / 16
+deletions`, and the blob hash of the recovered file matched the version that had
+been swapped out. Same two numbers, used the other way round: they say the
+content you got back is the content you meant to commit.
+
+**Every session here commits as the same git identity**, so `git log --author`
+and the blame on a line tell you nothing about which session wrote it. Do not
+attribute a commit from the author field — check the branch it is on, its
+timestamp, and what it actually contains. Two misattributions in one afternoon
+came from reading the author and stopping there.
+
 ## Staging
 
 Do not `git add -A` or `git add .`. Parallel sessions write to this checkout,

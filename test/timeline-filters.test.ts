@@ -87,7 +87,7 @@ describe('distributeRowEvents', () => {
     ]
     const visible = ['shell', 'dns', 'marker']
     const collapsed = new Set<string>()
-    const result = distributeRowEvents(events, visible, collapsed, undefined)
+    const result = distributeRowEvents(events, visible, collapsed, undefined, new Set())
     expect(result['shell'].map((e) => e.id)).toEqual(['a'])
     expect(result['dns'].map((e) => e.id)).toEqual(['b'])
     expect(result['marker'].map((e) => e.id)).toEqual(['c'])
@@ -100,7 +100,7 @@ describe('distributeRowEvents', () => {
     ]
     const visible = ['commands']
     const collapsed = new Set(['commands'])
-    const result = distributeRowEvents(events, visible, collapsed, undefined)
+    const result = distributeRowEvents(events, visible, collapsed, undefined, new Set())
     expect(result['commands'].map((e) => e.id)).toEqual(['a', 'b'])
   })
 
@@ -111,9 +111,18 @@ describe('distributeRowEvents', () => {
     ]
     const visible = ['shell']
     const collapsed = new Set<string>()
-    const result = distributeRowEvents(events, visible, collapsed, undefined)
+    const result = distributeRowEvents(events, visible, collapsed, undefined, new Set(['dns']))
     expect(result['shell'].map((e) => e.id)).toEqual(['a'])
     expect(result['dns']).toBeUndefined()
+  })
+
+  // Collapsing a band must not resurrect a lane the operator hid: the band row
+  // absorbs its lanes' events, so without the hidden-lane check the hide would
+  // silently undo itself the moment the band was collapsed.
+  it('keeps a hidden lane hidden when its band is collapsed', () => {
+    const events = [evt('a', 'shell'), evt('b', 'agent')]
+    const result = distributeRowEvents(events, ['commands'], new Set(['commands']), undefined, new Set(['agent']))
+    expect(result['commands'].map((e) => e.id)).toEqual(['a'])
   })
 })
 
