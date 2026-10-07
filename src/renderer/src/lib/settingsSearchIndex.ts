@@ -198,12 +198,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.ipProvidersHint'
   ],
   integrity: [
-    'settings.anchored',
-    'settings.anchorFailed',
-    'settings.anchorFailedWhy',
-    'settings.integrityNoAnchors',
-    'settings.integrityNoAnchorsWhy',
-    'issues.chainBroken',
     'settings.integrity',
     'settings.integrityHint',
     'settings.integrityAnchoring',
@@ -220,6 +214,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.integrityFullAnchorMismatch',
     'settings.integrityFullNoAnchor',
     'settings.integrityFullClockAnomalies',
+    'settings.integrityNoAnchors',
     'settings.integrityEvents'
   ],
   plugins: [
