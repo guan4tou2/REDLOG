@@ -142,6 +142,35 @@ in `Timeline.tsx`) and the stale-bridge version (a renderer calling a preload
 method that the running window's preload predates; it needs a full reload, not
 HMR).
 
+## Branches
+
+**A branch that has been merged once stops being watched.** `refactor/
+onboarding-controls` went to `main` through #261 and was then kept as the
+integration branch for the causal-graph work. Four commits landed on it over
+the following week, through two more PRs that targeted *it* rather than `main`,
+and nobody opened a PR for the result — so that work sat finished, green and
+unreachable until someone went looking for open PRs and found none.
+
+Nothing was wrong with any single step. Reusing the branch was reasonable, and
+each PR into it was correctly targeted. What went missing is that a merged
+branch no longer appears in anyone's list of things with somewhere to go.
+
+- Before merging a PR, read its **base**. `gh pr view <n> --json baseRefName`.
+  A PR into a feature branch is a normal thing to want; it is also the thing
+  that quietly needs a second PR afterwards, and "it was green so I merged it"
+  is not the same as "it reached main".
+- After merging a branch to `main`, **start the next change from a new branch**
+  off the new `main`. If a branch is deliberately kept as an integration point,
+  it needs its own open PR to `main` the whole time, so it stays on the list.
+- `git log --oneline origin/main..origin/<branch>` on a branch you thought was
+  finished is the cheap check.
+
+**Never force-push a shared branch.** Several branches here are checked out in
+other sessions' worktrees (`git worktree list`), and a rewrite strands them. To
+bring one up to date, merge `main` *into* it on a branch of your own and push
+that as a fast-forward — no history is rewritten and the other worktree is
+merely behind.
+
 ## Staging
 
 Do not `git add -A` or `git add .`. Parallel sessions write to this checkout,
