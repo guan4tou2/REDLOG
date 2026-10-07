@@ -60,6 +60,7 @@ python3 "${hookPath(t, 'redlog-relay.py')}" run \\
   --max-bytes ${opts.maxBytes ?? 102400} \\
   --cwd "\$D" \\
   --captured-by redlog-run \\
+  --command-id cid-for-the-test \\
   -- ${command}
 code=\$?
 printf '\\n${EVENT_OPEN}%s\\n' "\$code"
@@ -113,6 +114,15 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
     })
     expect(r.event!.duration_sec as number).toBeGreaterThanOrEqual(1)
     expect(String(r.event!.cwd)).not.toBe('')
+    // The caller's correlation key, carried through untouched. The relay
+    // never mints one: `command_start` has already gone out with the caller's,
+    // and an id invented here would correlate with nothing.
+    expect(r.event!.command_id).toBe('cid-for-the-test')
+    expect(r.event).toMatchObject({
+      completeness: 'complete',
+      output_disposition: 'captured',
+      limit_hit: null
+    })
   }, 60_000)
 
   it('counts every byte and declares the cut when it caps', async () => {
@@ -126,6 +136,9 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
     expect(r.event!.stdout_bytes).toBe(200)
     expect(r.event!.stdout_truncated).toBe(true)
     expect(r.event!.stderr_truncated).toBe(false)
+    // And it names the bound it hit, so the gap in the evidence has a size
+    // and a reason rather than being a shorter answer than the truth.
+    expect(r.event).toMatchObject({ completeness: 'truncated', limit_hit: 'stdout:64' })
     // The terminal is not capped — the cap is the record's, not the operator's.
     expect(r.terminalStdout).toContain('x'.repeat(200))
   }, 60_000)
@@ -151,7 +164,13 @@ describeShell(`relay contract (${target?.label ?? 'no shell reachable'})`, () =>
     // attempt, so `redlog-run` must not fall through to `command "$@"` and
     // produce a second "not found" on the operator's terminal.
     expect(r.started).toBe(true)
-    expect(r.event).toMatchObject({ exit_code: 127 })
+    // Nothing was ever held, which is not the same as having produced
+    // nothing, and the event says which it was.
+    expect(r.event).toMatchObject({
+      exit_code: 127,
+      completeness: 'metadata-only',
+      output_disposition: 'not-captured'
+    })
     expect(r.terminalStderr).toContain('redlog-no-such-command-052')
   }, 60_000)
 })
@@ -214,10 +233,13 @@ rm -rf "\$H"
     expect(r.terminalStderr).toContain('REDLOG_ERR')
     expect(r.streamedEarlyBy).toBeGreaterThan(400)
 
-    const subtypes = r.payloads.map((p) => p.data.subtype)
-    expect(subtypes).toContain('command_start')
+    const start = r.payloads.find((p) => p.data.subtype === 'command_start')
     const end = r.payloads.find((p) => p.data.subtype === 'command_end'
       && p.data.captured_by === 'redlog-run')
+    // One key, minted by the shell, on both ends of the command. Everything
+    // the chunk stream will hang off hangs off this (contracts/events.md).
+    expect(start?.data.command_id).toBeTruthy()
+    expect(end?.data.command_id).toBe(start?.data.command_id)
     // Field for field what test/shell-redlog-run.test.ts asserts. If this
     // drifts, the extraction changed behaviour and that file is wrong too.
     expect(end?.data).toMatchObject({

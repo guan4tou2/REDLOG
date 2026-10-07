@@ -151,6 +151,15 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 2. Causal links from fields the producer already sent (flow_id,
   //    terminal_id + pid).
+  // 2a. An output chunk that found no open command is kept and labelled, not
+  //    dropped and not guessed at. Background output inherits the descriptor
+  //    the relay held when it forked, so it lands inside whichever command is
+  //    running (research.md O3); a hole in the evidence and a wrong
+  //    attribution are both worse than saying which it was. FR-007.
+  if (agentType === 'shell' && data.subtype === 'command_output' && lifecycleCauseIds.length === 0) {
+    data.unattributed = true
+  }
+
   const causeIds = [...lifecycleCauseIds, ...socketCausesFor(agentType, data)]
   if (causeIds.length > 0) {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []

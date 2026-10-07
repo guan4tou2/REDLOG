@@ -61,6 +61,23 @@ _redlog_resolve_host() {
   echo "127.0.0.1"
 }
 
+# The correlation key for one command. `command_start`, every `command_output`
+# chunk and `command_end` carry it, and it is the ONLY thing that says which
+# command a chunk belongs to — never a marker in the bytes, which the command's
+# own output can forge (FR-002, contracts/events.md).
+#
+# Nanoseconds, pid and $RANDOM: unique within a machine without reaching for
+# uuidgen, which is not everywhere. `date +%s%N` prints a literal N where it is
+# not GNU date, so that case falls back rather than minting a shared id.
+_redlog_new_command_id() {
+  local stamp
+  stamp=$(date +%s%N 2>/dev/null)
+  case "$stamp" in
+    ''|*N*) stamp="$(date +%s)${RANDOM:-0}" ;;
+  esac
+  printf '%s-%s-%s' "$stamp" "$$" "${RANDOM:-0}"
+}
+
 _redlog_is_running() {
   [[ -n "${_REDLOG_DIR:-}" ]] || { _REDLOG_DIR=$(_redlog_resolve_dir) || return 1; export _REDLOG_DIR; }
   [[ -f "$_REDLOG_DIR/api-port" ]] && [[ -f "$_REDLOG_DIR/api-token" ]]
@@ -171,10 +188,12 @@ redlog-run() {
 
   local cmd_string="$*"
   local start_ts=${EPOCHSECONDS:-$(date +%s)}
+  local command_id
+  command_id=$(_redlog_new_command_id)
 
   # Emit command_start so the timeline shows the row entering flight.
   _redlog_send_event "command_start" "$cmd_string" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\"}"
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
 
   # A builtin, function or keyword has to run in THIS shell or it does
   # nothing: `redlog-run cd /tmp` through a relay would change a directory
@@ -187,7 +206,7 @@ redlog-run() {
     local builtin_code=$?
     local builtin_duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
     _redlog_send_event "command_end" "$cmd_string" \
-      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
     return $builtin_code
   fi
 
@@ -203,6 +222,7 @@ redlog-run() {
     --max-bytes "$_REDLOG_MAX_BYTES" \
     --cwd "$PWD" \
     --captured-by redlog-run \
+    --command-id "$command_id" \
     -- "$@"
   local exit_code=$?
 
@@ -222,7 +242,7 @@ redlog-run() {
     # The relay ran the command but could not write the event — fall back to
     # bare metadata so the row still lands with the right exit code.
     local duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\"}"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
   fi
 
   _redlog_send_event "command_end" "$cmd_string" "$extra"
