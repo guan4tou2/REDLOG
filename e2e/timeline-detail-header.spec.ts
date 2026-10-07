@@ -27,9 +27,12 @@ test.describe.serial('timeline detail header', () => {
     const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
     // Far enough apart not to cluster: neighbouring events collapse into one
-    // dot labelled "(2 events)", which no per-event locator can reach.
+    // dot labelled "(2 events)", which no per-event locator can reach. That
+    // holds for the project's own genesis rows too — they land at receipt
+    // time, so a seed left at `now` clusters with them and the per-event
+    // locator finds nothing.
     const now = Date.now()
-    const when = { 'first event': now - 7_200_000, 'header pin event': now }
+    const when = { 'first event': now - 7_200_000, 'header pin event': now - 120_000 }
     for (const [title, atTimestamp] of Object.entries(when)) {
       await fetch(`${base}/api/events/seed`, {
         method: 'POST',
