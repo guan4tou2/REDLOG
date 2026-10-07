@@ -5,6 +5,28 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Every evidence bundle made from the Export menu failed its own
+  verifier.** The menu previews a plan and then exports against the plan's
+  snapshot. That path wrote the last event's own hash as `chainHead.hash` in
+  the manifest. The unplanned path, the chain anchors and `redlog-verify.py`
+  all use `sha256(lastHash || eventCount)`. So `verify.sh` / `verify.cmd` on
+  an untouched bundle reported `Chain : INTACT` and `Chain-head match : NO`,
+  and exited 1. The #226 Windows smoke test found it. The head formula now
+  lives in one place, `chainHeadHash()` in `src/core/chain-anchor.ts`, and the
+  snapshot path uses it.
+
+  Why the tests missed it:
+  - the one test that ran the Python verifier exported without a snapshot,
+    on an empty chain, where the head check does not apply;
+  - another test asserted the bare hash as the expected value.
+
+  `test/bundle-export.test.ts` now runs the verifier on a planned bundle and
+  an unplanned one, on a non-empty chain.
+
+  **Bundles already exported from v0.18.0 through the Export menu** show
+  this mismatch even though their events are intact. Export again after
+  upgrading to get one that verifies.
+
 - **One palette, and a smaller Timeline.** A UI/UX pass, third batch:
   - *Colour*: about 200 colour classes named shades the theme never set,
     such as `red-200`, `amber-900`, `indigo-*` and `blue-*`. They fell back

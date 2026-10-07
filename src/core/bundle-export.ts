@@ -6,7 +6,7 @@ import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
 import type { ExportCounts, ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
-import { listAnchors, computeChainHead } from './chain-anchor'
+import { listAnchors, computeChainHead, chainHeadHash } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
@@ -677,7 +677,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
            WHERE rowid <= ? AND hash IS NOT NULL
            ORDER BY created_at DESC, rowid DESC LIMIT 1`
         ).get(snap.chainedMaxRowId) as { id: string; hash: string } | undefined
-        return row ? { hash: row.hash, headEventId: row.id, eventCount: countRow.count } : null
+        return row ? { hash: chainHeadHash(row.hash, countRow.count), headEventId: row.id, eventCount: countRow.count } : null
       })()
     : computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
