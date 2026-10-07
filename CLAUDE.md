@@ -171,6 +171,37 @@ bring one up to date, merge `main` *into* it on a branch of your own and push
 that as a fast-forward — no history is rewritten and the other worktree is
 merely behind.
 
+**Switching branches moves everyone's uncommitted work with you.** In this
+checkout the branch is global and the working tree is shared: `git checkout`
+carries every modified file across, including the ones other sessions are
+mid-edit on. Nothing is lost and git says nothing, because from git's side
+nothing happened — but work now sits on a branch its author never chose, and
+the author is usually the last to find out.
+
+It has happened both ways in one afternoon: this session moved the checkout to
+`main` and carried another session's twelve files over, and that session then
+opened a branch of its own and carried a third session's nine-file e2e change
+onto it.
+
+- Before `git checkout <branch>` here, run `git status` and see whose work is
+  in flight. If it is not yours, say so to that session first (`ListAgents` /
+  `SendMessage`) — switching is not destructive, but it is not yours to decide
+  silently either.
+- A switch that git **refuses** ("Your local changes would be overwritten") is
+  the good case: it means the two branches disagree about a file someone is
+  editing. Do not reach for `git stash` — see the memory note; the pop
+  conflicts and recovery is manual. Save a patch and the raw files somewhere
+  outside the repo, restore just the blocking paths, switch, then re-apply
+  with `git apply -3` and resolve by hand.
+- If the local `main` ref is stale the switch spans more history than you
+  expect and collides with files it otherwise would not. `git branch -f main
+  origin/main` first (check `git merge-base --is-ancestor main origin/main` so
+  it is lossless), then switch.
+- When you commit afterwards, name only your own paths. The §Staging rule is
+  doing twice the work here: the tree in front of you may hold three sessions'
+  changes, and one of the files may hold two of them at once — then it is
+  `git apply --cached` of your own hunks, not `git add <file>`.
+
 ## Staging
 
 Do not `git add -A` or `git add .`. Parallel sessions write to this checkout,
