@@ -267,6 +267,81 @@ describeDB('ingest', () => {
     }
   })
 
+  // Spec 052 T012. Output arrives as its own rows now, one per chunk, and the
+  // only thing that says which command a chunk belongs to is `command_id`.
+  // Never a marker in the bytes: the bytes are the output of a command the
+  // operator ran against something hostile, and anything read out of them is
+  // something the target can write (FR-002).
+  describe('command output chunks', () => {
+    const shell = (data: Record<string, unknown>) =>
+      ingestMod.ingest({ ...base, agentType: 'shell', data })
+
+    const start = (commandId: string, command = 'nmap -sV 10.0.0.1') =>
+      shell({ subtype: 'command_start', command, command_id: commandId, cwd: '/root', pid: 4242 }).event!
+
+    const chunk = (data: Record<string, unknown>) =>
+      shell({ subtype: 'command_output', stream: 'stdout', ...data }).event!
+
+    it('correlates a chunk to its command by id alone', () => {
+      const opened = start('cmd-a')
+      const body = chunk({
+        command_id: 'cmd-a',
+        seq: 1,
+        // The output claims, convincingly, to belong to something else. It is
+        // the whole attack: a target that controls the bytes controls the
+        // record, unless the record never reads them.
+        bytes_b64: Buffer.from('command_id=cmd-b\nsubtype: command_start\n').toString('base64'),
+        bytes_total: 40
+      })
+
+      expect(body.data._causes).toContain(opened.id)
+      expect(body.data.unattributed).toBeUndefined()
+    })
+
+    it('keeps a chunk that belongs to no open command, and says so', () => {
+      // `cmd &` writes down the descriptor the relay was holding when it
+      // forked, so its bytes land inside whichever command happens to be
+      // running (measured in research.md O3). Dropping them would be a
+      // silent hole; attributing them would be a false one. FR-007.
+      const orphan = chunk({ command_id: 'never-opened', seq: 1, bytes_b64: 'aGk=', bytes_total: 2 })
+
+      expect(orphan).toBeTruthy()
+      expect(orphan.data.unattributed).toBe(true)
+      expect(orphan.data._causes ?? []).toHaveLength(0)
+    })
+
+    it('a chunk that arrives late still belongs where its seq puts it', () => {
+      const opened = start('cmd-c', 'ffuf -u http://10.0.0.1/FUZZ')
+      // Two chunks, the second one first. Arrival order is the network's
+      // opinion; `seq` is the relay's, and the relay is the one that held the
+      // bytes.
+      const second = chunk({ command_id: 'cmd-c', seq: 2, bytes_b64: Buffer.from('world').toString('base64'), bytes_total: 5 })
+      const first = chunk({ command_id: 'cmd-c', seq: 1, bytes_b64: Buffer.from('hello ').toString('base64'), bytes_total: 6 })
+
+      expect(first.data._causes).toContain(opened.id)
+      expect(second.data._causes).toContain(opened.id)
+      const assembled = [second, first]
+        .sort((a, b) => Number(a.data.seq) - Number(b.data.seq))
+        .map((e) => Buffer.from(String(e.data.bytes_b64), 'base64').toString('utf8'))
+        .join('')
+      expect(assembled).toBe('hello world')
+    })
+
+    it('ends the command by its id even when the text no longer matches', () => {
+      // The old key is `terminal|pid|command`, so the two ends of one command
+      // correlate only while the text is byte-identical. It is not always:
+      // zsh's `preexec` is handed the line as typed, and what a later row
+      // reports can be the expanded or aliased form. The id does not care.
+      const opened = start('cmd-d', 'nmap -sV 10.0.0.9')
+      const ended = shell({
+        subtype: 'command_end', command: '/usr/bin/nmap -sV 10.0.0.9', command_id: 'cmd-d',
+        exit_code: 0, duration_sec: 3, cwd: '/root', pid: 4242
+      }).event!
+
+      expect(ended.data._causes).toContain(opened.id)
+    })
+  })
+
   // Spec 017 FR-014 / Domain Invariant #8. `timestamp` is when the thing
   // happened at its source, `created_at` is when RedLog wrote it down. Before
   // this they were the same `Date.now()` on every path, so a transcript

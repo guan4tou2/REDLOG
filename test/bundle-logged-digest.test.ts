@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 
 // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): the logged tier is
 // deliberately un-chained, so an export folds one cheap digest over it and
@@ -159,7 +160,11 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
     expect(manifest.tiers?.loggedDigest?.count).toBe(1)
     expect(events.loggedTierDigest(snapshot.loggedMaxRowId).count).toBe(1)
     expect(events.loggedTierDigest().count).toBe(2)
-    expect(manifest.chainHead).toEqual({ hash: before.hash, eventCount: 1 })
+    // The head of the approved snapshot, in the form redlog-verify.py checks:
+    // sha256(lastHash || eventCount). This asserted the bare last hash, which
+    // is the form that made every planned bundle fail its verifier (#226).
+    const head = crypto.createHash('sha256').update(before.hash).update('1').digest('hex')
+    expect(manifest.chainHead).toEqual({ hash: head, eventCount: 1 })
     expect(manifest.tiers?.chained).toBe(1)
   })
 })

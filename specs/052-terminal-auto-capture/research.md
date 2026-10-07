@@ -121,6 +121,23 @@ shape.
 **Must hold**: the shell reports the command's own exit status, never the
 relay's.
 
+**Found while building the harness (T002), and it is live on main:** the
+health probe in `_redlog_resolve_host` (`hooks/shell-common.sh:40`, `:47`) runs
+`curl --noproxy '*' -sf --connect-timeout 1` with **no `--max-time`**. A
+`--connect-timeout` bounds the handshake, not the wait for a reply — so a
+RedLog that accepts the connection and then never answers hangs the operator's
+prompt **forever**, on every command. The send itself is bounded
+(`--connect-timeout 1 --max-time 2`, `:116`); only the probe is not.
+
+This is reachable today: anything that binds the API port and stalls does it —
+the harness hit it by accident, because a collector living in the same process
+as a synchronous `spawnSync` cannot answer until the shell it is waiting for
+has exited. A half-dead RedLog is the realistic version.
+
+It is an FR-009 violation in the code 052 builds on ("if recording fails, the
+shell keeps working"), so the fix belongs with this feature: bound the probe
+the way the send already is. Carried as a task.
+
 ## D7. Where this deliberately diverges from `tlogger-v2`
 
 This is a refactor of RedLog's own capture path, not a port. `tlogger-v2`
@@ -139,30 +156,113 @@ and RedLog has an evidence store, so they are not.
 | State is shell-local | State file RedLog can read | So `redlog status` in the terminal and the capture card answer from one source (Principle II) |
 | Markers in the stream carry meaning (its README says so, and says they are forgeable) | No in-band marker is ever read | FR-002. This is the single most important divergence |
 
-**Open**: `redlog-run`'s current bound is 100 KB per stream. That was chosen for
-a wrapper used on purpose, a few times per engagement. Once every command is
-relayed, an `nmap -A` or a `ffuf` run will hit it routinely. Revisit the bound
-(and whether a bounded head+tail beats a bounded head) before this ships —
-listed as a task, not assumed here.
+**Settled 2026-10-07 (T006): do not pick a bigger number — externalise.**
+`redlog-run`'s 100 KB per stream was chosen for a wrapper used on purpose a few
+times per engagement. Once every command is relayed, `nmap -A`, `ffuf` and
+`gobuster` hit it routinely, and a truncated scan is the evidence the operator
+most wanted.
+
+RedLog already solves exactly this for HTTP bodies, and the answer is not a
+truncation limit: `src/core/http-body-store.ts` keeps anything under 4 KB
+inline and writes the rest to a file in the project directory, referenced by
+`{ sha256, size, file, encoding, truncated }`, with eviction
+(`body-eviction.ts`) and the retention sweep already wired. Command output
+takes the same path:
+
+- under the inline threshold, the bytes ride on the event as they do today;
+- over it, the event carries a reference and `completeness: complete`;
+- a hard cap stays, but it becomes a **disk-pressure** cap — a runaway process
+  must not fill the operator's disk — and when it fires the event says
+  `truncated` with the bound it hit (FR-004), as it does now.
+
+The alternative — raise 100 KB to 1 MB and keep truncating — would have had to
+be re-argued the first time someone ran a full-port scan.
 
 ## Open questions (settled by experiment, first tasks)
 
-- **O1. Descriptor restore across an interactive pager.** A pager such as Git's
-  `less` may put the output terminal into raw/cbreak mode. The relay must
-  forward those keys and restore terminal settings on exit. Experiment: drive
-  `git log` with a real pty, check `stty -g` before and after.
-- **O2. End-of-output ordering.** `command_end` must not be written before the
-  relay has flushed the command's output, or the body lands under the next
-  command. Experiment: a command that writes a large burst and exits
-  immediately; assert ordering by sequence number, not by wall clock.
-- **O3. Background output.** Output from `cmd &` must not be attributed to the
-  foreground command (FR-007). Experiment: start a background writer, run a
-  foreground command, assert the background bytes carry no command id.
-- **O4. Nested shell.** A `zsh` inside an enrolled terminal must not silently
-  fold into the parent's record (spec Edge Cases). Decide: a nested shell gets
-  its own terminal session id, or is declined with a reason.
-- **O5. CI reach.** The adapter tests need an interactive zsh on a pty. CI runs
-  e2e on ubuntu only, and this repo's POSIX-fixture specs already carry
-  `test.skip(process.platform === 'win32', …)`. Decide where the pty suite runs
-  (unit job on ubuntu vs. the e2e job) before writing it, so it is not written
-  twice.
+All three of O1-O3 were measured on 2026-10-07 against a **toy relay** — D1's
+shape in six lines of zsh, redirecting the shell's own descriptors in
+`preexec` and restoring them in `precmd`, with `tee` into a log through
+process substitution — driven by the T002 harness on Kali/zsh 5.9. The point
+was to learn what the shape does before building on it, and it moved two of
+the three answers.
+
+- **O1. Terminal modes — SETTLED (T003): the redirection does not disturb
+  them, and `stty sane` is not a restore.** `stty -g` before and after a
+  command under the relay is byte-identical, so diverting descriptors costs
+  nothing in line discipline — the command keeps the terminal itself, which is
+  the whole reason D1 refused a PTY for the ordinary path. Job control came
+  through the same way: `sleep 30 &`, `jobs` and `kill %1` all behave.
+
+  The second half is a trap for the PTY class rather than the relay:
+  `stty raw -echo; stty sane` leaves settings that **differ** from the
+  original. `sane` is a known-good default, not what was there. Anything that
+  changes modes has to save `stty -g` and put that back.
+
+- **O2. End-of-output ordering — SETTLED (T004): complete by the next command,
+  not provably complete at `precmd`.** A 300 KB burst written straight to the
+  terminal is fully in the log — 300,000 bytes, exactly — when the *next*
+  command reads it. That rules out the cheap failure where the body lands
+  under the following command.
+
+  It does **not** establish that the bytes are there at `precmd` time, which
+  is where a naive implementation would send `command_end`, and the experiment
+  cannot distinguish the two. So the contract is the stronger one:
+  **`command_end` is emitted by the component that owns the bytes, after it
+  has drained** — not by `precmd` racing the relay. `tlogger-v2` reports the
+  same arrangement ("the relay writes cleaned output before acknowledging the
+  end of a foreground command"), which is some evidence the race is real.
+
+- **O3. Background output — SETTLED (T005): the relay cannot tell, so the
+  record must say so.** A job started with `&` inherits the relay's descriptor
+  at fork time, so its output goes to the `tee` of whichever command was
+  running when it started, and arrives inside whichever command is running
+  when it writes. Measured twice: a writer started before `echo FOREGROUND_ONE`
+  surfaced inside the following `sleep 1`, and one sleeping two seconds
+  surfaced inside `sleep 3`, both landing in the log.
+
+  There is no fd-level signal to separate them — the bytes are
+  indistinguishable from the foreground command's own. FR-007 therefore cannot
+  be met by attribution logic in the relay. The data model's
+  `unattributed: true` chunk is not a defensive extra; it is the only honest
+  representation, and the UI has to be able to show output that belongs to the
+  terminal rather than to a command.
+- **O4. Nested shell — SETTLED 2026-10-07 (T007): its own session, with the
+  nesting recorded.** The adapter is sourced from `.zshrc`, so a nested `zsh`
+  runs it again and naturally mints a second terminal session; the work is to
+  write `parent_session_id` on it rather than to prevent it. Declining would
+  lose those commands outright, which is worse than either alternative, and
+  letting the child inherit the parent's session is what `tlogger-v2` does —
+  its README records the cost: "the file will not tell you a subshell was
+  involved". Principle VII says the record must be able to.
+
+  One guard carries over from spec 022: the explicit PTY recorder sets
+  `REDLOG_EXTERNAL_SESSION=1` and `hooks/shell-zsh-hook.zsh` returns early on
+  it, so the child of a PTY capture does not emit a second, unpinned stream.
+  The relay marks its own children the same way.
+- **O5. CI reach — SETTLED 2026-10-07.** The pty suite is a **vitest** file,
+  not a Playwright spec. It needs a shell, the hook files and somewhere for the
+  events to land; it does not need Electron, and putting it in the e2e job
+  would tie a shell test to a six-minute Electron round.
+
+  It drives zsh through a **Python pty driver** (`pty` is stdlib) rather than
+  `node-pty`: node-pty is a native module this repo already fights with
+  (`electron-rebuild -w` fails on it), and a shell test that cannot run until a
+  native rebuild succeeds is a shell test nobody runs.
+
+  Where it runs:
+
+  | | |
+  |---|---|
+  | Linux (CI ubuntu job, a Kali box) | directly, `zsh -i` on a pty |
+  | This Windows box | through `wsl -d kali-linux`, which is **Kali Rolling with zsh 5.9, python3 and `script(1)` already installed** — the target platform, locally |
+  | Anything else | skips with its reason, the way `test/external-session.test.ts` already skips |
+
+  Proved before deciding: a probe `.zshrc` registering `preexec`/`precmd`
+  through `add-zsh-hook`, driven by the Python pty driver inside
+  `wsl -d kali-linux`, fires both hooks for every command. That is the thing
+  that does not happen under `zsh -c`, and it is the whole reason this suite
+  cannot be an ordinary unit test.
+
+  The Windows unit job skips it, and that is honest rather than a gap: FR-019
+  makes the adapter POSIX-only by design.

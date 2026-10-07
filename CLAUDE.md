@@ -32,6 +32,35 @@ The order is CI's, and it is deliberate:
 A green `npm test` with a red gate is the normal shape of this mistake, because
 the gates check things tests structurally cannot.
 
+### A gate green on main may never have run
+
+`verify:i18n` compares HEAD against its merge base with `origin/main`. On `main`
+that base **is** HEAD, so it resolves trivially and passes on any checkout, however
+shallow. On a branch it needs real history on **both** sides — and when it
+shipped, `actions/checkout` was at its default `fetch-depth: 1`, so the branch
+had one commit for that base to be found against. Green on main, red on every
+PR, which is the only place it does any work.
+
+Two things follow for any gate that compares against another ref:
+
+- Judge it by a run on a **branch**. A green tick on `main` can mean the
+  comparison was free.
+- `--depth` on a fetch is not a cheaper `fetch-depth`. On a complete clone
+  `git fetch --depth=N` makes that ref **shallow again** and takes the merge
+  base back out. Deepen at the checkout, and leave `--depth` off the fetch.
+
+### A skipped gate hides what is behind it
+
+`e2e` is skipped, not queued, when an earlier gate fails — so a red gate is also
+a blindfold. While the i18n gate was failing on every PR,
+`e2e/screenshot-capture.spec.ts` was red on `main` and nobody saw it: there had
+not been a completed e2e run to look at. Both halves of that were found in one
+afternoon, and they were the same fault seen from two ends.
+
+When a gate has been red for a while, assume the ones after it have been
+reporting nothing, and read the first full run after the fix as new information
+rather than a regression.
+
 ### The known flake
 
 The unit suite has an intermittent failure that lands on a **different file each

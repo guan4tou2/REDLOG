@@ -7,6 +7,12 @@ import { shellAdapterFilename } from '../src/core/shell-flavour'
 
 const read = (relative: string): string => fs.readFileSync(path.resolve(relative), 'utf8')
 
+// Everything an adapter sources or executes has to be installed beside it.
+// `redlog-relay.py` joined the list in spec 052, when `redlog-run`'s own copy
+// of the capture loop moved there: absent, the wrapper silently falls through
+// to running the command unrecorded.
+const SUPPORT_FILES = ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py']
+
 describe('shell adapter boundaries', () => {
   it('declares distinct bash and zsh adapters with their shared transport and session recorder', () => {
     const producers = starterPack.builtinProducers as Array<{
@@ -20,10 +26,10 @@ describe('shell adapter boundaries', () => {
     ]) {
       const producer = producers.find((candidate) => candidate.id === id)
       expect(producer?.hookFile).toBe(hookFile)
-      expect(producer?.supportFiles).toEqual(['hooks/shell-common.sh', 'hooks/redlog-session.py'])
+      expect(producer?.supportFiles).toEqual(SUPPORT_FILES)
       const fallback = STARTER_PACK_FALLBACK.find((candidate) => candidate.id === id)
       expect(fallback?.hookFile).toBe(hookFile)
-      expect(fallback?.supportFiles).toEqual(['hooks/shell-common.sh', 'hooks/redlog-session.py'])
+      expect(fallback?.supportFiles).toEqual(SUPPORT_FILES)
     }
   })
 
