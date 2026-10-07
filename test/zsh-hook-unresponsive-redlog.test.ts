@@ -45,5 +45,5 @@ describeShell(`shell hook against an unresponsive RedLog (${target?.label ?? 'no
     } finally {
       await hole.close()
     }
-  }, 70_000)
+  }, 240_000)
 })

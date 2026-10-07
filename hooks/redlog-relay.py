@@ -210,6 +210,7 @@ def parse(argv):
         "duration_sec": "0",
         "drain_timeout": "5",
         "source": None,
+        "command_line": "",
     }
     flags = {
         "--event-out": "event_out",
@@ -224,6 +225,7 @@ def parse(argv):
         "--duration-sec": "duration_sec",
         "--drain-timeout": "drain_timeout",
         "--source": "source",
+        "--command-line": "command_line",
     }
     i = 0
     while i < len(argv):
@@ -299,7 +301,14 @@ def finish(argv):
         elif part.get("truncated"):
             cut.append("%s:%d" % (name, part.get("cap", 0)))
 
-    if not drained:
+    stdout_bytes = (parts["stdout"] or {}).get("bytes", 0)
+    if looks_redirected(opts["command_line"]) and stdout_bytes == 0:
+        # `nmap -oN scan.txt` with an empty body and `completeness: complete`
+        # reads as a scan that printed nothing, and a reader believes it. The
+        # bytes went where the operator sent them; what the record owes is to
+        # say so rather than to describe the command as silent (FR-008).
+        completeness, disposition = "metadata-only", "redirected"
+    elif not drained:
         # Bytes we never got hold of. Saying "complete" here would be the one
         # lie the record cannot afford, and saying nothing would be the other.
         completeness, disposition = "truncated", "captured"
@@ -329,6 +338,48 @@ def finish(argv):
         event["source"] = opts["source"]
     sys.stdout.write(json.dumps(event))
     return 0
+
+
+def looks_redirected(line):
+    """Did the operator send this command's stdout somewhere other than here?
+
+    This reads the command LINE — what the operator typed — and never the
+    command's output, which is the thing FR-002 forbids reading. The
+    distinctions that matter:
+
+      `2> err`   stderr only; stdout still comes past the relay
+      `>& file`  a descriptor dup, so the bytes still reach a stream we hold
+      `&> file`  both, and stdout is gone
+      `| tee f`  not a redirection: the pipeline's last stage still writes here
+
+    Over-reporting is the safe direction — it says the record may not have the
+    body — so the one case it declines to guess at is the one where some
+    stdout did arrive anyway, which the caller checks separately.
+    """
+    quote = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                i += 1
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "\\":
+            i += 1
+        elif ch == ">":
+            if i > 0 and line[i - 1] == ">":
+                pass  # the second `>` of `>>`, already judged
+            elif i > 0 and line[i - 1] == "2" and (i < 2 or not line[i - 2].isalnum()):
+                pass  # `2>` / `2>>`: stderr only
+            elif line[i + 1:i + 2] == "&":
+                pass  # `>&N`: a dup onto a descriptor the relay still holds
+            else:
+                return True
+        i += 1
+    return False
 
 
 def await_part(path, timeout):
