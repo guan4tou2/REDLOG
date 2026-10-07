@@ -10,7 +10,8 @@ here, both callers use it (research.md D2, Principle III).
 Usage:
 
     redlog-relay.py run --event-out PATH [--max-bytes N] [--cwd DIR]
-                        [--captured-by NAME] -- COMMAND [ARG...]
+                        [--captured-by NAME] [--command-id ID]
+                        -- COMMAND [ARG...]
 
 The event is written to `--event-out` as JSON, never to stdout: stdout belongs
 to the command. `<event-out>.started` is created the moment the command is
@@ -137,6 +138,23 @@ def touch(path):
 
 
 def emit(opts, code, started_at, out, err):
+    # `out`/`err` are None when the command never started. The difference
+    # between "it produced nothing" and "nothing was ever held" is the whole
+    # of Principle VI, so it is said in the record and not left to be
+    # inferred from an empty string.
+    held = out is not None or err is not None
+    cut = [
+        "%s:%d" % (name, stream.cap)
+        for name, stream in (("stdout", out), ("stderr", err))
+        if stream is not None and stream.truncated()
+    ]
+    if not held:
+        completeness, disposition = "metadata-only", "not-captured"
+    elif cut:
+        completeness, disposition = "truncated", "captured"
+    else:
+        completeness, disposition = "complete", "captured"
+
     event = {
         "exit_code": code,
         "duration_sec": int(time.time() - started_at),
@@ -148,6 +166,13 @@ def emit(opts, code, started_at, out, err):
         "stdout_truncated": bool(out and out.truncated()),
         "stderr_truncated": bool(err and err.truncated()),
         "captured_by": opts["captured_by"],
+        # The correlation key the caller minted. The relay never invents one:
+        # `command_start` has already gone out carrying it, and an id made
+        # here would correlate with nothing.
+        "command_id": opts["command_id"],
+        "completeness": completeness,
+        "output_disposition": disposition,
+        "limit_hit": ",".join(cut) if cut else None,
     }
     try:
         # Written whole, then moved into place: a caller that reads a
@@ -170,12 +195,14 @@ def parse(argv):
         "max_bytes": DEFAULT_MAX_BYTES,
         "cwd": os.getcwd(),
         "captured_by": "redlog-relay",
+        "command_id": None,
     }
     flags = {
         "--event-out": "event_out",
         "--max-bytes": "max_bytes",
         "--cwd": "cwd",
         "--captured-by": "captured_by",
+        "--command-id": "command_id",
     }
     i = 0
     while i < len(argv):
