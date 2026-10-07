@@ -22,7 +22,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { classifyCommand, type CommandClass } from './terminal-class'
+import { classifyCommand, type CommandClass, type ClassOverlay } from './terminal-class'
 
 export type TerminalMode = 'auto' | 'manual'
 export type TerminalStopReason = 'operator' | 'project-switched'
@@ -118,6 +118,35 @@ export function captureDecision(state: TerminalEnrollment, argv: string[]): Capt
 
 export function terminalStateDir(home: string = os.homedir()): string {
   return path.join(home, '.redlog', 'terminals')
+}
+
+/** The machine's mode, as `redlog mode` last left it.
+ *
+ *  `auto` unless the operator said otherwise, and `auto` is what an install
+ *  leaves behind: a feature whose point is that there is nothing to type is
+ *  not one you opt each terminal into (research.md D4). Mirrored in
+ *  `hooks/redlog-relay.py`, which is what writes it. */
+export function readTerminalMode(home: string = os.homedir()): TerminalMode {
+  try {
+    return fs.readFileSync(path.join(home, '.redlog', 'terminal-mode'), 'utf8').trim() === 'manual'
+      ? 'manual'
+      : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+/** What `redlog class add|remove` wrote, or null when the operator has not
+ *  moved anything. */
+export function readClassOverlay(home: string = os.homedir()): ClassOverlay | null {
+  try {
+    const value = JSON.parse(
+      fs.readFileSync(path.join(home, '.redlog', 'command-class.json'), 'utf8')
+    ) as ClassOverlay
+    return value && typeof value === 'object' ? value : null
+  } catch {
+    return null
+  }
 }
 
 function statePath(home: string, sessionId: string): string {

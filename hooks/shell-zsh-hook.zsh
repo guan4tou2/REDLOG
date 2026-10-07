@@ -92,10 +92,20 @@ redlog() {
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null
+      # FR-012. "No events for twenty minutes" reads very differently as "the
+      # operator stopped recording" than as "the operator was reading", and a
+      # reader a year later cannot tell them apart from silence. These two
+      # rows bracket the gap the way RedLog's own pause rows already bracket a
+      # global one — a pair of its own, because reusing `system.recording_*`
+      # would draw a paused band across an engagement that never stopped.
+      _redlog_send_event "capture_stopped" "redlog stop" \
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"auto-relay\"}"
       print -- "[redlog] recording stopped in this terminal — redlog start to resume"
       ;;
     start)
       _redlog_state --action start >/dev/null
+      _redlog_send_event "capture_resumed" "redlog start" \
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"auto-relay\"}"
       print -- "[redlog] recording in this terminal"
       ;;
     mode)

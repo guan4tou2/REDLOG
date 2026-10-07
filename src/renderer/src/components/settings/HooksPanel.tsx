@@ -15,6 +15,39 @@ function hookDescription(hook: HookInfo, t: (key: string) => string): string {
   return localized === key ? hook.description : localized
 }
 
+interface TerminalPolicy { mode: 'auto' | 'manual'; native: string[]; pty: string[] }
+
+/** What the operator's shell will actually do, for the terminals this machine
+ *  opens: the mode `redlog mode` last set, and the class lists as `redlog
+ *  class` left them.
+ *
+ *  Read-only here on purpose. The lists are edited from the terminal, where
+ *  the operator is when they discover that `nc` went through a relay, and a
+ *  second editor in Settings would be a second place for the policy to be
+ *  changed and a second thing to keep in step. What Settings owes is the
+ *  answer to "what will my shell do", from the same file the shell reads
+ *  (research.md D7).
+ *
+ *  Declared at module scope: a component defined inside another component's
+ *  body is a new type on every render, and React remounts its subtree. */
+function TerminalPolicyNote({ policy, t }: {
+  policy: TerminalPolicy | null
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element | null {
+  if (!policy) return null
+  return (
+    <p className="text-xs text-redlog-text-dim mb-2 leading-relaxed">
+      {t('settings.terminalMode', { mode: t(`settings.terminalMode.${policy.mode}`) })}
+      {' · '}
+      {t('settings.terminalClassNative', { commands: policy.native.join(' ') })}
+      {' · '}
+      {t('settings.terminalClassPty', { commands: policy.pty.join(' ') })}
+      <br />
+      <span className="text-redlog-text-faint">{t('settings.terminalClassEditedFromShell')}</span>
+    </p>
+  )
+}
+
 export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   hooks: HookInfo[]
   setHooks: (h: HookInfo[] | ((prev: HookInfo[]) => HookInfo[])) => void
@@ -23,9 +56,19 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [policy, setPolicy] = useState<TerminalPolicy | null>(null)
 
   useEffect(() => {
     (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
+  }, [])
+
+  useEffect(() => {
+    // Not cached: `redlog mode manual` happens in a terminal RedLog knows
+    // nothing about, and a panel showing a stale `auto` is worse than one
+    // showing nothing. An older preload has no such method, so a renderer
+    // running against one leaves the note out rather than throwing.
+    const api = (window.redlog as { hooks?: { terminalPolicy?: () => Promise<TerminalPolicy> } }).hooks
+    api?.terminalPolicy?.().then(setPolicy).catch(() => setPolicy(null))
   }, [])
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
@@ -65,6 +108,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
         <p className="text-xs text-redlog-text-faint mb-2">
           {t('settings.hooksHint')}
         </p>
+        <TerminalPolicyNote policy={policy} t={t} />
         {hooks.length === 0 && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}

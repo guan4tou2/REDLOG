@@ -400,6 +400,9 @@ interface RedLogAPI {
     detect: () => Promise<HookInfo[]>
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
+    /** Spec 052: what the SHELL will do — the machine's mode and the effective
+     *  class lists, defaults with the operator's `redlog class` edits on top. */
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[] }>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }
   runtime: {
