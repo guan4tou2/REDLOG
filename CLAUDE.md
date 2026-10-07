@@ -202,6 +202,46 @@ onto it.
   changes, and one of the files may hold two of them at once — then it is
   `git apply --cached` of your own hunks, not `git add <file>`.
 
+**The index is shared too, and it has no author.** The working tree is the
+obvious hazard; `.git/index` is the quiet one. Two sessions staging at once are
+writing to one file, and `git commit` takes whatever is in it — so a commit can
+carry content its author never staged, on a path they never touched, and
+nothing in the result says so.
+
+It happened here within the same minute. One session ran
+`git apply --cached` to stage its own hunk of
+`e2e/timeline-geometry.spec.ts`; another committed a nine-file e2e change a few
+seconds later and, for that one path, got the first session's staged version
+instead of its own. The commit reads as a clean change; the author's own two
+hunks are still sitting unstaged, and the other session's assertion is now on a
+branch it does not belong to.
+
+- **Commit with a pathspec**: `git commit -- <paths>` builds the commit from
+  the *working tree* at those paths and ignores whatever else is in the index.
+  It is the one-line defence against all of this, and it costs nothing.
+- For anything more than that — staging selected hunks, or any sequence where
+  another session could land between your `add` and your `commit` — use a
+  private index and plumbing, which touches no shared state at all:
+
+  ```bash
+  export GIT_INDEX_FILE=$(mktemp)        # not .git/index
+  git read-tree HEAD && git apply --cached mine.patch
+  tree=$(git write-tree)
+  commit=$(git commit-tree "$tree" -p HEAD -m "…")
+  git update-ref refs/heads/<your-branch> "$commit"
+  ```
+
+- **Only ever move your own ref.** `update-ref`, `checkout -B` and `reset` on a
+  branch someone else opened will silently relocate their work; one branch was
+  moved onto another session's commit this way and had to be restored from a
+  `wip/` tag its owner had the sense to plant.
+
+**Every session here commits as the same git identity**, so `git log --author`
+and the blame on a line tell you nothing about which session wrote it. Do not
+attribute a commit from the author field — check the branch it is on, its
+timestamp, and what it actually contains. Two misattributions in one afternoon
+came from reading the author and stopping there.
+
 ## Staging
 
 Do not `git add -A` or `git add .`. Parallel sessions write to this checkout,
