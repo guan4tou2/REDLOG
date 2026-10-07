@@ -107,7 +107,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, loggedCount, chainLen, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
+  const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const refreshCaptureRef = useRef<() => void>(() => {})
@@ -217,8 +217,17 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
         </SectionLabel>
         {/* No loot tile: the sidebar badge and the status bar already count
             it, and on the Dashboard it was a third box that read 0 for most
-            of an engagement. */}
-        <div className="grid grid-cols-2 gap-3">
+            of an engagement.
+
+            No scope tile either, for the same reason and one more. Its four
+            states were three different kinds of thing wearing one shape: a
+            violation count, which the sidebar badge carries next to the page
+            that opens it; a failed read and an undeclared scope, which are
+            conditions and now sit in the panel above with somewhere to go and
+            something to press; and "configured", a green box whose whole
+            content was that there was nothing to say. A tile is for a number
+            that moves. */}
+        <div className="grid grid-cols-1 gap-3">
           {(() => {
             // The number shown is every recorded row — the same total the
             // status bar prints and the same set the Timeline scrolls at its
@@ -235,26 +244,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             }, t)
             return <StatCard label={t('dashboard.events')} value={String(eventCount + loggedCount)} sub={sub} tone={tone} />
           })()}
-          {/* Never green when the scope state could not be read. */}
-          <StatCard
-            label={t('dashboard.scope')}
-            value={scopeViolations > 0 ? String(scopeViolations)
-              : scopeUnknown ? t('dashboard.scopeUnknown')
-                : scopeConfigured ? t('dashboard.scopeOk') : t('dashboard.scopeNotConfigured')}
-            sub={scopeViolations === 0 && scopeUnknown ? t('dashboard.scopeUnknownWhy') : undefined}
-            tone={scopeViolations > 0 ? 'red' : scopeUnknown ? 'amber' : scopeConfigured ? 'green' : 'neutral'}
-          />
         </div>
-        {scopeUnknown && (
-          <button
-            type="button"
-            data-testid="dashboard-scope-retry"
-            onClick={retryCounts}
-            className="mt-2 text-xs text-amber-300 underline hover:text-amber-200"
-          >
-            {t('common.retry')}
-          </button>
-        )}
       </section>
 
       {config && (
