@@ -116,7 +116,6 @@
   "timeline.emptyFiltered": "沒有符合目前篩選的事件：",
   "timeline.liveAdmissionFailed": "新事件無法與篩選比對，因此尚未顯示。",
   "timeline.outsideFilter": "該事件不在目前的篩選範圍內。",
-  "timeline.exportSliceUnfiltered": "可見時間範圍（不套用篩選）",
   "timeline.referenceFailed": "無法開啟所引用的事件。",
   "timeline.queryUnparsable": "這個輸入沒有套用",
   "timeline.matching": "比對中…",

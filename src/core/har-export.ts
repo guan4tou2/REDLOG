@@ -130,8 +130,14 @@ export function exportHar(opts?: {
   scope?: ScopeForSanitize
   doNotExportIds?: Set<string>
   snapshot?: ExportSnapshot
+  /** The plan's approved events. A selection's predicates (method, status,
+   *  text) cannot be expressed as since/before/targetId, so without this the
+   *  HAR would carry every flow in the snapshot — which is the widening
+   *  spec 055 exists to stop. */
+  includeEventIds?: ReadonlySet<string>
 }): string {
   const rOpts: RedactExportOpts = { scope: opts?.scope, doNotExportIds: opts?.doNotExportIds }
+  const selected = opts?.includeEventIds
   const events = redactEventsForExport(queryEvents({
     agentType: 'scanner',
     tier: 'logged',
@@ -140,7 +146,7 @@ export function exportHar(opts?: {
     before: opts?.before,
     snapshot: opts?.snapshot,
     ...(opts?.targetId ? { targetId: opts.targetId } : {})
-  }), rOpts)
+  }).filter((event) => !selected || selected.has(event.id)), rOpts)
 
   const requests = new Map<string, RedLogEvent>()
   const responses = new Map<string, RedLogEvent>()
