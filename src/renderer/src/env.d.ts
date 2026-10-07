@@ -475,6 +475,14 @@ interface CaptureSourceInfo {
   state: 'ready' | 'unset' | 'off' | 'error'
   /** Why the capture failed, while the failure is still live. */
   lastError?: { at: number; message: string }
+  /** `terminal` only (spec 052): terminals that have enrolled and how many of
+   *  them are recording. Absent when none have. */
+  enrolled?: { total: number; recording: number }
+  /** `terminal` only (spec 052, FR-015): when a command last arrived from a
+   *  terminal that is not one of RedLog's own panes, or null if one never
+   *  has. An install is finished when this is set, not when a file was
+   *  copied. */
+  ownShellLastEventAt?: number | null
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */

@@ -10,6 +10,24 @@ import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime } from '../lib/time'
 
 
+/** What the `terminal` row says about the operator's OWN shell — three states,
+ *  not two.
+ *
+ *  RedLog's panes always record, so the only open question on this row is
+ *  whether the machine's other terminals are in the record too. "Installed"
+ *  was being treated as the answer, and it is not one: a copied file and an
+ *  appended rc line prove that a setup flow ran, not that anything is being
+ *  captured. The rc has to be re-read, the adapter has to load, the transport
+ *  has to reach RedLog — and the only evidence of all three is a command that
+ *  arrived from a terminal that is not one of RedLog's (FR-015).
+ */
+function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | null }): string {
+  if (s.installed !== true) return 'capture.terminalOwnShellMissing'
+  return s.ownShellLastEventAt != null
+    ? 'capture.terminalOwnShellIncluded'
+    : 'capture.terminalOwnShellPending'
+}
+
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
@@ -301,13 +319,29 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   // "switched off and still writing".
   const shown = manage ? sources : problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
 
-  // One action, when there is one: the operator has not recorded a command yet
-  // and the terminal is the way to. Installing the shell hook is deliberately
-  // not it — RedLog's own pane records with nothing installed.
-  const cta = readiness.nextStep === null ? null
-    : readiness.nextStep.status === 'todo'
+  // One action, when there is one.
+  //
+  // First: nothing has been recorded at all, and the terminal is the way to.
+  // Installing the shell hook was deliberately NOT offered here, because
+  // RedLog's own pane records with nothing installed — the install was a
+  // second-order concern behind a "manage sources" click.
+  //
+  // Spec 052 changed what the install buys. The hook is now what brings the
+  // operator's own terminals in, with their output, and an operator who works
+  // in their own shell — which is most of them, most of the time — has a card
+  // that says "healthy" about a machine whose real work is unrecorded. So
+  // once there is a record at all, the remaining gap gets the card's one
+  // action, and the action is the install itself rather than a trip to
+  // Settings (FR-014).
+  const terminalSource = sources.find((s) => s.id === 'terminal')
+  const notEnrolled = !!terminalSource?.hookId && terminalSource.installed !== true
+  const cta = readiness.nextStep !== null
+    ? readiness.nextStep.status === 'todo'
       ? { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
       : { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
+    : notEnrolled
+      ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
+      : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
@@ -384,7 +418,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     here they can act on. */}
                 {s.id === 'terminal' && (
                   <span className="block text-xs text-redlog-text-faint">
-                    {t(s.installed === true ? 'capture.terminalOwnShellIncluded' : 'capture.terminalOwnShellMissing')}
+                    {t(ownShellKey(s))}
+                    {s.enrolled && s.enrolled.total > 0 && (
+                      <span>{' · '}{t('capture.terminalEnrolled', {
+                        recording: s.enrolled.recording, total: s.enrolled.total
+                      })}</span>
+                    )}
                   </span>
                 )}
                 {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
