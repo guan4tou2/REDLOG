@@ -3,6 +3,7 @@ import { SectionLabel } from './SectionLabel'
 import { Button } from './Button'
 import { useIssues, type Issue, type IssueFix } from '../lib/issues'
 import { anchorNowWithFeedback, verifyChainWithFeedback } from '../lib/chainActions'
+import { recountAll } from '../lib/useAppCounts'
 import { formatFreshness } from '../lib/time'
 import { useTick } from '../lib/useTick'
 import { useI18n } from '../i18n'
@@ -28,13 +29,18 @@ import { useI18n } from '../i18n'
 
 const FIX_LABEL: Record<IssueFix, string> = {
   'anchor-now': 'issues.fix.anchorNow',
-  'verify-chain': 'issues.fix.verifyChain'
+  'verify-chain': 'issues.fix.verifyChain',
+  'recheck-scope': 'issues.fix.recheckScope'
 }
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 
 async function runFix(fix: IssueFix, t: T): Promise<void> {
   if (fix === 'anchor-now') { await anchorNowWithFeedback(t); return }
+  // The read is the fix: the condition is that RedLog could not reach the
+  // answer, and this asks every surface holding a copy to ask again. The
+  // issue is cleared by whoever raised it, once the read succeeds.
+  if (fix === 'recheck-scope') { recountAll(); return }
   await verifyChainWithFeedback(t)
 }
 

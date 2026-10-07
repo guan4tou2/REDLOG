@@ -14,6 +14,20 @@ import { useCallback, useEffect, useState } from 'react'
 // — a safety signal shown exactly when RedLog could not check. `scopeUnknown`
 // says the scope state could not be read; consumers must not show it as OK.
 
+/** One instance's `retry` re-reads one instance.
+ *
+ *  Every consumer holds its own copy of these counts, so the dashboard's
+ *  scope-retry button refreshed the dashboard and left the status bar amber —
+ *  the same read, two answers, and the one the operator had just corrected
+ *  was the one that stayed wrong. A retry is about the data, not about the
+ *  surface it was pressed on, so it says so to all of them. */
+export const RECOUNT_EVENT = 'redlog:recount'
+
+/** Re-read the shared counts everywhere they are mounted. */
+export function recountAll(): void {
+  window.dispatchEvent(new Event(RECOUNT_EVENT))
+}
+
 export interface AppCounts {
   eventCount: number
   /** Rows in the logged tier. Fetched, never accumulated: the status bar used
@@ -69,12 +83,14 @@ export function useAppCounts(): AppCounts {
       window.redlog.loot.getCount().then(setLootCount).catch(() => {})
       void readViolations()
     })
-    return unsub
+    const onRecount = (): void => { void load() }
+    window.addEventListener(RECOUNT_EVENT, onRecount)
+    return () => { unsub(); window.removeEventListener(RECOUNT_EVENT, onRecount) }
   }, [load, readViolations])
 
   return {
     eventCount, loggedCount, chainLen, lootCount, scopeViolations, scopeConfigured,
     scopeUnknown: violationsFailed || configuredFailed,
-    loading, retry: () => { void load() }
+    loading, retry: recountAll
   }
 }

@@ -6,13 +6,14 @@ import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
+import { scopeIssue } from '../lib/scopeIssue'
 import { settingsTarget } from '../lib/navigation'
 
 export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, loggedCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
+  const { eventCount, loggedCount, scopeViolations, scopeConfigured, scopeUnknown, loading: countsLoading } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
@@ -144,6 +145,25 @@ export default function StatusBar(): JSX.Element {
 
     return () => { unsubIp(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
+
+  // Scope as a condition, raised here because this is the component that is
+  // always mounted — the dashboard's panel reads the store, it does not fill
+  // it. The segment further down still prints the state, the way the
+  // recording dot prints capture health while `capture` is also an issue: one
+  // says what is true, the other says what to do about it.
+  //
+  // Not while the first read is in flight. `scopeConfigured` starts false, so
+  // raising on it unconditionally would put a pending counter on screen at
+  // every launch and take it away again a moment later.
+  useEffect(() => {
+    const s = scopeIssue({ loading: countsLoading, configured: scopeConfigured, unknown: scopeUnknown })
+    if (!s) { clearIssue('scope'); return }
+    raiseIssue({
+      id: 'scope', tier: s.tier,
+      title: t(s.titleKey), detail: t(s.detailKey),
+      view: settingsTarget('scope'), fix: s.fix
+    })
+  }, [countsLoading, scopeConfigured, scopeUnknown, t])
 
   useEffect(() => {
     if (pausedAt == null) return

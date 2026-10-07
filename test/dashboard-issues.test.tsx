@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DashboardIssues } from '../src/renderer/src/components/DashboardIssues'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { _resetIssues, raiseIssue } from '../src/renderer/src/lib/issues'
+import { RECOUNT_EVENT } from '../src/renderer/src/lib/useAppCounts'
 
 // The store has carried everything this panel shows since §9 — the tier, the
 // route, how long the condition has been true — and rendered none of it: two
@@ -53,6 +54,23 @@ describe('DashboardIssues', () => {
     show()
     fireEvent.click(screen.getByTestId('dashboard-issue-fix-integrity'))
     await waitFor(() => expect(anchorNow).toHaveBeenCalledTimes(1))
+  })
+
+  it('asks every surface to re-read, not just the one the button is on', async () => {
+    // The dashboard's old scope-retry refreshed the dashboard's own copy of
+    // the counts and left the status bar amber — the same read, two answers,
+    // and the stale one was the surface the operator had not just corrected.
+    install()
+    const heard = vi.fn()
+    window.addEventListener(RECOUNT_EVENT, heard)
+    raiseIssue({
+      id: 'scope', tier: 'attention', title: 'Scope state could not be read',
+      view: 'settings:scope', fix: 'recheck-scope'
+    })
+    show()
+    fireEvent.click(screen.getByTestId('dashboard-issue-fix-scope'))
+    await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    window.removeEventListener(RECOUNT_EVENT, heard)
   })
 
   it('offers no fix button for a condition no single act answers', () => {
