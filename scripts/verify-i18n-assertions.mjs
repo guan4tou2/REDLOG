@@ -58,7 +58,10 @@ if (base === null) {
   if (process.env.CI) {
     console.error(
       'i18n assertion gate cannot run: no merge base with origin/main.\n' +
-      'The checkout is too shallow — fetch main before this step.'
+      'The checkout is too shallow on one side or both. Fetching main is not\n' +
+      'enough on its own: a depth-1 checkout has a single commit HERE for that\n' +
+      'base to be found against. Give actions/checkout `fetch-depth: 0`, and\n' +
+      'keep `--depth` off the fetch — on a complete clone it re-shallows the ref.'
     )
     process.exit(1)
   }
