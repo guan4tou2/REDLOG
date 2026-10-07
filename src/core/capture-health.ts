@@ -85,6 +85,14 @@ export interface CaptureSource {
    *  `total` without `recording` is an operator who stopped it on purpose,
    *  not a capture that failed (FR-022). */
   enrolled?: { total: number; recording: number }
+  /** `terminal` only. When a command last arrived from a terminal that is not
+   *  one of RedLog's own panes, or null if one never has.
+   *
+   *  FR-015: an install is not finished because a file was copied — it is
+   *  finished when a command the operator typed in their own terminal has
+   *  landed. Until then the card says so, rather than reporting on its own
+   *  setup flow. */
+  ownShellLastEventAt?: number | null
 }
 
 export interface CaptureHealth {
@@ -376,6 +384,21 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const terminalLast = lastEventFor(
     `agent_type = 'shell' AND subtype IN ('command_start','command_end')`
   )
+  // …and the same thing from a terminal that is NOT one of RedLog's panes.
+  //
+  // Spec 052 FR-015: an install is not finished because a file was copied. It
+  // is finished when a command the operator typed in their own terminal has
+  // arrived — which is the only evidence that the rc was re-read, the adapter
+  // loaded, and the transport reached RedLog. Everything before that is a
+  // setup flow reporting on itself.
+  //
+  // `source` is absent on rows from older adapters, so the test is "not
+  // builtin-terminal" rather than "is auto-relay": a hook the operator
+  // installed before this release still counts as their own terminal.
+  const ownShellLast = lastEventFor(
+    `agent_type = 'shell' AND subtype IN ('command_start','command_end')
+     AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'`
+  )
   // mitmproxy addon writes scanner http_request/http_error events.
   // mitmproxy and the connection monitor both land on agent_type='scanner';
   // split them by subtype so one does not light the other's indicator.
@@ -489,7 +512,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // that from reading as "terminal capture is missing" when RedLog's own
     // panes are recording perfectly well without it.
     { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
-      ...enrolledTerminals() },
+      ...enrolledTerminals(), ownShellLastEventAt: ownShellLast },
     mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
