@@ -6,6 +6,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { toast } from './Toast'
 import { useViewExport } from '../lib/exportScope'
 import { formatDateTime } from '../lib/time'
+import { useSharedFilter, toEventFilter } from '../lib/FilterContext'
 import { capabilitiesFor } from '../../../core/export-capabilities'
 
 export interface ExportMenuProps {
@@ -146,6 +147,9 @@ function Toggle({ on, setOn, label, warn }: {
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const viewExport = useViewExport()
+  const { filter } = useSharedFilter()
+  const currentSubset: ExportSubset = viewExport?.request.subset ?? { kind: 'selection', projection: 'events', filter: toEventFilter(filter) }
+  const [currentFormat, setCurrentFormat] = useState<ExportFormat>('json')
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [scrubPii, setScrubPii] = useState(false)
@@ -157,6 +161,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   // A failed run keeps the dialog and its preview (UI/UX audit F12): closing
   // on failure threw away exactly what the operator had just reviewed.
   const [runError, setRunError] = useState<string | null>(null)
+  const previewSequence = useRef(0)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
 
@@ -164,7 +169,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && !busy) {
-        if (pending) { setPending(null); setResolvedPlan(null); setRunError(null) }
+        if (pending) { ++previewSequence.current; setPending(null); setResolvedPlan(null); setRunError(null) }
         else setOpen(false)
       }
     }
@@ -173,6 +178,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   }, [open, pending, busy])
 
   const loadPreview = useCallback(async (p: PendingExport) => {
+    const sequence = ++previewSequence.current
     setPending(p)
     setRunError(null)
     setPreviewLoading(true)
@@ -187,11 +193,11 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       // `included - maskedOutOfScope` — arithmetic, not a scope
       // classification. An operator checking what they are about to hand over
       // was reading numbers RedLog had made up.
-      setResolvedPlan(resolved.plan)
+      if (sequence === previewSequence.current) setResolvedPlan(resolved.plan)
     } catch (error) {
-        setPreviewError(String((error as Error)?.message ?? error))
+        if (sequence === previewSequence.current) setPreviewError(String((error as Error)?.message ?? error))
     } finally {
-      setPreviewLoading(false)
+      if (sequence === previewSequence.current) setPreviewLoading(false)
     }
   }, [t])
 
@@ -206,6 +212,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   }
 
   const closeAll = (): void => {
+    ++previewSequence.current
     setPending(null)
     setResolvedPlan(null)
     setPreviewError(null)
@@ -293,7 +300,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
               /* ── Preview panel ── */
               <div aria-busy={previewLoading} aria-live="polite">
                 <button
-                  onClick={() => { setPending(null); setResolvedPlan(null) }}
+                  onClick={() => { ++previewSequence.current; setPending(null); setResolvedPlan(null) }}
                   className="flex items-center gap-1 px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text w-full"
                 >
                   <ChevronLeft size={12} />
@@ -318,7 +325,13 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                           <span data-testid="export-preview-subset" className="text-right text-redlog-text">
                             {resolvedPlan.request.subset.kind === 'all'
                               ? t('export.preview.subsetAll')
-                              : <>
+                              : resolvedPlan.request.subset.kind === 'selection'
+                                ? <span className="break-words">{t('export.current')}<br />{[
+                                    ...Object.entries(resolvedPlan.request.subset.filter).map(([key, value]) => `${t(`export.condition.${key}`)}: ${key === 'since' || key === 'before' ? formatDateTime(Number(value), { seconds: true }) : String(value)}`),
+                                    ...(resolvedPlan.request.subset.query ? [`${t('export.condition.query')}: ${resolvedPlan.request.subset.query}`] : []),
+                                    ...Object.entries(resolvedPlan.request.subset.http ?? {}).map(([key, value]) => `${t(`export.condition.${key}`)}: ${value}`)
+                                  ].join(' · ')}</span>
+                                : <>
                                   {formatDateTime(resolvedPlan.request.subset.since, { seconds: true })}
                                   {' → '}
                                   {formatDateTime(resolvedPlan.request.subset.before, { seconds: true })}
@@ -361,6 +374,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         `inScope` used to be `included - maskedOutOfScope`,
                         which is not a scope classification, and `screenshots`
                         was hardcoded 0 - both are gone rather than guessed. */}
+                    {resolvedPlan.request.subset.kind !== 'all' && <p data-testid="export-projection-notice" className="px-3 py-2 text-xs text-amber-400">{t('export.projectionNotice')}</p>}
+                    {resolvedPlan.counts.exchanges !== undefined && <p className="px-3 text-xs">{t('export.exchanges', { count: resolvedPlan.counts.exchanges })}</p>}
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
                     <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
@@ -381,7 +396,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
                         <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
                         <PreviewRow label={t('export.preview.attachmentsExcludedByOperator')} value={resolvedPlan.counts.attachmentsExcludedByOperator ?? 0} />
-                        <AttachmentList rows={resolvedPlan.attachments ?? []} onToggle={toggleAttachment} busy={busy} t={t} />
+                        <AttachmentList rows={resolvedPlan.attachments ?? []} onToggle={toggleAttachment} busy={busy || previewLoading} t={t} />
                       </>
                     )}
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
@@ -453,15 +468,24 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 {empty && (
                   <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
                 )}
-                {viewExport && (
+                {viewExport && viewExport.request.format !== 'json' && (
                   <Option
                     busy={busy}
                     label={viewExport.label}
-                    disabled={empty || cannotShare(viewExport.request.format)}
-                    hint={shareHint(viewExport.request.format)}
+                    disabled={empty || !!viewExport.disabledReason || cannotShare(viewExport.request.format)}
+                    hint={viewExport.disabledReason ?? shareHint(viewExport.request.format)}
                     onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, scrubPii, maskOutOfScope: maskScope } })}
                   />
                 )}
+                <div className="border-t border-redlog-border px-3 py-2">
+                  <label className="block text-xs text-redlog-text" htmlFor="selection-format">{t('export.currentFormat')}</label>
+                  <select id="selection-format" className="w-full bg-redlog-surface text-redlog-text text-xs py-1" value={currentFormat} onChange={e => setCurrentFormat(e.target.value as ExportFormat)}>
+                    <option value="json">JSON</option><option value="ndjson">NDJSON</option><option value="bundle">Bundle</option>
+                  </select>
+                </div>
+                <Option label={t('export.current')} disabled={!!viewExport?.disabledReason || cannotShare(currentFormat)}
+                  hint={viewExport?.disabledReason ?? shareHint(currentFormat) ?? t('export.presentationNotice')}
+                  onPick={() => void loadPreview({ label: t('export.current'), request: { format: currentFormat, subset: currentSubset, scrubPii, maskOutOfScope: maskScope } })} />
                 <Option
                   busy={busy}
                   label={t('export.all')}

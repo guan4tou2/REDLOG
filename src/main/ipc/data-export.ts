@@ -8,6 +8,7 @@ import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { getProjectDir } from '../../core/db/index'
 import { queryEvents, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
+import { resolveExportSelection } from '../../core/export-selection'
 import { capabilitiesFor } from '../../core/export-capabilities'
 import {
   ExportPlanRegistry,
@@ -50,7 +51,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   if (request.scrubPii && !capabilities.piiScrubbing) {
     throw new Error(`unsupported-policy: ${request.format} cannot scrub operator PII`)
   }
-  if (request.subset.kind !== 'all' && !['har', 'timeline'].includes(request.format)) {
+  if (request.subset.kind !== 'all' && !capabilities.boundedSubset) {
     throw new Error('unsupported-policy: bounded subset')
   }
   const cfg = loadConfig(getProjectPath(project))
@@ -62,11 +63,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   }
   const doNotExportIds = getDoNotExportIds()
   const snapshot = takeExportSnapshot()
-  const formatQuery = request.format === 'har' ? { agentType: 'scanner', tier: 'logged' as const } : {}
-  const query = request.subset.kind === 'time-range'
-    ? { limit: -1, snapshot, since: request.subset.since, before: request.subset.before, targetId: request.subset.targetId, ...formatQuery }
-    : { limit: -1, snapshot, ...formatQuery }
-  const events = queryEvents(query)
+  const events = resolveExportSelection(request, snapshot, scope)
   const blacklist = request.sharing ? (cfg.network?.blacklist ?? []) : []
   const rOpts: RedactExportOpts = {
     scope: request.maskOutOfScope ? scope : undefined,
@@ -112,6 +109,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       ...(scopeSnap.scopeFileSha256 ? { sourceHash: scopeSnap.scopeFileSha256 } : {})
     },
     counts: {
+      ...(request.subset.kind === 'selection' && request.subset.projection === 'http' ? { exchanges: new Set(selectedEvents.map(event => event.data.flow_id)).size } : {}),
       examined: events.length,
       included: selectedEventIds.length,
       excludedDoNotExport,
@@ -199,7 +197,7 @@ export function registerDataExportIpc(
       if (approvedNow.length !== plan.selectedEventIds.length || fingerprintValue(approvedNow) !== plan.selectedEvidenceDigest) {
         return { ok: false as const, error: 'source-unavailable' }
       }
-      if (plan.request.format === 'json' && fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) {
+      if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) {
         return { ok: false as const, error: 'policy-changed' }
       }
       if (plan.request.format === 'bundle') {
@@ -239,7 +237,7 @@ export function registerDataExportIpc(
           maskOutOfScope: plan.request.maskOutOfScope,
           snapshot: plan.snapshot,
           includeEventIds: new Set(plan.selectedEventIds),
-          exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts },
+          exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts, request: plan.request },
           excludeAttachments: new Set(plan.request.excludeAttachments),
           attachments: plan.attachments
         })
@@ -258,13 +256,12 @@ export function registerDataExportIpc(
         fs.writeFileSync(artifactPath, content)
       } else if (plan.request.format === 'timeline') {
         const subset = plan.request.subset
-        if (subset.kind !== 'time-range') return { ok: false as const, error: 'invalid-request' }
-        const events = queryEvents({ limit: -1, since: subset.since, before: subset.before, targetId: subset.targetId, snapshot: plan.snapshot })
-          .filter((event) => plan.selectedEventIds.includes(event.id))
+        const events = available
         const markerIds = markerIdsIn(events)
-        const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
-        artifactPath = sliceExport(ctx, `timeline-${new Date(subset.since).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`, {
-          window: { fromMs: subset.since, toMs: subset.before },
+        const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds).filter(event => selectedIds.has(event.id)) : []
+        artifactPath = sliceExport(ctx, 'timeline-selection', {
+          ...(subset.kind === 'time-range' ? { window: { fromMs: subset.since, toMs: subset.before } } : {}),
+          selection: subset,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint },
           ...sliceWithAmendments(redactEventsForExport(events, planRedaction), redactEventsForExport(amendments, planRedaction))
         })
