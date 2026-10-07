@@ -7,136 +7,55 @@ import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
+import { formatTime } from '../lib/time'
 
-// The dark/setup onboarding block: the three core sources as an ordered
-// checklist, plus one primary CTA derived from readiness.nextStep. This is the
-// answer to "the timeline is empty, what now" that the old single-sentence hint
-// never gave. The checklist and the next-step choice come from the pure,
-// unit-tested computeCaptureReadiness — this component only renders and wires
-// the buttons to the actions the card already owns.
-export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNavigate }: {
-  readiness: ReturnType<typeof computeCaptureReadiness>
-  sources: CaptureSourceInfo[]
-  busy: string | null
-  onInstall: (s: CaptureSourceInfo, install: boolean) => Promise<void>
-  onEnable: (s: CaptureSourceInfo, on: boolean) => Promise<void>
-  onNavigate: (v: string) => void
-}): JSX.Element {
-  const { t } = useI18n()
-  const STEP_LABEL: Record<string, string> = {
-    'shell-hook': t('capture.shellHook'),
-    'agent-tailer': t('capture.agentTailer'),
-    'builtin-terminal': t('capture.builtinTerminal'),
-    'mitmproxy': t('capture.mitmproxy'),
-    'browser-console': t('capture.browserConsole'),
-    'screenshot': t('capture.screenshot'),
-    'clipboard': t('capture.clipboard'),
-    'file-watcher': t('capture.fileWatcher'),
-    'process-monitor': t('capture.processMonitor'),
-    'connection-monitor': t('capture.connectionMonitor')
-  }
-  const glyph = (status: string): { mark: string; cls: string } =>
-    status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
-      : status === 'wired' ? { mark: '◐', cls: 'text-amber-500' }
-        : { mark: '○', cls: 'text-redlog-text-faint' }
-
-  const core = readiness.groups.filter((g) => g.core)
-  const extra = readiness.groups.filter((g) => !g.core)
-
-  const next = readiness.nextStep
-  const nextSource = next ? sources.find((s) => s.id === next.id) : undefined
-
-  // One CTA, chosen by which core source is next and whether it needs setup or
-  // just activity. Each maps to an action the card already implements.
-  let cta: { label: string; run: () => void } | null = null
-  if (next && nextSource) {
-    if (next.status === 'todo' && nextSource.hookId) {
-      cta = { label: t('capture.ctaInstallHook'), run: () => void onInstall(nextSource, true) }
-    } else if (next.status === 'todo' && nextSource.configPath) {
-      cta = { label: t('capture.ctaEnableTailer'), run: () => void onEnable(nextSource, true) }
-    } else if (next.status === 'todo') {
-      cta = { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
-    } else {
-      // wired but quiet — the setup is done, it just needs a command to fire.
-      cta = { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
-    }
-  }
-
-  return (
-    <div className="mb-3">
-      <p className="text-xs text-redlog-text-dim mb-2">
-        {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
-      </p>
-      {/* Grouped, and no longer numbered. The numbers described a sequence
-          that does not exist — an operator on a proxied assessment starts with
-          traffic and may never install a shell hook. What the groups say is
-          what each source captures, which is the choice actually being made.
-
-          The two core groups sit at the first level and the rest fold under one
-          heading below them. A flat list of four headings said Commands and
-          HTTP(S) were worth the same as the clipboard watcher, and the operator
-          who skims it takes the top of the list as the important part — which
-          is how a web assessment ends up recorded with its requests missing. */}
-      <div className="space-y-2.5 mb-2.5">
-        {core.map((group) => (
-          <Group key={group.id} group={group} glyph={glyph} t={t} STEP_LABEL={STEP_LABEL} />
-        ))}
-        {/* The other groups are named, not listed. Fifteen rows of sources an
-            operator has never touched answer "what could RedLog capture",
-            while the dashboard is asking "is it capturing, and if not what do
-            I do" — the ten-source checklist §22 replaced, still on the screen
-            it was replaced on. They are one click away under 所有來源, where
-            someone who wants a clipboard watcher will go looking for it. */}
-        {extra.length > 0 && (
-          <p className="pt-2 border-t border-redlog-border/50 text-xs text-redlog-text-faint">
-            {t('capture.group.additionalCount', {
-              count: extra.reduce((n, g) => n + g.steps.length, 0)
-            })}
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        {cta && (
-          <button
-            disabled={busy !== null}
-            onClick={cta.run}
-            className="text-xs font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
-          >
-            {cta.label}
-          </button>
-        )}
-        <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
-          {t('capture.openHooks')}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, source, proxyError, t }: {
+function CoreCaptureLine({ readiness, http, source, sources, proxyError, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
   source: CaptureSourceInfo | undefined
+  sources: CaptureSourceInfo[]
   proxyError: string | undefined
+  /** "8m ago" for a timestamp, or an empty string for a source that has never
+   *  recorded. Freshness is reported here as data, in its own column — it is
+   *  what the removed `idle` state was a bad way of saying. */
+  age: (ts: number | null) => string
   t: (key: string) => string
 }): JSX.Element {
   const commands = readiness.groups.find((g) => g.id === 'commands')
-  const cmd: 'active' | 'wired' | 'todo' = !commands ? 'todo'
-    : commands.activeCount > 0 ? 'active'
-      : commands.steps.some((s) => s.status === 'wired') ? 'wired' : 'todo'
+  // Can commands be recorded — the same question, and the same four words, as
+  // every row in the inventory below. The core line used to speak its own
+  // vocabulary (記錄中 / 已設定，還沒有指令), which made an operator compare two
+  // descriptions of one thing and work out whether they agreed.
+  const cmdSources = (commands?.steps ?? [])
+    .map((s) => sources.find((x) => x.id === s.id))
+    .filter((s): s is CaptureSourceInfo => s !== undefined)
+  const cmd: CaptureSourceInfo['state'] =
+    cmdSources.some((s) => s.state === 'ready') ? 'ready'
+      : cmdSources.some((s) => s.state === 'error') ? 'error'
+        : cmdSources.some((s) => s.state === 'off') ? 'off' : 'unset'
+  // The age of the last command, beside the state. The state says whether the
+  // terminal CAN record; this says when it last did — and the two are
+  // deliberately separate, because an operator who has not typed for an hour
+  // has nothing wrong with their capture and should not be coloured as if
+  // they did.
+  const cmdLast = commands?.steps.reduce<number | null>((acc, s) => {
+    const at = sources.find((x) => x.id === s.id)?.lastEventAt ?? null
+    return at !== null && (acc === null || at > acc) ? at : acc
+  }, null) ?? null
   const mark = (state: 'done' | 'partial' | 'missing' | 'failed'): { mark: string; cls: string } =>
     state === 'done' ? { mark: '●', cls: 'text-emerald-500' }
       : state === 'partial' ? { mark: '◐', cls: 'text-amber-500' }
         : state === 'failed' ? { mark: '!', cls: 'text-red-400' }
           : { mark: '!', cls: 'text-amber-500' }
-  const cmdMark = mark(cmd === 'active' ? 'done' : cmd === 'wired' ? 'partial' : 'missing')
+  const cmdMark = mark(cmd === 'ready' ? 'done' : cmd === 'error' ? 'failed' : 'missing')
   const httpMark = mark(
-    http === 'active' ? 'done'
-      : http === 'idle' || http === 'listening' || http === 'starting' ? 'partial'
+    http === 'ready' ? 'done'
+      : http === 'starting' ? 'partial'
         : http === 'failed' ? 'failed' : 'missing'
   )
   return (
@@ -146,72 +65,37 @@ function CoreCaptureLine({ readiness, http, source, proxyError, t }: {
         <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
           <span className="flex-1 text-redlog-text">{t('capture.group.commands')}</span>
-          <span className="text-redlog-text-faint">{t(`capture.core.commands.${cmd}`)}</span>
+          {/* The word only when the light is not green. A green dot beside
+              "記錄中" says one thing twice and asks the reader to check that
+              the two agree; what the word is FOR is the cases a coloured dot
+              cannot carry — what is missing, and what to do about it. */}
+          {cmd !== 'ready' && (
+            <span className="text-redlog-text-faint">{t(`capture.state.${cmd}`)}</span>
+          )}
+          <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">
+            {age(cmdLast)}
+          </span>
         </li>
         <li data-testid="capture-core-http" data-state={http} className="flex items-start gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
           <span className="flex-1 min-w-0 text-redlog-text">
             {t('capture.group.http')}
-            {http === 'listening' && (
-              <span data-testid="capture-http-listening" className="block text-amber-400">
-                {t('capture.http.listeningWhy')}
-              </span>
+            {/* What it buys, because "mitmproxy" alone does not say — and only
+                while HTTP capture is not running. Once it is, the line above is
+                the whole story. */}
+            {(http === 'unset' || http === 'stopped') && (
+              <span className="block text-xs text-redlog-text-faint">{t('capture.mitmproxyCapability')}</span>
             )}
             {proxyError && <span className="block text-red-400">{proxyError}</span>}
             {source?.lastError && (
               <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
             )}
-            {source?.streams && (source.streams.http || source.streams.dns) && (
-              <span data-testid="capture-streams-mitmproxy" className="block text-redlog-text-faint">
-                {source.streams.http && source.streams.dns
-                  ? t('capture.streamsBoth')
-                  : source.streams.http ? t('capture.streamsHttpOnly') : t('capture.streamsDnsOnly')}
-              </span>
-            )}
           </span>
-          <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>
+          {http !== 'ready' && <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>}
+          <span data-testid="capture-core-http-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">
+            {age(source?.lastEventAt ?? null)}
+          </span>
         </li>
-      </ul>
-    </div>
-  )
-}
-
-function Group({ group, glyph, t, STEP_LABEL }: {
-  group: ReturnType<typeof computeCaptureReadiness>['groups'][number]
-  glyph: (status: string) => { mark: string; cls: string }
-  t: (key: string) => string
-  STEP_LABEL: Record<string, string>
-}): JSX.Element {
-  return (
-    <div>
-      <SectionLabel className="mb-1 ${ group.core ? 'font-semibold text-redlog-text-dim' : 'text-redlog-text-faint' }">
-        {t(`capture.group.${group.id}`)}
-      </SectionLabel>
-      <ul className="space-y-1">
-        {group.steps.map((s) => {
-          const g = glyph(s.status)
-          return (
-            <li key={s.id} className="flex items-center gap-2 text-xs">
-              <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
-              <span className={`min-w-0 ${s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}`}>
-                <span>{STEP_LABEL[s.id] ?? s.id}</span>
-                {s.id === 'shell-hook' && (
-                  <span className="block text-xs text-redlog-text-faint">
-                    {t('capture.shellHookCapability')}
-                  </span>
-                )}
-                {s.id === 'mitmproxy' && (
-                  <span className="block text-xs text-redlog-text-faint">
-                    {t('capture.mitmproxyCapability')}
-                  </span>
-                )}
-              </span>
-              <span className="ml-auto text-xs font-mono text-redlog-text-faint">
-                {t(`capture.step.${s.status}`)}
-              </span>
-            </li>
-          )
-        })}
       </ul>
     </div>
   )
@@ -225,9 +109,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   const { t } = useI18n()
 
   const SOURCE_LABEL: Record<string, string> = {
-    'shell-hook': t('capture.shellHook'),
+    'terminal': t('capture.terminal'),     // RedLog's panes + the operator's own shell
     'mitmproxy': t('capture.mitmproxy'),   // HTTP + DNS — one addon, one row
-    'builtin-terminal': t('capture.builtinTerminal'),
     'agent-tailer': t('capture.agentTailer'),
     'screenshot': t('capture.screenshot'),
     'clipboard': t('capture.clipboard'),
@@ -237,18 +120,18 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
     'connection-monitor': t('capture.connectionMonitor'),
     'file-watcher': t('capture.fileWatcher')
   }
+  // Green means it can record, red means it tried and failed, grey means it is
+  // not set up or is switched off. No amber: amber used to mean "set up and
+  // quiet", which is what a capture source looks like whenever its operator is
+  // reading rather than typing.
   const dot = (s: string): string =>
-    s === 'active' ? 'bg-emerald-500'
-      : s === 'error' ? 'bg-red-500'
-        : s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
+    s === 'ready' ? 'bg-emerald-500'
+      : s === 'error' ? 'bg-red-500' : 'bg-redlog-elevated-hover'
 
-  // `listening` is amber, not green: the proxy is up, which is the part that
-  // tempts a green dot, and nothing has ever come through it, which is the
-  // part that matters.
+  // Same three colours as every other row: running, failed, or neither.
   const httpDot = (s: HttpCaptureState): string =>
-    s === 'active' ? 'bg-emerald-500'
-      : s === 'failed' ? 'bg-red-500'
-        : s === 'listening' || s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
+    s === 'ready' ? 'bg-emerald-500'
+      : s === 'failed' ? 'bg-red-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -285,22 +168,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   // `informational` it was invisible by construction, because informational
   // rows are excluded from the compact view. It is not informational. It is
   // the fault.
-  const isRogue = (s: CaptureSourceInfo): boolean => s.disabled === true && s.state === 'active'
-
-  // "On but not delivering." A source switched off is a choice, not a fault;
-  // a hook that was never installed is a setup step, and the banner above
-  // already covers the nothing-is-wired case.
-  const isProblem = (s: CaptureSourceInfo): boolean =>
-    isRogue(s) ||
-    // E3: plugin producers are optional/manual — an idle or unrun one is never
-    // a fault to nag about, so they stay out of the compact view. A rogue one
-    // is not covered by that: it is above, and it is unconditional.
-    (!s.informational &&
-    (s.state === 'error' || s.state === 'absent'
-      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))))
-  const problems = sources.filter(isProblem)
-  const healthy = sources.filter((s) => s.state === 'active')
-  const hiddenCount = sources.length - problems.length
+  // Live, here, is about the PRODUCER, not the operator: a producer that is
+  // heartbeating, or whose event landed moments ago, is writing to the record
+  // right now. That is the one place a clock still belongs on this card, and
+  // it is why removing `idle` costs nothing — "nobody typed for ten minutes"
+  // and "something is writing that nobody authorised" are different questions.
+  const ROGUE_WINDOW_MS = 10 * 60 * 1000
+  const isRogue = (s: CaptureSourceInfo): boolean =>
+    s.disabled === true &&
+    (s.running === true || (s.lastEventAt !== null && capture.checkedAt - s.lastEventAt <= ROGUE_WINDOW_MS))
 
   // HTTP capture had two vocabularies on this card: the mitmproxy row's
   // active/idle/absent, and a separate line above it saying the managed proxy
@@ -311,6 +187,17 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
     sources.find((s) => s.id === 'mitmproxy'),
     capture.managedHttpProxy
   )
+
+  // "Something is wrong", and nothing else. A source that is switched off is a
+  // choice; one that is not set up is a setup step the core line names; one
+  // that is set up and quiet is an operator who is reading rather than typing,
+  // which this card has no opinion about. What is left is what an exception
+  // report is for: it tried and failed, or it is writing without authorisation.
+  // A proxy that could not start is on the core line, with its reason.
+  const isProblem = (s: CaptureSourceInfo): boolean =>
+    isRogue(s) || (!s.informational && s.state === 'error')
+  const problems = sources.filter(isProblem)
+  const healthy = sources.filter((s) => s.state === 'ready')
 
   const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
     if (!s.configPath) return
@@ -393,13 +280,6 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
     const hr = Math.round(min / 60)
     return `${hr}h ${t('capture.ago')}`
   }
-  const ageColor = (ts: number | null, now: number): string => {
-    if (!ts) return 'text-redlog-text-faint'
-    const sec = (now - ts) / 1000
-    if (sec < 60) return 'text-emerald-500/80'
-    if (sec < 300) return 'text-amber-500/80'
-    return 'text-redlog-text-faint'
-  }
 
   // A rogue source cannot leave the headline saying 健康. The core verdict
   // grades whether capture is WORKING; this grades whether it is AUTHORISED,
@@ -408,20 +288,26 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   const rogue = sources.filter(isRogue)
   const dark = capture.verdict === 'dark' || rogue.length > 0
   const partial = capture.verdict === 'partial'
-  // The ordered dark->recording onboarding model. Pure + unit-tested in
-  // capture-readiness.ts; this card just renders it. Drives the checklist and
-  // the single primary CTA below, replacing the old one-line "go to Settings"
-  // hint that dropped a first-run operator into a 2600-line page with no order.
+  // Pure + unit-tested in capture-readiness.ts; this card just renders it.
+  // All that is left of it is the one next action — the checklist it used to
+  // drive said the same two things as the core line above, in a third set of
+  // words, and only while nothing had been recorded yet.
   const readiness = computeCaptureReadiness({ ...capture, sources })
-  // Once the Core capture line is on screen it already carries HTTP(S), from
-  // the same derived state — so a mitmproxy problem row beneath it said
-  // 未安裝 mitmproxy twice. The row's detail moved up onto the core line; the
-  // full inventory still lists it. A rogue mitmproxy stays, because the core
-  // line has no word for "switched off and still writing".
-  const coreShown = readiness.level === 'recording'
-  const shown = manage ? sources
-    : coreShown ? problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
-      : problems
+  // One of the two core captures is named above and is not able to record.
+  // The summary line below the rows must not then say everything is fine.
+  const coreGap = http !== 'ready' || sources.find((s) => s.id === 'terminal')?.state !== 'ready'
+  // The core line always carries HTTP(S), so a mitmproxy row beneath it would
+  // say the same thing twice. A rogue one stays: the core line has no word for
+  // "switched off and still writing".
+  const shown = manage ? sources : problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
+
+  // One action, when there is one: the operator has not recorded a command yet
+  // and the terminal is the way to. Installing the shell hook is deliberately
+  // not it — RedLog's own pane records with nothing installed.
+  const cta = readiness.nextStep === null ? null
+    : readiness.nextStep.status === 'todo'
+      ? { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
+      : { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
@@ -445,40 +331,45 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
               className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
               title={t('capture.auditHint')}
             >
-              {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
+              {manage ? t('capture.done') : t('capture.manageWithHidden', { count: sources.length })}
             </button>
             <span className={`text-xs font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
           </div>
         </div>
-        {/* #217: once anything is recording, the onboarding block below goes
-            away — and with it the only place the two core captures were
-            named. An operator who left first-run with Commands verified and
-            HTTP(S) not set up must keep seeing that, not have it fold into an
-            exception list that only shows sources which were switched on. */}
-        {coreShown && (
-          <CoreCaptureLine
-            readiness={readiness}
-            http={http}
-            source={mitmSource}
-            proxyError={capture.managedHttpProxy?.error}
-            t={t}
-          />
-        )}
-        {readiness.level !== 'recording' && (
-          <CaptureOnboarding
-            readiness={readiness}
-            sources={sources}
-            busy={busy}
-            onInstall={setInstalled}
-            onEnable={setEnabled}
-            onNavigate={onNavigate}
-          />
+        {/* #217: both core captures, always named. The checklist that used to
+            appear instead, while nothing had been recorded, said the same two
+            things in different words — and an operator who left first run with
+            Commands working and HTTP(S) not set up has to keep seeing that. */}
+        <CoreCaptureLine
+          readiness={readiness}
+          http={http}
+          source={mitmSource}
+          sources={sources}
+          proxyError={capture.managedHttpProxy?.error}
+          age={(ts) => (ts === null ? '' : fmtAge(ts, nowTick))}
+          t={t}
+        />
+        {(cta || coreGap) && (
+          <div className="flex items-center gap-3 mb-3">
+            {cta && (
+              <button
+                disabled={busy !== null}
+                onClick={cta.run}
+                className="text-xs font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
+              >
+                {cta.label}
+              </button>
+            )}
+            <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
+              {t('capture.openHooks')}
+            </button>
+          </div>
         )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
           {shown.map((s) => {
             // The core line already says this about mitmproxy; the inventory
             // row keeps its state word and controls, not a second copy.
-            const detail = !(coreShown && s.id === 'mitmproxy')
+            const detail = s.id !== 'mitmproxy'
             return (
             <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
@@ -486,19 +377,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                 <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
                   {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
                 </span>
-                {s.id === 'shell-hook' && (
+                {/* The row says the capability; this says how far it reaches.
+                    RedLog's panes always record, so the only open question on
+                    this row is whether the operator's OWN terminal is in the
+                    record too — which is what the hook does, and the one thing
+                    here they can act on. */}
+                {s.id === 'terminal' && (
                   <span className="block text-xs text-redlog-text-faint">
-                    {t('capture.shellHookCapability')}
-                  </span>
-                )}
-                {/* A proxy that is up and has never had one request routed
-                    through it is the normal way HTTP capture fails: nothing in
-                    RedLog is misconfigured, the operator's browser or tool is
-                    simply not using it. It used to be indistinguishable from a
-                    healthy quiet proxy. */}
-                {detail && s.id === 'mitmproxy' && http === 'listening' && (
-                  <span data-testid="capture-http-listening" className="block text-amber-400">
-                    {t('capture.http.listeningWhy')}
+                    {t(s.installed === true ? 'capture.terminalOwnShellIncluded' : 'capture.terminalOwnShellMissing')}
                   </span>
                 )}
                 {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
@@ -518,29 +404,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     act on a red dot alone. */}
                 {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
 
-                {/* Which streams this row is actually carrying. `mitmproxy`
-                    covers HTTP and DNS, and they are two processes: an
-                    operator who started the proxy assumes DNS came with it. */}
-                {detail && s.streams && (s.streams.http || s.streams.dns) && (
-                  <span data-testid={`capture-streams-${s.id}`} className="block text-redlog-text-faint">
-                    {s.streams.http && s.streams.dns
-                      ? t('capture.streamsBoth')
-                      : s.streams.http ? t('capture.streamsHttpOnly') : t('capture.streamsDnsOnly')}
-                  </span>
-                )}
               </span>
               <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
-                {s.id === 'mitmproxy'
-                  ? t(`capture.http.${http}`)
-                  : s.state === 'off'
-                    ? t('capture.state.off')
-                    // A plugin producer isn't "installed" in the hook sense — it's
-                    // run on demand — so report its live state, not "not installed".
-                    : s.state === 'error' ? stateLabel('error')
-                      : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
+                {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
               </span>
-              {!manage && s.installed !== false && s.state !== 'off' && (
-                <span className={`text-xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
+              {/* No colour on the age. It is a fact about the operator's last
+                  command, not a grade on the capture: a green "4s ago" that
+                  turns amber at five minutes is the quiet-is-a-fault idea
+                  coming back in through the stylesheet. */}
+              {!manage && s.state !== 'unset' && s.state !== 'off' && (
+                <span className="text-xs font-mono tabular-nums shrink-0 text-redlog-text-faint">
                   {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
@@ -595,25 +468,33 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
             </div>
             )
           })}
-          {/* Not when the only problem was folded into the core line: 一切正常
-              directly under "! HTTP(S) 未安裝 mitmproxy" contradicts it. */}
-          {!manage && shown.length === 0 && problems.length === 0 && (
+          {/* Never under a core line that says otherwise: 一切正常 directly
+              beneath "! HTTP(S) 未安裝 mitmproxy" is the card contradicting
+              itself one row apart. An empty exception list means nothing is
+              broken, which is not the same as nothing is missing. */}
+          {!manage && shown.length === 0 && problems.length === 0 && !coreGap && (
             <p className="text-xs text-redlog-text-dim col-span-2">
-              {healthy.length > 0
-                ? t('capture.allGood', { active: healthy.length })
-                : t('capture.noneEnabled')}
+              {t('capture.allGood', { active: healthy.length })}
             </p>
           )}
         </div>
         {/* No chain/logged footer. It restated the status bar's tier count,
             and its drift warning was a third copy of one the event tile and
             the issues list already raise. */}
-        {capture.proxyEnv && (
-          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs font-mono">
-            <span className="text-emerald-500/80">●</span>
-            <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.proxyDetected')}</span>
-            <span className="text-redlog-text-faint truncate" title={capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}>
-              {capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}
+        {/* The record had write gaps earlier in this session.
+            `lastDbError` expires after a minute so the verdict can recover on
+            its own, which is right for "is writing broken NOW" and wrong for
+            an audit tool: an engagement that lost rows at 14:02 still lost
+            them at 18:00. The counter is the one thing on this card that
+            never clears. */}
+        {capture.dbErrorTotal > 0 && (
+          <div data-testid="capture-db-gaps" className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs">
+            <span className="text-redlog-danger">!</span>
+            <span className="text-redlog-text-dim">
+              {t('capture.dbGaps', {
+                count: capture.dbErrorTotal,
+                since: capture.dbErrorFirstAt ? formatTime(capture.dbErrorFirstAt) : ''
+              })}
             </span>
           </div>
         )}

@@ -27,7 +27,7 @@ import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
  *  RedLog's own hooks do not. That dot is the whole test. */
 const isExternal = (h: HookInfo): boolean => h.id.includes('.')
 
-type Live = { state?: string; lastEventAt?: number | null }
+type Live = { state?: string; lastEventAt?: number | null; running?: boolean }
 
 export default function ExternalCaptureGroup({ t }: {
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -70,9 +70,13 @@ export default function ExternalCaptureGroup({ t }: {
           const l = live[hook.id] ?? {}
           // `off` is not a fault. A producer nobody has started yet is the
           // normal state of a thing you start by hand, so it gets the quiet
-          // treatment and only `active` earns a colour.
-          const feeding = l.state === 'active'
-          const known = l.state === 'active' || l.state === 'idle'
+          // treatment and only a producer that is RUNNING earns a colour.
+          //
+          // Running is its own heartbeat, not a guess from recent events: a
+          // producer announces itself every 15 seconds, which is the only way
+          // to tell "it died" from "nothing happened to capture".
+          const feeding = l.running === true
+          const known = l.state === 'ready'
           // The dangerous pair first: switched off and still receiving. The
           // producer runs outside RedLog, so switching it off never stopped
           // it -- it only stopped RedLog saying so. Naming that state is the

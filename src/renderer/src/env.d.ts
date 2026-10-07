@@ -181,9 +181,6 @@ interface RedLogAPI {
   targetContext: {
     get: () => Promise<string | null>
     set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
-    /** #219: a built-in terminal's own target, which outranks the global one. */
-    getSession: (terminalId: string) => Promise<string | null>
-    bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
   }
   /** #221: copy operator-picked local files into the project as evidence. */
@@ -471,23 +468,24 @@ interface CaptureSourceInfo {
    *  too or the switch reports the opposite of what it did */
   packPath?: string
   lastEventAt: number | null
-  /** `error` = this source is wired up and its own capture failed; distinct
-   *  from `absent` (nothing installed) and from a DB write failure. */
-  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
+  /** Can this source record right now. `error` = wired up and its own capture
+   *  failed, distinct from `unset` (nothing installed/turned on) and from a DB
+   *  write failure. There is no `idle`: how long ago it last recorded is
+   *  `lastEventAt`, which is data, not a verdict. */
+  state: 'ready' | 'unset' | 'off' | 'error'
   /** Why the capture failed, while the failure is still live. */
   lastError?: { at: number; message: string }
-  /** For a source carrying more than one stream (mitmproxy: HTTP and DNS),
-   *  which of them are actually feeding. */
-  streams?: Record<string, boolean>
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */
   informational?: boolean
   /** Human label for an informational source (the plugin's own name). */
   label?: string
-  /** Switched off and listed anyway. With `state: 'active'` it is the one
-   *  combination that means the record is taking data nobody authorised. */
+  /** Switched off and listed anyway. Together with a live producer it is the
+   *  one combination that means the record is taking data nobody authorised. */
   disabled?: boolean
+  /** E3: this plugin producer is heartbeating — the operator has it running. */
+  running?: boolean
 }
 
 interface EventNote {
@@ -498,13 +496,20 @@ interface EventNote {
 
 interface CaptureHealthInfo {
   verdict: 'healthy' | 'partial' | 'dark'
-  recording: boolean
+  /** at least one source has ever produced a real event. NOT the REC switch —
+   *  that is `window.redlog.recording`, which decides whether RedLog writes
+   *  down what the sources produce. */
+  hasRecorded: boolean
   sources: CaptureSourceInfo[]
   lastEventAt: number | null
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
+  /** write failures in this session, cumulative. `lastDbError` expires so the
+   *  verdict can recover; this does not, because the gap in the record does
+   *  not either. */
+  dbErrorTotal: number
+  dbErrorFirstAt: number | null
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
   managedHttpProxy?: ManagedProxyStatus
 }
 

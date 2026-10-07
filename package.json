@@ -30,7 +30,8 @@
     "pree2e:ui": "electron-rebuild -f -o better-sqlite3",
     "e2e:ui": "playwright test --ui",
     "gen:settings-search": "node scripts/gen-settings-search.mjs",
-    "verify:architecture": "node scripts/verify-architecture.mjs"
+    "verify:architecture": "node scripts/verify-architecture.mjs",
+    "verify:i18n": "node scripts/verify-i18n-assertions.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

@@ -4,7 +4,6 @@ import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
 import { CaptureHealthCard } from './CaptureHealth'
-import { computeCaptureReadiness } from '../lib/captureReadiness'
 import { useI18n } from '../i18n'
 import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
@@ -107,7 +106,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, chainLen, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
+  const { eventCount, loggedCount, chainLen, scopeViolations, scopeConfigured, scopeUnknown, retry: retryCounts, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const refreshCaptureRef = useRef<() => void>(() => {})
@@ -216,10 +215,20 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             of an engagement. */}
         <div className="grid grid-cols-2 gap-3">
           {(() => {
+            // The number shown is every recorded row — the same total the
+            // status bar prints and the same set the Timeline scrolls at its
+            // default tier: 'all'. It used to show the chained tier alone,
+            // which disagreed with both and could only be read by someone who
+            // already knew the two tiers existed.
+            //
+            // The drift check below still compares chainLen against the
+            // *chained* count — that is the pair that must match, and feeding
+            // it the total would fire a tamper signal on every project with a
+            // logged row in it.
             const { sub, tone } = eventTileStatus({
               eventCount, chainLen, lastAnchor, sampleBroken: capture?.lastSampleBroken, now: Date.now()
             }, t)
-            return <StatCard label={t('dashboard.events')} value={String(eventCount)} sub={sub} tone={tone} />
+            return <StatCard label={t('dashboard.events')} value={String(eventCount + loggedCount)} sub={sub} tone={tone} />
           })()}
           {/* Never green when the scope state could not be read. */}
           <StatCard

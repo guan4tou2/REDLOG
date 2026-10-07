@@ -24,6 +24,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Full history, for the i18n gate's merge base with main. The default
+          # depth-1 checkout leaves ONE commit on this side, so deepening main
+          # alone finds nothing to meet it at — which is how that gate failed
+          # the first time it ran, with main fetched 200 deep beside it.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -51,6 +57,15 @@ jobs:
 
       - name: Architecture gate (every export reachable from production)
         run: npm run verify:architecture
+
+      - name: i18n assertion gate (no test asserts copy this branch deleted)
+        # `fetch-depth: 0` above already brings main, so this only refreshes it.
+        # No `--depth` here: on a complete clone that flag makes the ref shallow
+        # again and takes the merge base back out, which is the opposite of what
+        # the fetch is for.
+        run: |
+          git fetch --no-tags origin main
+          npm run verify:i18n
 
       - name: Vitest
         run: npm test

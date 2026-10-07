@@ -33,7 +33,11 @@ test.describe.serial('event causal chain', () => {
     for (let i = 0; i < 205; i++) {
       await post({ subtype: 'created', title: `filler ${i}`, atTimestamp: now - 2_000_000 + i * 5_000 })
     }
-    await post({ subtype: 'created', title: 'causal effect', atTimestamp: now, _causes: [parent.id] })
+    // Two minutes back, not `now`: at `now` it shares a 14px cluster bucket
+    // with the project's own genesis rows and renders as a counted node
+    // ("(N events)") whose title no longer says "causal effect". Still the
+    // newest row — the fillers stop ~33 minutes ago.
+    await post({ subtype: 'created', title: 'causal effect', atTimestamp: now - 120_000, _causes: [parent.id] })
 
     await openView(page, 'timeline')
     await page.waitForTimeout(1800)

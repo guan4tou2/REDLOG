@@ -50,9 +50,10 @@ function draw(sources: Record<string, unknown>[], managedHttpProxy?: Record<stri
   return container
 }
 
-const builtin = { id: 'builtin-terminal', state: 'active', lastEventAt: Date.now() }
+// One terminal row, fed by RedLog's own panes and by the operator's own shell.
+const terminal = { id: 'terminal', state: 'ready', lastEventAt: Date.now() }
 const mitm = (over: Record<string, unknown> = {}): Record<string, unknown> =>
-  ({ id: 'mitmproxy', hookId: 'mitmproxy', installed: true, state: 'idle', lastEventAt: null, ...over })
+  ({ id: 'mitmproxy', hookId: 'mitmproxy', installed: true, state: 'ready', lastEventAt: null, ...over })
 
 describe('the Dashboard keeps both core captures in view', () => {
   beforeEach(() => {
@@ -64,24 +65,24 @@ describe('the Dashboard keeps both core captures in view', () => {
   afterEach(() => cleanup())
 
   it('flags HTTP(S) as not started while commands are recording', () => {
-    const el = draw([builtin, mitm()], { state: 'stopped', url: null })
+    const el = draw([terminal, mitm()], { state: 'stopped', url: null })
     const cmd = el.querySelector('[data-testid="capture-core-commands"]')
     const web = el.querySelector('[data-testid="capture-core-http"]')
-    expect(cmd?.getAttribute('data-state')).toBe('active')
+    expect(cmd?.getAttribute('data-state')).toBe('ready')
     expect(web?.getAttribute('data-state')).toBe('stopped')
     expect(web?.textContent).toMatch(/not started/i)
   })
 
   it('shows both as capturing once both are', () => {
-    const el = draw([builtin, mitm({ state: 'active', lastEventAt: Date.now() })], { state: 'running', url: null })
-    expect(el.querySelector('[data-testid="capture-core-http"]')?.getAttribute('data-state')).toBe('active')
-    expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('active')
+    const el = draw([terminal, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    expect(el.querySelector('[data-testid="capture-core-http"]')?.getAttribute('data-state')).toBe('ready')
+    expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('ready')
   })
 
   it('says HTTP(S) once: no mitmproxy problem row under the core line', () => {
     // The screenshot that prompted this: 未安裝 mitmproxy on the core line and
     // again on a mitmproxy row directly beneath it, from the same state.
-    const el = draw([builtin, mitm()], { state: 'unavailable', url: null, error: 'spawn mitmdump ENOENT' })
+    const el = draw([terminal, mitm()], { state: 'unavailable', url: null, error: 'spawn mitmdump ENOENT' })
     expect(el.querySelector('[data-testid="capture-core-http"]')?.textContent).toMatch(/not installed/)
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
     // …and the empty exception list does not then claim all is well.
@@ -89,30 +90,120 @@ describe('the Dashboard keeps both core captures in view', () => {
   })
 
   it('moves the row detail onto the core line', () => {
-    const listening = draw([builtin, mitm({ streams: { http: true, dns: false } })], { state: 'running', url: null })
-    const core = listening.querySelector('[data-testid="capture-core-http"]')
-    expect(core?.querySelector('[data-testid="capture-http-listening"]')?.textContent).toMatch(/CA is trusted/)
-    expect(core?.querySelector('[data-testid="capture-streams-mitmproxy"]')).toBeTruthy()
-    cleanup()
-    const failed = draw([builtin, mitm()], { state: 'failed', url: null, error: '127.0.0.1:6661 is already in use by BurpSuite.exe' })
+    const failed = draw([terminal, mitm()], { state: 'failed', url: null, error: '127.0.0.1:6661 is already in use by BurpSuite.exe' })
     expect(failed.querySelector('[data-testid="capture-core-http"]')?.textContent).toMatch(/already in use by BurpSuite\.exe/)
     expect(failed.textContent?.match(/already in use/g)).toHaveLength(1)
   })
 
   it('still lists mitmproxy in the full inventory, without repeating the detail', () => {
-    const el = draw([builtin, mitm()], { state: 'running', url: null })
+    const el = draw([terminal, mitm()], { state: 'running', url: null })
     fireEvent.click(within(el).getByText(/all sources/))
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeTruthy()
-    expect(el.querySelectorAll('[data-testid="capture-http-listening"]')).toHaveLength(1)
+    expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
   it('keeps a rogue mitmproxy row, which the core line cannot express', () => {
-    const el = draw([builtin, mitm({ disabled: true, state: 'active', lastEventAt: Date.now() })], { state: 'stopped', url: null })
+    const el = draw([terminal, mitm({ disabled: true, state: 'ready', lastEventAt: Date.now() })], { state: 'stopped', url: null })
     expect(el.querySelector('[data-testid="capture-rogue-mitmproxy"]')).toBeTruthy()
   })
 
   it('flags Commands when only HTTP(S) is recording', () => {
-    const el = draw([{ id: 'builtin-terminal', state: 'idle', lastEventAt: null }, mitm({ state: 'active', lastEventAt: Date.now() })], { state: 'running', url: null })
-    expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('todo')
+    const el = draw([{ id: 'terminal', state: 'unset', lastEventAt: null }, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('unset')
+  })
+
+  // A working source says so with one green light, and nothing else. The line
+  // used to carry a word too — 記錄中 beside a green dot — which is one thing
+  // said twice and leaves the reader checking that the two agree. The word is
+  // kept for the cases a colour cannot carry: what is missing, and what to do.
+  it('says a working terminal with a light, not a word, and dates it', () => {
+    const quiet = { id: 'terminal', state: 'ready', lastEventAt: Date.now() - 29 * 60_000 }
+    const el = draw([quiet, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    const cmd = el.querySelector('[data-testid="capture-core-commands"]')
+    expect(cmd?.getAttribute('data-state')).toBe('ready')
+    expect(cmd?.textContent).not.toMatch(/recording|ready/i)
+    // A quiet half-hour is reported as a date, not as a state: the operator
+    // has not typed, which is not a fact about capture.
+    expect(cmd?.querySelector('[data-testid="capture-core-commands-age"]')?.textContent).toMatch(/29m/)
+  })
+
+  it('speaks up only when a core capture cannot record', () => {
+    const el = draw([{ id: 'terminal', state: 'unset', lastEventAt: null }, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    const cmd = el.querySelector('[data-testid="capture-core-commands"]')
+    expect(cmd?.textContent).toMatch(/not set up/i)
+    // Nothing has been recorded, so there is no age to print — an empty
+    // column, not a "—" pretending to be a reading.
+    expect(cmd?.querySelector('[data-testid="capture-core-commands-age"]')?.textContent).toBe('')
+  })
+})
+
+// A source with no hook to install and no switch to flip records when the
+// operator uses the thing it watches, and does nothing when they do not.
+// `idle` is its resting state. Under the old rule one event, ever, pinned such
+// a source to the exception list for the rest of the engagement — with no
+// control on the row to act on, under a heading that claims everything listed
+// is wrong.
+describe('the exception list does not nag about a passive source', () => {
+  beforeEach(() => {
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      config: { get: async () => ({}), save: async () => true },
+      hooks: { install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) }
+    }
+  })
+  afterEach(() => cleanup())
+
+  it('still shows a passive source that failed — that one carries a reason', () => {
+    const broken = {
+      id: 'screenshot', state: 'error', lastEventAt: null,
+      lastError: { at: Date.now(), message: 'screen capture came back empty' }
+    }
+    const el = draw([broken, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    expect(el.querySelector('[data-testid="capture-row-screenshot"]')).toBeTruthy()
+    expect(el.textContent).toMatch(/came back empty/)
+  })
+})
+
+// RedLog's own terminal is the terminal capability, not a competitor to the
+// shell hook: nothing to install, nothing to switch, and which terminal a
+// command came from is on the command, not on a capture row.
+describe('the two terminals are one row', () => {
+  beforeEach(() => {
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      config: { get: async () => ({}), save: async () => true },
+      hooks: { install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) }
+    }
+  })
+  afterEach(() => cleanup())
+
+  it('names no RedLog terminal of its own, anywhere on the card', () => {
+    const el = draw([terminal, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
+    fireEvent.click(within(el).getByText(/all sources/))
+    expect(el.querySelector('[data-testid="capture-row-builtin-terminal"]')).toBeNull()
+    expect(el.textContent).not.toMatch(/RedLog terminal/)
+    expect(el.querySelector('[data-testid="capture-row-terminal"]')).toBeTruthy()
+  })
+
+  it('says whether the operator\'s own terminal is in the record', () => {
+    // The only open question on the row: RedLog's panes always record, so
+    // what is left to act on is whether the operator's own shell is included.
+    const without = draw([{ ...terminal, hookId: 'shell-powershell', installed: false }], { state: 'stopped', url: null })
+    fireEvent.click(within(without).getByText(/all sources/))
+    expect(without.textContent).toMatch(/Your own terminal is not in the record/)
+    cleanup()
+
+    const withHook = draw([{ ...terminal, hookId: 'shell-powershell', installed: true }], { state: 'stopped', url: null })
+    fireEvent.click(within(withHook).getByText(/all sources/))
+    expect(withHook.textContent).toMatch(/Your own terminal is included/)
+  })
+
+  it('a terminal recording with no hook installed is not "not installed"', () => {
+    // RedLog's own pane needs nothing installed, so `installed: false` on this
+    // row says the operator's shell is not wired — never that terminal capture
+    // is missing. The card must report the feed, not the probe.
+    const el = draw([{ ...terminal, hookId: 'shell-powershell', installed: false }], { state: 'stopped', url: null })
+    expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('ready')
+    expect(el.textContent).not.toMatch(/No capture source/i)
+    fireEvent.click(within(el).getByText(/all sources/))
+    expect(el.querySelector('[data-testid="capture-state-terminal"]')?.textContent).toMatch(/ready/i)
   })
 })
