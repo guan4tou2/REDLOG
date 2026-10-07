@@ -129,7 +129,12 @@ export default function StatusBar(): JSX.Element {
           tier: 'attention',
           title: t(`issues.integrity.${fault.kind}`, fault.vars),
           detail: t('issues.integrityDetail'),
-          view: settingsTarget('integrity')
+          view: settingsTarget('integrity'),
+          // A dead or failed anchor loop is answered by submitting again, and
+          // that is one call. A drifted chain or a broken row is not answered
+          // by anything from here — the walk is what says how bad it is, so
+          // that is what the button offers.
+          fix: fault.kind === 'anchor-failed' || fault.kind === 'anchor-stale' ? 'anchor-now' : 'verify-chain'
         })
       }).catch(() => { /* a failed probe must not clear a real fault */ })
     }

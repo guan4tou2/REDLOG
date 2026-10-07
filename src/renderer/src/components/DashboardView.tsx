@@ -4,6 +4,7 @@ import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
 import { CaptureHealthCard } from './CaptureHealth'
+import { DashboardIssues } from './DashboardIssues'
 import { useI18n } from '../i18n'
 import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
@@ -191,6 +192,10 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   return (
     <div className="p-4 space-y-3 overflow-auto h-full">
+      {/* First, and above the capture card: what is wrong now outranks what is
+          merely true now. Renders nothing when nothing is wrong. */}
+      <DashboardIssues onNavigate={onNavigate} />
+
       {capture && (
         <CaptureHealthCard
           capture={capture}
