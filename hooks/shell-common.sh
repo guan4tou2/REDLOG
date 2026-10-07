@@ -35,16 +35,24 @@ _redlog_resolve_dir() {
 }
 
 # --- Resolve reachable host ---
+# Both probes are bounded by --max-time, not only by --connect-timeout. A
+# connect timeout expires when nothing *accepts*; a process that accepts the
+# socket and then never answers — RedLog mid-crash, a port inherited by
+# something else, an SSH forward whose far end is gone — satisfies the connect
+# and then waits forever. This runs from preexec on the operator's prompt, so
+# "forever" means the engagement's shell is wedged by its own logger. Bounded,
+# the worst case is 127.0.0.1 and the gateway in turn, once per shell:
+# _REDLOG_HOST is exported after the first resolve.
 _redlog_resolve_host() {
   local port="$1"
-  if curl --noproxy '*' -sf --connect-timeout 1 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
+  if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     echo "127.0.0.1"
     return
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
     local gw
     gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-    if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
+    if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
       echo "$gw"
       return
     fi

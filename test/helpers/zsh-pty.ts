@@ -8,6 +8,7 @@
 // untestable on the machine it is being written on.
 import { spawn, spawnSync } from 'child_process'
 import { createServer, type Server } from 'http'
+import { createServer as netCreateServer, type Socket } from 'net'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -94,6 +95,28 @@ export async function startCollector(token: string): Promise<{
     port,
     events,
     close: () => new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+}
+
+/** A port that accepts and then says nothing, forever.
+ *
+ *  This is not a hypothetical: it is how the harness itself behaved while
+ *  `runZsh` still used `spawnSync` — the collector was in a blocked event
+ *  loop, so it completed the TCP handshake and never replied. `curl
+ *  --connect-timeout` is satisfied by the handshake, so an unbounded probe
+ *  waits on this for as long as the socket stays open. Any RedLog that is
+ *  mid-crash, swapped out, or whose port has been inherited looks exactly
+ *  like this from the shell's side. */
+export async function startBlackHole(): Promise<{ port: number; close: () => Promise<void> }> {
+  const held: Socket[] = []
+  const server = netCreateServer((socket) => { held.push(socket) })
+  await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve))
+  return {
+    port: (server.address() as { port: number }).port,
+    close: () => new Promise<void>((resolve) => {
+      for (const socket of held) socket.destroy()
+      server.close(() => resolve())
+    })
   }
 }
 
