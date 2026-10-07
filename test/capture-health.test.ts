@@ -201,6 +201,48 @@ describeDB('capture-health', () => {
     expect(h.sources.find((s) => s.id === 'builtin-terminal')).toBeUndefined()
   })
 
+  // Spec 052 T017. The terminal row has always been able to say whether a
+  // command has arrived; it could not say whether this machine's terminals
+  // are enrolled at all. Those are different questions — an enrolled terminal
+  // that nobody has typed in yet is working perfectly and has recorded
+  // nothing — and the card needs the second one to tell "RedLog's panes only"
+  // from "this machine's terminals too".
+  describe('enrolled terminals', () => {
+    let home: string
+    let realHome: string | undefined
+    let realProfile: string | undefined
+    beforeEach(() => {
+      home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-home-'))
+      realHome = process.env.HOME; realProfile = process.env.USERPROFILE
+      process.env.HOME = home; process.env.USERPROFILE = home
+    })
+    afterEach(() => {
+      if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome
+      if (realProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = realProfile
+      fs.rmSync(home, { recursive: true, force: true })
+    })
+
+    const enroll = async (sessionId: string, recording: boolean) => {
+      const mod = await import('../src/core/terminal-enrollment')
+      mod.writeTerminalEnrollment(home, {
+        sessionId, mode: 'auto', recording, engagementId: 'eng-1', operatorId: 'op', startedAt: Date.now()
+      })
+    }
+
+    it('says nothing when nothing has enrolled', () => {
+      mockHooks({ 'shell-zsh': false })
+      expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.enrolled).toBeUndefined()
+    })
+
+    it('counts the terminals and how many of them are recording', async () => {
+      mockHooks({ 'shell-zsh': true })
+      await enroll('pane-1', true)
+      await enroll('pane-2', false)   // stopped on purpose — FR-022, not a fault
+      expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.enrolled)
+        .toEqual({ total: 2, recording: 1 })
+    })
+  })
+
   it('does not count opening a pane as having recorded a command', () => {
     // Opening a pane writes a session_start. The terminal can record — that is
     // what `ready` says — but nothing has been recorded, which is what an

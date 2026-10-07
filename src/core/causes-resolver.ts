@@ -42,6 +42,16 @@ const httpFlowMap = new BoundedMap<string>()
 
 // `${terminalId}|${pid}|${command}` → shell.command_start event id
 const shellStartMap = new BoundedMap<string>()
+
+// `command_id` → shell.command_start event id. Spec 052: the adapter mints one
+// key per command and every row of that command carries it, so correlation is
+// an identity rather than a guess. The text key above cannot tell two runs of
+// `whoami` in one terminal apart, and once output arrives as its own rows the
+// difference stops being academic — a chunk would attach to the wrong command.
+// It is also the ONLY thing consulted for a chunk: the bytes are output from
+// something hostile, and anything read out of them is attacker-controlled
+// (FR-002).
+const commandIdMap = new BoundedMap<string>()
 type CommandCorrelation = { eventId: string; cwd: string; endedAt?: number }
 export type RelatedCommandCandidate = {
   event_id: string
@@ -51,6 +61,13 @@ export type RelatedCommandCandidate = {
 const activeShellCommands = new BoundedMap<CommandCorrelation>()
 const recentShellCommands = new BoundedMap<CommandCorrelation>()
 const RECENT_COMMAND_GRACE_MS = 2_000
+
+function commandIdOf(data: Record<string, unknown>): string | null {
+  const value = data.command_id ?? data.commandId
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
 
 function shellKey(data: Record<string, unknown>): string | null {
   const tidValue = data.terminal_id ?? data.terminalId
@@ -74,6 +91,8 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
     return
   }
   if (agentType === 'shell' && data.subtype === 'command_start') {
+    const commandId = commandIdOf(data)
+    if (commandId) commandIdMap.set(commandId, eventId)
     const key = shellKey(data)
     if (key) {
       shellStartMap.set(key, eventId)
@@ -104,7 +123,35 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
     }
     return []
   }
+  // A chunk belongs to its command or to nothing. No fall-back to the text
+  // key: a chunk has no command text of its own, and matching on the bytes is
+  // the one thing this contract forbids. An empty result is how ingest knows
+  // to mark it `unattributed` rather than attach it somewhere plausible.
+  if (agentType === 'shell' && data.subtype === 'command_output') {
+    const commandId = commandIdOf(data)
+    if (!commandId) return []
+    const id = commandIdMap.get(commandId)
+    return id ? [id] : []
+  }
   if (agentType === 'shell' && data.subtype === 'command_end') {
+    const commandId = commandIdOf(data)
+    if (commandId) {
+      const id = commandIdMap.get(commandId)
+      if (id) {
+        // The contract puts `command_end` after the last chunk, so the id has
+        // done its work; a chunk arriving after this is late by definition
+        // and is recorded as unattributed rather than reopening the command.
+        commandIdMap.delete(commandId)
+        const key = shellKey(data)
+        if (key) {
+          shellStartMap.delete(key)
+          const active = activeShellCommands.get(key)
+          activeShellCommands.delete(key)
+          if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
+        }
+        return [id]
+      }
+    }
     const key = shellKey(data)
     if (key) {
       const id = shellStartMap.get(key)
@@ -147,6 +194,7 @@ export function relatedCommandCandidates(data: Record<string, unknown>, now = Da
 export function resetCausesResolver(): void {
   httpFlowMap.clear()
   shellStartMap.clear()
+  commandIdMap.clear()
   activeShellCommands.clear()
   recentShellCommands.clear()
 }
