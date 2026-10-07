@@ -77,7 +77,7 @@ export function TimelineEventLog({
   const minHeight = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
     <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
-      <div className="shrink-0 px-3 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
+      <div className="shrink-0 px-4 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
         <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
         <span className="flex items-center gap-2">
           {/* The count is never not shown. A filter that hides without saying
@@ -107,7 +107,7 @@ export function TimelineEventLog({
           is how the join below sat broken for a year — and the next person to
           notice is tempted to put the time-window guess back. */}
       {attributionBlind && (
-        <p data-testid="log-attribution-blind" className="shrink-0 px-3 py-1 text-xs text-redlog-warn border-b border-redlog-border-subtle/30">
+        <p data-testid="log-attribution-blind" className="shrink-0 px-4 py-1 text-xs text-redlog-warn border-b border-redlog-border-subtle/30">
           {t('timeline.fold.blind')} {t(blindCauseKey)}
         </p>
       )}
@@ -120,7 +120,7 @@ export function TimelineEventLog({
               <div key={parent.id}>
                 <div
                   data-testid={`log-fold-${parent.id}`}
-                  className="flex items-center gap-2 px-3 py-1 cursor-pointer text-xs border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/20"
+                  className="flex items-center gap-2 px-4 py-1 cursor-pointer text-xs border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/20"
                   onClick={() => toggle(parent.id)}
                 >
                   <span className="text-redlog-text-faint shrink-0 w-1.5">{open ? '▾' : '▸'}</span>
@@ -145,7 +145,7 @@ export function TimelineEventLog({
                     to know what it is asserting it from — here, the socket's
                     owning process, which is recorded rather than inferred. */}
                 {open && (
-                  <p className="px-3 py-1 text-xs text-redlog-text-faint border-b border-redlog-border-subtle/30">
+                  <p className="px-4 py-1 text-xs text-redlog-text-faint border-b border-redlog-border-subtle/30">
                     {t('timeline.fold.basis')}
                   </p>
                 )}
@@ -166,7 +166,7 @@ export function TimelineEventLog({
           return (
             <div
               key={evt.id}
-              className={`flex items-center gap-2 ${nested ? 'pl-7 pr-3' : 'px-3'} py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
+              className={`flex items-center gap-2 ${nested ? 'pl-8 pr-4' : 'px-4'} py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
                 isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
               }`}
               onClick={() => onSelect(evt)}
