@@ -169,7 +169,52 @@ redlog() {
   esac
 }
 
+# FR-010. The dangerous outcome is not a missing command — it is a command from
+# engagement A filed under engagement B, which is a lie in a document a client
+# reads, written by the tool whose whole job is to be believable.
+#
+# RedLog rewrites the active identity when the operator opens another project,
+# so the terminal finds out by watching that file — named by shell-common, not
+# here, because paths into the RedLog directory are transport. `zstat` is a
+# builtin: the common case, where nothing changed, costs a stat and no
+# process. Only a changed mtime pays for the relay call that compares the
+# pinned engagement with the current one.
+zmodload -F zsh/stat b:zstat 2>/dev/null
+
+_redlog_check_project() {
+  local file
+  file=$(_redlog_identity_file)
+  [[ -f "$file" ]] || return
+  local -a st
+  zstat -A st +mtime "$file" 2>/dev/null || return
+  [[ "${st[1]}" == "${_REDLOG_IDENTITY_MTIME:-}" ]] && return
+  # The first sight of the file is the pin itself, not a switch.
+  if [[ -z "${_REDLOG_IDENTITY_MTIME:-}" ]]; then
+    _REDLOG_IDENTITY_MTIME="${st[1]}"
+    return
+  fi
+  _REDLOG_IDENTITY_MTIME="${st[1]}"
+
+  local after
+  after=$(_redlog_state --action project)
+  [[ "$after" == *project-switched* ]] || return
+  [[ -n "${_REDLOG_ANNOUNCED_SWITCH:-}" ]] && return
+  _REDLOG_ANNOUNCED_SWITCH=1
+
+  # The pin is never updated, so the state still names the project whose work
+  # just stopped. The row lands in whichever project RedLog has open now —
+  # that is where someone wondering why this terminal went quiet will be
+  # looking — and it names the old one explicitly rather than letting the
+  # attribution speak for it.
+  local pinned=""
+  [[ "$after" =~ '"engagementId":[[:space:]]*"([^"]*)"' ]] && pinned="$match[1]"
+  _redlog_send_event "session_end" "" \
+    "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"auto-relay\"}"
+  print -u2 -- "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"
+}
+
 _redlog_preexec() {
+  _redlog_check_project
   _REDLOG_LAST_CMD=""
   _REDLOG_CMD_START=""
   _REDLOG_CMD_ID=""

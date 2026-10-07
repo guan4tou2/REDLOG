@@ -529,7 +529,11 @@ def apply_terminal_action(state, action, opts):
                 out["recording"] = False
                 out["stoppedReason"] = "operator"
     elif action == "project":
-        if (opts["engagement"] or "") != state.get("engagementId"):
+        # No `--engagement` means "whatever RedLog has open now", which is the
+        # question the adapter is actually asking at each prompt. Defaulting to
+        # the empty string instead would read as a switch every time.
+        current = opts["engagement"] or read_identity(opts)[0]
+        if current != state.get("engagementId"):
             out["recording"] = False
             out["stoppedReason"] = "project-switched"
     return out
