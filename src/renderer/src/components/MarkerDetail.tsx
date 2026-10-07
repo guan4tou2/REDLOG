@@ -10,6 +10,7 @@
 // caught that file twice.
 
 import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatTime, formatDateTime } from '../lib/time'
 import { Button } from './Button'
@@ -163,9 +164,9 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
           never amended, and the Inspector is an 18vh panel. */}
       {fold && fold.amendCount > 0 && (
         <div data-testid="marker-history">
-          <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider mb-1">
+          <SectionLabel className="mb-1">
             {t('marker.amendHistory', { count: fold.amendCount })}
-          </p>
+          </SectionLabel>
           <ul className="space-y-1">
             {fold.history.map((h) => (
               <li key={h.event.id} data-testid="marker-history-row" className="flex items-baseline gap-2 text-xs">
@@ -242,9 +243,9 @@ function ImmutableBlock({ event, linkedScreenshots, operatorLabel }: MarkerDetai
 
   return (
     <div>
-      <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider mb-1">
+      <SectionLabel className="mb-1">
         {t('marker.readonly.heading')}
-      </p>
+      </SectionLabel>
       <ul className="space-y-0.5">
         {rows.map((r) => (
           <li key={r.label} className="flex items-baseline gap-2 text-xs">

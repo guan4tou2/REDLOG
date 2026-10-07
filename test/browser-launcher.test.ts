@@ -150,3 +150,88 @@ describe('the capture browser starts blank', () => {
     expect(buildArgs(cfg({ isolateProfile: false }), '/tmp/p')).not.toContain('')
   })
 })
+
+// ── The operator closes the browser themselves ──────────────────────────────
+//
+// The ordinary way a capture session ends, and the one way RedLog used to
+// miss it. `child.on('exit')` fired and cleared the handle, and told nobody:
+// the title-bar control still offered to stop a browser that no longer
+// existed, and the CDP monitor kept polling a port that no longer answered
+// for the rest of the session.
+
+import { EventEmitter } from 'events'
+import { vi, beforeEach } from 'vitest'
+
+vi.mock('child_process', () => ({
+  spawn: vi.fn(() => {
+    const child = new EventEmitter() as EventEmitter & {
+      pid: number; exitCode: number | null; killed: boolean; unref: () => void; kill: () => void
+    }
+    child.pid = 4242
+    child.exitCode = null
+    child.killed = false
+    child.unref = (): void => {}
+    child.kill = (): void => { child.emit('exit', 0, null) }
+    lastChild = child
+    return child
+  })
+}))
+
+let lastChild: (EventEmitter & { kill: () => void }) | null = null
+
+describe('a browser that ends on its own', () => {
+  beforeEach(() => { lastChild = null })
+
+  const CFG: BrowserConfig = { ...DEFAULT_BROWSER, binary: process.execPath, isolateProfile: false }
+
+  it('reports it is running, then not, once the window is closed', async () => {
+    const m = await import('../src/main/services/browser-launcher')
+    expect(m.launchBrowser(CFG, '/tmp/proj').ok).toBe(true)
+    expect(m.isBrowserRunning()).toBe(true)
+
+    lastChild!.emit('exit', 0, null)
+    expect(m.isBrowserRunning()).toBe(false)
+  })
+
+  it('tells its listeners, which is how the UI and the CDP monitor find out', async () => {
+    const m = await import('../src/main/services/browser-launcher')
+    const heard: string[] = []
+    const off = m.onBrowserExit(() => heard.push('exit'))
+
+    m.launchBrowser(CFG, '/tmp/proj')
+    expect(heard).toEqual([])
+    lastChild!.emit('exit', 0, null)
+    expect(heard).toEqual(['exit'])
+
+    off()
+    m.launchBrowser(CFG, '/tmp/proj')
+    lastChild!.emit('exit', 0, null)
+    expect(heard).toEqual(['exit'])
+  })
+
+  it('announces the same way when RedLog is the one stopping it', async () => {
+    // One path for the UI to listen on, whoever ended it -- otherwise the
+    // pressed-the-button case and the closed-the-window case need separate
+    // handling, and only one of them would get written.
+    const m = await import('../src/main/services/browser-launcher')
+    const heard: string[] = []
+    const off = m.onBrowserExit(() => heard.push('exit'))
+    m.launchBrowser(CFG, '/tmp/proj')
+
+    expect(m.stopBrowser()).toBe(true)
+    expect(m.isBrowserRunning()).toBe(false)
+    expect(heard).toEqual(['exit'])
+    off()
+  })
+
+  it('survives a listener that throws, because the others still need telling', async () => {
+    const m = await import('../src/main/services/browser-launcher')
+    const heard: string[] = []
+    const offBad = m.onBrowserExit(() => { throw new Error('boom') })
+    const offGood = m.onBrowserExit(() => heard.push('exit'))
+    m.launchBrowser(CFG, '/tmp/proj')
+    lastChild!.emit('exit', 0, null)
+    expect(heard).toEqual(['exit'])
+    offBad(); offGood()
+  })
+})

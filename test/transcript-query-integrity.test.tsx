@@ -19,14 +19,17 @@ const result = {
   data: { subtype: 'tool_result', agent: 'codex', session_id: 'S1', tool_use_id: 'T1', output: 'uid=0' }
 }
 
-function installBridge(counterparts: unknown[] = []): { toolCounterparts: ReturnType<typeof vi.fn>; runQuery: ReturnType<typeof vi.fn> } {
+function installBridge(
+  counterparts: unknown[] = [],
+  agentItems: unknown[] = [call]
+): { toolCounterparts: ReturnType<typeof vi.fn>; runQuery: ReturnType<typeof vi.fn> } {
   const toolCounterparts = vi.fn().mockResolvedValue(counterparts)
   const runQuery = vi.fn().mockImplementation((req: { filter: { agentType: string } }) =>
-    Promise.resolve(req.filter.agentType === 'agent' ? { ...empty, items: [call] } : empty))
+    Promise.resolve(req.filter.agentType === 'agent' ? { ...empty, items: agentItems } : empty))
   ;(window as unknown as { redlog: unknown }).redlog = {
     events: {
       queryPage: vi.fn().mockImplementation((req: { agentType: string }) =>
-        Promise.resolve(req.agentType === 'agent' ? { ...empty, items: [call] } : empty)),
+        Promise.resolve(req.agentType === 'agent' ? { ...empty, items: agentItems } : empty)),
       runQuery, toolCounterparts, onNewBatch: () => () => {}
     },
     operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) },
@@ -58,13 +61,34 @@ describe('Transcript query integrity', () => {
     expect(screen.getByText(/transcript.note.unpaired/)).not.toBeNull()
   })
 
-  it('shows source and receipt time as separate evidence properties', async () => {
+  // Spec 017 FR-014 / Domain Invariant #8. The old version of this test
+  // asserted only that two nodes existed, which stayed green for as long as
+  // both of them rendered the same `Date.now()` — the exact failure it was
+  // supposed to catch. These assert the two times can actually come apart,
+  // and that the row says so when they do.
+  it('keeps source and receipt time distinguishable when a replay pulls them apart', async () => {
     installBridge([result])
     const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
     render(<TranscriptView />)
 
-    expect(await screen.findByTestId('transcript-source-time')).not.toBeNull()
-    expect(screen.getByTestId('transcript-receipt-time')).not.toBeNull()
+    const occurred = await screen.findByTestId('transcript-source-time')
+    expect(occurred.getAttribute('data-occurred-at')).toBe(String(call.timestamp))
+    const recorded = screen.getByTestId('transcript-receipt-time')
+    expect(recorded.getAttribute('data-recorded-at')).toBe(String(call.createdAt))
+    expect(occurred.getAttribute('data-occurred-at')).not.toBe(recorded.getAttribute('data-recorded-at'))
+  })
+
+  it('shows one time, not the same time twice, for an event captured live', async () => {
+    const live = { ...call, timestamp: 4_000, createdAt: 4_000 }
+    // No counterpart: `result` sits at 1_500, before this call, so it would not
+    // pair with it and would render as a second, unrelated block.
+    installBridge([], [live])
+    const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
+    render(<TranscriptView />)
+
+    const occurred = await screen.findByTestId('transcript-source-time')
+    expect(occurred.getAttribute('data-occurred-at')).toBe('4000')
+    expect(screen.queryByTestId('transcript-receipt-time')).toBeNull()
   })
 
   it('describes completeness against the matching query dataset and labels local kind filtering', async () => {

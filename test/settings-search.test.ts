@@ -18,19 +18,21 @@ describe('settings search', () => {
   it('has an index entry for every key each page renders — regenerate with npm run gen:settings-search', () => {
     for (const page of Object.keys(PAGE_SOURCES)) {
       expect({ page, keys: SETTINGS_SEARCH_KEYS[page as keyof typeof SETTINGS_SEARCH_KEYS] })
-        .toEqual({ page, keys: pageKeys(page, read) })
+        .toEqual({ page, keys: pageKeys(page, read, Object.keys(en)) })
     }
   })
 
   it('finds a field by words in its label, on the page that holds it', () => {
     const hits = searchSettings('loot', tr(en))
-    expect(hits.some((h) => h.page === 'captureControl')).toBe(true)
+    // Spec 049: loot detection classifies what was already recorded, so it is
+    // its own page under Scope and evidence — not a block on the capture page.
+    expect(hits.some((h) => h.page === 'loot')).toBe(true)
   })
 
   it('searches the displayed language', () => {
     const hits = searchSettings('戰利品', tr(zh))
-    expect(hits.some((h) => h.page === 'captureControl' && h.text.includes('戰利品'))).toBe(true)
-    expect(searchSettings('保存', tr(zh)).some((h) => h.page === 'captureControl')).toBe(true)
+    expect(hits.some((h) => h.page === 'loot' && h.text.includes('戰利品'))).toBe(true)
+    expect(searchSettings('保存', tr(zh)).some((h) => h.page === 'retention')).toBe(true)
   })
 
   it('returns nothing for an empty query, and nothing for a key with no translation', () => {

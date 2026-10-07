@@ -23,6 +23,7 @@ const bridge = (over: Record<string, unknown> = {}): void => {
       queryPage: vi.fn().mockResolvedValue({ items: [], hasMore: false, nextCursor: null })
     },
     loot: { getCount: vi.fn().mockResolvedValue(0) },
+    chain: { length: vi.fn().mockResolvedValue(0) },
     scope: {
       getViolationCount: vi.fn().mockResolvedValue(0),
       isConfigured: vi.fn().mockResolvedValue(true)

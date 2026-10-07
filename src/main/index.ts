@@ -3,6 +3,7 @@ import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
+import { visibleWindowBounds } from './window-bounds'
 import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
@@ -17,7 +18,6 @@ import {
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
 import { isVerifyNonce, verifyUrl } from '../core/http-verify'
-import { clearSessionTargets } from '../core/session-targets'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -41,7 +41,11 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
+import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
+import { readExecutionPolicy } from '../core/powershell-policy'
+import { shouldAutoStartHttpCapture } from '../core/http-autostart'
+import { isOnPath } from '../core/command-lookup'
+import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -58,8 +62,8 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { applyLoginPath } from './login-path'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
-import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
+import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
@@ -151,11 +155,21 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
 }
 
 async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
-  if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  // Every failure below goes through `noteStartFailure`, so it reaches the
+  // status every surface polls. These used to return a failed status object
+  // that nothing recorded: the proxy's snapshot stayed `stopped`, and the
+  // dashboard, the capture card and the status strip all reported "not
+  // running" for an attempt that had been made and had a reason.
+  //
+  // It was survivable while starting capture was a button — press it, see
+  // nothing happen, press it again. It stopped being survivable when capture
+  // began taking itself up at project open: a port already in use now means
+  // an engagement that records no HTTP and never says why.
+  if (!activeProject) return managedHttpProxy.noteStartFailure('No project open')
   // mitmdump is spawned by bare name; look it up on the operator's PATH.
   await loginPathReady
   const addonPath = getCaptureHookPath('mitmproxy')
-  if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
+  if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
   const config = loadConfig(getProjectPath(activeProject))
   const current = managedHttpProxy.status()
   const before = current.state
@@ -176,7 +190,9 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!proxyAlreadyOn(current, endpoint)) {
     const holder = await whoHoldsPort(endpoint)
     if (holder) {
-      const status: ManagedProxyStatus = { state: 'failed', url: null, error: holder }
+      // The event was already written here; what was missing is the status.
+      // An operator reading "stopped" has no reason to look for an event.
+      const status = managedHttpProxy.noteStartFailure(holder)
       publishManagedProxyEvent('http_proxy_failed', status)
       return status
     }
@@ -590,6 +606,10 @@ async function runPendingRecompute(): Promise<void> {
 // row. Prioritized: VPN state comes first (biggest OPSEC impact), then MAC
 // (randomization signal), then DNS (leak signal), then hostname.
 function startProject(project: ProjectMeta): void {
+  // Opening is the one moment the renderer can do nothing but wait: every IPC
+  // it needs queues behind this function. A number in the log is what turns
+  // "it hung for a few seconds" into a phase to look at.
+  const openedAt = Date.now()
   if (activeProject) stopProject()
   activeProject = project
   const projectDir = getProjectPath(project)
@@ -676,7 +696,33 @@ function startProject(project: ProjectMeta): void {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
   })
-  // Capture starts only through an explicit operator action.
+  // Capture starts with the project.
+  //
+  // This line used to read "capture starts only through an explicit operator
+  // action", and that rule only ever applied to HTTP: the shell hook records
+  // from the moment a project is open and has never asked. HTTP asked because
+  // starting it spawns mitmdump and binds a port — a cost to RedLog and to
+  // nothing else, because the system proxy settings are never touched. No
+  // traffic on this machine moves until the operator launches the capture
+  // browser or opts their terminals in. docs/UIUX-CONTROLS-AND-COPY.md §5.
+  //
+  // One attempt per open, after the login PATH lands (a Dock-launched app
+  // cannot see ~/.local/bin before then, and would call mitmproxy missing).
+  // A failure publishes its event and shows on the card; repeating it on every
+  // open would report the same thing to an operator who has already read it.
+  {
+    const openedFor = project.id
+    void loginPathReady
+      .then(() => {
+        if (activeProject?.id !== openedFor) return
+        if (!shouldAutoStartHttpCapture({
+          mitmdumpOnPath: isOnPath('mitmdump'),
+          state: managedHttpProxy.status().state
+        })) return
+        return startManagedHttpCapture().then(() => undefined)
+      })
+      .catch((e) => console.error('[http-capture] auto-start failed:', e))
+  }
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
@@ -956,8 +1002,6 @@ function startProject(project: ProjectMeta): void {
         }, { engagementId, operatorId })
         if (ev) eventBus.publish(ev)
       } catch { /* noteSampleBroken already surfaces via capture-health */ }
-    } else {
-      noteSampleOk()
     }
   } catch (e) { console.error('[chain-sample] initial verify failed:', e) }
 
@@ -981,8 +1025,6 @@ function startProject(project: ProjectMeta): void {
           }, { engagementId, operatorId })
           if (ev) eventBus.publish(ev)
         } catch { /* */ }
-      } else {
-        noteSampleOk()
       }
     } catch { /* transient sqlite errors already surface through DB error path */ }
   }, 5 * 60 * 1000)
@@ -1015,6 +1057,7 @@ function startProject(project: ProjectMeta): void {
     }
   }
 
+  console.log(`[project] opened in ${Date.now() - openedAt}ms`)
 }
 
 function stopProject(): void {
@@ -1050,7 +1093,6 @@ function stopProject(): void {
   currentOperatorId = null
   resetCausesResolver()
   configureIngest({ activeTarget: null })
-  clearSessionTargets()
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -1159,7 +1201,13 @@ app.whenReady().then(() => {
   })
 
   const savedState = loadWindowState()
-  mainWindow = createMainWindow(savedState?.bounds)
+  // Only onto a display that exists. The saved position outlives the monitor
+  // it was saved on — unplug one, rearrange them, or reconnect over RDP into a
+  // different desktop geometry, and the window opens off the screen: running,
+  // in the task bar, drawing nothing. See window-bounds.ts.
+  mainWindow = createMainWindow(
+    visibleWindowBounds(savedState?.bounds, screen.getAllDisplays().map((d) => d.workArea))
+  )
   if (savedState?.isMaximized) mainWindow.maximize()
 
   setTerminalWindow(mainWindow)
@@ -1515,6 +1563,14 @@ app.whenReady().then(() => {
     return result
   }
   ipcMain.handle('browser:stop', () => { stopCdpMonitor(); return { stopped: stopBrowser() } })
+  // However the browser ends -- the button here, or the operator closing the
+  // window, which is the ordinary way -- the same two things must happen:
+  // stop polling a port that no longer answers, and tell the renderer, which
+  // otherwise read `browser:status` once on mount and never again.
+  onBrowserExit(() => {
+    stopCdpMonitor()
+    send(mainWindow, 'browser:exited')
+  })
 
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
@@ -1577,11 +1633,23 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
-  ipcMain.handle('hooks:migrateLegacy', (_e, ref: LegacyHookRef) => { invalidateHooksCache(); invalidateHooksDetectCache(); return migrateLegacyHook(ref) })
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
   // with a minimal PATH, and probing before it lands reports installed tools
   // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.
-  ipcMain.handle('runtime:preflight', async () => { await loginPathReady; return runPreflight() })
+  // The PowerShell execution policy rides along rather than living in
+  // runPreflight: that function is documented as spawning nothing, so it stays
+  // safe to call from the main thread on every onboarding render. This handler
+  // is already async, and the probe is the one question on Windows whose
+  // answer cannot be read off the filesystem.
+  ipcMain.handle('runtime:preflight', async () => {
+    await loginPathReady
+    const result = runPreflight()
+    const shell = result.platform === 'win32' ? result.shell?.name : null
+    return shell ? { ...result, powershell: await readExecutionPolicy(shell) } : result
+  })
+  // The operator's PATH has to be resolved first, or uv/brew installed outside
+  // launchd's minimal PATH are invisible and the install ENOENTs.
+  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => { await loginPathReady; return installDependency(id) })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())

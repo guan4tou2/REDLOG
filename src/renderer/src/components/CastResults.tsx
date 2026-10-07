@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { SectionLabel } from './SectionLabel'
 import { Terminal, ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
@@ -90,9 +91,9 @@ export function CastResults({ hits, pending, onOpenAt }: Props): JSX.Element | n
     <div className="mt-4">
       <div className="flex items-center gap-2 mb-2">
         <Terminal size={13} strokeWidth={1.5} className="text-redlog-text-dim" aria-hidden />
-        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
+        <SectionLabel className="tracking-[0.15em]">
           {t('castSearch.heading')}
-        </h2>
+        </SectionLabel>
         <span className="text-xs text-redlog-text-faint tabular-nums">{hits.length}</span>
       </div>
 

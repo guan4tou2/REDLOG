@@ -1,4 +1,4 @@
-// Steps the operator picked for the write-up (#225).
+// Steps the operator marked in the record (#225).
 //
 // A pick is an ordinary marker — category `key_step` or `failed_attempt` —
 // whose `_causes` cite the events of the step. Nothing is stored beside the

@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import fs from 'fs'
 import { detectHooks, getHookInstallPlan, installHook } from '../src/core/hooks-manager'
+import { loadPlugins } from '../src/core/plugins/loader'
+import { applyContributions } from '../src/core/plugins/contributions'
 
 // process.platform is non-writable; test the Windows refusal branch by
 // swapping it in-place then restoring.
@@ -57,8 +59,36 @@ describe('hooks-manager guided setup', () => {
     expect(cmd).toContain('mitmproxy-addon.py')
   })
 
+  // Every step on this card runs `mitmdump`, so on a machine without it they
+  // are all "command not found" — the usual case on Windows, where nothing
+  // brings mitmproxy in. The card used to open on step 1 of a sequence whose
+  // unstated step 0 was an install.
+  it('names the missing dependency before the commands that need it', () => {
+    const m = byId('mitmproxy')
+    const steps = m.manualSteps!
+    if (m.available) {
+      // Present: an install step would be noise on every machine that has it.
+      expect(steps.some((s) => s.command?.includes('uv tool install'))).toBe(false)
+    } else {
+      expect(steps[0].command).toBe('uv tool install mitmproxy')
+      // And where RedLog will do it for them, not only how to do it by hand.
+      expect(steps[0].label).toMatch(/capture check|dashboard/i)
+      // Before the commands that cannot work without it.
+      expect(steps.findIndex((s) => s.command?.includes('mitmdump -s'))).toBeGreaterThan(0)
+    }
+  })
+
+  // Codex is contributed by pack-ai-agents now, not shipped as a built-in, so
+  // it reaches detectHooks only once that pack's contributions are applied —
+  // and under the namespaced id every contributed producer gets. Its setup
+  // steps still come from code rather than the manifest, because they branch
+  // on the platform and a manifest's `manualSteps` are one fixed list.
   it('codex is guided-manual with platform-appropriate steps', () => {
-    const c = byId('codex')
+    const pack = loadPlugins().find((p) => p.manifest.id === 'pack-ai-agents')
+    expect(pack, 'pack-ai-agents not found on disk').toBeDefined()
+    applyContributions(pack!)
+    const c = detectHooks().find((h) => h.id === 'pack-ai-agents.codex')!
+    expect(c, 'the pack contributes no codex producer').toBeDefined()
     expect(c.installMethod).toBe('manual')
     expect(c.manualSteps?.length).toBeGreaterThan(0)
     if (process.platform === 'win32') {

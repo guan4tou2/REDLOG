@@ -46,10 +46,12 @@ export function TierBadge({ tier, variant, show = true }: {
     )
   }
   // Detail-panel chip: icon + label, matches the surrounding badge stack.
+  // One line or none: squeezed into a narrow detail pane it used to break
+  // between the glyph and the word and read as two separate badges.
   if (!show) return null
   return (
     <span
-      className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+      className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap ${
         t === 'logged' ? 'text-redlog-text-dim bg-redlog-elevated/60' : 'text-redlog-text-faint bg-redlog-elevated/40'
       }`}
       title={TIER_TOOLTIPS[t]}

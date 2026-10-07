@@ -7,7 +7,7 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 
 const capture: CaptureHealthInfo = {
   verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),
-  sources: [{ id: 'shell-hook', hookId: 'zsh', installed: true, lastEventAt: Date.now(), state: 'active' }]
+  sources: [{ id: 'terminal', hookId: 'zsh', installed: true, lastEventAt: Date.now(), state: 'ready' }]
 }
 
 function mount(): ReturnType<typeof vi.fn> {

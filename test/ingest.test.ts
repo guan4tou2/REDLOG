@@ -159,39 +159,21 @@ describeDB('ingest', () => {
     expect(system.targetId).toBeNull()
   })
 
-  // #219: two panes on two hosts. Switching the global target for one must
-  // not re-attribute the other, including a late command_end that arrives
-  // after the switch.
-  it('attributes by session target before the global one, in two parallel panes', async () => {
-    const { bindSessionTarget } = await import('../src/core/session-targets')
-    bindSessionTarget('pane-1', '10.10.11.5')
+  // Spec 041 retired: there is no per-session target layer any more. A
+  // terminal pane declares nothing, and neither does an external shell — what
+  // host a command touched is read from the command itself, and the sequence
+  // in the pane's own events carries the rest.
+  it('ignores a declared session_target and falls back to the global one', () => {
     ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const start = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    // The operator switches the global target for pane 2 while pane 1's
-    // command is still running.
-    ingestMod.configureIngest({ activeTarget: '10.10.11.7' })
-    const lateEnd = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_end', command: 'hostname -s219a', terminalId: 'pane-1' } }).event!
-    const pane2 = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s219b', terminalId: 'pane-2' } }).event!
-    // A host named in the command still wins over the session.
+    const declared = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s041a', pid: 4242, session_target: '10.10.11.8' } }).event!
+    const pane = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s041b', terminalId: 'pane-1' } }).event!
+    // A host named in the command still outranks the fallback.
     const named = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.200/', terminalId: 'pane-1' } }).event!
 
-    expect(start.targetId).toBe('10.10.11.5')
-    expect(start.data.target_source).toBe('session')
-    expect(lateEnd.targetId).toBe('10.10.11.5')
-    expect(pane2.targetId).toBe('10.10.11.7')
-    expect(pane2.data.target_source).toBeUndefined()
+    expect(declared.targetId).toBe('10.10.11.99')
+    expect(pane.targetId).toBe('10.10.11.99')
+    expect(pane.data.target_source).toBeUndefined()
     expect(named.targetId).toBe('10.10.11.200')
-
-    // Unbinding returns the pane to the global target, from then on only.
-    bindSessionTarget('pane-1', null)
-    const after = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uptime -s219c', terminalId: 'pane-1' } }).event!
-    expect(after.targetId).toBe('10.10.11.7')
-  })
-
-  it('takes an external shell\'s own REDLOG_TARGET over the global target', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
-    const ev = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s219d', pid: 4242, session_target: '10.10.11.8' } }).event!
-    expect(ev.targetId).toBe('10.10.11.8')
   })
 
   it('clearing active target stops fallback attribution', () => {
@@ -283,5 +265,62 @@ describeDB('ingest', () => {
     } finally {
       eventBus.resume('api')
     }
+  })
+
+  // Spec 017 FR-014 / Domain Invariant #8. `timestamp` is when the thing
+  // happened at its source, `created_at` is when RedLog wrote it down. Before
+  // this they were the same `Date.now()` on every path, so a transcript
+  // replayed hours later claimed to have happened at the moment of replay.
+  describe('source occurrence time', () => {
+    const marker = (data: Record<string, unknown>, occurredAt?: number) =>
+      ingestMod.ingest({ ...base, agentType: 'marker', data, ...(occurredAt ? { occurredAt } : {}) })
+
+    it("takes the producer's own time into `timestamp` and keeps `created_at` as receipt", () => {
+      const occurred = Date.now() - 3 * 60 * 60 * 1000
+      const before = Date.now()
+      const ev = marker({ title: 'replayed', source_timestamp: occurred }).event!
+
+      expect(ev.timestamp).toBe(occurred)
+      expect(ev.createdAt).toBeGreaterThanOrEqual(before)
+      expect(ev.createdAt).not.toBe(ev.timestamp)
+    })
+
+    it('an explicit occurredAt outranks what the producer left in `data`', () => {
+      const explicit = Date.now() - 60_000
+      const ev = marker({ title: 'both', source_timestamp: Date.now() - 7_200_000 }, explicit).event!
+      expect(ev.timestamp).toBe(explicit)
+    })
+
+    it('equal times for anything captured live', () => {
+      const ev = marker({ title: 'live' }).event!
+      expect(ev.timestamp).toBe(ev.createdAt)
+    })
+
+    it('refuses a source time it cannot believe, and the refusal is inside the hash', () => {
+      // Seconds-precision epoch read as milliseconds: lands in 1970 and would
+      // drag the row to the far left of every timeline, permanently — the
+      // column is immutable.
+      const before = Date.now()
+      const ev = marker({ title: 'bad clock', source_timestamp: 1_700_000_000 }).event!
+
+      expect(ev.timestamp).toBeGreaterThanOrEqual(before)
+      expect(ev.timestamp).toBe(ev.createdAt)
+      expect(ev.data._source_time_rejected).toMatchObject({ value: 1_700_000_000 })
+    })
+
+    it('a backfilled row is not mistaken for a clock that ran backwards', async () => {
+      // The anomaly detectors compare monotonic counters against the RECEIPT
+      // clock. Pointed at `timestamp` instead, every row of a replayed
+      // transcript reads as the wall clock jumping, and verification screams
+      // about exactly the data this feature exists to represent.
+      marker({ title: 'backfill a', source_timestamp: Date.now() - 86_400_000 })
+      marker({ title: 'backfill b', source_timestamp: Date.now() - 43_200_000 })
+      const live = marker({ title: 'live again' }).event!
+
+      expect(live.data._clock_anomaly).toBeUndefined()
+      const res = await chain.verifyChainFullAsync()
+      expect(res.ok, res.brokenReason ?? '').toBe(true)
+      expect(res.clockAnomalies).toHaveLength(0)
+    })
   })
 })

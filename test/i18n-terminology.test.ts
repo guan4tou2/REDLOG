@@ -20,16 +20,23 @@ describe('zh-TW terminology', () => {
     const pages = new Set(Object.entries(zhMap).filter(([k]) => k.startsWith('settings.page')).map(([, v]) => v))
     const pagesEn = new Set(Object.entries(enMap).filter(([k]) => k.startsWith('settings.page')).map(([, v]) => v))
     const bad: string[] = []
+    // Prefix, not exact match. A page name can contain the characters the
+    // capture stops at — 「擷取 pack、截圖與保留」 ends a Chinese clause with 、,
+    // and "Packs, screenshots & retention" has a comma in it — so demanding
+    // equality flagged correct references and would have pushed the next
+    // person into rewording a true sentence to satisfy the test.
+    const names = (set: Set<string>, captured: string): boolean =>
+      [...set].some((n) => captured.startsWith(n))
     for (const [k, v] of Object.entries(zhMap)) {
-      for (const m of v.matchAll(/設定\s*[▸→]\s*([^」」。，,)）]+)/g)) {
+      for (const m of v.matchAll(/設定\s*[▸→]\s*([^」。)）]+)/g)) {
         const name = m[1].trim()
-        if (!name.startsWith('{{page}}') && !pages.has(name)) bad.push(`${k}: ${name}`)
+        if (!name.startsWith('{{page}}') && !names(pages, name)) bad.push(`${k}: ${name}`)
       }
     }
     for (const [k, v] of Object.entries(enMap)) {
-      for (const m of v.matchAll(/Settings\s*[▸→]\s*([^.,;)]+)/g)) {
+      for (const m of v.matchAll(/Settings\s*[▸→]\s*([^.;)]+)/g)) {
         const name = m[1].trim()
-        if (!name.startsWith('{{page}}') && !pagesEn.has(name)) bad.push(`${k}: ${name}`)
+        if (!name.startsWith('{{page}}') && !names(pagesEn, name)) bad.push(`${k}: ${name}`)
       }
     }
     expect(bad).toEqual([])
