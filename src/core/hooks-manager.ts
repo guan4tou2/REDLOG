@@ -143,7 +143,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-zsh-hook.zsh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-hook.zsh'),
     shellRcFile: '.zshrc'
@@ -156,7 +156,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
@@ -192,7 +192,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'manual'
   }
 ]
