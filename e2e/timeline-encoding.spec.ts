@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // v0.11.4 (AUDIT V1/V2/V3): what the track says without being clicked.
 //
@@ -69,7 +69,7 @@ test.describe.serial('timeline visual encoding', () => {
     // the row's real timestamp (provenance kept in ts_source).
     await post('system', { subtype: 'scope_violation', description: 'out of scope: evil.example', source_timestamp: now - 15 * 60_000 })
     await page.waitForTimeout(2000)
-    await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
+    await resizeMainWindow(app, 1500, 1000)
     // Zoom out so the whole span is on screen — the track only renders what is
     // near the viewport since v0.11.1.
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '0.25'))

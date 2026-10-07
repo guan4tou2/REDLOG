@@ -34,13 +34,6 @@ export const BAND_OF: Record<LaneId, BandId> = Object.fromEntries(
   BANDS.flatMap((b) => b.lanes.map((l) => [l, b.id]))
 ) as Record<LaneId, BandId>
 
-// Lanes with no built-in producer — populated only by external agents
-// (custom MCP tools, third-party plugins) posting to /api/events. Showing
-// them as plain "empty" is misleading; the chip tooltip says so explicitly.
-// v0.6.92: `dns` now has a built-in producer (mitmproxy DNS mode), so it's
-// removed from this set. `credential_use` and `c2_checkin` remain external-only.
-export const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'])
-
 // v0.14.4 (UIUX-STANDARD §1): hue is now reserved for status
 // (safe / unknown / danger); lanes separate by label and vertical position,
 // which is what an operator actually reads them by. Every lane is `lane`
@@ -53,8 +46,6 @@ export const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
 // The Timeline composes these into strings with a hex alpha appended
 // (`${colour}40`), so they stay hex here — this module is where the
 // Timeline's inline colours live (test/design-palette.test.ts allows it).
-/** A lane chip that is switched off: the `muted` grey. */
-export const LANE_OFF_COLOR = '#7e7e88'
 /** Session band labels: a paused stretch in neutral, a session in indigo. */
 export const SESSION_BAND_LABEL_COLOR = { paused: '#cbd5e1', session: '#a5b4fc' } as const
 

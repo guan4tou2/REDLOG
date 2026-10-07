@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 interface T { spawn: (i: string, c: number, r: number) => Promise<unknown>; write: (i: string, d: string) => void; kill: (i: string) => void }
 
 // v0.11.2 (design note T5). The Timeline answers "when did this happen and
@@ -39,7 +39,7 @@ test('folds request/response pairs into single exchanges', async () => {
   await post('marker', { title: 'found admin panel', severity: 'important' })
   await page.waitForTimeout(1500)
 
-  await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
+  await resizeMainWindow(app, 1500, 1000)
   await openView(page, 'transcript')
   await page.waitForTimeout(1500)
   await expect(page.getByTestId('transcript-completeness')).toContainText('Loaded set complete')
