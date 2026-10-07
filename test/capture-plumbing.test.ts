@@ -12,8 +12,6 @@ describe('isCapturePlumbing', () => {
     'source /Users/op/.redlog/shell-bash-hook.sh',
     '. ~/.redlog/shell-zsh-hook.zsh',
     '. /home/op/.redlog/shell-common.sh',
-    // Retired adapter names, still in an rc file until the operator migrates.
-    'source ~/.redlog/shell-preexec-hook.sh',
     // The POSIX adapter's own prompt function, reported under its own name.
     '_tlogger_prompt_command',
     '  _tlogger_prompt_command  ',

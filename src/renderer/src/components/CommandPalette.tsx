@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { SectionLabel } from './SectionLabel'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
   Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon,
@@ -356,9 +357,9 @@ export function CommandPalette({
             return (
               <div key={item.id}>
                 {header && (
-                  <p className="px-3 pt-2 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+                  <SectionLabel className="px-3 pt-2 pb-1">
                     {t(SECTION_KEY[header])}
-                  </p>
+                  </SectionLabel>
                 )}
                 <button
                   id={`palette-opt-${i}`}

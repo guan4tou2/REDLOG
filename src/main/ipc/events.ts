@@ -4,7 +4,7 @@ import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
-  getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
+  getEventCount, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
@@ -12,6 +12,8 @@ import {
 import { loadConfig, snapshotScope } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
+import { setEventNote, getEventNote, getAnnotatedIds } from '../../core/db/event-notes'
+import { attributionStats } from '../../core/socket-attribution'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
@@ -42,9 +44,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:getCount', (_e, tier: EventTierFilter) =>
     ctx.getActiveProject() ? getEventCount({ tier }) : 0)
-
-  ipcMain.handle('events:getLatestLoggedTs', () =>
-    ctx.getActiveProject() ? getLatestLoggedTs() : null)
 
   // Spec 017. The renderer parses and sends the result, so it can show how the
   // query was read without a round trip and a parse failure never becomes a
@@ -101,6 +100,33 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:toggleDoNotExport', (_e, eventId: string) => {
     if (!ctx.getActiveProject() || typeof eventId !== 'string') return null
     return toggleDoNotExport(eventId)
+  })
+
+  // An annotation, never a change to the event: the row is hashed and
+  // immutable, and a note written an hour later must not touch it.
+  ipcMain.handle('events:setNote', (_e, eventId: string, note: unknown) => {
+    if (!ctx.getActiveProject() || typeof eventId !== 'string' || typeof note !== 'string') return null
+    // Bounded so a paste of a whole stdout cannot become an unreadable note
+    // the operator has no way to shorten from the UI.
+    return setEventNote(eventId, note.slice(0, 4000))
+  })
+
+  // Which events carry a note, in one read. The Timeline needs it per row —
+  // an annotated event never folds into a summary, because a row a person
+  // reached out and wrote on is not noise to be collapsed.
+  // Whether the command→traffic join has produced anything this session. The
+  // Timeline needs it to tell "nothing was caused" apart from "this host
+  // cannot answer who owns a socket" — the two look identical on screen.
+  ipcMain.handle('events:attributionStats', () => attributionStats())
+
+  ipcMain.handle('events:annotatedIds', () => {
+    if (!ctx.getActiveProject()) return []
+    return [...getAnnotatedIds()]
+  })
+
+  ipcMain.handle('events:getNote', (_e, eventId: string) => {
+    if (!ctx.getActiveProject() || typeof eventId !== 'string') return null
+    return getEventNote(eventId)
   })
 
   ipcMain.handle('events:isDoNotExport', (_e, eventId: string) => {

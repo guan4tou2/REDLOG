@@ -27,6 +27,24 @@ for full commit body + generated notes.
   this mismatch even though their events are intact. Export again after
   upgrading to get one that verifies.
 
+- **One palette, and a smaller Timeline.** A UI/UX pass, third batch:
+  - *Colour*: about 200 colour classes named shades the theme never set,
+    such as `red-200`, `amber-900`, `indigo-*` and `blue-*`. They fell back
+    to Tailwind's stock palette, which is brighter than RedLog's. Every
+    shade in use is now derived from the theme's own hues. The Timeline's
+    and Transcript's inline hex colours now come from the same tokens.
+    `test/design-palette.test.ts` fails when a new class uses an undefined
+    shade, or when a component outside the canvas and terminal code writes
+    a hex colour.
+  - *Timeline*: the event list and the detail panel moved out of the
+    2,900-line `Timeline.tsx` into `components/timeline/`, and receive
+    everything as props. The file is now about 2,600 lines, and neither
+    part can read a Timeline value before it is declared, the bug that has
+    crashed this file twice.
+  - *Buttons*: three "+" buttons (the scope list, the VPN pattern and
+    settings lists) had no accessible name. They now use `IconButton`.
+    `test/button-names.test.ts` fails on any icon-only button without one.
+
 - **A bookmark could record an address nobody had just read.** When the IP
   lookup had failed, or air-gap mode was on, the IP producer still held the
   last address it had read. A new bookmark saved that address as its external
@@ -53,6 +71,20 @@ for full commit body + generated notes.
   — and both `/api/session/register` and `/api/session/registered` are now
   in the endpoint table. New `test/agent-tool-surface.test.ts` fails if the
   skill ever names a `redlog_*` tool that no interface defines. (#241)
+
+- **mitmproxy is now one click, not a command to copy.** Spec 019 made HTTP
+  capture auto-start the managed `mitmdump`, but installing mitmproxy was left
+  out (Spec 019 out-of-scope; Spec 036 shipped only a copyable
+  `uv tool install mitmproxy`). The first-run HTTP card now runs that install
+  itself: a general dependency installer (`core/dependency-install.ts` decides
+  run / needs-prereq / manual, `main/services/dependency-installer.ts` spawns
+  it under the operator's widened PATH, `runtime:install` IPC) drives it, with
+  mitmproxy as the first dependency wired in. RedLog only runs an unprivileged
+  installer whose own tool is present: a `sudo` remediation stays manual, and
+  **when uv itself is missing the card points at uv rather than failing** — it
+  does not try to install uv. The copy-the-command fallback is gone. New unit
+  tests cover the plan and the spawner; the first-run card's test now drives
+  the install button and the uv-missing path.
 
 - **Every request in the timeline was unattributed, and not because RedLog
   could not tell.** `socket-attribution.ts` joins a request's source port to
@@ -172,15 +204,6 @@ for full commit body + generated notes.
   a second recorder stored the same bytes twice. It now explains why and
   exits; `--nested` overrides it for a tmux server that outlived its
   session. (#218)
-- **Each terminal can have its own target.** The current target was one
-  global value, so with several panes on several hosts, switching it for one
-  pane re-attributed whatever the others recorded next — a command with no
-  host in it, a marker, a late `command_end`. A built-in terminal tab can now
-  be bound to a target from its toolbar, and an external shell can declare
-  one with `export REDLOG_TARGET=<host>`. Precedence: the event's own target,
-  then a host found in the command, then the session's target, then the
-  global one. Binding and unbinding are recorded as `session_target_changed`
-  events; earlier rows are never rewritten. (#219)
 - **The evidence-bundle preview lists every file, and you can leave any out.**
   It used to give counts only, so there was no way to see which terminal
   recording or screenshot was about to be handed over, or to drop the one
@@ -260,9 +283,6 @@ for full commit body + generated notes.
   go unchecked now fails on any page it was not told about. (#228)
 
 ## v0.18.0 — 2026-09-27
-
-> **Status:** tagged; the GitHub Release and its installers are not published
-> yet. Remove this note when they are.
 
 147 commits since v0.17.1, most of them found by installing RedLog from
 scratch on Windows and working an engagement through it. The theme is the one

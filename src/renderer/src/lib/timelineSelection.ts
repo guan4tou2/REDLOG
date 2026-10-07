@@ -4,8 +4,15 @@
 // question each axis answers, and that is worth stating once and testing
 // directly rather than inferring from a 4,000-line component:
 //
-//   ← →    stay in the lane. A lane is one producer, so walking it reads that
-//          producer's story in order.
+//   ← →    follow TIME, across every visible lane. This is the default
+//          because it is what "the next event" means: the operator is
+//          reading a sequence of things that happened, and the thing that
+//          happened next was not necessarily from the same producer.
+//          It used to stay in the lane, which made the commonest key in the
+//          view answer a question nobody had asked yet.
+//   ⌥← ⌥→  stay in the lane. A lane is one producer, so walking it reads that
+//          producer's story in order — a real question, and a narrower one,
+//          which is why it is the modified chord rather than the bare one.
 //   ↑ ↓    change lane and land on whatever was nearest in time. That is what
 //          "what else was happening at this moment" means, and it is why this
 //          cannot be a flat list walk — the flat list interleaves lanes, so
@@ -17,6 +24,7 @@ import type { RedLogEvent } from '../../../core/db/events'
 
 export type SelectionMove =
   | 'nav-prev' | 'nav-next'
+  | 'nav-lane-prev' | 'nav-lane-next'
   | 'nav-lane-up' | 'nav-lane-down'
   | 'nav-state-prev' | 'nav-state-next'
   | 'nav-first' | 'nav-last'
@@ -74,10 +82,16 @@ export function nextSelection<L extends string>(
   const lane = ctx.laneOf(current)
 
   if (move === 'nav-prev' || move === 'nav-next') {
+    const i = visible.findIndex((e) => e.id === current.id)
+    if (i < 0) return null
+    return visible[i + (move === 'nav-prev' ? -1 : 1)] ?? null
+  }
+
+  if (move === 'nav-lane-prev' || move === 'nav-lane-next') {
     const sameLane = visible.filter((e) => ctx.laneOf(e) === lane)
     const i = sameLane.findIndex((e) => e.id === current.id)
     if (i < 0) return null
-    return sameLane[i + (move === 'nav-prev' ? -1 : 1)] ?? null
+    return sameLane[i + (move === 'nav-lane-prev' ? -1 : 1)] ?? null
   }
 
   if (move === 'nav-state-prev' || move === 'nav-state-next') {

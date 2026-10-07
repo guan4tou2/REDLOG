@@ -17,6 +17,7 @@ afterEach(cleanup)
 function mount(): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     loot: { getCount: async () => 0 },
+    chain: { length: async () => 0 },
     scope: { getViolationCount: async () => 0, isConfigured: async () => true },
     events: { getCount: async () => 0, onNewBatch: () => () => {} }
   }

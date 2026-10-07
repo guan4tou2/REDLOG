@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
-import { formatTime, formatSize } from '../lib/time'
+import { formatTime, formatDateTime, formatLag, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { UnappliedFilterNotice } from './FilterNotice'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
@@ -117,14 +117,16 @@ interface BucketPageState {
 
 const fmtBytes = formatSize
 
+// Theme variables, not hex: the transcript's kinds take their colours from
+// the palette like everything else (UI/UX audit F24).
 const KIND_COLOR: Record<Kind, string> = {
-  shell: '#22c55e',
-  'agent-turn': '#84cc16',
-  'agent-tool': '#a3a3a3',
-  http: '#8b5cf6',
-  marker: '#ef4444',
-  loot: '#f97316',
-  other: '#52525b'
+  shell: 'var(--color-emerald-500)',
+  'agent-turn': 'var(--color-lime-400)',
+  'agent-tool': 'var(--color-redlog-text-dim)',
+  http: 'var(--color-purple-400)',
+  marker: 'var(--color-red-400)',
+  loot: 'var(--color-orange-400)',
+  other: 'var(--color-redlog-muted)'
 }
 
 /**
@@ -577,7 +579,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   ? 'text-redlog-text border-redlog-border bg-redlog-elevated/60'
                   : 'text-redlog-text-faint border-redlog-border hover:text-redlog-text-dim'
               }`}
-              style={kinds.has(k) ? { color: KIND_COLOR[k], borderColor: `${KIND_COLOR[k]}66` } : undefined}
+              style={kinds.has(k) ? { color: KIND_COLOR[k], borderColor: `color-mix(in oklab, ${KIND_COLOR[k]} 40%, transparent)` } : undefined}
             >
               {t(`transcript.kind.${k}`)}
             </button>
@@ -609,7 +611,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             invite reading a typo as proof the evidence is absent. */}
         <QueryReadout outcome={parseFailed && parse && !parse.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         {toolSession && (
-          <div data-testid="transcript-tool-session" role="status" className="rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+          <div data-testid="transcript-tool-session" role="status" className="rounded border border-redlog-cyan/40 bg-redlog-cyan/10 px-3 py-2 text-xs text-redlog-cyan">
             <div>{t('transcript.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}</div>
             {toolSession.otherSessionIds.length > 0 && (
               <div className="mt-1 text-redlog-text-dim">
@@ -671,16 +673,48 @@ export default function TranscriptView({ onOpenInTimeline }: {
           const body = revealed ? (big ? b.output?.slice(0, MAX_INLINE) : b.output) : undefined
           const fullyExpanded = expanded.has(`${b.id}:full`)
           const displayBody = fullyExpanded && b.output ? b.output : body
+          // Source time and receipt time (Domain Invariant #8). They are equal
+          // for anything captured live, which is almost everything — so the row
+          // shows one time, and the second only earns its place in the row when
+          // the two actually diverge: a replayed transcript, a spool that was
+          // offline. Printing both unconditionally cost ~150px of a header
+          // whose only flexible element is the actor name, to say the same
+          // thing twice.
+          const recordedAt = b.events[0]?.createdAt ?? b.ts
+          // `lag` gates the badge and has a floor, because a sub-second gap is
+          // not worth a mark in the row. `diverged` gates the tooltip and has
+          // none: Invariant #8 is about every displayed result, so whenever the
+          // two times are not the same number the row has to be able to say so.
+          const diverged = recordedAt !== b.ts
+          const lag = formatLag(recordedAt - b.ts, t)
+          const timeTitle = diverged
+            ? t('transcript.lagTitle', {
+              occurred: formatDateTime(b.ts, { seconds: true }),
+              recorded: formatDateTime(recordedAt, { seconds: true })
+            })
+            : formatDateTime(b.ts, { seconds: true })
           return (
             <div key={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
-                <span data-testid="transcript-source-time" title={t('transcript.sourceTime')} className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
-                  {t('transcript.sourceTime')} {formatTime(b.ts, { seconds: true })}
+                <span
+                  data-testid="transcript-source-time"
+                  data-occurred-at={b.ts}
+                  title={timeTitle}
+                  className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 w-16"
+                >
+                  {formatTime(b.ts, { seconds: true })}
                 </span>
-                <span data-testid="transcript-receipt-time" title={t('transcript.receiptTime')} className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0">
-                  {t('transcript.receiptTime')} {formatTime(b.events[0]?.createdAt ?? b.ts, { seconds: true })}
-                </span>
+                {lag && (
+                  <span
+                    data-testid="transcript-receipt-time"
+                    data-recorded-at={recordedAt}
+                    title={timeTitle}
+                    className="text-xs text-amber-400 font-mono tabular-nums shrink-0"
+                  >
+                    {lag}
+                  </span>
+                )}
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && (
                   <span

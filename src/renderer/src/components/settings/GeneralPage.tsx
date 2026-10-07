@@ -4,7 +4,7 @@ import { usePersistentState } from '../../lib/usePersistentState'
 import { useDisplayZone, setDisplayZone } from '../../lib/time'
 import { toast } from '../Toast'
 import { applyDensity, resolveDensity, storedDensity } from '../../lib/density'
-import { storedShowAllPages, setShowAllPages } from '../../lib/showAllPages'
+import { UI_SCALE_KEY, UI_SCALE_OPTIONS, DEFAULT_UI_SCALE, parseUiScale, zoomFor } from '../../lib/uiScale'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 
 const LOCALE_LABELS: Record<Locale, string> = {
@@ -40,13 +40,18 @@ export default function GeneralPage({
 
   return (
     <>
+      {/* Two IDs and two names, and the labels alone do not say which reach
+          the record. The engagement ID and the operator ID are stamped on
+          every event; the two names are display strings, and one of them
+          quietly renames the project. That is on the ⓘ rather than under the
+          field — four lines of prose here would bury the four inputs. */}
       <FieldGroup title={t('settings.engagement')}>
-        <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly />
-        <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} />
+        <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly hint={t('settings.engagementIdHint')} />
+        <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} hint={t('settings.engagementNameHint')} />
       </FieldGroup>
       <FieldGroup title={t('settings.operatorGroup')}>
-        <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
-        <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
+        <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} hint={t('settings.operatorIdHint')} />
+        <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} hint={t('settings.operatorNameHint')} />
       </FieldGroup>
       {/* Was "Team Profile Sync", two buttons. The import half duplicated
           the one on the project picker, which is where you actually want
@@ -87,9 +92,6 @@ export default function GeneralPage({
       <FieldGroup title={t('settings.uiScale')}>
         <UiScaleControl t={t} />
       </FieldGroup>
-      <FieldGroup title={t('settings.disclosure')}>
-        <ShowAllPagesControl t={t} />
-      </FieldGroup>
     </>
   )
 }
@@ -122,29 +124,16 @@ function DisplayZoneControl({ t }: { t: (key: string, vars?: Record<string, stri
   )
 }
 
-// Per-user UI zoom. Persisted to localStorage and applied to `document.body`
-// via a CSS var (`--app-zoom`), which body's zoom rule in index.css consumes.
-// Not part of engagement config: it's a personal viewing preference and
-// shouldn't sync across teammates on the same project.
-const UI_SCALE_KEY = 'redlog-app-zoom'
-// Shifted down one step when the type scale gained its 13px floor: 1.1 used to
-// be "normal" because 1.0 rendered text too small to read comfortably. It no
-// longer does, so 1.0 is normal again and the ladder has room at the top.
-const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
-  { value: 0.9, labelKey: 'settings.uiScale.small' },
-  { value: 1.0, labelKey: 'settings.uiScale.normal' },
-  { value: 1.15, labelKey: 'settings.uiScale.large' },
-  { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
-]
+// The ladder, its default and its storage key live in lib/uiScale — main.tsx
+// applies the same value before first paint, and two copies of a default is
+// one copy too many.
+
 function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, 1, {
-    parse: (raw) => {
-      const parsed = parseFloat(raw || '')
-      return Number.isFinite(parsed) && parsed >= 0.9 && parsed <= 1.5 ? parsed : 1
-    }
+  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, DEFAULT_UI_SCALE, {
+    parse: parseUiScale
   })
   useEffect(() => {
-    document.body.style.setProperty('--app-zoom', String(scale))
+    document.body.style.setProperty('--app-zoom', String(zoomFor(scale)))
     // usePersistentState already mirrors `scale` into UI_SCALE_KEY; this effect
     // only carries the side-effects that must ride the same value change.
     // A bigger zoom means fewer rows on screen, so it implies tight density —
@@ -169,36 +158,3 @@ function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string |
   )
 }
 
-/** SS22's escape hatch. Per project, because switching projects reloads the same
- *  origin — a global preference would turn disclosure off for every future
- *  engagement after one tick here. */
-function ShowAllPagesControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [projectId, setProjectId] = useState<string | null>(null)
-  const [on, setOn] = useState(false)
-  useEffect(() => {
-    void window.redlog.project.active().then((p) => {
-      const id = (p as { id?: string } | null)?.id ?? null
-      setProjectId(id)
-      setOn(storedShowAllPages(id))
-    })
-  }, [])
-  return (
-    <div className="space-y-1.5">
-      <label className="flex items-center gap-2 text-xs text-redlog-text cursor-pointer">
-        <input
-          type="checkbox"
-          data-testid="show-all-pages"
-          checked={on}
-          disabled={!projectId}
-          onChange={(e) => {
-            setOn(e.target.checked)
-            if (projectId) setShowAllPages(projectId, e.target.checked)
-          }}
-          className="accent-redlog-accent"
-        />
-        {t('settings.showAllPages')}
-      </label>
-      <p className="text-xs text-redlog-text-faint">{t('settings.showAllPagesHint')}</p>
-    </div>
-  )
-}

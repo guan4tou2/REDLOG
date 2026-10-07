@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Button } from '../Button'
 import { toast, toastDeferred } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
+import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 
 interface PluginView {
   id: string
@@ -27,7 +29,59 @@ interface PluginView {
 // machinery of distributing capture code, and distribution is not what this
 // product is for. What stays is the part an operator needs to answer "is
 // anything capturing that I did not put there" — the installed list.
+
+// Five of the eight bundled manifests were never a choice made here.
+//
+//   starter-pack   declares the shell hooks, the Codex wrapper and the
+//                  mitmproxy addon -- what RedLog always ships. Settings ▸
+//                  指令與終端 lists them; this row could switch them all off
+//                  from a page that does not say that is what it does.
+//   builtin-tools  is the tool → target table core reads. Not a choice.
+//   pack-*         are the capture packs Settings ▸ 擷取 pack already owns,
+//                  per project, with words that say what they record. Two
+//                  switches for one thing, and they do not even agree on
+//                  scope: that page is per project, this one is every project
+//                  at once.
+//
+// Derived from CAPTURE_PACKS rather than written out, so a pack added later
+// leaves this page without anyone having to remember a string list.
+const OWNED_ELSEWHERE = new Set<string>([
+  'starter-pack',
+  'builtin-tools',
+  ...Object.values(CAPTURE_PACKS).map((p) => p.pluginId),
+  // The three that moved to Settings ▸ 擷取 pack ▸ 外部擷取來源. They ship with
+  // RedLog, so they are not plugins -- Burp does not put Proxy and Repeater in
+  // Extensions either -- and the switch they had here started nothing: they
+  // need root or they rewrite this host's nat rules, so the operator runs the
+  // command. A boolean over privileges the app does not hold cannot be honest.
+  'c2-tailers', 'pcap-capture', 'transparent-proxy'
+])
+
+// Hiding a row hides a CHOICE, never a STATE. `isPackAvailable` requires the
+// pack's plugin to be active, and a disable persists in
+// ~/.redlog/plugins/state.json -- so a plugin switched off before this filter
+// existed would sit disabled forever, with 擷取 pack reporting it unavailable
+// and the only control that could bring it back hidden from the operator. A
+// row that is off is always shown, because that is the row someone needs.
+const isHidden = (p: { id: string; status: string }): boolean =>
+  OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
+
+// The manifests describe these packs to whoever maintains them: spec
+// numbers, doc paths, the identifiers the code uses, and the reason the
+// thing is a manifest at all. None of that is what the operator standing on
+// this page is asking, which is "what does this put in my record, and can I
+// turn it off" -- and all of it was in English inside a Chinese interface.
+// Bundled packs get a translated line each; a user's plugin still speaks for
+// itself through its own manifest.
+
 export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const describe = (p: PluginView): string => {
+    if (p.source !== 'bundled') return p.description
+    const key = `plugins.builtin.${p.id}`
+    const line = t(key)
+    return line === key ? p.description : line
+  }
+
   const [plugins, setPlugins] = useState<PluginView[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
@@ -50,12 +104,17 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
       setBusy(p.id); setPlugins(await api.setEnabled(p.id, true)); setBusy(null)
       return
     }
-    // Disabling stops a capture source and writes `system.config_changed`, so
-    // SS10 gives it a window and defers the *write*, not just the undo: the
-    // list shows the plugin as disabled immediately, but nothing is persisted
-    // until the eight seconds are up. An operator who catches their own
-    // mistake inside the window leaves no trace of it in the audit log —
-    // which is the point, since that log is evidence.
+    // SS10 gives disabling a window and defers the write itself, not just the
+    // undo: the list shows the plugin as disabled immediately, nothing is
+    // persisted until the eight seconds are up.
+    //
+    // This used to claim the deferral kept the mistake out of the audit log.
+    // It does not, because there is nothing to keep out: `plugins:setEnabled`
+    // writes ~/.redlog/plugins/state.json and no event. The only writer of
+    // `system.config_changed` is logConfigDiff on `config:save`, and
+    // config-audit covers packs and pack members, never plugins. Switching a
+    // capture source off leaves no trace of who did it or when -- a real gap,
+    // and a separate one from this window.
     setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'disabled' } : x)))
     toastDeferred(
       t('plugins.disabled', { name: p.name }),
@@ -90,6 +149,8 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     error: 'bg-red-900/50 text-red-400'
   }
 
+  const shown = plugins.filter((p) => !isHidden(p))
+
   return (
     <FieldGroup title={t('settings.plugins')}>
       <div className="flex items-center justify-between mb-2 gap-2">
@@ -99,18 +160,17 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           title={t('plugins.openFolderHint')}>
           {t('plugins.openFolder')}
         </button>
-        <button onClick={doReload} disabled={busy === '*'}
-          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0">
+        <Button level="secondary" onClick={doReload} disabled={busy === '*'} className="shrink-0">
           {busy === '*' ? '…' : t('plugins.reload')}
-        </button>
+        </Button>
       </div>
 
-      {plugins.length === 0 && (
+      {shown.length === 0 && (
         <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>
       )}
 
       <div className="space-y-2">
-        {plugins.map((p) => {
+        {shown.map((p) => {
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
           return (
@@ -123,15 +183,18 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                     <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
                       {t(`plugins.status.${p.status}`)}
                     </span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
-                      {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
-                    </span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{p.source}</span>
+                    {/* Only the dangerous tier gets a chip. The other one said
+                        "🟢 宣告式" -- the implementation category, not the
+                        consequence -- on every safe plugin, so the marker that
+                        matters sat in a row of markers that did not. §22: show
+                        the exception, and the exception here is code running. */}
+                    {privileged && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
+                        {t('plugins.tier.privileged')}
+                      </span>
+                    )}
                   </div>
-                  {p.description && <p className="text-xs text-redlog-text-dim mt-0.5">{p.description}</p>}
-                  {p.contributes.length > 0 && (
-                    <p className="text-xs text-redlog-text-faint mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
-                  )}
+                  {describe(p) && <p className="text-xs text-redlog-text-dim mt-0.5">{describe(p)}</p>}
                   {privileged && p.capabilities.length > 0 && (
                     <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
@@ -174,8 +237,6 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           )
         })}
       </div>
-
-      <p className="text-xs text-redlog-text-faint mt-3">{t('plugins.dir')}</p>
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (

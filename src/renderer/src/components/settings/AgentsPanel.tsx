@@ -1,7 +1,21 @@
 import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { FieldGroup, type ConfigState } from './SettingsShared'
+import CapturePackGroup, { usePackAvailability } from './CapturePackGroup'
 
+// Spec 049: one switch per decision.
+//
+// `packs.aiAgents` was written from two places — a CapturePackGroup on the
+// capture page and a bare checkbox on an AI agents page of its own. The same
+// boolean, so they moved together, but an operator who ticked one then met an
+// identical, unticked-looking control on the other had no way to tell that
+// capture was already on. "Is anything actually recording" is the question the
+// whole capture group exists to answer, and two controls over one flag is the
+// worst available way to answer it.
+//
+// This is now the only writer, and it is a pack group like the other two — so
+// it also reports a pack whose plugin was disabled in Plugins, which the bare
+// checkbox could not.
 export default function AgentsPanel({
   t, config, setConfig
 }: {
@@ -9,42 +23,30 @@ export default function AgentsPanel({
   config: ConfigState
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
-  // Whether agent transcripts are recorded is the AI agents pack (Spec 035);
-  // this page keeps the pack's own switch next to its tuning.
-  const on = config.packs?.aiAgents === true
+  const packs = usePackAvailability()
   const emitThinking = config.agentTailer?.emitThinking ?? false
   return (
-    <FieldGroup title={t('settings.agents')}>
-      <p className="text-xs text-redlog-text-faint">{t('settings.agents.hint')}</p>
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={on}
-            onChange={(e) => setConfig({ ...config, packs: { ...config.packs, aiAgents: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.agents.enable')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.enableHint')}</p>
+    <CapturePackGroup
+      pack="aiAgents" title={t('settings.agents')} hint={t('settings.agents.hint')}
+      available={packs?.aiAgents} config={config} setConfig={setConfig} t={t}
+    >
+      <div className="space-y-2 mt-2">
+        <p className="text-xs text-redlog-text-faint">{t('settings.agents.enableHint')}</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={emitThinking}
             onChange={(e) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: e.target.checked } })}
             className="accent-red-600"
-            disabled={!on}
           />
-          <span className={`text-xs ${on ? 'text-redlog-text' : 'text-redlog-text-faint'}`}>
-            {t('settings.agents.emitThinking')}
-          </span>
+          <span className="text-xs text-redlog-text">{t('settings.agents.emitThinking')}</span>
         </label>
         <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.emitThinkingHint')}</p>
         <p className="text-xs text-redlog-text-faint mt-3 border-t border-redlog-border pt-2">
           {t('settings.agents.selfExclusionHint')}
         </p>
       </div>
-    </FieldGroup>
+    </CapturePackGroup>
   )
 }
 

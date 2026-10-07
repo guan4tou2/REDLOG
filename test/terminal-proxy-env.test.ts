@@ -32,8 +32,15 @@ describe('built-in terminal managed proxy environment', () => {
   })
 
   it('keeps REDLOG hook transport outside the managed proxy', () => {
-    for (const file of ['shell-common.sh', 'redlog-send.sh', 'codex-wrapper.sh']) {
-      const source = readFileSync(join(process.cwd(), 'hooks', file), 'utf8')
+    // The Codex wrapper is a plugin's hook now (pack-ai-agents), not a
+    // built-in one, but it posts to the same API and the rule is the same.
+    const scripts = [
+      join('hooks', 'shell-common.sh'),
+      join('hooks', 'redlog-send.sh'),
+      join('plugins', 'pack-ai-agents', 'hooks', 'codex-wrapper.sh')
+    ]
+    for (const file of scripts) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
       const internalCurlLines = source.split('\n').filter((line) => line.includes('curl ') && line.includes('/api/'))
       expect(internalCurlLines.length, file).toBeGreaterThan(0)
       expect(internalCurlLines.every((line) => line.includes("--noproxy '*'")), file).toBe(true)

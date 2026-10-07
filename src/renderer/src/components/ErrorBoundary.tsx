@@ -89,19 +89,9 @@ function FatalScreen({ error, label, projectName, onRetry, onGoHome }: {
       <p className="text-redlog-text-faint text-xs font-mono max-w-md break-all">{error.message}</p>
 
       <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
-        <button
-          onClick={onRetry}
-          className="px-3 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40"
-        >
-          {t('fatal.retry')}
-        </button>
+        <Button level="secondary" onClick={onRetry}>{t('fatal.retry')}</Button>
         {onGoHome && (
-          <button
-            onClick={onGoHome}
-            className="px-3 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40"
-          >
-            {t('fatal.goHome')}
-          </button>
+          <Button level="quiet" onClick={onGoHome}>{t('fatal.goHome')}</Button>
         )}
         <button
           onClick={() => setShowDiagnostics((v) => !v)}

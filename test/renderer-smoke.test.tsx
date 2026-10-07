@@ -129,6 +129,10 @@ function installBridge(): void {
       queryHttpFlowPage: async () => ({ items: EVENTS, flowCount: EVENTS.length, hasMore: false, nextCursor: null }),
       getCount: async () => EVENTS.length,
       getLatestLoggedTs: async () => null,
+      annotatedIds: async () => [],
+      attributionStats: async () => ({ attempted: 0, resolved: 0 }),
+      getNote: async () => null,
+      setNote: async () => null,
       search: async () => EVENTS,
       aggregateTargets: async () => {
         // Mirror the SQL rollup over the mock EVENTS so TargetView still renders
@@ -180,7 +184,8 @@ function installBridge(): void {
       detect: async () => '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       status: async () => ({ running: false }),
       launch: async () => ({ ok: true, pid: 1 }),
-      stop: async () => ({ stopped: true })
+      stop: async () => ({ stopped: true }),
+      onExited: () => () => {}
     },
     httpCapture: {
       status: async () => ({ state: 'running', url: 'http://127.0.0.1:8080', pid: 2 }),
@@ -201,12 +206,11 @@ function installBridge(): void {
       health: async () => ({
         verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),
         sources: [
-          { id: 'shell-hook', installed: true, lastEventAt: Date.now(), state: 'active' },
-          { id: 'claude-code', installed: true, lastEventAt: null, state: 'idle' },
-          { id: 'mitmproxy', lastEventAt: null, state: 'idle' },
-          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' },
+          { id: 'terminal', installed: true, lastEventAt: Date.now(), state: 'ready' },
+          { id: 'claude-code', installed: true, lastEventAt: null, state: 'ready' },
+          { id: 'mitmproxy', lastEventAt: null, state: 'ready' },
           // E3 (#49): an informational plugin producer — display only, read-only.
-          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'active' }
+          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'ready' }
         ]
       })
     },
@@ -316,6 +320,61 @@ describe('renderer views render without throwing', () => {
     expect(bridge.overlay.mouseLeave).toHaveBeenCalledOnce()
   })
 
+  // The HUD hangs off a `-webkit-app-region: drag` root so it can be dragged
+  // from anywhere. Chromium INHERITS that property, and Electron replays the
+  // collected rects in tree order — union for drag, difference for no-drag — so
+  // any element declared after a control and overlapping it hands those pixels
+  // back to the window manager. That is what killed the HUD: the compact bar
+  // followed the expand/hide cluster in the DOM and spans the full panel width,
+  // so WM_NCHITTEST over ✕ answered HTCAPTION and every click started a window
+  // drag. The HUD could be moved and nothing else.
+  //
+  // The e2e click test cannot catch this: Playwright dispatches through CDP,
+  // which lands in the renderer below the native hit test, so it passed the
+  // whole time the real HUD was dead. The order is the thing to assert.
+  it('HUD re-arms no drag region after its controls', async () => {
+    // jsdom's cssstyle drops properties it does not know, `-webkit-app-region`
+    // among them, so nothing survives to read back off the element. Give the
+    // prototype somewhere to keep it — React assigns `style.WebkitAppRegion`
+    // directly, so this records exactly what the component asked for.
+    const regions = new WeakMap<CSSStyleDeclaration, string>()
+    Object.defineProperty(window.CSSStyleDeclaration.prototype, 'WebkitAppRegion', {
+      configurable: true,
+      get(this: CSSStyleDeclaration) { return regions.get(this) ?? '' },
+      set(this: CSSStyleDeclaration, value: string) { regions.set(this, value) }
+    })
+
+    try {
+      const { container } = render(<I18nProvider><OverlayApp /></I18nProvider>)
+      // Expanded: the mark/pass-through/pin row only exists in this state, and
+      // it is the other set of controls the drag region can swallow.
+      fireEvent.click(await screen.findByRole('button', { name: /show details|顯示詳細資訊/i }))
+
+      const own = (el: Element): string =>
+        (el as HTMLElement).style.WebkitAppRegion ?? ''
+      const region = (el: Element): string => {
+        for (let node: Element | null = el; node; node = node.parentElement) {
+          if (own(node)) return own(node)
+        }
+        return 'drag'
+      }
+      // <style> has no layout box, so Blink never collects a region for it.
+      const boxes = Array.from(container.querySelectorAll('*'))
+        .filter((el) => el.tagName !== 'STYLE' && el.tagName !== 'SCRIPT')
+
+      const firstControl = boxes.findIndex((el) => region(el) === 'no-drag')
+      expect(firstControl, 'no no-drag control in the HUD at all').toBeGreaterThanOrEqual(0)
+
+      const reArmed = boxes.slice(firstControl).filter((el) => region(el) === 'drag')
+      expect(
+        reArmed.map((el) => el.outerHTML.replace(/\s+/g, ' ').slice(0, 90)),
+        'these come after a HUD control and put the drag region back over it — mark them no-drag, or move them ahead of the controls'
+      ).toEqual([])
+    } finally {
+      Reflect.deleteProperty(window.CSSStyleDeclaration.prototype, 'WebkitAppRegion')
+    }
+  })
+
   // #49: the capture card lists a plugin producer read-only with its own label
   // and a "plugin" tag. It shows in the full inventory (manage), not the
   // compact problems view. Renders the actual UI I shipped, not just the mock.
@@ -330,8 +389,9 @@ describe('renderer views render without throwing', () => {
     expect(tags.length).toBeGreaterThan(0)
   })
 
-  // #47: the artifact-rotation eviction budgets live in the "Packs, screenshots & retention"
-  // Settings tab. Switching to it must surface the controls.
+  // #47: the artifact-rotation eviction budgets must be reachable from the
+  // sidebar. Spec 049 moved them off the capture page and under Scope and
+  // evidence — retention is a deletion policy, not a capture source.
   it('StatusBar says its clock runs from the project\'s creation, not this session', async () => {
     renderView(<StatusBar />)
     const clock = await screen.findByTestId('statusbar-uptime')
@@ -343,14 +403,14 @@ describe('renderer views render without throwing', () => {
     const box = await screen.findByPlaceholderText('Search settings…')
     fireEvent.change(box, { target: { value: 'loot detection' } })
     const results = await screen.findByTestId('settings-search-results')
-    fireEvent.click(within(results).getByText('Loot detection'))
-    // The Packs, screenshots & retention page is open: its Loot detection hint is on screen.
+    fireEvent.click(within(results).getAllByText('Loot detection')[0])
+    // The Loot detection page is open: its hint is on screen.
     expect(await screen.findByText(/Rules that are off are not recorded as loot/)).toBeTruthy()
   })
 
-  it('Settings exposes the artifact-rotation budgets under "Packs, screenshots & retention"', async () => {
+  it('Settings exposes the artifact-rotation budgets under "Retention and cleanup"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('Packs, screenshots & retention')
+    const tab = await screen.findByText('Retention and cleanup')
     fireEvent.click(tab)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
@@ -360,8 +420,16 @@ describe('renderer views render without throwing', () => {
   // capture", the browser's launch failure, the scope card and the
   // broken-chain issue all left the operator to find the page themselves.
   it('a link to a Settings page opens that page', async () => {
-    renderView(<Settings request={{ page: 'captureControl' }} />)
+    renderView(<Settings request={{ page: 'retention' }} />)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
+  })
+
+  // Spec 049 FR-010: `captureControl` kept its id through the restructure, so
+  // every saved deep link into it — the screenshots empty state, onboarding,
+  // the capture wizard — still lands on capture sources rather than nowhere.
+  it('the capture-sources deep link still resolves after the restructure', async () => {
+    renderView(<Settings request={{ page: 'captureControl' }} />)
+    expect(await screen.findByText('Pack: Host monitors')).toBeTruthy()
   })
 
   it('an issue that names a Settings page opens it', async () => {

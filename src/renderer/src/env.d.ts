@@ -181,9 +181,6 @@ interface RedLogAPI {
   targetContext: {
     get: () => Promise<string | null>
     set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
-    /** #219: a built-in terminal's own target, which outranks the global one. */
-    getSession: (terminalId: string) => Promise<string | null>
-    bindSession: (terminalId: string, target: string | null) => Promise<{ ok: boolean; target: string | null }>
     onChange: (cb: (target: string | null) => void) => () => void
   }
   /** #221: copy operator-picked local files into the project as evidence. */
@@ -211,10 +208,6 @@ interface RedLogAPI {
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
     getCount: (tier: import('../../core/db/events').EventTierFilter) => Promise<number>
-    /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
-     *  if none have been written. Drives the CaptureHealthCard "last
-     *  fed" freshness readout without pulling row bodies. */
-    getLatestLoggedTs: () => Promise<number | null>
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
@@ -249,6 +242,10 @@ interface RedLogAPI {
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    setNote: (eventId: string, note: string) => Promise<EventNote | null>
+    getNote: (eventId: string) => Promise<EventNote | null>
+    annotatedIds: () => Promise<string[]>
+    attributionStats: () => Promise<{ attempted: number; resolved: number }>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
@@ -315,6 +312,7 @@ interface RedLogAPI {
     status: () => Promise<{ running: boolean }>
     launch: () => Promise<BrowserLaunchResult>
     stop: () => Promise<{ stopped: boolean }>
+    onExited: (cb: () => void) => () => void
   }
   httpCapture: {
     status: () => Promise<ManagedProxyStatus>
@@ -403,11 +401,17 @@ interface RedLogAPI {
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
-    migrateLegacy: (ref: LegacyHookRef) => Promise<LegacyMigrationResult>
   }
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
     preflight: () => Promise<RuntimePreflight>
+    /** Run the install a preflight remediation describes (e.g. mitmproxy via uv).
+     *  `needsPrereq` is set when the installer itself (uv/brew) is missing. */
+    install: (id: RuntimePreflight['checks'][number]['id']) => Promise<{
+      success: boolean
+      message: string
+      needsPrereq?: { command: string; url: string }
+    }>
   }
   plugins: {
     list: () => Promise<unknown[]>
@@ -434,22 +438,6 @@ interface RedLogAPI {
   }
 }
 
-interface LegacyHookRef {
-  file: string
-  line: number
-  text: string
-  /** current adapter that replaces the retired file; null = remove only */
-  hookId: string | null
-}
-
-interface LegacyMigrationResult {
-  success: boolean
-  message: string
-  backupPath?: string
-  removed: number
-  hookId: string | null
-}
-
 interface RuntimePreflight {
   platform: string
   shell: { name: string; hookId: string } | null
@@ -461,7 +449,10 @@ interface RuntimePreflight {
     remediation?: string
     remediationRequires?: { command: string; url: string }
   }>
-  legacyHooks: LegacyHookRef[]
+  /** Windows only, and null when it could not be measured — never "fine".
+   *  A Restricted policy stops `$PROFILE` loading, which is the one Windows
+   *  failure that leaves the hook installed and the terminal silent. */
+  powershell?: { shell: string; policy: string; blocksProfile: boolean } | null
 }
 
 interface CaptureSourceInfo {
@@ -477,32 +468,48 @@ interface CaptureSourceInfo {
    *  too or the switch reports the opposite of what it did */
   packPath?: string
   lastEventAt: number | null
-  /** `error` = this source is wired up and its own capture failed; distinct
-   *  from `absent` (nothing installed) and from a DB write failure. */
-  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
+  /** Can this source record right now. `error` = wired up and its own capture
+   *  failed, distinct from `unset` (nothing installed/turned on) and from a DB
+   *  write failure. There is no `idle`: how long ago it last recorded is
+   *  `lastEventAt`, which is data, not a verdict. */
+  state: 'ready' | 'unset' | 'off' | 'error'
   /** Why the capture failed, while the failure is still live. */
   lastError?: { at: number; message: string }
-  /** For a source carrying more than one stream (mitmproxy: HTTP and DNS),
-   *  which of them are actually feeding. */
-  streams?: Record<string, boolean>
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */
   informational?: boolean
   /** Human label for an informational source (the plugin's own name). */
   label?: string
+  /** Switched off and listed anyway. Together with a live producer it is the
+   *  one combination that means the record is taking data nobody authorised. */
+  disabled?: boolean
+  /** E3: this plugin producer is heartbeating — the operator has it running. */
+  running?: boolean
+}
+
+interface EventNote {
+  note: string
+  createdAt: number
+  updatedAt: number
 }
 
 interface CaptureHealthInfo {
   verdict: 'healthy' | 'partial' | 'dark'
-  recording: boolean
+  /** at least one source has ever produced a real event. NOT the REC switch —
+   *  that is `window.redlog.recording`, which decides whether RedLog writes
+   *  down what the sources produce. */
+  hasRecorded: boolean
   sources: CaptureSourceInfo[]
   lastEventAt: number | null
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
+  /** write failures in this session, cumulative. `lastDbError` expires so the
+   *  verdict can recover; this does not, because the gap in the record does
+   *  not either. */
+  dbErrorTotal: number
+  dbErrorFirstAt: number | null
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
-  lastSampleOkAt?: number | null
-  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
   managedHttpProxy?: ManagedProxyStatus
 }
 

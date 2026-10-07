@@ -90,21 +90,28 @@ export default function BrowserPanel({
           {t(`httpCapture.state.${proxyStatus.state}`)}{proxyStatus.url ? ` · ${proxyStatus.url}` : ''}
         </span>
         <button
+          data-testid="http-capture-toggle"
           onClick={async () => setProxyStatus(proxyStatus.state === 'running'
             ? await window.redlog.httpCapture.stop()
             : await window.redlog.httpCapture.start())}
           className="px-2 py-1 bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
-          {proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.start')}
+          {proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.restart')}
         </button>
       </div>
       {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}
       {proxyStatus.caPath && (
-        <p className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
-          {proxyStatus.certReady
-            ? t('httpCapture.caReady', { path: proxyStatus.caPath })
-            : t('httpCapture.caMissing', { path: proxyStatus.caPath })}
-        </p>
+        <>
+          <p className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+            {proxyStatus.certReady
+              ? t('httpCapture.caReady', { path: proxyStatus.caPath })
+              : t('httpCapture.caMissing', { path: proxyStatus.caPath })}
+          </p>
+          {/* Which trust store each kind of tool reads. Reference material, so
+              it sits with the setting rather than on the first-run screen,
+              where it was four clauses between the operator and a check. */}
+          <p className="text-xs text-redlog-text-faint leading-relaxed">{t('httpCapture.caTrustStores')}</p>
+        </>
       )}
       <Field
         label={t('settings.cdpPort')}

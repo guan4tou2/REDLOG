@@ -75,7 +75,11 @@ export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
         { label: 'Optional - remove the tool itself',
           command: 'uv tool uninstall mitmproxy' }
       ]
+    // Both ids: a producer contributed by a plugin is namespaced with its
+    // pack, and this one is contributed by pack-ai-agents. The bare id stays
+    // because an older install can still carry it.
     case 'codex':
+    case 'pack-ai-agents.codex':
       return [
         { label: 'Stop launching the agent through the wrapper — run it the way you did before' },
         { label: 'Nothing was written outside RedLog\'s own directory; the wrapper lives there' }
@@ -106,6 +110,17 @@ export interface PluginInfo {
   manualSteps?: ManualStep[]
   /** how to undo a source RedLog cannot uninstall itself */
   removalSteps?: ManualStep[]
+  /** Contributed by a plugin the operator has switched off. */
+  disabled?: boolean
+  /** Shipped with RedLog, as opposed to contributed by an installed plugin.
+   *  The Hooks page lists only these: a plugin's own capture belongs on the
+   *  Plugins page, beside the plugin that brought it. */
+  builtin: boolean
+  /** The steps are an extra, not a setup. mitmproxy is installed and started
+   *  by RedLog now; what is left is the optional second instance for DNS, and
+   *  calling that "manual setup" says the capture needs work that it does
+   *  not. */
+  stepsAreOptional?: boolean
 }
 
 const HOOKS_DIR = join(__dirname, '../../../hooks')
@@ -128,7 +143,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-zsh-hook.zsh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-hook.zsh'),
     shellRcFile: '.zshrc'
@@ -141,20 +156,16 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     requires: [],
     requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
   },
-  {
-    id: 'codex',
-    name: 'Codex',
-    description: 'Wraps Codex shell to capture agent commands',
-    agentType: 'shell',
-    requires: ['codex'],
-    hookFile: 'hooks/codex-wrapper.sh',
-    installMethod: 'manual'
-  },
+  // No `codex` here. The built-ins are the sources RedLog owns — the
+  // operator's own shell, RedLog's own proxy — and wrapping somebody else's
+  // agent is not one of them. The Codex wrapper is contributed by
+  // plugins/pack-ai-agents, which is where the rest of RedLog's Codex support
+  // already lives.
   {
     id: 'mitmproxy',
     name: 'mitmproxy',
@@ -181,7 +192,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py', 'hooks/redlog-relay.py'],
     installMethod: 'manual'
   }
 ]
@@ -246,13 +257,47 @@ export function registerCapturePlugins(
     // namespace the id so two plugins can't collide with each other or a built-in
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
     externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
+    const retired = retiredCaptures.findIndex((m) => m.id === id)
+    if (retired >= 0) retiredCaptures.splice(retired, 1)
   }
 }
 
+// Disabled captures, kept rather than dropped.
+//
+// Unregistering used to delete them outright, so a disabled source vanished
+// from `detectHooks()` and from capture-health together. That reads as "this
+// is not happening" and it is not what disabling does: these producers run
+// outside RedLog -- tcpdump under sudo, an iptables redirect, a log tailer --
+// and they keep running and keep POSTing, because ingest does not consult the
+// plugin registry. So an operator who pressed the switch to STOP a host-level
+// redirect got a screen with no rows for it while the traffic kept landing in
+// the record. A control that looks like a stop button and is actually a
+// blindfold is worse than no control.
+//
+// They stay listed, flagged, with their live state still read from the events
+// themselves — which is how "disabled, and still receiving" becomes something
+// the operator can see instead of something only the record knows.
+const retiredCaptures: PluginManifest[] = []
+
 export function unregisterCapturePlugins(pluginId: string): void {
   for (let i = externalCaptures.length - 1; i >= 0; i--) {
-    if (externalCaptures[i].id.startsWith(`${pluginId}.`)) externalCaptures.splice(i, 1)
+    if (externalCaptures[i].id.startsWith(`${pluginId}.`)) {
+      retiredCaptures.push(externalCaptures[i])
+      externalCaptures.splice(i, 1)
+    }
   }
+}
+
+/** Every capture the UI should show, live or switched off. Behaviour — install
+ *  targets, hook paths — reads `allManifests()` and is deliberately unchanged:
+ *  a disabled capture is listed, not runnable. */
+function listableManifests(): Array<PluginManifest & { disabled?: boolean }> {
+  const live = allManifests()
+  const liveIds = new Set(live.map((m) => m.id))
+  return [
+    ...live,
+    ...retiredCaptures.filter((m) => !liveIds.has(m.id)).map((m) => ({ ...m, disabled: true }))
+  ]
 }
 
 function allManifests(): PluginManifest[] {
@@ -450,51 +495,38 @@ async function checkAvailableAsync(plugin: PluginManifest): Promise<boolean> {
   return false
 }
 
-// Manual hooks can't be a persistent one-click install: mitmproxy needs a
-// running external process and codex changes how the agent's shell is launched.
-// Instead of a dead "Manual" label, hand the operator exact copy-paste commands
-// with the absolute hook path already resolved for this install.
-function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | undefined {
+// Some hooks cannot be a one-click install — codex changes how the agent's
+// shell is launched — so instead of a dead "Manual" label they hand over exact
+// copy-paste commands with the absolute hook path already resolved.
+//
+// mitmproxy used to be the main one, with six steps: install it, put it on
+// PATH, start mitmdump yourself, point your tools at it, and two for DNS.
+// RedLog does the first four now — it installs mitmproxy in one click and
+// starts the managed proxy when a project opens — so those steps described a
+// setup nobody performs, on a panel labelled "manual" for something that is
+// not. What is left is the one case the managed proxy genuinely does not
+// cover.
+function buildManualSteps(pluginId: string, hookFile: string, available: boolean): ManualStep[] | undefined {
   switch (pluginId) {
     case 'mitmproxy':
       return [
-        {
-          label: 'Install mitmproxy with uv (skip if already installed)',
+        // Every command below is `mitmdump …`, and on a machine without it
+        // they are all "command not found" — most often on Windows, where
+        // nothing brings mitmproxy in. The card said none of that: it opened
+        // on step 1 of a sequence whose unstated step 0 was an install. The
+        // managed proxy installs mitmproxy for the operator from the capture
+        // check, so say where rather than only how.
+        ...(available ? [] : [{
+          label: 'This needs mitmdump, which is not on this machine. The HTTP capture '
+            + 'check on the dashboard installs mitmproxy in one click; to do it yourself:',
           command: 'uv tool install mitmproxy'
-        },
+        }]),
         {
-          label: process.platform === 'win32'
-            ? 'Put uv-installed tools on your PATH (restart terminal after running this)'
-            : 'Verify mitmdump is on your PATH',
-          command: process.platform === 'win32'
-            ? 'uv tool update-shell'
-            : 'which mitmdump'
-        },
-        {
-          // Both this port and the one in the next step are mitmproxy's own
-          // default, and they must not drift apart: an operator following
-          // these steps ends up proxied at whatever the command above bound.
-          // It is NOT the managed proxy's port (Settings -> Browser), which
-          // RedLog passes explicitly and no longer defaults to 8080 — 8080 is
-          // Burp's default listener and Burp is running on most of these
-          // machines. Name it here so the collision is visible before it
-          // happens.
-          label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement). '
-            + "This binds 127.0.0.1:8080, mitmproxy's default — change it if Burp already has that port.",
-          command: `mitmdump -s "${hookFile}" --listen-host 127.0.0.1 --listen-port 8080`
-        },
-        {
-          label: 'Route traffic through it — proxy your browser/tools at the address above, '
-            + "or use Launch Browser in RedLog, which starts RedLog's own managed proxy "
-            + '(its address is in Settings → Browser) and wires the browser to it for you'
-        },
-        {
-          // DNS needs its own mitmdump: one instance serves one mode. The
-          // addon has handled DNS all along and nothing said how to turn it
-          // on, so it was capture nobody could reach.
-          label: 'Optional — capture DNS as well. This is a SECOND mitmdump: one instance '
-            + 'serves one mode, so it runs alongside the HTTP one above. Port 53 needs '
-            + 'admin rights, so this uses 5353; point the target resolver at it.',
+          // One mitmdump serves one mode, so DNS needs a second instance
+          // alongside the managed HTTP one. Nothing else in RedLog starts it.
+          label: 'Optional — capture DNS as well. This is a SECOND mitmdump alongside the '
+            + 'one RedLog runs: one instance serves one mode. Port 53 needs admin rights, '
+            + 'so this uses 5353; point the target resolver at it.',
           command: `mitmdump -s "${hookFile}" --mode dns@5353`
         },
         {
@@ -504,7 +536,11 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
             : 'dig @127.0.0.1 -p 5353 example.com'
         }
       ]
+    // Namespaced too (see the uninstall switch above): these steps stay in
+    // code rather than in the pack's JSON because they branch on the platform,
+    // and a manifest's `manualSteps` are one fixed list.
     case 'codex':
+    case 'pack-ai-agents.codex':
       // codex-wrapper.sh is a bash script using POSIX-shell idioms (and the
       // `SHELL=… cmd` inline-env prefix). Those don't run in cmd/PowerShell, so
       // on Windows point at WSL/Git Bash with a note instead of a command that
@@ -561,10 +597,12 @@ function hasManualSteps(plugin: PluginManifest): boolean {
 }
 
 export function detectHooks(): PluginInfo[] {
-  return allManifests().map((plugin) => {
+  const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
+  return listableManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
+    const available = checkAvailable(plugin)
     const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
       : undefined
 
     return {
@@ -574,11 +612,16 @@ export function detectHooks(): PluginInfo[] {
       agentType: plugin.agentType,
       emits: plugin.emits,
       installed: checkInstalled(plugin),
-      available: checkAvailable(plugin),
+      available,
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id)
+      removalSteps: buildRemovalSteps(plugin.id),
+      builtin: builtinIds.has(plugin.id),
+      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
+       *  runs outside RedLog and disabling does not stop it. */
+      disabled: (plugin as { disabled?: boolean }).disabled === true,
+      stepsAreOptional: plugin.id === 'mitmproxy'
     }
   })
 }
@@ -586,11 +629,13 @@ export function detectHooks(): PluginInfo[] {
 let _detectCache: PluginInfo[] | null = null
 
 export async function detectHooksAsync(): Promise<PluginInfo[]> {
-  const manifests = allManifests()
+  const manifests = listableManifests()
+  const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
   const results = await Promise.all(manifests.map(async (plugin) => {
     const hookFile = srcPathFor(plugin)
+    const available = await checkAvailableAsync(plugin)
     const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
       : undefined
     return {
       id: plugin.id,
@@ -599,11 +644,16 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       agentType: plugin.agentType,
       emits: plugin.emits,
       installed: checkInstalled(plugin),
-      available: await checkAvailableAsync(plugin),
+      available,
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id)
+      removalSteps: buildRemovalSteps(plugin.id),
+      builtin: builtinIds.has(plugin.id),
+      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
+       *  runs outside RedLog and disabling does not stop it. */
+      disabled: (plugin as { disabled?: boolean }).disabled === true,
+      stepsAreOptional: plugin.id === 'mitmproxy'
     }
   }))
   _detectCache = results

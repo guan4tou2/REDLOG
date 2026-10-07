@@ -48,7 +48,11 @@ export function installTimelineBridge(): TimelineBridge {
     distinctAgentTypes: async () => [],
     causalChain: async () => ({ anchorFound: false, events: [], edges: [], truncated: false, unavailable: 0 }),
     isDoNotExport: async () => false,
-    toggleDoNotExport: async () => false
+    toggleDoNotExport: async () => false,
+    getNote: async () => null,
+    setNote: async () => null,
+    annotatedIds: async () => [],
+    attributionStats: async () => ({ attempted: 0, resolved: 0 })
   }
   const fallback = (): unknown => new Proxy({}, {
     get: (_t, prop: string) => prop.startsWith('on')

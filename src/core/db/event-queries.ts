@@ -151,12 +151,6 @@ export const EVIDENCE_SQL = `
   )
 `
 
-/** The subtypes the HTTP history page actually renders. Exported so a caller
- *  asking "does this project have HTTP traffic" cannot drift from what that
- *  page queries and unlock an empty screen — `scanner:connection` is a scanner
- *  row and is NOT one of these. */
-export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
-
 // Ingest now drops RedLog's own plumbing before it is written at all
 // (src/core/capture-plumbing.ts), which is the real fix — a chained row
 // cannot be removed from an export without breaking the chain. This filter
@@ -928,15 +922,6 @@ export function getLootCount(): number {
     "SELECT COALESCE(SUM(json_array_length(data, '$.matches')), 0) as count FROM events WHERE agent_type = 'loot'"
   ).get() as { count: number }
   return row.count
-}
-
-// v0.14.3 §9.5: timestamp of the newest logged-tier row, or null if none.
-// Powers the CaptureHealthCard "last fed …" freshness readout without pulling
-// row bodies — a single SELECT MAX() against events_logged's timestamp index.
-export function getLatestLoggedTs(): number | null {
-  const db = getDB()
-  const row = db.prepare('SELECT MAX(timestamp) as ts FROM events_logged').get() as { ts: number | null }
-  return row.ts ?? null
 }
 
 export interface EventQueryRequest {
