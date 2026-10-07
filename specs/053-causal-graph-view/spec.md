@@ -142,6 +142,11 @@ thing React Flow was being brought in for. The layout module is independent of
 the renderer, so a later full-window view that does need roaming can adopt
 React Flow without touching it.
 
+The page that produced the table is kept in [`evidence/`](evidence/README.md),
+along with the before/after of FR-005a. It is one self-contained HTML file and
+re-measures in about a minute, which is worth remembering the next time a
+dependency wants to do pointer maths in this renderer.
+
 ### Files
 
 | File | Role |
