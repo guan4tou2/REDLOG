@@ -268,11 +268,22 @@ redlog-run() {
   return $exit_code
 }
 
+# What this shell is actually doing, in the words that are true of it.
+#
+# It said "command metadata will be logged" and offered `redlog-run` as the way
+# to get output. Both stopped being true when the zsh adapter started relaying
+# output on its own (spec 052 T020), and a banner that overstates what is
+# recorded is worse than no banner: an operator who believes the output is in
+# the record stops checking.
+#
+# `$1` is what the adapter records without being asked — "commands" for the
+# bash adapter, "commands and their output" for zsh.
 _redlog_announce_shell() {
-  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-    echo "[redlog] shell hook active (WSL: ${WSL_DISTRO_NAME}) — command metadata will be logged to RedLog timeline"
-  else
-    echo "[redlog] shell hook active — command metadata will be logged to RedLog timeline"
-  fi
-  echo "[redlog] tip: prefix a command with 'redlog-run' to stream and capture stdout/stderr"
+  local what="${1:-commands}"
+  local where=""
+  [[ -n "${WSL_DISTRO_NAME:-}" ]] && where=" (WSL: ${WSL_DISTRO_NAME})"
+  echo "[redlog] shell hook active${where} — ${what} will be recorded"
+  # Said at startup because it is the one thing an operator cannot discover by
+  # looking: everything else about this adapter is visible in the timeline.
+  echo "[redlog] redlog status  ·  redlog stop"
 }

@@ -34,7 +34,11 @@ unset _redlog_adapter_dir
 _redlog_class_of() {
   local -a words
   words=(${(z)1})
-  python3 "$_REDLOG_RELAY" classify --home "$(_redlog_home)" -- "${words[@]}" 2>/dev/null
+  # Both: the argv for the program lookup, and the raw line for the shapes the
+  # relay has to decline — a pipeline with a pager in it, a redirection the
+  # operator has already made (FR-029).
+  python3 "$_REDLOG_RELAY" classify --home "$(_redlog_home)" \
+    --command-line "$1" -- "${words[@]}" 2>/dev/null
 }
 
 # --- This terminal's own state (spec 052 US2) ---
@@ -213,9 +217,29 @@ _redlog_preexec() {
     "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"auto-relay\"}"
 }
 
+# FR-009. The commands run either way — that part has always worked, silently,
+# and silence is the bug. An operator whose RedLog crashed two hours ago has
+# been working unrecorded with no way to know.
+#
+# Once, though, and only on the way in. A warning on every prompt is one an
+# operator learns to read past, and then the one that matters is read past too.
+# The flag is a shell variable on purpose: "have I said this in this shell" is
+# not state that should survive a subshell, unlike the stop (FR-022).
+_redlog_warn_unreachable() {
+  if _redlog_is_running; then
+    _REDLOG_WARNED_UNREACHABLE=""
+    return
+  fi
+  [[ -n "${_REDLOG_WARNED_UNREACHABLE:-}" ]] && return
+  _REDLOG_WARNED_UNREACHABLE=1
+  print -u2 -- "[redlog] RedLog is not reachable — commands are running unrecorded until it is back"
+}
+
 _redlog_precmd() {
   local exit_code=$?
   [[ -n "$_REDLOG_LAST_CMD" ]] || return
+
+  _redlog_warn_unreachable
 
   local duration=0
   [[ -n "$_REDLOG_CMD_START" ]] && duration=$(( EPOCHSECONDS - _REDLOG_CMD_START ))
@@ -251,6 +275,10 @@ _redlog_precmd() {
     local disposition="not-captured"
     case "$_REDLOG_CMD_CLASS" in
       native|pty) disposition="interactive" ;;
+      # The operator pointed stdout somewhere else before the command ran, so
+      # no relay was started. Same record as when one ran and saw no bytes
+      # (FR-008), without two processes watching an empty descriptor.
+      redirected) disposition="redirected" ;;
     esac
     extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"auto-relay\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
   fi
@@ -304,4 +332,4 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
 _redlog_install_pty_wrappers
-_redlog_announce_shell
+_redlog_announce_shell "commands and their output"
