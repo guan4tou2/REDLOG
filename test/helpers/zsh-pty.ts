@@ -21,6 +21,11 @@ export interface ZshReport {
   exit_code?: number
   transcript: string
   marker: string
+  /** Wall clock for the shell itself, measured INSIDE the WSL lock.
+   *  A caller timing `await runZsh(...)` from outside would be timing the
+   *  queue as much as the shell, and the one test that asserts a ceiling on
+   *  how long the hook may wait would be measuring this harness instead. */
+  elapsedMs: number
 }
 
 export interface ShellTarget {
@@ -192,8 +197,10 @@ export interface ZshRunOptions {
   /** Lines written into the generated .zshrc before the commands run. */
   rc?: string
   commands: string[]
-  /** Written into <home>/.redlog so the adapter believes RedLog is running. */
-  redlog?: { port: number; token: string }
+  /** Written into <home>/.redlog so the adapter believes RedLog is running.
+   *  `identity` additionally writes `active-identity.json`, which only the
+   *  PTY recorder needs — it pins identity when the session opens. */
+  redlog?: { port: number; token: string; identity?: { engagementId: string; operatorId?: string } }
   timeoutSeconds?: number
 }
 
@@ -220,23 +227,29 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
   // as "no prompt after <command>" thirty seconds later, which looks like a
   // hung adapter and is not.
   const argv = [...target.prefix, 'python3', driver]
-  const run = await withWslLock(target, () => new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+  const run = await withWslLock(target, () => new Promise<
+    { status: number | null; stdout: string; stderr: string; elapsedMs: number }
+  >((resolve) => {
+    const startedAt = Date.now()
     const child = spawn(argv[0], argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     const killer = setTimeout(() => child.kill('SIGKILL'), (opts.timeoutSeconds ?? 20) * 1000 + 10_000)
     child.stdout.on('data', (c) => { stdout += String(c) })
     child.stderr.on('data', (c) => { stderr += String(c) })
-    child.on('close', (status) => { clearTimeout(killer); resolve({ status, stdout, stderr }) })
+    child.on('close', (status) => {
+      clearTimeout(killer)
+      resolve({ status, stdout, stderr, elapsedMs: Date.now() - startedAt })
+    })
     child.stdin.end(job)
   }))
   if (run.status !== 0 || !run.stdout) {
     return {
-      ok: false, steps: [], transcript: run.stderr, marker: '',
+      ok: false, steps: [], transcript: run.stderr, marker: '', elapsedMs: run.elapsedMs,
       error: `driver exited ${run.status}: ${run.stderr.slice(0, 400)}`
     }
   }
-  return JSON.parse(run.stdout) as ZshReport
+  return { ...(JSON.parse(run.stdout) as ZshReport), elapsedMs: run.elapsedMs }
 }
 
 export interface ShellRun {

@@ -75,6 +75,15 @@ class Session:
                 fh.write(str(redlog["port"]))
             with open(os.path.join(d, "api-token"), "w") as fh:
                 fh.write(str(redlog["token"]))
+            # `hooks/redlog-session.py` reads this at session start and
+            # refuses without it — identity is pinned when the PTY recorder
+            # opens, not when an event is sent (spec 022). Only written when
+            # the job asks, so the jobs that do not exercise the recorder see
+            # the same payloads they always did.
+            identity = redlog.get("identity")
+            if identity:
+                with open(os.path.join(d, "active-identity.json"), "w") as fh:
+                    json.dump(identity, fh)
         return home
 
     def start(self):
