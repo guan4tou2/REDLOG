@@ -173,7 +173,24 @@ _redlog_is_external() {
 # The normal preexec/precmd hooks will ALSO fire for the `redlog-run`
 # invocation itself. That's fine — the wrapper's command_end lands after
 # with the structured fields; the plain one just has metadata.
-_REDLOG_MAX_BYTES=102400  # 100 KB per stream
+# 8 MiB per stream, and the number means something different than it used to.
+#
+# 100 KB was chosen for a wrapper used on purpose a few times per engagement.
+# Once every command is relayed, `nmap -A`, `ffuf` and `gobuster` hit that
+# routinely, and a truncated scan is the evidence the operator most wanted.
+# The answer is not a bigger truncation limit: RedLog externalises anything
+# over its inline threshold to the project's body store on receipt, the way it
+# already does for HTTP bodies, so a large body is kept in full and the event
+# carries a reference (research.md T006).
+#
+# What remains here is a MEMORY bound on the relay — two of these are resident
+# while a command runs — so a runaway `yes` is stopped rather than growing
+# until something else fails. When it fires the event says `truncated` and
+# names the bound (FR-004); it is not a silent cut.
+#
+# Overridable so a test can hit the bound without producing 8 MiB, and so an
+# operator who knows what they are running can move it.
+_REDLOG_MAX_BYTES=${REDLOG_MAX_BYTES:-8388608}
 redlog-run() {
   if [[ $# -eq 0 ]]; then
     printf 'redlog-run: expected a command\n' >&2

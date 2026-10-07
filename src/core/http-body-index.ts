@@ -4,8 +4,9 @@ import path from 'path'
 import { getDB, getProjectDir } from './db/index'
 import type { RedLogEvent } from './db/events'
 import { toFtsMatch } from './query/fts-match'
+import { BODY_REF_FIELDS } from './http-body-store'
 
-const REF_FIELDS = ['request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref'] as const
+const REF_FIELDS = BODY_REF_FIELDS
 let index: Database.Database | null = null
 let indexDir: string | null = null
 
@@ -80,10 +81,7 @@ function backfill(projectDir: string): void {
     const rows = source.prepare(`
       SELECT rowid, id, data FROM ${table}
       WHERE rowid > ? AND (
-        json_extract(data, '$.request_body_ref.sha256') IS NOT NULL OR
-        json_extract(data, '$.response_body_ref.sha256') IS NOT NULL OR
-        json_extract(data, '$.ws_body_ref.sha256') IS NOT NULL OR
-        json_extract(data, '$.tcp_body_ref.sha256') IS NOT NULL
+        ${REF_FIELDS.map((f) => `json_extract(data, '$.${f}.sha256') IS NOT NULL`).join(' OR ')}
       ) ORDER BY rowid
     `).all(after) as Array<{ rowid: number; id: string; data: string }>
     for (const row of rows) {
