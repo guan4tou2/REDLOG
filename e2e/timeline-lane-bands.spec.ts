@@ -58,11 +58,25 @@ test.describe.serial('timeline lane bands', () => {
     expect(dots, 'no events rendered in the collapsed bands').toBeGreaterThan(0)
   })
 
-  test('clicking a band expands it into its lanes', async () => {
+  test('clicking a band expands it into its lanes, and the band stays', async () => {
     await page.locator('[data-testid="timeline-band-commands"]').click()
-    // The commands band is now gone (expanded); its shell lane label shows.
-    await expect(page.locator('[data-testid="timeline-band-commands"]')).toHaveCount(0)
-    const text = await page.evaluate(() => document.querySelector('[data-testid="view-root"]')?.textContent ?? '')
-    expect(text.toLowerCase()).toContain('shell')
+    // Expanding adds the lanes under the band; it does not replace the band.
+    // Replacing it meant the grouping the operator navigates by vanished at
+    // the moment it gained children, which read as the category disappearing.
+    await expect(page.locator('[data-testid="timeline-band-commands"]')).toBeVisible()
+    await expect(page.locator('[data-testid="timeline-band-commands"]')).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('[data-testid="timeline-lane-shell"]')).toBeVisible()
+  })
+
+  test('hiding a lane keeps its row, struck through, and clicking it restores', async () => {
+    // The row is the only control that can bring the lane back, so removing it
+    // on hide left the operator with nothing to click.
+    const shell = page.locator('[data-testid="timeline-lane-shell"]')
+    await expect(shell).toHaveAttribute('aria-pressed', 'true')
+    await shell.click()
+    await expect(shell).toBeVisible()
+    await expect(shell).toHaveAttribute('aria-pressed', 'false')
+    await shell.click()
+    await expect(shell).toHaveAttribute('aria-pressed', 'true')
   })
 })
