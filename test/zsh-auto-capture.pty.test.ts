@@ -224,4 +224,54 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end.data.output_disposition).not.toBe('not-captured')
     })
   })
+
+  // T024, research.md D7. `ssh` and friends bring their own TTY, so diverting
+  // the shell's descriptors records nothing worth having — the bytes are drawn
+  // inside a terminal the relay never sees. They get a real PTY recorder, and
+  // RedLog already has one: hooks/redlog-session.py, verified under spec 022,
+  // with bounded output, identity pinned at session start and pause honoured
+  // at receipt. `script(1)` would be a second recorder with different
+  // semantics and no identity pinning.
+  describe('the PTY class', () => {
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: ['ssh -V'],
+        redlog: {
+          port: collector.port,
+          token,
+          // Only the recorder needs this: it pins identity when the session
+          // opens rather than when an event is sent.
+          identity: { engagementId: 'eng-harness', operatorId: 'op-harness' }
+        },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('records an ssh through the session recorder, not through the relay', () => {
+      expect(run.ok, run.error).toBe(true)
+
+      const start = shellEvents(collector.events, 'command_start', 'ssh -V')[0]
+      expect(start, 'no command_start for the ssh').toBeTruthy()
+      expect(start.data.class).toBe('pty')
+
+      // The recorder opened a session of its own, and says who recorded it.
+      const session = collector.events.find((e) => e.data.subtype === 'session_start'
+        && String(e.data.command ?? '').includes('ssh -V'))
+      expect(session, `collector saw: ${JSON.stringify(collector.events.map((e) => e.data.subtype))}`)
+        .toBeTruthy()
+      expect(session!.data.captured_by).toBe('redlog-session')
+      // Its own terminal id, so the session's output can be found from the
+      // session rather than guessed at from timing.
+      expect(session!.data.terminalId).toBeTruthy()
+
+      // The adapter's own row still exists and still says the body is not on
+      // it — which is true: the body is in the session, under that id.
+      const end = shellEvents(collector.events, 'command_end', 'ssh -V')[0]
+      expect(end, 'no command_end for the ssh').toBeTruthy()
+      expect(end.data.output_disposition).toBe('interactive')
+    })
+  })
 })

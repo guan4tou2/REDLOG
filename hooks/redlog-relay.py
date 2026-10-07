@@ -211,6 +211,7 @@ def parse(argv):
         "drain_timeout": "5",
         "source": None,
         "command_line": "",
+        "field": None,
     }
     flags = {
         "--event-out": "event_out",
@@ -226,6 +227,7 @@ def parse(argv):
         "--drain-timeout": "drain_timeout",
         "--source": "source",
         "--command-line": "command_line",
+        "--field": "field",
     }
     i = 0
     while i < len(argv):
@@ -428,6 +430,22 @@ def classify(argv):
     return 0
 
 
+def policy_field(argv):
+    """One list from the class policy, one name per line.
+
+    The adapter installs a wrapper per `pty` program at startup and needs the
+    list to do it. It reads the list from here rather than carrying its own,
+    for the same reason the classifier lives here: one home for the names.
+    """
+    opts = parse(argv)[0]
+    field = opts["field"]
+    values = load_policy().get(field) if field else None
+    if not isinstance(values, list):
+        return 2
+    sys.stdout.write("\n".join(str(v) for v in values))
+    return 0
+
+
 def walk_wrappers(argv, policy):
     i = 0
     while i < len(argv):
@@ -480,7 +498,8 @@ def write_json(path, payload):
 
 
 def main():
-    modes = {"run": run, "pipe": pipe, "finish": finish, "classify": classify}
+    modes = {"run": run, "pipe": pipe, "finish": finish,
+             "classify": classify, "policy": policy_field}
     mode = modes.get(sys.argv[1]) if len(sys.argv) > 1 else None
     if mode is None:
         sys.stderr.write(__doc__)

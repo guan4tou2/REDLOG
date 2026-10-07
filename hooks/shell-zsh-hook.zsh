@@ -120,7 +120,40 @@ _redlog_precmd() {
   return $exit_code
 }
 
+# --- The PTY class (spec 052 T024, research.md D7) ---
+#
+# `ssh`, `socat` and `pwncat-cs` bring their own TTY, so diverting the shell's
+# descriptors records nothing useful — the bytes are drawn inside a terminal
+# the relay never sees. These get a real PTY recorder instead, and the one
+# RedLog already has: `hooks/redlog-session.py`, verified under spec 022, with
+# bounded output, identity pinned at session start and pause honoured at
+# receipt. `script(1)` would be a second recorder with different semantics and
+# no identity pinning.
+#
+# `preexec` cannot do this: zsh gives it no way to replace the command that is
+# about to run. A function per program is the mechanism, which is exactly what
+# research.md D3 rejected for the GENERAL case — it misses builtins, pipelines
+# and anything invoked by path. For a short, explicit list of programs it is
+# the right tool, and the limitation is honest: `sudo ssh` and `/usr/bin/ssh`
+# go to the native path and are recorded as `interactive`.
+_redlog_install_pty_wrappers() {
+  local prog
+  for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --field pty 2>/dev/null)"}; do
+    [[ -n "$prog" ]] || continue
+    # Only wrap what is actually here. A function named `ssh` on a machine
+    # without ssh turns "command not found" into a confusing python error.
+    command -v -- "$prog" >/dev/null 2>&1 || continue
+    functions[$prog]='
+      if _redlog_is_running; then
+        python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
+      else
+        command '"$prog"' "$@"
+      fi'
+  done
+}
+
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
+_redlog_install_pty_wrappers
 _redlog_announce_shell
