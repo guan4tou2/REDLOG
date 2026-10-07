@@ -168,4 +168,84 @@ describe('CausalGraph', () => {
 
     await waitFor(() => expect(screen.getByText('timeline.causalGraph.truncated')).toBeTruthy())
   })
+
+  describe('enlarged', () => {
+    const open = async (): Promise<void> => {
+      stubChain({
+        events: [evt('a'), evt('b'), evt('c')],
+        edges: [{ causeId: 'a', effectId: 'b' }, { causeId: 'b', effectId: 'c' }]
+      })
+      draw()
+      await waitFor(() => expect(screen.getByTestId('causal-graph-enlarge')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('causal-graph-enlarge'))
+      await waitFor(() => expect(screen.getByTestId('causal-graph-dialog')).toBeTruthy())
+    }
+
+    it('draws the same component again at dialog size', async () => {
+      await open()
+      // Both canvases are mounted: the inline one stays behind the dialog.
+      expect(screen.getAllByTestId('causal-node')).toHaveLength(6)
+      expect(screen.getByTestId('causal-graph-dialog').querySelectorAll('[data-testid=causal-node]'))
+        .toHaveLength(3)
+    })
+
+    it('gives each canvas its own arrow marker', async () => {
+      // Two markers sharing an id makes the dialog's arrows resolve to the
+      // inline canvas's marker, which then vanishes with it. Rendered once,
+      // a test would not notice; rendered twice, this is the whole bug.
+      await open()
+      const ids = [...document.querySelectorAll('marker')].map((m) => m.id)
+      expect(new Set(ids).size).toBe(ids.length)
+      for (const svg of document.querySelectorAll('svg')) {
+        const marker = svg.querySelector('marker')
+        const path = svg.querySelector('path[marker-end]')
+        if (!marker || !path) continue
+        expect(path.getAttribute('marker-end')).toBe(`url(#${marker.id})`)
+      }
+    })
+
+    it('repeats the bound in the dialog rather than implying a whole component', async () => {
+      stubChain({
+        events: [evt('a'), evt('b')],
+        edges: [{ causeId: 'a', effectId: 'b' }],
+        truncated: true
+      })
+      draw()
+      await waitFor(() => expect(screen.getByTestId('causal-graph-enlarge')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('causal-graph-enlarge'))
+      await waitFor(() => expect(screen.getByTestId('causal-graph-dialog')).toBeTruthy())
+      expect(screen.getByTestId('causal-graph-dialog').textContent)
+        .toContain('timeline.causalGraph.truncated')
+    })
+
+    it('closes from its own control', async () => {
+      await open()
+      fireEvent.click(screen.getByTestId('causal-graph-dialog-close'))
+      await waitFor(() => expect(screen.queryByTestId('causal-graph-dialog')).toBeNull())
+      // The section underneath is still there.
+      expect(screen.getAllByTestId('causal-node')).toHaveLength(3)
+    })
+
+    it('closes on Escape, through Modal s own contract', async () => {
+      await open()
+      fireEvent.keyDown(window, { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByTestId('causal-graph-dialog')).toBeNull())
+    })
+
+    it('selects from the dialog too', async () => {
+      const onSelect = vi.fn()
+      stubChain({
+        events: [evt('a'), evt('b')],
+        edges: [{ causeId: 'a', effectId: 'b' }]
+      })
+      draw(onSelect)
+      await waitFor(() => expect(screen.getByTestId('causal-graph-enlarge')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('causal-graph-enlarge'))
+      await waitFor(() => expect(screen.getByTestId('causal-graph-dialog')).toBeTruthy())
+      const node = screen.getByTestId('causal-graph-dialog').querySelector('[data-event-id="a"]')!
+      fireEvent.click(node)
+      expect(onSelect).toHaveBeenCalledTimes(1)
+      expect(onSelect.mock.calls[0][0].id).toBe('a')
+    })
+  })
 })
