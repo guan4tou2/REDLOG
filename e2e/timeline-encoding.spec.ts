@@ -61,7 +61,13 @@ test.describe.serial('timeline visual encoding', () => {
     await post('marker', { title: 'info mark', severity: 'info', atTimestamp: now - 40 * 60_000 })
     await post('marker', { title: 'important mark', severity: 'important', atTimestamp: now - 25 * 60_000 })
     await post('marker', { title: 'CRITICAL mark', severity: 'critical', atTimestamp: now - 10 * 60_000 })
-    await post('system', { subtype: 'scope_violation', description: 'out of scope: evil.example' })
+    // Placed in time like the markers above it, and for the same reason: left
+    // at receipt time it shares a 14px cluster bucket with the project's own
+    // genesis rows and renders as a counted node instead of its own dot.
+    // `atTimestamp` is no help — displayTs honours that for markers only — so
+    // this uses `source_timestamp`, which insertEvent validates and writes as
+    // the row's real timestamp (provenance kept in ts_source).
+    await post('system', { subtype: 'scope_violation', description: 'out of scope: evil.example', source_timestamp: now - 15 * 60_000 })
     await page.waitForTimeout(2000)
     await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
     // Zoom out so the whole span is on screen — the track only renders what is

@@ -42,6 +42,28 @@ the real UI, and view navigation. A spec that writes events posts them to the
 running app's own `/api/events` with the token from the temp home, so the path
 under test is the real ingest path.
 
+## Placing a seeded event in time
+
+A seed left at receipt time lands in the same 14-pixel cluster bucket as the
+project's own genesis rows, and the timeline draws the bucket as one counted
+node — `(3 events)` — whose label no longer contains the title the spec is
+looking for. The event is there; no per-event locator can reach it. Three
+specs failed this way on Windows while CI stayed green, because how many rows
+share a bucket depends on the startup event mix and the render density.
+
+Give anything you intend to locate by title its own place in time:
+
+- **markers** — `data.atTimestamp`. Display only: the row keeps its real
+  timestamp, and `displayTs` honours the override for `agent_type: 'marker'`
+  and nothing else.
+- **everything else** — `data.source_timestamp`. `insertEvent` validates it
+  (a finite number, not before 2015, not more than a minute ahead) and writes
+  it as the row's real timestamp, keeping the raw candidate in `ts_source`. A
+  rejected value falls back to receipt time and says so inside the hash.
+
+Two minutes of separation is enough at the usual zooms. `atTimestamp: now` is
+the shape to look for when a per-event locator finds nothing.
+
 ## What does not run where
 
 A green local run is not full coverage. These are skipped by platform:
