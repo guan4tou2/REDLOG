@@ -236,6 +236,26 @@ branch it does not belong to.
   moved onto another session's commit this way and had to be restored from a
   `wip/` tag its owner had the sense to plant.
 
+**The one symptom you can catch at the time: the two counts disagree.** Stage,
+then read `git diff --cached --stat`, then read what `git commit` reports back.
+They are the same numbers unless the index changed in between.
+
+```
+git diff --cached --stat   →  44 insertions / 16 deletions
+git commit                 →  45 / 13          ← someone else staged in the gap
+```
+
+That is the whole tell, and it is the only one available before the fact —
+everything else needs the commit read back afterwards against what you meant to
+write. The gap can be a single edit: the session this happened to made one
+`Edit` call between the two commands.
+
+It verifies the repair too. After the owner rebuilt that commit, the branch's
+net diff against `origin/main` came back to exactly `44 insertions / 16
+deletions`, and the blob hash of the recovered file matched the version that had
+been swapped out. Same two numbers, used the other way round: they say the
+content you got back is the content you meant to commit.
+
 **Every session here commits as the same git identity**, so `git log --author`
 and the blame on a line tell you nothing about which session wrote it. Do not
 attribute a commit from the author field — check the branch it is on, its
