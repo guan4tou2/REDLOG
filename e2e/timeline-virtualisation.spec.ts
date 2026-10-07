@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // v0.11.1: the track renders only the clusters near the viewport.
 //
@@ -36,7 +36,7 @@ test('the track renders only the clusters near the viewport', async () => {
         data: { title: `m${i}`, severity: 'info', atTimestamp: now - (600 - i) * 6000 } }) })
   }
   await page.waitForTimeout(2500)
-  await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1400, 950) })
+  await resizeMainWindow(app, 1400, 950)
   await openView(page, 'timeline')
   await page.waitForTimeout(1500)
   // Zoom in hard so the track is far wider than the window.

@@ -140,7 +140,9 @@ test.describe.serial('timeline geometry + startup gates', () => {
       }
     })
     expect(geom, 'scroll container not found').not.toBeNull()
-    expect(geom!.laneRows, 'expected all 18 lanes populated').toBe(18)
+    // 18 lanes plus the four band headings, which stay put when expanded so the
+    // grouping does not vanish the moment a band gains children.
+    expect(geom!.laneRows, 'expected all 18 lanes under their four bands').toBe(22)
     expect(geom!.scrollHeight, 'lane stack should overflow at this height')
       .toBeGreaterThan(geom!.clientHeight)
 

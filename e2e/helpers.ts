@@ -129,3 +129,33 @@ export async function openSettingsPage(page: Page, id: string): Promise<void> {
   await page.click(`[data-settings-page="${id}"]`)
   await page.waitForSelector(`[data-settings-page="${id}"][aria-current="page"]`, { timeout: 10_000 })
 }
+
+/**
+ * Resize the MAIN window.
+ *
+ * Not `getAllWindows()[0]`. Opening a project creates the HUD overlay as a
+ * second BrowserWindow, and that array's order is not creation order — so
+ * `[0]` is sometimes the overlay. Both halves of that go wrong at once and
+ * neither says so:
+ *
+ *  - the main window never gets resized, so a spec that shrinks it to force
+ *    overflow silently measures an unshrunk window and the height assertion
+ *    fails on a precondition that was never established;
+ *  - the overlay *does* get resized, to a frameless transparent window the
+ *    size of the main one, sitting always-on-top at `screen-saver` level over
+ *    whatever the operator is looking at.
+ *
+ * Pick the window by URL, the way `hud-overlay.spec.ts` already does.
+ */
+export async function resizeMainWindow(
+  app: ElectronApplication,
+  width: number,
+  height: number
+): Promise<void> {
+  await app.evaluate(async ({ BrowserWindow }, size) => {
+    const main = BrowserWindow.getAllWindows()
+      .find((w) => !w.isDestroyed() && !w.webContents.getURL().includes('overlay'))
+    if (!main) throw new Error('main window not found (only the overlay was open)')
+    main.setSize(size.width, size.height)
+  }, { width, height })
+}
