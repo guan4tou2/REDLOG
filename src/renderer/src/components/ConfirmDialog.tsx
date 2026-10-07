@@ -29,6 +29,10 @@ export interface ConfirmOpts {
   message: string
   level?: ConfirmLevel
   confirmLabel?: string
+  /** Names the way out, when "Cancel" is vaguer than the thing it does.
+   *  Leaving a project is the case that asked for it: "Cancel" there could
+   *  equally mean "cancel the recording", which is the opposite. */
+  cancelLabel?: string
   /** Concrete, itemised outcomes. §5.5: name what goes and what stays. */
   consequences?: string[]
   /** `chain` level: the exact string the operator has to type. */
@@ -49,6 +53,12 @@ export function confirm(title: string, message: string, destructive = false): Pr
  *  project name, with the consequences listed. */
 export function confirmChainImpact(opts: Omit<ConfirmOpts, 'level'>): Promise<boolean> {
   return _showConfirm({ ...opts, level: 'chain' })
+}
+
+/** The graded dialog in full, for a caller that picks its own level — see
+ *  lib/leaveProject.ts, where the level follows what is actually open. */
+export function confirmGraded(opts: ConfirmOpts): Promise<boolean> {
+  return _showConfirm(opts)
 }
 
 export function ConfirmDialogContainer(): JSX.Element | null {
@@ -188,7 +198,7 @@ function ConfirmDialogInner({ state, close, t }: {
               smaller one invented here: a dialog is where the two controls are
               compared most closely, and Cancel had no edge at all. */}
           <Button level="secondary" onClick={() => close(false)}>
-            {t('confirm.cancel')}
+            {state.cancelLabel || t('confirm.cancel')}
           </Button>
           <Button
             ref={confirmBtn}
