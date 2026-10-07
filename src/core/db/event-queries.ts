@@ -224,62 +224,70 @@ function decodeHttpFlowCursor(value?: string | null): { startTs: number; flowId:
 /** Page complete HTTP flows, never individual rows. Shared time and target
  * predicates apply to the request start (or earliest surviving flow row when
  * capture began mid-flow); all request/response rows for selected flows return. */
-export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?: string | null }): HttpFlowPage {
-  // Flows are recorded in the logged tier only, so "chained only" leaves
-  // this view nothing by construction (spec 038 FR-012); the panel says so.
-  if (opts.tier === 'chained') return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
+export interface HttpFlowQueryOptions extends EventFilter {
+  limit?: number
+  cursor?: string | null
+  snapshot?: ExportSnapshot
+  http?: { method?: string; statusPrefix?: string; host?: string; text?: string }
+}
+
+export function queryHttpFlowPage(opts: HttpFlowQueryOptions): HttpFlowPage {
+  if (opts.tier === 'chained' || (opts.agentType && opts.agentType !== 'scanner')) return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
   const db = getReadonlyDB()
   const limit = Math.max(1, opts.limit ?? 200)
   const cursor = decodeHttpFlowCursor(opts.cursor)
+  if (opts.cursor && !cursor) throw new Error('Invalid HTTP cursor')
   const where: string[] = []
   const params: unknown[] = []
   if (opts.targetId) { where.push(targetPredicate('target_id')); params.push(opts.targetId) }
   if (opts.since != null) { where.push('start_ts >= ?'); params.push(opts.since) }
   if (opts.before != null) { where.push('start_ts <= ?'); params.push(opts.before) }
   appendTargetPolicy(opts, 'target_id', where, params)
-  if (cursor) {
-    where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))')
-    params.push(cursor.startTs, cursor.startTs, cursor.flowId)
+  if (opts.http?.method) { where.push('method = ?'); params.push(opts.http.method) }
+  if (opts.http?.host) { where.push('host = ? COLLATE NOCASE'); params.push(opts.http.host) }
+  if (opts.http?.statusPrefix) { where.push("CAST(status AS TEXT) LIKE ?"); params.push(opts.http.statusPrefix + '%') }
+  if (opts.http?.text) {
+    where.push('(instr(lower(url), lower(?)) > 0 OR instr(lower(host), lower(?)) > 0 OR instr(lower(content_type), lower(?)) > 0)')
+    params.push(opts.http.text, opts.http.text, opts.http.text)
   }
-  const outerWhere = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  if (cursor) { where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))'); params.push(cursor.startTs, cursor.startTs, cursor.flowId) }
+  const boundary = opts.snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER
   const heads = db.prepare(`
-    WITH flow_heads AS (
-      SELECT json_extract(data, '$.flow_id') AS flow_id,
-             COALESCE(
-               MIN(CASE WHEN subtype = 'http_request_start' THEN timestamp END),
-               MIN(timestamp)
-             ) AS start_ts,
-             COALESCE(
-               MAX(CASE WHEN subtype = 'http_request_start' THEN target_id END),
-               MAX(target_id)
-             ) AS target_id
-        FROM events_logged
-       WHERE agent_type = 'scanner'
-         AND subtype IN ('http_request_start', 'http_response')
-         AND json_extract(data, '$.flow_id') IS NOT NULL
-       GROUP BY json_extract(data, '$.flow_id')
-    )
-    SELECT flow_id, start_ts FROM flow_heads ${outerWhere}
+    WITH records AS (
+      SELECT *, rowid AS source_row, json_extract(data, '$.flow_id') AS flow_id
+      FROM events_logged
+      WHERE agent_type = 'scanner' AND subtype IN ('http_request_start','http_response')
+        AND rowid <= ? AND json_type(data,'$.flow_id') = 'text' AND json_extract(data,'$.flow_id') <> ''
+    ), ranked AS (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY flow_id, subtype ORDER BY
+        CASE WHEN subtype = 'http_request_start' THEN timestamp END ASC,
+        CASE WHEN subtype = 'http_response' THEN timestamp END DESC,
+        CASE WHEN subtype = 'http_request_start' THEN source_row END ASC,
+        source_row DESC) AS rank
+      FROM records
+    ), flow_heads AS (
+      SELECT flow_id,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN timestamp END), MIN(timestamp)) AS start_ts,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN target_id END), MAX(target_id)) AS target_id,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.method') END), MAX(json_extract(data,'$.method')), '') AS method,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.url') END), MAX(json_extract(data,'$.url')), '') AS url,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.host') END), MAX(json_extract(data,'$.host')), '') AS host,
+        MAX(CASE WHEN subtype='http_response' THEN json_extract(data,'$.status') END) AS status,
+        COALESCE(MAX(CASE WHEN subtype='http_response' THEN json_extract(data,'$.content_type') END), '') AS content_type
+      FROM ranked WHERE rank = 1 GROUP BY flow_id
+    ) SELECT flow_id, start_ts FROM flow_heads ${where.length ? 'WHERE '+where.join(' AND ') : ''}
     ORDER BY start_ts DESC, flow_id DESC LIMIT ?
-  `).all(...params, limit + 1) as Array<{ flow_id: string; start_ts: number }>
+  `).all(boundary, ...params, limit + 1) as Array<{ flow_id: string; start_ts: number }>
   const hasMore = heads.length > limit
   const pageHeads = heads.slice(0, limit)
-  if (pageHeads.length === 0) return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
-  const flowIds = pageHeads.map((row) => row.flow_id)
-  const rows = db.prepare(`
-    SELECT *, 'logged' AS tier FROM events_logged
-     WHERE agent_type = 'scanner'
-       AND subtype IN ('http_request_start', 'http_response')
-       AND json_extract(data, '$.flow_id') IN (SELECT value FROM json_each(?))
-     ORDER BY timestamp DESC, rowid DESC
-  `).all(JSON.stringify(flowIds)) as Array<Record<string, unknown>>
+  if (!pageHeads.length) return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
+  const rows = db.prepare(`SELECT *, 'logged' AS tier FROM events_logged
+    WHERE agent_type='scanner' AND subtype IN ('http_request_start','http_response') AND rowid <= ?
+    AND json_extract(data,'$.flow_id') IN (SELECT value FROM json_each(?)) ORDER BY timestamp DESC, rowid DESC
+  `).all(boundary, JSON.stringify(pageHeads.map(row => row.flow_id))) as Array<Record<string, unknown>>
   const last = pageHeads[pageHeads.length - 1]
-  return {
-    items: rows.map(rowToEvent),
-    flowCount: pageHeads.length,
-    hasMore,
-    nextCursor: hasMore ? encodeHttpFlowCursor(last.start_ts, last.flow_id) : null
-  }
+  return { items: rows.map(rowToEvent), flowCount: pageHeads.length, hasMore,
+    nextCursor: hasMore ? encodeHttpFlowCursor(last.start_ts, last.flow_id) : null }
 }
 
 export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
@@ -399,6 +407,7 @@ function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery)
 }
 
 interface TierWhereInput {
+  snapshot?: ExportSnapshot
   query?: PreparedQuery
   filter?: EventFilter
   cursor?: CursorKey | null
@@ -412,6 +421,10 @@ interface TierWhereInput {
 function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { where: string; params: unknown[] } {
   const parts: string[] = []
   const params: unknown[] = []
+  if (input.snapshot) {
+    parts.push('e.rowid <= ?')
+    params.push(tier === 'chained' ? input.snapshot.chainedMaxRowId : input.snapshot.loggedMaxRowId)
+  }
   const q = input.query
   if (q?.match) {
     const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
@@ -491,6 +504,7 @@ function queryTierPage(
 }
 
 export function queryEventsPage(opts: EventFilter & {
+  snapshot?: ExportSnapshot
   limit?: number
   cursor?: string | null
   /** Drop RedLog's own plumbing rows (`HOUSEKEEPING_SQL`), as the Timeline does. */
@@ -499,7 +513,7 @@ export function queryEventsPage(opts: EventFilter & {
   const db = getReadonlyDB()
   const limit = opts.limit ?? 200
   const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
-  const input: TierWhereInput = { filter: opts, cursor, excludeHousekeeping: opts.excludeHousekeeping }
+  const input: TierWhereInput = { filter: opts, cursor, excludeHousekeeping: opts.excludeHousekeeping, snapshot: opts.snapshot }
   return queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
 }
 
@@ -925,6 +939,7 @@ export function getLootCount(): number {
 }
 
 export interface EventQueryRequest {
+  snapshot?: ExportSnapshot
   parsed: ParsedQuery
   filter?: EventFilter
   limit?: number
@@ -1018,7 +1033,7 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
   const cursor: CursorKey | null = request.cursor ? decodeCursor(request.cursor) : null
   const query = prepareQuery(db, request.parsed)
   const input: TierWhereInput = {
-    query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping
+    query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping, snapshot: request.snapshot
   }
   const page = queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
   return { ...page, ...(query.toolSession ? { toolSession: query.toolSession } : {}) }

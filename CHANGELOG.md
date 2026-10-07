@@ -5,6 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Export carried the time window, not the filter.** The HTTP view built its
+  export subset from the oldest and newest *loaded* row's timestamps, so method,
+  status and text predicates were dropped on the way out: unrelated traffic
+  inside that window went into the artifact, and matches past the loaded page
+  did not. Export now carries the investigation's actual conditions and
+  re-reads them against the recorded events — every page, not the one on
+  screen — and names those conditions in the preview before anything is
+  written. Controls that only change presentation (sorting, collapsing, lane
+  visibility, highlighting) are no longer mistaken for a selection, and a
+  bundle that carries less than the whole chain says so in its manifest.
+
 - **The causal links were being computed and then thrown away.** The backend
   has returned a finding's whole causal component — events *and* the edges
   between them — since v0.6.89.5. The renderer kept the ids for dimming the

@@ -1,0 +1,8 @@
+# Research decisions
+
+1. Event selection: reuse executeEventQuery/queryEventsPage with snapshot rowid fences and trusted scope loaded in main; do not accept renderer-supplied scope policy. Empty typed query is an ordinary filtered read; invalid recognized syntax is an error. Alternatives rejected: loaded IDs or timestamp envelope.
+2. HTTP: filter grouped request/response exchanges before page limits, by shared target/time/scope/tier and method/status-prefix/host/text. Time uses request start or earliest surviving row. Repeated records select earliest request and latest response, with rowid tie-breaks. Missing/empty/non-string flow IDs are not exchanges. Export preserves recorded rows of selected exchanges; HAR reports response-only exchange without inventing a request record.
+3. Bundle: implement projection mode, not silent relaxation. File digests/counts/IDs and untransformed row hashes remain checked; transformed rows are declared. Source chain boundary is metadata, never a claim that omitted links were verified. Complete unchanged bundles retain strict contiguous-chain verification. Reject unknown evidence kinds.
+4. Environment: local macOS ARM, no running Windows VM, stale VirtualBox executable wrapper, no native wsl/pwsh. Implement portable installation checks and record actual executed platforms; do not claim Windows/WSL verification based on resource checks.
+
+Question-free Clarify: FR007 permits unsupported formats to refuse, but US3 explicitly requires filtered bundle semantics; implement the projection contract. No user preference is needed. Existing domain docs remain canonical and receive explicit updates.

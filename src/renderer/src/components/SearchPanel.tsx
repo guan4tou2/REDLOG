@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
+import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
@@ -123,6 +124,12 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   queryRef.current = query
   const { t } = useI18n()
   const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
+
+  const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: {
+    kind: 'selection', projection: 'events', filter: { ...toEventFilter(sharedFilter), ...(effectiveTypeFilter ? { agentType: effectiveTypeFilter } : {}) }, query
+  } }), [sharedFilter, effectiveTypeFilter, query])
+  useContributeExport({ label: t('export.current'), request: exportRequest,
+    ...(query.trim() ? {} : { disabledReason: t('export.enterQuery') }) })
 
   const filtered = results
   const listNav = useListKeyboard({
