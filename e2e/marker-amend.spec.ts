@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 // Design turn 8b, end to end. Two things here can only be caught by the real
 // bundle: the temporal-dead-zone crash that a memo referencing a const declared
@@ -73,7 +73,7 @@ test.describe.serial('amending a marker', () => {
     await post('shell', { subtype: 'command_end', command: 'id', exit_code: 0 })
     await post('marker', { title: 'original title', severity: 'info', notes: 'first pass', atTimestamp: Date.now() - 10 * 60_000 })
     await page.waitForTimeout(1500)
-    await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
+    await resizeMainWindow(app, 1500, 1000)
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '0.25'))
     await page.reload()
     await page.waitForTimeout(2500)
