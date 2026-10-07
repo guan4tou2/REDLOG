@@ -17,6 +17,10 @@ const required = [
   'hooks/shell-hook.ps1',
   'hooks/shell-common.sh',
   'hooks/redlog-session.py',
+  // The output relay every POSIX adapter calls. Missing, `redlog-run` falls
+  // through to running the command unrecorded — a degradation quiet enough
+  // that only a packaged build would show it.
+  'hooks/redlog-relay.py',
   // Copied into every evidence bundle; an export refuses to run without it.
   'tools/redlog-verify.py',
   'plugins/starter-pack/plugin.json',

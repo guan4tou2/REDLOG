@@ -171,6 +171,56 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
   return JSON.parse(run.stdout) as ZshReport
 }
 
+export interface ShellRun {
+  status: number | null
+  stdout: string
+  stderr: string
+  /** When the first byte of stdout arrived, or null if none did. Streaming is
+   *  part of the relay's contract — the operator watches a long command run —
+   *  and only a timestamp can tell "streamed" from "flushed at exit". */
+  firstStdoutAt: number | null
+  startedAt: number
+  endedAt: number
+}
+
+/** Run one bash script on the target shell. No pty: this is for the pieces
+ *  that do not depend on an interactive shell, where a pty only adds echo and
+ *  line discipline to reason about. Temp files the script makes belong on the
+ *  shell's own filesystem — see the note in zsh-pty.py about the 9p mount.
+ *
+ *  The script travels as a FILE, never as `bash -c <string>`. Between Node's
+ *  Windows argument quoting and `wsl.exe` re-parsing the command line, a
+ *  script passed that way arrives subtly altered: `$?` and `"$var"` came
+ *  through emptied, which reads as a shell that returns 0 for everything.
+ *  `runZsh` hands its job over stdin for the same reason. */
+export async function runInShell(
+  target: ShellTarget,
+  script: string,
+  opts: { timeoutMs?: number; env?: Record<string, string> } = {}
+): Promise<ShellRun> {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-script-')), 'run.sh')
+  fs.writeFileSync(file, script.replace(/\r\n/g, '\n'), 'utf8')
+  const argv = [...target.prefix, 'bash', target.toShellPath(file)]
+  const startedAt = Date.now()
+  return new Promise<ShellRun>((resolve) => {
+    const child = spawn(argv[0], argv.slice(1), {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...opts.env }
+    })
+    let stdout = ''
+    let stderr = ''
+    let firstStdoutAt: number | null = null
+    const killer = setTimeout(() => child.kill('SIGKILL'), opts.timeoutMs ?? 30_000)
+    child.stdout.on('data', (c) => { firstStdoutAt ??= Date.now(); stdout += String(c) })
+    child.stderr.on('data', (c) => { stderr += String(c) })
+    child.on('close', (status) => {
+      clearTimeout(killer)
+      fs.rmSync(path.dirname(file), { recursive: true, force: true })
+      resolve({ status, stdout, stderr, firstStdoutAt, startedAt, endedAt: Date.now() })
+    })
+  })
+}
+
 /** The repository's own hook files, as the shell sees them. */
 export function hookPath(target: ShellTarget, file: string): string {
   return target.toShellPath(path.join(__dirname, '..', '..', 'hooks', file))
