@@ -73,8 +73,12 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
 
   describe('a stop that stays stopped', () => {
     let run: Awaited<ReturnType<typeof runZsh>>
+    // One collector for the whole file, and `status` above also stops once —
+    // so this block reads only what arrived during its own shell.
+    let baseline = 0
 
     beforeAll(async () => {
+      baseline = collector.events.length
       run = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: [
@@ -119,6 +123,34 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
       // is the operator deciding that what comes next is not to be recorded.
       // A gap nobody can account for is worth less than no gap at all.
       expect(commandsNamed(collector.events, 'redlog stop').length).toBeGreaterThan(0)
+    })
+
+    // T035, FR-012. "No events for twenty minutes" reads very differently as
+    // "the operator stopped recording" than as "the operator was reading", and
+    // a reader a year later cannot tell them apart from silence. RedLog
+    // already brackets its GLOBAL pause with a pair of rows the timeline draws
+    // as a band; a terminal that stopped on its own needs its own pair,
+    // because reusing the global one would draw a band over an engagement that
+    // never stopped recording.
+    it('brackets the gap with a pair of rows, so it is a gap and not silence', () => {
+      const mine = collector.events.slice(baseline)
+      const stopped = mine.filter((e) => e.data.subtype === 'capture_stopped')
+      const resumed = mine.filter((e) => e.data.subtype === 'capture_resumed')
+      expect(stopped, 'nothing marks where recording stopped').toHaveLength(1)
+      expect(resumed, 'nothing marks where it started again').toHaveLength(1)
+
+      // Attributable: which terminal, and why. Silence has neither.
+      expect(stopped[0].data.reason).toBe('operator')
+      expect(stopped[0].data.session_id).toBeTruthy()
+      expect(resumed[0].data.session_id).toBe(stopped[0].data.session_id)
+
+      // And the gap is between them — the two commands that were not recorded
+      // fall inside, which is what makes the bracket mean something.
+      expect(stopped[0].receivedAt).toBeLessThanOrEqual(resumed[0].receivedAt)
+      const between = mine.filter((e) =>
+        e.receivedAt > stopped[0].receivedAt && e.receivedAt < resumed[0].receivedAt
+        && String(e.data.command ?? '').startsWith('echo after-stop'))
+      expect(between, 'something was recorded inside the gap').toHaveLength(0)
     })
   })
 

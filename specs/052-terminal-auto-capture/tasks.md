@@ -155,8 +155,13 @@ recorded, status again, start, a command that is.
       → edits land in an overlay at `~/.redlog/command-class.json`, never in the shipped `hooks/command-class.json`: an install must be able to replace that file without taking the operator's choices with it.
       → `list` prints the two classes that are lists and says what the third one is. `relayed` is not a list — it is what a command is when it is in no other one — and printing "everything else" as a list would be a lie the moment the operator ran something new.
       → **the overlay broke `classify` and the agreement test caught it**: the edit that made the policy overlay-aware left `classify` reading an `opts` it never bound, so every call raised `NameError` and the adapter — which suppresses the relay's stderr — silently classified every command as `native`. Capture would have stopped entirely, with no error anywhere. Python has no typecheck; this test is the one.
-- [ ] T034 [P] [US2] Surface mode and the class policy in `src/renderer/src/components/settings/HooksPanel.tsx` so the card, Settings and the shell all read one policy
-- [ ] T035 [US2] Write the failing pty test then implement the pause gap: a stop is visible in the record as an attributable gap, not as silence (FR-012)
+- [x] T034 [P] [US2] Surface mode and the class policy in `src/renderer/src/components/settings/HooksPanel.tsx` so the card, Settings and the shell all read one policy
+      → **read-only, on purpose.** The lists are edited from the terminal, which is where the operator is when they find out something went through a relay; a second editor in Settings would be a second place for the policy to change and a second thing to keep in step. What Settings owes is the answer to "what will my shell do", from the file the shell reads.
+      → not cached: `redlog mode manual` happens in a terminal RedLog knows nothing about, and a panel showing a stale `auto` is worse than one showing nothing. An older preload simply leaves the note out rather than throwing — a renderer can outlive its bridge, and that needs a full reload rather than HMR (CLAUDE.md).
+      → the merge is a third place the policy is reasoned about, so `test/command-class.test.ts` now also compares `mergeClassPolicy` against the shell's own `policy --action list` after two real edits.
+- [x] T035 [US2] Write the failing pty test then implement the pause gap: a stop is visible in the record as an attributable gap, not as silence (FR-012)
+      → `shell.capture_stopped` / `capture_resumed`, carrying the terminal's session id and the reason. **Not** `system.recording_paused`: RedLog already brackets its GLOBAL pause with that pair and the timeline draws a band from it, so reusing it would paint a paused band across an engagement that never stopped recording.
+      → the test asserts the bracket means something — the two unrecorded commands fall between the rows — rather than just that two rows exist.
 
 ---
 

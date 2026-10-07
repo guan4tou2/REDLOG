@@ -31,6 +31,46 @@ const WRAPPERS: Record<string, Set<string>> = Object.fromEntries(
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
+/** What `redlog class add|remove` wrote. Lives under `~/.redlog/`, never in
+ *  the shipped `hooks/command-class.json`, so an install can replace the
+ *  defaults without taking the operator's choices with it. */
+export interface ClassOverlay {
+  native?: string[]
+  pty?: string[]
+  relayed?: string[]
+  /** Commands taken out of whichever default class shipped them. */
+  removed?: string[]
+}
+
+export interface ClassPolicy { native: string[]; pty: string[] }
+
+/** The shipped defaults with the operator's overlay on top.
+ *
+ *  Mirrored in `hooks/redlog-relay.py`, because the shell cannot call this and
+ *  RedLog will not spawn python3 to draw a settings panel. The two are held
+ *  together by `test/command-class.test.ts`, which classifies the same lines
+ *  on both sides and compares — the arrangement that has already caught two
+ *  real divergences. */
+export function mergeClassPolicy(overlay: ClassOverlay | null | undefined): ClassPolicy {
+  const dropped = new Set(overlay?.removed ?? [])
+  const out: ClassPolicy = { native: [], pty: [] }
+  for (const name of ['native', 'pty'] as const) {
+    const base = (policy[name] as string[]).filter((c) => !dropped.has(c))
+    for (const command of overlay?.[name] ?? []) if (!base.includes(command)) base.push(command)
+    out[name] = base
+  }
+  // A command the operator moved INTO one class must leave the others.
+  for (const name of ['native', 'pty'] as const) {
+    const moved = new Set(
+      (['native', 'pty', 'relayed'] as const)
+        .filter((other) => other !== name)
+        .flatMap((other) => overlay?.[other] ?? [])
+    )
+    out[name] = out[name].filter((c) => !moved.has(c) || (overlay?.[name] ?? []).includes(c))
+  }
+  return out
+}
+
 function basename(token: string): string {
   const cut = token.lastIndexOf('/')
   return cut === -1 ? token : token.slice(cut + 1)
