@@ -31,7 +31,6 @@ import { redact, getRules } from './redaction'
 import { extractBodyToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
-import { clearSessionTargets, sessionTargetFor } from './session-targets'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -182,17 +181,8 @@ export function ingest(input: IngestInput): IngestResult {
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
   if (plan.targetId && !targetId) targetId = plan.targetId
-  // #219: a session's own target outranks the global one, so switching the
-  // current target for one pane does not re-attribute what another records.
-  // Explicit and enriched targets still win; see session-targets.ts.
-  if (!targetId && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)) {
-    const sessionTarget = sessionTargetFor(data)
-    if (sessionTarget) {
-      targetId = sessionTarget
-      data.target_source = 'session'
-    } else if (activeTarget) {
-      targetId = activeTarget
-    }
+  if (!targetId && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType) && activeTarget) {
+    targetId = activeTarget
   }
 
   // 4. Redaction spans (docs/redaction-design.md layer 2). Detect only; the
@@ -505,5 +495,4 @@ export function _resetIngest(): void {
   alertRuntimeRef = null
   castProbe = null
   activeTarget = null
-  clearSessionTargets()
 }

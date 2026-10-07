@@ -30,7 +30,6 @@ Available        it could run here
 Configured       installed, or switched on
 Running          its process or watcher is alive
 Verified         at least one real event from it reached the evidence store
-Active / Idle    verified, and currently feeding / currently quiet
 Failed           it tried and could not
 Removed          uninstalled, with nothing left behind
 ```
@@ -38,6 +37,39 @@ Removed          uninstalled, with nothing left behind
 `Configured` is not `Running`, and `Running` is not `Verified`. Spec 038/039
 established that for the shell hook and HTTP capture; it holds for every
 source. A proxy that is listening has proved nothing about capture.
+
+### Quiet is not a state
+
+This list used to end `Active / Idle — verified, and currently feeding /
+currently quiet`, and the capture model carried that pair until `d6e60e9`.
+It was wrong in a way worth recording, because the mistake is easy to make
+again.
+
+What `Idle` measured was the **operator**, not the capture. A terminal with
+nobody typing in it, a clipboard nobody copied to, a file watcher over a
+directory nobody touched — all "idle", none of them a fact about whether
+RedLog can record. Worse, it was windowed: ten minutes of not typing moved a
+source from green to amber and back with nothing changed, and an indicator
+that changes on its own teaches an operator to ignore the one signal that must
+never be ignored.
+
+So a source's state answers one question — **can it record** — and the rest is
+reported as data beside it:
+
+- `lastEventAt` per source, shown as an age. A quiet source is a quiet source;
+  the reader decides what that means.
+- A source that was running and stopped delivering is detected by a **liveness
+  signal**, never by silence. Silence cannot tell a broken producer from an
+  operator at lunch. Today only plugin producers have one (a
+  `producer_heartbeat` every 15s); a core source that acquires one may use it
+  the same way.
+- "Nothing has ever been recorded" is a property of the project, not a fault of
+  a source. It is reported (`hasRecorded`), not graded.
+
+A capture source that is set up and has recorded nothing is in exactly the
+state a proxy with no traffic is in: working, and waiting for the operator.
+Grading that amber is the same lie as a green dot over a dead hook, in the
+other direction.
 
 ## Checklist
 
@@ -68,7 +100,9 @@ Any change that adds or alters a capture source answers all of these.
 - [ ] At least one real event, from the real dependency, is shown reaching the
       evidence store. Not a mock; the actual binary at the actual version.
 - [ ] "No events yet" and "this source failed" are distinguishable in the UI.
-- [ ] The last event time is observable, so silence can be aged.
+- [ ] The last event time is observable, so silence can be aged **by the
+      reader**. The source does not grade its own silence, and the age does not
+      carry a colour — see "Quiet is not a state".
 
 ### Coverage
 

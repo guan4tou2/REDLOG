@@ -50,8 +50,11 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
   core: boolean
   sources: readonly string[]
 }> = [
-  // What was typed, by a person or an agent.
-  { id: 'commands', core: true, sources: ['shell-hook', 'agent-tailer', 'builtin-terminal'] },
+  // What was typed, by a person or an agent. `terminal` is one capability
+  // fed by two terminals — RedLog's own panes and, once the shell hook is
+  // installed, the operator's own shell — because they are the same capture in
+  // two places, and which one a command came from is on the command.
+  { id: 'commands', core: true, sources: ['terminal', 'agent-tailer'] },
   // What was sent over the wire. mitmproxy carries HTTP and DNS on one addon,
   // which is why one source stands for the whole capability.
   { id: 'http', core: true, sources: ['mitmproxy'] },
@@ -76,11 +79,11 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
 // installed does not show that it was not. The onboarding block is hidden the
 // moment ANY source goes active (`level === 'recording'`), so an operator on a
 // pure web engagement is never nagged about a shell hook they do not want.
-const ONBOARDING_SOURCES = ['shell-hook', 'builtin-terminal']
+const ONBOARDING_SOURCES = ['terminal']
 
 export interface ReadinessSource {
   id: string
-  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
+  state: 'ready' | 'unset' | 'off' | 'error'
   installed?: boolean
   enabled?: boolean
   lastEventAt: number | null
@@ -91,8 +94,12 @@ export interface ReadinessHealth {
 }
 
 export type StepStatus =
-  | 'active' // produced an event within the active window — it is recording
-  | 'wired' // set up (hook installed, switch on, or has fed before) but quiet
+  // Has recorded something — this capture path has proved itself. It does not
+  // expire: it used to mean "fed within ten minutes", so an operator who
+  // stopped typing for a quarter of an hour had the whole onboarding block
+  // reappear underneath a timeline full of their own commands.
+  | 'active'
+  | 'wired' // set up (hook installed, switch on) but has never delivered
   | 'todo' // nothing done yet, or explicitly switched off — offer the setup action
 
 export interface ReadinessStep {
@@ -104,52 +111,42 @@ export interface ReadinessStep {
   core: boolean
 }
 
-export type ReadinessLevel =
-  | 'dark' // nothing is set up at all — the timeline will stay empty
-  | 'setup' // something is set up but nothing is actively feeding
-  | 'recording' // at least one source, in any group, is live
-
 export interface ReadinessGroup {
   id: CaptureGroupId
   steps: ReadinessStep[]
-  /** render at the first level, not under "additional sources" */
+  /** one of the two core capture capabilities */
   core: boolean
-  /** how many sources in this group are feeding the timeline right now */
-  activeCount: number
 }
 
 export interface CaptureReadiness {
-  level: ReadinessLevel
   steps: ReadinessStep[]
-  /** the same steps, grouped by what they capture — what the UI renders */
+  /** the same steps, grouped by what they capture */
   groups: ReadinessGroup[]
-  /** the single onboarding action to surface — only ever the shell hook or
-   *  the built-in terminal — or null once onboarding is complete */
+  /** the single action to surface, or null once a command has been recorded */
   nextStep: ReadinessStep | null
-  /** the built-in terminal or the shell hook is recording */
-  onboardingComplete: boolean
-  /** how many sources are currently active, across every group */
-  activeCount: number
 }
 
-// A source counts as "wired" when the operator has done the setup for it, even
-// if no event has landed yet: a hook installed on disk, a config switch turned
-// on, or (for passive sources with no switch, like the built-in terminal) at
-// least one event ever recorded. A source that is explicitly switched OFF is
-// NOT wired — for onboarding that is precisely the thing to nudge back on, so
-// it ranks as `todo`, not `wired`.
+// A source counts as "wired" when the operator has done the setup for it but
+// nothing has come through yet: a hook installed on disk, a config switch
+// turned on, a source that needs neither. One event, ever, promotes it to
+// `active` — onboarding asks whether anything the operator does is being
+// written down, and a recorded event is the answer, permanently.
+//
+// A source that is explicitly switched OFF is NOT wired — for onboarding that
+// is precisely the thing to nudge back on, so it ranks as `todo`.
 function statusFor(source: ReadinessSource): StepStatus {
-  if (source.state === 'active') return 'active'
+  if (source.lastEventAt !== null && source.state !== 'off') return 'active'
   if (source.state === 'off') return 'todo'
   // A failing source is set up — reinstalling it is not the fix — so it ranks
   // `wired`, never `active`. Onboarding stops nudging; Capture Health shows
   // the failure and its reason.
   if (source.state === 'error') return 'wired'
-  const wired =
-    source.installed === true ||
-    source.enabled === true ||
-    source.lastEventAt !== null
-  return wired ? 'wired' : 'todo'
+  // `ready` alone is not enough here. Several sources are resident and able to
+  // record without the operator having done anything — the screen grabber, the
+  // launched browser's console — and counting those as set up would mean a
+  // fresh install never reads as dark, which is the one state the onboarding
+  // copy exists for.
+  return source.installed === true || source.enabled === true ? 'wired' : 'todo'
 }
 
 export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadiness {
@@ -166,22 +163,11 @@ export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadine
     })
   )
 
-  const groups: ReadinessGroup[] = CAPTURE_GROUPS.map((g) => {
-    const own = steps.filter((s) => s.group === g.id)
-    return {
-      id: g.id,
-      steps: own,
-      core: g.core,
-      activeCount: own.filter((s) => s.status === 'active').length
-    }
-  })
-
-  const activeCount = steps.filter((s) => s.status === 'active').length
-
-  let level: ReadinessLevel
-  if (activeCount > 0) level = 'recording'
-  else if (steps.every((s) => s.status === 'todo')) level = 'dark'
-  else level = 'setup'
+  const groups: ReadinessGroup[] = CAPTURE_GROUPS.map((g) => ({
+    id: g.id,
+    steps: steps.filter((s) => s.group === g.id),
+    core: g.core
+  }))
 
   // Chosen by state, not by position — the list is no longer a sequence, so
   // "first in the array" would be an arbitrary answer dressed up as a
@@ -190,19 +176,16 @@ export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadine
   // A `wired` source is one setup step ahead of a `todo` one: it needs an
   // event, not an installation. Guiding to it first is the shortest route out
   // of dark, which is the only thing this model is for. Ties inside a status
-  // fall back to ONBOARDING_SOURCES order: a stable answer, and the shell
-  // hook first because it is the terminal the operator already works in.
+  // fall back to ONBOARDING_SOURCES order, which is a stable answer — though
+  // since the two terminals became one row there is only ever one candidate.
   const candidates = steps.filter((s) => ONBOARDING_SOURCES.includes(s.id))
-  const onboardingComplete = candidates.some((s) => s.status === 'active')
-  let nextStep: ReadinessStep | null = null
-  if (!onboardingComplete) {
-    nextStep =
-      candidates.find((s) => s.status === 'wired') ??
-      candidates.find((s) => s.status === 'todo') ??
-      null
-  }
+  const nextStep = candidates.some((s) => s.status === 'active')
+    ? null
+    : candidates.find((s) => s.status === 'wired')
+      ?? candidates.find((s) => s.status === 'todo')
+      ?? null
 
-  return { level, steps, groups, nextStep, activeCount, onboardingComplete }
+  return { steps, groups, nextStep }
 }
 
 

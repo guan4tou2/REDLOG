@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
-import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
@@ -13,7 +12,7 @@ export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, loggedCount, lootCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
+  const { eventCount, loggedCount, scopeViolations, scopeConfigured, scopeUnknown } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
@@ -54,8 +53,8 @@ export default function StatusBar(): JSX.Element {
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
 
-    // Capture health polls — surfaces the "recording indicator says ON but no
-    // source is producing events" case (P1b from the v0.6.85 audit). Dashboard
+    // Capture health polls — surfaces the "recording indicator says ON but
+    // capture is broken" case (P1b from the v0.6.85 audit). Dashboard
     // has its own richer CaptureHealthCard; the StatusBar dot is the always-
     // visible indicator so operators on the Timeline view still see a change
     // from healthy → partial → dark.
@@ -198,7 +197,9 @@ export default function StatusBar(): JSX.Element {
       {issues.length > 0 && <Sep />}
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
-        // Recording ON + capture partial → amber (some sources active, some idle).
+        // Recording ON + capture partial → amber (a source is failing, or a
+        // producer the operator is running has stopped delivering; quiet
+        // sources have not meant anything since the state model lost `idle`).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
         const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
         const dotColor = !recording
@@ -290,59 +291,24 @@ export default function StatusBar(): JSX.Element {
         )}
       </div>
 
-      <Sep />
-
-      <div className="flex items-center gap-1.5">
-        <Gem size={13} strokeWidth={1.5} aria-hidden className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'} />
-        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'}>
-          {t('statusBar.loot', { count: lootCount })}
-        </span>
-      </div>
+      {/* No loot count here. The Sidebar's 戰利品 item already carries it as a
+       *  badge, next to the page it opens; a second copy on the status bar was
+       *  the same number twice, and the one place it could not be clicked. */}
 
       <div className="ml-auto flex items-center gap-3">
-        {/* Chained · logged split. Chained (audit-tier) reads
-         *  brighter — that's the count anchors + verifier care about.
-         *  Logged renders one tier dimmer (redlog-text-dim against the chained
-         *  count's redlog-text-dim) to signal "footprint, not evidence".
-         *  Both tiers clear 4.5:1 on the bar's surface — these are numbers
-         *  an auditor reads, so neither may sink into decoration. They used
-         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero.
-         *  Title tooltip explains the two-tier story for auditors
-         *  hovering to figure out what the second number is.
-         *
-         *  A read-out, not a control: it used to toggle the Timeline's
-         *  auditor view, which did nothing on any other page. The tier is
-         *  now the FilterBar's "Chained only" chip, which every view applies
-         *  (spec 038).
+        {/* One number: how much this project has recorded. The chained ·
+         *  logged split used to be spelled out here, and it asked the operator
+         *  to hold an audit concept they have no decision to make about —
+         *  which tier a row landed in is the verifier's question, not theirs.
+         *  The split is still available where it is actually acted on: the
+         *  FilterBar's "Chained only" chip (spec 038) and the Dashboard.
          */}
-        {loggedCount > 0 ? (
-          <span
-            data-testid="statusbar-tier-count"
-            className="text-redlog-text-dim tabular-nums"
-            title={t('statusBar.tierCountTitle', {
-              chained: eventCount.toLocaleString(),
-              logged: loggedCount.toLocaleString()
-            })}
-          >
-            {/* §5.7: the tooltip must not be the only place this is said, so
-                the split is spelled out for a screen reader too. */}
-            <span aria-hidden>
-              {t('statusBar.events', { count: eventCount })}
-              <span className="text-redlog-text-faint mx-1">·</span>
-              <span className="text-redlog-text-dim">{loggedCount.toLocaleString()}</span>
-            </span>
-            <span className="sr-only">
-              {t('statusBar.tierCountLabel', {
-                chained: eventCount.toLocaleString(),
-                logged: loggedCount.toLocaleString()
-              })}
-            </span>
-          </span>
-        ) : (
-          <span className="text-redlog-text-dim tabular-nums">
-            {t('statusBar.events', { count: eventCount })}
-          </span>
-        )}
+        <span
+          data-testid="statusbar-event-count"
+          className="text-redlog-text-dim tabular-nums"
+        >
+          {t('statusBar.events', { count: eventCount + loggedCount })}
+        </span>
         <button
           onClick={() => window.redlog.overlay.toggle()}
           className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}

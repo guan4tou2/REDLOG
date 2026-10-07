@@ -29,7 +29,7 @@ test('folds request/response pairs into single exchanges', async () => {
     body: JSON.stringify({ agent_type, data }) })
 
   // A shell command with no captured output (external shell)
-  await post('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.5', exit_code: 0, duration_sec: 12, source: 'shell-hook' })
+  await post('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.5', exit_code: 0, duration_sec: 12 })
   // An HTTP exchange with a response body
   await post('scanner', { subtype: 'http_request_start', flow_id: 'f1', method: 'GET', url: 'https://t.example/api/users', params: { query: { page: '1' } } })
   await post('scanner', { subtype: 'http_response', flow_id: 'f1', method: 'GET', url: 'https://t.example/api/users', status: 200, content_length: 42, duration_ms: 87, response_preview: '{"users":[{"id":1,"name":"admin"}]}' })

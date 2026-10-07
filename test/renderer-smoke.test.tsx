@@ -206,12 +206,11 @@ function installBridge(): void {
       health: async () => ({
         verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),
         sources: [
-          { id: 'shell-hook', installed: true, lastEventAt: Date.now(), state: 'active' },
-          { id: 'claude-code', installed: true, lastEventAt: null, state: 'idle' },
-          { id: 'mitmproxy', lastEventAt: null, state: 'idle' },
-          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' },
+          { id: 'terminal', installed: true, lastEventAt: Date.now(), state: 'ready' },
+          { id: 'claude-code', installed: true, lastEventAt: null, state: 'ready' },
+          { id: 'mitmproxy', lastEventAt: null, state: 'ready' },
           // E3 (#49): an informational plugin producer — display only, read-only.
-          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'active' }
+          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'ready' }
         ]
       })
     },
@@ -390,8 +389,9 @@ describe('renderer views render without throwing', () => {
     expect(tags.length).toBeGreaterThan(0)
   })
 
-  // #47: the artifact-rotation eviction budgets live in the "Packs, screenshots & retention"
-  // Settings tab. Switching to it must surface the controls.
+  // #47: the artifact-rotation eviction budgets must be reachable from the
+  // sidebar. Spec 049 moved them off the capture page and under Scope and
+  // evidence — retention is a deletion policy, not a capture source.
   it('StatusBar says its clock runs from the project\'s creation, not this session', async () => {
     renderView(<StatusBar />)
     const clock = await screen.findByTestId('statusbar-uptime')
@@ -403,14 +403,14 @@ describe('renderer views render without throwing', () => {
     const box = await screen.findByPlaceholderText('Search settings…')
     fireEvent.change(box, { target: { value: 'loot detection' } })
     const results = await screen.findByTestId('settings-search-results')
-    fireEvent.click(within(results).getByText('Loot detection'))
-    // The Packs, screenshots & retention page is open: its Loot detection hint is on screen.
+    fireEvent.click(within(results).getAllByText('Loot detection')[0])
+    // The Loot detection page is open: its hint is on screen.
     expect(await screen.findByText(/Rules that are off are not recorded as loot/)).toBeTruthy()
   })
 
-  it('Settings exposes the artifact-rotation budgets under "Packs, screenshots & retention"', async () => {
+  it('Settings exposes the artifact-rotation budgets under "Retention and cleanup"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('Packs, screenshots & retention')
+    const tab = await screen.findByText('Retention and cleanup')
     fireEvent.click(tab)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
@@ -420,8 +420,16 @@ describe('renderer views render without throwing', () => {
   // capture", the browser's launch failure, the scope card and the
   // broken-chain issue all left the operator to find the page themselves.
   it('a link to a Settings page opens that page', async () => {
-    renderView(<Settings request={{ page: 'captureControl' }} />)
+    renderView(<Settings request={{ page: 'retention' }} />)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
+  })
+
+  // Spec 049 FR-010: `captureControl` kept its id through the restructure, so
+  // every saved deep link into it — the screenshots empty state, onboarding,
+  // the capture wizard — still lands on capture sources rather than nowhere.
+  it('the capture-sources deep link still resolves after the restructure', async () => {
+    renderView(<Settings request={{ page: 'captureControl' }} />)
+    expect(await screen.findByText('Pack: Host monitors')).toBeTruthy()
   })
 
   it('an issue that names a Settings page opens it', async () => {

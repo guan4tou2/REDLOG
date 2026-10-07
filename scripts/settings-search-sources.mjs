@@ -9,12 +9,15 @@ export const PAGE_SOURCES = {
     { file: 'WslPanel.tsx' },
     { file: 'settings/AgentsPanel.tsx', after: 'export function HookWatchPathsPanel' }
   ],
-  agents: [{ file: 'settings/AgentsPanel.tsx', before: 'export function HookWatchPathsPanel' }],
+  // Spec 049: the AI agents page folded into Capture sources — one writer for
+  // `packs.aiAgents`, so one place its strings are indexed from.
   captureControl: [
     { file: 'settings/CaptureControlPage.tsx' },
-    { file: 'settings/LootRulesGroup.tsx' },
+    { file: 'settings/AgentsPanel.tsx', before: 'export function HookWatchPathsPanel' },
     { file: 'settings/ExternalCaptureGroup.tsx' }
   ],
+  loot: [{ file: 'settings/LootRulesGroup.tsx' }],
+  retention: [{ file: 'settings/RetentionPage.tsx' }],
   browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }],
   scope: [{ file: 'settings/ScopePage.tsx' }],
   network: [{ file: 'settings/NetworkPage.tsx' }],
