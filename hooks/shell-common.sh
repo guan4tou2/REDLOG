@@ -78,6 +78,14 @@ _redlog_new_command_id() {
   printf '%s-%s-%s' "$stamp" "$$" "${RANDOM:-0}"
 }
 
+# Where the active project's identity lives. Paths into the RedLog directory
+# belong here rather than in an adapter: `shell-adapter-boundaries.test.ts`
+# holds that line, and it is the reason every POSIX adapter emits the same
+# contract instead of each one knowing its own layout.
+_redlog_identity_file() {
+  printf '%s/active-identity.json' "${_REDLOG_DIR:-$HOME/.redlog}"
+}
+
 _redlog_is_running() {
   [[ -n "${_REDLOG_DIR:-}" ]] || { _REDLOG_DIR=$(_redlog_resolve_dir) || return 1; export _REDLOG_DIR; }
   [[ -f "$_REDLOG_DIR/api-port" ]] && [[ -f "$_REDLOG_DIR/api-token" ]]
@@ -98,14 +106,32 @@ _redlog_send_event() {
 
   local payload
   payload=$(python3 -c "
-import json, sys, os, pathlib
+import json, sys, os, pathlib, time
 d = {
     'agent_type': 'shell',
     'data': {
         'subtype': sys.argv[1],
         'command': sys.argv[2],
         'shell': '${SHELL##*/}',
-        'pid': $$
+        'pid': $$,
+        # WHEN, not when someone next looked.
+        #
+        # A POST that fails spools the payload and RedLog replays it on the
+        # next project open — so without this, a command run at 02:00 with
+        # RedLog closed arrived claiming 09:00, the moment the operator opened
+        # the project. A record whose times are the times someone read it is
+        # not a record of the engagement (Domain Invariant #8).
+        #
+        # insertEvent validates the field and rejects anything before 2015 or
+        # more than a minute ahead, with the rejection hashed into the row, so
+        # a wrong unit is refused rather than silently believed.
+        #
+        # Nothing shell-special in these comments. The whole block is a
+        # double-quoted shell string, so a backtick pair is command
+        # substitution and a double quote ends the string: quoting a function
+        # name the prose way ran it, and quoting the resulting error message
+        # truncated the payload builder so that NO event was sent at all.
+        'source_timestamp': int(time.time() * 1000)
     }
 }
 if os.environ.get('REDLOG_TERMINAL') == '1':
@@ -268,11 +294,22 @@ redlog-run() {
   return $exit_code
 }
 
+# What this shell is actually doing, in the words that are true of it.
+#
+# It said "command metadata will be logged" and offered `redlog-run` as the way
+# to get output. Both stopped being true when the zsh adapter started relaying
+# output on its own (spec 052 T020), and a banner that overstates what is
+# recorded is worse than no banner: an operator who believes the output is in
+# the record stops checking.
+#
+# `$1` is what the adapter records without being asked — "commands" for the
+# bash adapter, "commands and their output" for zsh.
 _redlog_announce_shell() {
-  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-    echo "[redlog] shell hook active (WSL: ${WSL_DISTRO_NAME}) — command metadata will be logged to RedLog timeline"
-  else
-    echo "[redlog] shell hook active — command metadata will be logged to RedLog timeline"
-  fi
-  echo "[redlog] tip: prefix a command with 'redlog-run' to stream and capture stdout/stderr"
+  local what="${1:-commands}"
+  local where=""
+  [[ -n "${WSL_DISTRO_NAME:-}" ]] && where=" (WSL: ${WSL_DISTRO_NAME})"
+  echo "[redlog] shell hook active${where} — ${what} will be recorded"
+  # Said at startup because it is the one thing an operator cannot discover by
+  # looking: everything else about this adapter is visible in the timeline.
+  echo "[redlog] redlog status  ·  redlog stop"
 }

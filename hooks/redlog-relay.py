@@ -39,6 +39,7 @@ import json
 import os
 import re
 import select
+import shlex
 import subprocess
 import sys
 import time
@@ -428,22 +429,10 @@ def classify(argv):
     # including `nc`.
     opts, command = parse(argv)
     policy = load_policy(terminal_home(opts))
-    i = walk_wrappers(command, policy)
-    program = basename(command[i] if i < len(command) else "")
-    if program == "":
-        # Not a command. `native` and not `relayed`, so a bare Enter does not
-        # route the prompt itself through a relay.
-        result = "native"
-    elif program in policy["pty"]:
-        result = "pty"
-    elif program in policy["native"]:
-        result = "native"
-    elif program in policy["repl"]:
-        rest = command[i + 1:]
-        given = any(a in policy["replScriptFlags"] or not a.startswith("-") for a in rest)
-        result = "relayed" if given else "native"
-    else:
-        result = "relayed"
+    line = opts["command_line"]
+    result = classify_line(line, policy) if line else None
+    if result is None:
+        result = classify_argv(command, policy)
     sys.stdout.write(result)
     return 0
 
@@ -540,7 +529,11 @@ def apply_terminal_action(state, action, opts):
                 out["recording"] = False
                 out["stoppedReason"] = "operator"
     elif action == "project":
-        if (opts["engagement"] or "") != state.get("engagementId"):
+        # No `--engagement` means "whatever RedLog has open now", which is the
+        # question the adapter is actually asking at each prompt. Defaulting to
+        # the empty string instead would read as a switch every time.
+        current = opts["engagement"] or read_identity(opts)[0]
+        if current != state.get("engagementId"):
             out["recording"] = False
             out["stoppedReason"] = "project-switched"
     return out
@@ -686,6 +679,107 @@ def read_overlay(opts):
     except (OSError, ValueError):
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def classify_argv(command, policy):
+    i = walk_wrappers(command, policy)
+    program = basename(command[i] if i < len(command) else "")
+    if program == "":
+        # Not a command. `native` and not `relayed`, so a bare Enter does not
+        # route the prompt itself through a relay.
+        return "native"
+    if program in policy["pty"]:
+        return "pty"
+    if program in policy["native"]:
+        return "native"
+    if program in policy["repl"]:
+        rest = command[i + 1:]
+        given = any(a in policy["replScriptFlags"] or not a.startswith("-") for a in rest)
+        return "relayed" if given else "native"
+    return "relayed"
+
+
+def classify_line(line, policy):
+    """The shapes the relay has to decline, decided from the whole line.
+
+    FR-029. The relay holds the shell's descriptors for the duration of the
+    command, so what matters is not only what the first word is:
+
+      `cat log | less`   classified on `cat` this is relayed, and then the
+                         pager's stdout is a pipe instead of a terminal — it
+                         stops being a pager. Any native or pty stage anywhere
+                         in a pipeline stands the whole line down.
+      `nmap | tee f`     is NOT a hazard and is worth capturing: the last
+                         stage still writes to the terminal, which is exactly
+                         what the relay is holding.
+      `nmap -oN f > out` the operator has already pointed stdout somewhere
+                         else, so there is nothing for the relay to hold.
+                         Standing down saves starting two processes to watch
+                         an empty descriptor; the record says `redirected`
+                         either way (FR-008).
+
+    Returns None when the line says nothing special and the argv path decides.
+    """
+    if looks_redirected(line):
+        return "redirected"
+    stages = split_pipeline(line)
+    if len(stages) < 2:
+        return None
+    for stage in stages:
+        try:
+            words = shlex.split(stage)
+        except ValueError:
+            # Unbalanced quotes: zsh would not have run this as we read it, so
+            # the safe answer is to hold nothing.
+            return "native"
+        if classify_argv(words, policy) in ("native", "pty"):
+            return "native"
+    return "relayed"
+
+
+def split_pipeline(line):
+    """Split on `|` outside quotes. `||` is not a pipeline."""
+    stages = []
+    current = []
+    quote = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"':
+                current.append(ch)
+                i += 1
+                if i < len(line):
+                    current.append(line[i])
+                i += 1
+                continue
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "\\":
+            current.append(ch)
+            i += 1
+            if i < len(line):
+                current.append(line[i])
+            i += 1
+            continue
+        elif ch == "|":
+            if line[i + 1:i + 2] == "|":
+                # `a || b` is two commands, not a pipeline, and neither half
+                # has the other's stdout.
+                current.append(ch)
+                current.append("|")
+                i += 2
+                continue
+            stages.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    stages.append("".join(current))
+    return [s.strip() for s in stages if s.strip()]
 
 
 def walk_wrappers(argv, policy):
