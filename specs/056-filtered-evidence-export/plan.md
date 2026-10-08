@@ -1,6 +1,6 @@
 # Plan: complete filtered evidence export
 
-Branch: feat/055-filtered-evidence-export · 2026-09-28 · [Spec](spec.md)
+Branch: feat/056-filtered-evidence-export · 2026-09-28 · [Spec](spec.md)
 
 ## Summary
 Carry declarative investigation predicates through existing ExportPlan; resolve over SQLite before pagination, snapshot identities, execute frozen selection. HTTP pages and export call the same flow query. Bundles explicitly distinguish a complete source chain from a projection.

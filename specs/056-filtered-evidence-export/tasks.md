@@ -1,7 +1,7 @@
 # Tasks: filtered evidence export
 
 ## Setup and foundations
-- [x] T001 Record canonical selection/projection decisions in specs/055-filtered-evidence-export/{plan,research,data-model}.md and contracts/selection.md.
+- [x] T001 Record canonical selection/projection decisions in specs/056-filtered-evidence-export/{plan,research,data-model}.md and contracts/selection.md.
 - [ ] T002 Add failing selection contract regressions in test/export-plan-ipc.test.ts and test/http-flow-page.test.ts.
 
 ## US1 — complete investigation selection
@@ -25,7 +25,7 @@ Independent test: noncontiguous export verifies as projection; tampering fails.
 
 ## Cross-cutting completion
 - [ ] T013 Verify current/whole selection, error/zero/locale/compact flows in e2e/filtered-export.spec.ts.
-- [ ] T014 Update docs/domain/SPEC-export-event-selection.md and record all gates/Converge in specs/055-filtered-evidence-export/verification.md.
+- [ ] T014 Update docs/domain/SPEC-export-event-selection.md and record all gates/Converge in specs/056-filtered-evidence-export/verification.md.
 - [ ] T015 Correct installation acceptance docs and add explicit installed-package validation under e2e/ and scripts/; record actual platform results in docs/PACKAGED-SMOKE.md.
 
 Dependencies: T001→T002→US1→US2→US3→T013/T014. T015 environment inventory can run independently; no concurrent edits to shared export files. Incremental implementation with RED/GREEN per contract. No partial story is labelled complete.

@@ -145,7 +145,7 @@ describe('the Timeline on the shared filter', () => {
     await screen.findByTestId('timeline-outside-filter')
   })
 
-  // Until spec 055 the slice export carried a bare time range, so an active
+  // Until spec 056 the slice export carried a bare time range, so an active
   // filter had to be disowned in the label. It now contributes the filter
   // itself, and the label no longer has to apologise for the request.
   it('carries the active filter into its time-range export', async () => {
