@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
-import type { ExportCounts, ExportSnapshot } from './export-plan'
+import type { ExportCounts, ExportSnapshot, NormalizedExportRequest } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead, chainHeadHash } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
@@ -27,6 +27,7 @@ export interface EvidenceBundle {
 }
 
 interface ManifestPayload {
+  evidence: { kind: 'complete-chain' | 'projection'; transformedEventIds: string[]; sourceChain: { hash: string; eventCount: number } | null }
   bundleVersion: number
   createdAt: string
   hostname: string
@@ -43,7 +44,7 @@ interface ManifestPayload {
   sanitizedOutOfScope: number
   personalDropped: number
   doNotExportDropped: number
-  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts; request?: NormalizedExportRequest }
   /** Row counts per tier. `chained` matches chainHead.eventCount and is the
    *  count the OTS anchor covers. `logged` is the events_logged row count. */
   tiers: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
@@ -102,7 +103,7 @@ export interface ExportBundleOpts {
   /** Exact event selection approved by ExportPlan. When present, later policy
    * changes cannot silently widen or narrow the bundle. */
   includeEventIds?: ReadonlySet<string>
-  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts; request?: NormalizedExportRequest }
   /** Files the operator left out, by bundle-relative path (#222). */
   excludeAttachments?: ReadonlySet<string>
   /** The approved preview's attachment rows, recorded in the manifest so a
@@ -247,10 +248,12 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const fd = fs.openSync(eventsPath, 'w')
   const snap = opts.snapshot
   const chainedBound = snap ? ' WHERE rowid <= ?' : ''
+  let chainedRowCount = 0
+  const transformedEventIds: string[] = []
   const rowIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-            monotonic_ns, ntp_offset_ms
+            monotonic_ns, ntp_offset_ms, signature
      FROM events${chainedBound} ORDER BY created_at ASC, rowid ASC`
   ).iterate(...(snap ? [snap.chainedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   // Four-layer redaction, layer 4: when an event has a sanitized replacement
@@ -305,7 +308,11 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         }
       } catch { /* leave row as-is */ }
     }
-    if (data) row.data = JSON.stringify(data)
+    if (data) {
+      const delivered = JSON.stringify(data)
+      if (delivered !== row.data) transformedEventIds.push(row.id as string)
+      row.data = delivered
+    }
     // Collect surviving body-store refs so http-bodies/ can be scope-filtered.
     try {
       const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
@@ -321,6 +328,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       }
     } catch { /* parse already failed above; skip */ }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
+    chainedRowCount++
   }
   fs.closeSync(fd)
   files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
@@ -378,7 +386,11 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         }
       } catch { /* leave row as-is */ }
     }
-    if (data) row.data = JSON.stringify(data)
+    if (data) {
+      const delivered = JSON.stringify(data)
+      if (delivered !== row.data) transformedEventIds.push(row.id as string)
+      row.data = delivered
+    }
     // Collect surviving body-store refs from logged tier too.
     try {
       const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
@@ -623,6 +635,14 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       'The verifier below walks `events.jsonl` only; the logged tier is present',
       'for completeness but is not part of the audit-verified chain.',
       '',
+      '`manifest.evidence` declares complete-chain versus projection, and lists',
+      'the transformed IDs. A projection omits records or transforms delivery',
+      'fields; its original hashes are retained, not recomputed into an invented',
+      'chain. The verifier checks file digests and unchanged source rows — it',
+      'cannot verify the source bytes of a transformed row, nor prove the',
+      'original chain was complete from a subset. A whole-session cast is not',
+      'trimmed by an event filter and may span other targets.',
+      '',
       '`events.jsonl` is the chain in full: every chained row is written, in',
       'order, because the verifier rejects any gap in `prev_hash`. Engagements',
       'recorded before v0.17.2 may therefore contain a handful of rows that are',
@@ -683,7 +703,12 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   const lastAnchor = listAnchors(1)[0] ?? null
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
+  // A bundle is a projection when it carries less than the whole chain, or
+  // anything in it was transformed.  A filtered selection is the third way
+  // that happens, and the one the manifest could not say before (spec 056).
+  const projection = transformedEventIds.length > 0 || chainedRowCount !== (head?.eventCount ?? 0) || loggedRowCount !== loggedDigest.count || (opts.exportPlan?.request?.subset.kind != null && opts.exportPlan.request.subset.kind !== 'all')
   const manifest: ManifestPayload = {
+    evidence: { kind: projection ? 'projection' : 'complete-chain', transformedEventIds, sourceChain: head ? { hash: head.hash, eventCount: head.eventCount } : null },
     // Current evidence-bundle schema identifier.
     bundleVersion: 3,
     createdAt: new Date().toISOString(),
@@ -723,7 +748,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     tiers: {
       // Planned exports describe the approved snapshot. Direct exports use
       // the live head, including the digest event emitted above.
-      chained: head?.eventCount ?? 0,
+      chained: chainedRowCount,
       logged: loggedRowCount,
       // §7.5: the anchored snapshot of the logged tier taken above. Surfaced
       // here so a consumer reading manifest.json sees the count + hash without

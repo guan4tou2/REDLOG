@@ -145,13 +145,20 @@ describe('the Timeline on the shared filter', () => {
     await screen.findByTestId('timeline-outside-filter')
   })
 
-  it('labels its time-range export as unfiltered while a filter hides events', async () => {
+  // Until spec 056 the slice export carried a bare time range, so an active
+  // filter had to be disowned in the label. It now contributes the filter
+  // itself, and the label no longer has to apologise for the request.
+  it('carries the active filter into its time-range export', async () => {
     b.queryPage.mockResolvedValue(page([makeEvent('e1', T0)]))
     mount()
     await waitFor(() => expect(getViewExport()?.label).toBe('Visible time range'))
     act(() => { filterApi.setAgentType('dns') })
-    await waitFor(() => expect(getViewExport()?.label).toBe('Visible time range, filter not applied'))
-    expect(getViewExport()?.count).toBeUndefined()
+    await waitFor(() => {
+      const subset = getViewExport()?.request.subset
+      expect(subset?.kind).toBe('selection')
+      expect(subset?.kind === 'selection' && subset.filter.agentType).toBe('dns')
+    })
+    expect(getViewExport()?.label).toBe('Visible time range')
   })
 
   it('shows loading until the first page, then marks the total as pending', async () => {

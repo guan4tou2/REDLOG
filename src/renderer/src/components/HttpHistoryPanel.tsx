@@ -64,7 +64,7 @@ function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
     if (!flowMap.has(fid)) flowMap.set(fid, { request: null, response: null })
     const entry = flowMap.get(fid)!
     if (sub === 'http_request_start') entry.request = evt
-    else entry.response = evt
+    else if (!entry.response) entry.response = evt
   }
   return [...flowMap.entries()].map(([flowId, { request, response }]) => {
     const req = request?.data
@@ -141,6 +141,17 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     }).catch(() => { setDetailLoading(false) })
   }, [detailEvent?.id])
 
+  // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
+  // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
+  // every keystroke — even in `flows` view where the tree/activity aren't shown —
+  // is wasted work on thousands of rows. The input stays bound to `filterText`
+  // for responsiveness; the heavy derivation waits on the debounced value.
+  const [filterTextDebounced, setFilterTextDebounced] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setFilterTextDebounced(filterText), 150)
+    return () => clearTimeout(id)
+  }, [filterText])
+
   const loadSeqRef = useRef(0)
   const nextCursorRef = useRef<string | null>(null)
   const loadFlows = useCallback(async (append = false) => {
@@ -170,6 +181,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         // Only reached when the chip is absent or already this type — the
         // guard at the top of loadFlows returns before here otherwise.
         agentType: HTTP_FLOW_AGENT_TYPE,
+        http: { ...(methodFilter ? { method: methodFilter } : {}), ...(statusFilter ? { statusPrefix: statusFilter } : {}), ...(hostFilter ? { host: hostFilter } : {}), text: filterTextDebounced },
         limit: 500,
         ...(append && nextCursorRef.current ? { cursor: nextCursorRef.current } : {})
       })
@@ -185,7 +197,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, methodFilter, statusFilter, hostFilter, filterTextDebounced])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
@@ -240,33 +252,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       .map(([h]) => h)
   }, [flows])
 
-  // Debounce the filter text: `filtered` (a sort over every loaded flow)
-  // derives from it, so recomputing on every keystroke is wasted work on
-  // thousands of rows. The input stays bound to `filterText` for
-  // responsiveness; the heavy derivation waits on the debounced value.
-  const [filterTextDebounced, setFilterTextDebounced] = useState('')
-  useEffect(() => {
-    const id = setTimeout(() => setFilterTextDebounced(filterText), 150)
-    return () => clearTimeout(id)
-  }, [filterText])
-
   const filtered = useMemo(() => {
     let list = flows
-    if (filterTextDebounced) {
-      const q = filterTextDebounced.toLowerCase()
-      list = list.filter(f =>
-        f.url.toLowerCase().includes(q) ||
-        f.host.toLowerCase().includes(q) ||
-        f.contentType.toLowerCase().includes(q)
-      )
-    }
-    if (methodFilter) list = list.filter(f => f.method === methodFilter)
-    if (statusFilter) {
-      list = list.filter(f => f.status !== null && String(f.status).startsWith(statusFilter))
-    }
-    if (hostFilter) {
-      list = list.filter(f => f.host === hostFilter)
-    }
     list = [...list].sort((a, b) => {
       const va = a[sortCol] ?? 0
       const vb = b[sortCol] ?? 0
@@ -340,31 +327,12 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
 
-  const harExportRequest = useMemo<ExportRequest | null>(() => {
-    if (filtered.length === 0) return null
-    const timestamps = filtered.map((flow) => flow.timestamp)
-    return {
-      format: 'har',
-      subset: {
-        kind: 'time-range',
-        since: Math.min(...timestamps),
-        before: Math.max(...timestamps) + 1,
-        ...(hostFilter ? { targetId: hostFilter } : {})
-      }
-    }
-  }, [filtered, hostFilter])
-
-  useContributeExport(
-    filtered.length > 0
-      ? {
-          label: t('httpHistory.exportHar'),
-          request: {
-            ...(harExportRequest ?? { format: 'har', subset: { kind: 'all' } })
-          },
-          count: filtered.length
-        }
-      : null
-  )
+  const harExportRequest = useMemo<ExportRequest>(() => ({
+    format: 'har',
+    subset: { kind: 'selection', projection: 'http', filter: toEventFilter(sharedFilter),
+      http: { ...(methodFilter ? { method: methodFilter } : {}), ...(statusFilter ? { statusPrefix: statusFilter } : {}), ...(hostFilter ? { host: hostFilter } : {}), text: filterText } }
+  }), [sharedFilter, methodFilter, statusFilter, hostFilter, filterText])
+  useContributeExport({ label: t('httpHistory.exportHar'), request: harExportRequest })
 
   if (loading) {
     return (

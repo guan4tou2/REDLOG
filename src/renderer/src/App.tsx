@@ -40,6 +40,7 @@ import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { onRunInTerminal } from './lib/terminalRunner'
 import { closeProjectAfterSaves } from './lib/pendingSaves'
+import { confirmLeaveProject } from './lib/leaveProject'
 import { addArtifactsWithFeedback, addDroppedWithFeedback } from './lib/addArtifacts'
 import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
 import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
@@ -250,7 +251,13 @@ export default function App(): JSX.Element {
           <button
             className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            data-testid="titlebar-leave-project"
             onClick={async () => {
+              // Asked before anything is written or stopped: the dialog has to
+              // be cancellable without having already flushed settings to a
+              // project the operator is staying in. See lib/leaveProject.ts
+              // for what closing actually costs.
+              if (!(await confirmLeaveProject(t, { projectName: project.name }))) return
               // Pending settings go to THIS project before it closes (#223).
               // Closing first let the flush arrive with no project open, where
               // it was refused and nothing said so. A failed save keeps the
