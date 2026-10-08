@@ -87,6 +87,20 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     await openTestProject(page, 'terminal-enrollment')
     await page.waitForTimeout(2000)
     await resizeMainWindow(app, 1500, 1000)
+
+    // The card re-reads capture health on a 5s interval in the renderer, and
+    // Electron throttles timers in a window it considers hidden. Under xvfb,
+    // a hundred specs into a suite run, this window is not reliably the
+    // foreground one — so the interval stretches and an assertion that waits
+    // 20s for the card to catch up fails on the host's idea of visibility
+    // rather than on anything the product did. It passed locally and failed
+    // twice in CI on the same commit, which is the signature of exactly that.
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.setBackgroundThrottling(false)
+        w.showInactive()
+      }
+    })
   })
 
   test.afterAll(async () => { if (app) await app.close() })
