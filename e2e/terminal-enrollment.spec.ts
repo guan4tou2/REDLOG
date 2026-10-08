@@ -87,20 +87,6 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     await openTestProject(page, 'terminal-enrollment')
     await page.waitForTimeout(2000)
     await resizeMainWindow(app, 1500, 1000)
-
-    // The card re-reads capture health on a 5s interval in the renderer, and
-    // Electron throttles timers in a window it considers hidden. Under xvfb,
-    // a hundred specs into a suite run, this window is not reliably the
-    // foreground one — so the interval stretches and an assertion that waits
-    // 20s for the card to catch up fails on the host's idea of visibility
-    // rather than on anything the product did. It passed locally and failed
-    // twice in CI on the same commit, which is the signature of exactly that.
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const w of BrowserWindow.getAllWindows()) {
-        w.webContents.setBackgroundThrottling(false)
-        w.showInactive()
-      }
-    })
   })
 
   test.afterAll(async () => { if (app) await app.close() })
@@ -170,9 +156,18 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     // and this test is about one field: `source`.
     await postCommand('auto-relay', 'echo from-my-own-terminal')
     // The payload, before the text. `postCommand` has already proved the row
-    // is in the record, so if this is still null the card is reading
-    // something the query did not find — and the assertion should say which
-    // value it got rather than quoting a sentence back.
+    // is in the record; this proves main computed it; the text assertion
+    // below then proves the card was told.
+    //
+    // That third step is the one that failed in CI, and splitting the three
+    // apart is how it was found. The card does not poll — it re-reads health
+    // once per batch of new events — and main's 750ms cache could hand that
+    // one read a value computed just before the event landed. The card then
+    // stayed wrong until the next event, which in this journey never comes.
+    // Fixed in capture-health.ts (the cache is cleared on every publish) and
+    // pinned by a unit test there; it passed on a quiet machine and failed on
+    // a busy runner because whether something else had filled the cache in
+    // the previous 750ms is a property of the load, not of the code.
     await expect.poll(async () => page.evaluate(async () => {
       const health = await (window as unknown as {
         redlog: { capture: { health: () => Promise<{ sources: Array<Record<string, unknown>> } | null> } }
