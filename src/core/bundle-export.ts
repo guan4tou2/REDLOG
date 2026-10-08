@@ -705,7 +705,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
 
   // A bundle is a projection when it carries less than the whole chain, or
   // anything in it was transformed.  A filtered selection is the third way
-  // that happens, and the one the manifest could not say before (spec 055).
+  // that happens, and the one the manifest could not say before (spec 056).
   const projection = transformedEventIds.length > 0 || chainedRowCount !== (head?.eventCount ?? 0) || loggedRowCount !== loggedDigest.count || (opts.exportPlan?.request?.subset.kind != null && opts.exportPlan.request.subset.kind !== 'all')
   const manifest: ManifestPayload = {
     evidence: { kind: projection ? 'projection' : 'complete-chain', transformedEventIds, sourceChain: head ? { hash: head.hash, eventCount: head.eventCount } : null },

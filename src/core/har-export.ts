@@ -133,7 +133,7 @@ export function exportHar(opts?: {
   /** The plan's approved events. A selection's predicates (method, status,
    *  text) cannot be expressed as since/before/targetId, so without this the
    *  HAR would carry every flow in the snapshot — which is the widening
-   *  spec 055 exists to stop. */
+   *  spec 056 exists to stop. */
   includeEventIds?: ReadonlySet<string>
 }): string {
   const rOpts: RedactExportOpts = { scope: opts?.scope, doNotExportIds: opts?.doNotExportIds }

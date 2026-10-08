@@ -40,7 +40,7 @@ function install(p: ResolvedExportPlan): void {
 
 const openJson = (): void => {
   fireEvent.click(screen.getByRole('button', { name: /Export/i }))
-  // By role: the selection-format `<select>` (spec 055) also carries JSON and
+  // By role: the selection-format `<select>` (spec 056) also carries JSON and
   // NDJSON as `<option>`s, and a bare text match now finds those too.
   fireEvent.click(screen.getByRole('button', { name: /JSON/i }))
 }
