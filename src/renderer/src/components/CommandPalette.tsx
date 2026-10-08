@@ -15,6 +15,7 @@ import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
 import { addArtifactsWithFeedback } from '../lib/addArtifacts'
 import { flushPendingSaves } from '../lib/pendingSaves'
+import { confirmLeaveProject } from '../lib/leaveProject'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
@@ -99,10 +100,22 @@ export interface CommandPaletteProps {
 // Switching project from the palette has the same obligations as closing one
 // from the title bar (#223): write pending settings to THIS project first,
 // and say so when the switch cannot happen instead of reloading regardless.
-async function switchProject(id: string, t: (k: string, v?: Record<string, string | number>) => string): Promise<void> {
+//
+// And the same question first. Opening another project closes this one through
+// the same `stopProject()` — the panes go with it — so a switch that is one
+// keystroke away in a fuzzy list is the entry point that most needed asking,
+// not the one that could skip it.
+async function switchProject(
+  target: { id: string; name: string },
+  t: (k: string, v?: Record<string, string | number>) => string
+): Promise<void> {
+  const current = await window.redlog.project.active().catch(() => null)
+  // No active project means nothing is being stopped; the picker's own flow
+  // does not ask either.
+  if (current && !(await confirmLeaveProject(t, { projectName: current.name, to: target.name }))) return
   if (!(await flushPendingSaves())) { toast(t('app.closeSaveFailed'), 'error'); return }
   try {
-    const opened = await window.redlog.project.open(id)
+    const opened = await window.redlog.project.open(target.id)
     if (!opened) { toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') }); return }
     window.location.reload()
   } catch (err) {
@@ -222,7 +235,7 @@ export function CommandPalette({
       out.push({
         id: `project:${p.id}`, section: 'project', icon: FolderOpen,
         label: p.name, hint: formatTime(p.lastOpened),
-        run: () => { void switchProject(p.id, t) }
+        run: () => { void switchProject({ id: p.id, name: p.name }, t) }
       })
     }
 

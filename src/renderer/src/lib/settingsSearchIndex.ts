@@ -6,6 +6,10 @@ import type { SettingsPage } from '../components/Settings'
 
 export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   hooks: [
+    'settings.terminalMode',
+    'settings.terminalClassNative',
+    'settings.terminalClassPty',
+    'settings.terminalClassEditedFromShell',
     'settings.hookInstallFailed',
     'settings.hookFailedWhy',
     'settings.hooksBuiltin',
@@ -198,12 +202,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.ipProvidersHint'
   ],
   integrity: [
-    'settings.anchored',
-    'settings.anchorFailed',
-    'settings.anchorFailedWhy',
-    'settings.integrityNoAnchors',
-    'settings.integrityNoAnchorsWhy',
-    'issues.chainBroken',
     'settings.integrity',
     'settings.integrityHint',
     'settings.integrityAnchoring',
@@ -220,6 +218,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.integrityFullAnchorMismatch',
     'settings.integrityFullNoAnchor',
     'settings.integrityFullClockAnomalies',
+    'settings.integrityNoAnchors',
     'settings.integrityEvents'
   ],
   plugins: [

@@ -18,7 +18,7 @@ interface ExportSnapshot {
 }
 
 type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
-type ExportSubset = { kind: 'all' } | { kind: 'time-range'; since: number; before: number; targetId?: string }
+type ExportSubset = import('../../core/export-plan').ExportSubset
 interface ExportRequest {
   format: ExportFormat
   subset?: ExportSubset
@@ -61,6 +61,7 @@ interface ResolvedExportPlan {
     attachments: boolean
   }
   counts: {
+    exchanges?: number
     examined: number
     included: number
     excludedDoNotExport: number
@@ -203,7 +204,7 @@ interface RedLogAPI {
       hasMore: boolean
       nextCursor: string | null
     }>
-    queryHttpFlowPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<import('../../core/db/events').HttpFlowPage>
+    queryHttpFlowPage: (opts: import('../../core/db/events').HttpFlowQueryOptions) => Promise<import('../../core/db/events').HttpFlowPage>
     /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
@@ -400,6 +401,9 @@ interface RedLogAPI {
     detect: () => Promise<HookInfo[]>
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
+    /** Spec 052: what the SHELL will do — the machine's mode and the effective
+     *  class lists, defaults with the operator's `redlog class` edits on top. */
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[] }>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }
   runtime: {
