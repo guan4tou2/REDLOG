@@ -18,7 +18,7 @@ interface ExportSnapshot {
 }
 
 type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
-type ExportSubset = { kind: 'all' } | { kind: 'time-range'; since: number; before: number; targetId?: string }
+type ExportSubset = import('../../core/export-plan').ExportSubset
 interface ExportRequest {
   format: ExportFormat
   subset?: ExportSubset
@@ -61,6 +61,7 @@ interface ResolvedExportPlan {
     attachments: boolean
   }
   counts: {
+    exchanges?: number
     examined: number
     included: number
     excludedDoNotExport: number
@@ -203,7 +204,7 @@ interface RedLogAPI {
       hasMore: boolean
       nextCursor: string | null
     }>
-    queryHttpFlowPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<import('../../core/db/events').HttpFlowPage>
+    queryHttpFlowPage: (opts: import('../../core/db/events').HttpFlowQueryOptions) => Promise<import('../../core/db/events').HttpFlowPage>
     /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */

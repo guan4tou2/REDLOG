@@ -1,3 +1,5 @@
+import { parseQuery } from './query/contract'
+import type { EventFilter, HttpFlowQueryOptions } from './db/events'
 import { getReadonlyDB } from './db/index'
 import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
@@ -20,6 +22,7 @@ export interface ExportSnapshot {
 }
 
 export type ExportSubset =
+  | { kind: 'selection'; projection: 'events' | 'http'; filter: Omit<EventFilter, 'scope' | 'personalDomains'>; query?: string; excludeHousekeeping?: boolean; http?: HttpFlowQueryOptions['http'] }
   | { kind: 'all' }
   | { kind: 'time-range'; since: number; before: number; targetId?: string }
 
@@ -45,6 +48,7 @@ export interface NormalizedExportRequest {
 }
 
 export interface ExportCounts {
+  exchanges?: number
   examined: number
   included: number
   excludedDoNotExport: number
@@ -201,7 +205,32 @@ export interface ExportPlan {
 
 export function normalizeExportRequest(request: ExportRequest): NormalizedExportRequest {
   if (!isExportFormat(request.format)) throw new Error('Invalid export format')
-  const subset = request.subset ?? { kind: 'all' as const }
+  const subset = structuredClone(request.subset ?? { kind: 'all' as const })
+  if (!['all', 'time-range', 'selection'].includes(subset.kind)) throw new Error('Invalid export subset')
+  if (subset.kind === 'selection') {
+    if (!['events', 'http'].includes(subset.projection) || !subset.filter || typeof subset.filter !== 'object') throw new Error('Invalid export selection')
+    const allowed = new Set(['targetId', 'agentType', 'since', 'before', 'inScopeOnly', 'hidePersonal', 'tier'])
+    for (const [key, value] of Object.entries(subset.filter)) {
+      if (!allowed.has(key)) throw new Error('Invalid export filter')
+      if (['targetId','agentType'].includes(key) && typeof value !== 'string') throw new Error('Invalid export filter')
+      if (['since','before'].includes(key) && !Number.isFinite(value)) throw new Error('Invalid export time range')
+      if (['inScopeOnly','hidePersonal'].includes(key) && typeof value !== 'boolean') throw new Error('Invalid export filter')
+      if (key === 'tier' && value !== 'chained') throw new Error('Invalid export tier')
+    }
+    if (subset.filter.since != null && subset.filter.before != null && subset.filter.since > subset.filter.before) throw new Error('Invalid export time range')
+    if (subset.query !== undefined && (typeof subset.query !== 'string' || !parseQuery(subset.query).ok)) throw new Error('Invalid export query')
+    if (subset.excludeHousekeeping !== undefined && typeof subset.excludeHousekeeping !== 'boolean') throw new Error('Invalid housekeeping predicate')
+    if (subset.projection === 'http' && subset.query) throw new Error('Unsupported HTTP typed query')
+    if (subset.projection !== 'http' && subset.http) throw new Error('Invalid HTTP predicates')
+    if (subset.http) {
+      for (const [key,value] of Object.entries(subset.http)) {
+        if (!['method','statusPrefix','host','text'].includes(key) || typeof value !== 'string') throw new Error('Invalid HTTP predicate')
+      }
+      if (subset.http.statusPrefix && !/^[1-5][0-9]{0,2}$/.test(subset.http.statusPrefix)) throw new Error('Invalid HTTP status prefix')
+      Object.freeze(subset.http)
+    }
+    Object.freeze(subset.filter)
+  }
   if (subset.kind === 'time-range' && (!Number.isFinite(subset.since) || !Number.isFinite(subset.before) || subset.since >= subset.before)) {
     throw new Error('Invalid export time range')
   }
