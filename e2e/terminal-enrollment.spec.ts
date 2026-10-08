@@ -155,6 +155,22 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     // target extraction and a possible scope violation down the same path,
     // and this test is about one field: `source`.
     await postCommand('auto-relay', 'echo from-my-own-terminal')
+    // The payload, before the text. `postCommand` has already proved the row
+    // is in the record, so if this is still null the card is reading
+    // something the query did not find — and the assertion should say which
+    // value it got rather than quoting a sentence back.
+    await expect.poll(async () => page.evaluate(async () => {
+      const health = await (window as unknown as {
+        redlog: { capture: { health: () => Promise<{ sources: Array<Record<string, unknown>> } | null> } }
+      }).redlog.capture.health()
+      const row = health?.sources.find((s) => s.id === 'terminal')
+      return {
+        ownShellLastEventAt: row?.ownShellLastEventAt ?? null,
+        lastEventAt: row?.lastEventAt ?? null,
+        installed: row?.installed ?? null
+      }
+    }), { timeout: 20_000 }).toMatchObject({ ownShellLastEventAt: expect.any(Number) })
+
     await expect.poll(async () => {
       await openAllSources()
       return (await terminalRow().textContent()) ?? ''
