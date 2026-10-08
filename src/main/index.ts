@@ -47,6 +47,8 @@ import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
+import { readTerminalMode, readClassOverlay } from '../core/terminal-enrollment'
+import { mergeClassPolicy } from '../core/terminal-class'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -1631,6 +1633,15 @@ app.whenReady().then(() => {
     return detectHooksAsync()
   })
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
+  // Spec 052 T034. Settings shows what the SHELL will do — the machine's mode
+  // and the effective class lists, defaults with the operator's `redlog class`
+  // edits on top. Read on demand rather than cached: `redlog mode manual`
+  // happens in a terminal RedLog knows nothing about, and a panel showing a
+  // stale `auto` is worse than one showing nothing.
+  ipcMain.handle('hooks:terminalPolicy', () => ({
+    mode: readTerminalMode(),
+    ...mergeClassPolicy(readClassOverlay())
+  }))
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts

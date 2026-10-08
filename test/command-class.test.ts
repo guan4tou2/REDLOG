@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyCommand } from '../src/core/terminal-class'
+import { classifyCommand, mergeClassPolicy } from '../src/core/terminal-class'
 import { findShellTarget, runInShell, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 const target: ShellTarget | null = findShellTarget()
@@ -146,4 +146,52 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
         .toBe(classifyCommand(line.split(' ')))
     }
   }, 300_000)
+
+  // T034. Settings shows the EFFECTIVE lists — the shipped defaults with the
+  // operator's `redlog class` edits on top — and the merge that produces them
+  // exists twice for the same reason the classifier does. A Settings panel
+  // that disagrees with the shell is worse than one that shows nothing: it
+  // tells the operator their `nc` is safe when the shell will relay it.
+  it('merges an overlay the same way on both sides', async () => {
+    const relay = hookPath(target!, 'redlog-relay.py')
+    const script = [
+      'H=$(mktemp -d -t redlog-overlay.XXXXXX)',
+      `python3 "${relay}" policy --home "$H" --action add --field pty --command curl > /dev/null`,
+      `python3 "${relay}" policy --home "$H" --action remove --command nc > /dev/null`,
+      `python3 "${relay}" policy --home "$H" --action list`,
+      'rm -rf "$H"'
+    ].join('\n')
+    const run = await runInShell(target!, script, { timeoutMs: 240_000 })
+
+    const line = (name: string): string[] => {
+      const found = run.stdout.split('\n').find((l) => l.startsWith(`${name}: `))
+      return (found ?? '').slice(name.length + 2).trim().split(/\s+/).filter(Boolean)
+    }
+    const mine = mergeClassPolicy({ pty: ['curl'], removed: ['nc'] })
+
+    expect(line('pty').sort(), run.stderr.slice(0, 400)).toEqual([...mine.pty].sort())
+    expect(line('native').sort()).toEqual([...mine.native].sort())
+    // And the two edits did what they said: curl joined the pty class, nc left
+    // the native one.
+    expect(mine.pty).toContain('curl')
+    expect(mine.native).not.toContain('nc')
+  }, 300_000)
+})
+
+// The merge itself, without a shell in the way.
+describe('the class overlay', () => {
+  it('adds, removes, and moves a command out of the class it was in', () => {
+    expect(mergeClassPolicy(null).native).toContain('nc')
+    expect(mergeClassPolicy({ removed: ['nc'] }).native).not.toContain('nc')
+    // `vim` ships native; moving it to pty must take it out of native, or the
+    // two lists would both claim it and whichever is consulted first wins.
+    const moved = mergeClassPolicy({ pty: ['vim'] })
+    expect(moved.pty).toContain('vim')
+    expect(moved.native).not.toContain('vim')
+  })
+
+  it('does not duplicate a command that is already where it is being put', () => {
+    const policy = mergeClassPolicy({ pty: ['ssh'] })
+    expect(policy.pty.filter((c) => c === 'ssh')).toHaveLength(1)
+  })
 })
