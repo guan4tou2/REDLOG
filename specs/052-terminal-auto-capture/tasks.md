@@ -142,13 +142,26 @@ duration (quickstart.md §3b).
 **Independent test**: quickstart.md §3e — status, stop, a command that is not
 recorded, status again, start, a command that is.
 
-- [ ] T029 [US2] Write the failing pty test: `redlog status` prints recording state, mode and bound project, read from the state file and not from a shell variable (FR-023, contracts/shell-commands.md)
-- [ ] T030 [US2] Write the failing pty test: `redlog stop`, then a command, then a *new prompt*, then another command — neither is recorded (FR-022, the durable stop)
-- [ ] T031 [US2] Implement the single `redlog` shell function with subcommands `status`, `start`, `stop`, `mode`, `class` in `hooks/shell-zsh-hook.zsh` — one name defined, which is what makes uninstall verifiable (contracts/shell-commands.md)
-- [ ] T032 [US2] Write the failing test then implement `redlog mode auto|manual` switching at runtime without reinstalling (FR-021), with `auto` the installed default
-- [ ] T033 [US2] Write the failing test then implement `redlog class list|add|remove`, reading the policy RedLog wrote rather than a shell array (research.md D7), and warning that moving a command into the pty class costs local suspension (FR-028)
-- [ ] T034 [P] [US2] Surface mode and the class policy in `src/renderer/src/components/settings/HooksPanel.tsx` so the card, Settings and the shell all read one policy
-- [ ] T035 [US2] Write the failing pty test then implement the pause gap: a stop is visible in the record as an attributable gap, not as silence (FR-012)
+- [x] T029 [US2] Write the failing pty test: `redlog status` prints recording state, mode and bound project, read from the state file and not from a shell variable (FR-023, contracts/shell-commands.md)
+      → rule 2 is hard to test by behaviour alone, because a shell variable survives the subshell a naive test would use. So the discriminating evidence is that the answer is on disk: the test `cat`s the state file and finds `"recording": false` and the bound engagement in it.
+- [x] T030 [US2] Write the failing pty test: `redlog stop`, then a command, then a *new prompt*, then another command — neither is recorded (FR-022, the durable stop)
+      → a stopped terminal emits **nothing** for the commands after it — not a row marked `not-captured`. An operator who stopped recording did not ask for a record of what they did with the recording off. The `redlog stop` itself IS recorded, and that is what accounts for the gap (FR-012).
+- [x] T031 [US2] Implement the single `redlog` shell function with subcommands `status`, `start`, `stop`, `mode`, `class` in `hooks/shell-zsh-hook.zsh` — one name defined, which is what makes uninstall verifiable (contracts/shell-commands.md)
+      → the state machine now exists **twice**: `src/core/terminal-enrollment.ts` for the card and Settings, and `redlog-relay.py state` for the prompt. Neither can call the other, so `test/terminal-enrollment-agreement.test.ts` runs thirteen sequences through both and compares — the same arrangement that caught `classify` reading its own `--`, and it earned its place again (see T033).
+      → the per-prompt read is `grep` on the state file, not a `python3`. It is the same answer from the same place, which is what rule 2 asks for; paying a python spawn per command to answer a yes/no would be paid on the operator's prompt forever.
+- [x] T032 [US2] Write the failing test then implement `redlog mode auto|manual` switching at runtime without reinstalling (FR-021), with `auto` the installed default
+      → mode is machine-level (`~/.redlog/terminal-mode`) and applies to this terminal immediately: an operator who types `redlog mode manual` means now, not "from the next terminal I open".
+- [x] T033 [US2] Write the failing test then implement `redlog class list|add|remove`, reading the policy RedLog wrote rather than a shell array (research.md D7), and warning that moving a command into the pty class costs local suspension (FR-028)
+      → edits land in an overlay at `~/.redlog/command-class.json`, never in the shipped `hooks/command-class.json`: an install must be able to replace that file without taking the operator's choices with it.
+      → `list` prints the two classes that are lists and says what the third one is. `relayed` is not a list — it is what a command is when it is in no other one — and printing "everything else" as a list would be a lie the moment the operator ran something new.
+      → **the overlay broke `classify` and the agreement test caught it**: the edit that made the policy overlay-aware left `classify` reading an `opts` it never bound, so every call raised `NameError` and the adapter — which suppresses the relay's stderr — silently classified every command as `native`. Capture would have stopped entirely, with no error anywhere. Python has no typecheck; this test is the one.
+- [x] T034 [P] [US2] Surface mode and the class policy in `src/renderer/src/components/settings/HooksPanel.tsx` so the card, Settings and the shell all read one policy
+      → **read-only, on purpose.** The lists are edited from the terminal, which is where the operator is when they find out something went through a relay; a second editor in Settings would be a second place for the policy to change and a second thing to keep in step. What Settings owes is the answer to "what will my shell do", from the file the shell reads.
+      → not cached: `redlog mode manual` happens in a terminal RedLog knows nothing about, and a panel showing a stale `auto` is worse than one showing nothing. An older preload simply leaves the note out rather than throwing — a renderer can outlive its bridge, and that needs a full reload rather than HMR (CLAUDE.md).
+      → the merge is a third place the policy is reasoned about, so `test/command-class.test.ts` now also compares `mergeClassPolicy` against the shell's own `policy --action list` after two real edits.
+- [x] T035 [US2] Write the failing pty test then implement the pause gap: a stop is visible in the record as an attributable gap, not as silence (FR-012)
+      → `shell.capture_stopped` / `capture_resumed`, carrying the terminal's session id and the reason. **Not** `system.recording_paused`: RedLog already brackets its GLOBAL pause with that pair and the timeline draws a band from it, so reusing it would paint a paused band across an engagement that never stopped recording.
+      → the test asserts the bracket means something — the two unrecorded commands fall between the rows — rather than just that two rows exist.
 
 ---
 

@@ -223,6 +223,7 @@ const api: RedLogAPI = {
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
+    terminalPolicy: () => ipcRenderer.invoke('hooks:terminalPolicy'),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
