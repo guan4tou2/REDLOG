@@ -1,25 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Button } from '../Button'
 import { toast } from '../Toast'
-import { raiseIssue, clearIssue } from '../../lib/issues'
-import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../../lib/verifyResultCache'
 import { formatDateTime } from '../../lib/time'
-import { settingsTarget } from '../../lib/navigation'
+import { anchorNowWithFeedback, verifyChainWithFeedback, type FullVerifyResult } from '../../lib/chainActions'
 import { FieldGroup } from './SettingsShared'
-
-interface FullVerifyResult {
-  ok: boolean
-  walked?: number
-  brokenAtEventId?: string | null
-  brokenReason?: string | null
-  currentHead?: string | null
-  anchor?: ChainAnchorInfo | null
-  anchorMatchesWalkedHead?: boolean
-  clockAnomalies?: Array<{ eventId: string; reason: string }>
-  signedCount?: number
-  unsignedCount?: number
-  badSignatureAtEventId?: string | null
-}
 
 // Chain state: anchors, the two-tier counter, and verification. Read-only —
 // building the evidence pack itself moved to the shell's export control (SS10),
@@ -38,35 +22,15 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
 
   useEffect(() => { reload() }, [])
 
+  // The toast and the issue each result implies live in lib/chainActions, so
+  // the dashboard's fix button and this one cannot drift apart. What stays
+  // here is what is this panel's own: the busy flag, the anchor list and the
+  // detail card.
   const handleAnchor = async (): Promise<void> => {
     setBusy(true)
-    const result = await window.redlog.chain.anchorNow()
+    const result = await anchorNowWithFeedback(t, () => { void handleAnchor() })
     setBusy(false)
-    if (result) {
-      const ok = result.calendarReceipts.filter((r) => r.ok).length
-      const total = result.calendarReceipts.length
-      if (ok > 0) {
-        clearIssue('anchor')
-        toast(t('settings.anchored', { ok, total }), 'success')
-      } else {
-        raiseIssue({
-          id: 'anchor', tier: 'attention',
-          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: settingsTarget('integrity')
-        })
-        toast(t('settings.anchorFailed'), {
-          type: 'error',
-          why: t('settings.anchorFailedWhy'),
-          detail: result.calendarReceipts.map((r) => `${r.url ?? '?'}: ${r.error ?? 'no receipt'}`).join('\n'),
-          action: { label: t('common.retry'), onClick: () => { void handleAnchor() } }
-        })
-      }
-      await reload()
-    } else {
-      toast(t('settings.integrityNoAnchors'), {
-        type: 'error',
-        why: t('settings.integrityNoAnchorsWhy')
-      })
-    }
+    if (result) await reload()
   }
 
   // One verify, because the walk also checks the latest anchor. There was an
@@ -75,24 +39,9 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
   const handleVerify = async (): Promise<void> => {
     setVerifying(true)
     setFullVerify(null)
-    const r = await window.redlog.chain.verify()
+    const r = await verifyChainWithFeedback(t)
     setVerifying(false)
     setFullVerify(r)
-    // v0.6.89.5: publish to the module-level cache so a fresh Timeline mount
-    // picks up the broken-chain state without another verify click.
-    setLastVerifyResult(r as CachedFullVerifyResult | null)
-    // A chain that will not verify is the most consequential condition the
-    // app can be in, so it stays on the issue list until a verify passes (SS9).
-    // A chain re-hashed end to end, or cut short, still walks cleanly; only
-    // the anchor disagrees, and that is a broken chain too.
-    const anchorBad = r.anchor != null && !r.anchorMatchesWalkedHead
-    if (r.ok && !anchorBad) clearIssue('chain')
-    else {
-      raiseIssue({
-        id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
-        detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'), view: settingsTarget('integrity')
-      })
-    }
   }
 
   const statusColor = (s: string): string => {

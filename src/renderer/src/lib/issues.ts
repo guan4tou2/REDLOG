@@ -17,17 +17,29 @@ import { useSyncExternalStore } from 'react'
 //              dismissed; it clears when the condition clears, and nothing
 //              else. Red.
 //   pending    everything else worth surfacing and nothing worth interrupting
-//              for. Grey. (No condition raises it today, so the dismiss
-//              controls §9 describes were removed rather than built; add them
-//              with the first pending source. Dismissing one would write no audit
-//              event, because a person deciding not to look at something is
-//              not a fact about the engagement.
+//              for. Grey. An undeclared scope is the one that raises it: a
+//              project minutes old has not named its targets yet and nothing
+//              is wrong with it. The dismiss controls §9 describes are still
+//              not built, and this source does not want them — it clears the
+//              moment a target is declared. Dismissing one would write no
+//              audit event anyway, because a person deciding not to look at
+//              something is not a fact about the engagement.
 //
 // The store is deliberately outside React: capture health polls from an
 // effect, chain verification resolves from a dialog, and a producer should not
 // have to be a component to report that something is wrong.
 
 export type IssueTier = 'attention' | 'pending'
+
+/** The act that answers a condition, where one act answers it.
+ *
+ *  A name, not a function. A producer here is a thirty-second poll that runs
+ *  whether or not anything is mounted, and a closure in the store would make
+ *  it hold a `t` and a component's state for as long as the condition lasts —
+ *  while `snapshotIssues` caches by title, so the UI could keep showing a
+ *  closure from an earlier raise. The renderer owns the handler and the
+ *  label; the store only says which one applies. */
+export type IssueFix = 'anchor-now' | 'verify-chain' | 'recheck-scope'
 
 export interface Issue {
   /** Stable per condition — re-raising the same id updates rather than piles up. */
@@ -38,6 +50,8 @@ export interface Issue {
   detail?: string
   /** Where to go to deal with it. */
   view?: string
+  /** Offered beside it, when one act answers it without going anywhere. */
+  fix?: IssueFix
   since: number
 }
 
@@ -73,7 +87,7 @@ export function snapshotIssues(): Issue[] {
   const next = snapshot()
   // `useSyncExternalStore` compares by identity and will loop forever on a
   // fresh array every call, so only hand back a new one when it differs.
-  const key = next.map((i) => `${i.id}:${i.tier}:${i.title}`).join('|')
+  const key = next.map((i) => `${i.id}:${i.tier}:${i.title}:${i.fix ?? ''}`).join('|')
   if (key !== cacheKey) { cacheKey = key; cached = next }
   return cached
 }
