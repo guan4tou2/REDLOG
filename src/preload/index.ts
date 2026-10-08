@@ -82,7 +82,7 @@ const api: RedLogAPI = {
         hasMore: boolean
         nextCursor: string | null
       }>,
-    queryHttpFlowPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+    queryHttpFlowPage: (opts: import('../core/db/events').HttpFlowQueryOptions) =>
       ipcRenderer.invoke('events:queryHttpFlowPage', opts) as Promise<import('../core/db/events').HttpFlowPage>,
     getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.

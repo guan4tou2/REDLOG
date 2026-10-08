@@ -23,7 +23,7 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, binHeight, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
@@ -1230,26 +1230,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   )
   const hiddenByQuery = queryActive ? recentUnfiltered.length - recentEvents.length : 0
 
-  const sliceCount = useMemo(() => computeSliceCount(events, vp), [events, vp])
-  const sliceExportRequest = useMemo<ExportRequest>(() => ({
-    format: 'timeline',
-    subset: {
-      kind: 'time-range',
-      since: Math.round(fromX((view.left / 100) * TRACK_W)),
-      before: Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    }
-  }), [fromX, view.left, view.width, TRACK_W])
-
-  // FR-016: the export is the time range, every event in it. While the shared
-  // filter hides some of them here, the label says the filter is not applied,
-  // and the drawn count is not offered as the export's size.
-  useContributeExport(
-    events.length > 0
-      ? filterActiveCount > 0
-        ? { label: t('timeline.exportSliceUnfiltered'), request: sliceExportRequest }
-        : { label: t('timeline.exportSlice'), request: sliceExportRequest, count: sliceCount }
-      : null
-  )
+  const sliceExportRequest = useMemo<ExportRequest>(() => {
+    const since = Math.round(fromX((view.left / 100) * TRACK_W))
+    const before = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return { format: 'timeline', subset: { kind: 'selection', projection: 'events', excludeHousekeeping: true,
+      filter: { ...eventFilter, since: Math.max(since, eventFilter.since ?? since), before: Math.min(before, eventFilter.before ?? before) } } }
+  }, [eventFilter, fromX, view.left, view.width, TRACK_W])
+  useContributeExport({ label: t('timeline.exportSlice'), request: sliceExportRequest })
 
   useEffect(() => {
     const el = scrollRef.current
