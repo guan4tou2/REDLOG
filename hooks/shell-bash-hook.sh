@@ -79,4 +79,7 @@ _redlog_prompt_command() {
 
 trap '_redlog_debug_trap' DEBUG
 PROMPT_COMMAND="_redlog_prompt_command;${PROMPT_COMMAND:-}"
-_redlog_announce_shell
+# Commands only: the automatic output relay is the zsh adapter's (spec 052
+# D1 is built on `preexec`, which bash does not have). `redlog-run` is still
+# how a bash user captures a command's output on purpose.
+_redlog_announce_shell "commands"
