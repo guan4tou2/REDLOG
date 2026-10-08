@@ -112,9 +112,20 @@
 3. 導航順序固定，⌘1..9 永遠對應同一畫面，數字印在側欄右側
 4. 空狀態三件套：會出現什麼／為什麼現在沒有／一顆按鈕
 5. 危險操作分三級：可逆→直接執行 + Toast 附復原；不可逆→對話框 + 勾選框；影響證據鏈→輸入專案名確認 + 列出具體後果
-6. 全中文介面，技術詞白名單：`IP · CIDR · SHA-256 · JWT · DNS · HTTP · mitmproxy · MCP · OpenTimestamps · CDP · WSL · hook · token · shell`。固定譯名：Loot→戰利品、Scope→範圍、Marker→標記、Pivot→中繼跳板、Transcript→逐字稿、Anchor→錨定、Chain→證據鏈
+6. 全中文介面，技術詞白名單：`IP · CIDR · SHA-256 · JWT · DNS · HTTP · mitmproxy · MCP · OpenTimestamps · CDP · WSL · hook · token · shell`。固定譯名：Loot→戰利品、Scope→範圍、Marker→標記、**Bookmark→書籤**、Pivot→中繼跳板、Transcript→逐字稿、Anchor→錨定、Chain→證據鏈
 7. 符合 macOS 慣例：設定為左清單 + 右內容；⌘. 暫停、⌘K 命令面板、⌘F 頁內搜尋、Esc 逐層退出；破壞性動作在對話框右下（Windows 自動對調）；tooltip 不得是唯一的資訊來源
 8. 可及性硬門檻：文字 ≥4.5:1、非文字狀態元素 ≥3:1、focus 環處處可見、`prefers-reduced-motion` 保留
+
+> ✓ **§5-6 的實作註記（2026-09-07，守門測試 2026-10-08 補上）**：`Bookmark→書籤`
+> 是這次補進譯名表的。**標記與書籤是兩種東西，而且差別正是這個產品的賣點**：標記
+> 上鏈、append-only、只能以 `marker.amended` 修訂；書籤（原 `quickmarks`，PR #32 /
+> migration F4 起改名 `bookmarks`）不上鏈、不簽章、可 UPDATE 也可 DELETE、不進證據包。
+> 改名當時走過了資料表與側欄，**沒走到那一頁自己的文案**——頁標題印「標記（N）」、
+> 搜尋框「搜尋標記」、編輯鈕「編輯標記」、匯出提示還印著內部代號「QuickMark」
+> （`settings.browserHint` 也漏了一處）。而 `bookmarks.emptyReason` 恰好在教這條
+> 界線，卻只在清單為空時出現：有第一則書籤之後，使用者看到的每個標籤都在說反話。
+> 文案已修，但守門的斷言當時沒跟著進 main——`test/bookmark-naming.test.ts` 從語系檔
+> 解析斷言（沿用 §21 的作法），現在補上，防止措辭退回去。
 
 > ✓ **§5-3 的實作註記**：⌘ 編號取自 `lib/sidebarOrder.ts` 的 `DEFAULT_ORDER` 位置，不是渲染位置。
 > 側欄原本印渲染索引，因此三列印著開不了東西的 9／10／11、設定列也印 9；已修（#28）。
