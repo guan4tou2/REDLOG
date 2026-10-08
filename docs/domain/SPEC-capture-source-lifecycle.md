@@ -71,6 +71,49 @@ state a proxy with no traffic is in: working, and waiting for the operator.
 Grading that amber is the same lie as a green dot over a dead hook, in the
 other direction.
 
+### One source, many terminals
+
+The states above are a source's. Spec 052 added a second axis underneath one of
+them, and conflating the two would undo most of this document.
+
+The `terminal` source is `Verified` when any terminal has recorded a command.
+But "the terminal source can record" and "**this** terminal is recording" are
+different questions, and the operator asks the second one:
+
+```
+enrolled / not     this machine's shells load the adapter, or they do not
+recording          this terminal is recording right now
+stopped            `redlog stop` in this terminal, durably — survives the
+                   next prompt, and a subshell, because it is a file
+mode auto|manual   what a NEW terminal starts as, machine-wide
+project-switched   RedLog moved to another project under this terminal, so it
+                   stopped and will not restart (see below)
+```
+
+Three rules keep the axes from collapsing into each other:
+
+- **A per-terminal stop is not a source failure.** The `terminal` row stays
+  `ready`; what changed is one terminal's answer. Grading the source amber
+  because an operator stopped one shell is the same mistake as `Idle`, with a
+  different cause.
+- **The state is a file, not a variable.** `~/.redlog/terminals/<id>.json`,
+  read by the shell at each prompt and by RedLog for the card. Two readers, one
+  answer — a terminal that says "stopped" while the card says "recording" is
+  worse than either answer alone.
+- **A stop is a gap with two ends, not silence.** `capture_stopped` /
+  `capture_resumed` bracket it, carrying the terminal and the reason. "No
+  events for twenty minutes" reads very differently as *the operator stopped
+  recording* than as *the operator was reading*, and a reader a year later
+  cannot tell either from nothing at all.
+
+**`project-switched` is the one that cannot be undone from the terminal.** A
+terminal is pinned to the project it was opened against; when RedLog opens
+another one, the terminal stops and `redlog start` will not restart it. The
+failure that prevents is a command from engagement A filed under engagement B
+— not a missing command, but a lie in a document a client reads, written by
+the tool whose whole job is to be believable. The safe answer is a new
+terminal, and it is cheap.
+
 ## Checklist
 
 Any change that adds or alters a capture source answers all of these.
@@ -109,6 +152,28 @@ Any change that adds or alters a capture source answers all of these.
 - [ ] The UI says what this source records.
 - [ ] The UI says what it does **not** record. Metadata-only capture that
       looks like full capture is the same lie in a quieter form.
+- [ ] Where capture is deliberately declined, the **list of what is declined is
+      visible to the operator**, not only in the code.
+
+      Spec 052 is the case that forced this line. Terminal capture leaves a
+      `native` class of commands completely alone — `nc`, `ncat`, editors and
+      pagers — and it is not an oversight: a relayed `nc` costs the operator
+      the Ctrl-Z / `stty raw -echo` / `fg` upgrade in the middle of an
+      engagement (FR-025), and a relayed `vim` records redraws and none of the
+      file (FR-026). Both are the right call and both are invisible from the
+      timeline, because what they produce is an *absence*.
+
+      So the class lists are shown in Settings ▸ Hooks and readable with
+      `redlog class list`, and each such command is recorded
+      `completeness: metadata-only`, `output_disposition: interactive` — the
+      row says the body is missing and why, instead of an empty `stdout` that
+      reads as "this command printed nothing".
+- [ ] Capture that was declined, failed, redirected or stopped are four
+      different words in the record, not one empty field. `interactive` is a
+      decision, `not-captured` is a failure, `redirected` is the operator's own
+      doing, and a stop is bracketed. Collapsing them makes every deliberate
+      silence look like a broken capture, and every broken capture look
+      deliberate.
 
 ### Cleanup
 
@@ -116,6 +181,16 @@ Any change that adds or alters a capture source answers all of these.
 - [ ] A source RedLog cannot uninstall carries removal steps.
 - [ ] Uninstall leaves nothing behind — no empty file, no directory that was
       not there before.
+- [ ] Where setup edits a file RedLog does not own, **uninstall returns it
+      byte-identical**, and a test proves it as an inverse rather than by
+      inspection.
+
+      The shell-source install appends a block to the operator's `.zshrc`.
+      Uninstall used to replace that block, leading newline included, with a
+      single newline — so every install/uninstall cycle left one more blank
+      line behind, and a file that had not ended with a newline came back with
+      one. Nobody would have noticed, and a red-team tool has no business
+      leaving a footprint on the machine it was run from.
 
 ### External contract
 
