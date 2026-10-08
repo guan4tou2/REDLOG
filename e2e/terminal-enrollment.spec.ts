@@ -35,10 +35,16 @@ const api = (): { base: string; token: string } => ({
 
 /** A command as the operator's own enrolled terminal would send it. `source`
  *  is what tells it apart from one of RedLog's panes, and that distinction is
- *  the entire difference between "installed" and "working". */
+ *  the entire difference between "installed" and "working".
+ *
+ *  The status is checked, and the row is read back. Without that, a refused
+ *  POST and a card that failed to update are the same symptom — an assertion
+ *  on the card's text that names neither. The first run of this file lost a
+ *  round to exactly that.
+ */
 const postCommand = async (source: string, command: string): Promise<void> => {
   const { base, token } = api()
-  await fetch(`${base}/api/events/seed`, {
+  const res = await fetch(`${base}/api/events/seed`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({
@@ -46,6 +52,18 @@ const postCommand = async (source: string, command: string): Promise<void> => {
       data: { subtype: 'command_end', command, exit_code: 0, cwd: '/root', source }
     })
   })
+  expect(res.status, `seeding "${command}" failed: ${await res.text()}`).toBeLessThan(300)
+
+  // And it is in the record, with the `source` that was sent. The card is a
+  // reader; if the row is not there, the card is not what is wrong.
+  await expect.poll(async () => {
+    const events = await fetch(`${base}/api/events?limit=200`, {
+      headers: { authorization: `Bearer ${token}` }
+    }).then((r) => r.json()) as { events: Array<{ data?: Record<string, unknown> }> }
+    return events.events.filter((e) =>
+      String(e.data?.command ?? '') === command && e.data?.source === source).length
+  }, { timeout: 15_000, message: `no row for "${command}" with source "${source}"` })
+    .toBeGreaterThan(0)
 }
 
 const terminalRow = (): ReturnType<Page['locator']> =>
@@ -133,7 +151,10 @@ test.describe.serial('enrolling this machine’s terminals', () => {
   })
 
   test('a command from the operator’s own terminal is', async () => {
-    await postCommand('auto-relay', 'nmap -sV 10.0.0.1')
+    // A command with nothing in it to detect. `nmap -sV 10.0.0.1` would send
+    // target extraction and a possible scope violation down the same path,
+    // and this test is about one field: `source`.
+    await postCommand('auto-relay', 'echo from-my-own-terminal')
     await expect.poll(async () => {
       await openAllSources()
       return (await terminalRow().textContent()) ?? ''
