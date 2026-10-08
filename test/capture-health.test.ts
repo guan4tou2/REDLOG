@@ -11,6 +11,7 @@ let configureCaptureHealth: typeof import('../src/core/capture-health').configur
 let invalidateHooksCache: typeof import('../src/core/capture-health').invalidateHooksCache
 let hooksMod: typeof import('../src/core/hooks-manager')
 let pluginsIndex: typeof import('../src/core/plugins/index')
+let eventBusMod: typeof import('../src/core/event-bus')
 
 let dbAvailable = false
 try {
@@ -19,6 +20,7 @@ try {
   const chMod = await import('../src/core/capture-health')
   hooksMod = await import('../src/core/hooks-manager')
   pluginsIndex = await import('../src/core/plugins/index')
+  eventBusMod = await import('../src/core/event-bus')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
@@ -221,6 +223,37 @@ describeDB('capture-health', () => {
     mockHooks({ 'shell-zsh': true })
     ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay' })
     expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
+      .not.toBeNull()
+  })
+
+  // The card does not poll. It re-reads capture health once on mount and once
+  // per batch of new events — so whatever that one read returns is what the
+  // operator sees until the NEXT event arrives. If the 750ms cache hands back
+  // a reading computed just before the event landed, the card is wrong and
+  // nothing will correct it.
+  //
+  // That is exactly the FR-015 moment: the operator installs the hook, runs
+  // one command in their own terminal to prove it, and the card keeps saying
+  // "open a new terminal". Found by e2e/terminal-enrollment.spec.ts, which
+  // passed on a quiet machine and failed on a busy CI runner — because
+  // whether something else had filled the cache in the previous 750ms is a
+  // property of the load, not of the code.
+  it('does not serve a reading from before an event that has since landed', async () => {
+    mockHooks({ 'shell-zsh': true })
+    const t0 = Date.now()
+    expect(getCaptureHealth(t0).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
+      .toBeNull()
+
+    const ev = ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay' })
+    // The path every real event takes: ingest writes, then publishes, and the
+    // bus defers its fanout to a microtask.
+    eventBusMod.eventBus.publish(ev!)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    // Well inside the cache window. The cache exists to coalesce a storm of
+    // polls BETWEEN events; it must never outlive an event someone is about
+    // to ask about.
+    expect(getCaptureHealth(t0 + 100).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
       .not.toBeNull()
   })
 

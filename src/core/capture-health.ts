@@ -4,6 +4,7 @@ import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
 import { listTerminalEnrollments } from './terminal-enrollment'
+import { eventBus } from './event-bus'
 
 // "You are recording nothing" is the worst silent failure an audit tool can
 // have. This module answers, at a glance: can each capture source record, and
@@ -282,6 +283,25 @@ function lastEventFor(where: string, params: unknown[] = []): number | null {
 // sub-second cache changes nothing an operator could perceive.
 let healthCache: { at: number; value: CaptureHealth } | null = null
 const HEALTH_TTL_MS = 750
+
+// …but never across an event. The cache is there to coalesce the storm of
+// polls BETWEEN events, and every one of those polls is asking "what has
+// arrived" — so a reading taken before the latest event is not a cheaper
+// answer to that question, it is a wrong one.
+//
+// It matters because the renderer does not poll. The Dashboard re-reads
+// health once on mount and once per batch of new events, so whatever that one
+// read returns is what the operator sees until the NEXT event arrives. Served
+// from a cache filled 400ms earlier — by the StatusBar, an agent's
+// redlog_status, anything — the card shows the state before the event that
+// should have changed it, and nothing corrects it. The worst moment for that
+// is the first command from a freshly installed shell hook: the card keeps
+// saying "open a new terminal" to an operator who just did (spec 052,
+// FR-015).
+//
+// The bus defers its fanout to a microtask, and the renderer's batch is
+// downstream of the same publish, so this clears before anyone can ask.
+eventBus.on('event', () => { healthCache = null })
 
 function stateFrom(
   installed: boolean | undefined,

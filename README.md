@@ -86,9 +86,10 @@ The first engagement, in the order that proves capture works:
    to open a **new** terminal and run the `echo redlog-ok-…` it shows, and
    confirms only when that command arrives — shells that were already open are
    not hooked. (Later: **Capture Health ▸ Install shell hook** does the same.) From then on every command you type
-   there is recorded as metadata: command, exit code, duration and working
-   directory. Output is not; for that use the built-in terminal,
-   `redlog-run <cmd>`, or a `redlog-session` recorded shell.
+   there is recorded — **in zsh, with its output**, and with nothing typed in
+   front of it. `redlog status` says whether this terminal is recording,
+   `redlog stop` stops it until you start it again, and `redlog class list`
+   shows what is deliberately left alone.
 4. **HTTP capture.** **Start HTTP capture** on the Dashboard or the
    first-run screen (or Settings ▸ Browser & HTTP capture) runs a local
    mitmproxy with RedLog's addon; the one-click proxied browser goes through
@@ -121,7 +122,8 @@ Windows terminal output. The full walkthrough, in Traditional Chinese, is the
 
 Penetration testers need a tamper-evident record of what they did during an engagement. RedLog runs in the background and records it into a per-project SQLite database, timestamped and hash-chained. What it records, and what it does not, is stated rather than implied:
 
-- **Commands** from any shell with the hook installed: the command, exit code, duration and working directory. **Output** is recorded only by the built-in terminal, `redlog-run <cmd>`, or a `redlog-session` shell.
+- **Commands** from any shell with the hook installed: the command, exit code, duration and working directory. In **zsh** the output comes too, automatically, with no prefix to remember. In bash it does not — use `redlog-run <cmd>`, the built-in terminal, or a `redlog-session` shell.
+- **What zsh deliberately leaves alone**, because capturing it would cost more than it is worth: `nc` and `ncat` keep local suspension, so the Ctrl-Z → `stty raw -echo` → `fg` upgrade still works; editors and pagers would record redraws and none of the file. `ssh`, `socat` and `pwncat-cs` get a real PTY recorder instead. Each such command is still recorded, marked `metadata-only` with the reason — never an empty `stdout` that reads as "this printed nothing". `redlog class list` shows the lists; `redlog class add|remove` changes them.
 - **HTTP(S)** that goes through RedLog's proxy — the capture browser, or a tool pointed at the proxy. Traffic that does not use the proxy (raw TCP, SMB, nmap SYN scans) is not recorded as HTTP.
 - **Optional sources**, off until you turn them on: process, connection and file monitoring; the clipboard (its own opt-in); AI agent transcripts; periodic screenshots.
 
@@ -362,9 +364,11 @@ Overlay Window
   └── IP status always-on-top widget (click-through + draggable)
 
 Hooks
-  ├── shell-zsh-hook.zsh   zsh preexec/precmd integration
+  ├── shell-zsh-hook.zsh   zsh preexec/precmd, output relay, the `redlog` command
   ├── shell-bash-hook.sh   bash DEBUG/PROMPT_COMMAND integration
-  └── shell-common.sh      shared transport, spool and redlog-run
+  ├── shell-common.sh      shared transport, spool and redlog-run
+  ├── redlog-relay.py      the output relay, the classifier, per-terminal state
+  └── command-class.json   which commands are relayed, PTY-recorded, or left alone
 
 Plugin hooks
   └── pack-ai-agents/hooks/codex-wrapper.sh   Shell wrapper for Codex/GPT
@@ -407,9 +411,11 @@ src/
       styles/index.css       Tailwind + custom scrollbar
       env.d.ts               TypeScript declarations for preload API
 hooks/
-  shell-zsh-hook.zsh         zsh preexec/precmd → RedLog
+  shell-zsh-hook.zsh         zsh preexec/precmd → RedLog, with output
   shell-bash-hook.sh         bash DEBUG/PROMPT_COMMAND → RedLog
   shell-common.sh            shared POSIX transport and redlog-run
+  redlog-relay.py            output relay, classifier, per-terminal state
+  command-class.json         relayed / pty / native, one list for both readers
 plugins/
   pack-ai-agents/
     hooks/codex-wrapper.sh   shell wrapper for any agent
