@@ -30,7 +30,10 @@
   - 以上都照 README 的說明就過得去。
 - [ ] **啟動**。從選單 / Dock / 開始功能表開（**不是**從終端機），視窗出現。
 - [ ] **專案選擇畫面乾淨**。第一次啟動只有專案選擇畫面 —— 沒有浮動的就緒卡，沒有舊版 hook 橫幅。環境檢查在開專案後的首次執行畫面上。
-- [ ] **故意少一個**：移除或改名 python3，開一個專案，首次執行畫面的「指令」點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。裝回去之後**切到別的視窗再切回來**，畫面自己更新，不需要按任何按鈕。
+- [ ] **故意少一個**。需要哪些工具**依平台而異**（`src/core/runtime-preflight.ts`），照自己測的平台選：
+  - **Linux / macOS**（zsh、bash hook）：環境檢查列出 python3、curl、你的 shell、mitmproxy。移除或改名 python3，開一個專案，首次執行畫面的「指令」點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
+  - **Windows**（PowerShell hook）：只列 PowerShell 與 mitmproxy。**python3 與 curl 在 Windows 原生不是需求**，把 Store 版 python3 從 PATH 拿掉卡片也**不會**提到它——這是預期，不是漏報（#257）。要看這一項，改成移除或改名 `mitmdump`；python3／curl 的預期只在測 WSL 或 Git Bash 裡的 zsh／bash 時適用。
+  - 裝回去之後**切到別的視窗再切回來**，畫面自己更新，不需要按任何按鈕。
   - 失敗時查：`src/core/runtime-preflight.ts`、`FirstRunView.tsx`、`hooks/useRevalidateOnFocus.ts`。
 - [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app 並開專案，HTTP 擷取自動啟動。
   - 失敗時查：`src/main/login-path.ts`、`src/core/http-autostart.ts`。
@@ -96,6 +99,7 @@
 - [ ] **按「用擷取瀏覽器驗證」**：HTTP、HTTPS 都顯示「✓ 已驗證（Chromium）」，HTTPS 附帶「擷取瀏覽器會忽略憑證錯誤」的提醒；時間軸與 HTTP 頁**沒有** `redlog.verify.invalid` 的紀錄。
 - [ ] **終端驗證（CA 未信任）**：在內建終端跑畫面上的 HTTPS 指令 → curl 失敗，HTTPS 列顯示「有 client 拒絕了 RedLog 的憑證」。
 - [ ] **信任後再驗證**：跑「HTTPS 憑證」裡的信任指令，按「重新驗證」後再跑 HTTPS 指令 → 「✓ 已驗證（curl/…）」，沒有提醒。
+  - Windows 的 HTTPS 指令是 `curl.exe -sS --ssl-no-revoke -x …`。`curl.exe` 走 Schannel，會檢查憑證是否被撤銷，而 mitmproxy 簽的 leaf 憑證沒有 CRL／OCSP，少了這個旗標即使 CA 已受信任也會回 `000`（#256）。它只關掉撤銷檢查，**不是** `-k`，信任鏈仍會驗證；**不應**在指令裡看到 `-k` 或 `--insecure`。
 - [ ] **移除信任**：跑移除指令，確認它以指紋（Windows／macOS）或 `redlog-mitmproxy-<指紋>.crt`（Linux）移除；另一個工具的 mitmproxy CA（若有）仍在。重新驗證 HTTPS 指令應再次失敗。
 - [ ] **打開一個 HTTP 網站**，HTTP 頁出現這筆往返（有 request 和 response）。
 - [ ] **終端走代理的選項**：

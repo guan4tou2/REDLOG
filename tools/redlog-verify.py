@@ -34,6 +34,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
+_EXTENDED = "\\\\?\\"  # the four characters \\?\
+
+
+def _extended_length(path: str, windows: bool = os.name == "nt") -> str:
+    """Windows rejects paths past MAX_PATH (260) unless they carry the
+    extended-length prefix, and without it `Path.exists()` answers False for a
+    file that is there — so a bundle in a deep evidence folder reported every
+    cast and screenshot as "missing" (#258). The path must already be
+    absolute."""
+    if not windows or path.startswith(_EXTENDED):
+        return path
+    if path.startswith("\\\\"):  # UNC: \\server\share -> \\?\UNC\server\share
+        return _EXTENDED + "UNC\\" + path[2:]
+    return _EXTENDED + path
+
+
 # ---------------------------------------------------------------------------
 # canonicalStringify — byte-for-byte port of src/core/db/events.ts
 # ---------------------------------------------------------------------------
@@ -407,7 +423,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="Print progress every 500 events")
     args = p.parse_args(argv)
 
-    target = Path(args.bundle).resolve()
+    target = Path(_extended_length(str(Path(args.bundle).resolve())))
     if not target.exists():
         print(f"ERROR: {target} does not exist", file=sys.stderr)
         return 2

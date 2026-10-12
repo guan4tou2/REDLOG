@@ -47,10 +47,17 @@ export function httpsProvesTrust(report: HttpVerifyReport, captureBrowserIgnores
 
 /** A check to run from a terminal. No `-k`: an HTTPS check that skips
  *  certificate verification would prove nothing about trust. Windows
- *  PowerShell aliases `curl` to Invoke-WebRequest, so name the real one. */
+ *  PowerShell aliases `curl` to Invoke-WebRequest, so name the real one.
+ *
+ *  Windows curl.exe also gets `--ssl-no-revoke` for HTTPS (#256). It uses
+ *  Schannel, which refuses a certificate it cannot check for revocation, and
+ *  the leaf certificates mitmproxy issues carry no CRL or OCSP address — so
+ *  the request fails with `000` although the CA is trusted. The flag drops
+ *  that one check; the chain is still verified, which is what this proves. */
 export function verifyCommand(scheme: VerifyScheme, nonce: string, proxyUrl: string, os: 'win32' | 'darwin' | 'linux'): string {
   const curl = os === 'win32' ? 'curl.exe' : 'curl'
-  return `${curl} -sS -x ${proxyUrl} ${verifyUrl(scheme, nonce)}`
+  const noRevoke = os === 'win32' && scheme === 'https' ? ' --ssl-no-revoke' : ''
+  return `${curl} -sS${noRevoke} -x ${proxyUrl} ${verifyUrl(scheme, nonce)}`
 }
 
 export type HttpTimeoutReason = 'browser' | 'ca' | 'caRejected' | 'terminalsOff' | 'terminalsNew'

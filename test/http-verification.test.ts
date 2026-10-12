@@ -77,6 +77,20 @@ describe('the verification request', () => {
     // Windows PowerShell aliases `curl` to Invoke-WebRequest.
     expect(verifyCommand('http', NONCE, 'http://127.0.0.1:6661', 'win32')).toMatch(/^curl\.exe /)
   })
+
+  // #256. curl.exe on Windows uses Schannel, which checks revocation, and the
+  // leaf certificates mitmproxy issues carry no CRL or OCSP address — so the
+  // check fails with `000` even though the CA is trusted. `--ssl-no-revoke`
+  // turns off that one check; it is not `-k`, trust is still verified.
+  it('tells Windows curl not to demand revocation data the proxy cannot supply', () => {
+    const win = verifyCommand('https', NONCE, 'http://127.0.0.1:6661', 'win32')
+    expect(win).toContain('--ssl-no-revoke')
+    expect(win).not.toMatch(/\s-k\b|--insecure/)
+    // Not needed, and not meaningful, off Windows or for plain HTTP.
+    expect(verifyCommand('https', NONCE, 'http://127.0.0.1:6661', 'linux')).not.toContain('--ssl-no-revoke')
+    expect(verifyCommand('https', NONCE, 'http://127.0.0.1:6661', 'darwin')).not.toContain('--ssl-no-revoke')
+    expect(verifyCommand('http', NONCE, 'http://127.0.0.1:6661', 'win32')).not.toContain('--ssl-no-revoke')
+  })
 })
 
 describe('what the addon reports', () => {

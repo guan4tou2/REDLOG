@@ -103,7 +103,9 @@ RedLog 連不上的時候，指令照跑，事件會先存在 `~/.redlog/pending
 的 CA：「HTTPS 憑證」列出 CA 的 SHA-256 指紋，以及信任與移除的指令。移除指令以指紋辨識這張
 CA（Linux 則放在 `redlog-mitmproxy-<指紋>.crt`），不會動到其他工具也叫 mitmproxy 的 CA。每個
 工具有自己的信任庫（Python requests 用 certifi、Node 要 `NODE_EXTRA_CA_CERTS`、Java 用 keystore），
-請在各自的地方信任，不要關掉憑證檢查。同一頁的「讓新終端機透過 HTTP 擷取代理」（預設關閉）會替**之後新開的**內建終端機
+請在各自的地方信任，不要關掉憑證檢查。Windows 內建的 `curl.exe`（Schannel）還會檢查憑證撤銷，而 mitmproxy 簽的憑證沒有撤銷資訊，
+所以即使 CA 已信任，經代理連 HTTPS 仍會失敗（`%{http_code}` 為 `000`）；加上 `--ssl-no-revoke` 即可，
+它只略過撤銷檢查，信任鏈照驗，RedLog 畫面上的驗證指令已經帶了這個旗標。同一頁的「讓新終端機透過 HTTP 擷取代理」（預設關閉）會替**之後新開的**內建終端機
 設好 `HTTP_PROXY` / `HTTPS_PROXY`，所以會讀代理變數的 HTTP 工具——curl、wget、Python
 `requests`、Node 的 HTTP client——會經過 mitmproxy；nmap SYN 掃描、原始 TCP、SMB、
 LDAP、RDP 不走 HTTP 代理，這樣擷取不到。
