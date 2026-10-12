@@ -340,6 +340,23 @@ describeDB('capture-health', () => {
       expect(getCaptureHealth().unattributedSpool).toMatchObject({ count: 2 })
     })
 
+    it('clearing drops them from the very next read, not 750 ms later', async () => {
+      // Health is cached. The card asks again the moment the operator confirms,
+      // and an answer cached a moment before would still list what was deleted.
+      const { clearUnattributedCommands } = await import('../src/core/capture-health')
+      mockHooks({ 'shell-zsh': true })
+      const pending = path.join(home, '.redlog', 'pending')
+      fs.mkdirSync(pending, { recursive: true })
+      fs.writeFileSync(path.join(pending, '1.json.unattributed'), '{}')
+      fs.writeFileSync(path.join(pending, '2.json.unattributed'), '{}')
+      mockHooks({ 'shell-zsh': true })
+      const shown = getCaptureHealth().unattributedSpool
+      expect(shown).toMatchObject({ count: 2 })
+
+      expect(clearUnattributedCommands(shown!.newestAt)).toEqual({ removed: 2, failed: 0 })
+      expect(getCaptureHealth().unattributedSpool).toBeNull()
+    })
+
     it('does not change the verdict', () => {
       mockHooks({ 'shell-zsh': true })
       ins('shell', { subtype: 'command_start', source: 'zsh' })

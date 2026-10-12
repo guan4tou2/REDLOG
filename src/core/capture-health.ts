@@ -1,6 +1,9 @@
 import os from 'node:os'
 import path from 'node:path'
-import { summarizeUnattributedSpool, type UnattributedSpoolSummary } from './spool-replay'
+import {
+  summarizeUnattributedSpool, clearUnattributedSpool,
+  type UnattributedSpoolSummary, type ClearUnattributedResult
+} from './spool-replay'
 import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
@@ -369,6 +372,20 @@ function cachedHooks(now: number): ReturnType<typeof detectHooks> {
   return value
 }
 
+/** Where the shell hooks leave what they could not deliver. */
+export function pendingSpoolDirectory(home = os.homedir()): string {
+  return path.join(home, '.redlog', 'pending')
+}
+
+/** The operator's "clear" on the unrecorded-commands line (#255). Drops the
+ *  cached health with it: the card asks again straight away, and an answer
+ *  cached a moment ago would still list what was just deleted. */
+export function clearUnattributedCommands(upTo: number): ClearUnattributedResult {
+  const result = clearUnattributedSpool(pendingSpoolDirectory(), upTo)
+  healthCache = null
+  return result
+}
+
 export function invalidateHooksCache(): void { hooksCache = null; healthCache = null; invalidateCommandCache() }
 
 export function getCaptureHealth(now = Date.now()): CaptureHealth {
@@ -663,7 +680,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     lastDbError,
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
-    unattributedSpool: summarizeUnattributedSpool(path.join(os.homedir(), '.redlog', 'pending')),
+    unattributedSpool: summarizeUnattributedSpool(pendingSpoolDirectory()),
     lastSampleBroken,
     managedHttpProxy: managedProxyStatusProvider?.()
   }

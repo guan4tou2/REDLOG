@@ -66,7 +66,7 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { applyLoginPath } from './login-path'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError, pendingSpoolDirectory, clearUnattributedCommands } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
@@ -842,7 +842,7 @@ function startProject(project: ProjectMeta): void {
       // A pause is the one case worth keeping for later.
       return result.skipped !== 'paused'
     }
-    const replayed = replaySpoolDirectory(path.join(homedir(), '.redlog', 'pending'), {
+    const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), {
       engagementId: currentEngagementId,
       operatorId: currentOperatorId
     }, emit, limit).replayed
@@ -1626,6 +1626,12 @@ app.whenReady().then(() => {
     return detectHooksAsync()
   })
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
+  // #255. `upTo` is the newest write time the card was showing: the operator
+  // confirmed deleting what they were shown, not whatever has arrived since.
+  ipcMain.handle('capture:clearUnattributedSpool', (_e, upTo: unknown) => {
+    if (typeof upTo !== 'number' || !Number.isFinite(upTo)) return { removed: 0, failed: 0 }
+    return clearUnattributedCommands(upTo)
+  })
   // Spec 052 T034. Settings shows what the SHELL will do — the machine's mode
   // and the effective class lists, defaults with the operator's `redlog class`
   // edits on top. Read on demand rather than cached: `redlog mode manual`

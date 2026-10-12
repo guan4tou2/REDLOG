@@ -53,6 +53,39 @@ export function summarizeUnattributedSpool(directory: string): UnattributedSpool
   return count === 0 ? null : { count, oldestAt, newestAt }
 }
 
+export interface ClearUnattributedResult {
+  removed: number
+  /** Files that matched and could not be deleted (open elsewhere, no
+   *  permission). They stay on disk and stay counted. */
+  failed: number
+}
+
+/** Delete the set-aside files an operator has chosen to get rid of (#255).
+ *
+ *  Only what they were shown: `upTo` is the newest write time the summary
+ *  reported, and anything written after it is left alone. A hook can set one
+ *  more aside between the card drawing its count and the operator confirming,
+ *  and removing a file nobody has seen counted is the worse way to be wrong.
+ *  Only `*.unattributed` — never a `.json` still waiting for replay, and never
+ *  a `.bad` that someone may want to inspect. */
+export function clearUnattributedSpool(directory: string, upTo: number): ClearUnattributedResult {
+  const result = { removed: 0, failed: 0 }
+  let names: string[]
+  try { names = fs.readdirSync(directory) } catch { return result }
+  for (const name of names) {
+    if (!name.endsWith(UNATTRIBUTED_SUFFIX)) continue
+    const file = path.join(directory, name)
+    try {
+      if (Math.round(fs.statSync(file).mtimeMs) > upTo) continue
+      fs.unlinkSync(file)
+      result.removed++
+    } catch {
+      result.failed++
+    }
+  }
+  return result
+}
+
 /** Replay only files attributable to the active engagement. Mismatches remain
  * byte-for-byte in place so opening their owning project can recover them. */
 export function replaySpoolDirectory(
