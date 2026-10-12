@@ -25,6 +25,7 @@ PS1, and each command is considered finished when that marker comes back.
 A sleep long enough to be safe on a loaded machine is long enough to make the
 suite unusable, and a sleep short enough to be usable is a flake.
 """
+import fcntl
 import json
 import os
 import pty
@@ -32,9 +33,11 @@ import re
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import termios
 import time
 import uuid
 
@@ -107,9 +110,20 @@ class Session:
         env.pop("ZSH_THEME", None)
 
         self.master, slave = pty.openpty()
+
+        def become_session_leader_with_this_tty():
+            # `setsid` alone starts a session with NO controlling terminal. The
+            # shell then still reads and writes the pty, so every earlier test
+            # worked — but the kernel only turns Ctrl-C / Ctrl-Z into SIGINT /
+            # SIGTSTP for a session's controlling terminal, and zsh only does
+            # job control on one. Without this, `^Z` is just a byte, `jobs` is
+            # empty and `fg` has nothing to resume (spec 052 T044).
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
         self.proc = subprocess.Popen(
             [self.job.get("shell", "/usr/bin/zsh"), "-i"],
-            preexec_fn=os.setsid,
+            preexec_fn=become_session_leader_with_this_tty,
             stdin=slave, stdout=slave, stderr=slave,
             env=env, cwd=self.job.get("cwd", home),
         )
@@ -162,6 +176,78 @@ class Session:
             lines = lines[1:]
         return "\n".join(lines).strip("\n")
 
+    # ── Steps that are not "type a line, wait for the prompt" ───────────────
+    #
+    # Spec 052 T044 is about a command that does NOT return to the prompt: a
+    # listener holds the terminal until something connects, and the operator's
+    # next keystroke is a control character, not a line. The string form of a
+    # command cannot express either, so a command may also be a dict:
+    #
+    #   {"line": "nc -lvnp 4444", "until": "listening on"}
+    #       type a line, then wait for TEXT instead of the prompt
+    #   {"raw": "\u001a"}
+    #       write bytes as they are — no newline — then wait for the prompt.
+    #       `\u001a` is Ctrl-Z, delivered through the pty's own line
+    #       discipline, so the kernel turns it into SIGTSTP exactly as a
+    #       keyboard would.
+    #   {"peer": {"port": 4444, "send": "hi\n", "hold": 0.5}}
+    #       connect to a port from OUTSIDE the terminal — the other end of a
+    #       reverse shell — send something, hold, hang up.
+    #   {"prompt": true}
+    #       wait for the prompt without sending anything
+    #
+    # A plain string is unchanged, so every existing suite is untouched.
+
+    def read_until_text(self, needle, label, timeout=None):
+        deadline = time.time() + (timeout or self.timeout)
+        while needle not in self.buffer:
+            if time.time() > deadline:
+                raise TimeoutError("never saw %r during %s" % (needle, label))
+            r, _, _ = select.select([self.master], [], [], 0.2)
+            if not r:
+                continue
+            try:
+                chunk = os.read(self.master, 65536)
+            except OSError:
+                raise TimeoutError("pty closed during " + label)
+            if not chunk:
+                raise TimeoutError("pty EOF during " + label)
+            text = chunk.decode("utf-8", "replace")
+            self.buffer += text
+            self.transcript.append(text)
+        before, _, rest = self.buffer.partition(needle)
+        self.buffer = rest
+        return before + needle
+
+    def step(self, spec):
+        if "line" in spec:
+            os.write(self.master, (spec["line"] + "\n").encode("utf-8"))
+            out = self.read_until_text(spec["until"], spec["line"], spec.get("timeout"))
+            return spec["line"], strip_ansi(out)
+        if "raw" in spec:
+            os.write(self.master, spec["raw"].encode("utf-8"))
+            out = self.read_until_marker(label="raw " + repr(spec["raw"]))
+            return "raw " + repr(spec["raw"]), strip_ansi(out)
+        if "peer" in spec:
+            peer = spec["peer"]
+            sock = socket.create_connection((peer.get("host", "127.0.0.1"), peer["port"]), timeout=5)
+            try:
+                if peer.get("send"):
+                    sock.sendall(peer["send"].encode("utf-8"))
+                time.sleep(float(peer.get("hold", 0.3)))
+            finally:
+                sock.close()
+            return "peer :%d" % peer["port"], ""
+        if "sh" in spec:
+            # A command run OUTSIDE the terminal, against the machine the shell
+            # is on — for looking at what a stuck session looks like (`ps`)
+            # rather than only at what the terminal printed.
+            done = subprocess.run(["/bin/sh", "-c", spec["sh"]], capture_output=True, text=True, timeout=30)
+            return "sh", (done.stdout + done.stderr)
+        if spec.get("prompt"):
+            return "prompt", strip_ansi(self.read_until_marker(label="prompt"))
+        raise ValueError("unknown step: %r" % (spec,))
+
     def close(self):
         try:
             os.write(self.master, b"exit\n")
@@ -193,7 +279,18 @@ def main():
     try:
         session.start()
         for command in job.get("commands", []):
-            report["steps"].append({"command": command, "output": session.run(command)})
+            if isinstance(command, dict):
+                label, output = session.step(command)
+                report["steps"].append({"command": label, "output": output})
+            else:
+                started = time.time()
+                output = session.run(command)
+                report["steps"].append({
+                    "command": command, "output": output,
+                    # Per command, because the 100-command engagement (T045)
+                    # is also the only place the cost of the relay shows up.
+                    "ms": int((time.time() - started) * 1000),
+                })
         report["ok"] = True
     except Exception as exc:  # reported, never raised: the caller wants the transcript
         report["error"] = "{}: {}".format(type(exc).__name__, exc)

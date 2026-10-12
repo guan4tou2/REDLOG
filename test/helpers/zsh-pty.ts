@@ -13,7 +13,22 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-export interface ZshStep { command: string; output: string }
+export interface ZshStep {
+  command: string
+  output: string
+  /** Wall time for a plain-string command, in ms. Absent for dict steps. */
+  ms?: number
+}
+
+/** A step that is not "type a line and wait for the prompt" — see the block
+ *  comment in zsh-pty.py. A plain string is still the common case. */
+export type ZshCommand =
+  | string
+  | { line: string; until: string; timeout?: number }
+  | { raw: string }
+  | { peer: { port: number; send?: string; hold?: number; host?: string } }
+  | { sh: string }
+  | { prompt: true }
 export interface ZshReport {
   ok: boolean
   steps: ZshStep[]
@@ -196,14 +211,20 @@ export async function startBlackHole(): Promise<{ port: number; close: () => Pro
 export interface ZshRunOptions {
   /** Lines written into the generated .zshrc before the commands run. */
   rc?: string
-  commands: string[]
+  commands: ZshCommand[]
   /** Written into <home>/.redlog so the adapter believes RedLog is running.
    *  `identity` additionally writes `active-identity.json`, which only the
    *  PTY recorder needs — it pins identity when the session opens. */
   redlog?: { port: number; token: string; identity?: { engagementId: string; operatorId?: string } }
   /** Extra environment for the shell, on the far side of the pty. */
   env?: Record<string, string>
+  /** Per COMMAND: how long the driver waits for a prompt or a string. */
   timeoutSeconds?: number
+  /** For the whole shell. Defaults to `timeoutSeconds` — enough for a handful
+   *  of commands, and far too little for a hundred (spec 052 T045), where the
+   *  per-command wait is fine and the total is the number of commands times
+   *  what each one costs. */
+  totalTimeoutSeconds?: number
 }
 
 /** One throwaway HOME, one interactive zsh, one report.
@@ -237,7 +258,8 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
     const child = spawn(argv[0], argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
-    const killer = setTimeout(() => child.kill('SIGKILL'), (opts.timeoutSeconds ?? 20) * 1000 + 10_000)
+    const total = opts.totalTimeoutSeconds ?? opts.timeoutSeconds ?? 20
+    const killer = setTimeout(() => child.kill('SIGKILL'), total * 1000 + 10_000)
     child.stdout.on('data', (c) => { stdout += String(c) })
     child.stderr.on('data', (c) => { stderr += String(c) })
     child.on('close', (status) => {
