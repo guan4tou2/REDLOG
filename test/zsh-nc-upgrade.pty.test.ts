@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { spawnSync } from 'child_process'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
 // Spec 052 T044 / SC-004, step (c) of quickstart.md — the line this feature
@@ -29,7 +30,30 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 // bare zsh and once with the adapter, and the observable results are compared.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+
+// Kali's `nc` is the traditional netcat (v1.10), and `nc -lvnp PORT` is that
+// flavour's syntax. The OpenBSD one most CI images ship refuses it
+// ("cannot use -p and -l"), prints a differently-cased banner, and handles the
+// peer hanging up differently — so on that flavour this would fail for reasons
+// that say nothing about RedLog. It is skipped there, with the reason, rather
+// than ported on a guess: the delivery target is Kali, and a second flavour
+// that nobody has run is a test that is green by luck.
+function hasTraditionalNc(t: ShellTarget | null): boolean {
+  if (!t) return false
+  const argv = [...t.prefix, 'sh', '-c', 'nc -h 2>&1 | head -2']
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const out = spawnSync(argv[0], argv.slice(1), { encoding: 'utf8' })
+    const text = `${out.stdout}${out.stderr}`.trim()
+    // Silence is a probe that failed, not an answer — through WSL it is the
+    // interop service refusing a session, and reading that as "not
+    // traditional" would skip the whole file and report green. Only an actual
+    // banner can say which flavour this is.
+    if (text) return /v1\.10/.test(text)
+  }
+  return false
+}
+
+const describeShell = hasTraditionalNc(target) ? describe : describe.skip
 
 const PORT = 4444
 
