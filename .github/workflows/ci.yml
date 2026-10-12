@@ -74,8 +74,18 @@ jobs:
         # reported as skipped — a green run that had checked none of the
         # adapter. Windows reaches zsh through WSL, which the runner lacks, so
         # those specs are Linux-only by construction.
+        #
+        # `update` first, as the e2e job does: the runner image's package index
+        # can be older than the archive, and a stale one fails the install
+        # instead of installing something older. The version is printed, not
+        # pinned — the pty specs lean on `zstat -F`, `zselect` and `-d -i`, so
+        # when a runner image change moves zsh (ubuntu-latest becomes Ubuntu 26
+        # on 2026-10-19) the log says which zsh a failure ran against.
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y zsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh
+          zsh --version
 
       - name: Vitest
         run: npm test
