@@ -242,7 +242,7 @@ printf 'test-token' > "\$H/.redlog/api-token"
 cat > "\$H/bin/curl" <<'SHIM'
 #!/bin/sh
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = "-d" ]; then
+  if [ "$1" = "--data-binary" ]; then shift; f=$(printf '%s' "$1" | sed 's/^@//'); { cat "$f"; printf '\\n'; } >> "$REDLOG_TEST_PAYLOADS"; fi; if [ "$1" = "-d" ]; then
     shift
     printf '%s\\n' "$1" >> "$REDLOG_TEST_PAYLOADS"
   fi

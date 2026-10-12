@@ -104,8 +104,17 @@ _redlog_send_event() {
     export _REDLOG_HOST
   fi
 
-  local payload
-  payload=$(python3 -c "
+  # The body travels in FILES, never as an argument. One argument is capped at
+  # 128 KiB by the kernel (MAX_ARG_STRLEN) and a command_end carries up to
+  # 8 MiB per stream, so `python3 -c ... "$extra"` and `curl -d "$payload"`
+  # both failed to exec for any command with a lot of output — and the failure
+  # was swallowed, leaving no event and nothing in the spool. `printf` is a
+  # builtin and has no such limit.
+  local work
+  work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+  printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
+
+  python3 -c "
 import json, sys, os, pathlib, time
 d = {
     'agent_type': 'shell',
@@ -139,8 +148,9 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
 tid = os.environ.get('REDLOG_TERMINAL_ID')
 if tid:
     d['data']['terminalId'] = tid
-if sys.argv[3]:
-    d['data'].update(json.loads(sys.argv[3]))
+extra = pathlib.Path(sys.argv[3]).read_text(encoding='utf-8', errors='replace')
+if extra.strip():
+    d['data'].update(json.loads(extra))
 # Embed active project identity so spooled events can be attributed correctly.
 try:
     ident = json.loads(pathlib.Path.home().joinpath('.redlog', 'active-identity.json').read_text())
@@ -149,7 +159,8 @@ try:
 except Exception:
     pass
 print(json.dumps(d))
-" "$subtype" "$command" "$extra" 2>/dev/null) || return 0
+" "$subtype" "$command" "$work/extra.json" > "$work/payload.json" 2>/dev/null \
+    || { rm -rf "$work"; return 0; }
 
   # v0.6.87 A2: local spool for back-pressure. Previously curl was fire-and-
   # forget (`&`) with a 2s deadline — if RedLog was closed or the port was
@@ -164,15 +175,16 @@ print(json.dumps(d))
   if ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
-        -d "$payload" \
+        --data-binary @"$work/payload.json" \
         --connect-timeout 1 --max-time 2 >/dev/null 2>&1; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     local count
     count=$(ls -1 "$spool_dir" 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
-      printf '%s' "$payload" > "$spool_file" 2>/dev/null
+      cp "$work/payload.json" "$spool_file" 2>/dev/null
     fi
   fi
+  rm -rf "$work"
 }
 
 # True only for something the relay can actually launch as a process. A path
