@@ -294,15 +294,15 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
       run = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: [
-          // The command kills its own relay and then exits 7. Both pipe
-          // processes go, so the shell is left holding descriptors whose far
-          // end is gone — which is the shape of a relay that crashed, an OOM
-          // kill, or an operator's own `pkill python3`.
+          // The command kills its own relay and then exits 7. The relay goes,
+          // so the shell is left holding descriptors whose far end is gone —
+          // which is the shape of a relay that crashed, an OOM kill, or an
+          // operator's own `pkill python3`.
           // The bracket is not decoration: `pkill -f` matches full command
           // lines, and this command's own line contains the pattern — without
           // it the command kills itself and reports 143, which looks exactly
           // like the bug being tested for.
-          `sh -c 'pkill -f "redlog-rela[y].py pipe" 2>/dev/null; exit 7'`,
+          `sh -c 'pkill -f "redlog-rela[y].py pty" 2>/dev/null; exit 7'`,
           'echo code=$?',
           'echo still-here'
         ],

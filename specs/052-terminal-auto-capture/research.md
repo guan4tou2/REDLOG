@@ -30,6 +30,68 @@ field-tested even though no code is being taken.
 - *Parse the terminal transcript afterwards*: forbidden by FR-002; the output
   can forge any marker.
 
+### D1 amendment (2026-10-12, issue #288): a pseudo-terminal, not a pipe
+
+D1 said the shell's stdout and stderr are redirected "through the relay" and
+left the medium unstated; the first implementation used two pipes. That was
+measured against a bare zsh on a real pty
+(`test/zsh-transparency.pty.test.ts`) and **was not transparent**:
+
+| A relayed command… | bare zsh | with pipes |
+|---|---|---|
+| `[ -t 1 ]` / `[ -t 2 ]` | true | **false** |
+| `ls` | columns, colour | **one name a line, no colour** |
+| `os.get_terminal_size()` | the window | **ENOTTY** |
+
+Everything that decides its formatting from `isatty` decided differently, and
+nothing in the suite could say so, because every assertion was about what was
+*recorded*. `git`, `grep --color=auto`, `ls` and Python tools all behave this
+way.
+
+**Decision**: the command's stdout and stderr are each a **pseudo-terminal**
+whose master the relay reads (`redlog-relay.py pty`). stdin is still the real
+terminal, so job control, Ctrl-C/Ctrl-Z and the `nc` upgrade are untouched —
+that is the part of D1 that mattered for FR-006, and it is unchanged. Two ptys,
+not one, so stdout and stderr stay separable (FR-005).
+
+Consequences, each of which is asserted by a test:
+
+- The slave's `OPOST` is cleared, so the bytes the relay sees are the bytes the
+  command wrote. Left on, the pty turns every `\n` into `\r\n` and the byte
+  count (which is of everything that passed) is wrong.
+- What is **stored** is the cleaned text: colour and cursor sequences removed,
+  a `\r`-redrawn line reduced to the line it ended on. The bytes went to the
+  screen untouched; this is only the stored copy. The raw bytes are **not**
+  kept — see *Not done* below.
+- A pager is the one thing a terminal on stdout *adds*. `git log` and `man`
+  start `less` once stdout is a terminal, and `less` takes its keyboard and raw
+  mode from stderr — a pty nobody types into — so it draws a page and never
+  reads a key. This was found by running it, not by reasoning: the first
+  pty relay hung on exactly that. `PAGER`, `GIT_PAGER`, `MANPAGER` and
+  `SYSTEMD_PAGER` are set to `cat` for the length of a relayed command and put
+  back at the prompt, which is what a pipe gave, accidentally, before.
+
+**Limits, stated rather than discovered** (the first is asserted by a test; the
+others follow from the code and have not been measured):
+
+- A command line that *expands* those four variables (`echo $PAGER`) sees
+  `cat`: `preexec` runs before expansion, and a command's environment cannot be
+  changed from there. Tested.
+- A relayed script that runs `less`/`more` directly (not through `$PAGER`) has
+  no working keyboard. Ctrl-C recovers it. If it matters, put the program in the
+  `native` class (`~/.redlog/command-class.json`).
+- A program that calls `tcsetattr` on **stdout** changes the relay's pty, not
+  the operator's terminal. `stty`-style tools use stdin and are unaffected.
+- A resize while a command runs reaches the command within a quarter second
+  (the relay polls), not instantly.
+- Cost: roughly 70–140 ms more per relayed command than pipes on this WSL host
+  (mean 544 and 616 ms in two runs, against 479 ms with pipes — host noise is about that size, so read it as "tens of ms, not hundreds").
+
+**Not done**: the issue asks for raw bytes and the cleaned reading text to be
+stored separately. Only the cleaned text is stored; `stdout_bytes` counts the
+raw bytes that passed. Keeping both is a storage-policy decision (it doubles
+the body for every coloured command) and belongs with the retention work.
+
 ## D2. Where the relay body lives
 
 **Decision**: factor the existing `redlog-run` relay (`hooks/shell-common.sh`,

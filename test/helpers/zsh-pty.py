@@ -34,6 +34,7 @@ import select
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,12 @@ class Session:
         env.pop("ZSH_THEME", None)
 
         self.master, slave = pty.openpty()
+        # A pty is born 0x0, which is not a terminal anything can lay itself
+        # out on — `ls` columns, `tput cols` and `less` all read this. Spec
+        # 052 #288 compares them with and without the adapter, so the size has
+        # to be one a test can tell apart from the fallback of 80x24.
+        rows, cols = self.job.get("winsize", [24, 80])
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
         def become_session_leader_with_this_tty():
             # `setsid` alone starts a session with NO controlling terminal. The
@@ -174,6 +181,10 @@ class Session:
             text = chunk.decode("utf-8", "replace")
             self.buffer += text
             self.transcript.append(text)
+        # What the terminal was actually sent, before the escape sequences are
+        # stripped for reading. Colour IS an escape sequence, so a test that
+        # asks "did `ls` colour its output" cannot ask the cleaned text.
+        self.last_raw = raw
         clean = strip_ansi(raw)
         lines = [ln for ln in clean.split("\n")]
         # zsh echoes the command it was given; drop that first line only when
@@ -293,6 +304,7 @@ def main():
                 output = session.run(command)
                 report["steps"].append({
                     "command": command, "output": output,
+                    "raw": session.last_raw if job.get("keep_raw") else None,
                     # Per command, because the 100-command engagement (T045)
                     # is also the only place the cost of the relay shows up.
                     "ms": int((time.time() - started) * 1000),
