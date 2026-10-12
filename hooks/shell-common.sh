@@ -158,7 +158,7 @@ try:
         d['_identity'] = ident
 except Exception:
     pass
-print(json.dumps(d))
+sys.stdout.write(json.dumps(d))
 " "$subtype" "$command" "$work/extra.json" > "$work/payload.json" 2>/dev/null \
     || { rm -rf "$work"; return 0; }
 
