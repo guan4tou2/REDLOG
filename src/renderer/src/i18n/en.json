@@ -934,6 +934,7 @@
   "capture.http.stopped": "not started",
   "capture.http.starting": "starting",
   "capture.http.ready": "capturing",
+  "capture.http.listening": "listening on {{address}}",
   "capture.http.failed": "failed",
   "capture.group.commands": "Commands",
   "capture.mitmproxyCapability": "requests and responses from any proxied tool · needs mitmproxy",

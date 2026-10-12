@@ -63,9 +63,18 @@ describe('httpCaptureState', () => {
     // Same rule when the probe has a reason to be wrong: an operator's own
     // mitmproxy, outside RedLog, with nothing of ours on PATH.
     expect(httpCaptureState(src({ installed: false, lastEventAt: 1 }), proxy('unavailable'))).toBe('ready')
-    // Never fed and uninstalled is still unset — this only covers traffic that
-    // actually came through.
-    expect(httpCaptureState(src({ installed: false, lastEventAt: null }), proxy('running'))).toBe('unset')
+    // Never fed and uninstalled, with nothing running, is still unset.
+    expect(httpCaptureState(src({ installed: false, lastEventAt: null }), proxy('stopped'))).toBe('unset')
+  })
+
+  it('never says "not installed" while RedLog\'s own proxy is running (#254)', () => {
+    // The probe that fills `installed` looks mitmdump up on PATH; the managed
+    // proxy spawns it by name. The two can disagree — a stale cached lookup
+    // after the in-app install, a Store execution alias the filesystem probe
+    // cannot stat — and then the card said 未安裝 mitmproxy sixty seconds into
+    // a capture that was up and listening. A process that is running is the
+    // strongest evidence the binary exists, with or without traffic yet.
+    expect(httpCaptureState(src({ installed: false, lastEventAt: null }), proxy('running'))).toBe('ready')
   })
 
   it('shows the proxy coming up', () => {

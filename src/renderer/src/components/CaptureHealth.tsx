@@ -28,13 +28,22 @@ function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | nu
     : 'capture.terminalOwnShellPending'
 }
 
+/** `127.0.0.1:6661` from the managed proxy's `http://127.0.0.1:6661`, only while
+ *  it is running. */
+function proxyListenAddress(proxy: { state: string; url?: string | null } | undefined): string | null {
+  if (proxy?.state !== 'running' || !proxy.url) return null
+  try { return new URL(proxy.url).host } catch { return proxy.url }
+}
+
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, source, sources, proxyError, age, t }: {
+function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
+  /** host:port the managed proxy is listening on, or null when it is not up (#254). */
+  listenAddress: string | null
   source: CaptureSourceInfo | undefined
   sources: CaptureSourceInfo[]
   proxyError: string | undefined
@@ -42,7 +51,7 @@ function CoreCaptureLine({ readiness, http, source, sources, proxyError, age, t 
    *  recorded. Freshness is reported here as data, in its own column — it is
    *  what the removed `idle` state was a bad way of saying. */
   age: (ts: number | null) => string
-  t: (key: string) => string
+  t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
   const commands = readiness.groups.find((g) => g.id === 'commands')
   // Can commands be recorded — the same question, and the same four words, as
@@ -104,7 +113,14 @@ function CoreCaptureLine({ readiness, http, source, sources, proxyError, age, t 
             {(http === 'unset' || http === 'stopped') && (
               <span className="block text-xs text-redlog-text-faint">{t('capture.mitmproxyCapability')}</span>
             )}
-            {proxyError && <span className="block text-red-400">{proxyError}</span>}
+            {/* Where to point a tool. Settings ▸ Browser had it; the card an
+                operator watches mid-engagement did not (#254). */}
+            {http === 'ready' && listenAddress && (
+              <span data-testid="capture-core-http-address" className="block font-mono text-xs text-redlog-text-faint">
+                {t('capture.http.listening', { address: listenAddress })}
+              </span>
+            )}
+            {proxyError &&<span className="block text-red-400">{proxyError}</span>}
             {source?.lastError && (
               <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
             )}
@@ -377,6 +393,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
         <CoreCaptureLine
           readiness={readiness}
           http={http}
+          listenAddress={proxyListenAddress(capture.managedHttpProxy)}
           source={mitmSource}
           sources={sources}
           proxyError={capture.managedHttpProxy?.error}
