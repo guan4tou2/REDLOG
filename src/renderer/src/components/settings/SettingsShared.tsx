@@ -154,6 +154,16 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
   const { t } = useI18n()
   const [input, setInput] = useState('')
   const [rejected, setRejected] = useState<string[]>([])
+  const id = useId()
+  const rejectedId = `${id}-rejected`
+  const draftId = `${id}-draft`
+  // The section says changes save automatically, and that is true of the list
+  // -- not of what is still sitting in the box. A draft is only saved once it
+  // is added, so say so while there is one. Not stacked on the rejection
+  // message, which already says the same about the entries it names.
+  const hasDraft = input.trim() !== '' && rejected.length === 0
+  const describedBy = [rejected.length > 0 ? rejectedId : null, hasDraft ? draftId : null]
+    .filter((v): v is string => v !== null).join(' ') || undefined
 
   const addItem = (): void => {
     const trimmed = input.trim()
@@ -176,7 +186,7 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
 
   return (
     <div>
-      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
+      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <div className="flex gap-1 mb-1">
         {/* A validating field takes a paste, and the requirement splits it on
             newlines -- which a single-line <input> sanitises away, gluing the
@@ -184,6 +194,9 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
             textarea, and Enter stays a newline: ⌘/Ctrl+Enter or + commits. */}
         {parse ? (
           <textarea
+            id={id}
+            aria-invalid={rejected.length > 0 || undefined}
+            aria-describedby={describedBy}
             rows={2}
             value={input}
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
@@ -193,6 +206,9 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
           />
         ) : (
           <input
+            id={id}
+            aria-invalid={rejected.length > 0 || undefined}
+            aria-describedby={describedBy}
             value={input}
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
             onKeyDown={(e) => e.key === 'Enter' && addItem()}
@@ -203,8 +219,13 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
         <IconButton label={t('common.addItem')} onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
       </div>
       {rejected.length > 0 && (
-        <p data-testid="list-field-rejected" role="alert" className="text-xs text-redlog-warn mb-1 font-mono">
+        <p id={rejectedId} data-testid="list-field-rejected" role="alert" className="text-xs text-redlog-warn mb-1 font-mono">
           {t('settings.scopeRejected', { entries: rejected.join(', ') })}
+        </p>
+      )}
+      {hasDraft && (
+        <p id={draftId} data-testid="list-field-draft" className="text-xs text-redlog-text-faint mb-1">
+          {t(parse ? 'settings.listDraftHintMulti' : 'settings.listDraftHint')}
         </p>
       )}
       {items.length > 0 && (
