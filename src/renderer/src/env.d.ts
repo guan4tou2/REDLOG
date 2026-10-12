@@ -177,7 +177,7 @@ interface RedLogAPI {
     get: () => Promise<unknown>
     save: (config: unknown, opts?: { expectProjectId?: string }) => Promise<boolean>
     exportProfile: () => Promise<string | null>
-    importProfile: () => Promise<unknown | null>
+    importProfile: () => Promise<import('../../core/profile-import').ProfileImportResult>
   }
   targetContext: {
     get: () => Promise<string | null>

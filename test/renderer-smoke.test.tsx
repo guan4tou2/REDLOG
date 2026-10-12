@@ -114,7 +114,7 @@ function installBridge(): void {
       }),
       save: async () => true,
       exportProfile: async () => null,
-      importProfile: async () => null
+      importProfile: async () => ({ status: 'cancelled' })
     },
     targetContext: {
       get: async () => null,
