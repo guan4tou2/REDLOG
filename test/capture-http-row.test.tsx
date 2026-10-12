@@ -59,6 +59,31 @@ describe('the mitmproxy row on the Capture Health card', () => {
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
+  it('names the listen address while the managed proxy is running (#254)', () => {
+    // v0.18.0 smoke test: capture started, `status()` said running on
+    // 127.0.0.1:6661, and nothing on the card said where it was listening —
+    // the operator had to open Settings to learn the port to point a tool at.
+    const core = draw([mitm()], { state: 'running', url: 'http://127.0.0.1:6661' })
+      .querySelector('[data-testid="capture-core-http"]')
+    expect(core?.textContent).toMatch(/listening on 127\.0\.0\.1:6661/)
+    cleanup()
+    // Not while it is not running, and not without an address to name.
+    const stopped = draw([mitm()], { state: 'stopped', url: null }).querySelector('[data-testid="capture-core-http"]')
+    expect(stopped?.textContent).not.toMatch(/listening on/)
+  })
+
+  it('says capturing, not "not installed", when the probe misses a running managed proxy (#254)', () => {
+    // `installed: false` is the install probe's reading; the managed proxy is
+    // the fact. Sixty seconds into a running capture the row said 未安裝
+    // mitmproxy.
+    const el = draw([mitm({ installed: false, state: 'unset' })], { state: 'running', url: 'http://127.0.0.1:6661' })
+    const core = el.querySelector('[data-testid="capture-core-http"]')
+    expect(core?.getAttribute('data-state')).toBe('ready')
+    expect(core?.textContent).not.toMatch(/not installed/)
+    fireEvent.click(within(el).getByText(/all sources/))
+    expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
+  })
+
   it('no longer carries a second, separate sentence about the same proxy', () => {
     // "Managed HTTP proxy is listening" over a row reading "idle".
     const text = draw([mitm()], { state: 'running', url: null }).textContent ?? ''

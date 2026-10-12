@@ -1660,7 +1660,15 @@ app.whenReady().then(() => {
   })
   // The operator's PATH has to be resolved first, or uv/brew installed outside
   // launchd's minimal PATH are invisible and the install ENOENTs.
-  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => { await loginPathReady; return installDependency(id) })
+  // An install changes what is on PATH, and `commandExists` caches a miss for
+  // the session — so without this a mitmdump installed from the first-run card
+  // stayed "not installed" in the health row while the proxy ran it (#254).
+  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => {
+    await loginPathReady
+    const result = await installDependency(id)
+    invalidateHooksCache(); invalidateHooksDetectCache()
+    return result
+  })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())

@@ -69,6 +69,12 @@ export function httpCaptureState(
   // combination, `installed: false` over real traffic. "Not installed" is the
   // one reading this line must never give over recorded requests.
   if (source.lastEventAt !== null && source.state !== 'error') return 'ready'
+  // A running managed proxy beats the install probe (#254). The probe looks
+  // mitmdump up on PATH and can be wrong — cached from before an in-app
+  // install, or blind to a Store execution alias — while the proxy spawns it
+  // by name. A live process is proof the binary exists; "not installed" over
+  // it reads as capture not running.
+  if (proxy?.state === 'running' && source.state !== 'error') return 'ready'
   // `unavailable` is mitmdump's ENOENT, not a crash: the binary is missing.
   // Reporting that as a failure sends the operator reading an error message
   // when the answer is an install command.

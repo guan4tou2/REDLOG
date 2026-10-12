@@ -934,6 +934,7 @@
   "capture.http.stopped": "尚未啟動",
   "capture.http.starting": "啟動中",
   "capture.http.ready": "擷取中",
+  "capture.http.listening": "正在監聽 {{address}}",
   "capture.http.failed": "失敗",
   "capture.group.commands": "終端機",
   "capture.mitmproxyCapability": "任何走 proxy 的工具的 request 與 response · 需要 mitmproxy",
