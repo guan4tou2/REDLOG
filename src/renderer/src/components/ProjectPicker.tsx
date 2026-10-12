@@ -7,6 +7,7 @@ import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
+import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure, type ProfileImportResult } from '../../../core/profile-import'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -16,17 +17,14 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  // Spec 037: scope and excludes are pasted on the create card itself. Only
-  // the entries the parser accepts are submitted; the rest are listed inline.
-  const [scopeTargets, setScopeTargets] = useState<string[]>([])
-  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
-  // Safe IPs, exposed IPs and the violation warning are owned by Settings
-  // (Network and Scope pages). They are held here only because a profile can
-  // carry them into a project that does not exist yet.
-  const [whitelist, setWhitelist] = useState<string[]>([])
-  const [blacklist, setBlacklist] = useState<string[]>([])
-  const [warnOnViolation, setWarnOnViolation] = useState(true)
-  const [applied, setApplied] = useState<string | null>(null)
+  // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
+  // by Settings. The card holds them only when a profile was imported, because
+  // an import can carry them into a project that does not exist yet (#297).
+  // One resolved value: the summary below the button and the project.create
+  // argument are both derived from it, and importing replaces it whole.
+  const [imported, setImported] = useState<ImportedProfile | null>(null)
+  // A refused file leaves `imported` as it was; this says why.
+  const [importFailure, setImportFailure] = useState<ProfileFailure | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const { t } = useI18n()
@@ -56,15 +54,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      // Only an imported profile puts anything here now: the card asks for a
-      // name, and Settings ▸ Scope owns the rest.
-      const carried = scopeTargets.length > 0 || excludeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0
-      const initialConfig = carried
-        ? {
-          scope: { targets: scopeTargets, excludeTargets, warnOnViolation, scopeFile: null, personalDomains: [] },
-          network: { whitelist, blacklist, checkInterval: 60 }
-        }
-        : undefined
+      // Only an imported profile puts anything here: the card asks for a
+      // name, and Settings ▸ Scope owns the rest. Whether one was imported is
+      // the question, not what it holds — `false` and an empty list are
+      // settings too.
+      const initialConfig = imported ? profileToInitialConfig(imported) : undefined
       const project = await window.redlog.project.create(name, initialConfig)
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
@@ -116,27 +110,39 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleImportProfile(): Promise<void> {
-    const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
-    if (!profile) return
-    if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    const allow = profile.network?.whitelist
-    if (allow) setWhitelist(allow)
-    const deny = profile.network?.blacklist
-    if (deny) setBlacklist(deny)
-    if (profile.scope?.excludeTargets) setExcludeTargets(profile.scope.excludeTargets)
-    const warn = profile.scope?.warnOnViolation
-    if (warn !== undefined) setWarnOnViolation(warn)
-    // Nothing a profile carries is visible on this card, so all of it is named
-    // here or it is applied in silence.
-    setApplied([
-      profile.scope?.targets?.length ? t('project.appliedScope', { count: profile.scope.targets.length }) : null,
-      profile.scope?.excludeTargets?.length ? t('project.appliedExcluded', { count: profile.scope.excludeTargets.length }) : null,
-      allow?.length ? t('project.appliedSafe', { count: allow.length }) : null,
-      deny?.length ? t('project.appliedExposed', { count: deny.length }) : null,
-      warn === false ? t('project.appliedNoWarn') : null
-    ].filter(Boolean).join(' · ') || null)
+    const result = await window.redlog.config.importProfile()
+    // Backing out of the picker is not an error and changes nothing.
+    if (result.status === 'cancelled') return
+    if (result.status === 'failed') {
+      // The earlier import, if any, stays exactly as it was.
+      setImportFailure(result.failure)
+      return
+    }
+    // Replace, never layer: what the file leaves out is the default.
+    setImportFailure(null)
+    setImported(result.profile)
     toast(t('toast.profileImported'), 'success')
   }
+
+  function handleClearImported(): void {
+    setImported(null)
+    setImportFailure(null)
+  }
+
+  const failureText = importFailure ? describeFailure(importFailure) : null
+  function describeFailure(f: ProfileFailure): string {
+    switch (f.code) {
+      case 'read': return t('project.importFailedRead', { detail: f.detail })
+      case 'parse': return t('project.importFailedParse', { detail: f.detail })
+      case 'empty': return t('project.importFailedEmpty')
+      case 'shape': return t('project.importFailedShape', { field: f.field, expected: t(`project.expect.${f.expected}`) })
+    }
+  }
+  // Nothing a profile carries is visible on this card, so all of it is named
+  // here or it is applied in silence.
+  const appliedText = imported
+    ? profileSummary(imported).map((p) => t(p.key, { count: p.count ?? 0 })).join(' · ') || t('project.appliedNothing')
+    : null
 
   // The fixed 480px column left excessive empty
   // gutters on wide displays and cramped-feeling recent-projects rows.
@@ -212,8 +218,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <Button level="quiet" onClick={handleImportProfile} className="mt-3 text-xs">
             {t('project.importProfile')}
           </Button>
-          {applied && (
-            <p data-testid="profile-applied" className="mt-1 text-xs text-redlog-text-dim font-mono">{applied}</p>
+          {appliedText && (
+            <div className="mt-1 flex items-center gap-2">
+              <p data-testid="profile-applied" className="text-xs text-redlog-text-dim font-mono">{appliedText}</p>
+              <Button level="quiet" onClick={handleClearImported} className="text-xs">
+                {t('project.clearImported')}
+              </Button>
+            </div>
+          )}
+          {failureText && (
+            <p role="alert" data-testid="profile-error" className="mt-1 text-xs text-red-300">{failureText}</p>
           )}
         </div>
 

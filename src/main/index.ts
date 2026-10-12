@@ -26,7 +26,9 @@ import { LootDetector, listLootRules } from '../core/loot-detector'
 import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
-import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { readProfileFile } from '../core/profile-file'
+import type { ProfileImportResult } from '../core/profile-import'
+import { runScopeRecompute,queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/alert/policies'
@@ -1608,19 +1610,10 @@ app.whenReady().then(() => {
       ],
       properties: ['openFile']
     })
-    if (result.canceled || !result.filePaths[0]) return null
-    try {
-      const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
-      const ext = path.extname(result.filePaths[0]).toLowerCase()
-      const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
-      delete data.version
-      // Older profiles also carried saved Timeline views, which have no UI;
-      // keep them out of the config.
-      delete data.views
-      return data as Partial<RedLogConfig>
-    } catch {
-      return null
-    }
+    // Cancelling is its own answer. It used to share `null` with a file that
+    // could not be read, so the operator got no reason for either (#297).
+    if (result.canceled || !result.filePaths[0]) return { status: 'cancelled' } satisfies ProfileImportResult
+    return readProfileFile(result.filePaths[0])
   })
 
   // --- Hooks ---

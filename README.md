@@ -500,7 +500,7 @@ Changes are hot-reloaded — no restart needed.
 Export your project config as a `.yaml` or `.json` profile:
 
 1. **Export**: Settings → Team Profile Sync → Export Profile
-2. **Import**: Project Picker → Advanced Setup → Import Profile, or Settings → Import Profile
+2. **Import**: Project Picker → New project → Import Profile. Importing replaces what an earlier import set (fields the file leaves out return to the defaults); a file that cannot be used is refused with the reason and leaves your current choice as it was; **Clear imported settings** drops it
 3. Share the file with teammates — they import it when creating a new project
 
 ## Keyboard Shortcuts

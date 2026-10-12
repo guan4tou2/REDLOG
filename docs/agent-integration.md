@@ -357,8 +357,7 @@ network:
 ```
 
 Team members import this when creating a new project:
-- **Project Picker** → Advanced Setup → Import Profile
-- **Settings** → Team Profile Sync → Import Profile
+- **Project Picker** → New project → Import Profile. Only scope targets, exclusions, `warnOnViolation` and the safe/exposed IP lists are taken from the file; a later import replaces an earlier one, and a file with a wrongly-typed field is refused with the field named.
 
 ## Proxied Browser
 

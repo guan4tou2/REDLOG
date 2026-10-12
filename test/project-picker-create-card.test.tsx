@@ -11,10 +11,11 @@
 // it. What it must not do is apply settings the card no longer shows without
 // saying so.
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import { I18nProvider } from '../src/renderer/src/i18n'
+import { resolveProfile, type ProfileImportResult } from '../src/core/profile-import'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -23,17 +24,176 @@ const PROFILE = {
   network: { whitelist: ['10.0.0.1'], blacklist: ['8.8.8.8', '1.1.1.1'] }
 }
 
-function setup(profile: unknown = null) {
+// What the picker's native dialog would have produced, as the IPC now answers.
+// Resolved with the production resolver, so a test cannot hand the card a
+// profile the real IPC could not have.
+function imp(data: unknown): ProfileImportResult {
+  const r = resolveProfile(data)
+  if (!r.ok) throw new Error(`bad fixture: ${JSON.stringify(r.failure)}`)
+  return { status: 'imported', profile: r.profile }
+}
+
+/** Each click on Import takes the next answer; the last one repeats. */
+function setup(...answers: ProfileImportResult[]) {
+  let n = 0
+  const next = async (): Promise<ProfileImportResult> => answers[Math.min(n++, answers.length - 1)] ?? { status: 'cancelled' }
   const create = vi.fn(async (name: string, _cfg?: unknown) => ({ id: 'p1', name, createdAt: 1, lastOpened: 1, path: '/tmp/p1' }))
   ;(window as unknown as { redlog: unknown }).redlog = {
     project: { list: async () => [], create, open: async () => null, delete: async () => true, rename: async () => ({ ok: true }) },
-    config: { importProfile: async () => profile, get: async () => ({}), save: async () => true },
+    config: { importProfile: next, get: async () => ({}), save: async () => true },
     ip: { getStatus: async () => ({ internalIP: null }) }
   }
   render(<I18nProvider><ProjectPicker onProjectOpen={vi.fn()} /></I18nProvider>)
   fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
   return { create }
 }
+
+// #297. What the card shows after an import, and what project.create receives,
+// are the same value; importing replaces rather than layers.
+describe('importing a profile', () => {
+  const A = { scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }
+  const B = { scope: { targets: ['198.51.100.0/24'] } }
+
+  async function importAgain(): Promise<void> {
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    // The answer is a resolved promise; let the handler and its re-render land.
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+  }
+
+  async function createdWith(create: ReturnType<typeof setup>['create']): Promise<any> {
+    fireEvent.click(screen.getByText('Create'))
+    await vi.waitFor(() => expect(create).toHaveBeenCalled())
+    return create.mock.calls.at(-1)![1]
+  }
+
+  it('A then B: nothing of A survives, in the summary or in what is created', async () => {
+    const { create } = setup(imp(A), imp(B))
+    await importAgain()
+    expect(screen.getByTestId('profile-applied').textContent).toContain('Excluded 1')
+    await importAgain()
+    await vi.waitFor(() => expect(screen.getByTestId('profile-applied').textContent).not.toContain('Excluded'))
+    expect(screen.getByTestId('profile-applied').textContent).toBe('Scope 1')
+    const cfg = await createdWith(create)
+    expect(cfg.scope.targets).toEqual(['198.51.100.0/24'])
+    expect(cfg.scope.excludeTargets).toEqual([])
+  })
+
+  it('B then A: the later profile is what is created', async () => {
+    const { create } = setup(imp(B), imp(A))
+    await importAgain()
+    await importAgain()
+    await vi.waitFor(() => expect(screen.getByTestId('profile-applied').textContent).toContain('Excluded 1'))
+    const cfg = await createdWith(create)
+    expect(cfg.scope).toMatchObject({ targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] })
+  })
+
+  it('the same profile twice does not pile up', async () => {
+    const { create } = setup(imp(A))
+    await importAgain()
+    await importAgain()
+    expect(screen.getByTestId('profile-applied').textContent).toBe('Scope 1 · Excluded 1')
+    const cfg = await createdWith(create)
+    expect(cfg.scope.targets).toEqual(['192.0.2.0/24'])
+    expect(cfg.scope.excludeTargets).toEqual(['192.0.2.9'])
+  })
+
+  it('a profile that is only warnOnViolation:false is applied, and created', async () => {
+    const { create } = setup(imp({ scope: { warnOnViolation: false } }))
+    await importAgain()
+    expect(screen.getByTestId('profile-applied').textContent).toContain('No warning on out-of-scope targets')
+    const cfg = await createdWith(create)
+    expect(cfg.scope.warnOnViolation).toBe(false)
+  })
+
+  it('a profile that is only exclusions is created', async () => {
+    const { create } = setup(imp({ scope: { excludeTargets: ['192.0.2.9'] } }))
+    await importAgain()
+    const cfg = await createdWith(create)
+    expect(cfg.scope.excludeTargets).toEqual(['192.0.2.9'])
+    expect(cfg.scope.targets).toEqual([])
+    expect(cfg.scope.warnOnViolation).toBe(true)
+  })
+
+  it('an explicit empty list replaces what the earlier profile put there', async () => {
+    const { create } = setup(imp(A), imp({ scope: { excludeTargets: [] } }))
+    await importAgain()
+    await importAgain()
+    const cfg = await createdWith(create)
+    expect(cfg.scope.excludeTargets).toEqual([])
+    expect(cfg.scope.targets).toEqual([])
+  })
+
+  it('a profile that restates the defaults is still an import, and is still passed', async () => {
+    const { create } = setup(imp({ scope: { targets: [] } }))
+    await importAgain()
+    expect(screen.getByText('Clear imported settings')).toBeTruthy()
+    const cfg = await createdWith(create)
+    expect(cfg.scope.targets).toEqual([])
+  })
+
+  it('without an import there is no initialConfig', async () => {
+    const { create } = setup()
+    expect(await createdWith(create)).toBeUndefined()
+  })
+
+  it('clearing drops the summary, the button, and everything that would be created', async () => {
+    const { create } = setup(imp(A))
+    expect(screen.queryByText('Clear imported settings')).toBeNull()
+    await importAgain()
+    fireEvent.click(screen.getByText('Clear imported settings'))
+    expect(screen.queryByTestId('profile-applied')).toBeNull()
+    expect(screen.queryByText('Clear imported settings')).toBeNull()
+    expect(await createdWith(create)).toBeUndefined()
+  })
+
+  it('cancelling the picker changes nothing and says nothing', async () => {
+    const { create } = setup(imp(A), { status: 'cancelled' })
+    await importAgain()
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByTestId('profile-error')).toBeNull()
+    expect(screen.getByTestId('profile-applied').textContent).toBe('Scope 1 · Excluded 1')
+    const cfg = await createdWith(create)
+    expect(cfg.scope.excludeTargets).toEqual(['192.0.2.9'])
+  })
+
+  it('a refused file leaves the earlier import exactly as it was, and says why', async () => {
+    const { create } = setup(
+      imp(A),
+      { status: 'failed', failure: { code: 'shape', field: 'scope.targets', expected: 'list' } }
+    )
+    await importAgain()
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    const err = await screen.findByTestId('profile-error')
+    expect(err.textContent).toContain('scope.targets')
+    expect(err.textContent).toContain('a list of text entries')
+    expect(err.textContent).toMatch(/kept/i)
+    expect(screen.getByTestId('profile-applied').textContent).toBe('Scope 1 · Excluded 1')
+    const cfg = await createdWith(create)
+    expect(cfg.scope).toMatchObject({ targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] })
+  })
+
+  it('names read and parse failures differently, with the cause', async () => {
+    setup({ status: 'failed', failure: { code: 'read', detail: 'EACCES: permission denied' } })
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    expect((await screen.findByTestId('profile-error')).textContent).toMatch(/could not be read.*EACCES/)
+    cleanup()
+    setup({ status: 'failed', failure: { code: 'parse', detail: 'Unexpected end of JSON input' } })
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    expect((await screen.findByTestId('profile-error')).textContent).toMatch(/not valid YAML or JSON.*Unexpected end/)
+    // A refusal is not an import: there is nothing to clear.
+    expect(screen.queryByText('Clear imported settings')).toBeNull()
+    expect(screen.queryByTestId('profile-applied')).toBeNull()
+  })
+
+  it('the error goes away with the next good import', async () => {
+    setup({ status: 'failed', failure: { code: 'empty' } }, imp(B))
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    await screen.findByTestId('profile-error')
+    await importAgain()
+    expect(screen.queryByTestId('profile-error')).toBeNull()
+  })
+})
 
 describe('create card', () => {
   it('has no advanced modal', () => {
@@ -59,7 +219,7 @@ describe('create card', () => {
   })
 
   it('imports a profile and says what it applied, with no modal to open', async () => {
-    setup(PROFILE)
+    setup(imp(PROFILE))
     fireEvent.click(screen.getByText(/Import Profile/i))
     // Nothing it carries is visible on the card, so all of it is named.
     const applied = await screen.findByTestId('profile-applied')
@@ -70,7 +230,7 @@ describe('create card', () => {
   })
 
   it('still creates with everything the profile carried', async () => {
-    const { create } = setup(PROFILE)
+    const { create } = setup(imp(PROFILE))
     fireEvent.click(screen.getByText(/Import Profile/i))
     await screen.findByTestId('profile-applied')
     fireEvent.click(screen.getByText('Create'))
