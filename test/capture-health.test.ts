@@ -309,6 +309,49 @@ describeDB('capture-health', () => {
     })
   })
 
+  // #255: commands typed with no project open are spooled with no identity and
+  // set aside by replay. Health reports them as a gap in the record — and does
+  // not let them move the verdict, which is about whether capture works now.
+  describe('commands set aside by spool replay', () => {
+    let home: string
+    let realHome: string | undefined
+    let realProfile: string | undefined
+    beforeEach(() => {
+      home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-home-'))
+      realHome = process.env.HOME; realProfile = process.env.USERPROFILE
+      process.env.HOME = home; process.env.USERPROFILE = home
+    })
+    afterEach(() => {
+      if (realHome === undefined) delete process.env.HOME; else process.env.HOME = realHome
+      if (realProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = realProfile
+      fs.rmSync(home, { recursive: true, force: true })
+    })
+
+    it('is null when the spool holds none, and counts them when it does', () => {
+      mockHooks({ 'shell-zsh': true })
+      expect(getCaptureHealth().unattributedSpool).toBeNull()
+
+      const pending = path.join(home, '.redlog', 'pending')
+      fs.mkdirSync(pending, { recursive: true })
+      fs.writeFileSync(path.join(pending, '1.json.unattributed'), '{}')
+      fs.writeFileSync(path.join(pending, '2.json.unattributed'), '{}')
+      fs.writeFileSync(path.join(pending, '3.json'), '{}')
+      mockHooks({ 'shell-zsh': true })   // drops the cached read
+      expect(getCaptureHealth().unattributedSpool).toMatchObject({ count: 2 })
+    })
+
+    it('does not change the verdict', () => {
+      mockHooks({ 'shell-zsh': true })
+      ins('shell', { subtype: 'command_start', source: 'zsh' })
+      const before = getCaptureHealth().verdict
+      const pending = path.join(home, '.redlog', 'pending')
+      fs.mkdirSync(pending, { recursive: true })
+      fs.writeFileSync(path.join(pending, '1.json.unattributed'), '{}')
+      mockHooks({ 'shell-zsh': true })
+      expect(getCaptureHealth().verdict).toBe(before)
+    })
+  })
+
   it('does not count opening a pane as having recorded a command', () => {
     // Opening a pane writes a session_start. The terminal can record — that is
     // what `ready` says — but nothing has been recorded, which is what an

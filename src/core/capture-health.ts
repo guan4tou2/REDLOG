@@ -1,4 +1,6 @@
 import os from 'node:os'
+import path from 'node:path'
+import { summarizeUnattributedSpool, type UnattributedSpoolSummary } from './spool-replay'
 import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
@@ -121,6 +123,11 @@ export interface CaptureHealth {
   dbErrorTotal: number
   /** Timestamp of the first DB error in this session, or null. */
   dbErrorFirstAt: number | null
+  /** Commands the shell hooks spooled while no project was open, which replay
+   *  could not attribute to one and set aside (#255). Not a verdict input: it
+   *  says the record has a gap, not that capture is broken now. Null when
+   *  there are none. */
+  unattributedSpool: UnattributedSpoolSummary | null
   /** Most recent chain-sample failure. Pins verdict to `dark`
    *  for the TTL window even if all sources are otherwise healthy — a
    *  broken chain is worse than a dark capture, since it means historical
@@ -656,6 +663,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     lastDbError,
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
+    unattributedSpool: summarizeUnattributedSpool(path.join(os.homedir(), '.redlog', 'pending')),
     lastSampleBroken,
     managedHttpProxy: managedProxyStatusProvider?.()
   }

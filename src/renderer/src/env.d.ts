@@ -521,6 +521,9 @@ interface CaptureHealthInfo {
    *  not either. */
   dbErrorTotal: number
   dbErrorFirstAt: number | null
+  /** commands typed while no project was open, set aside because no project
+   *  could claim them (#255); null when there are none */
+  unattributedSpool: { count: number; oldestAt: number; newestAt: number } | null
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   managedHttpProxy?: ManagedProxyStatus
 }
