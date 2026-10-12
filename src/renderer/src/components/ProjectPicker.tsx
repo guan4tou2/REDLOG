@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState } from 'react'
 import { SectionLabel } from './SectionLabel'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -7,6 +7,7 @@ import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
+import { useReadState } from '../lib/readState'
 import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure, type ProfileImportResult } from '../../../core/profile-import'
 
 interface ProjectPickerProps {
@@ -14,7 +15,19 @@ interface ProjectPickerProps {
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
-  const [projects, setProjects] = useState<ProjectMeta[]>([])
+  // The list is a read that can be pending, empty, or fail — three different
+  // screens (#298). `projects` is what is known; `listRead.phase` says how far
+  // to trust it. A failed refresh keeps the last known list.
+  // The whole UI runs on the preload bridge. If it's missing (e.g. the page was
+  // opened in a plain browser instead of the RedLog app), every button silently
+  // no-ops — so detect it and say so instead of dying quietly.
+  const bridgeMissing = typeof window.redlog === 'undefined'
+  const { state: listRead, retry: retryList, update: updateList } = useReadState(
+    () => window.redlog.project.list(),
+    !bridgeMissing
+  )
+  const projects: ProjectMeta[] = listRead.value ?? []
+  const setProjects = (fn: (prev: ProjectMeta[]) => ProjectMeta[]): void => updateList((prev) => fn(prev ?? []))
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
@@ -38,16 +51,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const res = await window.redlog.project.rename(id, name)
     if (res.ok) setProjects((prev) => prev.map((p) => p.id === id ? { ...p, name: res.name ?? name } : p))
   }
-
-  // The whole UI runs on the preload bridge. If it's missing (e.g. the page was
-  // opened in a plain browser instead of the RedLog app), every button silently
-  // no-ops — so detect it and say so instead of dying quietly.
-  const bridgeMissing = typeof window.redlog === 'undefined'
-
-  useEffect(() => {
-    if (bridgeMissing) return
-    window.redlog.project.list().then(setProjects).catch(() => {})
-  }, [bridgeMissing])
 
   async function handleCreate(): Promise<void> {
     const name = newName.trim()
@@ -151,6 +154,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // recent projects on the right — and a stacked single-column fallback
   // below that so narrow windows behave like the old picker.
   const hasRecent = projects.length > 0
+  // What to say about the list itself, if anything. A loaded, non-empty list
+  // says nothing; the rows are the answer.
+  const listStatus: 'loading' | 'empty' | 'failed' | null = bridgeMissing ? null
+    : listRead.phase === 'failed' ? 'failed'
+    : listRead.phase === 'loading' ? (hasRecent ? null : 'loading')
+    : hasRecent ? null : 'empty'
   // bg-redlog-bg, not the literal #0a0a0a this used to hardcode: the token moved
   // to #121214 when the palette got its cool cast, and the mark's cut corners are
   // transparent now, so the picker showing a different window colour from the
@@ -306,6 +315,26 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           )
         })()}
         </div>{/* end two-column grid */}
+
+        {listStatus === 'loading' && (
+          <p data-testid="project-list-status" data-state="loading" role="status" className="text-center text-xs text-redlog-text-faint font-mono">
+            {t('project.listLoading')}
+          </p>
+        )}
+        {listStatus === 'empty' && (
+          <p data-testid="project-list-status" data-state="empty" className="text-center text-xs text-redlog-text-faint font-mono">
+            {t('project.listEmpty')}
+          </p>
+        )}
+        {listStatus === 'failed' && listRead.phase === 'failed' && (
+          <div data-testid="project-list-status" data-state="failed" role="alert" className="rounded-xl border border-red-900/50 bg-red-950/40 p-4 text-center">
+            <p className="text-red-300 text-xs">{t('project.listFailed')}</p>
+            <p className="mt-1 truncate font-mono text-xs text-redlog-text-faint" title={listRead.error}>{listRead.error}</p>
+            <Button level="quiet" onClick={retryList} className="mt-2 text-xs">
+              {t('common.retry')}
+            </Button>
+          </div>
+        )}
 
       </div>
       </div>

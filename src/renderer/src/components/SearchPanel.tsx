@@ -9,6 +9,8 @@ import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
+import { useReadState } from '../lib/readState'
+import { indexStatusOf } from '../lib/castIndexStatus'
 
 // §1 collapsed the timeline's eighteen lane hues into one grey, because a
 // colour per category means colour says nothing when something is actually
@@ -108,8 +110,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const effectiveTypeFilter = sharedFilter.agentType ?? typeFilter
   const [castHits, setCastHits] = useState<CastHit[]>([])
-  const [castPending, setCastPending] = useState(0)
-  const [knownTypes, setKnownTypes] = useState<string[]>([])
+  // Index completeness is a read that can fail or not have answered yet, and
+  // neither is "fully indexed" (#298): ready / pending / unknown / failed.
+  const castStatus = useReadState(() => window.redlog.events.castIndexStatus())
+  const indexStatus = indexStatusOf(castStatus.state)
+  const castPending = indexStatus.kind === 'pending' ? indexStatus.pending : 0
+  // Facets refresh with every result set. A failed read is not "no types".
+  const typesRead = useReadState(() => window.redlog.events.distinctAgentTypes(), true, [results])
+  const knownTypes = typesRead.state.value ?? []
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -252,17 +260,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     }
   }, [nextCursor, loadingMore, buildSearchOpts])
 
-  useEffect(() => {
-    window.redlog.events.castIndexStatus()
-      .then((s) => setCastPending(s?.pending ?? 0))
-      .catch(() => { /* older main process; treat as fully indexed */ })
-  }, [])
-
-  useEffect(() => {
-    window.redlog.events.distinctAgentTypes()
-      .then((types) => setKnownTypes(types ?? []))
-      .catch(() => {})
-  }, [results])
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
@@ -320,6 +317,25 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             </button>
           </div>
         )}
+        {/* Whether the recordings index has been read is not known — either it
+            has not answered or it could not. An empty or short output search
+            is not authoritative then, and the panel must not read as if it
+            were. Results below stay usable. ("pending" has its own wording,
+            shown with the recording hits.) */}
+        {searched && (indexStatus.kind === 'unknown' || indexStatus.kind === 'failed') && (
+          <div data-testid="search-index-status" data-kind={indexStatus.kind} role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <div className="font-medium">
+              {indexStatus.kind === 'failed' ? t('castSearch.statusFailed') : t('castSearch.statusUnknown')}
+            </div>
+            <div className="mt-1 text-redlog-text-dim">{t('castSearch.statusIncomplete')}</div>
+            {indexStatus.kind === 'failed' && indexStatus.error && (
+              <div className="mt-1 truncate font-mono text-xs text-redlog-text-faint" title={indexStatus.error}>{indexStatus.error}</div>
+            )}
+            <button type="button" onClick={castStatus.retry} className="mt-2 text-xs text-amber-300 underline hover:text-amber-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
         {!searched && !searching && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.hint')}
@@ -338,6 +354,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 {t('castSearch.stillIndexing', { pending: castPending })}
               </p>
             )}
+          </div>
+        )}
+        {searched && typesRead.state.phase === 'failed' && (
+          <div data-testid="search-types-failed" role="status" className="mb-2 text-xs text-amber-300">
+            <span>{t('search.typesFailed')}</span>{' '}
+            <button type="button" onClick={typesRead.retry} className="underline hover:text-amber-200">
+              {t('common.retry')}
+            </button>
           </div>
         )}
         {searched && knownTypes.length > 1 && (
