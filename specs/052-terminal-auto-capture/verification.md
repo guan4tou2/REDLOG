@@ -130,6 +130,54 @@ extended with the per-terminal axis this spec introduces.
 
 Sections of RELEASE-SMOKE-TEST.md run, and the result:
 
+- **The relay gave every command a pipe, so a relayed shell was a different
+  shell** (#288). `[ -t 1 ]` false, `ls` one name per line and uncoloured,
+  `os.get_terminal_size()` raising ENOTTY — all with the adapter loaded and none
+  without. Not one of the 3,100 tests could say so: each asserted what was
+  *recorded*, and the record was fine. Found by the first run of a differential
+  test (same keystrokes, bare zsh against adapter) that was written to look for
+  exactly this. Fixed by giving the command a pseudo-terminal per stream.
+- **The first pty relay hung `git log`.** `less` takes its keyboard from
+  stderr, which was now a pty nobody types into: it drew a page and never read
+  a key. Found by a probe that ran a pager, not by reasoning about one — and
+  the pipe it replaced had prevented it by accident. The pagers are switched
+  off for a relayed command; a mutation that makes that a no-op reproduces the
+  hang (`no prompt after sh $HOME/pager.sh`).
+- **A `command_end` over about 128 KB is dropped without a trace.**
+  `_redlog_send_event` hands the whole event to `python3 -c` as one argv
+  string; Linux caps one argument at 128 KiB and the output cap is 8 MiB. The
+  exec fails, `|| return 0` hides it, and nothing is spooled — a `seq 40000`
+  has no `command_end`, no exit code and no row. It is on `main` too (verified
+  with main's hooks), and research.md D2 had said the relay avoids exactly this
+  ("argv-size … hazard"). **Not fixed in this change**; it is a separate
+  defect in `shell-common.sh`.
+
+### Transparency against a bare zsh (2026-10-12, #288)
+
+`test/zsh-transparency.pty.test.ts`: the same keystrokes in a bare zsh and with
+the adapter, on a 30×100 pty, compared. 19 tests.
+
+| | Result |
+|---|---|
+| `isatty` on 0, 1, 2 | `tty tty tty` in both |
+| `ls --color=auto` | coloured in both (checked on the raw bytes, not the cleaned text) |
+| `ls` columns, `stty size`, `tput cols`, `os.get_terminal_size()` | identical |
+| UTF-8, exit status, aliases, pipeline, redirection | identical |
+| Ctrl-C on a relayed `sleep` | `rc=130`, prompt returns — same |
+| Ctrl-Z, `jobs`, `fg` on a relayed command | same; the output that arrives after the resume still reaches the terminal |
+| stored text | colour removed, a progress line reduced to the line it ended on, stdout and stderr apart, `stdout_bytes` is what the command wrote |
+| **different, on purpose** | a pager started by the command is switched off, and `echo $PAGER` on a relayed line reads `cat` — both asserted, with the reason |
+
+Mutation-checked: with cleaning disabled two RECORD assertions fail; with the
+slave's `OPOST` left on the byte-count assertion fails (`6` against `4`); with
+the pager switch a no-op the pager test fails by timeout.
+
+Not covered: `vim` and `less` typed at the prompt (native class — no relay in
+the way, so the only claim is that nothing changed, which the `nc` test's
+`/proc` check already makes for `native`), `sudo` and an absolute path (the
+classifier's unit tests cover the names; nothing here runs them on a pty), and
+anything on a real Kali VM or in the packaged build.
+
 ### Done at the pty level (2026-10-12)
 
 Real zsh 5.9 on Kali (WSL), driven through a pty, with the adapter loaded and a
@@ -142,7 +190,7 @@ not the packaged build and not a person at a VM.
 | `nc` in the record | `class: native`, `completeness: metadata-only`, `output_disposition: interactive`, no `stdout` |
 | `nc` holds the terminal itself | `/proc/<nc>/fd/{0,1,2}` are all the pty; relayed they are `tty/pipe/pipe` |
 | SC-002/SC-003, a 100-command engagement | **100 of 100** recorded exactly once, with output, stderr, exit code and `redirected` where redirected; one id per start/end pair; **none prefixed**; order preserved |
-| cost of the relay | **mean 479 ms, p95 496 ms, max 1522 ms** per command; 48.5 s for the engagement |
+| cost of the relay | **mean 479 ms, p95 496 ms, max 1522 ms** per command; 48.5 s for the engagement — *with pipes*. With the pty relay (#288), two runs: mean 544 ms / p95 616 ms and mean 616 ms / p95 870 ms; still 100 of 100 both times. The spread between runs is as large as the difference from pipes, so this is "tens of ms more", not a measured constant |
 
 Both were mutation-checked rather than trusted green. Moving `nc` out of the
 native class turns three assertions red (`nc's fd 0/1/2 are tty/pipe/pipe`);

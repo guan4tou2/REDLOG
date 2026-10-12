@@ -213,6 +213,78 @@ _redlog_check_project() {
   print -u2 -- "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"
 }
 
+zmodload zsh/zselect 2>/dev/null
+
+# Give the command a pseudo-terminal for stdout and for stderr, each read by
+# the relay, in place of a pipe (issue #288). The command still gets the REAL
+# terminal on stdin, which is what keeps job control and `nc` alone, but it now
+# sees a terminal on the other two descriptors — so `ls` columns and colour,
+# `isatty`, and the window size are what they are without RedLog.
+#
+# The relay makes the pairs and says where they are; this opens them and says
+# so. Any failure leaves the descriptors as they were and the command runs
+# unrecorded — unrecorded is bad, a wedged prompt is worse (FR-009).
+#
+# A terminal on stdout and stderr has one cost: a pager. `git log` and `man`
+# start `less` the moment stdout is a terminal, and `less` takes its keyboard
+# and its raw mode from stderr — which is now a pty nobody types into, so the
+# pager draws a page and never reads a key. A pipe used to prevent this by
+# accident. The pagers are switched off for the length of a diverted command,
+# which is what a pipe gave, and put back at the prompt.
+typeset -ga _REDLOG_PAGER_VARS=(PAGER GIT_PAGER MANPAGER SYSTEMD_PAGER)
+typeset -gA _REDLOG_PAGER_SAVED
+
+_redlog_pagers_off() {
+  local name
+  _REDLOG_PAGER_SAVED=()
+  for name in $_REDLOG_PAGER_VARS; do
+    if [[ -n "${(P)name+set}" ]]; then
+      _REDLOG_PAGER_SAVED[$name]="${(P)name}"
+    else
+      _REDLOG_PAGER_SAVED[$name]='__redlog_unset__'
+    fi
+    export $name=cat
+  done
+}
+
+_redlog_pagers_restore() {
+  local name
+  for name in ${(k)_REDLOG_PAGER_SAVED}; do
+    if [[ "${_REDLOG_PAGER_SAVED[$name]}" == '__redlog_unset__' ]]; then
+      unset $name
+    else
+      export $name="${_REDLOG_PAGER_SAVED[$name]}"
+    fi
+  done
+  _REDLOG_PAGER_SAVED=()
+}
+
+_redlog_divert() {
+  local dir=$1 i=0
+  exec {_REDLOG_SAVED_OUT}>&1 {_REDLOG_SAVED_ERR}>&2 || return 1
+  python3 "$_REDLOG_RELAY" pty --dir "$dir" --err-fd 3 \
+    --max-bytes "$_REDLOG_MAX_BYTES" \
+    >&$_REDLOG_SAVED_OUT 3>&$_REDLOG_SAVED_ERR &!
+  _REDLOG_RELAY_PID=$!
+  while [[ ! -s "$dir/pts" ]]; do
+    (( i++ >= 500 )) && break
+    # `zselect -t` returns non-zero when it times out, which is its normal
+    # outcome here, so the fallback is chosen by whether the builtin exists.
+    if (( $+builtins[zselect] )); then zselect -t 1; else command sleep 0.01; fi
+  done
+  local -a pts
+  pts=("${(@f)$(<"$dir/pts" 2>/dev/null)}")
+  if [[ -n "$pts[1]" && -n "$pts[2]" ]] && exec 1>|"$pts[1]" 2>|"$pts[2]"; then
+    : >"$dir/opened"
+    _redlog_pagers_off
+    return 0
+  fi
+  exec 1>&$_REDLOG_SAVED_OUT 2>&$_REDLOG_SAVED_ERR
+  exec {_REDLOG_SAVED_OUT}>&- {_REDLOG_SAVED_ERR}>&-
+  kill "$_REDLOG_RELAY_PID" 2>/dev/null
+  return 1
+}
+
 _redlog_preexec() {
   _redlog_check_project
   _REDLOG_LAST_CMD=""
@@ -244,15 +316,11 @@ _redlog_preexec() {
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
-    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.XXXXXX 2>/dev/null); then
-      exec {_REDLOG_SAVED_OUT}>&1 {_REDLOG_SAVED_ERR}>&2
-      exec > >(python3 "$_REDLOG_RELAY" pipe --stream stdout \
-                 --max-bytes "$_REDLOG_MAX_BYTES" \
-                 --event-out "$_REDLOG_RELAY_DIR/stdout.json" >&$_REDLOG_SAVED_OUT) \
-          2> >(python3 "$_REDLOG_RELAY" pipe --stream stderr \
-                 --max-bytes "$_REDLOG_MAX_BYTES" \
-                 --event-out "$_REDLOG_RELAY_DIR/stderr.json" >&$_REDLOG_SAVED_ERR)
+    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.XXXXXX 2>/dev/null) \
+       && _redlog_divert "$_REDLOG_RELAY_DIR"; then
+      :
     else
+      rm -rf "$_REDLOG_RELAY_DIR" 2>/dev/null
       _REDLOG_RELAY_DIR=""
       _REDLOG_CMD_CLASS="native"
     fi
@@ -294,6 +362,7 @@ _redlog_precmd() {
     # Putting the descriptors back is what gives the two relays their EOF.
     exec 1>&$_REDLOG_SAVED_OUT 2>&$_REDLOG_SAVED_ERR
     exec {_REDLOG_SAVED_OUT}>&- {_REDLOG_SAVED_ERR}>&-
+    _redlog_pagers_restore
     # O2: the body is read only after the component that owns the bytes has
     # finished draining. `finish` waits for both part files — each written
     # whole and renamed into place — rather than this function racing them.

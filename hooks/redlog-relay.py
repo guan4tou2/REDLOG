@@ -16,12 +16,14 @@ Four modes, two callers:
         `redlog-run`: launch the command, relay its output, write the event.
 
     redlog-relay.py classify -- COMMAND [ARG...]        -> relayed|pty|native
-    redlog-relay.py pipe --event-out PATH --stream stdout [--max-bytes N]
+    redlog-relay.py pty --dir DIR --err-fd N [--max-bytes N]
     redlog-relay.py finish --stdout-part A --stderr-part B [...]   -> JSON
 
-        The zsh adapter: it diverts the SHELL's descriptors in `preexec` and
-        restores them in `precmd`, so the command itself is never launched by
-        anything here and keeps its terminal, stdin and job control.
+        The zsh adapter: it diverts the SHELL's stdout and stderr in `preexec`
+        and restores them in `precmd`, so the command itself is never launched
+        by anything here and keeps its terminal, stdin and job control. What
+        it is handed in place of the terminal is a pseudo-terminal, not a pipe
+        — see `pty_pipe`.
 
 The event is written to `--event-out` as JSON, never to stdout: stdout belongs
 to the command. `<event-out>.started` is created the moment the command is
@@ -204,7 +206,6 @@ def parse(argv):
         "cwd": os.getcwd(),
         "captured_by": "redlog-relay",
         "command_id": None,
-        "stream": "stdout",
         "stdout_part": None,
         "stderr_part": None,
         "exit_code": "0",
@@ -222,14 +223,17 @@ def parse(argv):
         "reason": "operator",
         "format": "json",
         "command": None,
+        "dir": None,
+        "err_fd": "2",
     }
     flags = {
+        "--dir": "dir",
+        "--err-fd": "err_fd",
         "--event-out": "event_out",
         "--max-bytes": "max_bytes",
         "--cwd": "cwd",
         "--captured-by": "captured_by",
         "--command-id": "command_id",
-        "--stream": "stream",
         "--stdout-part": "stdout_part",
         "--stderr-part": "stderr_part",
         "--exit-code": "exit_code",
@@ -280,32 +284,154 @@ def normalise(opts):
 # component that owns the bytes has drained, not by a `precmd` racing it.
 
 
-def pipe(argv):
-    """Pass stdin through to stdout, keep a bounded copy, report at EOF."""
+def window_size(path="/dev/tty"):
+    """The real terminal's size as the 8 bytes TIOCSWINSZ takes, or None."""
+    # Imported here, not at the top: `classify` and `finish` run wherever
+    # Python does, and these two modules exist only on POSIX.
+    import fcntl
+    import termios
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOCTTY)
+    except OSError:
+        return None
+    try:
+        return fcntl.ioctl(fd, termios.TIOCGWINSZ, b"\0" * 8)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def pty_pipe(argv):
+    """Pass the command's stdout and stderr through to the real terminal, keep
+    a bounded copy of each, and report at EOF — through a pseudo-terminal per
+    stream, which is what the command is given instead of a pipe.
+
+    A pipe tells the command that nobody is watching: `isatty` is false, `ls`
+    prints one name a line and no colour, `git` drops its colour, Python's
+    `get_terminal_size` raises ENOTTY. The operator sees a different shell with
+    the recorder on (issue #288, measured in test/zsh-transparency.pty.test.ts).
+    A pseudo-terminal answers all of that the way the real one does, and it
+    leaves everything that matters to `nc` alone: only the command's stdout and
+    stderr are given one. Its stdin stays the real terminal, so job control and
+    Ctrl-C and Ctrl-Z go where they always went.
+
+    Two of them, not one, so stdout and stderr stay separable. A single pty
+    would be the terminal's own merge and a record that claimed otherwise
+    (FR-005).
+
+    The hand-over: this process makes the pair and says where the slave side
+    is; the shell opens it and says so; only then is this process's own copy
+    of the slave closed. Closing it any earlier is a pty that has already been
+    hung up when the shell gets to it, and keeping it would mean the master
+    never sees the command finish.
+    """
+    import fcntl
+    import termios
     opts = normalise(parse(argv)[0])
-    stream = Stream(sys.stdin, sys.stdout.buffer, opts["max_bytes"])
-    while True:
-        try:
-            if not stream.pump():
-                break
-        except OSError:
-            break
-    write_json(opts["event_out"], {
-        "stream": opts["stream"],
-        "text": stream.text(),
-        "bytes": stream.total,
-        "truncated": stream.truncated(),
-        "cap": opts["max_bytes"],
-    })
+    directory = opts["dir"]
+    err_sink = os.fdopen(int(opts["err_fd"]), "wb", buffering=0)
+
+    legs = []
+    names = []
+    for stream_name, sink in (("stdout", sys.stdout.buffer), ("stderr", err_sink)):
+        master, slave = os.openpty()
+        # Bytes go through unchanged. The slave would otherwise turn every \n
+        # into \r\n on its way to the master, and the real terminal does the
+        # same again on the way out — the record would hold bytes the command
+        # never wrote.
+        attrs = termios.tcgetattr(slave)
+        attrs[1] &= ~termios.OPOST
+        termios.tcsetattr(slave, termios.TCSANOW, attrs)
+        legs.append({
+            "name": stream_name,
+            "master": master,
+            "slave": slave,
+            "stream": Stream(os.fdopen(master, "rb", buffering=0, closefd=False), sink, opts["max_bytes"]),
+        })
+        names.append(os.ttyname(slave))
+
+    def sync_size():
+        size = window_size()
+        if size is None:
+            return
+        for leg in legs:
+            try:
+                fcntl.ioctl(leg["master"], termios.TIOCSWINSZ, size)
+            except OSError:
+                pass
+
+    sync_size()
+    write_text(os.path.join(directory, "pts"), "\n".join(names))
+
+    # The shell is slow to say it has opened them, or has died; either way
+    # this must not wait for ever.
+    opened = os.path.join(directory, "opened")
+    deadline = time.time() + float(opts["drain_timeout"])
+    while not os.path.exists(opened):
+        if time.time() > deadline:
+            return 1
+        time.sleep(0.005)
+    for leg in legs:
+        os.close(leg["slave"])
+
+    while legs:
+        ready, _, _ = select.select([leg["master"] for leg in legs], [], [], 0.25)
+        # A resize while a command is running: the shell's own terminal is
+        # resized, and only the foreground process group is told. This
+        # process is not in it, so it looks.
+        sync_size()
+        for leg in list(legs):
+            if leg["master"] not in ready:
+                continue
+            try:
+                alive = leg["stream"].pump()
+            except OSError:
+                # EIO: every slave descriptor is closed, i.e. the shell has put
+                # its own back and the command has finished with it.
+                alive = False
+            if not alive:
+                legs.remove(leg)
+                os.close(leg["master"])
+                write_json(os.path.join(directory, leg["name"] + ".json"), {
+                    "stream": leg["name"],
+                    "text": leg["stream"].text(),
+                    "bytes": leg["stream"].total,
+                    "truncated": leg["stream"].truncated(),
+                    "cap": opts["max_bytes"],
+                })
     return 0
+
+
+# What a person reads is not what the terminal was sent. Colour and cursor
+# sequences carry nothing a reader of a pentest record wants, and a progress
+# bar is one line that was redrawn forty times. The bytes were let through
+# untouched on the way to the screen; this is only the stored copy.
+ESCAPES = re.compile(
+    r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"      # OSC: window titles, hyperlinks
+    r"|\x1b\[[0-?]*[ -/]*[@-~]"                 # CSI: colour, cursor, erase
+    r"|\x1b[@-Z\\-_]"                           # two-byte escapes
+)
+
+
+def clean(text):
+    text = ESCAPES.sub("", text).replace("\r\n", "\n")
+    if "\r" not in text:
+        return text
+    # A bare \r returns to the start of the line, so the last thing written
+    # after it is what was on screen when the line ended.
+    lines = []
+    for line in text.split("\n"):
+        parts = [p for p in line.split("\r") if p]
+        lines.append(parts[-1] if parts else "")
+    return "\n".join(lines)
 
 
 def finish(argv):
     """Merge the two halves into one command_end body, on stdout.
 
     The shell has already restored its descriptors, which is what gives the
-    two `pipe` processes their EOF. Each writes its part file whole and
-    renames it into place, so a part that is here is complete; one that is
+    relay its EOF. It writes each part file whole and renames it into place, so a part that is here is complete; one that is
     missing after the deadline is reported as missing rather than as empty.
     """
     opts = normalise(parse(argv)[0])
@@ -343,8 +469,8 @@ def finish(argv):
         "exit_code": int_or(opts["exit_code"], 0),
         "duration_sec": int_or(opts["duration_sec"], 0),
         "cwd": opts["cwd"],
-        "stdout": (parts["stdout"] or {}).get("text", ""),
-        "stderr": (parts["stderr"] or {}).get("text", ""),
+        "stdout": clean((parts["stdout"] or {}).get("text", "")),
+        "stderr": clean((parts["stderr"] or {}).get("text", "")),
         "stdout_bytes": (parts["stdout"] or {}).get("bytes", 0),
         "stderr_bytes": (parts["stderr"] or {}).get("bytes", 0),
         "stdout_truncated": bool((parts["stdout"] or {}).get("truncated")),
@@ -865,7 +991,7 @@ def write_json(path, payload):
 
 
 def main():
-    modes = {"run": run, "pipe": pipe, "finish": finish,
+    modes = {"run": run, "pty": pty_pipe, "finish": finish,
              "classify": classify, "policy": policy_field,
              "state": state_cmd}
     mode = modes.get(sys.argv[1]) if len(sys.argv) > 1 else None

@@ -17,7 +17,7 @@ export interface ZshStep {
   command: string
   output: string
   /** Wall time for a plain-string command, in ms. Absent for dict steps. */
-  ms?: number
+  ms?: number; raw?: string | null /* the bytes sent to the terminal, escapes intact — only with keepRaw */
 }
 
 /** A step that is not "type a line and wait for the prompt" — see the block
@@ -224,7 +224,7 @@ export interface ZshRunOptions {
    *  of commands, and far too little for a hundred (spec 052 T045), where the
    *  per-command wait is fine and the total is the number of commands times
    *  what each one costs. */
-  totalTimeoutSeconds?: number
+  totalTimeoutSeconds?: number; winsize?: [number, number] /* the pty's rows, cols; default 24x80 */; keepRaw?: boolean /* return each command's output unstripped as `raw` */
 }
 
 /** One throwaway HOME, one interactive zsh, one report.
@@ -240,7 +240,7 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
     rc: opts.rc ?? '',
     redlog: opts.redlog,
     commands: opts.commands,
-    env: opts.env,
+    env: opts.env, winsize: opts.winsize, keep_raw: opts.keepRaw,
     timeout_s: opts.timeoutSeconds ?? 20
   })
 

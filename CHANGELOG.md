@@ -46,6 +46,17 @@ for full commit body + generated notes.
   belongs — every identifier is minted out of band, so a target cannot write
   RedLog's evidence by printing something that looks like it.
 
+  A recorded command sees the same terminal an unrecorded one does. The first
+  cut handed commands a pipe, so `ls` printed one name a line with no colour,
+  `isatty` was false and Python's `get_terminal_size()` failed — all of it only
+  with RedLog on. Commands now get a pseudo-terminal for stdout and stderr
+  (stdin and job control are still the real terminal's) and the stored text is
+  the readable version: colour removed, a redrawn progress line reduced to
+  where it ended. One thing is different on purpose: a pager the command would
+  start (`git log`, `man`) is switched off while it runs, because a pager takes
+  its keyboard from stderr and would sit there drawing a page. `echo $PAGER`
+  typed on a recorded line therefore reads `cat`.
+
   The capture card now tells **installed** from **working**: the third state is
   a command that actually arrived from a terminal that is not one of RedLog's
   own panes. Uninstalling leaves `.zshrc` byte-identical, which it did not
