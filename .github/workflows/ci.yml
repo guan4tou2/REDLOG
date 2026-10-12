@@ -67,6 +67,16 @@ jobs:
           git fetch --no-tags origin main
           npm run verify:i18n
 
+      - name: Install zsh (Linux)
+        # The terminal auto-capture specs (spec 052) drive a REAL interactive zsh
+        # through a pty, and skip when none is installed. ubuntu-latest does not
+        # ship zsh, so for as long as this step was missing every one of them
+        # reported as skipped — a green run that had checked none of the
+        # adapter. Windows reaches zsh through WSL, which the runner lacks, so
+        # those specs are Linux-only by construction.
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y zsh
+
       - name: Vitest
         run: npm test
 
