@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **A command that printed a lot left no record of having finished.** Terminal
+  capture handed each `command_end` to the next step as a single argument, and
+  Linux limits one argument to 128 KiB while the recorder keeps up to 8 MiB per
+  stream. Past roughly 110 KB of output the hand-off failed, the failure was
+  swallowed, and nothing was sent or spooled: the row had a start, no end, no
+  exit code. The commands that crossed it were the long ones — a full port scan,
+  a directory brute-force, a dump. The event now travels in files, byte for byte
+  as before, and a spooled copy keeps the whole body for replay.
+
 - **Export carried the time window, not the filter.** The HTTP view built its
   export subset from the oldest and newest *loaded* row's timestamps, so method,
   status and text predicates were dropped on the way out: unrelated traffic
