@@ -277,7 +277,11 @@ _redlog_divert() {
     if (( $+builtins[zselect] )); then zselect -t 1; else command sleep 0.01; fi
   done
   local -a pts
-  pts=("${(@f)$(<"$dir/pts" 2>/dev/null)}")
+  # The relay may never have written `pts` (it timed out above). `$(<file)` then
+  # reports "no such file or directory" from the shell itself, which a `2>` on
+  # the substitution does not catch and which lands in the operator's terminal.
+  # Read it only when it is there; an empty `pts` falls to the failure path.
+  [[ -s "$dir/pts" ]] && pts=("${(@f)$(<"$dir/pts")}")
   if [[ -n "$pts[1]" && -n "$pts[2]" ]] && exec 1>|"$pts[1]" 2>|"$pts[2]"; then
     : >"$dir/opened"
     _redlog_pagers_off
