@@ -44,6 +44,19 @@ function isExecutableFile(p: string, win: boolean): boolean {
     // Windows has no execute bit; PATHEXT decides what runs.
     if (!win) fs.accessSync(p, fs.constants.X_OK)
     return true
+  } catch (e) {
+    return win && (e as NodeJS.ErrnoException).code === 'EACCES' && isAppExecutionAlias(p)
+  }
+}
+
+// A Microsoft Store pwsh / python3 / wsl on PATH is an App Execution Alias: a
+// reparse point only the AppX layer resolves. stat() on it throws EACCES — "it
+// is there, you may not look" — though the command runs. lstat() succeeds and
+// reports a symlink, which is how it is told apart from a file that is
+// genuinely unreadable.
+function isAppExecutionAlias(p: string): boolean {
+  try {
+    return fs.lstatSync(p).isSymbolicLink()
   } catch {
     return false
   }
