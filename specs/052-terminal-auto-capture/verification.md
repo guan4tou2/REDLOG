@@ -98,6 +98,27 @@ Worth naming, because they are the argument for the tests that found them:
   listed only `request_body_ref` and `response_body_ref`; consolidating the
   four literal lists into one `BODY_REF_FIELDS` closed a gap that predated
   this spec.
+- **A cached capture-health reading outlived the event it should have
+  reflected.** `getCaptureHealth()` caches for 750 ms and nothing cleared it on
+  a write, while the card does not poll — it re-reads once per batch of new
+  events. So if anything else had asked in the previous 750 ms, the card's one
+  read showed the state from *before* the event and stayed there until the next
+  one. The worst moment is the one this spec is built around: the first command
+  from a freshly installed hook, with the card still saying "open a new
+  terminal" (FR-015). Found by `e2e/terminal-enrollment.spec.ts`, which passed
+  on a quiet machine and failed four times on a busy CI runner on identical
+  code. Fixed in #287 by clearing the cache on every publish.
+- **The pty driver gave its shell no controlling terminal.** `setsid` without
+  `TIOCSCTTY` means Ctrl-Z is only a byte and there is no job control. No
+  earlier test needed a signal, so none could find it; the first test that did
+  failed identically with and without the adapter, which is what the
+  bare-shell baseline is for.
+- **A test that could not show its own subject mattered.** The `nc` upgrade
+  test passed every behavioural assertion with `nc` moved *out* of the native
+  class — suspend, resume and the peer's data all work through a relay too.
+  Only `/proc/<nc>/fd/{0,1,2}` told them apart (`tty/tty/tty` against
+  `tty/pipe/pipe`). Found by mutating the policy and watching what stayed
+  green.
 
 ## Operational Verification
 
@@ -109,7 +130,37 @@ extended with the per-terminal axis this spec introduces.
 
 Sections of RELEASE-SMOKE-TEST.md run, and the result:
 
-> **Not yet run — T044/T045.** This is the gap that keeps the spec at Draft.
+### Done at the pty level (2026-10-12)
+
+Real zsh 5.9 on Kali (WSL), driven through a pty, with the adapter loaded and a
+collector standing in for RedLog. This is evidence about the **adapter**; it is
+not the packaged build and not a person at a VM.
+
+| | Result |
+|---|---|
+| quickstart §3(c), the `nc` upgrade (SC-004) | Ctrl-Z suspends, `jobs` shows it stopped, `fg` resumes, the peer's data arrives through the resumed connection, `stty -g` identical before and after — **the same as a bare zsh, compared step for step** |
+| `nc` in the record | `class: native`, `completeness: metadata-only`, `output_disposition: interactive`, no `stdout` |
+| `nc` holds the terminal itself | `/proc/<nc>/fd/{0,1,2}` are all the pty; relayed they are `tty/pipe/pipe` |
+| SC-002/SC-003, a 100-command engagement | **100 of 100** recorded exactly once, with output, stderr, exit code and `redirected` where redirected; one id per start/end pair; **none prefixed**; order preserved |
+| cost of the relay | **mean 479 ms, p95 496 ms, max 1522 ms** per command; 48.5 s for the engagement |
+
+Both were mutation-checked rather than trusted green. Moving `nc` out of the
+native class turns three assertions red (`nc's fd 0/1/2 are tty/pipe/pipe`);
+making the relay drop stdout fails the engagement with `#1: stdout lost —
+wanted "line-b-1", got ""`.
+
+One result is not RedLog's and is recorded so it is not re-diagnosed: with the
+peer connecting two seconds after `fg`, a **bare** zsh leaves `nc` alive after
+the peer hangs up (3 of 3). Five seconds and zero are fine. The same happens
+with the adapter loaded and with recording stopped, so it is the host — the
+socket sits ESTABLISHED with the peer's FIN unacknowledged — and the test ends
+`nc` from outside rather than waiting on it.
+
+### Still owed
+
+> **Not run — needs a real VM and a person.** This is the gap that keeps the
+> spec at Draft. Steps (a), (f), (g) and SC-001's stopwatch are not covered by
+> anything above.
 >
 > What has to happen on a real Kali VM, with the packaged build:
 >
@@ -122,7 +173,9 @@ Sections of RELEASE-SMOKE-TEST.md run, and the result:
 >    feature, whatever the unit suite says.** The `nc` rows must read
 >    `class: native`, `completeness: metadata-only`,
 >    `output_disposition: interactive`, with no `stdout`.
-> 3. **A scripted engagement of ≥100 commands** for SC-002/SC-003.
+> 3. **A scripted engagement of ≥100 commands** for SC-002/SC-003 — done above
+>    against a stand-in collector; repeating it against the real RedLog is what
+>    this would add.
 > 4. **Uninstall** — and `.zshrc` byte-identical afterwards (FR-016). The unit
 >    test proves the inverse property; this proves it on a file RedLog wrote.
 >
