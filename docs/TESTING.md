@@ -450,7 +450,7 @@ and it reads `unknown` until a read succeeds (`alert/ip-policy`).
 | `warnOnViolation` | `true` | the alert floor (§1.7): `true` alerts on excluded targets and on the adjacent rungs, the same /24 and the same registrable domain; `false` alerts on excluded targets only. Unrelated traffic never alerts. There is no `alertFloor` key: the floor is derived from this (`alertFloorFor`) | `alert/scope-policy` |
 | `targets` | `[]` | §1.6; empty = everything in scope | `config-options` (the default), `alert/scope-policy`, `scope-evaluator` (empty = in scope) |
 | `excludeTargets` | `[]` | D1: always warns when hit | `config-options` (the default), `alert/scope-policy` (D1) |
-| `personalDomains` | `127.0.0.0/8`, `::1`, `localhost` | hosts that are never part of any engagement, in the `excludeTargets` syntax. The personal-traffic filter hides them (`events`), the create card adds the operator's own IP to the defaults rather than replacing them (`create-config-merge`), and exports drop their rows rather than masking them (`—`) | `events`, `create-config-merge` |
+| `personalDomains` | `127.0.0.0/8`, `::1`, `localhost` | hosts that are never part of any engagement, in the `excludeTargets` syntax. The personal-traffic filter hides them (`events`), a project created with an initial `personalDomains` appends it to the defaults rather than replacing them (`create-config-merge` — the create card no longer sends any, 70438fe9), and exports drop their rows rather than masking them (`—`) | `events`, `create-config-merge` |
 | `scopeFile` | `null` | external scope document, loaded on open | `config-options` |
 
 Adjacency is not configurable: a single-IP scope entry's neighbours are its /24
