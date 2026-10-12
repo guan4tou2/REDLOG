@@ -142,10 +142,17 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
       run = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: [
-          'echo before-the-switch',
+          // The terminal watches this file's mtime. Both writes below are
+          // pinned to the SAME whole second, a tenth of a second apart:
+          // that is what a fast machine does by itself (the switch lands in
+          // the second the terminal started in), and what the first CI run
+          // with zsh installed hit — seconds-resolution mtime saw no change,
+          // so the switch went undetected and every later command was filed
+          // under the old project. WSL is slow enough to hide it.
+          `touch -d @1700000000.100 $HOME/.redlog/active-identity.json; echo before-the-switch`,
           // RedLog rewrites this file when the operator opens another
           // project; the terminal finds out the same way it would then.
-          `printf '%s' '{"engagementId":"eng-after","operatorId":"op-a"}' > $HOME/.redlog/active-identity.json`,
+          `printf '%s' '{"engagementId":"eng-after","operatorId":"op-a"}' > $HOME/.redlog/active-identity.json; touch -d @1700000000.900 $HOME/.redlog/active-identity.json`,
           'echo after-the-switch',
           'redlog start',
           'echo after-trying-to-start',

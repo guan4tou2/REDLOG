@@ -128,8 +128,14 @@ class Session:
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
+        # `-d` (NO_GLOBAL_RCS): the distro's /etc/zsh/zshrc is not under test.
+        # On Debian and Ubuntu it runs compinit, and on a CI runner whose
+        # directories are group-writable compinit stops to ask "ignore
+        # insecure directories? [y/n]" — so no prompt ever arrived and every
+        # spec here failed as "no prompt after startup", on the first run that
+        # had zsh installed at all. The rc under test is the one in ZDOTDIR.
         self.proc = subprocess.Popen(
-            [self.job.get("shell", "/usr/bin/zsh"), "-i"],
+            [self.job.get("shell", "/usr/bin/zsh"), "-d", "-i"],
             preexec_fn=become_session_leader_with_this_tty,
             stdin=slave, stdout=slave, stderr=slave,
             env=env, cwd=self.job.get("cwd", home),

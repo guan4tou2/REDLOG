@@ -186,7 +186,11 @@ _redlog_check_project() {
   file=$(_redlog_identity_file)
   [[ -f "$file" ]] || return
   local -a st
-  zstat -A st +mtime "$file" 2>/dev/null || return
+  # Fractional seconds, not `+mtime` alone: that is whole seconds, so a switch
+  # written in the same second the terminal started in (a fast machine, or a
+  # script) looks like no change and every later command is filed under the
+  # old project.
+  zstat -F '%s.%N' -A st +mtime "$file" 2>/dev/null || return
   [[ "${st[1]}" == "${_REDLOG_IDENTITY_MTIME:-}" ]] && return
   # The first sight of the file is the pin itself, not a switch.
   if [[ -z "${_REDLOG_IDENTITY_MTIME:-}" ]]; then
