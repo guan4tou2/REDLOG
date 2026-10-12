@@ -15,6 +15,44 @@ export interface SpoolReplayResult {
   invalid: number
 }
 
+/** What replay renames a spool file to when its payload carries no engagement
+ *  identity. The hooks only stamp one while a project is open, so this is what
+ *  becomes of every command typed while RedLog was closed or sitting on the
+ *  project picker (#255). */
+const UNATTRIBUTED_SUFFIX = '.unattributed'
+
+export interface UnattributedSpoolSummary {
+  count: number
+  /** When the oldest and newest of them were written, ms since the epoch. */
+  oldestAt: number
+  newestAt: number
+}
+
+/** What replay has set aside and nobody has looked at, as it stands on disk.
+ *
+ *  Counted from the directory rather than from a replay's return value: the
+ *  files outlive the run that renamed them, and an operator opening RedLog next
+ *  week needs the same answer as one opening it a minute later. The time is the
+ *  file's own mtime — a rename keeps it, and a hook writes the file at the
+ *  moment the command ran — so nothing has to be parsed. Null when there are
+ *  none, which is also what a missing directory means. */
+export function summarizeUnattributedSpool(directory: string): UnattributedSpoolSummary | null {
+  let names: string[]
+  try { names = fs.readdirSync(directory) } catch { return null }
+  let count = 0
+  let oldestAt = Number.POSITIVE_INFINITY
+  let newestAt = Number.NEGATIVE_INFINITY
+  for (const name of names) {
+    if (!name.endsWith(UNATTRIBUTED_SUFFIX)) continue
+    let at: number
+    try { at = Math.round(fs.statSync(path.join(directory, name)).mtimeMs) } catch { continue }
+    count++
+    if (at < oldestAt) oldestAt = at
+    if (at > newestAt) newestAt = at
+  }
+  return count === 0 ? null : { count, oldestAt, newestAt }
+}
+
 /** Replay only files attributable to the active engagement. Mismatches remain
  * byte-for-byte in place so opening their owning project can recover them. */
 export function replaySpoolDirectory(
@@ -38,12 +76,13 @@ export function replaySpoolDirectory(
       const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null
       if (!agentType || !data) throw new Error('invalid spool payload')
       const identity = payload._identity
-      // Pre-release payloads without a complete durable identity cannot be
-      // assigned safely. Preserve them for manual inspection instead of
-      // silently claiming they belong to whichever project happens to open.
+      // A payload without a complete durable identity cannot be assigned
+      // safely: the hooks stamp one only while a project is open. Preserve it
+      // instead of silently claiming it belongs to whichever project happens to
+      // open. The capture card says how many are waiting here.
       if (typeof identity?.engagementId !== 'string' || !identity.engagementId ||
           typeof identity.operatorId !== 'string' || !identity.operatorId) {
-        fs.renameSync(file, `${file}.unattributed`)
+        fs.renameSync(file, `${file}${UNATTRIBUTED_SUFFIX}`)
         result.unattributed++
         continue
       }

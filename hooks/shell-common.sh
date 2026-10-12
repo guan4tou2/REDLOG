@@ -178,8 +178,14 @@ sys.stdout.write(json.dumps(d))
         --data-binary @"$work/payload.json" \
         --connect-timeout 1 --max-time 2 >/dev/null 2>&1; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
+    #
+    # Only the files still waiting for replay. Replay renames what it cannot
+    # attribute to `*.json.unattributed` and keeps it (#255), so counting the
+    # whole directory let a pile of those fill the cap and silently stop every
+    # new event from being spooled. `find`, not a glob: an unmatched glob is an
+    # error zsh prints itself, whatever the command's own stderr is sent to.
     local count
-    count=$(ls -1 "$spool_dir" 2>/dev/null | wc -l | tr -d ' ')
+    count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
       cp "$work/payload.json" "$spool_file" 2>/dev/null
     fi

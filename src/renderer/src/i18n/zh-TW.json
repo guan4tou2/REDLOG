@@ -720,6 +720,8 @@
   "capture.passive": "自動",
   "capture.allGood": "一切正常 — {{active}} 個來源可用。",
   "capture.dbGaps": "本次工作階段有 {{count}} 次寫入失敗（最早 {{since}}）—— 紀錄有缺口",
+  "capture.unattributedSpool": "有 {{count}} 筆指令是在沒有開專案時輸入的，不在紀錄裡（{{range}}）",
+  "capture.unattributedSpoolWhere": "保留在 ~/.redlog/pending 的 *.unattributed 檔案中——沒有任何專案能認領它們。",
   "capture.ctaOpenTerminal": "開啟終端機",
   "capture.ctaRunCommand": "執行一個指令",
   "capture.ctaInstallShellHook": "安裝 shell hook",

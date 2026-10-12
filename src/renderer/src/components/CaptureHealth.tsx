@@ -7,7 +7,7 @@ import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
-import { formatTime } from '../lib/time'
+import { formatTime, formatDateTime } from '../lib/time'
 
 
 /** What the `terminal` row says about the operator's OWN shell — three states,
@@ -554,7 +554,32 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
             </span>
           </div>
         )}
+        {/* Commands typed while RedLog had no project open. The hooks spool
+            them, but they carry no engagement identity, so replay cannot say
+            which project they belong to and sets them aside (#255). That is by
+            design; what was missing was ever saying so. Like the write gaps
+            above it is a fact about the record that does not clear on its own
+            — the files stay until someone deals with them. */}
+        {capture.unattributedSpool && (
+          <div data-testid="capture-unattributed-spool" className="mt-2 pt-2 border-t border-redlog-border/70 flex items-start gap-2 text-xs">
+            <span className="text-amber-500">!</span>
+            <span className="text-redlog-text-dim" title={t('capture.unattributedSpoolWhere')}>
+              {t('capture.unattributedSpool', {
+                count: capture.unattributedSpool.count,
+                range: spoolRange(capture.unattributedSpool.oldestAt, capture.unattributedSpool.newestAt)
+              })}
+            </span>
+          </div>
+        )}
       </div>
     </section>
   )
+}
+
+/** `2026-10-12 09:10` for one moment, `2026-10-12 09:10 – 2026-10-12 11:42` for
+ *  a span. Two stamps in the same minute are one moment. */
+function spoolRange(oldestAt: number, newestAt: number): string {
+  const from = formatDateTime(oldestAt)
+  const to = formatDateTime(newestAt)
+  return from === to ? from : `${from} – ${to}`
 }

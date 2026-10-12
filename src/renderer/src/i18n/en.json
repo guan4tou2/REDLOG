@@ -720,6 +720,8 @@
   "capture.passive": "auto",
   "capture.allGood": "All good — {{active}} source(s) ready.",
   "capture.dbGaps": "{{count}} write failure(s) this session, first at {{since}} — the record has gaps",
+  "capture.unattributedSpool": "{{count}} command(s) typed while no project was open are not in the record ({{range}})",
+  "capture.unattributedSpoolWhere": "Kept as *.unattributed files in ~/.redlog/pending — no project could claim them.",
   "capture.ctaOpenTerminal": "Open a terminal",
   "capture.ctaRunCommand": "Run a command",
   "capture.ctaInstallShellHook": "Install the shell hook",
