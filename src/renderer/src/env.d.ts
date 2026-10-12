@@ -432,6 +432,9 @@ interface RedLogAPI {
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
+    /** Delete the commands set aside with no project (#255) — only those
+     *  written no later than `upTo`, the newest the card was showing. */
+    clearUnattributedSpool: (upTo: number) => Promise<{ removed: number; failed: number }>
   }
   wsl: {
     listDistros: () => Promise<WslDistro[]>

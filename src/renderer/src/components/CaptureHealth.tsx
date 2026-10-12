@@ -4,6 +4,7 @@ import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } fro
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { confirmGraded } from './ConfirmDialog'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
@@ -291,6 +292,40 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   }
   const stateLabel = (s: string): string => t(`capture.state.${s}`)
 
+  // Deleting the commands that had no project (#255). Graded `irreversible`,
+  // not `chain`: they are not in the evidence chain — that is the point of the
+  // line — but once the files go nothing can bring them back, so the box has to
+  // be ticked. What is deleted is what the card is showing: the newest write
+  // time goes with the request so a command set aside in the meantime survives.
+  const clearUnattributed = async (spool: { count: number; oldestAt: number; newestAt: number }): Promise<void> => {
+    const ok = await confirmGraded({
+      title: t('capture.unattributedClearTitle', { count: spool.count }),
+      message: t('capture.unattributedClearMessage'),
+      level: 'irreversible',
+      consequences: [
+        t('capture.unattributedClearKeeps'),
+        t('capture.unattributedClearGone', { range: spoolRange(spool.oldestAt, spool.newestAt) })
+      ],
+      ackLabel: t('capture.unattributedClearAck'),
+      confirmLabel: t('capture.unattributedClearConfirm', { count: spool.count })
+    })
+    if (!ok) return
+    try {
+      const r = await window.redlog.capture.clearUnattributedSpool(spool.newestAt)
+      if (r.failed > 0) {
+        toast(t('capture.unattributedClearFailed', { count: r.failed }), { type: 'error' })
+      } else {
+        toast(t('capture.unattributedCleared', { count: r.removed }))
+      }
+    } catch (e) {
+      toast(t('capture.unattributedClearFailed', { count: spool.count }), {
+        type: 'error',
+        detail: e instanceof Error ? e.message : String(e)
+      })
+    }
+    onRefresh()
+  }
+
   // v0.6.98 C: freshness stripe. Pre-v0.6.98 the state chip said only
   // "active / idle / absent" — an active source that hadn't fired in 45s
   // looked identical to one that fired 200ms ago. Now every source shows
@@ -563,12 +598,22 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
         {capture.unattributedSpool && (
           <div data-testid="capture-unattributed-spool" className="mt-2 pt-2 border-t border-redlog-border/70 flex items-start gap-2 text-xs">
             <span className="text-amber-500">!</span>
-            <span className="text-redlog-text-dim" title={t('capture.unattributedSpoolWhere')}>
+            <span className="flex-1 min-w-0 text-redlog-text-dim" title={t('capture.unattributedSpoolWhere')}>
               {t('capture.unattributedSpool', {
                 count: capture.unattributedSpool.count,
                 range: spoolRange(capture.unattributedSpool.oldestAt, capture.unattributedSpool.newestAt)
               })}
             </span>
+            {/* Not a button the card pushes: nothing here is broken, and the
+                files are the operator's to keep. It is for the one who has
+                looked and is done with them. */}
+            <button
+              data-testid="capture-unattributed-clear"
+              onClick={() => { void clearUnattributed(capture.unattributedSpool!) }}
+              className="shrink-0 text-redlog-text-dim hover:text-redlog-text underline"
+            >
+              {t('capture.unattributedClear')}
+            </button>
           </div>
         )}
       </div>

@@ -241,7 +241,8 @@ const api: RedLogAPI = {
     revoke: (id: string) => ipcRenderer.invoke('plugins:revoke', id)
   },
   capture: {
-    health: () => ipcRenderer.invoke('capture:health')
+    health: () => ipcRenderer.invoke('capture:health'),
+    clearUnattributedSpool: (upTo: number) => ipcRenderer.invoke('capture:clearUnattributedSpool', upTo)
   },
   operators: {
     list: () => ipcRenderer.invoke('operators:list')
