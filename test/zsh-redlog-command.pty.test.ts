@@ -53,8 +53,12 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
       const status = run.steps[0].output
       // FR-023. Three facts, because an operator who has to work out any of
       // them from the other two will not check at all.
-      expect(status).toMatch(/recording/i)
-      expect(status).toMatch(/auto/i)
+      // `redlog status` discards the relay's stderr, so an empty answer says
+      // nothing by itself; the whole run goes in the message so a failure on a
+      // machine nobody can open a shell on still names what happened.
+      const detail = `status was ${JSON.stringify(status)}; run: ${JSON.stringify(run)}`
+      expect(status, detail).toMatch(/recording/i)
+      expect(status, detail).toMatch(/auto/i)
       expect(status, 'the bound project is not named').toContain('eng-us2')
     })
 
