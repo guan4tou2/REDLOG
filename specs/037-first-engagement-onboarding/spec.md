@@ -64,6 +64,12 @@ non-built-in shell; missing python3 is named before installing.
 **Independent Test**: Ticking "ignore this machine's traffic" creates the
 project with the local IP appended to `personalDomains`, defaults kept.
 
+> **Superseded.** The create card no longer has this checkbox (70438fe9, the
+> card asks for a name only and Settings ▸ Scope owns the rest; #253). The
+> operator's own address is added in Settings ▸ Scope ▸ personal traffic.
+> `mergeInitialConfig` still appends an initial `personalDomains` to the
+> defaults, so the merge rule below (FR-002) holds for any caller that sends one.
+
 ### User Story 4 - HTTP is optional (Priority: P3)
 
 **Independent Test**: The HTTP card can be skipped; readiness never names the
