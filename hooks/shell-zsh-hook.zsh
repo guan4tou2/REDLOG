@@ -353,7 +353,10 @@ _redlog_warn_unreachable() {
   fi
   [[ -n "${_REDLOG_WARNED_UNREACHABLE:-}" ]] && return
   _REDLOG_WARNED_UNREACHABLE=1
-  print -u2 -- "[redlog] RedLog is not reachable — commands are running unrecorded until it is back"
+  # The text of each command is still kept for replay (#315) — `_redlog_send_event`
+  # spools it with nowhere to send it — but not what it printed, which only a
+  # live relay can hold. Saying "unrecorded" would be the other way to mislead.
+  print -u2 -- "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not"
 }
 
 _redlog_precmd() {

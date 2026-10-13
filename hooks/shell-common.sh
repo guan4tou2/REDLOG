@@ -94,14 +94,34 @@ _redlog_is_running() {
 _redlog_send_event() {
   [[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
   local subtype="$1" command="$2" extra="${3:-}"
-  _redlog_is_running || return 0
 
-  local port=$(<"$_REDLOG_DIR/api-port")
-  local token=$(<"$_REDLOG_DIR/api-token")
+  # Reachable means RedLog left its port and token where this hook looks. It
+  # does not mean RedLog is up: it leaves both behind when it quits, so a closed
+  # RedLog is normally a POST that fails below and is spooled. The other way to
+  # arrive here is that those files are simply not there — never written,
+  # deleted by a cleaner, a profile restored without them — and that must not
+  # drop the command either (#315). Delivering needs the token; keeping a
+  # command for replay does not, and PowerShell has always kept it.
+  local reachable=0 port="" token=""
+  if _redlog_is_running; then
+    reachable=1
+    port=$(<"$_REDLOG_DIR/api-port")
+    token=$(<"$_REDLOG_DIR/api-token")
+    if [[ -z "${_REDLOG_HOST:-}" ]]; then
+      _REDLOG_HOST=$(_redlog_resolve_host "$port")
+      export _REDLOG_HOST
+    fi
+  fi
 
-  if [[ -z "${_REDLOG_HOST:-}" ]]; then
-    _REDLOG_HOST=$(_redlog_resolve_host "$port")
-    export _REDLOG_HOST
+  # Where the spool lives when nothing resolved it. Under WSL the directory
+  # that RedLog drains is the Windows profile's, and that is only knowable from
+  # the files this branch is missing — a guess at the Linux home would write
+  # commands nobody ever replays, so there the command is left alone rather
+  # than kept in the wrong place.
+  local redlog_dir="${_REDLOG_DIR:-}"
+  if [[ -z "$redlog_dir" ]]; then
+    [[ -n "${WSL_DISTRO_NAME:-}" ]] && return 0
+    redlog_dir="$HOME/.redlog"
   fi
 
   # The body travels in FILES, never as an argument. One argument is capped at
@@ -168,11 +188,12 @@ sys.stdout.write(json.dumps(d))
   # fails, write the payload to a spool file that RedLog replays on next
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
-  local spool_dir="$_REDLOG_DIR/pending"
+  local spool_dir="$redlog_dir/pending"
   mkdir -p "$spool_dir" 2>/dev/null
   local spool_file="$spool_dir/$(date +%s%N).$$.json"
-  # Foreground POST with short deadline; if it fails, spool.
-  if ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
+  # Foreground POST with short deadline; if it fails — or there was nowhere to
+  # send it — spool.
+  if [[ "$reachable" != 1 ]] || ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
         --data-binary @"$work/payload.json" \
