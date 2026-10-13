@@ -4,6 +4,7 @@ import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
   Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
 interface SidebarProps {
   active: string
@@ -81,9 +82,15 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   // almost nowhere else: navigation is the highest-frequency thing in the app,
   // every row keeps its ⌘N chord, and the tooltip names it. The labels are the
   // default, because a rail has to be learned first.
-  const [collapsed, setCollapsed] = useState(storedSidebarCollapsed)
+  const [preferCollapsed, setPreferCollapsed] = useState(storedSidebarCollapsed)
+  // A narrow layout takes the rail whatever the preference says, and gives it
+  // back when there is room again — the stored choice is not overwritten, so a
+  // window dragged narrow for a moment does not leave the operator with a rail
+  // they never asked for (#298).
+  const narrow = useNarrowViewport()
+  const collapsed = preferCollapsed || narrow
   useEffect(() => {
-    const onChange = (): void => setCollapsed(storedSidebarCollapsed())
+    const onChange = (): void => setPreferCollapsed(storedSidebarCollapsed())
     window.addEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
     return () => window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
   }, [])
@@ -170,17 +177,21 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
       </div>
 
       <div className="shrink-0 mt-3 pt-3 border-t border-redlog-border/40 space-y-0.5">
-        <button
-          data-testid="sidebar-collapse"
-          onClick={() => setSidebarCollapsed(!collapsed)}
-          title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-          aria-expanded={!collapsed}
-          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] px-2`}
-        >
-          <PanelLeft size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} aria-hidden className="shrink-0" />
-          {!collapsed && <span className="text-xs leading-none truncate font-medium">{t('sidebar.collapse')}</span>}
-        </button>
+        {/* Not offered while the layout forces the rail: a control that
+            says "expand" and then does not would be worse than no control. */}
+        {!narrow && (
+          <button
+            data-testid="sidebar-collapse"
+            onClick={() => setSidebarCollapsed(!collapsed)}
+            title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+            aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+            aria-expanded={!collapsed}
+            className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 transition-colors duration-150 text-left text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] px-2`}
+          >
+            <PanelLeft size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} aria-hidden className="shrink-0" />
+            {!collapsed && <span className="text-xs leading-none truncate font-medium">{t('sidebar.collapse')}</span>}
+          </button>
+        )}
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}

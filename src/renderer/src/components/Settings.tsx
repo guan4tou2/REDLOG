@@ -19,6 +19,7 @@ import { HookWatchPathsPanel } from './settings/AgentsPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
 // The thirteen pages §10 asks for. Declared as a union so a typo in a route
 // is a compile error rather than a page that silently never renders.
@@ -34,6 +35,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [tab, setTab] = useState<SettingsPage>(request?.page ?? 'hooks')
   useEffect(() => { if (request) setTab(request.page) }, [request])
   const [pageQuery, setPageQuery] = useState('')
+  // Before the early returns below: a hook after `if (!config) return` is a
+  // hook that runs on some renders and not others.
+  const narrow = useNarrowViewport()
   // The setting a search result points at: after its page renders, the text is
   // scrolled into view and marked briefly.
   const [findText, setFindText] = useState<string | null>(null)
@@ -229,21 +233,47 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const hits = searchSettings(pageQuery, t)
 
   return (
-    <div className="flex h-full">
+    // Narrow, the 212px category column is a strip above the page instead of a
+    // column beside it (#298): at the window's floor with the shell zoomed it
+    // took a third of the width, and the page it was there to choose between
+    // was below the fold. Same nav, same search, same results — the pages
+    // become a select, which a keyboard and a screen reader already know.
+    <div className={narrow ? 'flex flex-col h-full' : 'flex h-full'}>
       <nav
         aria-label={t('settings.categories')}
-        className="w-[212px] shrink-0 border-r border-redlog-border flex flex-col overflow-hidden"
+        className={narrow
+          ? 'shrink-0 max-h-[45%] border-b border-redlog-border flex flex-col overflow-hidden'
+          : 'w-[212px] shrink-0 border-r border-redlog-border flex flex-col overflow-hidden'}
       >
-        <div className="p-2 border-b border-redlog-border">
+        <div className={`p-2 border-b border-redlog-border ${narrow ? 'flex gap-2' : ''}`}>
           <input
             value={pageQuery}
             onChange={(e) => setPageQuery(e.target.value)}
             placeholder={t('settings.searchSettings')}
             aria-label={t('settings.searchSettings')}
-            className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
+            className={`${narrow ? 'flex-1 min-w-0' : 'w-full'} px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60`}
           />
+          {narrow && (
+            // Every page, whatever the search says: the current page must
+            // always be among the options, or the control would show one page
+            // while the content shows another.
+            <select
+              data-testid="settings-page-select"
+              value={tab}
+              onChange={(e) => setTab(e.target.value as SettingsPage)}
+              aria-label={t('settings.categories')}
+              className="min-w-0 max-w-[50%] px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text outline-none focus:border-redlog-accent/60"
+            >
+              {groups.map((g) => (
+                <optgroup key={g.heading} label={g.heading}>
+                  {g.pages.map((pg) => <option key={pg.id} value={pg.id}>{pg.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto py-2">
+        {(!narrow || q) && (
+        <div className="flex-1 min-h-0 overflow-y-auto py-2">
           {visible.length === 0 && hits.length === 0 && (
             <p className="px-3 py-4 text-xs text-redlog-text-faint text-center">
               {t('settings.noSettingMatches', { query: pageQuery })}
@@ -296,6 +326,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
             </div>
           )}
         </div>
+        )}
         {saveState !== 'idle' && (
           <p
             data-testid={`settings-save-${saveState}`}
@@ -316,7 +347,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
       </nav>
 
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
       <div ref={pane} className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px]">
         {tab === 'general' && <GeneralPage config={config} setConfig={setConfig} />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
