@@ -151,6 +151,10 @@ Sections of RELEASE-SMOKE-TEST.md run, and the result:
   with main's hooks), and research.md D2 had said the relay avoids exactly this
   ("argv-size … hazard"). **Not fixed in this change**; it is a separate
   defect in `shell-common.sh`.
+  **Update 2026-10-13: fixed in #302.** The body now travels in files, never as
+  an argument (`_redlog_send_event` says why at the top), and
+  `test/zsh-large-body.pty.test.ts` holds it. The paragraph above is the
+  finding as it stood and is kept as history.
 
 ### Transparency against a bare zsh (2026-10-12, #288)
 
@@ -190,7 +194,7 @@ not the packaged build and not a person at a VM.
 | `nc` in the record | `class: native`, `completeness: metadata-only`, `output_disposition: interactive`, no `stdout` |
 | `nc` holds the terminal itself | `/proc/<nc>/fd/{0,1,2}` are all the pty; relayed they are `tty/pipe/pipe` |
 | SC-002/SC-003, a 100-command engagement | **100 of 100** recorded exactly once, with output, stderr, exit code and `redirected` where redirected; one id per start/end pair; **none prefixed**; order preserved |
-| cost of the relay | **mean 479 ms, p95 496 ms, max 1522 ms** per command; 48.5 s for the engagement — *with pipes*. With the pty relay (#288), two runs: mean 544 ms / p95 616 ms and mean 616 ms / p95 870 ms; still 100 of 100 both times. The spread between runs is as large as the difference from pipes, so this is "tens of ms more", not a measured constant |
+| cost of the relay | **mean 479 ms, p95 496 ms, max 1522 ms** per command; 48.5 s for the engagement — *with pipes*. With the pty relay (#288), two runs: mean 544 ms / p95 616 ms and mean 616 ms / p95 870 ms; still 100 of 100 both times. The spread between runs is as large as the difference from pipes, so this is "tens of ms more", not a measured constant. **Superseded 2026-10-13 — see "What the adapter costs against a bare shell" below: these were the driver's `ms`, which includes its own 250 ms drain after every prompt, and there was no bare shell beside them. They measured the harness more than the adapter.** |
 
 Both were mutation-checked rather than trusted green. Moving `nc` out of the
 native class turns three assertions red (`nc's fd 0/1/2 are tty/pipe/pipe`);
@@ -203,6 +207,81 @@ the peer hangs up (3 of 3). Five seconds and zero are fine. The same happens
 with the adapter loaded and with recording stopped, so it is the host — the
 socket sits ESTABLISHED with the peer's FIN unacknowledged — and the test ends
 `nc` from outside rather than waiting on it.
+
+### What the adapter costs against a bare shell (2026-10-13, #288 / #317 B)
+
+`test/zsh-latency.pty.test.ts` (opt-in, `REDLOG_PERF=1`): the same command run
+in a bare zsh and in one with the adapter, through the same driver, timed from
+the line being sent to the next prompt being drawn (`prompt_ms` — taken before
+the driver's own 250 ms drain). Two rounds each, a cold first command and then
+the steady ones. Real zsh 5.9 on Kali (WSL) with a local collector; the adapter
+and the harness, **not** the packaged build and not a VM.
+
+Milliseconds at the median; "added" is adapter minus bare, the harness's own
+cost being in both:
+
+| shape | n | bare | adapter | **added** | added, mean | added, p95 | cold, adapter |
+|---|---|---|---|---|---|---|---|
+| prints nothing (`true`) | 60 | 0 | 308 | **308** | 313 | 372 | 355 |
+| one line | 60 | 0 | 303 | **303** | 305 | 331 | 350 |
+| 2 000 lines (~9 KB) | 40 | 2 | 312 | **310** | 312 | 347 | 357 |
+| 200 000 lines (~1.3 MB) | 12 | 78 | 455 | **377** | 396 | 576 | 543 |
+
+(Two independent runs: the first read 315 / 304 / 312 added for the first three
+rows, so the figure is stable to about ten milliseconds.)
+
+What this says:
+
+- **The adapter adds about 300 ms to every command, whatever it prints.** Output
+  size barely moves it up to ~9 KB; the cost is per command, not per byte. The
+  1.3 MB case adds more (about 380 ms) and is the only one that does.
+- **plan.md's budget is "under 50 ms for a command that produces no output".
+  It is missed by roughly six times.** The earlier "mean 479–616 ms" figure
+  could not show this, and had no baseline to subtract.
+- A bare shell returns in under a millisecond, so this is the whole of what an
+  operator waits for, on this host. It is not a statement about other hosts:
+  process start is much cheaper on native Linux than through WSL.
+
+Where the 300 ms goes (a stage profile run in the same shell, a collector that
+answers on loopback; medians, ms):
+
+| stage | cost | times per command |
+|---|---|---|
+| `python3 redlog-relay.py policy` (the class lookup in `_redlog_class_of`) | ~80 | 1 |
+| `_redlog_send_event` (a `python3` payload builder + a `curl` POST) | ~51 | 2 (`command_start`, `command_end`) |
+| the relay processes and `finish` for a relayed command | ~130 **by subtraction** (315 − 80 − 2 × 51), not timed on its own | 1 |
+| `python3 -c pass`, the floor for any `python3` | ~19 | — |
+
+Everything above is a process start. The levers, in the order they are likely
+to pay: do the class lookup once per shell rather than once per command; build
+the payload without starting `python3` where it can be done in the shell; and
+a persistent relay rather than two processes and a `finish` per command. None
+of that is done here — this change is the measurement and the line to hold, and
+`NO_OUTPUT_CEILING_MS` in the test is set at 400 so it cannot get worse while
+that is worked down. Lower it as it closes, until it is the plan's own 50.
+
+Not measured: time to the first byte of a long-running command's output (the
+plan's second budget), and anything on a platform other than this one.
+
+### When recording fails around a command (2026-10-13, #288 / #317 B)
+
+`test/zsh-recorder-failure.pty.test.ts`, on top of what `zsh-degradation`
+already holds for a closed RedLog, a dead relay and a RedLog that answers
+nothing. Four more ways for the recorder to fail with a command on its way,
+each judged by what the operator would notice — the command ran **once** (it
+appends to a file and the count is read back), it printed, `$?` is its own, and
+the next prompt came back:
+
+| failure | result |
+|---|---|
+| the payload builder fails every time (`python3` returns 1) | commands run once, output and status intact |
+| nowhere to write the spool (a file where the directory should be), RedLog closed | the same |
+| a temporary directory cannot be made (`TMPDIR` unusable), so the relay has nowhere to stand | the same |
+| RedLog up and answering every event with a 500 | the same, and the adapter did try to deliver |
+
+Mutation-checked: making each of the three silent `return 0` / `2>/dev/null`
+paths in `shell-common.sh` end the shell instead turns the matching scenario
+red (`pty closed during echo ran >> $HOME/runs; echo first-ok`).
 
 ### Still owed
 

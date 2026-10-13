@@ -17,7 +17,10 @@ export interface ZshStep {
   command: string
   output: string
   /** Wall time for a plain-string command, in ms. Absent for dict steps. */
-  ms?: number; raw?: string | null /* the bytes sent to the terminal, escapes intact — only with keepRaw */
+  ms?: number
+  /** From the line being sent to the next prompt being drawn — what an
+   *  operator waits for. `ms` also holds the driver's own 250 ms drain. */
+  prompt_ms?: number; raw?: string | null /* the bytes sent to the terminal, escapes intact — only with keepRaw */
 }
 
 /** A step that is not "type a line and wait for the prompt" — see the block

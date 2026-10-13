@@ -166,8 +166,15 @@ class Session:
         return before
 
     def run(self, command):
+        written_at = time.time()
         os.write(self.master, (command + "\n").encode("utf-8"))
         raw = self.read_until_marker(label=command)
+        # What an operator waits for: the line sent until the next prompt is
+        # drawn. Taken BEFORE the drain below, which holds every command for
+        # `settle` seconds whatever the shell did — so the step's `ms`, which
+        # includes it, is mostly this harness's own wait and says nothing about
+        # what the adapter costs.
+        self.last_prompt_ms = (time.time() - written_at) * 1000
         # Drain anything that arrives just after the prompt (a hook that writes
         # on precmd lands here), so the next command's output is not polluted.
         deadline = time.time() + self.settle
@@ -308,6 +315,7 @@ def main():
                     # Per command, because the 100-command engagement (T045)
                     # is also the only place the cost of the relay shows up.
                     "ms": int((time.time() - started) * 1000),
+                    "prompt_ms": round(session.last_prompt_ms, 1),
                 })
         report["ok"] = True
     except Exception as exc:  # reported, never raised: the caller wants the transcript
