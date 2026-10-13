@@ -255,10 +255,53 @@ answers on loopback; medians, ms):
 Everything above is a process start. The levers, in the order they are likely
 to pay: do the class lookup once per shell rather than once per command; build
 the payload without starting `python3` where it can be done in the shell; and
-a persistent relay rather than two processes and a `finish` per command. None
-of that is done here — this change is the measurement and the line to hold, and
-`NO_OUTPUT_CEILING_MS` in the test is set at 400 so it cannot get worse while
-that is worked down. Lower it as it closes, until it is the plan's own 50.
+a persistent relay rather than two processes and a `finish` per command. The
+first two are done below; the third is not. `NO_OUTPUT_CEILING_MS` in the test
+is a line to hold, not the goal — lower it as the gap closes, until it is the
+plan's own 50.
+
+#### After the first two levers (2026-10-13)
+
+- **The payload is built by the shell** (`_redlog_build_payload_fast` in
+  `shell-common.sh`) for plain events and handed to the python builder, which
+  is still the reference, for anything it cannot be sure of: non-ASCII or
+  control characters, a body over 32 KB, an `extra` that is not one object, an
+  identity file that is not one flat object. `test/shell-payload-fast.test.ts`
+  sends 38 events through `_redlog_send_event` once with the python builder
+  forced and once without, in bash **and** zsh, and requires the parsed JSON to
+  be identical — and requires the shell to take the plain cases and decline the
+  hard ones, because a corpus that all fell through to python would pass the
+  first half and speed up nothing. Dropping the backslash escape turns eight of
+  those red.
+- **The class is remembered per command line** (`_redlog_class_of`, zsh), and
+  forgotten when the shipped policy or the operator's overlay is replaced: the
+  signature is inode, size, mtime and ctime of both, read with zsh's own
+  `zstat`, no process. `redlog class` writes the overlay by rename, so its inode
+  changes even inside one clock tick. No `zstat`, no cache. An empty answer
+  (python failing) is never kept. `test/zsh-class-cache.test.ts` holds the
+  cached answer to python's over lines that are hostile as array keys, that a
+  hit starts no process, and that an overlay written, replaced or deleted under
+  a warm cache is seen; a signature that never changes turns two of those red.
+  An overlay edited **in place**, keeping its inode, size and second, would be
+  missed; the writer does not do that.
+
+Measured as one command's worth of adapter (`preexec` + `precmd`) in a single
+zsh process, the three variants interleaved so machine noise is shared, a live
+loopback collector, hooks on the distro disk; 24 runs each, ms:
+
+| variant | median | min | max |
+|---|---|---|---|
+| before (python payload, class asked every time) | 426 | 338 | 592 |
+| + payload built in the shell | 270 | 243 | 394 |
+| + class remembered | **196** | 179 | 248 |
+
+That is a bit over half gone (about 230 ms of 426), and still four times the
+plan's 50. The pty harness reads 150–240 for the same adapter from one run to
+the next on this machine — wider than the steps above — so the table is the
+evidence for the steps and the pty test is the line to hold. What is left is
+the `python3` that holds the terminal (`pty`), the `python3` that collects it
+(`finish`), `mktemp`, and two `curl`s: a persistent relay is the next lever,
+and the one that touches job control.
 
 Not measured: time to the first byte of a long-running command's output (the
 plan's second budget), and anything on a platform other than this one.

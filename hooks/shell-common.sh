@@ -91,6 +91,102 @@ _redlog_is_running() {
   [[ -f "$_REDLOG_DIR/api-port" ]] && [[ -f "$_REDLOG_DIR/api-token" ]]
 }
 
+# A JSON string's body, for input already known to be printable ASCII, where a
+# backslash and a double quote are the only two characters that need escaping.
+# The result is left in `_redlog_json` rather than printed: capturing stdout is
+# a fork, and not forking is what this is for.
+_redlog_json_quote() {
+  local s="$1"
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  _redlog_json=$s
+}
+
+# The event payload, written without starting a process (#288). Returns 1 —
+# writing nothing it would want kept — whenever it cannot be sure the JSON is
+# what the python builder in `_redlog_send_event` would have produced, and the
+# caller then runs that one. So this is only ever the fast case, never the
+# other behaviour: it declines
+#
+#   - a command, subtype, shell name or terminal id that is not printable ASCII.
+#     Anything else needs real escaping or decoding, and a Chinese command is
+#     exactly the one that must not be mangled;
+#   - an `extra` that is large or holds a control character. A command_end
+#     carries bodies up to megabytes, and the pattern removals below are not
+#     built for that; a control character is JSON that is invalid, or
+#     pretty-printed, and python is the one that knows which;
+#   - an `extra` that is not one `{...}` object;
+#   - no EPOCHREALTIME (bash before 5, zsh without zsh/datetime), because the
+#     time has to be when the command ran and `date` is not portable to
+#     milliseconds;
+#   - an identity file that is not one flat object, or holds non-ASCII.
+_redlog_build_payload_fast() {
+  local subtype="$1" command="$2" extra="$3" out="$4"
+  # Bytewise. In a UTF-8 locale `[^ -~]` is a range of characters, and the
+  # test means something else.
+  local LC_ALL=C
+  local shell_name="${SHELL:-}"
+  shell_name="${shell_name##*/}"
+  local tid="${REDLOG_TERMINAL_ID:-}"
+
+  [[ "$subtype$command$shell_name$tid" == *[^\ -~]* ]] && return 1
+  (( ${#command} + ${#extra} > 32768 )) && return 1
+  [[ "$extra" == *[[:cntrl:]]* ]] && return 1
+
+  # WHEN the command ran, not when someone next looked (Domain Invariant #8):
+  # the same millisecond epoch the python builder takes with time.time().
+  local now="${EPOCHREALTIME:-}"
+  [[ "$now" == [0-9]*.[0-9]* ]] || return 1
+  local frac="${now#*.}"
+  (( ${#frac} >= 3 )) || return 1
+  local ms="${now%.*}${frac:0:3}"
+
+  local inner=""
+  if [[ -n "$extra" ]]; then
+    local t="${extra#"${extra%%[![:space:]]*}"}"
+    t="${t%"${t##*[![:space:]]}"}"
+    if [[ -n "$t" ]]; then
+      [[ "$t" == \{*\} ]] || return 1
+      inner="${t#\{}"
+      inner="${inner#"${inner%%[![:space:]]*}"}"
+      # `{}` has nothing to merge, and `,}` is not JSON.
+      [[ "$inner" == "}" ]] && inner=""
+    fi
+  fi
+
+  # Same file the python builder reads, and embedded under the same condition:
+  # it names an engagement. Anything but one flat object goes to python.
+  local ident="" idfile="${HOME:-}/.redlog/active-identity.json"
+  if [[ -s "$idfile" ]]; then
+    # In braces: a redirect on the assignment alone does not cover the shell's
+    # own "permission denied" from `$(<file)`, which is the shell's message and
+    # would land in the operator's terminal.
+    { ident=$(<"$idfile"); } 2>/dev/null
+    ident=${ident//$'\n'/}
+    ident=${ident//$'\r'/}
+    if [[ "$ident" == *'"engagementId"'* ]]; then
+      local braces=${ident//[^\{\}]/}
+      [[ "$ident" == \{*\} && "$braces" == '{}' ]] || return 1
+      [[ "$ident" == *[^\ -~]* ]] && return 1
+    else
+      ident=""
+    fi
+  fi
+
+  local body='{"agent_type":"shell","data":{"subtype":"'
+  _redlog_json_quote "$subtype";    body+="$_redlog_json"'","command":"'
+  _redlog_json_quote "$command";    body+="$_redlog_json"'","shell":"'
+  _redlog_json_quote "$shell_name"; body+="$_redlog_json"'","pid":'"$$"',"source_timestamp":'"$ms"
+  [[ "${REDLOG_TERMINAL:-}" == "1" ]] && body+=',"source":"builtin-terminal"'
+  if [[ -n "$tid" ]]; then
+    _redlog_json_quote "$tid"; body+=',"terminalId":"'"$_redlog_json"'"'
+  fi
+  if [[ -n "$inner" ]]; then body+=",$inner"; else body+='}'; fi
+  [[ -n "$ident" ]] && body+=',"_identity":'"$ident"
+  body+='}'
+  printf '%s' "$body" > "$out" 2>/dev/null
+}
+
 _redlog_send_event() {
   [[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
   local subtype="$1" command="$2" extra="${3:-}"
@@ -132,6 +228,18 @@ _redlog_send_event() {
   # builtin and has no such limit.
   local work
   work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+
+  # Most events are plain enough to be written without starting anything, and
+  # starting python3 here was ~40 ms, twice per command (#288). When the shell
+  # cannot be certain the result is the same JSON — a non-ASCII command, a
+  # large body, an identity file it cannot read as one flat object — it says so
+  # and this falls through to the builder below, which has always been the
+  # reference. REDLOG_PAYLOAD_BUILDER=python forces it, for the test that holds
+  # the two to the same output.
+  if [[ "${REDLOG_PAYLOAD_BUILDER:-}" != python ]] \
+     && _redlog_build_payload_fast "$subtype" "$command" "$extra" "$work/payload.json"; then
+    :
+  else
   printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
 
   python3 -c "
@@ -181,6 +289,7 @@ except Exception:
 sys.stdout.write(json.dumps(d))
 " "$subtype" "$command" "$work/extra.json" > "$work/payload.json" 2>/dev/null \
     || { rm -rf "$work"; return 0; }
+  fi
 
   # v0.6.87 A2: local spool for back-pressure. Previously curl was fire-and-
   # forget (`&`) with a 2s deadline — if RedLog was closed or the port was
@@ -189,10 +298,9 @@ sys.stdout.write(json.dumps(d))
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
   local spool_dir="$redlog_dir/pending"
-  mkdir -p "$spool_dir" 2>/dev/null
-  local spool_file="$spool_dir/$(date +%s%N).$$.json"
   # Foreground POST with short deadline; if it fails — or there was nowhere to
-  # send it — spool.
+  # send it — spool. The directory and the file's name are made only then: two
+  # processes on every event that is delivered, for a spool it never touches.
   if [[ "$reachable" != 1 ]] || ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
@@ -205,9 +313,11 @@ sys.stdout.write(json.dumps(d))
     # whole directory let a pile of those fill the cap and silently stop every
     # new event from being spooled. `find`, not a glob: an unmatched glob is an
     # error zsh prints itself, whatever the command's own stderr is sent to.
-    local count
+    mkdir -p "$spool_dir" 2>/dev/null
+    local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
+      spool_file="$spool_dir/$(date +%s%N).$$.json"
       cp "$work/payload.json" "$spool_file" 2>/dev/null
     fi
   fi
