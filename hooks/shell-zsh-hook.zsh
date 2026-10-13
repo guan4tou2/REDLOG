@@ -12,6 +12,10 @@ _redlog_adapter_dir="${${(%):-%N}:A:h}"
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
 
+# EPOCHREALTIME, for the event payload (shell-common.sh builds it without
+# starting python3 when it can). bash has it built in from 5.0; zsh needs this.
+zmodload zsh/datetime 2>/dev/null
+
 # Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
 [[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
 
@@ -31,14 +35,66 @@ unset _redlog_adapter_dir
 # zsh splits the line the way zsh will run it — quotes respected — so the
 # classifier sees the same argv the shell does. `sudo -u root nc` must reach
 # the classifier as four words, not as a string to guess at.
+#
+# The answer is a function of the line and of two files — the shipped policy
+# beside the relay and the operator's overlay — so it is remembered per line,
+# and forgotten the moment either file is replaced. A `python3` per command to
+# re-derive `ls` is `relayed` was the largest single cost the adapter had
+# (#288). `redlog class` rewrites the overlay by rename, so its inode changes
+# even inside one clock tick; the signature carries inode, size and mtime, read
+# with zsh's own `zstat` rather than a process. Without that builtin nothing is
+# cached and every command asks, which is the old behaviour.
+#
+# The result is left in REPLY, not printed: capturing stdout is a fork, and a
+# cache written inside `$( )` would be lost with the subshell.
+zmodload -F zsh/stat b:zstat 2>/dev/null
+typeset -gA _REDLOG_CLASS_CACHE
+typeset -g _REDLOG_CLASS_SIG=""
+
+_redlog_policy_sig() {
+  REPLY=""
+  (( $+builtins[zstat] )) || return 1
+  local home=$HOME f
+  [[ -n "${_REDLOG_DIR:-}" ]] && home="${_REDLOG_DIR:h}"
+  local -a st
+  for f in "${_REDLOG_RELAY:h}/command-class.json" "$home/.redlog/command-class.json"; do
+    # inode, size, mtime, ctime — fields 2, 8, 10 and 11 of a plain `zstat -A`.
+    if zstat -A st -- "$f" 2>/dev/null; then
+      REPLY+="${st[2]}:${st[8]}:${st[10]}:${st[11]}|"
+    else
+      REPLY+="absent|"
+    fi
+  done
+  REPLY+="$home"
+}
+
 _redlog_class_of() {
+  local line="$1" sig=""
+  REPLY=""
+  if _redlog_policy_sig; then
+    sig=$REPLY
+    if [[ "$sig" != "$_REDLOG_CLASS_SIG" ]]; then
+      _REDLOG_CLASS_CACHE=()
+      _REDLOG_CLASS_SIG=$sig
+    fi
+    if [[ -n "$line" && -n "${_REDLOG_CLASS_CACHE[$line]-}" ]]; then
+      REPLY=${_REDLOG_CLASS_CACHE[$line]}
+      return 0
+    fi
+  fi
   local -a words
-  words=(${(z)1})
+  words=(${(z)line})
   # Both: the argv for the program lookup, and the raw line for the shapes the
   # relay has to decline — a pipeline with a pager in it, a redirection the
   # operator has already made (FR-029).
-  python3 "$_REDLOG_RELAY" classify --home "$(_redlog_home)" \
-    --command-line "$1" -- "${words[@]}" 2>/dev/null
+  REPLY=$(python3 "$_REDLOG_RELAY" classify --home "$(_redlog_home)" \
+    --command-line "$line" -- "${words[@]}" 2>/dev/null)
+  # Only an answer is kept: an empty one is python3 failing, and remembering
+  # that would make one bad moment permanent.
+  if [[ -n "$sig" && -n "$line" && -n "$REPLY" ]]; then
+    (( ${#_REDLOG_CLASS_CACHE} >= 512 )) && _REDLOG_CLASS_CACHE=()
+    _REDLOG_CLASS_CACHE[$line]=$REPLY
+  fi
 }
 
 # --- This terminal's own state (spec 052 US2) ---
@@ -317,7 +373,8 @@ _redlog_preexec() {
   _REDLOG_CMD_ID=$(_redlog_new_command_id)
 
   if _redlog_is_running && [[ "${REDLOG_EXTERNAL_SESSION:-}" != "1" ]]; then
-    _REDLOG_CMD_CLASS=$(_redlog_class_of "$1")
+    _redlog_class_of "$1"
+    _REDLOG_CMD_CLASS=$REPLY
   fi
   : ${_REDLOG_CMD_CLASS:=native}
 
