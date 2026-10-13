@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { TITLEBAR_CONTROL } from './Button'
+import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { Download, ChevronDown, ChevronLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -146,6 +147,7 @@ function Toggle({ on, setOn, label, warn }: {
 
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
+  const narrow = useNarrowViewport()
   const viewExport = useViewExport()
   const { filter } = useSharedFilter()
   const currentSubset: ExportSubset = viewExport?.request.subset ?? { kind: 'selection', projection: 'events', filter: toEventFilter(filter) }
@@ -265,16 +267,20 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
   return (
     <div className="relative">
+      {/* Narrow, the word and the chevron go and the icon stays (#298): the
+          name is already the button's aria-label, and the strip has to keep
+          room for the project's own name and the Mark button. */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t('export.title')}
-        className={`${TITLEBAR_CONTROL} border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-accent/40`}
+        title={narrow ? t('export.title') : undefined}
+        className={`${narrow ? TITLEBAR_ICON : TITLEBAR_CONTROL} border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-accent/40`}
       >
         <Download size={13} strokeWidth={1.5} aria-hidden />
-        {t('export.title')}
-        <ChevronDown size={12} strokeWidth={1.5} aria-hidden />
+        {!narrow && t('export.title')}
+        {!narrow && <ChevronDown size={12} strokeWidth={1.5} aria-hidden />}
       </button>
 
       {open && (

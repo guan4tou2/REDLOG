@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react'
-import { TITLEBAR_CONTROL } from './Button'
+import { Globe } from 'lucide-react'
+import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
 import { FirstRunView } from './FirstRunView'
@@ -42,6 +44,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
   const { t } = useI18n()
+  const narrow = useNarrowViewport()
 
   const readStatus = useCallback(() => {
     window.redlog.browser.status().then((s) => setRunning(s.running)).catch(() => {})
@@ -88,19 +91,25 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   // app, for an action taken at most a few times an engagement -- and it
   // already exists in the HTTP card and on Settings > Browser. Three places
   // for one switch (docs/UIUX-CONTROLS-AND-COPY.md §2, question 3).
+  const label = running ? t('browser.stop') : t('browser.launch')
   return (
     <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+    {/* Narrow, this is the widest thing on the strip and it is the one the
+        operator touches least, so it gives way first: the icon, with the
+        action — which flips between start and stop — as its accessible name
+        and tooltip (#298). */}
     <button
       onClick={handleClick}
       disabled={busy}
-      title={t('browser.hint', { page: t('settings.pageBrowser') })}
-      className={`${TITLEBAR_CONTROL} ${
+      aria-label={narrow ? label : undefined}
+      title={narrow ? `${label} — ${t('browser.hint', { page: t('settings.pageBrowser') })}` : t('browser.hint', { page: t('settings.pageBrowser') })}
+      className={`${narrow ? TITLEBAR_ICON : TITLEBAR_CONTROL} ${
         running
           ? 'bg-redlog-safe/10 text-redlog-safe border-redlog-safe/25 hover:bg-redlog-safe/20'
           : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60 hover:text-redlog-text'
       }`}
     >
-      {busy ? '…' : running ? t('browser.stop') : t('browser.launch')}
+      {narrow ? <Globe size={14} strokeWidth={1.75} aria-hidden /> : busy ? '…' : label}
     </button>
     </div>
   )
