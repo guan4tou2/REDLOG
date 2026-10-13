@@ -46,14 +46,17 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
     app = launched.app
     page = launched.page
     home = launched.tmpHome
-    // Under xvfb a fresh window produces no animation frames until something
-    // wakes it — measured on Linux: 0 requestAnimationFrame callbacks in 3 s,
-    // the CSS transitions "running" and never advancing. Playwright's click
-    // waits for the target to be stable across two frames, so a spec whose
-    // FIRST action is a click (the others fill a field or reload first) waits
-    // out its whole timeout. Reload, bringToFront and focusing a field each
-    // restore ~74 frames/s; this one says what it is for.
-    await page.bringToFront()
+    // Under xvfb the first load of a fresh window can produce no animation
+    // frames at all — measured on Linux: 0 requestAnimationFrame callbacks in
+    // 3 s, the CSS transitions "running" and never advancing, and neither
+    // focusing a field nor waiting changes it. Playwright's click waits for the
+    // target to be stable across two frames, so a spec whose first action is a
+    // click waited out its whole timeout on ubuntu CI while passing on
+    // Windows. A reload is what restores them (~74 frames/s) and is what the
+    // specs that click after launch already do (scope-entry, openTestProject).
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByTestId('project-picker')).toBeVisible()
   })
 
   test.afterAll(async () => {
