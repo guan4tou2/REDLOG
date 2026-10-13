@@ -1,6 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { makeTempHome } from './helpers'
 
@@ -208,10 +209,73 @@ test.describe('packaged app', () => {
         expect(v.stdout).toMatch(/Chain\s*:\s*INTACT/)
       })
 
+      // HTTP capture goes through mitmdump, which is looked up on PATH rather than
+      // shipped. Without it the card says so (that is its own state, not a failure
+      // of this build), so the step is left out and annotated.
+      //
+      // It runs AFTER the export on purpose. The request goes to a loopback
+      // server, loopback is a "personal" domain, and a bundle exported after one
+      // fails its own verifier (#329): the personal row is dropped from the chain.
+      // Putting this first would make the export step report that known problem
+      // instead of what it is here to check.
+      const mitmdump = spawnSync('mitmdump', ['--version'], { stdio: 'ignore' }).status === 0
+      if (!mitmdump) {
+        test.info().annotations.push({ type: 'not-exercised', description: 'no mitmdump on PATH — HTTP capture was not exercised' })
+      } else {
+        await test.step('HTTP through the managed proxy is recorded, and the card verifies HTTP and HTTPS', async () => {
+          const started = (await events(page)).find((e) => e.data.subtype === 'http_proxy_started')
+          expect(started, 'the managed proxy should announce itself').toBeTruthy()
+          const proxy = new URL(String(started!.data.proxy))
+
+          // A local server, so no traffic leaves the machine.
+          const server = http.createServer((_req, res) => { res.setHeader('content-type', 'text/plain'); res.end('pkg-http-canary-body') })
+          await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+          const target = `http://127.0.0.1:${(server.address() as { port: number }).port}/pkg-canary?x=1`
+          try {
+            const status = await new Promise<number>((resolve, reject) => {
+              const req = http.request({ host: proxy.hostname, port: Number(proxy.port), method: 'GET', path: target, headers: { Host: new URL(target).host } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode ?? 0)) })
+              req.on('error', reject)
+              req.end()
+            })
+            expect(status).toBe(200)
+          } finally {
+            server.close()
+          }
+          await expect.poll(async () => (await events(page)).some((e) => e.data.subtype === 'http_response' && e.data.url === target), { timeout: 20_000 }).toBe(true)
+          const flow = (await events(page)).filter((e) => e.data.url === target)
+          expect(flow.map((e) => e.data.subtype).sort()).toEqual(expect.arrayContaining(['http_request_start', 'http_response']))
+          expect(new Set(flow.filter((e) => e.data.flow_id).map((e) => e.data.flow_id)).size, 'request and response belong to one flow').toBe(1)
+
+          // A recorded request is not the card's proof: it wants a request for
+          // its own nonce on a reserved host (#220), and offers the curl commands
+          // only after its 60 s window. Run them as given. HTTPS additionally
+          // gets this profile's CA by --cacert — trusting it system-wide would
+          // change the machine, and the CA is what the proxy is minting with.
+          const box = page.getByTestId('first-run-http-verify-commands')
+          await box.waitFor({ timeout: 100_000 })
+          const commands = [...(await box.innerText()).matchAll(/curl(?:\.exe)? -sS[^\n]*? (https?:\/\/redlog\.verify\.invalid\/\S+)/g)].map((m) => m[0])
+          expect(commands.map((c) => c.includes('https://'))).toEqual([false, true])
+          const ca = join(home, '.mitmproxy', 'mitmproxy-ca-cert.pem')
+          expect(existsSync(ca), 'the proxy mints with a CA under this profile').toBe(true)
+          for (const command of commands) {
+            const [exe0, ...rest] = command.split(' ')
+            const args = [...rest, ...(command.includes('https://') ? ['--cacert', ca] : []), '-m', '15', '-o', process.platform === 'win32' ? 'NUL' : '/dev/null', '-w', '%{http_code}']
+            const r = await run(exe0, args, { ...process.env, HOME: home, USERPROFILE: home })
+            expect(r.out, command).toMatch(/200$/)
+          }
+          await expect.poll(async () => ((await page.locator('body').innerText()).match(/verified via/g) ?? []).length, { timeout: 20_000 }).toBe(2)
+        })
+      }
+
       await app.close()
 
       await test.step('after a restart the project, events and recording are still there and searchable', async () => {
         ;({ app, page } = await launch(home))
+        // A window that has not produced an animation frame never lets Playwright's
+        // click settle as "stable"; one reload gets it painting (as in
+        // profile-import.spec.ts).
+        await page.reload()
+        await page.waitForLoadState('domcontentloaded')
         await page.waitForSelector('[data-testid="project-picker"], [data-testid="view-root"]', { timeout: 30_000 })
         if (await page.getByTestId('project-picker').count()) {
           await page.getByText('pkg-smoke').first().click()
