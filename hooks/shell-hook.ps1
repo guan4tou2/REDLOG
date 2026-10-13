@@ -127,8 +127,11 @@ if (-not $script:_RedLogOriginalPrompt) {
 }
 
 function prompt {
-    $lastExit = $LASTEXITCODE
+    # `$?` first: it reports only the previous statement, so any statement
+    # before it — even `$lastExit = $LASTEXITCODE` — makes it true and every
+    # failed command would be recorded as exit 0.
     $success = $?
+    $lastExit = $LASTEXITCODE
 
     $entry = Get-History -Count 1 -ErrorAction SilentlyContinue
     if ($entry -and $entry.Id -ne $script:_RedLogLastId) {
