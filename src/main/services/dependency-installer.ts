@@ -46,8 +46,13 @@ export async function installDependency(
       }
     case 'manual':
       return { success: false, message: `${id} needs elevated privileges — run "${plan.command}" in a terminal` }
-    case 'run':
-      return runInstall(plan.command, plan.args, spawn, timeoutMs)
+    case 'run': {
+      const result = await runInstall(plan.command, plan.args, spawn, timeoutMs)
+      if (result.success && !preflight().checks.find((c) => c.id === id)?.found) {
+        return { success: false, message: `Installer exited successfully, but ${id} is not available on PATH. Check the installation or restart RedLog.` }
+      }
+      return result
+    }
   }
 }
 
@@ -60,6 +65,7 @@ function runInstall(
   return new Promise((resolve) => {
     let output = ''
     let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     const finish = (result: InstallDependencyResult): void => {
       if (settled) return
       settled = true
@@ -73,7 +79,7 @@ function runInstall(
       finish({ success: false, message: `Could not start ${command}: ${e instanceof Error ? e.message : String(e)}` })
       return
     }
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       try { child.kill('SIGKILL') } catch { /* already gone */ }
       finish({ success: false, message: `${command} timed out after ${Math.round(timeoutMs / 1000)}s` })
     }, timeoutMs)

@@ -686,6 +686,25 @@ export function queryEventById(id: string): RedLogEvent | null {
   return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
 }
 
+/** A pane can have many recordings in the same project. Resolve the exact
+ * recording identity, never whichever pane start happens to fit a page. */
+export function queryBuiltinTerminalSessionStart(recordingId: string): RedLogEvent | null {
+  const row = getReadonlyDB().prepare(`SELECT * FROM events
+    WHERE agent_type = 'shell' AND subtype = 'session_start'
+      AND json_extract(data, '$.source') = 'builtin-terminal'
+      AND json_extract(data, '$.recordingId') = ?
+    ORDER BY rowid DESC LIMIT 1`).get(recordingId) as Record<string, unknown> | undefined
+  return row ? rowToEvent({ ...row, tier: 'chained' }) : null
+}
+
+export function queryBuiltinTerminalSessions(): RedLogEvent[] {
+  const rows = getReadonlyDB().prepare(`SELECT * FROM events
+    WHERE agent_type = 'shell' AND subtype IN ('session_start', 'session_end')
+      AND json_extract(data, '$.source') = 'builtin-terminal'
+    ORDER BY timestamp DESC, rowid DESC`).all() as Array<Record<string, unknown>>
+  return rows.map(row => rowToEvent({ ...row, tier: 'chained' }))
+}
+
 function eventCauses(event: RedLogEvent): string[] {
   const raw = (event.data as { _causes?: unknown })._causes
   return Array.isArray(raw)

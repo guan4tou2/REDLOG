@@ -48,8 +48,10 @@ async function runInteractive(exe: string, home: string, commands: string[]): Pr
   return out
 }
 
-// With neither installed the list is empty and nothing is declared.
-describe.each(shells)('the %s prompt hook records the real exit code', (ps) => {
+// Register explicit skips when the runtime is absent, rather than declaring
+// an empty file (which Vitest treats as a failed suite).
+const describePowerShell = shells.length ? describe : describe.skip
+describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('the %s prompt hook records the real exit code', (ps) => {
   let home: string
   beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pshook-')) })
   afterEach(() => { fs.rmSync(home, { recursive: true, force: true }) })

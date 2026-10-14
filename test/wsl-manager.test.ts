@@ -140,3 +140,77 @@ describe('WSL enumeration never blocks the main thread', () => {
     }
   })
 })
+
+
+describe('WSL diagnostics reports what actually failed', () => {
+  it('identifies a cold-start timeout and gives a retry action', async () => {
+    const restore = pretendPlatform('win32')
+    vi.useFakeTimers()
+    const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> }
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = vi.fn(() => { child.emit('close', null) })
+    ;(cp.spawn as unknown as Mock).mockReturnValueOnce(child)
+    try {
+      const pending = runDiagnostics('Ubuntu')
+      await vi.advanceTimersByTimeAsync(10_000)
+      const result = await pending
+      expect(child.kill).toHaveBeenCalledOnce()
+      expect(result.checks).toEqual([expect.objectContaining({
+        name: 'timeout', status: 'fail', message: expect.stringMatching(/10 seconds.*start.*Ubuntu.*retry/i)
+      })])
+      expect(result.checks[0].message).not.toContain('Diagnostics script failed')
+    } finally {
+      vi.useRealTimers()
+      restore()
+    }
+  })
+
+  it('keeps completed diagnostic checks and appends the timeout when output is partial', async () => {
+    const restore = pretendPlatform('win32')
+    vi.useFakeTimers()
+    const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void }
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => undefined
+    ;(cp.spawn as unknown as Mock).mockReturnValueOnce(child)
+    try {
+      const pending = runDiagnostics('kali')
+      child.stdout.emit('data', Buffer.from('[PASS] transport: API reached\n'))
+      await vi.advanceTimersByTimeAsync(10_000)
+      const result = await pending
+      expect(result.checks).toEqual([
+        { name: 'transport', status: 'pass', message: 'API reached' },
+        expect.objectContaining({ name: 'timeout', status: 'fail' })
+      ])
+    } finally {
+      vi.useRealTimers()
+      restore()
+    }
+  })
+
+  it('keeps a normal nonzero script exit distinct from a timeout', async () => {
+    const restore = pretendPlatform('win32')
+    ;(cp.spawn as unknown as Mock).mockImplementationOnce(() => fakeChild(Buffer.alloc(0), 2))
+    try {
+      expect((await runDiagnostics('Ubuntu')).checks).toEqual([
+        { name: 'run', status: 'fail', message: 'Diagnostics script failed' }
+      ])
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps successful structured diagnostics unchanged', async () => {
+    const restore = pretendPlatform('win32')
+    ;(cp.spawn as unknown as Mock).mockImplementationOnce(() => fakeChild(Buffer.from('[PASS] hook: Installed\n[WARN] output: Metadata only\n')))
+    try {
+      expect((await runDiagnostics('Ubuntu')).checks).toEqual([
+        { name: 'hook', status: 'pass', message: 'Installed' },
+        { name: 'output', status: 'warn', message: 'Metadata only' }
+      ])
+    } finally {
+      restore()
+    }
+  })
+})

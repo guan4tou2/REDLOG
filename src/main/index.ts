@@ -40,7 +40,7 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
+  killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
@@ -695,7 +695,7 @@ function startProject(project: ProjectMeta): void {
   } catch (e) { console.error('[plugins] init failed:', e) }
   setVpnAdapters(config.network.vpnAdapters)
 
-  configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  configureTerminal({ engagementId, projectId: project.id, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   configureTerminalProxy(() => {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
@@ -810,6 +810,7 @@ function startProject(project: ProjectMeta): void {
     const n = recoverOrphanSessions()
     if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
   } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
+  resumeTerminalRecordings()
 
   // Fill the shell catalog in the background so the picker opens instantly.
   // Not awaited: on Windows it enumerates WSL, and nothing here depends on
@@ -1084,11 +1085,9 @@ function stopProject(): void {
   screenshotAgent.stop()
   closeCastIndex()
   closeHttpBodyIndex()
-  // Audit 2026-09-18 P1: finalize all terminal sessions BEFORE closing the DB
-  // so session_end events (with cast SHA-256) land in the chain. Without this,
-  // terminals survive the project switch with stale identity and their close
-  // events race the DB close.
-  killAllTerminals()
+  // Finish each old project binding while its DB is open. The shell and its
+  // display survive; the next project opens a distinct recording segment.
+  detachTerminalRecordings()
   closeDB()
   resetBodiesDirCache()
   clearSpoolIdentity()
@@ -1389,7 +1388,7 @@ app.whenReady().then(() => {
       excludeTargets: beforeScope.excludeTargets,
       alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
     }, configChangedId)
-    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id,
+    configureTerminal({ engagementId: newConfig.engagement.id, projectId: activeProject!.id, operatorId: newConfig.operator.id,
       maxCastBytes: newConfig.terminal?.maxCastBytes })
     lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({

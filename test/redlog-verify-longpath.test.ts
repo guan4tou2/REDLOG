@@ -77,6 +77,8 @@ describePy('the verifier and paths past MAX_PATH (#258)', () => {
       files: [{ path: 'casts/a.cast', sha256: crypto.createHash('sha256').update(cast).digest('hex') }]
     }))
 
+    fs.writeFileSync(path.join(make, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(path.join(make, 'manifest.json'))).digest('hex'))
+
     expect(deep.length).toBeGreaterThan(260)
     const r = spawnSync(python!, [verifier, deep], { encoding: 'utf-8', timeout: SPAWN_MS })
     expect(r.error, String(r.error)).toBeUndefined()

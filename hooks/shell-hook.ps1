@@ -94,6 +94,8 @@ function _RedLogSendEvent {
         [string]$Command,
         [hashtable]$Extra = @{}
     )
+    # Built-in panes survive at the picker; that interval must not be spooled.
+    if ($env:REDLOG_TERMINAL -eq '1' -and -not (Test-Path (Join-Path $script:_RedLogDir 'active-identity.json'))) { return }
     $body = _RedLogBuildPayload -Subtype $Subtype -Command $Command -Extra $Extra
 
     if (-not (_RedLogIsRunning)) {

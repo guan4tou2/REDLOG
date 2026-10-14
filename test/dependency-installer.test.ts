@@ -27,7 +27,10 @@ describe('installDependency', () => {
     const calls: Array<{ command: string; args: string[] }> = []
     const spawn = ((command: string, args: string[]) => { calls.push({ command, args }); return child }) as never
     const p = installDependency('mitmdump', {
-      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      preflight: (() => {
+        let checks = 0
+        return () => preflightWith({ found: ++checks > 1, remediation: 'uv tool install mitmproxy' })()
+      })(),
       spawn
     })
     child.stdout.emit('data', 'Installed mitmproxy\n')
@@ -49,6 +52,27 @@ describe('installDependency', () => {
     const r = await p
     expect(r.success).toBe(false)
     expect(r.message).toBe('error: network unreachable')
+  })
+
+  it('does not claim readiness when the installer exits zero but the tool is still missing', async () => {
+    const child = fakeChild()
+    const p = installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: (() => child) as never
+    })
+    child.emit('close', 0)
+    const result = await p
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('mitmdump')
+    expect(result.message).toContain('PATH')
+  })
+
+  it('reports a synchronous spawn failure without hiding it behind an uninitialised timer', async () => {
+    const p = installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: (() => { throw new Error('resource unavailable') }) as never
+    })
+    await expect(p).resolves.toMatchObject({ success: false, message: 'Could not start uv: resource unavailable' })
   })
 
   it('does not spawn when the installer prerequisite is missing', async () => {

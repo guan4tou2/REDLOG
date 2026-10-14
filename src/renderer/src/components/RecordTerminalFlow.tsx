@@ -35,7 +35,7 @@ type Phase =
  *  named while the operator is still looking at this screen. */
 const ACTIVATION_TIMEOUT_MS = 60_000
 
-export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.Element {
+export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget; onPrepare: () => void }): JSX.Element {
   const { t } = useI18n()
   const [phase, setPhase] = useState<Phase>('not-installed')
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
@@ -122,7 +122,8 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
       ) : phase === 'blocked' ? (
         <div data-testid="record-terminal-missing" className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.record.blocked', { shell: target.label })}</p>
-          <MissingList missing={missing} />
+          <p className="text-redlog-text-dim">{t('firstRun.record.reasonMissing', { names: missing.map(c => c.id).join(', ') })}</p>
+          <Button level="secondary" onClick={onPrepare}>{t('captureSetup.openPreparation')}</Button>
         </div>
       ) : phase === 'install-failed' ? (
         <div className="space-y-2">
@@ -157,7 +158,7 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
                   </li>
                 )}
                 {missing.length > 0 && (
-                  <li>{t('firstRun.record.reasonMissing', { names: missing.map((c) => c.id).join(', ') })}<MissingList missing={missing} /></li>
+                  <li>{t('firstRun.record.reasonMissing', { names: missing.map((c) => c.id).join(', ') })}<Button level="secondary" onClick={onPrepare}>{t('captureSetup.openPreparation')}</Button></li>
                 )}
               </ul>
               <Button level="secondary" onClick={() => void run()}>{t('firstRun.record.retry')}</Button>
@@ -202,44 +203,6 @@ export function ExecutionPolicyBlocker({ blocker }: {
         </Button>
       </div>
     </div>
-  )
-}
-
-/** Each missing command, named exactly, with its copyable install command. */
-export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }): JSX.Element {
-  const { t } = useI18n()
-  return (
-    <ul className="space-y-1">
-      {missing.map((c) => (
-        <li key={c.id} className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-redlog-text">{c.id}</span>
-            {c.remediation ? (
-              <>
-                <code className="font-mono text-redlog-text-dim">{c.remediation}</code>
-                <CopyButton text={c.remediation ?? ''} />
-              </>
-            ) : (
-              <span className="text-redlog-text-faint">{t('firstRun.installManually')}</span>
-            )}
-          </div>
-          {/* The fix is typed into a tool the machine may not have. Saying so
-              beside the command beats handing over `uv tool install …` on a
-              box with no uv and letting it fail. */}
-          {c.remediationRequires && (
-            <p data-testid={`missing-prereq-${c.id}`} className="text-redlog-text-faint">
-              {t('firstRun.remediationNeeds', { tool: c.remediationRequires.command })}{' '}
-              <a
-                href={c.remediationRequires.url}
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-redlog-text"
-              >{c.remediationRequires.url}</a>
-            </p>
-          )}
-        </li>
-      ))}
-    </ul>
   )
 }
 

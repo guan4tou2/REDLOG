@@ -37,15 +37,17 @@ describe('shouldAutoStartHttpCapture', () => {
 const proxy = (over: Partial<ManagedProxyStatus> = {}): ManagedProxyStatus =>
   ({ state: 'stopped', url: null, ...over }) as ManagedProxyStatus
 
-function mount(status: ManagedProxyStatus): { start: ReturnType<typeof vi.fn> } {
+function mount(status: ManagedProxyStatus, options: { missing?: boolean } = {}): { start: ReturnType<typeof vi.fn>; prepare: ReturnType<typeof vi.fn> } {
   const start = vi.fn(async () => proxy({ state: 'running', url: 'http://127.0.0.1:8080' }))
+  const prepare = vi.fn()
   ;(window as unknown as { redlog: unknown }).redlog = {
     runtime: {
       preflight: vi.fn(async () => ({
         platform: 'linux',
         shell: { name: 'zsh', hookId: 'shell-zsh' },
-        checks: [{ id: 'mitmdump', found: true, neededFor: ['mitmproxy'] }]
-      }))
+        checks: [{ id: 'mitmdump', found: !options.missing, neededFor: ['mitmproxy'], remediation: 'uv tool install mitmproxy' }]
+      })),
+      install: vi.fn()
     },
     httpCapture: {
       status: vi.fn(async () => status),
@@ -58,14 +60,22 @@ function mount(status: ManagedProxyStatus): { start: ReturnType<typeof vi.fn> } 
     clipboard: { writeText: vi.fn(async () => true), readText: async () => '' },
     app: { openExternal: vi.fn() }
   }
-  render(<I18nProvider><HttpCaptureStep /></I18nProvider>)
-  return { start }
+  render(<I18nProvider><HttpCaptureStep onPrepare={prepare} /></I18nProvider>)
+  return { start, prepare }
 }
 
 beforeEach(() => { localStorage.setItem('redlog-locale', 'zh-TW') })
 afterEach(() => { cleanup(); localStorage.clear() })
 
 describe('the HTTP card after the start button', () => {
+  it('returns missing HTTP tools to the same preparation entry without claiming verification', async () => {
+    const { prepare } = mount(proxy({ state: 'unavailable' }), { missing: true })
+    ;(await screen.findByTestId('first-run-http-prepare')).click()
+    expect(prepare).toHaveBeenCalledOnce()
+    expect(window.redlog.runtime.install).not.toHaveBeenCalled()
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+  })
+
   it('never offers to start what opening the project already started', async () => {
     mount(proxy({ state: 'running', url: 'http://127.0.0.1:8080' }))
     await screen.findByTestId('first-run-http-checks')
@@ -79,6 +89,13 @@ describe('the HTTP card after the start button', () => {
     expect(screen.queryByText('開始 HTTP 擷取')).toBeNull()
     restart.click()
     await waitFor(() => expect(start).toHaveBeenCalled())
+  })
+
+  it('offers restart after installing the dependency even if proxy status is still unavailable', async () => {
+    const { start } = mount(proxy({ state: 'unavailable', error: 'mitmdump was missing at project open' }))
+    ;(await screen.findByTestId('first-run-http-restart')).click()
+    await waitFor(() => expect(start).toHaveBeenCalledOnce())
+    expect(screen.queryByTestId('first-run-http-prepare')).toBeNull()
   })
 
   it('shows why a failed start failed, beside the restart', async () => {

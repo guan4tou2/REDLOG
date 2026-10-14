@@ -38,9 +38,9 @@ const WSL_TIMEOUT = 10_000
  * distro name still cannot be injected — and the same timeout. Only the
  * waiting moves off the main thread.
  */
-function runWsl(args: string[]): Promise<{ status: number; stdout: Buffer; stderr: string }> {
+function runWsl(args: string[]): Promise<{ status: number; stdout: Buffer; stderr: string; timedOut: boolean }> {
   return new Promise((resolve) => {
-    const empty = { status: -1, stdout: Buffer.alloc(0), stderr: '' }
+    const empty = { status: -1, stdout: Buffer.alloc(0), stderr: '', timedOut: false }
     let child: ReturnType<typeof spawn>
     try {
       child = spawn('wsl.exe', args, { windowsHide: true })
@@ -51,15 +51,21 @@ function runWsl(args: string[]): Promise<{ status: number; stdout: Buffer; stder
     const out: Buffer[] = []
     const err: Buffer[] = []
     let settled = false
+    let timedOut = false
     const finish = (status: number): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
-      resolve({ status, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString().trim() })
+      resolve({ status, stdout: Buffer.concat(out), stderr: Buffer.concat(err).toString().trim(), timedOut })
     }
     // A distro that hangs must not hold the panel open forever — same ceiling
     // spawnSync's `timeout` gave us, enforced by hand because spawn has none.
-    const timer = setTimeout(() => { child.kill(); finish(-1) }, WSL_TIMEOUT)
+    const timer = setTimeout(() => {
+      // Mark the cause before kill: it can immediately deliver a close event.
+      timedOut = true
+      child.kill()
+      finish(-1)
+    }, WSL_TIMEOUT)
     child.stdout?.on('data', (b: Buffer) => out.push(b))
     child.stderr?.on('data', (b: Buffer) => err.push(b))
     child.on('error', () => finish(-1))
@@ -352,7 +358,7 @@ export async function runDiagnostics(distro: string): Promise<WslDiagnosticResul
     const stdout = result.stdout.toString().trim()
     const stderr = result.stderr
 
-    if (result.status !== 0 && !stdout) {
+    if (result.status !== 0 && !stdout && !result.timedOut) {
       return {
         distro,
         checks: [{ name: 'run', status: 'fail', message: stderr || 'Diagnostics script failed' }]
@@ -373,6 +379,14 @@ export async function runDiagnostics(distro: string): Promise<WslDiagnosticResul
         // Non-structured output — include as info
         checks.push({ name: 'info', status: 'pass', message: line.trim() })
       }
+    }
+
+    if (result.timedOut) {
+      checks.push({
+        name: 'timeout',
+        status: 'fail',
+        message: `Diagnostics timed out after ${WSL_TIMEOUT / 1000} seconds. A stopped WSL distro may still be starting. Start "${distro}" in a terminal, then retry diagnostics.`
+      })
     }
 
     if (checks.length === 0) {

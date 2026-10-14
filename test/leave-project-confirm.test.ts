@@ -39,10 +39,10 @@ beforeEach(() => { shown.length = 0; answer = true })
 afterEach(() => { delete (window as unknown as { redlog?: unknown }).redlog })
 
 describe('confirmLeaveProject', () => {
-  it('asks for an acknowledgement only while panes are open', async () => {
+  it('names surviving panes without claiming irreversible job loss', async () => {
     installBridge({ panes: 2, count: 10 })
     await confirmLeaveProject(t, { projectName: 'acme' })
-    expect(shown[0].level).toBe('irreversible')
+    expect(shown[0].level).toBe('plain')
     expect(shown[0].consequences).toContainEqual(expect.stringContaining('project.leaveTerminals'))
   })
 

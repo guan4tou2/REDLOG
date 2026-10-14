@@ -2,14 +2,14 @@
 
 **Feature Branch**: `feat/047-capture-setup-wizard`
 **Created**: 2026-09-29
-**Status**: Draft
+**Status**: Implemented
 **Renumbered**: written as 040; main merged 040-046 from parallel work
 before this branch opened its PR, so the folder moved to 047. Commits
 earlier in the branch still say 040.
 **Input**: The readiness card (036), the first-run screen (037/039) and preflight each answer "can this machine record?" on their own terms. Collapse them into one wizard that lives inside an open project: step 1 prepares the machine by installing what is missing, step 2 proves capture with real events. Skippable, and re-runnable from Capture Health.
 
 > **Supersedes:** the first-launch readiness card of spec 036 (its preflight
-> contract, PATH handling, legacy-hook detection and packaging work stand) and
+> contract, PATH handling and packaging work stand) and
 > the shape of spec 037's first-run screen (its scope, personal-traffic and
 > nonce-verified terminal work stands). Spec 039's verification contract —
 > what counts as a verified shell and a verified HTTP(S) check — is unchanged
@@ -157,8 +157,7 @@ no readiness surface and no dependency list.
 **Acceptance Scenarios**:
 
 1. **Given** a fresh install, **When** the app launches, **Then** the picker
-   shows only the picker; the legacy-hook banner still appears when a legacy
-   hook line exists.
+   shows only the picker; preparation is offered only inside an open project.
 
 ### Edge Cases
 
@@ -169,8 +168,8 @@ no readiness surface and no dependency list.
   its own.
 - **A dependency disappears mid-engagement**: the wizard does not take the
   screen; Capture Health flags it and the operator re-runs setup.
-- **A legacy hook line exists**: named in step 1 alongside the missing
-  dependencies; the existing banner behaviour is unchanged.
+- **A retired hook line exists**: no compatibility banner or migration is
+  introduced. Spec 006 removed those contracts before release.
 - **The operator skips both steps**: the dashboard keeps naming the unverified
   capture until it is verified — the existing "later" behaviour.
 - **Events arrive while the wizard is open**: a card that verifies stays
@@ -190,7 +189,7 @@ no readiness surface and no dependency list.
   has captured nothing, and MUST NOT open by itself once that project holds
   evidence.
 - **FR-003**: Step 1 MUST list only what needs an action — missing
-  dependencies and legacy hook lines — and MUST complete itself, without a
+  dependencies for selected capture paths — and MUST complete itself, without a
   click, when there is nothing to act on.
 - **FR-004**: Every step-1 row MUST offer an in-app install action that reports
   its own outcome in place. The equivalent manual command MUST appear only
@@ -256,3 +255,19 @@ no readiness surface and no dependency list.
   rather than preceding it.
 - No new framework, state library or window layer is introduced; the wizard is
   the existing first-run view with a preparation step in front of it.
+
+## Implementation clarification (2026-10-14)
+
+- Spec 006 removed pre-release legacy-hook compatibility. This wizard does
+  not restore detection, migration, or aliases.
+- Optional shells are not requirements: use the selected host shell, POSIX
+  python3/curl where applicable, and mitmdump for HTTP. Windows PowerShell
+  alternatives and execution policy remain distinct.
+- Install actions use the existing runtime.install IPC and planInstall policy.
+  The app never elevates silently or downloads prerequisite shell scripts.
+  Install failures, elevation and absent package managers keep an exact
+  manual remedy, prerequisite link where available, and retry.
+- Skipping preparation reaches both proof cards; leaving either phase remains
+  possible. Returning to a prepared machine does not repeat preparation.
+- Status is Implemented locally, not Verified. Native clean-host installer
+  acceptance for Windows/WSL and downloaded macOS Gatekeeper remains pending.

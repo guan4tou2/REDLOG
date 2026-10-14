@@ -150,6 +150,12 @@ export interface CaptureHealth {
 }
 
 let managedProxyStatusProvider: (() => CaptureHealth['managedHttpProxy']) | null = null
+let builtinTerminalFailure: (() => { at: number; message: string } | undefined) | null = null
+/** A still-unrecorded live pane cannot recover merely because a TTL elapsed. */
+export function configureBuiltinTerminalHealth(provider: () => { at: number; message: string } | undefined): void {
+  builtinTerminalFailure = provider
+  healthCache = null
+}
 export function configureManagedProxyHealth(provider: () => CaptureHealth['managedHttpProxy']): void {
   managedProxyStatusProvider = provider
   healthCache = null
@@ -583,6 +589,12 @@ function computeCaptureHealth(now: number): CaptureHealth {
     const pack = src.packPath?.startsWith('packs.') ? src.packPath.slice(6) as CapturePackId : null
     return !pack || isPackAvailable(pack, listPlugins())
   })
+
+  const terminalFailure = builtinTerminalFailure?.()
+  if (terminalFailure) {
+    const terminal = sources.find(source => source.id === 'terminal')
+    if (terminal) { terminal.state = 'error'; terminal.lastError = terminalFailure }
+  }
 
   // E3: PLUGIN-contributed capture producers, enumerated from the registry
   // rather than a second hardcoded list. detectHooks() already merges them with

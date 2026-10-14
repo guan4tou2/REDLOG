@@ -288,9 +288,9 @@ const api: RedLogAPI = {
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },
-    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean; paused: boolean }) => void) => {
+    onCastState: (id: string, cb: (state: TerminalCastState) => void) => {
       const channel = `terminal:castState:${id}`
-      const handler = (_e: Electron.IpcRendererEvent, state: { recording: boolean; castTruncated: boolean; paused: boolean }) => cb(state)
+      const handler = (_e: Electron.IpcRendererEvent, state: TerminalCastState) => cb(state)
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },

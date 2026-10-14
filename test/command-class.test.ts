@@ -29,6 +29,9 @@ describe('command classification', () => {
     // that is a lost shell on a box someone spent two days reaching.
     expect(classify('nc -lvnp 4444')).toBe('native')
     expect(classify('ncat -lvnp 4444')).toBe('native')
+    // stty operates on the controlling terminal, not a relay's output PTY.
+    expect(classify('stty raw -echo')).toBe('native')
+    expect(classify('stty size')).toBe('native')
   })
 
   it('leaves editors and pagers alone, because a redraw is not evidence', () => {

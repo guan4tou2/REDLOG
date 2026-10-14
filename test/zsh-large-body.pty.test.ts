@@ -107,7 +107,7 @@ describeShell(`a command with a large body (${target?.label ?? 'no zsh reachable
     it('keeps the whole event for replay', () => {
       expect(run.ok, run.error).toBe(true)
       const sizes = run.steps[1].output.split('\n')
-        .map((l) => /^spooled (\d+) (\d+)/.exec(l.trim()))
+        .map((l) => /^spooled\s+(\d+)\s+(\d+)/.exec(l.trim()))
         .filter((m): m is RegExpExecArray => m !== null)
         .map((m) => ({ bytes: Number(m[1]), isEnd: Number(m[2]) > 0 }))
       const end = sizes.find((s) => s.isEnd && s.bytes > 200_000)

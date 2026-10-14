@@ -8,6 +8,11 @@ if [[ -z "${BASH_VERSION:-}" ]]; then
 fi
 
 _redlog_adapter_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Local identity describes this interpreter; the exported value lets a
+# standalone sender identify its caller without guessing from $SHELL (#325).
+_REDLOG_ADAPTER_SHELL=bash
+export REDLOG_SHELL=bash
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir

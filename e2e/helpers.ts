@@ -44,12 +44,12 @@ export function makeTempHome(prefix = 'redlog-e2e-'): string {
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
  * artifact exists so the failure message is actionable.
  */
-export async function launchWithTempHome(): Promise<{
+export async function launchWithTempHome(executablePath?: string): Promise<{
   app: ElectronApplication
   page: Page
   tmpHome: string
 }> {
-  if (!existsSync(MAIN_ENTRY)) {
+  if (!executablePath && !existsSync(MAIN_ENTRY)) {
     throw new Error(
       `Electron build output not found at ${MAIN_ENTRY}. ` +
         `Run "npm run build" before "npm run e2e".`
@@ -57,7 +57,8 @@ export async function launchWithTempHome(): Promise<{
   }
   const tmpHome = makeTempHome()
   const app = await electron.launch({
-    args: [MAIN_ENTRY],
+    ...(executablePath ? { executablePath } : {}),
+    args: executablePath ? [] : [MAIN_ENTRY],
     cwd: REPO_ROOT,
     env: {
       ...process.env,

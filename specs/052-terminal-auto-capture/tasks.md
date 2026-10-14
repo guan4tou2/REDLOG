@@ -220,7 +220,7 @@ one message, spool fills, restart and recording resumes without re-enrolling.
       → written, and it opens by saying it is **incomplete**: Operational Verification is the section this feature cannot be Verified without, and T044/T045 need a real Kali VM. The spec stays Draft until they are filled in.
       → twenty-one RED rows, each with the reason it failed rather than "it went red" — a test can fail for the wrong reason and pass for the wrong reason afterwards. Two tests that passed on their first run are recorded as characterisation rather than claimed as RED.
       → it also names the five real defects the suite found, because those are the argument for the tests that found them.
-- [ ] T047 Run the four gates before the PR — `npm run typecheck && npm run verify:specs && npm run verify:architecture && npm test` — then `npm run build && npx playwright test e2e/terminal-enrollment.spec.ts`
+- [x] T047 Run the four gates before the PR — `npm run typecheck && npm run verify:specs && npm run verify:architecture && npm test` — then `npm run build && npx playwright test e2e/terminal-enrollment.spec.ts`
 
 ---
 

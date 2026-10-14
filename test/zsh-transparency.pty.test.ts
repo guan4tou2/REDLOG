@@ -38,12 +38,14 @@ const COLS = 100
 // the rc writes instead.
 const RC = [
   `export LS_COLORS='di=01;34'`,
+  `export CLICOLOR=1 LSCOLORS=exfxcxdxbxegedabagacad`,
   `alias ll='ls -l'`,
-  `alias ls='ls --color=auto'`,
+  process.platform === 'darwin' ? `alias ls='ls -G'` : `alias ls='ls --color=auto'`,
   `cat > $HOME/isatty.sh <<'EOF'`,
   `for n in 0 1 2; do if [ -t $n ]; then printf "fd$n=tty "; else printf "fd$n=pipe "; fi; done; echo`,
   `EOF`,
   `export PAGER=less`,
+  `unset GIT_PAGER`,
   `cat > $HOME/pager.sh <<'EOF'`,
   `seq 1 200 | \${PAGER:-less}`,
   `EOF`,
@@ -52,13 +54,7 @@ const RC = [
   `EOF`,
   ''
 ].join('\n')
-const DIR_COLOUR = '\u001b[01;34m'
-
-/** Wait until a process with exactly this command line exists. The adapter's
- *  preexec costs about half a second on this host, so a fixed sleep sends the
- *  signal before the command has started and tests the wrong thing. */
-const waitFor = (cmdline: string): { sh: string } =>
-  ({ sh: `for i in $(seq 60); do pgrep -fx '${cmdline}' >/dev/null && exit 0; sleep 0.1; done; exit 1` })
+const DIR_COLOUR = process.platform === 'darwin' ? '\u001b[34m' : '\u001b[01;34m'
 
 /** Straight-line commands: type, wait for the prompt. */
 const PLAIN = [
@@ -106,13 +102,13 @@ const SIGNALS = [
   // text waited for, so this returns as soon as it is typed; waitFor then
   // holds the interrupt until `sleep` is actually running.
   { line: 'sleep 31', until: 'sleep 31' },
-  waitFor('sleep 31'),
+  { foreground: 'sleep' },
   { raw: '\u0003' },
   'echo rc=$?',
   // Ctrl-Z and fg: a command suspended and resumed still finishes, and its
   // output still reaches the terminal after the resume.
   { line: `sh -c 'sleep 4; echo after-resume'`, until: 'after-resume' },
-  waitFor('sleep 4'),
+  { foreground: 'sh' },
   { raw: '\u001a' },
   'jobs',
   { line: 'fg', until: 'after-resume' },
@@ -173,6 +169,7 @@ describeShell(`terminal transparency, with and without the adapter (${target?.la
     })
 
     it('`ls` colours and lays out columns as it does without RedLog', () => {
+      expect(raw(b, 1)).toContain(DIR_COLOUR)
       expect(raw(a, 1)).toContain(DIR_COLOUR)
       // Several names to a line, in the same columns.
       expect(text(b, 2).split('\n').length).toBeLessThan(5)
@@ -229,7 +226,7 @@ describeShell(`terminal transparency, with and without the adapter (${target?.la
       const end = endOf(PLAIN[1])
       // The bytes the terminal was sent had colour in them (asserted above);
       // the stored copy does not, because a reader of the record wants names.
-      expect(String(end.stdout)).toBe('/etc  /usr  /var\n')
+      expect(String(end.stdout)).toBe(`${text(out.plainBare, 1)}\n`)
       expect(end).toMatchObject({ completeness: 'complete', output_disposition: 'captured' })
     })
 

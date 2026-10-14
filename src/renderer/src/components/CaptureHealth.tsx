@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from './Button'
 import { SectionLabel } from './SectionLabel'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
@@ -136,10 +137,11 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   )
 }
 
-export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
+export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
   onRefresh: () => void
+  onSetup?: () => void
 }): JSX.Element {
   const { t } = useI18n()
 
@@ -408,9 +410,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
         dark ? 'border-red-900/60' : 'border-redlog-border'
       }`}>
         <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${barColor}`} />
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <SectionLabel className="tracking-[0.15em]">{t('capture.title')}</SectionLabel>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {onSetup && (
+              <Button level="secondary" data-testid="capture-open-setup" onClick={onSetup}>
+                {t('capture.openSetup')}
+              </Button>
+            )}
             <button
               onClick={() => setManage((m) => !m)}
               className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"

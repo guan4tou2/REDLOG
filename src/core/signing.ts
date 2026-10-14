@@ -86,13 +86,25 @@ export interface OperatorKeyPair {
   privateKeyPath: string   // absolute path to the .key file
 }
 
-// Generate a fresh Ed25519 keypair for `operatorId`, write both halves to
-// `~/.redlog/keys/`, and return the base64 public key so the caller can stash
-// it in operators.signer_pub_key. Overwrites any existing key — call sites
-// treat keygen as idempotent-on-create; rotation is out of scope for v0.6.89
-// (rotating the signing key would require a re-sign or supersedes relation).
+// An operator identity is shared across projects. Creating that operator in
+// another DB must not rotate the key and invalidate the first project's rows.
+// A damaged/partial pair is an error; neither surviving half is overwritten.
 export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
   ensureKeysDir()
+  const privPath = privateKeyPath(operatorId)
+  const pubPath = publicKeyPath(operatorId)
+  const havePrivate = fs.existsSync(privPath), havePublic = fs.existsSync(pubPath)
+  if (havePrivate !== havePublic) throw new Error('Operator signing keypair is incomplete')
+  if (havePrivate) {
+    const pubB64 = fs.readFileSync(pubPath, 'utf8').trim()
+    const key = privateKeyFromRaw(fs.readFileSync(privPath, 'utf8').trim(), pubB64)
+    const probe = Buffer.from('redlog signing identity check')
+    if (!crypto.verify(null, probe, publicKeyFromRaw(pubB64), crypto.sign(null, probe, key))) {
+      throw new Error('Operator signing keypair does not match')
+    }
+    resetSigningCache(operatorId)
+    return { publicKey: pubB64, privateKeyPath: privPath }
+  }
   const kp = crypto.generateKeyPairSync('ed25519')
   // Export as JWK to pull the raw 32-byte halves (jwk.d = private, jwk.x = pub).
   const jwkPriv = kp.privateKey.export({ format: 'jwk' }) as { d: string; x: string }
@@ -101,11 +113,9 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
   const privB64 = privRaw.toString('base64')
   const pubB64 = pubRaw.toString('base64')
 
-  const privPath = privateKeyPath(operatorId)
-  const pubPath = publicKeyPath(operatorId)
-  fs.writeFileSync(privPath, privB64, { mode: 0o600 })
+  fs.writeFileSync(privPath, privB64, { mode: 0o600, flag: 'wx' })
   try { restrictToOwner(privPath) } catch { /* best-effort on win32 */ }
-  fs.writeFileSync(pubPath, pubB64)
+  fs.writeFileSync(pubPath, pubB64, { flag: 'wx' })
   // v0.12.1: a prior loadKeyObject call may have negative-cached this
   // operator's key as `null` (fresh operator, key not yet written) — drop
   // that entry so the next signEvent picks up the new key without a stat.

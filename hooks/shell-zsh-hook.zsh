@@ -8,6 +8,11 @@ if [[ -z "${ZSH_VERSION:-}" ]]; then
 fi
 
 _redlog_adapter_dir="${${(%):-%N}:A:h}"
+
+# Local identity describes this interpreter; the exported value lets a
+# standalone sender identify its caller without guessing from $SHELL (#325).
+_REDLOG_ADAPTER_SHELL=zsh
+export REDLOG_SHELL=zsh
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
@@ -18,6 +23,12 @@ zmodload zsh/datetime 2>/dev/null
 
 # Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
 [[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
+
+# The embedded pane owns the provenance even when this adapter relays output.
+# `captured_by` names the recorder; `source` must keep the pane identity so
+# ingest can attach its .cast and health can distinguish it from an external shell.
+_REDLOG_EVENT_SOURCE=auto-relay
+[[ "${REDLOG_TERMINAL:-}" == "1" ]] && _REDLOG_EVENT_SOURCE=builtin-terminal
 
 # --- Automatic output capture (spec 052, research.md D1) ---
 #
@@ -104,7 +115,7 @@ _redlog_class_of() {
 # whole of FR-022: a stop held in a shell variable survives neither a subshell
 # nor a prompt, and an operator who types `redlog stop` before a client's
 # credential and sees it recorded anyway uninstalls the tool.
-_REDLOG_SESSION_ID=$(_redlog_new_command_id)
+_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
 _REDLOG_STATE_FILE=""
 
 _redlog_state_file() {
@@ -159,13 +170,13 @@ redlog() {
       # global one — a pair of its own, because reusing `system.recording_*`
       # would draw a paused band across an engagement that never stopped.
       _redlog_send_event "capture_stopped" "redlog stop" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"auto-relay\"}"
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       print -- "[redlog] recording stopped in this terminal — redlog start to resume"
       ;;
     start)
       _redlog_state --action start >/dev/null
       _redlog_send_event "capture_resumed" "redlog start" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"auto-relay\"}"
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       print -- "[redlog] recording in this terminal"
       ;;
     mode)
@@ -238,6 +249,9 @@ redlog() {
 zmodload -F zsh/stat b:zstat 2>/dev/null
 
 _redlog_check_project() {
+  # RedLog owns and rotates its built-in panes' enrollment. External shells
+  # keep the stop-on-switch pin; they must never be silently rebound.
+  [[ "${REDLOG_TERMINAL:-}" == "1" ]] && return
   local file
   file=$(_redlog_identity_file)
   [[ -f "$file" ]] || return
@@ -269,7 +283,7 @@ _redlog_check_project() {
   local pinned=""
   [[ "$after" =~ '"engagementId":[[:space:]]*"([^"]*)"' ]] && pinned="$match[1]"
   _redlog_send_event "session_end" "" \
-    "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"auto-relay\"}"
+    "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
   print -u2 -- "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"
 }
 
@@ -392,7 +406,7 @@ _redlog_preexec() {
   fi
 
   _redlog_send_event "command_start" "$1" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"auto-relay\"}"
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
 }
 
 # FR-009. The commands run either way — that part has always worked, silently,
@@ -430,6 +444,9 @@ _redlog_precmd() {
     # Putting the descriptors back is what gives the two relays their EOF.
     exec 1>&$_REDLOG_SAVED_OUT 2>&$_REDLOG_SAVED_ERR
     exec {_REDLOG_SAVED_OUT}>&- {_REDLOG_SAVED_ERR}>&-
+    # Only this hook knows the command has finished. A transient EOF/EIO on
+    # either PTY must not close a master while the command can still write.
+    : >"$_REDLOG_RELAY_DIR/closed"
     _redlog_pagers_restore
     # O2: the body is read only after the component that owns the bytes has
     # finished draining. `finish` waits for both part files — each written
@@ -440,7 +457,7 @@ _redlog_precmd() {
       --exit-code "$exit_code" --duration-sec "$duration" \
       --cwd "$PWD" --command-id "$_REDLOG_CMD_ID" \
       --command-line "$_REDLOG_LAST_CMD" \
-      --captured-by auto-relay --source auto-relay 2>/dev/null)
+      --captured-by auto-relay --source "$_REDLOG_EVENT_SOURCE" 2>/dev/null)
     rm -rf "$_REDLOG_RELAY_DIR"
     _REDLOG_RELAY_DIR=""
   fi
@@ -462,7 +479,7 @@ _redlog_precmd() {
       # (FR-008), without two processes watching an empty descriptor.
       redirected) disposition="redirected" ;;
     esac
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"auto-relay\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
   fi
 
   _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"

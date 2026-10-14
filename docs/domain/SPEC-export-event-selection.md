@@ -161,9 +161,24 @@ Scope masking still drops an artifact when every target tied to it is out of sco
 The operator may leave any listed file out. `ExportRequest.excludeAttachments`
 is normalised to valid bundle paths, sorted and de-duplicated, and is part of
 the request, so the plan fingerprint covers the choice. Execution re-checks the
-counts with the exclusions applied, and the manifest records
+counts and content digests with the exclusions applied. A changed included file
+invalidates the preview even when its byte count is unchanged; excluded files
+are not frozen. The manifest records
 `excludedByOperator` plus, for each included cast, its targets and attribution.
 Source files are never modified.
 
 An unsupported requested protection is an explicit preview failure. It must not
 fall back to a legacy export or produce a success state.
+
+
+## Projection verification boundary
+
+A complete-chain bundle verifies links and the original chain head. A projection
+retains original identities/hashes without manufacturing a new chain; policy
+omission and delivery masking never rewrite the source DB. Its verifier checks
+manifest checksum, delivered-file digests, declared counts and distinct IDs, and
+hashes/signatures of eligible unchanged rows. It explicitly cannot establish
+original-chain completeness or transformed source bytes from that projection.
+Checksums and selection declarations do not authenticate source identity against
+an adversary who replaces both content and metadata. Projection success must
+state this boundary rather than report the source chain as INTACT.

@@ -62,13 +62,19 @@ let lootDetectorRef: LootDetectorLike | null = null
 let alertRuntimeRef: AlertRuntimeLike | null = null
 let castProbe: CastProbe | null = null
 let activeTarget: string | null = null
+export interface TerminalLifecycle {
+  prepare: (data: Record<string, unknown>, engagementId: string) => boolean
+  recorded: (event: RedLogEvent) => void
+}
+let terminalLifecycle: TerminalLifecycle | null = null
 const ACTIVE_TARGET_FALLBACK_TYPES = new Set(['shell', 'marker', 'screenshot'])
 
-export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; activeTarget?: string | null }): void {
+export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; activeTarget?: string | null; terminalLifecycle?: TerminalLifecycle | null }): void {
   if (opts.lootDetector !== undefined) lootDetectorRef = opts.lootDetector
   if (opts.alertRuntime !== undefined) alertRuntimeRef = opts.alertRuntime
   if (opts.castProbe !== undefined) castProbe = opts.castProbe
   if (opts.activeTarget !== undefined) activeTarget = opts.activeTarget?.trim() || null
+  if (opts.terminalLifecycle !== undefined) terminalLifecycle = opts.terminalLifecycle
 }
 
 // command_start byte offset per terminal, so command_end can bracket the
@@ -104,7 +110,7 @@ export interface IngestResult {
   /** Why nothing was written. `paused` = recording is paused and this type is
    *  not exempt; `dedup` = insertEvent's 2 s duplicate window; `plumbing` =
    *  RedLog's own shell wiring, which never becomes evidence. */
-  skipped?: 'paused' | 'dedup' | 'plumbing'
+  skipped?: 'paused' | 'dedup' | 'plumbing' | 'unrecorded'
   /** Companion rows written because of this one (pivot, cleanup, loot…). */
   companions: RedLogEvent[]
 }
@@ -131,6 +137,9 @@ export function ingest(input: IngestInput): IngestResult {
   // a command_end seen during pause leaves a phantom active command that can
   // be correlated with unrelated files after recording resumes.
   const lifecycleCauseIds = resolveIncomingCauses(agentType, data)
+  if (agentType === 'shell' && !input.derived && terminalLifecycle && !terminalLifecycle.prepare(data, engagementId)) {
+    return { event: null, skipped: 'unrecorded', companions: [] }
+  }
 
   // 1. Pause gate. Nothing below may run while paused: the derivations emit
   //    their own rows and would leak the very content the operator paused to
@@ -205,6 +214,7 @@ export function ingest(input: IngestInput): IngestResult {
     occurredAt: input.occurredAt
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
+  if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
 
   if (agentType === 'scanner') {
     try { linkHttpBodyEvent(event) } catch (error) { noteDbError('http-body-index', error) }
@@ -402,6 +412,7 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
       plan.lootValues = plan.pendingLootMatches.map((m) => m.value).filter((v) => v && v.length >= 6)
     } else if (data.subtype === 'session_start' || data.subtype === 'session_end') {
       sessionTail.delete(tid)
+      if (data.source === 'builtin-terminal') castOffsetAtStart.delete(tid)
     }
   }
 
@@ -516,4 +527,5 @@ export function _resetIngest(): void {
   alertRuntimeRef = null
   castProbe = null
   activeTarget = null
+  terminalLifecycle = null
 }

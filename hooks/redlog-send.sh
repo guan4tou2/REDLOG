@@ -19,8 +19,22 @@ EXTRA="${3:-}"
 _resolve_redlog_dir() {
   # Native (macOS / Linux / WSL with symlink)
   if [[ -f "$HOME/.redlog/api-token" ]]; then
-    echo "$HOME/.redlog"
-    return
+    # Under WSL a native directory may be stale. Adopt it only while its
+    # API answers; otherwise resolve the Windows profile below (#326).
+    if [[ -z "${WSL_DISTRO_NAME:-}" ]]; then
+      echo "$HOME/.redlog"
+      return
+    fi
+    local native_port=""
+    [[ -f "$HOME/.redlog/api-port" ]] && native_port=$(<"$HOME/.redlog/api-port")
+    case "$native_port" in
+      ''|*[!0-9]*) ;;
+      *) if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 \
+          "http://127.0.0.1:${native_port}/api/health" >/dev/null 2>&1; then
+        echo "$HOME/.redlog"
+        return
+      fi ;;
+    esac
   fi
   # WSL: resolve from Windows %USERPROFILE%
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
@@ -68,6 +82,11 @@ if [[ -z "${_REDLOG_HOST:-}" ]]; then
   export _REDLOG_HOST
 fi
 
+# A standalone bash script cannot infer its caller from its own runtime or
+# the login $SHELL; use the adapter's declared identity, or unknown (#325).
+REPORTED_SHELL="${REDLOG_SHELL:-unknown}"
+REPORTED_SHELL="${REPORTED_SHELL##*/}"
+
 # --- Build and send event ---
 PAYLOAD=$(python3 -c "
 import json, sys, os
@@ -76,14 +95,14 @@ d = {
     'data': {
         'subtype': sys.argv[1],
         'command': sys.argv[2],
-        'shell': os.environ.get('SHELL', 'bash').rsplit('/', 1)[-1],
+        'shell': sys.argv[4],
         'pid': os.getppid()
     }
 }
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
 print(json.dumps(d))
-" "$SUBTYPE" "$COMMAND" "$EXTRA" 2>/dev/null) || exit 0
+" "$SUBTYPE" "$COMMAND" "$EXTRA" "$REPORTED_SHELL" 2>/dev/null) || exit 0
 
 curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${PORT}/api/events" \
   -H "Authorization: Bearer $TOKEN" \

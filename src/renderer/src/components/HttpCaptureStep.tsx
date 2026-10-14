@@ -81,10 +81,10 @@ function CaCommand({ label, command, t }: {
   return (
     <div className="space-y-0.5">
       <p className="text-redlog-text-dim">{label}</p>
-      <div className="flex items-center gap-2">
-        <code title={command} className="flex-1 min-w-0 truncate font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">
-          {command}
-        </code>
+      <code className="block whitespace-pre-wrap break-all font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">
+        {command}
+      </code>
+      <div className="flex flex-wrap items-center gap-2">
         <CopyButton text={command} />
         <Button level="quiet" onClick={() => requestRunInTerminal(command)}>{t('settings.hookRun')}</Button>
       </div>
@@ -117,17 +117,14 @@ function VerifyRow({ label, report, caveat, rejected, testId, t }: {
   )
 }
 
-export function HttpCaptureStep({ onVerified }: {
+export function HttpCaptureStep({ onVerified, onPrepare }: {
   /** Called once, when HTTP is verified by this card's own nonce. */
   onVerified?: () => void
-} = {}): JSX.Element {
+  onPrepare: () => void
+}): JSX.Element {
   const { t } = useI18n()
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
   const [mitmMissing, setMitmMissing] = useState(false)
-  /** Set when mitmproxy's installer (uv) is itself missing: RedLog cannot run
-   *  the install, so the operator is pointed at uv first (#241 follow-up). */
-  const [mitmRequires, setMitmRequires] = useState<{ command: string; url: string } | null>(null)
-  const [installing, setInstalling] = useState(false)
   const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
@@ -164,31 +161,8 @@ export function HttpCaptureStep({ onVerified }: {
     if (pf) {
       const mitm = pf.checks.find((c) => c.id === 'mitmdump')
       setMitmMissing(mitm ? !mitm.found : false)
-      setMitmRequires(mitm && !mitm.found ? mitm.remediationRequires ?? null : null)
     }
     if (st) setStatus(st)
-  }
-
-  // One-click install of the dependency RedLog can install for the operator.
-  // When uv is missing the IPC reports it rather than failing, and the card
-  // switches to pointing at uv.
-  const installMitm = async (): Promise<void> => {
-    setInstalling(true)
-    try {
-      const r = await window.redlog.runtime.install('mitmdump')
-      if (r.success) {
-        toast(t('firstRun.http.installed'), 'success')
-        await check()
-      } else if (r.needsPrereq) {
-        setMitmRequires(r.needsPrereq)
-      } else {
-        toast(t('firstRun.http.installFailed'), { type: 'error', detail: r.message })
-      }
-    } catch (e) {
-      toast(t('firstRun.http.installFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
-    } finally {
-      setInstalling(false)
-    }
   }
 
   useEffect(() => {
@@ -239,7 +213,9 @@ export function HttpCaptureStep({ onVerified }: {
   // lives on Settings ▸ Browser, which owns every other proxy setting.
   const routeTerminals = httpCapture.routeTerminals === true
 
-  const unavailable = mitmMissing || status.state === 'unavailable'
+  // The proxy may still retain its pre-install "unavailable" state. Current
+  // preflight decides whether tools need preparation; otherwise offer restart.
+  const unavailable = mitmMissing
   const browserCfg = (config?.browser ?? {}) as { ignoreCertErrors?: boolean }
   const ignoresCertErrors = browserCfg.ignoreCertErrors ?? DEFAULT_BROWSER.ignoreCertErrors
   const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors)
@@ -271,22 +247,7 @@ export function HttpCaptureStep({ onVerified }: {
       {unavailable ? (
         <div className="space-y-2" data-testid="first-run-http-unavailable">
           <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
-          {mitmRequires ? (
-            <>
-              <p className="text-redlog-text-dim">{t('firstRun.http.needsPrereq', { command: mitmRequires.command })}</p>
-              <div className="flex flex-wrap gap-2">
-                <Button level="secondary" onClick={() => void window.redlog.app.openExternal(mitmRequires.url)} data-testid="first-run-http-install-prereq">
-                  {t('firstRun.http.installPrereq', { command: mitmRequires.command })}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button level="secondary" disabled={installing} onClick={() => void installMitm()} data-testid="first-run-http-install">
-                {installing ? t('firstRun.http.installing') : t('firstRun.http.install')}
-              </Button>
-            </div>
-          )}
+          <Button level="secondary" onClick={onPrepare} data-testid="first-run-http-prepare">{t('captureSetup.openPreparation')}</Button>
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">

@@ -3,7 +3,8 @@ import path from 'path'
 import type { IpcContext } from './types'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { queryEventById } from '../../core/db/events'
-import { queryEvents } from '../../core/db/events'
+import { queryBuiltinTerminalSessionStart, queryBuiltinTerminalSessions } from '../../core/db/events'
+import { getProjectDir } from '../../core/db/index'
 import { readCastRange, readCastSlice } from '../../core/cast-slice'
 import { castIndexStatus, searchCasts } from '../../core/cast-index'
 import {
@@ -38,10 +39,9 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       if (target.agentType !== 'shell' || td.subtype !== 'command_end' || td.source !== 'builtin-terminal' || !tid) {
         return { ok: false, error: 'not a builtin-terminal command_end event' }
       }
-      const sess = queryEvents({ agentType: 'shell', limit: 5000 })
-        .filter((ev) => ev.data?.subtype === 'session_start' && ev.data.terminalId === tid && ev.timestamp <= target.timestamp)[0]
+      const sess = typeof td.recordingId === 'string' ? queryBuiltinTerminalSessionStart(td.recordingId) : null
       const castPath = sess?.data?.castPath as string | undefined
-      if (!castPath) return { ok: false, error: 'no cast file for this session' }
+      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no cast file for this recording' }
       const duration = Number(td.duration_sec ?? 0) * 1000
       const startMs = target.timestamp - Math.max(duration, 100)
       const slice = await readCastSlice(castPath, startMs, target.timestamp)
@@ -66,16 +66,8 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       if (target.agentType !== 'shell' || (subtype !== 'session_start' && subtype !== 'session_end') || td.source !== 'builtin-terminal' || !tid) {
         return { ok: false, error: 'not a builtin-terminal session event' }
       }
-      // For session_end the castPath is on that event itself; for
-      // session_start we look up the matching session_end (or use the
-      // session_start's own castPath if set).
-      let castPath = td.castPath as string | undefined
-      if (!castPath) {
-        const other = queryEvents({ agentType: 'shell', limit: 5000 })
-          .find((ev) => ev.data?.terminalId === tid && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end') && ev.data?.castPath)
-        castPath = other?.data?.castPath as string | undefined
-      }
-      if (!castPath) return { ok: false, error: 'no cast file for this session' }
+      const castPath = typeof td.castPath === 'string' ? td.castPath : undefined
+      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no cast file for this recording' }
       // Slice from 0 to a far future — readCastSlice bounds against the file
       // itself. text captures the whole session, ANSI-stripped.
       const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
@@ -94,8 +86,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // Used by Marker → replay jump (the marker knows WHEN, not WHICH session).
   ipcMain.handle('terminal:replayAtTime', async (_e, atMs: number) => {
     try {
-      const sessions = queryEvents({ agentType: 'shell', limit: 10000 })
-        .filter((ev) => ev.data?.source === 'builtin-terminal' && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end'))
+      const sessions = queryBuiltinTerminalSessions()
       // Find the session whose start <= atMs and (end >= atMs or no end yet).
       const starts = sessions
         .filter((ev) => ev.data?.subtype === 'session_start')
@@ -106,12 +97,12 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
         if (s.timestamp > atMs) continue
         const tid = s.data?.terminalId as string | undefined
         if (!tid) continue
-        const end = sessions.find((ev) => ev.data?.subtype === 'session_end' && ev.data?.terminalId === tid && ev.timestamp >= s.timestamp)
+        const end = sessions.find((ev) => ev.data?.subtype === 'session_end' && Array.isArray(ev.data._causes) && ev.data._causes.includes(s.id))
         if (end && end.timestamp < atMs) continue
         castPath = (s.data?.castPath ?? end?.data?.castPath) as string | undefined
         if (castPath) break
       }
-      if (!castPath) return { ok: false, error: 'no active session at this time' }
+      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no active session at this time' }
       const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       const seekMs = Math.max(0, atMs - slice.castStartMs)

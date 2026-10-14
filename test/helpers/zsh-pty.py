@@ -135,7 +135,7 @@ class Session:
         # spec here failed as "no prompt after startup", on the first run that
         # had zsh installed at all. The rc under test is the one in ZDOTDIR.
         self.proc = subprocess.Popen(
-            [self.job.get("shell", "/usr/bin/zsh"), "-d", "-i"],
+            [self.job.get("shell") or shutil.which("zsh", path=env.get("PATH")) or "zsh", "-d", "-i"],
             preexec_fn=become_session_leader_with_this_tty,
             stdin=slave, stdout=slave, stderr=slave,
             env=env, cwd=self.job.get("cwd", home),
@@ -244,6 +244,35 @@ class Session:
         return before + needle
 
     def step(self, spec):
+        if spec.get("foreground"):
+            # Observe this PTY's job, rather than a global pgrep that can
+            # match another test's sleep or be denied by a sandbox.
+            deadline = time.monotonic() + self.timeout
+            shell_group = os.getpgid(self.proc.pid)
+            while time.monotonic() < deadline:
+                foreground = os.tcgetpgrp(self.master)
+                if foreground > 0 and foreground != shell_group:
+                    # A preexec's curl/Python can itself be foreground before
+                    # the command begins. Interrupt the requested job, not
+                    # the recorder that is preparing it.
+                    observed = subprocess.run(
+                        ["ps", "-p", str(foreground), "-o", "comm="],
+                        capture_output=True, text=True, timeout=2,
+                    )
+                    if observed.returncode == 0 and os.path.basename(observed.stdout.strip()) == spec["foreground"]:
+                        return "foreground", "job running"
+                # Darwin can hold the shell's terminal write until the master
+                # drains it. Waiting on process state without reading output
+                # then prevents the shell from launching the very job we await.
+                ready, _, _ = select.select([self.master], [], [], 0.01)
+                if ready:
+                    chunk = os.read(self.master, 65536)
+                    if not chunk:
+                        raise TimeoutError("PTY closed before foreground job")
+                    text = chunk.decode("utf-8", "replace")
+                    self.buffer += text
+                    self.transcript.append(text)
+            raise TimeoutError("no foreground job in this terminal")
         if "line" in spec:
             os.write(self.master, (spec["line"] + "\n").encode("utf-8"))
             out = self.read_until_text(spec["until"], spec["line"], spec.get("timeout"))
@@ -278,12 +307,27 @@ class Session:
         except OSError:
             pass
         try:
-            self.proc.wait(timeout=5)
+            # Drain the terminal while zsh prints its final line. On Darwin
+            # waiting without a reader can block even a normal `exit`.
+            deadline = time.monotonic() + 5
+            while self.proc.poll() is None and time.monotonic() < deadline:
+                ready, _, _ = select.select([self.master], [], [], 0.05)
+                if ready:
+                    try:
+                        chunk = os.read(self.master, 65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    self.transcript.append(chunk.decode("utf-8", "replace"))
+            self.proc.wait(timeout=0.1)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
+            if self.proc.poll() is None:
+                self.proc.kill()
             self.proc.wait(timeout=5)
         finally:
             try:
