@@ -1,11 +1,11 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, openCaptureProof, resizeMainWindow } from './helpers'
 
-// Design turn 9a. Two claims only the real app can settle: that the first
-// screen of a new engagement is the single-path one, and that it gets out of
-// the way for good once something has been captured.
+// Capture preparation/proof, skipping and recovery through the real app.
+// Reopening setup preserves evidence and terminal sessions; recorded projects
+// still have a fixed entry. REDLOG_PACKAGED_APP selects the installed build.
 
 let app: ElectronApplication
 let page: Page
@@ -24,7 +24,8 @@ const post = async (agent_type: string, data: Record<string, unknown>): Promise<
 test('skipping setup before any action keeps recovery and unverified states across a reload', async () => {
   const home = makeTempHome('redlog-skip-setup-')
   const skippedApp = await electron.launch({
-    args: [MAIN_ENTRY], cwd: REPO_ROOT,
+    ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: 'test', HOME: home, USERPROFILE: home, REDLOG_E2E: '1' }
   })
   try {
@@ -33,6 +34,7 @@ test('skipping setup before any action keeps recovery and unverified states acro
     await skippedPage.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(skippedPage, 'skipped-setup')
     await resizeMainWindow(skippedApp, 800, 720)
+    await openCaptureProof(skippedPage)
     await expect(skippedPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
     await expect(skippedPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
     const config = await skippedPage.evaluate(() => window.redlog.config.get())
@@ -41,6 +43,7 @@ test('skipping setup before any action keeps recovery and unverified states acro
     await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
     await skippedPage.reload()
     await openView(skippedPage, 'dashboard')
+    await openCaptureProof(skippedPage)
     await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
     await expect(skippedPage.getByTestId('first-run-strip')).toHaveAttribute('data-core-ready', 'false')
     await expect(skippedPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
@@ -56,7 +59,8 @@ test('skipping setup before any action keeps recovery and unverified states acro
 test('a dependency install failure stays beside the retry and manual command', async () => {
   const home = makeTempHome('redlog-install-recovery-')
   const recoveryApp = await electron.launch({
-    args: [MAIN_ENTRY], cwd: REPO_ROOT,
+    ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: 'test', HOME: home, USERPROFILE: home, REDLOG_E2E: '1' }
   })
   try {
@@ -121,13 +125,16 @@ test.describe.serial('the first run', () => {
   test.beforeAll(async () => {
     tmpHome = makeTempHome('redlog-firstrun-')
     app = await electron.launch({
-      args: [MAIN_ENTRY], cwd: REPO_ROOT,
+      ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
     })
     page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'first-run')
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
+    await openCaptureProof(page)
     await page.waitForTimeout(2000)
     await resizeMainWindow(app, 1500, 1000)
   })
@@ -217,6 +224,7 @@ test.describe.serial('the first run', () => {
     await expect(setup).toBeVisible()
     await setup.focus()
     await page.keyboard.press('Enter')
+    await openCaptureProof(page)
     await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
     await expect(page.getByTestId('first-run-commands-status')).toHaveText('✓ Verified')
     await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')

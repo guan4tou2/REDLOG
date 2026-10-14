@@ -27,6 +27,10 @@ class FakeChild extends EventEmitter {
   }
 }
 
+function createProxy(deps: ConstructorParameters<typeof ManagedHttpProxy>[0]): ManagedHttpProxy {
+  return new ManagedHttpProxy({ probe: async () => true, ...deps })
+}
+
 describe('managed HTTP proxy', () => {
   it('builds a loopback-only regular proxy using the shipped addon', () => {
     expect(buildManagedProxyArgs('/app/hooks/mitmproxy-addon.py', 8080)).toEqual([
@@ -62,7 +66,7 @@ describe('managed HTTP proxy', () => {
   it('reports CA readiness without changing the trust store', async () => {
     const child = new FakeChild()
     const exists = vi.fn((p: string) => p === '/addon.py' || p === '/ca.pem')
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists, readinessTimeoutMs: 100 })
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists, readinessTimeoutMs: 100 })
     const started = proxy.start({ addonPath: '/addon.py', port: 8080, caPath: '/ca.pem' })
     child.stderr.emit('data', Buffer.from('proxy server listening'))
     await started
@@ -84,7 +88,7 @@ describe('managed HTTP proxy', () => {
     const child = new FakeChild()
     let present = true
     const fp = { sha1: 'AA', sha256: 'BB' }
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never),
       exists: (p: string) => p === '/addon.py' || (p === '/ca.pem' && present),
       fingerprint: () => fp,
@@ -101,7 +105,7 @@ describe('managed HTTP proxy', () => {
 
   it('notifies listeners when a running proxy exits unexpectedly', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100 })
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100 })
     const transitions: string[] = []
     proxy.onStatusChange((next, previous) => transitions.push(`${previous.state}->${next.state}`))
     const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
@@ -128,7 +132,7 @@ describe('managed HTTP proxy', () => {
     const first = new LingeringChild()
     const second = new LingeringChild()
     const queue: LingeringChild[] = [first, second]
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => queue.shift() as never), exists: () => true, readinessTimeoutMs: 100
     })
 
@@ -149,9 +153,9 @@ describe('managed HTTP proxy', () => {
     expect(proxy.status().error).toBeUndefined()
   })
 
-  it('reaches running only after mitmdump announces a listener', async () => {
+  it('reaches running after its owned probe succeeds', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never),
       exists: () => true,
       readinessTimeoutMs: 100
@@ -162,8 +166,84 @@ describe('managed HTTP proxy', () => {
     await expect(started).resolves.toMatchObject({ state: 'running', pid: 4242 })
   })
 
+  it('keeps a cold-starting process pending past five seconds until it announces readiness', async () => {
+    vi.useFakeTimers()
+    const child = new FakeChild()
+    let ready = false
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, probe: async () => ready })
+    try {
+      const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(proxy.status().state).toBe('starting')
+      expect(child.killed).toBe(false)
+      ready = true
+      child.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8080'))
+      await expect(started).resolves.toMatchObject({ state: 'running' })
+    } finally { proxy.stop(); vi.useRealTimers() }
+  })
+
+  it('fails a live process whose owned probe never succeeds and stops only that child', async () => {
+    vi.useFakeTimers()
+    const child = new FakeChild()
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100, probe: async () => false })
+    try {
+      const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+      child.stderr.emit('data', Buffer.from('loading addon'))
+      await vi.advanceTimersByTimeAsync(100)
+      await expect(started).resolves.toMatchObject({ state: 'failed', url: null, error: expect.stringMatching(/readiness/i) })
+      expect(child.killed).toBe(true)
+    } finally { proxy.stop(); vi.useRealTimers() }
+  })
+
+  it('ignores even readiness-looking output when the owned probe fails', async () => {
+    const child = new FakeChild()
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100, probe: async () => false })
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    child.stderr.emit('data', Buffer.from('HTTP(S) proxy server listening at 127.0.0.1:8080'))
+    expect(proxy.status().state).toBe('starting')
+    await expect(started).resolves.toMatchObject({ state: 'failed' })
+    expect(child.killed).toBe(true)
+  })
+
+  it('accepts a healthy owned proxy even when console output is buffered', async () => {
+    const child = new FakeChild()
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true })
+    await expect(proxy.start({ addonPath: '/addon.py', port: 8080 })).resolves.toMatchObject({ state: 'running' })
+    proxy.stop()
+  })
+
+  it('does not let an old readiness response promote a restarted process', async () => {
+    const first = new FakeChild(), second = new FakeChild()
+    second.pid = 4343
+    const queue = [first, second]
+    const pending: Array<(ready: boolean) => void> = []
+    const probe = vi.fn((_url: string, _token: string) => new Promise<boolean>(resolve => pending.push(resolve)))
+    const spawn = vi.fn(() => queue.shift() as never)
+    const proxy = createProxy({ spawn, exists: () => true, probe })
+    const one = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    proxy.stop()
+    await expect(one).resolves.toMatchObject({ state: 'stopped' })
+    const two = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    expect(probe.mock.calls[0][1]).not.toBe(probe.mock.calls[1][1])
+    pending[0](true)
+    await Promise.resolve(); await Promise.resolve()
+    expect(proxy.status().state).toBe('starting')
+    pending[1](true)
+    await expect(two).resolves.toMatchObject({ state: 'running', pid: 4343 })
+    proxy.stop()
+  })
+
+  it('can retry after a synchronous launch error', async () => {
+    const child = new FakeChild()
+    const spawn = vi.fn().mockImplementationOnce(() => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) }).mockReturnValue(child)
+    const proxy = createProxy({ spawn, exists: () => true })
+    await expect(proxy.start({ addonPath: '/addon.py', port: 8080 })).resolves.toMatchObject({ state: 'unavailable' })
+    await expect(proxy.start({ addonPath: '/addon.py', port: 8080 })).resolves.toMatchObject({ state: 'running' })
+    proxy.stop()
+  })
+
   it('reports an unavailable binary and does not pretend to run', async () => {
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => { throw Object.assign(new Error('spawn mitmdump ENOENT'), { code: 'ENOENT' }) }),
       exists: () => true,
       readinessTimeoutMs: 10
@@ -176,7 +256,7 @@ describe('managed HTTP proxy', () => {
 
   it('retains an early-exit reason and stops only its owned child', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never),
       exists: () => true,
       readinessTimeoutMs: 100
@@ -193,7 +273,7 @@ describe('managed HTTP proxy', () => {
 
   it('kills its live child on stop', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never),
       exists: () => true,
       readinessTimeoutMs: 100
@@ -207,7 +287,7 @@ describe('managed HTTP proxy', () => {
 
   it('does not turn a cancelled startup into a failed state', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
     })
     const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
@@ -218,7 +298,7 @@ describe('managed HTTP proxy', () => {
 
   it('drops readiness when the running child exits', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
     })
     const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
@@ -327,7 +407,7 @@ describe('the capture endpoint is host and port', () => {
 // of the session.
 describe('a failure that never reached start()', () => {
   it('puts the reason in the status, not just in the return value', () => {
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    const proxy = createProxy({ spawn: vi.fn(), exists: () => true })
     expect(proxy.status()).toMatchObject({ state: 'stopped' })
 
     const returned = proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
@@ -340,7 +420,7 @@ describe('a failure that never reached start()', () => {
   })
 
   it('tells the listeners, so a live surface does not wait for its next poll', () => {
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(), exists: () => true })
+    const proxy = createProxy({ spawn: vi.fn(), exists: () => true })
     const seen: string[] = []
     proxy.onStatusChange((next) => seen.push(next.state))
     proxy.noteStartFailure('no addon')
@@ -352,7 +432,7 @@ describe('a failure that never reached start()', () => {
     // wrong, not the proxy stopping — and reporting `failed` over a working
     // capture would be the same lie in the other direction.
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
     })
     const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
@@ -367,7 +447,7 @@ describe('a failure that never reached start()', () => {
   it('can be cleared by a later successful start', async () => {
     // The failure is a fact about the last attempt, not a latch.
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({
+    const proxy = createProxy({
       spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
     })
     proxy.noteStartFailure('127.0.0.1:6661 is already in use.')

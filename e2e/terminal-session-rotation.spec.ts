@@ -9,7 +9,12 @@ test('a live shell survives picker and project switches with separate verifiable
   test.setTimeout(90_000)
   const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
-    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await page.evaluate(async () => {
+      localStorage.setItem('redlog-locale', 'en')
+      const zsh = (await window.redlog.terminal.shells()).find(shell => /\bzsh\b/i.test(shell.label))
+      if (!zsh) throw new Error('This enrollment/privacy journey requires Zsh; install it before running the test')
+      localStorage.setItem('redlog-terminal-shell', zsh.id)
+    })
     const b = await openTestProject(page, 'rotation-B')
     const a = await openTestProject(page, 'rotation-A')
     await openView(page, 'terminal')

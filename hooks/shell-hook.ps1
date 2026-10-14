@@ -50,7 +50,9 @@ function _RedLogSpoolPayload {
         # Cap the spool so a machine offline for weeks doesn't fill the disk.
         $count = @(Get-ChildItem -Path $script:_RedLogSpoolDir -Filter '*.json' -ErrorAction SilentlyContinue).Count
         if ($count -ge $script:_RedLogSpoolCap) { return }
-        $name = "$(_RedLogTimestamp).$PID.json"
+        # The clock is only millisecond-resolution. Two events in one process
+        # can share it; a unique suffix must preserve both offline payloads.
+        $name = "$(_RedLogTimestamp).$PID.$([guid]::NewGuid().ToString('N')).json"
         $path = Join-Path $script:_RedLogSpoolDir $name
         # UTF-8 without BOM — the drain in main/index.ts uses JSON.parse which
         # rejects a leading BOM on some Node versions.

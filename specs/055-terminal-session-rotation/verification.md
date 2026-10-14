@@ -49,7 +49,8 @@ No compatibility adapter, new framework or timeline redesign was introduced.
 
 ## Final local verification
 
-352 Vitest files PASS, 4 files SKIP; 3,581 tests PASS, 23 SKIP. Typecheck,
+The original completion gate had 352 Vitest files PASS, 4 files SKIP;
+3,581 tests PASS, 23 SKIP. Final follow-up counts are in the delivery artifact. Typecheck,
 verify:specs, verify:architecture and verify:i18n PASS on the non-shallow branch.
 The latest source round has 17 other journeys PASS plus the updated rotation
 journey PASS separately after correcting the driver's scrolling/key-mode input.
@@ -62,7 +63,21 @@ command gate now follow the shared enrollment state, and health/pane badges
 reflect pause. An enrollment write failure is a persistent recording failure.
 Native PowerShell/WSL and Kali desktop remain installer-matrix acceptance.
 
-The final macOS DMG installed copy also passes all 22 journeys, including the
-same live-shell rotation/privacy test. SHA-256 is recorded in Spec 047 and the
-delivery artifact. Windows installation CI is a separate acceptance surface;
+The installed macOS DMG also passes the live-shell rotation/privacy test.
+The first combined round ran 7 package-backed journeys and 15 source UI
+journeys; the latter direct launchers have now been corrected to honor the
+packaged executable and assert app.isPackaged. Final installed counts and
+SHA-256 are recorded in Spec 047 and the delivery artifact. Linux CI installs
+and explicitly selects Zsh for the Zsh-control journey rather than invoking
+redlog stop in Bash. Windows installation CI is a separate acceptance surface;
 it does not run the POSIX-specific rotation journey.
+
+Two loaded local rounds also exposed intermittent PTY output/window-size
+failures; focused 25- and 67-test follow-ups passed. Their original observations
+and diagnostics remain in the delivery record and #333. A later green full
+run does not establish their retrospective root cause or native Kali acceptance.
+The driver itself had a confirmed additional defect: repeating a prompt made
+the next line appear complete with empty output (real Zsh RED). Per-line prompt
+sequence markers now reject old redraws and retain late bytes. Harness,
+transparency and 100-command checks: 30 PASS. This establishes the driver fix,
+not a retrospective explanation for every original missing-output observation.

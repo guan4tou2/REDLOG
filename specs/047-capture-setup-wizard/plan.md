@@ -19,6 +19,13 @@ layer is introduced.
 4. Verify UI transitions, real terminal output, installed package resources
    and export integrity. Keep native installer acceptance distinct from mocked
    IPC, container shell runs and a local DMG-copy test.
+5. Managed proxy readiness uses the reserved local verification host and a
+   per-start secret delivered only in the owned child's environment. The
+   request carries no secret; the addon must return the matching value.
+   Process liveness, foreign listeners and buffered console text cannot prove
+   readiness. Probe traffic produces neither evidence nor a user-verification
+   report. Startup is bounded to 30 seconds; stop/restart cancels old attempts
+   and ignores their late responses. HTTP/HTTPS client proof remains separate.
 
 Risks: remediation may require privileges or a prerequisite package manager;
 these remain explicit operator actions. Installed tools do not prove capture.

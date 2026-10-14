@@ -82,9 +82,15 @@ failure, terminal enrollment and project rotation. Final installed-candidate
 results and gate counts are recorded in the delivery artifact. Windows/WSL and
 Kali desktop acceptance remain T015; no unsupported Verified claim is made.
 
-Final installed macOS candidate: 22 journeys PASS, including both locales'
-filtered/frozen JSON export. The packaged bundle smoke verifies the delivered
+Installed macOS verification includes both locales' filtered/frozen JSON
+export. Final journey counts are recorded with the candidate. Direct UI
+launchers now honor the packaged executable and check app.isPackaged; their
+initial source runs are not relabeled as installed-app results.
+The packaged bundle smoke verifies the delivered
 cast's printed output rather than requiring an inline stdout property which
 built-in PowerShell does not provide. The canary command text alone does not
 count as recorded output. UI timeout tests wait for the async running state
 before advancing the clock; no product timer or certificate check is relaxed.
+It also records an eligible command after the real loopback flow, verifying
+the original Windows omission-in-the-middle scenario through the shipped
+verifier, in addition to strict complete-chain and synthetic tamper regressions.

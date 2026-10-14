@@ -1,4 +1,4 @@
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -115,6 +115,23 @@ export async function openTestProject(
 export async function openView(page: Page, view: string): Promise<void> {
   await page.click(`[data-view-btn="${view}"]`)
   await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
+}
+
+/** Enter proof through the actual skip action if this host lacks tools.
+ * This does not install a tool or count skipping as verified recording. */
+export async function openCaptureProof(page: Page): Promise<void> {
+  const prepare = page.getByTestId('capture-prepare-skip')
+  const proof = page.getByTestId('first-run-commands-status')
+  await expect.poll(async () => await prepare.isVisible() || await proof.isVisible(), { timeout: 15_000 }).toBe(true)
+  if (await prepare.isVisible()) {
+    try { await prepare.click({ timeout: 2_000 }) }
+    catch (error) {
+      // A prepared host can advance automatically while Playwright waits
+      // for the initial button to settle. Accept only the actual proof view.
+      if (!await proof.isVisible()) throw error
+    }
+  }
+  await expect(proof).toBeVisible()
 }
 
 /**

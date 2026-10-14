@@ -339,6 +339,9 @@ describe('first run: record my terminal', () => {
     draw()
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
+    // Showing the nonce precedes React's passive subscription effect. Let
+    // that render settle before delivering the operator's canary event.
+    await act(async () => {})
     const before = snapshot()
     emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
     await screen.findByTestId('record-terminal-verified')

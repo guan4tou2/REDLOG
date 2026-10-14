@@ -52,6 +52,7 @@ def strip_ansi(text):
 class Session:
     def __init__(self, job):
         self.marker = "RLPTY-" + uuid.uuid4().hex[:12]
+        self.sequence = 0
         self.job = job
         self.timeout = float(job.get("timeout_s", 15))
         self.settle = float(job.get("settle_s", 0.25))
@@ -78,6 +79,13 @@ class Session:
             # prompt's politeness rather than on anything the product did.
             fh.write("unsetopt PROMPT_SP 2>/dev/null\n")
             fh.write(self.job.get("rc", "") + "\n")
+            # A redraw can repeat an old prompt. Only a prompt bearing this
+            # typed line's sequence proves that line has completed.
+            fh.write("autoload -Uz add-zsh-hook\n")
+            fh.write("typeset -gi _REDLOG_DRIVER_SEQ=0\n")
+            fh.write("_redlog_driver_preexec() { (( _REDLOG_DRIVER_SEQ += 1 )); }\n")
+            fh.write("add-zsh-hook preexec _redlog_driver_preexec\n")
+            fh.write("setopt PROMPT_SUBST\n")
         redlog = self.job.get("redlog")
         if redlog:
             d = os.path.join(home, ".redlog")
@@ -104,8 +112,8 @@ class Session:
         env["HOME"] = home
         env["ZDOTDIR"] = self.job.get("zdotdir", home)
         env["TERM"] = "xterm-256color"
-        env["PROMPT"] = self.marker + " "
-        env["PS1"] = self.marker + " "
+        env["PROMPT"] = self.marker + ":${_REDLOG_DRIVER_SEQ} "
+        env["PS1"] = env["PROMPT"]
         # No colour from the shell itself; the relay's own colour handling is
         # what the tests are about, not the prompt's.
         env.pop("ZSH_THEME", None)
@@ -145,8 +153,9 @@ class Session:
         self.read_until_marker(label="startup")
 
     def read_until_marker(self, label):
+        expected = self.marker + ":" + str(self.sequence) + " "
         deadline = time.time() + self.timeout
-        while self.marker not in self.buffer:
+        while expected not in self.buffer:
             if time.time() > deadline:
                 raise TimeoutError("no prompt after " + label)
             r, _, _ = select.select([self.master], [], [], 0.2)
@@ -161,12 +170,13 @@ class Session:
             text = chunk.decode("utf-8", "replace")
             self.buffer += text
             self.transcript.append(text)
-        before, _, rest = self.buffer.partition(self.marker)
+        before, _, rest = self.buffer.partition(expected)
         self.buffer = rest
         return before
 
     def run(self, command):
         written_at = time.time()
+        self.sequence += 1
         os.write(self.master, (command + "\n").encode("utf-8"))
         raw = self.read_until_marker(label=command)
         # What an operator waits for: the line sent until the next prompt is
@@ -188,6 +198,11 @@ class Session:
             text = chunk.decode("utf-8", "replace")
             self.buffer += text
             self.transcript.append(text)
+        # Preserve bytes after the first prompt in this interval and retire
+        # redraw markers, rather than making them the next command's result.
+        raw += self.buffer
+        self.buffer = ""
+        raw = re.sub(re.escape(self.marker) + r":\d+ ", "", raw)
         # What the terminal was actually sent, before the escape sequences are
         # stripped for reading. Colour IS an escape sequence, so a test that
         # asks "did `ls` colour its output" cannot ask the cleaned text.
@@ -274,6 +289,7 @@ class Session:
                     self.transcript.append(text)
             raise TimeoutError("no foreground job in this terminal")
         if "line" in spec:
+            self.sequence += 1
             os.write(self.master, (spec["line"] + "\n").encode("utf-8"))
             out = self.read_until_text(spec["until"], spec["line"], spec.get("timeout"))
             return spec["line"], strip_ansi(out)

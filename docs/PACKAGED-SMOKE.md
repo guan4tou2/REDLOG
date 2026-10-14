@@ -54,3 +54,13 @@ PASS. Build, clean-machine precondition, silent install, runner-profile first
 launch, installed-app capture/export/HTTP smoke, no unexpected skipped steps
 and silent uninstall all passed. This validates that baseline; the closeout
 candidate still needs its own workflow conclusion. Native WSL was not included.
+
+The direct FirstRun/enrollment/I/O launchers now honor REDLOG_PACKAGED_APP and
+assert app.isPackaged. Their earlier combined source/package results are not
+counted as wholly installed-app runs. Preparation/proof checks follow the real
+missing-tool skip or the prepared host's automatic transition. Cast geometry
+is checked through the recorded session's castPath, not a retired filename.
+The shipped verifier case records eligible commands before and after a real
+loopback flow. Current candidate results and exact CI revisions are in
+[PR #335](https://github.com/guan4tou2/REDLOG/pull/335); a previous head's green
+run does not validate later capture changes.

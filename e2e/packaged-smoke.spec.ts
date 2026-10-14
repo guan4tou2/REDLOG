@@ -7,8 +7,8 @@ import { makeTempHome } from './helpers'
 import { readCastSlice } from '../src/core/cast-slice'
 
 // Smoke test for a PACKAGED build, run against the executable rather than the
-// source tree. Everything else in e2e/ launches `out/main`; that cannot see what
-// packaging changes — which files land in resources/, whether the native modules
+// source tree. Source-only launches cannot see what packaging changes —
+// which files land in resources/, whether the native modules
 // load, whether the shipped hooks and verifier are the ones the app reaches for.
 //
 // Skipped unless REDLOG_PACKAGED_APP points at the executable, so CI (which does
@@ -27,6 +27,8 @@ import { readCastSlice } from '../src/core/cast-slice'
 // it runs whatever executable it is given. .github/workflows/windows-install-smoke.yml
 // installs the NSIS build on a clean runner, points this spec at the installed
 // exe, then uninstalls and checks what is left.
+// FirstRun, enrollment, I/O, filtered-export and rotation journeys also honor
+// REDLOG_PACKAGED_APP so their UI checks can exercise the installed build.
 
 const exe = process.env.REDLOG_PACKAGED_APP
 const wslDistro = process.env.REDLOG_PACKAGED_WSL_DISTRO
@@ -250,6 +252,15 @@ test.describe('packaged app', () => {
         })
       }
 
+      await test.step('a command after loopback keeps eligible evidence on both sides of the omission', async () => {
+        await (await app.browserWindow(page)).evaluate(window => window.focus())
+        await page.locator('.xterm-helper-textarea').first().focus()
+        await page.keyboard.type('echo after-loopback')
+        await page.keyboard.press('Enter')
+        await expect.poll(async () => shellEnd(await events(page), 'echo after-loopback'), { timeout: 30_000 }).toBeTruthy()
+        expect(shellEnd(await events(page), 'echo after-loopback')?.data.exit_code).toBe(0)
+      })
+
       await test.step('an evidence bundle exports and its bundled verifier passes', async () => {
         const plan = await page.evaluate(async () => window.redlog.data.resolveExportPlan({ format: 'bundle', subset: { kind: 'all' } })) as { ok: boolean; plan?: { id: string } }
         expect(plan.ok).toBe(true)
@@ -273,6 +284,7 @@ test.describe('packaged app', () => {
         const command = delivered.find(e => e.agent_type === 'shell' && e.data.subtype === 'command_end' && e.data.command === 'echo redlog-ok-builtin')
         expect(command, 'the exported package must carry the recorded canary').toBeTruthy()
         expect(command.data.exit_code).toBe(0)
+        expect(delivered.some(e => e.agent_type === 'shell' && e.data.subtype === 'command_end' && e.data.command === 'echo after-loopback' && e.data.exit_code === 0)).toBe(true)
         // Built-in PowerShell owns a cast, not an auto-relay stdout field.
         // Check the delivered recording on every platform, including the
         // printed line (the typed command alone is not proof of output).

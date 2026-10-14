@@ -178,9 +178,10 @@ describeShell(`terminal transparency, with and without the adapter (${target?.la
 
     it('a program that asks fd 1 for the window size gets the real one', () => {
       expect(text(b, 6)).toBe(String(COLS))
-      expect(text(a, 6)).toBe(text(b, 6))
+      const diagnostic = JSON.stringify({ steps: a.steps.slice(5, 8), events: collector.events.filter(e => String(e.data.command).includes('winsz.py')) })
+      expect(text(a, 6), diagnostic).toBe(text(b, 6))
       // And the same program in a pipeline, which the relay stands down for.
-      expect(text(a, 5)).toBe(text(b, 5))
+      expect(text(a, 5), diagnostic).toBe(text(b, 5))
     })
 
     it('the terminal size the command can read from stdin, and from tput', () => {

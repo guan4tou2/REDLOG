@@ -24,9 +24,16 @@ for full commit body + generated notes.
 
 - Offline POSIX events use unique spool files on macOS as well as Linux;
   multiple events in one second no longer overwrite command output or exits.
+- PowerShell offline events also have unique file IDs; events in the same
+  millisecond cannot overwrite each other. Bash startup does not advertise
+  the Zsh-only `redlog status`/`redlog stop` commands.
 - HTTP dependency installation keeps failures and the manual remedy in the
   setup card, and checks that the tool is actually available before reporting
   success. `stty` operates directly on the controlling terminal.
+- Managed HTTP stays starting until its owned addon answers a private readiness
+  probe; process liveness and buffered console text no longer count as running.
+  Cold starts have a bounded 30-second window. A timed-out owned process is
+  stopped with a visible reason before retry; checks do not enter the evidence.
 
 - Existing projects can reopen capture setup from Dashboard → Capture Health → Capture setup without clearing their evidence.
 

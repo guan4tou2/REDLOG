@@ -36,11 +36,26 @@ Status: Implemented; not merged, not fully Verified.
   runs uv into private tool/cache directories, observes the new executable,
   advances, restarts the real proxy and verifies an HTTP nonce. HTTPS and
   Commands correctly remain unverified. No system trust/profile changes.
-- Current local DMG SHA-256: edf0ddde1b164722c46d34aef1d5a2607b74f05d1cef0b84a118481b7780d482.
+- Current local DMG SHA-256: 9d964ea671e39d3441e1c3c8f216841feacdedee6582655dca49783572180686.
   Installed via read-only mount and copy to an isolated directory.
-- Final installed candidate: 22 journeys PASS, including setup recovery,
-  real missing-tool installation, 100 commands, filtered export and terminal
-  project rotation. Cross-platform CI runs against the PR's own revision.
+- Final installed-candidate counts are recorded with its hash in the delivery
+  artifact. Direct UI launchers now honor REDLOG_PACKAGED_APP and assert
+  app.isPackaged; their earlier source runs are not counted as package runs.
+  Linux proof/enrollment journeys use the visible preparation skip when tools
+  are missing. A prepared host may advance automatically during that action;
+  the driver accepts only the actual proof view, not a swallowed error.
+- Actual isolated dependency installation exposed another RED: after five
+  seconds a live but non-listening mitmdump was labeled running and curl got
+  connection refused. Three regressions reproduce cold-start, timeout and
+  split-output cases. Real mitmdump then showed that its console output remains
+  buffered even while the port is bound, including with PYTHONUNBUFFERED.
+  Running therefore requires a matching private response from the owned addon,
+  with a bounded 30-second startup; timeout stops only the owned child and
+  exposes a reason. Ready-looking logs, foreign replies and stale-generation
+  replies cannot promote a process. Synchronous spawn failure can retry.
+  Actual localhost responses and the addon methods verify that no probe token
+  is sent in the request and no evidence/user-proof report is emitted.
+  Focused core/readiness: 37 PASS.
 
 ## Clarify
 
@@ -71,3 +86,9 @@ Windows PowerShell/WSL and Kali desktop installers; downloaded macOS
 quarantine/Gatekeeper, Dock launch and notarization. The isolated macOS
 dependency installation is real, but it is not a wholly clean OS image.
 T010 remains unchecked; the spec is Implemented, not Verified.
+
+Final owned-probe candidate: 27 installed journeys PASS (4.2 minutes), all direct
+UI launchers checked app.isPackaged. Actual 100-command capture took 48,796ms.
+Full regression: 354 files PASS / 4 SKIP; 3,593 tests PASS / 24 SKIP.
+The missing-tool installation and real HTTP/HTTPS/bundle flows pass with
+buffered mitmdump output; probe traffic remains outside evidence/user proof.
