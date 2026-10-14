@@ -1,0 +1,190 @@
+name: Windows install smoke
+
+# Builds the NSIS installer, installs it on a clean GitHub-hosted Windows runner,
+# runs the packaged-app smoke spec (e2e/packaged-smoke.spec.ts) against the
+# INSTALLED executable, then uninstalls and checks what is left behind.
+#
+# Why this is its own workflow: nothing else exercises the installer. `unit`
+# builds the renderer and main bundles but never packages; e2e launches
+# out/main. A runner starts from an image with no RedLog on it, which is the
+# "first install on a clean machine" case that is awkward to reproduce locally.
+#
+# Manual and path-triggered only — packaging takes minutes and mitmproxy is
+# installed from PyPI, neither of which belongs on every PR.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-install-smoke.yml'
+      - 'e2e/packaged-smoke.spec.ts'
+      - 'electron-builder.yml'
+      - 'hooks/shell-hook.ps1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install mitmproxy
+        # The smoke spec skips its HTTP step, and says so, when mitmdump is not
+        # on PATH. Install it so the step runs.
+        run: |
+          python -m pip install --quiet mitmproxy
+          mitmdump --version
+
+      - name: Build
+        run: npm run build
+
+      - name: Package the NSIS installer
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Verify packaged capture resources
+        run: npm run verify:package-resources
+
+      - name: Clean-machine precondition
+        # The point of running here is that nothing is installed yet. If the
+        # image ever ships a RedLog, the install below proves less than it says.
+        run: |
+          $uninstall = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          $existing = Get-ChildItem $uninstall -ErrorAction SilentlyContinue |
+            Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' }
+          if ($existing) { throw "RedLog is already registered on this runner: $($existing.Name)" }
+          foreach ($p in @("$env:USERPROFILE\.redlog", "$env:APPDATA\RedLog", "$env:LOCALAPPDATA\Programs\RedLog")) {
+            if (Test-Path $p) { throw "Not a clean machine: $p exists" }
+          }
+
+      - name: Silent install
+        id: install
+        run: |
+          $setup = Get-ChildItem dist -Filter 'RedLog Setup *.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'no installer in dist/' }
+          Write-Host "Installer: $($setup.Name) ($([math]::Round($setup.Length/1MB,1)) MB)"
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited $($p.ExitCode)" }
+
+          $uninstall = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          $entries = @(Get-ChildItem $uninstall | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' })
+          if ($entries.Count -ne 1) { throw "expected one Uninstall entry for RedLog, found $($entries.Count)" }
+          $reg = Get-ItemProperty $entries[0].PSPath
+          Write-Host "Uninstall entry: $($reg.DisplayName) $($reg.DisplayVersion)"
+
+          # Install location from the uninstall string, so this does not depend
+          # on InstallLocation (empty in the entry electron-builder writes).
+          $uninstaller = ($reg.UninstallString -replace '^"([^"]+)".*$', '$1')
+          $dir = Split-Path $uninstaller
+          $exe = Join-Path $dir 'RedLog.exe'
+          if (-not (Test-Path $exe)) { throw "RedLog.exe missing from $dir" }
+
+          $sh = New-Object -ComObject WScript.Shell
+          $shortcuts = @(
+            Join-Path ([Environment]::GetFolderPath('Desktop')) 'RedLog.lnk'
+            Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\RedLog.lnk'
+          )
+          foreach ($lnk in $shortcuts) {
+            if (-not (Test-Path $lnk)) { throw "shortcut missing: $lnk" }
+            $target = $sh.CreateShortcut($lnk).TargetPath
+            if ($target -ne $exe) { throw "$lnk points at '$target', expected '$exe'" }
+          }
+
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+          "dir=$dir" >> $env:GITHUB_OUTPUT
+          "uninstaller=$uninstaller" >> $env:GITHUB_OUTPUT
+
+      - name: First launch on the runner's own profile
+        # The smoke spec isolates HOME so it cannot disturb a developer's real
+        # install. Here the profile IS the clean one: launch with nothing
+        # pre-created and expect the app to come up and answer its API.
+        run: |
+          $proc = Start-Process -FilePath '${{ steps.install.outputs.exe }}' -PassThru
+          try {
+            $rl = Join-Path $env:USERPROFILE '.redlog'
+            $deadline = (Get-Date).AddSeconds(90)
+            while ((Get-Date) -lt $deadline -and -not ((Test-Path "$rl\api-port") -and (Test-Path "$rl\api-token"))) {
+              Start-Sleep -Seconds 2
+            }
+            if (-not (Test-Path "$rl\api-port")) { throw 'api-port never appeared after first launch' }
+            $port = (Get-Content "$rl\api-port" -Raw).Trim()
+            $token = (Get-Content "$rl\api-token" -Raw).Trim()
+            $res = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/health" -Headers @{ Authorization = "Bearer $token" }
+            Write-Host "health: $($res | ConvertTo-Json -Compress)"
+          } finally {
+            # RedLog hides to the tray on window close, so end it by process.
+            Get-Process -Name RedLog -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep -Seconds 3
+          }
+          if (Test-Path "$env:USERPROFILE\.redlog\api-port") { Remove-Item "$env:USERPROFILE\.redlog\api-port" -Force }
+
+      - name: Packaged smoke spec against the installed app
+        env:
+          REDLOG_PACKAGED_APP: ${{ steps.install.outputs.exe }}
+        run: npx playwright test e2e/packaged-smoke.spec.ts --reporter=list
+
+      - name: Silent uninstall
+        run: |
+          $uninstaller = '${{ steps.install.outputs.uninstaller }}'
+          $dir = '${{ steps.install.outputs.dir }}'
+          Get-Process -Name RedLog -ErrorAction SilentlyContinue | Stop-Process -Force
+          $p = Start-Process -FilePath $uninstaller -ArgumentList '/currentuser', '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "uninstaller exited $($p.ExitCode)" }
+
+          # The uninstaller can hand off to a temp copy of itself and return
+          # early, so wait for the effect instead of trusting the exit code.
+          $uninstall = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          $deadline = (Get-Date).AddSeconds(90)
+          do {
+            $left = @(Get-ChildItem $uninstall | Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' })
+            if ($left.Count -eq 0 -and -not (Test-Path (Join-Path $dir 'RedLog.exe'))) { break }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+
+          $problems = @()
+          if ($left.Count -ne 0) { $problems += 'Uninstall registry entry still present' }
+          if (Test-Path (Join-Path $dir 'RedLog.exe')) { $problems += 'RedLog.exe still present' }
+          foreach ($lnk in @(
+            Join-Path ([Environment]::GetFolderPath('Desktop')) 'RedLog.lnk'
+            Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\RedLog.lnk'
+          )) {
+            if (Test-Path $lnk) { $problems += "shortcut still present: $lnk" }
+          }
+          if ($problems) { throw ($problems -join '; ') }
+
+          # Not a failure: report anything else left in the install directory so
+          # a regression from "a few empty folders" to "the whole app" is visible.
+          if (Test-Path $dir) {
+            $rest = @(Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue)
+            Write-Host "Install directory still exists with $($rest.Count) file(s)"
+            $rest | ForEach-Object { Write-Host "  $($_.FullName)" }
+            if ($rest.Count -gt 20) { throw "uninstall left $($rest.Count) files behind" }
+          }
+
+      - name: Upload the installer and test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: install-smoke-artifacts
+          path: |
+            test-results/
+            dist/*.exe
+          if-no-files-found: ignore
+          retention-days: 7

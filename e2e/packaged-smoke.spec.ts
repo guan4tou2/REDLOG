@@ -22,8 +22,10 @@ import { makeTempHome } from './helpers'
 //
 // The profile is isolated (HOME/USERPROFILE and --user-data-dir are a temp dir),
 // so nothing here touches the operator's own RedLog or PowerShell profile.
-// What this does NOT exercise: the NSIS installer wizard, shortcuts and the
-// uninstaller — it runs the unpacked app.
+// What this does NOT exercise: the NSIS installer, shortcuts and the uninstaller —
+// it runs whatever executable it is given. .github/workflows/windows-install-smoke.yml
+// installs the NSIS build on a clean runner, points this spec at the installed
+// exe, then uninstalls and checks what is left.
 
 const exe = process.env.REDLOG_PACKAGED_APP
 const wslDistro = process.env.REDLOG_PACKAGED_WSL_DISTRO
