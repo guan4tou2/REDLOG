@@ -138,7 +138,27 @@ jobs:
       - name: Packaged smoke spec against the installed app
         env:
           REDLOG_PACKAGED_APP: ${{ steps.install.outputs.exe }}
-        run: npx playwright test e2e/packaged-smoke.spec.ts --reporter=list
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/packaged-smoke.json
+        run: npx playwright test e2e/packaged-smoke.spec.ts --reporter=list,json
+
+      - name: Fail if the spec skipped part of what this job installed tools for
+        # The spec reports a step it could not run as a `not-exercised`
+        # annotation and still passes. Python and mitmdump are both installed
+        # above, so for this job such an annotation means the check ran less
+        # than it claims. The WSL step is expected to be absent (no distro on the
+        # runner) and is not annotated.
+        run: |
+          $report = Get-Content test-results/packaged-smoke.json -Raw | ConvertFrom-Json
+          $notes = @()
+          function Walk($suite) {
+            foreach ($s in $suite.suites) { Walk $s }
+            foreach ($spec in $suite.specs) { foreach ($t in $spec.tests) {
+              foreach ($a in $t.annotations) { if ($a.type -eq 'not-exercised') { $script:notes += $a.description } }
+            } }
+          }
+          foreach ($s in $report.suites) { Walk $s }
+          if ($notes) { $notes | ForEach-Object { Write-Host "not exercised: $_" }; throw 'the smoke spec skipped a step this job has the tools for' }
+          Write-Host 'no step was reported as not exercised'
 
       - name: Silent uninstall
         run: |
