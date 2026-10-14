@@ -1,10 +1,10 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, openSettingsPage } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, openSettingsPage, openCaptureProof } from './helpers'
 
 test('REDLOG owns HTTP capture and exposes its real state', async () => {
-  // The fixture below is a `#!/bin/sh` script standing in for mitmdump, so
+  // The fixture below is a POSIX Python script standing in for mitmdump, so
   // this has always been a POSIX test — it just never said so, because CI
   // runs e2e on ubuntu. It matters now: capture starts with the project when
   // mitmdump is on PATH, and on Windows the fake one cannot run, so the
@@ -20,12 +20,27 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
   const bin = join(tmpHome, 'bin')
   mkdirSync(bin, { recursive: true })
   const fakeMitmdump = join(bin, 'mitmdump')
-  // `exec sleep` rather than a trap around a loop: the loop's `sleep` is a
-  // grandchild, so SIGTERM is not acted on until the current one returns and
-  // the grandchild outlives the shell that owned it. `exec` leaves one
-  // process, holding the stderr the proxy reads for its readiness line, and
-  // it dies on the signal rather than up to a second later.
-  writeFileSync(fakeMitmdump, '#!/bin/sh\necho "HTTP(S) proxy server listening at 127.0.0.1:8080" >&2\nexec sleep 86400\n')
+  // A console message or live sleeper cannot satisfy owned readiness. This
+  // UI fixture answers the same private response as the addon, using only
+  // its child environment. Actual HTTP(S) evidence has a packaged smoke.
+  writeFileSync(fakeMitmdump, `#!/usr/bin/env python3
+import http.server, os, sys
+from urllib.parse import urlsplit
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        ready = (urlsplit(self.path).path == '/__redlog_ready'
+                 and self.headers.get('Host') == 'redlog.verify.invalid')
+        body = os.environ['REDLOG_PROXY_READY_TOKEN'].encode() if ready else b'not a proxy'
+        self.send_response(200 if ready else 404)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *args):
+        pass
+
+http.server.HTTPServer(('127.0.0.1', int(sys.argv[sys.argv.index('--listen-port') + 1])), Handler).serve_forever()
+`)
   chmodSync(fakeMitmdump, 0o755)
 
   const app = await electron.launch({
@@ -48,8 +63,7 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     // stopped and waits for a button, and that was the wrong default: an
     // operator who opened a project and started working had no HTTP in the
     // record and nothing said so.
-    // Auto-start runs at project open and the stand-in announces itself at
-    // once, so this is generous rather than a budget to spend.
+    // Auto-start runs at project open; the owned fixture must answer the probe.
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
       { timeout: 20_000, message: 'opening the project did not start capture' })
       .toMatchObject({ state: 'running' })
@@ -83,7 +97,7 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     await expect(toggle).toHaveText('Restart HTTP capture')
     await toggle.click()
     // Starting the proxy spawns mitmdump, an external Python process, and
-    // waits for it to announce that it is listening. A cold start takes well
+    // waits for its addon to answer readiness. A cold start takes well
     // over `expect.poll`'s 5s default on a real machine, which is why this
     // assertion failed even when the proxy came up perfectly.
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()),
@@ -108,6 +122,7 @@ test('REDLOG owns HTTP capture and exposes its real state', async () => {
     // Back to the dashboard: the verification card is on first run, and the
     // toggle above left us in Settings.
     await openView(page, 'dashboard')
+    await openCaptureProof(page)
     // The nonce comes off the card's own `data-nonce`, not off the per-tool
     // commands. Those commands are the fallback for a check that has not
     // landed, and they are only rendered once the wait has timed out — a

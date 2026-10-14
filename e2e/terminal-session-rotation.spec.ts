@@ -9,6 +9,9 @@ test('a live shell survives picker and project switches with separate verifiable
   test.setTimeout(90_000)
   const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
+    // Ubuntu's zsh-newuser-install consumes input when a fresh HOME has no
+    // startup files. This journey tests recording rotation, not that wizard.
+    fs.writeFileSync(path.join(tmpHome, '.zshrc'), '# Isolated rotation test shell\n')
     await page.evaluate(async () => {
       localStorage.setItem('redlog-locale', 'en')
       const zsh = (await window.redlog.terminal.shells()).find(shell => /\bzsh\b/i.test(shell.label))
@@ -21,6 +24,9 @@ test('a live shell survives picker and project switches with separate verifiable
     await expect.poll(() => page.evaluate(async () => (await window.redlog.terminal.list()).length)).toBe(1)
     const pane = await page.evaluate(async () => (await window.redlog.terminal.list())[0])
     await expect.poll(() => page.evaluate(async () => (await window.redlog.events.query({ agentType: 'shell', limit: -1 })).some(e => e.data.subtype === 'session_start' && e.data.source === 'builtin-terminal'))).toBe(true)
+    const start = await page.evaluate(async id => (await window.redlog.events.query({ agentType: 'shell', limit: -1 }))
+      .find(e => e.data.subtype === 'session_start' && e.data.terminalId === id)!, pane.id)
+    expect(start.data.shell).toMatch(/(?:^|\/)zsh$/)
     // Wait for enrollment injection, then use the actual PTY rather than seed
     // rows: cwd and a command in flight must survive the boundary.
     await page.waitForTimeout(900)
@@ -107,6 +113,14 @@ test('a live shell survives picker and project switches with separate verifiable
     await page.screenshot({ path: test.info().outputPath('terminal-project-rotation.png') })
   } catch (error) {
     console.error('Terminal project rotation failed:', error)
+    console.error('Terminal state at failure:', await page.evaluate(async () => ({
+      panes: await window.redlog.terminal.list(),
+      screen: document.querySelector('.xterm-screen')?.textContent,
+      rows: (await window.redlog.events.query({ agentType: 'shell', limit: 20 })).map(e => ({
+        subtype: e.data.subtype, command: e.data.command, source: e.data.source,
+        stdout: e.data.stdout, stderr: e.data.stderr
+      }))
+    })).catch(() => 'window unavailable after original failure'))
     throw error
   } finally { await app.close() }
 })
