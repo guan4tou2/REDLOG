@@ -477,6 +477,8 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     const card = await screen.findByTestId('first-run-http')
     // The copyable commands that used to sit on the card unconditionally are
     // now the fallback shown once a check has not landed.
+    // The wrapper precedes the async running state which arms the timeout.
+    await screen.findByText('127.0.0.1:8080')
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const copy = await waitFor(() => {
       const b = [...card.querySelectorAll('button')].find((el) => el.textContent === '複製')
@@ -589,6 +591,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const nonce = await shownNonce()
     // They are the fallback: the browser check is the first offer, and these
     // appear once it has not landed.
+    await screen.findByText('127.0.0.1:8080')
     expect(screen.queryByTestId('first-run-http-verify-commands')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const codes = [...screen.getByTestId('first-run-http-verify-commands').querySelectorAll('code')].map((c) => c.textContent ?? '')

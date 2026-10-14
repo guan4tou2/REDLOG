@@ -4,6 +4,7 @@ import { join, dirname, basename } from 'node:path'
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { makeTempHome } from './helpers'
+import { readCastSlice } from '../src/core/cast-slice'
 
 // Smoke test for a PACKAGED build, run against the executable rather than the
 // source tree. Everything else in e2e/ launches `out/main`; that cannot see what
@@ -272,10 +273,17 @@ test.describe('packaged app', () => {
         const command = delivered.find(e => e.agent_type === 'shell' && e.data.subtype === 'command_end' && e.data.command === 'echo redlog-ok-builtin')
         expect(command, 'the exported package must carry the recorded canary').toBeTruthy()
         expect(command.data.exit_code).toBe(0)
-        expect(command.data.stdout).toContain('redlog-ok-builtin')
+        // Built-in PowerShell owns a cast, not an auto-relay stdout field.
+        // Check the delivered recording on every platform, including the
+        // printed line (the typed command alone is not proof of output).
+        expect(command.data.io?.ref).toBeTruthy()
         const castId = `casts/${basename(String(command.data.io.ref))}`
         expect(manifest.files.some((file: { path: string }) => file.path === castId)).toBe(true)
         expect(existsSync(join(dir, castId))).toBe(true)
+        const recorded = await readCastSlice(join(dir, castId), 0, Number.MAX_SAFE_INTEGER)
+        // Zsh's prompt redraw leaves a CR and padding after the output; ConPTY
+        // uses CRLF. Neither is the command echo, which starts with `echo`.
+        expect(recorded?.text).toMatch(/(?:^|[\r\n])redlog-ok-builtin[ \t]*(?:[\r\n]|$)/)
         if (hasMitmdump) {
           expect(v.stdout).toMatch(/Projection/)
           expect(v.stdout).not.toMatch(/Chain\s*:\s*INTACT/)

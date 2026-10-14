@@ -1,7 +1,8 @@
 # Verification: Capture Setup Wizard
 
-Date: 2026-10-14 · main@9f8bf28 + local fix/recording-closeout-opencode
-Status: Implemented locally; not merged, not fully Verified.
+Date: 2026-10-14 · initial main@9f8bf28; integrated main@3d89ffc
+Branch: fix/recording-closeout-opencode, PR #335.
+Status: Implemented; not merged, not fully Verified.
 
 ## RED
 
@@ -35,8 +36,11 @@ Status: Implemented locally; not merged, not fully Verified.
   runs uv into private tool/cache directories, observes the new executable,
   advances, restarts the real proxy and verifies an HTTP nonce. HTTPS and
   Commands correctly remain unverified. No system trust/profile changes.
-- Current local DMG SHA-256: 61e175daa81fed2077ce2d9f5a417d3f3864f8e2e86be6421106ef14cbac5875.
+- Current local DMG SHA-256: edf0ddde1b164722c46d34aef1d5a2607b74f05d1cef0b84a118481b7780d482.
   Installed via read-only mount and copy to an isolated directory.
+- Final installed candidate: 22 journeys PASS, including setup recovery,
+  real missing-tool installation, 100 commands, filtered export and terminal
+  project rotation. Cross-platform CI runs against the PR's own revision.
 
 ## Clarify
 

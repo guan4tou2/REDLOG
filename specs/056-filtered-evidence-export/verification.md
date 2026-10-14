@@ -53,10 +53,10 @@ the policy-omission scenario on macOS, not only synthetic fixtures.
 
 ## Still not verified
 
-No Windows/Kali packaged-app run was performed here. The original Windows
-scenario and clean-host install acceptance remain unrun; do not close #329 or
-mark the full Spec Verified from this single-platform smoke. Full UI selection,
-installer/platform acceptance and remaining tasks retain their own status.
+Local package execution is macOS. Windows clean-host installer acceptance is
+tracked in PR #335's dedicated CI, not inferred from macOS or a previous main
+run. Kali desktop and native WSL acceptance remain unrun. Do not close #329 or
+mark the full Spec Verified while its platform criteria remain incomplete.
 
 ## 2026-10-14 selection and attachment completion
 
@@ -81,3 +81,10 @@ The 18-journey source round includes these flows, setup recovery/dependency
 failure, terminal enrollment and project rotation. Final installed-candidate
 results and gate counts are recorded in the delivery artifact. Windows/WSL and
 Kali desktop acceptance remain T015; no unsupported Verified claim is made.
+
+Final installed macOS candidate: 22 journeys PASS, including both locales'
+filtered/frozen JSON export. The packaged bundle smoke verifies the delivered
+cast's printed output rather than requiring an inline stdout property which
+built-in PowerShell does not provide. The canary command text alone does not
+count as recorded output. UI timeout tests wait for the async running state
+before advancing the clock; no product timer or certificate check is relaxed.

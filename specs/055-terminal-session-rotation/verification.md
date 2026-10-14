@@ -61,3 +61,8 @@ New RED: a stopped pane still wrote private bytes to its cast. The writer and
 command gate now follow the shared enrollment state, and health/pane badges
 reflect pause. An enrollment write failure is a persistent recording failure.
 Native PowerShell/WSL and Kali desktop remain installer-matrix acceptance.
+
+The final macOS DMG installed copy also passes all 22 journeys, including the
+same live-shell rotation/privacy test. SHA-256 is recorded in Spec 047 and the
+delivery artifact. Windows installation CI is a separate acceptance surface;
+it does not run the POSIX-specific rotation journey.

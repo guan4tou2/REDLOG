@@ -99,6 +99,9 @@ test('a live shell survives picker and project switches with separate verifiable
     const liveBytes = fs.readFileSync(String(liveStart.data.castPath), 'utf8')
     expect(liveBytes).not.toContain('PRIVATE_PAUSED_SENTINEL')
     expect(liveBytes).toContain('PUBLIC_RESUMED_SENTINEL')
-    await page.screenshot({ path: '/private/tmp/redlog-rotation-ui.png' })
+    await page.screenshot({ path: test.info().outputPath('terminal-project-rotation.png') })
+  } catch (error) {
+    console.error('Terminal project rotation failed:', error)
+    throw error
   } finally { await app.close() }
 })
