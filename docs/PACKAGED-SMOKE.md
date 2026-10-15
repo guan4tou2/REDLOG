@@ -160,3 +160,45 @@ not verification of the published Linux x64 package. Windows portable/native
 WSL, macOS actual quarantined download/Dock launch and notarization also remain
 separate acceptance requirements. Earlier CI results above belong to bae0415;
 new packaging changes require their own head-specific CI result.
+
+## 2026-10-15 installation follow-up
+
+The missing-tool installer now has a fifteen-minute overall bound instead of
+three minutes, a visible elapsed wait, keyboard-accessible cancellation and
+distinct cancelled/retry state. Navigation away, renderer reload/destruction
+and app quit stop only the owned install tree. An installed-app journey
+checks both child and grandchild exit while an unrelated process stays alive.
+The renderer-reload case first failed with a hidden installer still running;
+it is retained as a separate RED case.
+
+A fresh private tool/cache install through the signed macOS candidate took
+79,217ms and reached actual HTTP and HTTPS nonce checks using only the private
+test-profile CA. This run's network was faster than the earlier eight-minute
+download; the speed difference is not attributed to the timer change. An
+eight-minute simulated installer remains alive and succeeds, while a hung
+installer is stopped at fifteen minutes. Earlier cold-install failures remain
+part of the history.
+
+After fixing renderer ownership, the final installed macOS candidate passes
+12 journeys, including actual cancellation/navigation/reload of the owned
+process tree and a new private cold install taking 119,834ms followed by HTTP
+and HTTPS nonce proof. Ten setup/recovery cases in that group mock IPC results;
+they are not ten additional real downloads. Final DMG SHA-256:
+`86431a33ac5a73dc5b57b6bf98796ba152a5fe0bb123681e7640ed549fdf97a8`.
+Strict ad-hoc signature verification passes; this is not notarization. The
+79,217ms candidate predates the renderer-reload fix and is historical evidence.
+
+New native x64 CI paths exercise actual DEB installation/removal, the relocated
+AppImage wrapper, and the actual Windows self-extracting portable wrapper.
+Building those workflows is not a passing result: their head-specific
+conclusions and package checksums must be recorded in PR #335. Portable capture
+checks builtin output/cast, external PowerShell command/exit, export/verifier
+and process-termination/restart; it does not claim graceful portable temporary-
+directory cleanup or WSL coverage. Ubuntu x64 results do not replace the full
+manual Kali desktop quickstart.
+
+All installed smoke reports pass through scripts/verify-smoke-report.mjs.
+Zero tests, skipped tests, flaky/failed tests, absent summary data and any
+not-exercised annotation fail the gate. Candidate artifacts remain distinct
+from a release. WSL, full manual first-enrollment timing and actual Mac
+quarantine/Dock/notarization stay open.

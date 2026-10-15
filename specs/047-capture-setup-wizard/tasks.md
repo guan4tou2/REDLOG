@@ -21,3 +21,7 @@
   Windows NSIS passed at bae0415 in run 38580377642. Portable, native WSL and
   the macOS downloaded-app checks remain unrun; do not label all Windows
   installation or this task complete from the NSIS result alone.
+- [x] T011 Recover slow cold downloads with a fifteen-minute bound, visible
+  elapsed waiting time, scoped cancellation/leave/quit, single owned install
+  per dependency and real missing-tool installed-app verification. Preserve
+  the original three-minute failures and distinguish cancellation from failure.

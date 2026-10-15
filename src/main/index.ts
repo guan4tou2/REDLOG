@@ -121,6 +121,8 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
+// One owned install per dependency, including the wait for login PATH.
+const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
 // is open to catch chain tampering silently — the on-demand verify button is
 // too easy to skip. Cleared in stopProject so a project switch stops the loop.
@@ -1661,11 +1663,32 @@ app.whenReady().then(() => {
   // An install changes what is on PATH, and `commandExists` caches a miss for
   // the session — so without this a mitmdump installed from the first-run card
   // stayed "not installed" in the health row while the proxy ran it (#254).
-  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => {
-    await loginPathReady
-    const result = await installDependency(id)
-    invalidateHooksCache(); invalidateHooksDetectCache()
-    return result
+  ipcMain.handle('runtime:install', async (e, id: PreflightCommand) => {
+    if (dependencyInstalls.has(id)) return { success: false, message: `An installation for ${id} is already running` }
+    const controller = new AbortController()
+    dependencyInstalls.set(id, controller)
+    const cancelOwned = (): void => controller.abort()
+    // A renderer reload does not run React unmount cleanup. Never leave a
+    // hidden installer behind when its requesting frame reloads or crashes.
+    e.sender.once('did-start-loading', cancelOwned)
+    e.sender.once('destroyed', cancelOwned)
+    e.sender.once('render-process-gone', cancelOwned)
+    try {
+      await loginPathReady
+      return await installDependency(id, { signal: controller.signal })
+    } finally {
+      e.sender.removeListener('did-start-loading', cancelOwned)
+      e.sender.removeListener('destroyed', cancelOwned)
+      e.sender.removeListener('render-process-gone', cancelOwned)
+      if (dependencyInstalls.get(id) === controller) dependencyInstalls.delete(id)
+      invalidateHooksCache(); invalidateHooksDetectCache()
+    }
+  })
+  ipcMain.handle('runtime:cancelInstall', (_e, id: PreflightCommand) => {
+    const controller = dependencyInstalls.get(id)
+    if (!controller) return false
+    controller.abort()
+    return true
   })
 
   // --- WSL ---
@@ -1750,6 +1773,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   forceQuit = true
+  for (const controller of dependencyInstalls.values()) controller.abort()
 })
 
 app.on('will-quit', () => {

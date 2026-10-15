@@ -1,8 +1,8 @@
 name: Windows install smoke
 
-# Builds the NSIS installer, installs it on a clean GitHub-hosted Windows runner,
-# runs the packaged-app smoke spec (e2e/packaged-smoke.spec.ts) against the
-# INSTALLED executable, then uninstalls and checks what is left behind.
+# Builds the NSIS installer and portable wrapper on separate clean Windows
+# runners. NSIS installs/captures/uninstalls; portable launches its real
+# self-extracting wrapper and preserves captured evidence across termination.
 #
 # Why this is its own workflow: nothing else exercises the installer. `unit`
 # builds the renderer and main bundles but never packages; e2e launches
@@ -17,8 +17,12 @@ on:
     paths:
       - '.github/workflows/windows-install-smoke.yml'
       - 'e2e/packaged-smoke.spec.ts'
+      - 'e2e/portable-smoke.spec.ts'
+      - 'scripts/verify-smoke-report.mjs'
       - 'electron-builder.yml'
       - 'hooks/shell-hook.ps1'
+      - 'src/main/services/dependency-installer.ts'
+      - 'src/preload/index.ts'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -147,18 +151,7 @@ jobs:
         # above, so for this job such an annotation means the check ran less
         # than it claims. The WSL step is expected to be absent (no distro on the
         # runner) and is not annotated.
-        run: |
-          $report = Get-Content test-results/packaged-smoke.json -Raw | ConvertFrom-Json
-          $notes = @()
-          function Walk($suite) {
-            foreach ($s in $suite.suites) { Walk $s }
-            foreach ($spec in $suite.specs) { foreach ($t in $spec.tests) {
-              foreach ($a in $t.annotations) { if ($a.type -eq 'not-exercised') { $script:notes += $a.description } }
-            } }
-          }
-          foreach ($s in $report.suites) { Walk $s }
-          if ($notes) { $notes | ForEach-Object { Write-Host "not exercised: $_" }; throw 'the smoke spec skipped a step this job has the tools for' }
-          Write-Host 'no step was reported as not exercised'
+        run: node scripts/verify-smoke-report.mjs test-results/packaged-smoke.json
 
       - name: Silent uninstall
         run: |
@@ -198,11 +191,70 @@ jobs:
             if ($rest.Count -gt 20) { throw "uninstall left $($rest.Count) files behind" }
           }
 
-      - name: Upload the installer and test report on failure
-        if: failure()
+      - name: Upload the candidate installer and test report
+        if: always()
         uses: actions/upload-artifact@v5
         with:
           name: install-smoke-artifacts
+          path: |
+            test-results/
+            dist/*.exe
+          if-no-files-found: ignore
+          retention-days: 7
+
+  portable-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Package the actual portable wrapper
+        run: npx electron-builder --win portable --x64 --publish never
+      - name: Verify packaged capture resources
+        run: npm run verify:package-resources
+      - name: Select the portable candidate in a path containing spaces
+        id: portable
+        run: |
+          $existing = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+            Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' }
+          if ($existing) { throw 'RedLog is already installed on this runner' }
+          $wrappers = @(Get-ChildItem dist -File -Filter '*.exe')
+          if ($wrappers.Count -ne 1) { throw "expected one portable wrapper, got $($wrappers.Count)" }
+          $dir = Join-Path $env:RUNNER_TEMP 'RedLog portable candidate'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $exe = Join-Path $dir $wrappers[0].Name
+          Copy-Item $wrappers[0].FullName $exe
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+      - name: Record through the portable wrapper, export and restart
+        env:
+          REDLOG_PORTABLE_APP: ${{ steps.portable.outputs.exe }}
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/portable-smoke.json
+        run: npx playwright test e2e/portable-smoke.spec.ts --reporter=list,json
+      - name: Require actual portable execution
+        run: node scripts/verify-smoke-report.mjs test-results/portable-smoke.json
+      - name: Portable did not create an installer registration
+        run: |
+          $entries = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+            Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' }
+          if ($entries) { throw 'portable execution unexpectedly registered an installer' }
+      - name: Upload portable candidate and report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: portable-smoke-artifacts
           path: |
             test-results/
             dist/*.exe

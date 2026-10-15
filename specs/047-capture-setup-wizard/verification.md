@@ -115,3 +115,36 @@ HTTP/HTTPS, export/verifier and restart journeys. A JSON-reported HTTP/bundle
 follow-up has no skipped steps or not-exercised annotations. Guest tools were
 separately prepared, not installed by the offline guest UI. Spec status remains
 Implemented; docs/PACKAGED-SMOKE.md records exact artifacts and limits.
+
+## 2026-10-15 cold-install/cancellation follow-up
+
+The measured three-minute false timeout has an observable RED regression:
+a healthy eight-minute install was killed. With a shared fifteen-minute
+bound it completes; a hung install still times out. Cancellation before spawn
+does not spawn, and a cancelled attempt cannot be promoted by a late exit 0.
+The cancelled state is neutral and retryable, separate from install failure
+and from capture verification.
+
+The signed installed app actually cancels its controlled installer tree,
+preserves a separate unrelated process, and cancels on navigation away. Its
+renderer-reload check first leaves the tree alive (RED), motivating sender
+lifecycle cancellation in the main process; that failure is retained.
+
+A separate opt-in test starts with no mitmdump and a fresh private uv tool,
+cache and Python-install directory. Actual public installation takes 79,217ms,
+then the owned proxy and real HTTP/HTTPS nonce checks pass without changing
+system trust. This network was faster than the earlier eight-minute download;
+it is not evidence that raising the timeout made downloads faster.
+
+The final owner-lifecycle candidate passes all twelve installed journeys:
+controlled child/grandchild cancellation, leave and renderer reload with an
+unrelated process preserved; ten setup/recovery journeys; and a new actual
+private tool/cache/Python install taking 119,834ms followed by real HTTP and
+HTTPS proof. The setup/recovery cases use mocked IPC outcomes; the installer,
+process-lifecycle and HTTP/HTTPS journeys use the installed application and
+actual processes. DMG SHA-256:
+`86431a33ac5a73dc5b57b6bf98796ba152a5fe0bb123681e7640ed549fdf97a8`.
+Its strict resource signature check passes; publisher signing/notarization
+remain absent. The earlier renderer-reload failure is retained. Installer
+success/cancel/skip alone never verifies capture. T011 is complete; T010 and
+the overall native matrix remain open.

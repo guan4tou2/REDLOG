@@ -30,3 +30,15 @@ layer is introduced.
 Risks: remediation may require privileges or a prerequisite package manager;
 these remain explicit operator actions. Installed tools do not prove capture.
 Native Windows/WSL and macOS quarantine verification needs matching hosts.
+
+## 2026-10-15 cold-download recovery
+
+Actual public downloads exceeded eight minutes while the app killed installs
+at three. The single runtime installer now allows up to fifteen minutes with
+elapsed waiting time, explicit cancellation and retry. No synthetic percentage
+or capture-ready state is shown. Leaving preparation or quitting cancels the
+owned install, including its private POSIX process group/Windows child tree.
+Only one install per dependency may run; cancellation while login PATH is
+pending must prevent spawning. Abort listeners/timers and retained output are
+bounded. Cancellation and failure remain different UI states. A fresh private
+tool/cache installation must pass through the real UI before T011 is complete.

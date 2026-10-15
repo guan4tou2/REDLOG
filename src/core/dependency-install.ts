@@ -14,6 +14,10 @@
 
 import type { PreflightCheck } from './runtime-preflight'
 
+// A measured cold download exceeded eight minutes. Keep a finite overall
+// bound while allowing it to finish; the operator can cancel sooner.
+export const INSTALL_TIMEOUT_MS = 15 * 60_000
+
 export type InstallPlan =
   | { kind: 'none'; reason: 'present' | 'no-remediation' }
   | { kind: 'needs-prereq'; prereq: { command: string; url: string } }

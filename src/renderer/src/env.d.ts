@@ -424,7 +424,9 @@ interface RedLogAPI {
       success: boolean
       message: string
       needsPrereq?: { command: string; url: string }
+      cancelled?: boolean
     }>
+    cancelInstall: (id: RuntimePreflight['checks'][number]['id']) => Promise<boolean>
   }
   plugins: {
     list: () => Promise<unknown[]>

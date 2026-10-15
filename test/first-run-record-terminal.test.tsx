@@ -104,7 +104,7 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
       query: bridge.query,
       onNewBatch: (cb: (evs: Ev[]) => void) => { listeners.push(cb); return () => { listeners = listeners.filter((l) => l !== cb) } }
     },
-    runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall },
+    runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall, cancelInstall: vi.fn(async () => true) },
     hooks: { install: bridge.install },
     app: { openExternal: vi.fn(async () => {}) },
     httpCapture: {

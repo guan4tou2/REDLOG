@@ -16,13 +16,13 @@ const preflight = (missing = true): RuntimePreflight => ({
 })
 const draw = (pf: RuntimePreflight | null = preflight(), failed = false) => {
   const recheck = vi.fn(), skip = vi.fn(), leave = vi.fn()
-  render(<I18nProvider><CapturePreparation preflight={pf} failed={failed} onRecheck={recheck} onSkip={skip} onLeave={leave} /></I18nProvider>)
-  return { recheck, skip, leave }
+  const view = render(<I18nProvider><CapturePreparation preflight={pf} failed={failed} onRecheck={recheck} onSkip={skip} onLeave={leave} /></I18nProvider>)
+  return { recheck, skip, leave, unmount: view.unmount }
 }
 beforeEach(() => {
   localStorage.setItem('redlog-locale', 'en')
   ;(window as unknown as { redlog: unknown }).redlog = {
-    runtime: { install: vi.fn(async () => ({ success: false, message: 'download unavailable' })) },
+    runtime: { install: vi.fn(async () => ({ success: false, message: 'download unavailable' })), cancelInstall: vi.fn(async () => true) },
     clipboard: { writeText: vi.fn(async () => true) },
     app: { openExternal: vi.fn() }
   }
@@ -30,6 +30,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear() })
 
 describe('capture preparation', () => {
+  it('shows the bounded wait and lets the operator cancel without claiming capture is ready', async () => {
+    let finish!: (result: { success: boolean; message: string; cancelled: boolean }) => void
+    vi.mocked(window.redlog.runtime.install).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    vi.mocked(window.redlog.runtime.cancelInstall).mockImplementation(async () => {
+      finish({ success: false, message: 'Installation cancelled', cancelled: true })
+      return true
+    })
+    const { recheck } = draw()
+    fireEvent.click(screen.getByTestId('prepare-install-mitmdump'))
+    expect(screen.getByTestId('prepare-install-status-mitmdump').textContent).toContain('15 minutes')
+    fireEvent.click(screen.getByTestId('prepare-cancel-mitmdump'))
+    expect((await screen.findByTestId('prepare-cancelled-mitmdump')).textContent).toContain('Installation cancelled')
+    expect(screen.queryByTestId('prepare-error-mitmdump')).toBeNull()
+    expect(window.redlog.runtime.cancelInstall).toHaveBeenCalledWith('mitmdump')
+    expect(recheck).not.toHaveBeenCalled()
+    expect((screen.getByTestId('prepare-install-mitmdump') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('cancels only its pending dependency when leaving preparation', () => {
+    vi.mocked(window.redlog.runtime.install).mockImplementation(() => new Promise(() => {}))
+    const { unmount } = draw()
+    fireEvent.click(screen.getByTestId('prepare-install-mitmdump'))
+    unmount()
+    expect(window.redlog.runtime.cancelInstall).toHaveBeenCalledExactlyOnceWith('mitmdump')
+  })
   it('lists only missing dependencies for the selected capture paths', () => {
     draw()
     expect(screen.getByTestId('prepare-dependency-mitmdump')).toBeTruthy()

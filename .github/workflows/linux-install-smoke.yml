@@ -1,0 +1,121 @@
+name: Linux package smoke
+
+# Native x64 Ubuntu runner: install the DEB, then launch the AppImage wrapper.
+# This does not replace the remaining manual Kali desktop quickstart.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/linux-install-smoke.yml'
+      - 'electron-builder.yml'
+      - 'hooks/**'
+      - 'scripts/verify-packaged-resources.mjs'
+      - 'scripts/verify-smoke-report.mjs'
+      - 'e2e/packaged-*.spec.ts'
+      - 'e2e/dependency-cancel.spec.ts'
+      - 'e2e/terminal-session-rotation.spec.ts'
+      - 'src/main/services/dependency-installer.ts'
+      - 'src/preload/index.ts'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install desktop and capture prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb zsh netcat-traditional libasound2t64 libgbm1
+          mkdir -p "$RUNNER_TEMP/redlog-capture-bin"
+          ln -s "$(command -v nc.traditional)" "$RUNNER_TEMP/redlog-capture-bin/nc"
+          echo "$RUNNER_TEMP/redlog-capture-bin" >> "$GITHUB_PATH"
+          python -m pip install --quiet mitmproxy
+          mitmdump --version
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build
+        run: npm run build
+      - name: Build DEB and AppImage x64 candidates
+        run: npx electron-builder --linux deb AppImage --x64 --publish never
+      - name: Verify packaged capture resources
+        run: npm run verify:package-resources
+      - name: Clean precondition and actual DEB installation
+        run: |
+          if dpkg-query -W redlog 2>/dev/null; then
+            echo 'RedLog is already installed on this runner' >&2
+            exit 1
+          fi
+          if test -e "$HOME/.redlog" || test -e /opt/RedLog/redlog; then
+            echo 'RedLog data or executable already exists' >&2
+            exit 1
+          fi
+          sudo apt-get install -y ./dist/*.deb
+          test -x /opt/RedLog/redlog
+          dpkg-query -W redlog
+      - name: Installed DEB records, preserves native sessions and exports
+        env:
+          REDLOG_PACKAGED_APP: /opt/RedLog/redlog
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/linux-deb-smoke.json
+        run: >-
+          xvfb-run -a npx playwright test
+          e2e/packaged-smoke.spec.ts e2e/packaged-command-integrity.spec.ts
+          e2e/packaged-session-smoke.spec.ts e2e/packaged-nc-upgrade.spec.ts
+          e2e/terminal-session-rotation.spec.ts e2e/dependency-cancel.spec.ts
+          --workers=1 --reporter=list,json
+      - name: Require every DEB capture path to run
+        run: node scripts/verify-smoke-report.mjs test-results/linux-deb-smoke.json
+      - name: Remove the DEB
+        run: |
+          sudo apt-get remove -y redlog
+          test ! -e /opt/RedLog/redlog
+      - name: Select AppImage in a path containing spaces
+        id: appimage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os, shutil
+          images = list(Path('dist').glob('*.AppImage'))
+          assert len(images) == 1, images
+          target = Path(os.environ['RUNNER_TEMP']) / 'RedLog AppImage candidate' / images[0].name
+          target.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(images[0], target)
+          target.chmod(0o755)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'exe={target}\n')
+          PY
+      - name: Actual AppImage wrapper records and exports after relocation
+        env:
+          REDLOG_PACKAGED_APP: ${{ steps.appimage.outputs.exe }}
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/linux-appimage-smoke.json
+        run: >-
+          xvfb-run -a npx playwright test e2e/packaged-smoke.spec.ts
+          e2e/packaged-session-smoke.spec.ts --workers=1 --reporter=list,json
+      - name: Require actual AppImage execution
+        run: node scripts/verify-smoke-report.mjs test-results/linux-appimage-smoke.json
+      - name: Candidate checksums
+        run: sha256sum dist/*.deb dist/*.AppImage > dist/SHA256SUMS.txt
+      - name: Upload Linux candidates and reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-install-smoke-artifacts
+          path: |
+            test-results/
+            dist/*.deb
+            dist/*.AppImage
+            dist/SHA256SUMS.txt
+          if-no-files-found: ignore
+          retention-days: 7

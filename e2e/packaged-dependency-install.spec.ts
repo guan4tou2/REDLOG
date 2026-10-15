@@ -3,12 +3,13 @@ import { existsSync, mkdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeTempHome, openTestProject } from './helpers'
+import { INSTALL_TIMEOUT_MS } from '../src/core/dependency-install'
 
 // Opt-in: downloads public mitmproxy packages into this test's private uv
 // directories. It does not touch installed user tools or the system trust store.
 test('packaged setup installs missing HTTP tools and reaches real capture', async () => {
   test.skip(process.platform !== 'darwin' || !process.env.REDLOG_PACKAGED_APP || process.env.REDLOG_PACKAGED_INSTALL_DEPS !== '1', 'Requires a current macOS package and explicit dependency-install opt-in')
-  test.setTimeout(240_000)
+  test.setTimeout(INSTALL_TIMEOUT_MS + 90_000)
   const uv = spawnSync('which', ['uv'], { encoding: 'utf8' }).stdout.trim()
   const python = spawnSync('python3', ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8' }).stdout.trim()
   expect(existsSync(uv)).toBe(true)
@@ -35,8 +36,12 @@ test('packaged setup installs missing HTTP tools and reaches real capture', asyn
     await openTestProject(page, 'real-dependency-install')
     expect((await page.evaluate(() => window.redlog.runtime.preflight())).checks.find(c => c.id === 'mitmdump')?.found).toBe(false)
     await expect(page.getByTestId('prepare-dependency-mitmdump')).toBeVisible()
+    const installStarted = Date.now()
+    console.log('Cold dependency installation started:', { home })
     await page.getByTestId('prepare-install-mitmdump').click()
-    await expect(page.getByTestId('capture-prepare')).toHaveCount(0, { timeout: 180_000 })
+    await expect(page.getByTestId('prepare-install-status-mitmdump')).toBeVisible()
+    await expect(page.getByTestId('prepare-cancel-mitmdump')).toBeEnabled()
+    await expect(page.getByTestId('capture-prepare')).toHaveCount(0, { timeout: INSTALL_TIMEOUT_MS + 10_000 })
     expect(existsSync(join(bin, 'mitmdump'))).toBe(true)
     expect((await page.evaluate(() => window.redlog.runtime.preflight())).checks.find(c => c.id === 'mitmdump')?.found).toBe(true)
     await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
@@ -50,8 +55,11 @@ test('packaged setup installs missing HTTP tools and reaches real capture', asyn
     expect(curl.status, curl.stderr).toBe(0)
     await expect(page.getByTestId('first-run-http-check-http')).toHaveAttribute('data-verified', 'true')
     await expect(page.getByTestId('first-run-http-check-https')).toHaveAttribute('data-verified', 'false')
+    const https = spawnSync('/usr/bin/curl', ['--silent', '--show-error', '--fail', '--max-time', '10', '--noproxy', '', '--proxy', status.url!, '--cacert', status.caPath!, `https://redlog.verify.invalid/${nonce}`], { encoding: 'utf8' })
+    expect(https.status, https.stderr).toBe(0)
+    await expect(page.getByTestId('first-run-http-check-https')).toHaveAttribute('data-verified', 'true')
     await page.screenshot({ path: join(home, 'installed-http-tools.png') })
-    console.log('Isolated dependency install evidence:', home)
+    console.log('Isolated dependency install evidence:', { home, elapsedMs: Date.now() - installStarted })
   } catch (error) {
     console.error('Packaged dependency install failed:', error)
     console.error('Isolated installation home:', home)

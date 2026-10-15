@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { INSTALL_TIMEOUT_MS } from '../../../core/dependency-install'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
@@ -18,15 +19,33 @@ function DependencyRow({ check, onRecheck }: {
 }): JSX.Element {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const pending = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [requires, setRequires] = useState(check.remediationRequires)
+  useEffect(() => () => {
+    if (pending.current) void window.redlog.runtime.cancelInstall(check.id).catch(e => console.warn('Could not cancel dependency installation', e))
+  }, [check.id])
+  useEffect(() => {
+    if (!busy) return
+    const started = Date.now()
+    setElapsed(0)
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [busy])
   const install = async (): Promise<void> => {
+    pending.current = true
     setBusy(true)
+    setError(null)
+    setCancelled(false)
     try {
       const result = await window.redlog.runtime.install(check.id)
       if (result.success) {
         setError(null)
         onRecheck()
+      } else if (result.cancelled) {
+        setCancelled(true)
       } else {
         setError(result.message)
         setRequires(result.needsPrereq ?? check.remediationRequires)
@@ -34,17 +53,32 @@ function DependencyRow({ check, onRecheck }: {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
+      pending.current = false
       setBusy(false)
     }
+  }
+  const cancel = async (): Promise<void> => {
+    try { await window.redlog.runtime.cancelInstall(check.id) }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }
   return (
     <li data-testid={`prepare-dependency-${check.id}`} className="border border-redlog-border rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-redlog-text">{check.id === 'mitmdump' ? 'mitmproxy' : check.id}</span>
         <Button level="secondary" disabled={busy} onClick={() => void install()} data-testid={`prepare-install-${check.id}`}>
-          {busy ? t('captureSetup.installing') : error ? t('common.retry') : t('captureSetup.install')}
+          {busy ? t('captureSetup.installing') : error || cancelled ? t('common.retry') : t('captureSetup.install')}
         </Button>
       </div>
+      {busy && (
+        <div className="space-y-2 text-xs text-redlog-text-dim" data-testid={`prepare-install-status-${check.id}`}>
+          <p role="status">{t('captureSetup.installWait', { minutes: INSTALL_TIMEOUT_MS / 60_000 })}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <span aria-live="off">{t('captureSetup.installElapsed', { seconds: elapsed })}</span>
+            <Button level="quiet" data-testid={`prepare-cancel-${check.id}`} onClick={() => void cancel()}>{t('common.cancel')}</Button>
+          </div>
+        </div>
+      )}
+      {cancelled && <p role="status" data-testid={`prepare-cancelled-${check.id}`} className="text-xs text-redlog-text-dim">{t('captureSetup.installCancelled')}</p>}
       {error !== null && (
         <div role="alert" data-testid={`prepare-error-${check.id}`} className="text-xs space-y-2">
           <p className="text-amber-300 break-words">{error}</p>

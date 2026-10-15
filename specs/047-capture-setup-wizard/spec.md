@@ -213,6 +213,12 @@ no readiness surface and no dependency list.
 - **FR-011**: Wizard progress MUST derive from observable state — what the
   machine has installed and what the project has captured — and MUST NOT
   persist a per-install "seen" flag as the reason to skip setup.
+- **FR-012**: A slow dependency download MUST have an explicit finite wait,
+  visible elapsed time and a reachable cancel action. Leaving preparation,
+  reloading/destroying its requesting renderer or quitting MUST cancel only
+  the owned install. Cancellation, failure and
+  successful availability checks MUST remain distinct; no elapsed-time or
+  installer-success state may verify capture.
 
 ### Key Entities
 

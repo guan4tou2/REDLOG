@@ -229,7 +229,8 @@ const api: RedLogAPI = {
   },
   runtime: {
     preflight: () => ipcRenderer.invoke('runtime:preflight'),
-    install: (id: string) => ipcRenderer.invoke('runtime:install', id)
+    install: (id: string) => ipcRenderer.invoke('runtime:install', id),
+    cancelInstall: (id: string) => ipcRenderer.invoke('runtime:cancelInstall', id)
   },
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),
