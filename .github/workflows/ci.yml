@@ -13,14 +13,14 @@ concurrency:
 
 jobs:
   unit:
-    # Matrix keeps unit tests + build on Windows so POSIX-only assumptions
-    # (path separators, HOME vs USERPROFILE, tar.exe availability, shell-source
-    # install refusal) surface before an operator ever installs the DMG/exe.
-    # See docs/WINDOWS_COMPAT_AUDIT.md P0-1 for the trigger.
+    # Test every supported desktop OS before tagging. macOS PTYs flush queued
+    # output at the final slave close while Linux retains it; a Linux-only
+    # POSIX gate missed that recording defect until the v0.18.1 Release job.
+    # Windows also catches path, profile and shell-install assumptions.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -73,7 +73,7 @@ jobs:
         # ship zsh, so for as long as this step was missing every one of them
         # reported as skipped — a green run that had checked none of the
         # adapter. Windows reaches zsh through WSL, which the runner lacks, so
-        # those specs are Linux-only by construction.
+        # those specs require a native POSIX runner (Linux or macOS).
         #
         # `update` first, as the e2e job does: the runner image's package index
         # can be older than the archive, and a stale one fails the install
@@ -99,7 +99,7 @@ jobs:
         # the next occurrence is diagnosable from the artifact instead of
         # needing to happen again on someone's machine.
         #
-        # Per-leg name: ubuntu and windows would otherwise overwrite each
+        # Per-leg name: the operating systems would otherwise overwrite each
         # other, and which platform failed is half the signal.
         if: failure()
         uses: actions/upload-artifact@v5

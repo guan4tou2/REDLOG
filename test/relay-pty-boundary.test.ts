@@ -5,6 +5,38 @@ import os from 'node:os'
 import path from 'node:path'
 
 describe.skipIf(process.platform === 'win32')('automatic relay PTY completion boundary', () => {
+  it('drains a command that closes both writers before the relay receives its handover', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-relay-fast-close-'))
+    const child = spawn('python3', ['hooks/redlog-relay.py', 'pty', '--dir', dir, '--err-fd', '3'], { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
+    const finished = new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve) })
+    let stdout = '', stderr = ''
+    child.stdout.on('data', b => { stdout += b })
+    child.stdio[3]?.on('data', b => { stderr += b })
+    const writers: number[] = []
+    try {
+      await expect.poll(() => fs.existsSync(path.join(dir, 'pts'))).toBe(true)
+      for (const name of fs.readFileSync(path.join(dir, 'pts'), 'utf8').split('\n')) writers.push(fs.openSync(name, 'w'))
+      // A fast command can finish before the recorder gets another timeslice.
+      // On macOS, closing the final slave flushes unread master data. Queue
+      // both bodies and close the command's writers BEFORE permitting handover.
+      fs.writeSync(writers[0], 'fast-output\n')
+      fs.writeSync(writers[1], 'fast-error\n')
+      for (const fd of writers.splice(0)) fs.closeSync(fd)
+      fs.writeFileSync(path.join(dir, 'closed'), '')
+      fs.writeFileSync(path.join(dir, 'opened'), '')
+      expect(await finished).toBe(0)
+      expect(stdout).toBe('fast-output\n')
+      expect(stderr).toBe('fast-error\n')
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'stdout.json'), 'utf8'))).toMatchObject({ text: 'fast-output\n', bytes: 12, truncated: false })
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'stderr.json'), 'utf8'))).toMatchObject({ text: 'fast-error\n', bytes: 11, truncated: false })
+    } finally {
+      for (const fd of writers) fs.closeSync(fd)
+      child.kill('SIGKILL')
+      await finished
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('finishes at EOF after an incomplete work directory is removed, without recreating it', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-relay-abandon-'))
     const child = spawn('python3', ['hooks/redlog-relay.py', 'pty', '--dir', dir, '--err-fd', '3'], { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
