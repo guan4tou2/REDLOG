@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/056-filtered-evidence-export`
 **Created**: 2026-09-28
-**Status**: Draft
+**Status**: Implemented
 **Input**: Continue F05 from the app audit: export must carry the investigation's actual filters, including HTTP method/status/text, without treating loaded pages or their timestamp envelope as the full result.
 
 ## User Scenarios & Testing

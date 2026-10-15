@@ -5,6 +5,51 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Built-in terminal panes, running jobs and bounded scrollback survive project
+  switches. Each project owns a separate hashed recording; the picker keeps
+  panes reachable and visibly unrecorded. Late command completions use origin
+  locators without foreign evidence links. External shell pins remain intact.
+- Creating the same operator in another project reuses its signing identity;
+  it no longer overwrites the key and invalidates other projects' signatures.
+- Filtered export rejects malformed predicates and freezes included attachment
+  content, including equal-size edits, as well as the selected event snapshot.
+
+- Capture setup prepares missing tools before proving recording. Prepared
+  hosts advance automatically; installation failures retain retry, the exact
+  manual remedy and prerequisite. Command/HTTP cards share this install entry.
+- POSIX recorders keep PTY masters open after transient EOF/EIO until the
+  command boundary is confirmed, preserving later output and writable streams.
+  Suspended jobs can resume after an incomplete drain without their output
+  terminal being closed by cleanup.
+
+- Offline POSIX events use unique spool files on macOS as well as Linux;
+  multiple events in one second no longer overwrite command output or exits.
+- PowerShell offline events also have unique file IDs; events in the same
+  millisecond cannot overwrite each other. Bash startup does not advertise
+  the Zsh-only `redlog status`/`redlog stop` commands.
+- HTTP dependency installation keeps failures and the manual remedy in the
+  setup card, and checks that the tool is actually available before reporting
+  success. `stty` operates directly on the controlling terminal.
+- Managed HTTP stays starting until its owned addon answers a private readiness
+  probe; process liveness and buffered console text no longer count as running.
+  Cold starts have a bounded 30-second window. A timed-out owned process is
+  stopped with a visible reason before retry; checks do not enter the evidence.
+
+- Existing projects can reopen capture setup from Dashboard → Capture Health → Capture setup without clearing their evidence.
+
+- Embedded Zsh commands retain their built-in terminal source when auto-relayed, so their recording links and capture health stay attached to the pane.
+
+- WSL diagnostics distinguish the 10-second startup timeout from script failure, preserve completed checks, and suggest starting the distro before retrying.
+
+- Evidence bundle verification distinguishes a filtered/masked projection from
+  a complete source chain. Policy omissions no longer look like broken links;
+  delivered counts, identities, files and eligible original row hashes are
+  checked. Manifest checksums are verified, and projection limits are explicit.
+- POSIX events identify the executing adapter, rather than the login shell.
+  Standalone event senders use an inherited adapter identity or report unknown.
+- A stale native RedLog directory under WSL no longer shadows the Windows
+  profile; a bounded health probe preserves an actually running native app.
+
 - **A command that printed a lot left no record of having finished.** Terminal
   capture handed each `command_end` to the next step as a single argument, and
   Linux limits one argument to 128 KiB while the recorder keeps up to 8 MiB per

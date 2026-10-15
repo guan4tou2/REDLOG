@@ -27,6 +27,30 @@ interface Tab {
   castRecording?: boolean
   castTruncated?: boolean
   castPaused?: boolean
+  recordingReason?: 'no-project' | 'recording-failed'
+  recordingError?: string
+}
+
+interface PaneRuntime {
+  term: Terminal
+  fit: FitAddon
+  search: SearchAddon
+  alive: boolean
+  pid: number
+  castState: TerminalCastState | null
+  unhookedShell: string | null
+  handlers: { pid: (pid: number) => void; state: (state: TerminalCastState) => void; exit: () => void; unhooked: (shell: string | null) => void } | null
+  dispose: () => void
+}
+
+// Xterm owns its bounded 5,000-line screen/scrollback. Navigation can detach
+// its DOM without destroying that model, or replacing it with a short IPC tail.
+const paneRuntimes = new Map<string, PaneRuntime>()
+function disposePaneRuntime(id: string): void {
+  const runtime = paneRuntimes.get(id)
+  if (!runtime) return
+  paneRuntimes.delete(id)
+  runtime.dispose()
 }
 
 let tabCounter = 0
@@ -41,7 +65,7 @@ interface ShellOption {
   flavour: 'powershell' | 'posix' | 'none'
 }
 
-export default function TerminalView(): JSX.Element {
+export default function TerminalView({ allowNew = true }: { allowNew?: boolean }): JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
   // Persist font-size across sessions; ⌘+ / ⌘- adjust it live.
@@ -93,6 +117,7 @@ export default function TerminalView(): JSX.Element {
   }, [deliver, tabs, activeTab])
 
   const addTab = useCallback((shellId?: string) => {
+    if (!allowNew) return
     const n = ++tabCounter
     const id = `term-${Date.now()}-${n}`
     // Monotonic counter — using tabs.length + 1 caused collisions after close
@@ -101,7 +126,7 @@ export default function TerminalView(): JSX.Element {
     const tab: Tab = { id, label, pid: 0, alive: true, shellId: shellId || preferredShell || undefined }
     setTabs((prev) => [...prev, tab])
     setActiveTab(id)
-  }, [t, preferredShell])
+  }, [t, preferredShell, allowNew])
 
   const closeTab = useCallback(async (id: string) => {
     // Terminal panes host live PTY sessions (with shell hook capturing every
@@ -111,6 +136,7 @@ export default function TerminalView(): JSX.Element {
     // irreversible and this is not — the tab reopens in the same cwd. Close
     // it, say so, and offer the way back for eight seconds.
     const tab = tabs.find((t) => t.id === id)
+    disposePaneRuntime(id)
     window.redlog.terminal.kill(id)
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id)
@@ -125,10 +151,10 @@ export default function TerminalView(): JSX.Element {
     // operator find out.
     toast(t('terminal.tabClosed', { label: tab?.label ?? '' }), {
       why: t('terminal.tabClosedWhy'),
-      action: { label: t('toast.undo'), onClick: () => addTab() },
+      ...(allowNew ? { action: { label: t('toast.undo'), onClick: () => addTab() } } : {}),
       duration: UNDO_MS
     })
-  }, [activeTab, tabs, t, addTab])
+  }, [activeTab, tabs, t, addTab, allowNew])
 
   const didInit = useRef(false)
   useEffect(() => {
@@ -143,11 +169,12 @@ export default function TerminalView(): JSX.Element {
     // scrollback, so re-attaching is exactly what the operator wants: the
     // session they left, with its history.
     void (window.redlog.terminal.list() ?? Promise.resolve([]))
-      .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean; paused?: boolean }>) => {
+      .then((live) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
         setTabs(live.map((s, i) => ({
           id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
-          castRecording: s.recording, castTruncated: s.castTruncated, castPaused: s.paused
+          castRecording: s.recording, castTruncated: s.castTruncated, castPaused: s.paused,
+          recordingReason: s.recordingReason, recordingError: s.recordingError
         })))
         setActiveTab(live[0].id)
         tabCounter = Math.max(tabCounter, live.length)
@@ -252,7 +279,7 @@ export default function TerminalView(): JSX.Element {
             {tab.pid > 0 && tab.alive && (
               <span className="text-xs text-redlog-text-faint font-mono">{tab.pid}</span>
             )}
-            {!tab.alive && (
+            {!tab.alive && allowNew && (
               <button
                 onClick={(e) => {
                   // Restart in place: swap the tab's id for a fresh one — React
@@ -283,6 +310,7 @@ export default function TerminalView(): JSX.Element {
         ))}
         <button
           onClick={() => addTab()}
+          disabled={!allowNew}
           className="w-7 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm"
           title={t('terminal.newTab')}
           aria-label={t('terminal.newTab')}
@@ -293,7 +321,7 @@ export default function TerminalView(): JSX.Element {
         {/* Which shell the next pane opens with. Hidden when the machine only
             offers one — a menu with a single entry is a decision the operator
             does not have. */}
-        {shells.length > 1 && (
+        {allowNew && shells.length > 1 && (
           <div className="relative">
             <button
               onClick={() => setShellMenuOpen((v) => !v)}
@@ -416,7 +444,7 @@ export default function TerminalView(): JSX.Element {
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
-              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused } : t))}
+              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused, recordingReason: state.recordingReason, recordingError: state.recordingError } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />
@@ -424,7 +452,7 @@ export default function TerminalView(): JSX.Element {
         ))}
         {tabs.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <button
+            <button disabled={!allowNew}
               onClick={() => addTab()}
               className="px-4 py-2 rounded-lg bg-redlog-elevated text-redlog-text-dim text-sm hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
             >
@@ -442,7 +470,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
   active: boolean
   shellId?: string
   onPid: (pid: number) => void
-  onCastState: (state: { recording: boolean; castTruncated: boolean; paused: boolean }) => void
+  onCastState: (state: TerminalCastState) => void
   onExit: () => void
   fontSize: number
   onSearch: () => void
@@ -457,6 +485,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
   // being recorded. A capture gap has to be visible where the operator is
   // working, not just inferable from an empty timeline later.
   const [unhookedShell, setUnhookedShell] = useState<string | null>(null)
+  const [recordingState, setRecordingState] = useState<TerminalCastState | null>(null)
 
   // Right-click menu. xterm keeps its selection in its own model rather than the
   // DOM, so Chromium's context-menu event fires with an empty selection here and
@@ -493,12 +522,8 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
     const el = containerRef.current
     if (!el) return
 
-    // Recreate the xterm on every mount. StrictMode (dev) mounts→unmounts→
-    // mounts; the cleanup disposes the term, so we must rebuild it — a guard
-    // that skipped recreation left a disposed, blank terminal. The pty side is
-    // idempotent: spawnTerminal returns the existing session and replays its
-    // buffer, so the fresh term catches up on the shell prompt.
-    const term = new Terminal({
+    const retained = paneRuntimes.get(id)
+    const term = retained?.term ?? new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
       fontSize,
@@ -533,10 +558,9 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
       scrollback: 5000
     })
 
-    const fitAddon = new FitAddon()
-    const searchAddon = new SearchAddon()
-    term.loadAddon(fitAddon)
-    term.loadAddon(searchAddon)
+    const fitAddon = retained?.fit ?? new FitAddon()
+    const searchAddon = retained?.search ?? new SearchAddon()
+    if (!retained) { term.loadAddon(fitAddon); term.loadAddon(searchAddon) }
 
     // Native-feeling clipboard on macOS: ⌘C copies the selection when there
     // IS one, else falls through to xterm's default (which sends SIGINT).
@@ -563,31 +587,44 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
       return true
     })
 
-    term.open(containerRef.current!)
+    if (term.element) el.appendChild(term.element)
+    else term.open(el)
 
     termRef.current = term
     fitRef.current = fitAddon
     searchRef.current = searchAddon
     onSearchAddon(searchAddon)
 
-    // Subscribe to pty output BEFORE spawning, so the buffer the main process
-    // replays for an existing session lands in this fresh term. Per-command
-    // logging is handled by the shell hook (command_start/command_end) — the
-    // full session is also recorded to the tamper-evident .cast.
-    const unsubData = window.redlog.terminal.onData(id, (data) => {
-      term.write(data)
-    })
-    const unsubExit = window.redlog.terminal.onExit(id, () => {
-      term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
-      onExit()
-    })
-    const unsubCast = window.redlog.terminal.onCastState(id, onCastState)
-    const dispInput = term.onData((data) => {
-      window.redlog.terminal.write(id, data)
-    })
-    const dispResize = term.onResize(({ cols, rows }) => {
-      window.redlog.terminal.resize(id, cols, rows)
-    })
+    const updateCastState = (state: TerminalCastState): void => { setRecordingState(state); onCastState(state) }
+    const runtime: PaneRuntime = retained ?? {
+      term, fit: fitAddon, search: searchAddon, alive: true, pid: 0,
+      castState: null, unhookedShell: null, handlers: null, dispose: () => {}
+    }
+    runtime.handlers = { pid: onPid, state: updateCastState, exit: onExit, unhooked: setUnhookedShell }
+    if (!retained) {
+      paneRuntimes.set(id, runtime)
+      // Keep receiving output while detached. Only pane close/process exit
+      // ends these subscriptions; remounting must not replay the IPC tail twice.
+      const unsubData = window.redlog.terminal.onData(id, data => term.write(data))
+      const unsubExit = window.redlog.terminal.onExit(id, () => {
+        runtime.alive = false
+        term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
+        if (runtime.handlers) runtime.handlers.exit()
+        else disposePaneRuntime(id)
+      })
+      const unsubCast = window.redlog.terminal.onCastState(id, state => {
+        runtime.castState = state
+        runtime.handlers?.state(state)
+      })
+      const input = term.onData(data => window.redlog.terminal.write(id, data))
+      const resize = term.onResize(({ cols, rows }) => window.redlog.terminal.resize(id, cols, rows))
+      runtime.dispose = () => { unsubData(); unsubExit(); unsubCast?.(); input.dispose(); resize.dispose(); term.dispose() }
+    } else {
+      onPid(runtime.pid)
+      if (runtime.castState) updateCastState(runtime.castState)
+      setUnhookedShell(runtime.unhookedShell)
+      if (!runtime.alive) onExit()
+    }
 
     const resizeObserver = new ResizeObserver(() => {
       requestAnimationFrame(() => {
@@ -598,23 +635,29 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
 
     requestAnimationFrame(() => {
       try { fitAddon.fit() } catch {}
+      if (retained) return
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
-        .then((r) => {
-          onPid(r.pid)
-          onCastState({ recording: r.recording, castTruncated: r.castTruncated, paused: r.paused })
-          if (!r.hookSourced) setUnhookedShell(r.shell)
+        .then(r => {
+          runtime.pid = r.pid
+          runtime.castState = r
+          runtime.unhookedShell = r.hookSourced ? null : r.shell
+          runtime.handlers?.pid(r.pid)
+          runtime.handlers?.state(r)
+          runtime.handlers?.unhooked(runtime.unhookedShell)
         })
-        .catch(() => {})
+        .catch(error => {
+          runtime.alive = false
+          runtime.castState = { recording: false, castTruncated: false, paused: false, recordingReason: 'recording-failed', recordingError: String(error) }
+          runtime.handlers?.state(runtime.castState)
+          runtime.handlers?.exit()
+          if (!runtime.handlers) disposePaneRuntime(id)
+        })
     })
 
     return () => {
       resizeObserver.disconnect()
-      unsubData()
-      unsubExit()
-      unsubCast?.()
-      dispInput.dispose()
-      dispResize.dispose()
-      term.dispose()
+      runtime.handlers = null
+      if (!runtime.alive) disposePaneRuntime(id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
@@ -639,6 +682,11 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
 
   return (
     <div className="w-full h-full flex flex-col">
+      {recordingState?.recordingReason && (
+        <div role="status" data-testid="terminal-recording-gap" className="shrink-0 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10 text-xs text-amber-300">
+          {recordingState.recordingReason === 'no-project' ? t('terminal.noProjectRecording') : t('terminal.recordingFailed', { reason: recordingState.recordingError ?? '' })}
+        </div>
+      )}
       {unhookedShell && (
         <div
           role="status"

@@ -4,16 +4,18 @@ import os from 'os'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { ingestEvent } from '../core/ingest'
+import { configureIngest, ingestEvent } from '../core/ingest'
+import type { RedLogEvent } from '../core/db/events'
+import { TerminalRecording } from './terminal-recording'
 import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
-import { noteDbError } from '../core/capture-health'
+import { noteDbError, configureBuiltinTerminalHealth } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
 import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 import { indexCast } from '../core/cast-index'
-import { beginTerminal, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
+import { beginTerminal, readTerminalEnrollment, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
 
 // The shells this machine can open, discovered asynchronously and read
 // synchronously by spawnTerminal. Probing is what must not happen on the main
@@ -87,7 +89,7 @@ interface TerminalSession {
   buffer: string
   lastActivity: number
   castPath: string | null
-  castStream: fs.WriteStream | null
+  castStream: TerminalRecording | null
   castStart: number
   castBytes: number
   castTruncated: boolean
@@ -104,68 +106,192 @@ interface TerminalSession {
   // can stamp session_end with `_causes: [startEventId]`. Populated after the
   // session_start insertEvent returns. Null when the start insert failed.
   startEventId?: string | null
-  // Audit 2026-09-18 P1: identity captured at spawn time so a project switch
-  // mid-session doesn't silently re-attribute the close event.
+  // Audit 2026-09-18 P1: identity captured for this recording binding. Its close lands before
+  // the project changes; the surviving pane gets a new binding afterwards.
   engagementId: string
+  projectId: string
   operatorId: string
+  recordingId: string
+  projectDir: string
+  previousRecording?: { projectId: string; recordingId: string }
+  recordingReason?: 'no-project' | 'recording-failed'
+  recordingError?: string
+  operatorPaused: boolean
+  consentBeforeSwitch?: boolean
+  pendingCommands: Map<string, { projectId: string; recordingId: string; commandId: string; startEventId?: string }>
 }
 
-// Writes the session_end event (with the cast's SHA-256) exactly once.
-// pty.kill() delivers onExit asynchronously, so on app quit this must be
-// called while the DB is still open — otherwise the event, and with it the
-// recording's integrity hash, is lost and insertEvent throws into the void.
-function finaliseSession(session: TerminalSession, exitCode: number): void {
+// A binding closes while its own DB is still open; the PTY can outlive it.
+function finaliseSession(session: TerminalSession, exitCode: number | null, reason: 'project-switched' | 'shell-exited' | 'pane-closed' | 'app-quit'): void {
   if (session.finalised) return
   session.finalised = true
-
-  if (session.castStream) {
-    try { session.castStream.end() } catch { /* already closed */ }
-    session.castStream = null
-  }
-
-  let castSha256: string | null = null
-  if (session.castPath) {
-    try {
-      castSha256 = crypto.createHash('sha256').update(fs.readFileSync(session.castPath)).digest('hex')
-    } catch { castSha256 = null }
-  }
-
-  // Make the recording searchable now that it is closed and its bytes are
-  // final (docs/DESIGN-core-and-capture.md §2.4). Indexing a live cast would
-  // mean re-reading a growing file; indexing at close reads it once.
-  //
-  // Fire-and-forget on purpose. This runs on the pty exit path, which on app
-  // quit is racing the DB close — blocking it to build a search index would
-  // risk the session_end event above, and that one is evidence. A cast that
-  // misses its index is picked up by the next backfill; a lost session_end is
-  // lost.
-  if (session.castPath) {
-    const p = session.castPath
-    void indexCast(p).catch(() => { /* index is rebuildable; never block the exit path */ })
-  }
-
+  const closed = session.castStream?.close()
+  session.castBytes = closed?.bytes ?? session.castBytes
+  session.castTruncated = closed?.truncated ?? session.castTruncated
+  session.castStream = null
   try {
-    const event = ingestEvent('shell', {
-      subtype: 'session_end',
-      source: 'builtin-terminal',
-      terminalId: session.id,
-      exitCode,
-      pid: session.pty.pid,
-      castPath: session.castPath,
-      castSha256,
-      castBytes: session.castBytes,
-      castTruncated: session.castTruncated,
-      durationMs: Date.now() - session.castStart,
-      // v0.6.89: point at the session_start we captured above.
+    for (const pending of session.pendingCommands.values()) {
+        ingestEvent('shell', {
+          subtype: 'command_boundary', source: 'builtin-terminal', terminalId: session.id,
+          recordingId: session.recordingId, command_id: pending.commandId,
+          reason, ...(pending.recordingId === session.recordingId && pending.startEventId
+            ? { _causes: [pending.startEventId] }
+            : { boundary_from: { projectId: pending.projectId, recordingId: pending.recordingId, commandId: pending.commandId } })
+      }, { engagementId: session.engagementId, operatorId: session.operatorId, bypassPause: true })
+    }
+    ingestEvent('shell', {
+      subtype: 'session_end', source: 'builtin-terminal', terminalId: session.id,
+      recordingId: session.recordingId, reason, continued: reason === 'project-switched',
+      ...(reason === 'project-switched' ? { rotationPaneCount: sessions.size } : {}),
+      exitCode, pid: session.pty.pid, castPath: session.castPath,
+      castSha256: closed?.sha256 ?? null, castBytes: session.castBytes,
+      castTruncated: session.castTruncated, durationMs: Date.now() - session.castStart,
+      ...(closed?.error ? { recordingError: closed.error } : {}),
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
-    }, { engagementId: session.engagementId, operatorId: session.operatorId })
-  } catch (e) {
-    // Session_end write is the recording integrity chain's signal that a
-    // recording was closed cleanly — losing it means the cast SHA is missing
-    // and the pane's timeline entry looks abandoned. Forward to capture-health
-    // so a shutdown-time swallow is at least diagnosable (v0.6.86).
-    noteDbError('terminal-session-end', e)
+    }, { engagementId: session.engagementId, operatorId: session.operatorId, bypassPause: true })
+  } catch (error) { noteDbError('terminal-session-end', error) }
+
+  // Index only if the owning project is still open after the boundary. It is
+  // rebuildable; hashing/re-reading a large cast must not hold up a switch.
+  if (session.castPath && closed?.sha256) {
+    const castPath = session.castPath, dir = session.projectDir
+    void Promise.resolve().then(() => {
+      if (getProjectDir() === dir) return indexCast(castPath, dir)
+      return undefined
+    }).catch(() => { /* next project-open backfill rebuilds this index */ })
   }
+}
+
+function commandKey(data: Record<string, unknown>): string {
+  return typeof data.command_id === 'string' && data.command_id
+    ? data.command_id : `${data.pid ?? ''}|${data.command ?? ''}`
+}
+
+function prepareTerminalEvent(data: Record<string, unknown>, incomingEngagement: string): boolean {
+  if (data.source !== 'builtin-terminal' || typeof data.terminalId !== 'string') return true
+  const session = sessions.get(data.terminalId)
+  if (!session) return true
+  if (!['command_start', 'command_output', 'command_end'].includes(String(data.subtype))) return true
+  refreshTerminalConsent(session)
+  if (session.operatorPaused) {
+    if (data.subtype === 'command_end') session.pendingCommands.delete(commandKey(data))
+    return false
+  }
+  if (session.finalised || session.recordingReason || incomingEngagement !== session.engagementId) return false
+  data.recordingId = session.recordingId
+  const pending = session.pendingCommands.get(commandKey(data))
+  if (pending && pending.recordingId !== session.recordingId && data.subtype !== 'command_start') {
+    data.boundary_from = { projectId: pending.projectId, recordingId: pending.recordingId, commandId: pending.commandId }
+    // Never import a foreign cause, byte range, or producer buffer that may
+    // span both projects. The current project's cast is the available output.
+    for (const key of ['_causes', 'io', 'stdout', 'stderr', 'output', 'stdout_ref', 'stderr_ref']) delete data[key]
+    data.completeness = 'partial'
+    data.output_disposition = 'project-boundary'
+  }
+  if (data.subtype === 'command_end') session.pendingCommands.delete(commandKey(data))
+  return true
+}
+
+function terminalEventRecorded(event: RedLogEvent): void {
+  const data = event.data
+  if (data.source !== 'builtin-terminal' || typeof data.terminalId !== 'string') return
+  const session = sessions.get(data.terminalId)
+  if (!session || event.engagementId !== session.engagementId) return
+  if (data.subtype === 'capture_stopped' || data.subtype === 'capture_resumed') refreshTerminalConsent(session)
+  const key = commandKey(data)
+  if (data.subtype === 'command_start') {
+    // Foreground shell commands are sequential. A new start also retires a
+    // command that completed while the picker had no record to receive it.
+    session.pendingCommands.clear()
+    session.pendingCommands.set(key, { projectId: session.projectId, recordingId: session.recordingId,
+      commandId: typeof data.command_id === 'string' ? data.command_id : key, startEventId: event.id })
+  } else if (data.subtype === 'command_end') session.pendingCommands.delete(key)
+}
+
+function beginRecording(session: TerminalSession): void {
+  session.engagementId = engagementId
+  session.projectId = projectId
+  session.operatorId = operatorId
+  session.projectDir = getProjectDir()
+  session.recordingId = crypto.randomUUID()
+  session.castStart = Date.now()
+  session.castBytes = 0
+  session.castTruncated = false
+  session.finalised = false
+  session.startEventId = null
+  session.castPath = null
+  session.castStream = null
+  session.recordingReason = undefined
+  session.recordingError = undefined
+  try {
+    const dir = path.join(session.projectDir, 'casts')
+    fs.mkdirSync(dir, { recursive: true })
+    session.castPath = path.join(dir, `${session.recordingId}.cast`)
+    session.castStream = new TerminalRecording(session.castPath, {
+      version: 2, width: session.cols, height: session.rows,
+      timestamp: Math.floor(session.castStart / 1000),
+      env: { SHELL: session.shell, TERM: 'xterm-256color' }, title: `redlog terminal ${session.id}`
+    }, maxCastBytes)
+    session.castBytes = session.castStream.bytes
+    const event = ingestEvent('shell', {
+      subtype: 'session_start', source: 'builtin-terminal', terminalId: session.id,
+      recordingId: session.recordingId, shell: session.shell, shellLabel: session.shellLabel,
+      pid: session.pty.pid, castPath: session.castPath, hookSourced: session.hookSourced,
+      ...(session.previousRecording ? { continues: session.previousRecording } : {}),
+      ...(session.previousRecording ? { rotationPaneCount: sessions.size } : {}),
+      ...(session.hookSourced ? {} : { hookMissing: 'no-hook-for-shell' })
+    }, { engagementId, operatorId, bypassPause: true })
+    if (!event) throw new Error('Recording start was not stored')
+    session.startEventId = event.id
+  } catch (error) {
+    session.castStream?.close()
+    session.castStream = null
+    session.recordingReason = 'recording-failed'
+    session.recordingError = error instanceof Error ? error.message : String(error)
+    noteDbError('terminal-session-start', error)
+  }
+  try {
+    const old = readTerminalEnrollment(os.homedir(), session.id)
+    const state = beginTerminal({ sessionId: session.id, mode: old?.mode ?? 'auto', engagementId, operatorId, now: session.castStart })
+    if (session.previousRecording) state.recording = old?.recording === true || (old?.stoppedReason === 'project-switched' && session.consentBeforeSwitch === true)
+    if (old?.stoppedReason === 'operator' || session.recordingReason) state.recording = false
+    if (old?.stoppedReason === 'operator') state.stoppedReason = 'operator'
+    writeTerminalEnrollment(os.homedir(), state)
+    session.operatorPaused = !state.recording
+  } catch (error) {
+    session.castStream?.close()
+    session.recordingReason = 'recording-failed'
+    session.recordingError = error instanceof Error ? error.message : String(error)
+    noteDbError('terminal-enrollment', error)
+  }
+  sendToWindow(`terminal:castState:${session.id}`, castState(session))
+}
+
+/** Shared project-close path. It does not terminate any process. */
+export function detachTerminalRecordings(): number {
+  for (const session of sessions.values()) {
+    refreshTerminalConsent(session)
+    session.consentBeforeSwitch = !session.operatorPaused
+    finaliseSession(session, null, 'project-switched')
+    session.previousRecording = { projectId: session.projectId, recordingId: session.recordingId }
+    session.castPath = null
+    session.recordingReason = 'no-project'
+    try {
+      const state = readTerminalEnrollment(os.homedir(), session.id)
+      if (state) writeTerminalEnrollment(os.homedir(), { ...state, recording: false, stoppedReason: state.stoppedReason === 'operator' ? 'operator' : 'project-switched' })
+    } catch (error) { noteDbError('terminal-enrollment', error) }
+    sendToWindow(`terminal:castState:${session.id}`, castState(session))
+  }
+  engagementId = ''
+  operatorId = ''
+  return sessions.size
+}
+
+/** Called only once the incoming project's ingest and DB are ready. */
+export function resumeTerminalRecordings(): number {
+  if (!engagementId || !operatorId) return 0
+  for (const session of sessions.values()) if (session.finalised) beginRecording(session)
+  return sessions.size
 }
 
 function resolveShellHook(shell: string, innerShell?: string): string | null {
@@ -188,11 +314,14 @@ const sessions = new Map<string, TerminalSession>()
 // cast never opened (e.g. casts/ unwritable) and the pane runs unrecorded — a
 // state the operator must be able to see, not a silent gap. While recording is
 // paused no frame is written (appendCastFrame), so an open cast reads as paused.
-export function castState(s: Pick<TerminalSession, 'castStream' | 'castTruncated'>): {
-  recording: boolean; castTruncated: boolean; paused: boolean
+export function castState(s: { castStream: { open: boolean } | null; castTruncated: boolean; recordingReason?: 'no-project' | 'recording-failed'; recordingError?: string; operatorPaused?: boolean }): {
+  recording: boolean; castTruncated: boolean; paused: boolean; recordingReason?: 'no-project' | 'recording-failed'; recordingError?: string
 } {
-  const open = s.castStream !== null && !s.castTruncated
-  return { recording: open && !eventBus.paused, castTruncated: s.castTruncated, paused: open && eventBus.paused }
+  const open = s.castStream?.open === true && !s.castTruncated
+  const paused = open && (eventBus.paused || s.operatorPaused === true)
+  return { recording: open && !paused, castTruncated: s.castTruncated, paused,
+    ...(s.recordingReason ? { recordingReason: s.recordingReason } : {}),
+    ...(s.recordingError ? { recordingError: s.recordingError } : {}) }
 }
 
 eventBus.on('recording', () => {
@@ -201,6 +330,7 @@ eventBus.on('recording', () => {
 
 let mainWindow: BrowserWindow | null = null
 let engagementId = ''
+let projectId = ''
 let operatorId = ''
 let maxCastBytes = 50 * 1024 * 1024
 
@@ -219,28 +349,27 @@ function sendToWindow(channel: string, payload: unknown): void {
  * Output and resize frames share this path so byte accounting, pause and
  * truncation cannot drift. The live PTY remains usable if the cast fails. */
 function appendCastFrame(session: TerminalSession, type: 'o' | 'r', data: string): boolean {
-  if (eventBus.paused || !session.castStream || session.castTruncated) return false
-  const encoded = JSON.stringify([(Date.now() - session.castStart) / 1000, type, data]) + '\n'
-  const chunkBytes = Buffer.byteLength(encoded)
-  if (session.castBytes + chunkBytes > maxCastBytes) {
-    try {
-      const marker = JSON.stringify([(Date.now() - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n'
-      session.castStream.write(marker)
-      session.castBytes += Buffer.byteLength(marker)
-      session.castStream.end()
-    } catch { /* live terminal must survive a recording failure */ }
-    session.castStream = null
-    session.castTruncated = true
-    sendToWindow(`terminal:castState:${session.id}`, castState(session))
-    return false
+  refreshTerminalConsent(session)
+  if (eventBus.paused || session.operatorPaused || !session.castStream?.open) return false
+  const written = session.castStream.append([(Date.now() - session.castStart) / 1000, type, data])
+  session.castBytes = session.castStream.bytes
+  session.castTruncated = session.castStream.truncated
+  if (!written && !session.castTruncated) {
+    session.recordingReason = 'recording-failed'
+    session.recordingError = session.castStream.close().error ?? 'Recording write failed'
   }
-  try {
-    session.castStream.write(encoded)
-    session.castBytes += chunkBytes
-    return true
-  } catch {
-    return false
-  }
+  if (!written) sendToWindow(`terminal:castState:${session.id}`, castState(session))
+  return written
+}
+
+/** The hook's durable stop is authoritative for the raw recording too. Read
+ * before every frame: a control-event POST can lag behind the operator's input. */
+function refreshTerminalConsent(session: TerminalSession): void {
+  const state = readTerminalEnrollment(os.homedir(), session.id)
+  const paused = state?.recording === false
+  if (paused === session.operatorPaused) return
+  session.operatorPaused = paused
+  sendToWindow(`terminal:castState:${session.id}`, castState(session))
 }
 
 /** v0.9.6 (T2): current write position in a live session's .cast, so a
@@ -250,13 +379,19 @@ function appendCastFrame(session: TerminalSession, type: 'o' | 'r', data: string
  *  command_end, re-streams a growing prefix and is O(n^2) over a session. */
 export function getCastPosition(terminalId: string): { castPath: string; offset: number; truncated: boolean } | null {
   const session = sessions.get(terminalId)
-  if (!session?.castPath) return null
+  if (!session?.castPath || session.finalised || session.recordingReason) return null
   return { castPath: session.castPath, offset: session.castBytes, truncated: session.castTruncated }
 }
 
-export function configureTerminal(opts: { engagementId: string; operatorId: string; maxCastBytes?: number }): void {
+export function configureTerminal(opts: { engagementId: string; projectId: string; operatorId: string; maxCastBytes?: number }): void {
   engagementId = opts.engagementId
+  projectId = opts.projectId
   operatorId = opts.operatorId
+  configureIngest({ terminalLifecycle: { prepare: prepareTerminalEvent, recorded: terminalEventRecorded } })
+  configureBuiltinTerminalHealth(() => {
+    const failed = Array.from(sessions.values()).find(session => session.recordingReason === 'recording-failed')
+    return failed ? { at: failed.castStart, message: failed.recordingError ?? 'Terminal recording failed' } : undefined
+  })
   if (typeof opts.maxCastBytes === 'number' && opts.maxCastBytes > 0) maxCastBytes = opts.maxCastBytes
 }
 
@@ -279,7 +414,7 @@ export function recoverOrphanSessions(): number {
     // terminalId, regardless of row count.
     const db = getDB()
     const rows = db.prepare(`
-      SELECT s.data AS start_data
+      SELECT s.id AS start_id, s.data AS start_data
       FROM events s
       WHERE s.agent_type = 'shell'
         AND s.subtype = 'session_start'
@@ -290,18 +425,22 @@ export function recoverOrphanSessions(): number {
           WHERE e.agent_type = 'shell'
             AND e.subtype = 'session_end'
             AND json_extract(e.data,'$.source') = 'builtin-terminal'
-            AND json_extract(e.data,'$.terminalId') = json_extract(s.data,'$.terminalId')
+            AND EXISTS (SELECT 1 FROM json_each(e.data, '$._causes') c WHERE c.value = s.id)
         )
-    `).all() as Array<{ start_data: string }>
+    `).all() as Array<{ start_id: string; start_data: string }>
     for (const row of rows) {
-      let tid = ''
-      try { tid = String(JSON.parse(row.start_data)?.terminalId ?? '') } catch { continue }
+      let start: Record<string, unknown>
+      try { start = JSON.parse(row.start_data) } catch { continue }
+      const tid = String(start.terminalId ?? '')
       if (!tid) continue
       try {
         const ev = ingestEvent('shell', {
           subtype: 'session_end',
           source: 'builtin-terminal',
           terminalId: tid,
+          recordingId: start.recordingId,
+          _causes: [row.start_id],
+          reason: 'recovered-orphan',
           exitCode: null,
           castSha256: null,
           recovered: true,
@@ -329,6 +468,8 @@ export interface SpawnResult {
   recording: boolean
   castTruncated: boolean
   paused: boolean
+  recordingReason?: 'no-project' | 'recording-failed'
+  recordingError?: string
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number, shellId?: string): SpawnResult {
@@ -404,56 +545,26 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     } as Record<string, string>
   })
 
-  let castPath: string | null = null
-
-  let castHeaderBytes = 0
-  let castStream: fs.WriteStream | null = null
-  const castStart = Date.now()
-  try {
-    const dir = path.join(getProjectDir(), 'casts')
-    fs.mkdirSync(dir, { recursive: true })
-    const ts = new Date(castStart).toISOString().replace(/[:.]/g, '-')
-    castPath = path.join(dir, `${ts}_${id}.cast`)
-    castStream = fs.createWriteStream(castPath)
-    const header = {
-      version: 2,
-      width: cols,
-      height: rows,
-      timestamp: Math.floor(castStart / 1000),
-      env: { SHELL: shell, TERM: 'xterm-256color' },
-      title: `redlog terminal ${id}`
-    }
-    const headerLine = JSON.stringify(header) + '\n'
-    castStream.write(headerLine)
-    // Counted, because `castBytes` is a file offset, not an output total.
-    // v0.9.6's byte-range bracket (`io: {off, len}` on command_end) reads the
-    // cast with `fs.createReadStream({start: off})`, so an offset that omits
-    // the header is short by its length and every range lands mid-line —
-    // yielding zero parseable events and a replay that reports 0 bytes.
-    castHeaderBytes = Buffer.byteLength(headerLine)
-  } catch {
-    castPath = null
-    castStream = null
-  }
-
   const session: TerminalSession = {
     id,
     pty: term,
     buffer: '',
     lastActivity: Date.now(),
-    castPath,
-    castStream,
-    castStart,
-    castBytes: castHeaderBytes,
+    castPath: null,
+    castStream: null,
+    castStart: Date.now(),
+    castBytes: 0,
     castTruncated: false,
     finalised: false,
     cols,
     rows,
     engagementId,
+    projectId,
     operatorId,
     shell,
     shellLabel,
-    hookSourced: false
+    hookSourced: false,
+    recordingId: '', projectDir: '', pendingCommands: new Map(), operatorPaused: false
   }
 
   term.onData((data: string) => {
@@ -472,22 +583,8 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     sendToWindow(`terminal:data:${id}`, data)
   })
 
-  // Spec 052: a RedLog pane is a terminal like any other, so it gets the same
-  // enrollment record as an operator's own shell — one file per terminal, in
-  // the place both sides read (`~/.redlog/terminals/`). It is what lets the
-  // capture card count terminals that have recorded nothing yet without
-  // mistaking them for terminals that are not there, and what will let
-  // `redlog status` answer inside a RedLog pane from the same source as
-  // everywhere else. `auto`, because a pane the operator opened inside the
-  // audit tool is not one they have to switch on.
-  try {
-    writeTerminalEnrollment(os.homedir(), beginTerminal({
-      sessionId: id, mode: 'auto', engagementId, operatorId, now: castStart
-    }))
-  } catch { /* a pane that cannot write its state still records; the card is poorer, not wrong */ }
-
   term.onExit(({ exitCode }) => {
-    finaliseSession(session, exitCode)
+    finaliseSession(session, exitCode, 'shell-exited')
     removeTerminalEnrollment(os.homedir(), id)
     sessions.delete(id)
     sendToWindow(`terminal:exit:${id}`, exitCode)
@@ -501,23 +598,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   const hookPath = resolveShellHook(shell, wslDistro ? '/bin/bash' : undefined)
   session.hookSourced = hookPath !== null
 
-  const event = ingestEvent('shell', {
-    subtype: 'session_start',
-    source: 'builtin-terminal',
-    terminalId: id,
-    shell,
-    shellLabel,
-    ...(picked ? { shellId: picked.id } : {}),
-    pid: term.pid,
-    castPath,
-    hookSourced: session.hookSourced,
-    ...(session.hookSourced ? {} : { hookMissing: isHookable(flavour) ? 'hook-file-not-found' : 'no-hook-for-shell' })
-    // Identity from the session, not the module: #114 captures it at spawn so
-    // a project switch mid-session cannot re-attribute this row.
-  }, { engagementId: session.engagementId, operatorId: session.operatorId })
-  if (event) {
-    session.startEventId = event.id
-  }
+  beginRecording(session)
 
   // Auto-source the shell hook so individual commands appear in the timeline
   if (hookPath) {
@@ -545,9 +626,11 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     const sourceCmd = flavour === 'powershell'
       ? ` . "${hookPath}" *> $null; Clear-Host\r`
       : ` source "${posixPath}" >/dev/null 2>&1; clear\r`
-    setTimeout(() => {
-      if (!session.finalised) term.write(sourceCmd)
-    }, 600)
+    // Queue setup before returning the pane to the renderer. A timed delay
+    // exposed a real prompt first: a fast operator's first command ran before
+    // the hook and silently had no command event. The PTY preserves input order
+    // while its shell starts, so later operator input follows this source line.
+    term.write(sourceCmd)
   }
 
   // `hookSourced: false` is the pane saying "my commands are not being
@@ -559,7 +642,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     shell,
     shellLabel,
     hookSourced: hookPath !== null,
-    ...castState({ castStream, castTruncated: false })
+    ...castState(session)
   }
 }
 
@@ -582,7 +665,8 @@ export function resizeTerminal(id: string, cols: number, rows: number): void {
 export function killTerminal(id: string): void {
   const session = sessions.get(id)
   if (!session) return
-  finaliseSession(session, 0)
+  finaliseSession(session, null, 'pane-closed')
+  removeTerminalEnrollment(os.homedir(), id)
   try {
     session.pty.kill()
   } catch {}
@@ -592,20 +676,25 @@ export function killTerminal(id: string): void {
 export function listTerminals(): Array<{
   id: string; pid: number; lastActivity: number
   recording: boolean; castBytes: number; castTruncated: boolean; paused: boolean; castStartedAt: number | null
+  recordingReason?: 'no-project' | 'recording-failed'; recordingError?: string
 }> {
-  return Array.from(sessions.values()).map((s) => ({
+  return Array.from(sessions.values()).map((s) => {
+    refreshTerminalConsent(s)
+    return {
     id: s.id,
     pid: s.pty.pid,
     lastActivity: s.lastActivity,
     ...castState(s),
     castBytes: s.castBytes,
     castStartedAt: s.castPath ? s.castStart : null
-  }))
+    }
+  })
 }
 
 export function killAllTerminals(): void {
   for (const session of sessions.values()) {
-    finaliseSession(session, 0)
+    finaliseSession(session, null, 'app-quit')
+    removeTerminalEnrollment(os.homedir(), session.id)
     try { session.pty.kill() } catch {}
   }
   sessions.clear()

@@ -37,6 +37,7 @@ relay's status instead would make every recorded failure a lie.
 Standard library only, and no third-party anything: this runs on the
 operator's machine, inside their shell, on every command.
 """
+import errno
 import json
 import os
 import re
@@ -367,6 +368,8 @@ def pty_pipe(argv):
     # The shell is slow to say it has opened them, or has died; either way
     # this must not wait for ever.
     opened = os.path.join(directory, "opened")
+    closed = os.path.join(directory, "closed")
+    owner = os.getppid()
     deadline = time.time() + float(opts["drain_timeout"])
     while not os.path.exists(opened):
         if time.time() > deadline:
@@ -381,25 +384,44 @@ def pty_pipe(argv):
         # resized, and only the foreground process group is told. This
         # process is not in it, so it looks.
         sync_size()
+        retry_read = False
         for leg in list(legs):
             if leg["master"] not in ready:
                 continue
             try:
                 alive = leg["stream"].pump()
-            except OSError:
-                # EIO: every slave descriptor is closed, i.e. the shell has put
-                # its own back and the command has finished with it.
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
                 alive = False
             if not alive:
+                # A transient read-side hangup is not a command boundary.
+                # Closing the master here makes the shell's next write fail
+                # with EIO. The adapter signals completion after restoring
+                # its descriptors; a dead owner also ends the interval.
+                if os.path.isdir(directory) and not os.path.exists(closed):
+                    try:
+                        os.kill(owner, 0)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        retry_read = True
+                        continue
                 legs.remove(leg)
                 os.close(leg["master"])
-                write_json(os.path.join(directory, leg["name"] + ".json"), {
-                    "stream": leg["name"],
-                    "text": leg["stream"].text(),
-                    "bytes": leg["stream"].total,
-                    "truncated": leg["stream"].truncated(),
-                    "cap": opts["max_bytes"],
-                })
+                # A suspended/background job may still write after the shell
+                # times out its drain and removes the work directory. Keep
+                # forwarding until EOF, but do not recreate retired evidence.
+                if os.path.isdir(directory):
+                    write_json(os.path.join(directory, leg["name"] + ".json"), {
+                        "stream": leg["name"],
+                        "text": leg["stream"].text(),
+                        "bytes": leg["stream"].total,
+                        "truncated": leg["stream"].truncated(),
+                        "cap": opts["max_bytes"],
+                    })
+        if retry_read:
+            time.sleep(0.01)
     return 0
 
 

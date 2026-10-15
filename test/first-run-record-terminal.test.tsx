@@ -104,7 +104,7 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
       query: bridge.query,
       onNewBatch: (cb: (evs: Ev[]) => void) => { listeners.push(cb); return () => { listeners = listeners.filter((l) => l !== cb) } }
     },
-    runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall },
+    runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall, cancelInstall: vi.fn(async () => true) },
     hooks: { install: bridge.install },
     app: { openExternal: vi.fn(async () => {}) },
     httpCapture: {
@@ -176,6 +176,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
   it('a missing shell dependency blocks Commands only; HTTP still starts', async () => {
     install({ rows: [], pre: preflight({ missing: ['python3'] }) })
     draw()
+    fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
     const missing = await screen.findByTestId('first-run-missing-deps')
     expect(screen.getByTestId('first-run-commands').contains(missing)).toBe(true)
     fireEvent.click(await screen.findByText('重新啟動 HTTP 擷取'))
@@ -267,11 +268,12 @@ describe('first run: record my terminal', () => {
   it('blocks the install when curl is missing, names curl, and resumes when the operator comes back', async () => {
     install({ pre: preflight({ missing: ['curl'] }) })
     draw()
+    fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const blocked = await screen.findByTestId('record-terminal-missing')
     expect(blocked.textContent).toContain('curl')
     expect(blocked.textContent).not.toContain('python3')
-    expect(blocked.textContent).toContain('brew install curl')
+    expect(blocked.textContent).toContain('準備缺少的擷取工具')
     expect(bridge.install).not.toHaveBeenCalled()
 
     // No button for this: the operator went to a terminal, installed curl, and
@@ -337,6 +339,9 @@ describe('first run: record my terminal', () => {
     draw()
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
+    // Showing the nonce precedes React's passive subscription effect. Let
+    // that render settle before delivering the operator's canary event.
+    await act(async () => {})
     const before = snapshot()
     emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
     await screen.findByTestId('record-terminal-verified')
@@ -350,9 +355,10 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
   it('names the missing dependency without waiting for a timer', async () => {
     install({ rows: [], pre: preflight({ missing: ['python3'] }) })
     draw()
-    const el = await screen.findByTestId('first-run-missing-deps')
+    const el = await screen.findByTestId('capture-prepare')
     expect(el.textContent).toContain('python3')
-    expect(el.textContent).toContain('brew install python')
+    expect(screen.getByTestId('prepare-install-python3')).toBeTruthy()
+    expect(el.textContent).not.toContain('brew install python')
     expect(el.textContent).not.toContain('curl')
   })
 
@@ -361,28 +367,52 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
     draw()
     await waitFor(() => expect(bridge.preflight).toHaveBeenCalled())
     expect(screen.queryByTestId('first-run-missing-deps')).toBeNull()
-    expect(screen.getByTestId('first-run-commands-quick').textContent).toContain('echo redlog-ok')
+    expect((await screen.findByTestId('first-run-commands-quick')).textContent).toContain('echo redlog-ok')
   })
 })
 
 describe('first run: HTTP(S) card', () => {
+  it('keeps capture unverified when returning from preparation with a fresh HTTP attempt', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    await report({ scheme: 'http', nonce: await shownNonce() })
+    expect(await screen.findByTestId('first-run-core-ready')).toBeTruthy()
+    bridge.preflight.mockResolvedValue(preflight({ missing: ['mitmdump'] }))
+    bridge.proxyStatus.mockResolvedValue({ state: 'unavailable', url: null })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
+    await screen.findByTestId('capture-prepare')
+    bridge.runtimeInstall.mockImplementationOnce(async () => {
+      bridge.preflight.mockResolvedValue(preflight())
+      bridge.proxyStatus.mockResolvedValue(RUNNING)
+      return { success: true, message: 'ok' }
+    })
+    fireEvent.click(screen.getByTestId('prepare-install-mitmdump'))
+    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('○ 尚未驗證')
+    expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
+    expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證')
+  })
+
   it('when mitmdump is missing, installs it in one click and re-probes on return', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()
-    const card = await screen.findByTestId('first-run-http')
-    expect(card.textContent).toContain('HTTP(S)')
-    await waitFor(() => expect(card.textContent).toContain('mitmproxy 尚未安裝'))
+    const card = await screen.findByTestId('capture-prepare')
+    expect(card.textContent).toContain('mitmproxy')
     // No re-check button: mitmproxy may have been installed in a terminal
     // while RedLog was in the background, and coming back asks again.
     expect(card.textContent).not.toContain('重新檢查')
     const before = bridge.preflight.mock.calls.length
     act(() => { window.dispatchEvent(new Event('focus')) })
     await waitFor(() => expect(bridge.preflight.mock.calls.length).toBeGreaterThan(before))
-    const installBtn = await screen.findByTestId('first-run-http-install')
+    const installBtn = await screen.findByTestId('prepare-install-mitmdump')
+    bridge.runtimeInstall.mockImplementationOnce(async () => { bridge.preflight.mockResolvedValue(preflight()); return { success: true, message: 'ok' } })
     fireEvent.click(installBtn)
     // The install runs, and on success the card re-checks preflight.
     await waitFor(() => expect(bridge.runtimeInstall).toHaveBeenCalledWith('mitmdump'))
     await waitFor(() => expect(bridge.preflight.mock.calls.length).toBeGreaterThan(1))
+    expect(await screen.findByTestId('first-run-http')).toBeTruthy()
+    expect(screen.queryByTestId('capture-prepare')).toBeNull()
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
   })
 
   it('when the installer (uv) is missing, points at it instead of failing again', async () => {
@@ -391,8 +421,8 @@ describe('first run: HTTP(S) card', () => {
       success: false, message: 'uv required', needsPrereq: { command: 'uv', url: 'https://astral.sh/uv' }
     })
     draw()
-    fireEvent.click(await screen.findByTestId('first-run-http-install'))
-    const prereq = await screen.findByTestId('first-run-http-install-prereq')
+    fireEvent.click(await screen.findByTestId('prepare-install-mitmdump'))
+    const prereq = await screen.findByTestId('prepare-prereq-mitmdump')
     expect(prereq.textContent).toContain('安裝 uv')
   })
 
@@ -438,6 +468,8 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     install()
     bridge.preflight.mockRejectedValue(new Error('spawn failed'))
     draw()
+    expect(await screen.findByTestId('first-run-preflight-failed')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('capture-prepare-skip'))
     expect(await screen.findByTestId('first-run-http-preflight-failed')).not.toBeNull()
   })
 
@@ -448,6 +480,8 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     const card = await screen.findByTestId('first-run-http')
     // The copyable commands that used to sit on the card unconditionally are
     // now the fallback shown once a check has not landed.
+    // The wrapper precedes the async running state which arms the timeout.
+    await screen.findByText('127.0.0.1:8080')
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const copy = await waitFor(() => {
       const b = [...card.querySelectorAll('button')].find((el) => el.textContent === '複製')
@@ -560,6 +594,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const nonce = await shownNonce()
     // They are the fallback: the browser check is the first offer, and these
     // appear once it has not landed.
+    await screen.findByText('127.0.0.1:8080')
     expect(screen.queryByTestId('first-run-http-verify-commands')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const codes = [...screen.getByTestId('first-run-http-verify-commands').querySelectorAll('code')].map((c) => c.textContent ?? '')

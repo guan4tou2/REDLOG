@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject, openView } from './helpers'
 
@@ -26,10 +26,22 @@ for (const locale of ['en', 'zh-TW']) {
    await expect(page.getByTestId('export-preview-subset')).toContainText('needle')
    await expect(page.getByTestId('export-projection-notice')).toBeVisible()
    await expect(page.getByTestId('export-confirm')).toBeEnabled()
+   // A matching event received after the operator saw the preview must not
+   // enter the confirmed artifact, even though it appears in the live search.
+   const later=await fetch(base+'/api/events/seed',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({agent_type:'shell',target_id:'example.test',data:{subtype:'command_end',command:'needle after preview',exit_code:0}})})
+   expect(later.ok).toBe(true)
    const dialog=page.getByTestId('export-dialog')
    expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
    await page.getByTestId('export-confirm').focus(); await page.keyboard.press('Enter')
    await expect(dialog).toHaveCount(0)
+   const active=await page.evaluate(async () => {
+    const current=await window.redlog.project.active()
+    return (await window.redlog.project.list()).find(project => project.id===current?.id)!
+   })
+   const exportDir=join(active.path,'exports')
+   const artifact=readdirSync(exportDir).find(name => name.endsWith('.json'))!
+   const rows=JSON.parse(readFileSync(join(exportDir,artifact),'utf8')).events
+   expect(rows.map((row: { data: { command: string } })=>row.data.command)).toEqual(['needle evidence'])
    // A legitimate empty selection still previews; it cannot be confirmed.
    await page.getByTestId('search-input').fill('never-recorded-token')
    await page.getByLabel(exportLabel,{exact:true}).click()

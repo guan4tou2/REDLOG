@@ -17,8 +17,22 @@ redlog-session() {
 # Native: $HOME/.redlog; WSL: auto-resolve from Windows %USERPROFILE%
 _redlog_resolve_dir() {
   if [[ -f "$HOME/.redlog/api-token" ]]; then
-    echo "$HOME/.redlog"
-    return
+    # Under WSL a native directory may be stale. Adopt it only while its
+    # API answers; otherwise resolve the Windows profile below (#326).
+    if [[ -z "${WSL_DISTRO_NAME:-}" ]]; then
+      echo "$HOME/.redlog"
+      return
+    fi
+    local native_port=""
+    [[ -f "$HOME/.redlog/api-port" ]] && native_port=$(<"$HOME/.redlog/api-port")
+    case "$native_port" in
+      ''|*[!0-9]*) ;;
+      *) if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 \
+          "http://127.0.0.1:${native_port}/api/health" >/dev/null 2>&1; then
+        echo "$HOME/.redlog"
+        return
+      fi ;;
+    esac
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
     local win_profile
@@ -102,6 +116,21 @@ _redlog_json_quote() {
   _redlog_json=$s
 }
 
+# Adapter identity is process-local; $SHELL describes the login shell.
+# Resolve direct uses of this shared file from the running interpreter, and
+# leave the result in a variable to avoid a fork on every event (#325).
+_redlog_adapter_shell() {
+  local name="${_REDLOG_ADAPTER_SHELL:-}"
+  if [[ -z "$name" ]]; then
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+      name=zsh
+    elif [[ -n "${BASH_VERSION:-}" ]]; then
+      name=bash
+    fi
+  fi
+  _redlog_shell="${name:-unknown}"
+}
+
 # The event payload, written without starting a process (#288). Returns 1 —
 # writing nothing it would want kept — whenever it cannot be sure the JSON is
 # what the python builder in `_redlog_send_event` would have produced, and the
@@ -125,8 +154,15 @@ _redlog_build_payload_fast() {
   # Bytewise. In a UTF-8 locale `[^ -~]` is a range of characters, and the
   # test means something else.
   local LC_ALL=C
-  local shell_name="${SHELL:-}"
-  shell_name="${shell_name##*/}"
+  # `$5` is the adapter's identity, passed in so this builder and the python
+  # one below are given the same answer by the same caller (#325). It resolves
+  # its own when called without one, which is how shell-common.sh sourced on
+  # its own — and the tests that do that — still record the running shell.
+  local shell_name="${5:-}"
+  if [[ -z "$shell_name" ]]; then
+    _redlog_adapter_shell
+    shell_name="$_redlog_shell"
+  fi
   local tid="${REDLOG_TERMINAL_ID:-}"
 
   [[ "$subtype$command$shell_name$tid" == *[^\ -~]* ]] && return 1
@@ -156,7 +192,7 @@ _redlog_build_payload_fast() {
 
   # Same file the python builder reads, and embedded under the same condition:
   # it names an engagement. Anything but one flat object goes to python.
-  local ident="" idfile="${HOME:-}/.redlog/active-identity.json"
+  local ident="" idfile="${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json"
   if [[ -s "$idfile" ]]; then
     # In braces: a redirect on the assignment alone does not cover the shell's
     # own "permission denied" from `$(<file)`, which is the shell's message and
@@ -220,6 +256,10 @@ _redlog_send_event() {
     redlog_dir="$HOME/.redlog"
   fi
 
+  # A built-in pane can remain alive at the project picker. Its activity is
+  # deliberately unrecorded there, including the transport spool.
+  [[ "${REDLOG_TERMINAL:-}" == "1" && ! -s "$redlog_dir/active-identity.json" ]] && return 0
+
   # The body travels in FILES, never as an argument. One argument is capped at
   # 128 KiB by the kernel (MAX_ARG_STRLEN) and a command_end carries up to
   # 8 MiB per stream, so `python3 -c ... "$extra"` and `curl -d "$payload"`
@@ -236,8 +276,15 @@ _redlog_send_event() {
   # and this falls through to the builder below, which has always been the
   # reference. REDLOG_PAYLOAD_BUILDER=python forces it, for the test that holds
   # the two to the same output.
+
+  # Which shell this event is, resolved once and given to BOTH builders, so
+  # the fast path and the reference cannot record different shells for the
+  # same event (#325).
+  _redlog_adapter_shell
+  local shell_name="$_redlog_shell"
+
   if [[ "${REDLOG_PAYLOAD_BUILDER:-}" != python ]] \
-     && _redlog_build_payload_fast "$subtype" "$command" "$extra" "$work/payload.json"; then
+     && _redlog_build_payload_fast "$subtype" "$command" "$extra" "$work/payload.json" "$shell_name"; then
     :
   else
   printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
@@ -249,7 +296,8 @@ d = {
     'data': {
         'subtype': sys.argv[1],
         'command': sys.argv[2],
-        'shell': '${SHELL##*/}',
+        # Runtime identity is an argument, not interpolated login metadata.
+        'shell': sys.argv[4],
         'pid': $$,
         # WHEN, not when someone next looked.
         #
@@ -281,13 +329,14 @@ if extra.strip():
     d['data'].update(json.loads(extra))
 # Embed active project identity so spooled events can be attributed correctly.
 try:
-    ident = json.loads(pathlib.Path.home().joinpath('.redlog', 'active-identity.json').read_text())
+    identity_dir = pathlib.Path(os.environ.get('_REDLOG_DIR') or pathlib.Path.home().joinpath('.redlog'))
+    ident = json.loads(identity_dir.joinpath('active-identity.json').read_text())
     if 'engagementId' in ident:
         d['_identity'] = ident
 except Exception:
     pass
 sys.stdout.write(json.dumps(d))
-" "$subtype" "$command" "$work/extra.json" > "$work/payload.json" 2>/dev/null \
+" "$subtype" "$command" "$work/extra.json" "$shell_name" > "$work/payload.json" 2>/dev/null \
     || { rm -rf "$work"; return 0; }
   fi
 
@@ -317,8 +366,10 @@ sys.stdout.write(json.dumps(d))
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
-      spool_file="$spool_dir/$(date +%s%N).$$.json"
-      cp "$work/payload.json" "$spool_file" 2>/dev/null
+      # The work directory is already unique, including on BSD date where
+      # %N is literal and several events share one second and shell PID.
+      spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
+      mv "$work/payload.json" "$spool_file" 2>/dev/null
     fi
   fi
   rm -rf "$work"
@@ -460,5 +511,7 @@ _redlog_announce_shell() {
   echo "[redlog] shell hook active${where} — ${what} will be recorded"
   # Said at startup because it is the one thing an operator cannot discover by
   # looking: everything else about this adapter is visible in the timeline.
-  echo "[redlog] redlog status  ·  redlog stop"
+  if [[ "${_REDLOG_ADAPTER_SHELL:-}" == "zsh" ]]; then
+    echo "[redlog] redlog status  ·  redlog stop"
+  fi
 }

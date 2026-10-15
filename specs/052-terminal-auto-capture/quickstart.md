@@ -51,6 +51,10 @@ What it must cover, each starting from a failing test (Principle VIII):
 
 ```bash
 # a) enrol
+#    Save the existing Kali profile before installing, so removal can be
+#    checked against real bytes rather than a placeholder command.
+redlog_rc_before=$(mktemp)
+cp -- ~/.zshrc "$redlog_rc_before"
 #    RedLog ▸ Capture Health ▸ terminal row ▸ install. Approve once.
 #    Open a NEW terminal.
 
@@ -88,7 +92,7 @@ whoami
 
 # g) uninstall
 #    RedLog ▸ Settings ▸ Hooks ▸ remove. Then:
-diff <(git show HEAD:/dev/null) /dev/null   # placeholder: compare .zshrc
+cmp -- "$redlog_rc_before" ~/.zshrc
 #    → the .zshrc is byte-identical to before the install, apart from nothing.
 ```
 

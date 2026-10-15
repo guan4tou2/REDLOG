@@ -100,4 +100,22 @@ describe('signing cache (v0.12.1)', () => {
     signing.generateOperatorKeyPair('frank')
     expect(signing.signEvent('{}', 'frank')).not.toBeNull()
   })
+
+  it('reuses an operator identity when another project creates the same operator', () => {
+    const first = signing.generateOperatorKeyPair('shared-operator')
+    const before = fs.readFileSync(first.privateKeyPath)
+    const signature = signing.signEvent('{"project":"A"}', 'shared-operator')!
+    const second = signing.generateOperatorKeyPair('shared-operator')
+    expect(second.publicKey).toBe(first.publicKey)
+    expect(fs.readFileSync(second.privateKeyPath)).toEqual(before)
+    expect(signing.verifyEventSignature('{"project":"A"}', signature, second.publicKey)).toBe(true)
+  })
+
+  it('refuses an incomplete keypair instead of overwriting the surviving identity', () => {
+    const first = signing.generateOperatorKeyPair('partial')
+    const before = fs.readFileSync(first.privateKeyPath)
+    fs.rmSync(path.join(tmpKeysDir, 'partial.pub'))
+    expect(() => signing.generateOperatorKeyPair('partial')).toThrow(/incomplete/i)
+    expect(fs.readFileSync(first.privateKeyPath)).toEqual(before)
+  })
 })

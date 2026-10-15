@@ -26,7 +26,7 @@ import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
 import { exportBundle } from '../../core/bundle-export'
-import { listExportAttachments } from '../../core/export-attachments'
+import { listExportAttachments, exportAttachmentDigest } from '../../core/export-attachments'
 import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
@@ -126,6 +126,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     attachments,
     selectedEventIds,
     selectedEvidenceDigest: fingerprintValue(selectedEvents),
+    attachmentDigest: request.format === 'bundle' ? exportAttachmentDigest(getProjectPath(project), attachments) : '',
     policyFingerprint: fingerprintValue(cfg)
   })
   plans.put(plan)
@@ -201,6 +202,13 @@ export function registerDataExportIpc(
         return { ok: false as const, error: 'policy-changed' }
       }
       if (plan.request.format === 'bundle') {
+        const currentFiles = listExportAttachments(getProjectPath(project), approvedNow, {
+          scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope,
+          exclude: new Set(plan.request.excludeAttachments)
+        })
+        if (exportAttachmentDigest(getProjectPath(project), currentFiles) !== plan.attachmentDigest) {
+          return { ok: false as const, error: 'source-unavailable' }
+        }
         const attachments = countExportAttachments(getProjectPath(project), approvedNow, {
           scope: plan.scopeSnapshot,
           maskOutOfScope: plan.request.maskOutOfScope,

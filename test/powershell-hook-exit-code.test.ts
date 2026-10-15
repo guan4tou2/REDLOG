@@ -48,11 +48,24 @@ async function runInteractive(exe: string, home: string, commands: string[]): Pr
   return out
 }
 
-// With neither installed the list is empty and nothing is declared.
-describe.each(shells)('the %s prompt hook records the real exit code', (ps) => {
+// Register explicit skips when the runtime is absent, rather than declaring
+// an empty file (which Vitest treats as a failed suite).
+const describePowerShell = shells.length ? describe : describe.skip
+describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('the %s prompt hook records the real exit code', (ps) => {
   let home: string
   beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pshook-')) })
   afterEach(() => { fs.rmSync(home, { recursive: true, force: true }) })
+
+  it('keeps every offline payload even when the timestamp is identical', () => {
+    const script = `. '${HOOK.replace(/'/g, "''")}'; function _RedLogTimestamp { '0000000179196240000' }; foreach ($n in 1..3) { _RedLogSpoolPayload -Json ('{"sequence":' + $n + '}') }`
+    const result = spawnSync(ps, ['-NoProfile', '-Command', script], { env: { ...process.env, USERPROFILE: home, HOME: home }, encoding: 'utf8' })
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+    const pending = path.join(home, '.redlog', 'pending')
+    const files = fs.readdirSync(pending).filter(f => f.endsWith('.json'))
+    expect(files).toHaveLength(3)
+    const sequences = files.map(f => JSON.parse(fs.readFileSync(path.join(pending, f), 'utf8')).sequence).sort()
+    expect(sequences).toEqual([1, 2, 3])
+  }, 60_000)
 
   it('records a failing native command with its own code, and a success as 0', async () => {
     // A native child that exits 3, using the shell under test so it exists on

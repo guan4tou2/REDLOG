@@ -32,6 +32,7 @@ export type ZshCommand =
   | { peer: { port: number; send?: string; hold?: number; host?: string } }
   | { sh: string }
   | { prompt: true }
+  | { foreground: string }
 export interface ZshReport {
   ok: boolean
   steps: ZshStep[]

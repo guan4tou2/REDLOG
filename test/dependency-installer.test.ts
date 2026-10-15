@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { installDependency } from '../src/main/services/dependency-installer'
@@ -22,12 +22,72 @@ const preflightWith = (over: Partial<PreflightResult['checks'][number]>): (() =>
 })
 
 describe('installDependency', () => {
+  it('does not spawn if the operator left before installation could start', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const spawn = vi.fn()
+    await expect(installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: spawn as never, signal: controller.signal
+    })).resolves.toMatchObject({ success: false, cancelled: true })
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('cancels its own installation and cannot accept a late successful exit', async () => {
+    const controller = new AbortController()
+    const child = fakeChild()
+    child.kill = vi.fn(() => child.emit('close', 0))
+    const pending = installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: (() => child) as never, signal: controller.signal
+    })
+    controller.abort()
+    await expect(pending).resolves.toMatchObject({ success: false, cancelled: true })
+    expect(child.kill).toHaveBeenCalledOnce()
+  })
+
+  it('still stops an installer that reaches the finite fifteen-minute bound', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = fakeChild()
+      child.kill = vi.fn()
+      const pending = installDependency('mitmdump', {
+        preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }), spawn: (() => child) as never
+      })
+      await vi.advanceTimersByTimeAsync(15 * 60_000)
+      await expect(pending).resolves.toMatchObject({ success: false, message: 'uv timed out after 900s' })
+      expect(child.kill).toHaveBeenCalledOnce()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.useRealTimers() }
+  })
+  it('lets a slow cold download finish instead of killing it after three minutes', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = fakeChild()
+      child.kill = vi.fn()
+      let installed = false
+      const pending = installDependency('mitmdump', {
+        preflight: () => preflightWith({ found: installed, remediation: 'uv tool install mitmproxy' })(),
+        spawn: (() => child) as never
+      })
+      // The measured public download took over eight minutes. Do not speed up
+      // the fixture or reuse a warm cache to hide the original failure.
+      await vi.advanceTimersByTimeAsync(8 * 60_000)
+      expect(child.kill).not.toHaveBeenCalled()
+      installed = true
+      child.emit('close', 0)
+      await expect(pending).resolves.toMatchObject({ success: true })
+    } finally { vi.useRealTimers() }
+  })
   it('spawns the installer and resolves success on exit code 0', async () => {
     const child = fakeChild()
     const calls: Array<{ command: string; args: string[] }> = []
     const spawn = ((command: string, args: string[]) => { calls.push({ command, args }); return child }) as never
     const p = installDependency('mitmdump', {
-      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      preflight: (() => {
+        let checks = 0
+        return () => preflightWith({ found: ++checks > 1, remediation: 'uv tool install mitmproxy' })()
+      })(),
       spawn
     })
     child.stdout.emit('data', 'Installed mitmproxy\n')
@@ -49,6 +109,27 @@ describe('installDependency', () => {
     const r = await p
     expect(r.success).toBe(false)
     expect(r.message).toBe('error: network unreachable')
+  })
+
+  it('does not claim readiness when the installer exits zero but the tool is still missing', async () => {
+    const child = fakeChild()
+    const p = installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: (() => child) as never
+    })
+    child.emit('close', 0)
+    const result = await p
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('mitmdump')
+    expect(result.message).toContain('PATH')
+  })
+
+  it('reports a synchronous spawn failure without hiding it behind an uninitialised timer', async () => {
+    const p = installDependency('mitmdump', {
+      preflight: preflightWith({ remediation: 'uv tool install mitmproxy' }),
+      spawn: (() => { throw new Error('resource unavailable') }) as never
+    })
+    await expect(p).resolves.toMatchObject({ success: false, message: 'Could not start uv: resource unavailable' })
   })
 
   it('does not spawn when the installer prerequisite is missing', async () => {

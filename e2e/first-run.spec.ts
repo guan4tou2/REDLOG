@@ -1,11 +1,11 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, openCaptureProof, resizeMainWindow } from './helpers'
 
-// Design turn 9a. Two claims only the real app can settle: that the first
-// screen of a new engagement is the single-path one, and that it gets out of
-// the way for good once something has been captured.
+// Capture preparation/proof, skipping and recovery through the real app.
+// Reopening setup preserves evidence and terminal sessions; recorded projects
+// still have a fixed entry. REDLOG_PACKAGED_APP selects the installed build.
 
 let app: ElectronApplication
 let page: Page
@@ -21,17 +21,120 @@ const post = async (agent_type: string, data: Record<string, unknown>): Promise<
   })
 }
 
+test('skipping setup before any action keeps recovery and unverified states across a reload', async () => {
+  const home = makeTempHome('redlog-skip-setup-')
+  const skippedApp = await electron.launch({
+    ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
+    env: { ...process.env, NODE_ENV: 'test', HOME: home, USERPROFILE: home, REDLOG_E2E: '1' }
+  })
+  try {
+    const skippedPage = await skippedApp.firstWindow()
+    await skippedPage.waitForLoadState('domcontentloaded')
+    await skippedPage.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(skippedPage, 'skipped-setup')
+    await resizeMainWindow(skippedApp, 800, 720)
+    await openCaptureProof(skippedPage)
+    await expect(skippedPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
+    await expect(skippedPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    const config = await skippedPage.evaluate(() => window.redlog.config.get())
+    await skippedPage.getByTestId('first-run-later').click()
+    await openView(skippedPage, 'dashboard')
+    await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+    await skippedPage.reload()
+    await openView(skippedPage, 'dashboard')
+    await openCaptureProof(skippedPage)
+    await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+    await expect(skippedPage.getByTestId('first-run-strip')).toHaveAttribute('data-core-ready', 'false')
+    await expect(skippedPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
+    await expect(skippedPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    const after = await skippedPage.evaluate(() => window.redlog.config.get())
+    expect(after.engagement).toEqual(config.engagement)
+    expect(after.scope).toEqual(config.scope)
+  } finally {
+    await skippedApp.close()
+  }
+})
+
+test('a dependency install failure stays beside the retry and manual command', async () => {
+  const home = makeTempHome('redlog-install-recovery-')
+  const recoveryApp = await electron.launch({
+    ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
+    env: { ...process.env, NODE_ENV: 'test', HOME: home, USERPROFILE: home, REDLOG_E2E: '1' }
+  })
+  try {
+    // Controlled IPC outcomes exercise the real renderer workflow; this is
+    // not a claim that a clean host downloaded or installed a dependency.
+    await recoveryApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('runtime:preflight')
+      ipcMain.handle('runtime:preflight', () => ({
+        platform: 'darwin', shell: { name: 'zsh', hookId: 'shell-zsh' },
+        checks: [
+          { id: 'python3', found: true, neededFor: [] },
+          { id: 'curl', found: true, neededFor: [] },
+          { id: 'zsh', found: true, neededFor: [] },
+          { id: 'mitmdump', found: false, neededFor: ['mitmproxy'], remediation: 'uv tool install mitmproxy' }
+        ]
+      }))
+      ipcMain.removeHandler('runtime:install')
+      ipcMain.handle('runtime:install', () => ({ success: false, message: 'Network unavailable: isolated test failure' }))
+    })
+    const recoveryPage = await recoveryApp.firstWindow()
+    await recoveryPage.waitForLoadState('domcontentloaded')
+    await recoveryPage.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(recoveryPage, 'installer-recovery')
+    await resizeMainWindow(recoveryApp, 800, 720)
+    const install = recoveryPage.getByTestId('prepare-install-mitmdump')
+    await install.click()
+    const error = recoveryPage.getByTestId('prepare-error-mitmdump')
+    await expect(error).toBeVisible()
+    await expect(error).toHaveAttribute('role', 'alert')
+    await expect(error).toContainText('Network unavailable')
+    await expect(error.locator('code')).toHaveText('uv tool install mitmproxy')
+    expect(await error.locator('code').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    await expect(install).toBeEnabled()
+    await expect(recoveryPage.getByTestId('first-run-http-status')).toHaveCount(0)
+    await install.click()
+    await expect(error).toBeVisible()
+    await expect(recoveryPage.getByTestId('first-run-later')).toBeVisible()
+    await recoveryPage.screenshot({ path: join(REPO_ROOT, 'test-results', 'capture-install-recovery.png') })
+    // A successful installer is followed by an observed PATH check, then the
+    // two independent proof cards. Installation itself verifies neither.
+    await recoveryApp.evaluate(({ ipcMain }) => {
+      let installed = false
+      ipcMain.removeHandler('runtime:install')
+      ipcMain.handle('runtime:install', () => { installed = true; return { success: true, message: 'isolated success' } })
+      ipcMain.removeHandler('runtime:preflight')
+      ipcMain.handle('runtime:preflight', () => ({ platform: 'darwin', shell: { name: 'zsh', hookId: 'shell-zsh' }, checks: [
+        { id: 'python3', found: true, neededFor: [] }, { id: 'curl', found: true, neededFor: [] },
+        { id: 'zsh', found: true, neededFor: [] }, { id: 'mitmdump', found: installed, neededFor: ['mitmproxy'] }
+      ] }))
+    })
+    await install.click()
+    await expect(recoveryPage.getByTestId('capture-prepare')).toHaveCount(0)
+    await expect(recoveryPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
+    await expect(recoveryPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    await recoveryPage.screenshot({ path: join(REPO_ROOT, 'test-results', 'capture-prepare-to-prove.png') })
+  } finally {
+    await recoveryApp.close()
+  }
+})
+
 test.describe.serial('the first run', () => {
   test.beforeAll(async () => {
     tmpHome = makeTempHome('redlog-firstrun-')
     app = await electron.launch({
-      args: [MAIN_ENTRY], cwd: REPO_ROOT,
+      ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
     })
     page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'first-run')
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
+    await openCaptureProof(page)
     await page.waitForTimeout(2000)
     await resizeMainWindow(app, 1500, 1000)
   })
@@ -107,6 +210,31 @@ test.describe.serial('the first run', () => {
     await openView(page, 'dashboard')
     await page.waitForTimeout(1000)
     expect(await page.locator('[data-testid="first-run-strip"]').count()).toBe(0)
+  })
+
+  test('capture setup can be reopened from an existing project and left without losing evidence', async () => {
+    // A recorded project must not need its DB wiped to find setup again.
+    await post('shell', { subtype: 'command_start', command: 'setup-reopen-evidence' })
+    await page.reload()
+    await openView(page, 'dashboard')
+    await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
+    const before = await page.evaluate(async () => (await window.redlog.events.query({ limit: 1000 })).map(e => e.id))
+    await resizeMainWindow(app, 800, 720)
+    const setup = page.getByTestId('capture-open-setup')
+    await expect(setup).toBeVisible()
+    await setup.focus()
+    await page.keyboard.press('Enter')
+    await openCaptureProof(page)
+    await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+    await expect(page.getByTestId('first-run-commands-status')).toHaveText('✓ Verified')
+    await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    await page.getByTestId('first-run-later').click()
+    await openView(page, 'dashboard')
+    await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
+    await expect(setup).toBeVisible()
+    const after = await page.evaluate(async () => (await window.redlog.events.query({ limit: 1000 })).map(e => e.id))
+    for (const id of before) expect(after).toContain(id)
+    await resizeMainWindow(app, 1280, 800)
   })
 
   test('one terminal session, however many times the view is left and re-entered', async () => {

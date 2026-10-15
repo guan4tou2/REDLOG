@@ -26,6 +26,12 @@ extraResources:
   - from: tools/redlog-verify.py
     to: tools/redlog-verify.py
 mac:
+  # Seal the final app even when release CI has no Developer ID certificate.
+  # Skipping signing leaves Electron's stale linker signature after repacking.
+  # Ad-hoc signing is not notarization or an authenticated publisher identity.
+  identity: "-"
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
   icon: resources/icon.icns
   category: public.app-category.developer-tools
   extendInfo:

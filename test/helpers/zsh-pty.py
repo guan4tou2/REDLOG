@@ -52,6 +52,7 @@ def strip_ansi(text):
 class Session:
     def __init__(self, job):
         self.marker = "RLPTY-" + uuid.uuid4().hex[:12]
+        self.sequence = 0
         self.job = job
         self.timeout = float(job.get("timeout_s", 15))
         self.settle = float(job.get("settle_s", 0.25))
@@ -78,6 +79,13 @@ class Session:
             # prompt's politeness rather than on anything the product did.
             fh.write("unsetopt PROMPT_SP 2>/dev/null\n")
             fh.write(self.job.get("rc", "") + "\n")
+            # A redraw can repeat an old prompt. Only a prompt bearing this
+            # typed line's sequence proves that line has completed.
+            fh.write("autoload -Uz add-zsh-hook\n")
+            fh.write("typeset -gi _REDLOG_DRIVER_SEQ=0\n")
+            fh.write("_redlog_driver_preexec() { (( _REDLOG_DRIVER_SEQ += 1 )); }\n")
+            fh.write("add-zsh-hook preexec _redlog_driver_preexec\n")
+            fh.write("setopt PROMPT_SUBST\n")
         redlog = self.job.get("redlog")
         if redlog:
             d = os.path.join(home, ".redlog")
@@ -104,8 +112,8 @@ class Session:
         env["HOME"] = home
         env["ZDOTDIR"] = self.job.get("zdotdir", home)
         env["TERM"] = "xterm-256color"
-        env["PROMPT"] = self.marker + " "
-        env["PS1"] = self.marker + " "
+        env["PROMPT"] = self.marker + ":${_REDLOG_DRIVER_SEQ} "
+        env["PS1"] = env["PROMPT"]
         # No colour from the shell itself; the relay's own colour handling is
         # what the tests are about, not the prompt's.
         env.pop("ZSH_THEME", None)
@@ -135,7 +143,7 @@ class Session:
         # spec here failed as "no prompt after startup", on the first run that
         # had zsh installed at all. The rc under test is the one in ZDOTDIR.
         self.proc = subprocess.Popen(
-            [self.job.get("shell", "/usr/bin/zsh"), "-d", "-i"],
+            [self.job.get("shell") or shutil.which("zsh", path=env.get("PATH")) or "zsh", "-d", "-i"],
             preexec_fn=become_session_leader_with_this_tty,
             stdin=slave, stdout=slave, stderr=slave,
             env=env, cwd=self.job.get("cwd", home),
@@ -145,8 +153,9 @@ class Session:
         self.read_until_marker(label="startup")
 
     def read_until_marker(self, label):
+        expected = self.marker + ":" + str(self.sequence) + " "
         deadline = time.time() + self.timeout
-        while self.marker not in self.buffer:
+        while expected not in self.buffer:
             if time.time() > deadline:
                 raise TimeoutError("no prompt after " + label)
             r, _, _ = select.select([self.master], [], [], 0.2)
@@ -161,12 +170,13 @@ class Session:
             text = chunk.decode("utf-8", "replace")
             self.buffer += text
             self.transcript.append(text)
-        before, _, rest = self.buffer.partition(self.marker)
+        before, _, rest = self.buffer.partition(expected)
         self.buffer = rest
         return before
 
     def run(self, command):
         written_at = time.time()
+        self.sequence += 1
         os.write(self.master, (command + "\n").encode("utf-8"))
         raw = self.read_until_marker(label=command)
         # What an operator waits for: the line sent until the next prompt is
@@ -188,6 +198,11 @@ class Session:
             text = chunk.decode("utf-8", "replace")
             self.buffer += text
             self.transcript.append(text)
+        # Preserve bytes after the first prompt in this interval and retire
+        # redraw markers, rather than making them the next command's result.
+        raw += self.buffer
+        self.buffer = ""
+        raw = re.sub(re.escape(self.marker) + r":\d+ ", "", raw)
         # What the terminal was actually sent, before the escape sequences are
         # stripped for reading. Colour IS an escape sequence, so a test that
         # asks "did `ls` colour its output" cannot ask the cleaned text.
@@ -244,7 +259,37 @@ class Session:
         return before + needle
 
     def step(self, spec):
+        if spec.get("foreground"):
+            # Observe this PTY's job, rather than a global pgrep that can
+            # match another test's sleep or be denied by a sandbox.
+            deadline = time.monotonic() + self.timeout
+            shell_group = os.getpgid(self.proc.pid)
+            while time.monotonic() < deadline:
+                foreground = os.tcgetpgrp(self.master)
+                if foreground > 0 and foreground != shell_group:
+                    # A preexec's curl/Python can itself be foreground before
+                    # the command begins. Interrupt the requested job, not
+                    # the recorder that is preparing it.
+                    observed = subprocess.run(
+                        ["ps", "-p", str(foreground), "-o", "comm="],
+                        capture_output=True, text=True, timeout=2,
+                    )
+                    if observed.returncode == 0 and os.path.basename(observed.stdout.strip()) == spec["foreground"]:
+                        return "foreground", "job running"
+                # Darwin can hold the shell's terminal write until the master
+                # drains it. Waiting on process state without reading output
+                # then prevents the shell from launching the very job we await.
+                ready, _, _ = select.select([self.master], [], [], 0.01)
+                if ready:
+                    chunk = os.read(self.master, 65536)
+                    if not chunk:
+                        raise TimeoutError("PTY closed before foreground job")
+                    text = chunk.decode("utf-8", "replace")
+                    self.buffer += text
+                    self.transcript.append(text)
+            raise TimeoutError("no foreground job in this terminal")
         if "line" in spec:
+            self.sequence += 1
             os.write(self.master, (spec["line"] + "\n").encode("utf-8"))
             out = self.read_until_text(spec["until"], spec["line"], spec.get("timeout"))
             return spec["line"], strip_ansi(out)
@@ -278,12 +323,27 @@ class Session:
         except OSError:
             pass
         try:
-            self.proc.wait(timeout=5)
+            # Drain the terminal while zsh prints its final line. On Darwin
+            # waiting without a reader can block even a normal `exit`.
+            deadline = time.monotonic() + 5
+            while self.proc.poll() is None and time.monotonic() < deadline:
+                ready, _, _ = select.select([self.master], [], [], 0.05)
+                if ready:
+                    try:
+                        chunk = os.read(self.master, 65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    self.transcript.append(chunk.decode("utf-8", "replace"))
+            self.proc.wait(timeout=0.1)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 pass
+            if self.proc.poll() is None:
+                self.proc.kill()
             self.proc.wait(timeout=5)
         finally:
             try:

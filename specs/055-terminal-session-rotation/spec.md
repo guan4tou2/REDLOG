@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-07
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: Keep terminal panes alive across a project switch by rotating their log session instead of killing them. The record has to stop belonging to the old project; the pane does not have to stop existing, and today those two are the same action.
 
@@ -273,7 +273,8 @@ it, then open another project and check that the pane is recording there.
 - **FR-004**: After a switch, a pane's subsequent activity MUST be recorded in
   the incoming project and MUST NOT appear in the outgoing one.
 - **FR-005**: No record in a project MAY refer to a recording file, event or
-  chain entry belonging to another project.
+  chain entry belonging to another project. Opaque origin locators required by
+  FR-006/015 are descriptive metadata, not foreign evidence links.
 - **FR-006**: The incoming project's record for a rotated pane MUST identify
   the session it continues and the project that session belongs to; the
   outgoing project's record MUST indicate that the session was continued.
@@ -357,10 +358,13 @@ it, then open another project and check that the pane is recording there.
 
 ## Assumptions
 
-- A running shell does not need to be told which project it belongs to:
-  attribution happens where the event is received, so a surviving shell
-  follows the switch without its environment being rewritten. Verified against
-  the pane environment on `89b6e102`.
+- RedLog repins its owned pane's enrollment at the recording boundary; the
+  shell's environment and live connections remain intact. External terminals
+  retain Spec 052's stop-on-switch pin and are never silently rebound.
+- Output belongs to the recording active when RedLog receives its PTY frame;
+  producer write time cannot be independently recovered from a PTY byte stream.
+- The renderer retains its existing bounded 5,000-line xterm scrollback across
+  navigation and project switches. A renderer reload is a distinct lifecycle.
 - Closing out the outgoing half and beginning the incoming half are separate
   steps that can fail separately, and the outgoing one is the one that must
   not be lost.

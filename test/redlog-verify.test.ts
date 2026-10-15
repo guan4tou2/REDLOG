@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
@@ -145,4 +146,111 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
 
     fs.rmSync(outRoot, { recursive: true, force: true })
   })
+  for (const placement of ['middle', 'tail', 'all'] as const) {
+    it(`verifies a privacy projection with omitted ${placement} rows without claiming full-chain integrity`, { timeout: 30_000 }, () => {
+      ops.createOperator({ id: 'projection-op', name: 'Projection Op', token: ops.generateToken(), isPrimary: true })
+      for (let i = 0; i < 3; i++) {
+        const personal = placement === 'all' || i === (placement === 'middle' ? 1 : 2)
+        events.insertEvent('shell', { subtype: 'command_start', command: personal ? `private-secret-${i}` : `echo public-${i}` },
+          { operatorId: 'projection-op', targetId: personal ? '127.0.0.1' : '192.0.2.1' })
+      }
+      const bundle = bundleExport.exportBundle('default', { scope: { targets: [], personalDomains: ['127.0.0.0/8'] } })
+      expect(bundle.manifest.personalDropped).toBe(placement === 'all' ? 3 : 1)
+      expect(fs.readFileSync(path.join(bundle.outDir, 'events.jsonl'), 'utf8')).not.toContain('private-secret')
+      const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+      expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0)
+      expect(r.stdout).toContain('Projection')
+      expect(r.stdout).not.toContain('Chain            : INTACT')
+      expect(r.stdout).toContain(`Omitted chained  : ${placement === 'all' ? 3 : 1}`)
+    })
+  }
+
+  it('verifies noncontiguous selected rows and rejects deletion, duplicates and changed payloads even after file digests are refreshed', { timeout: 30_000 }, async () => {
+    ops.createOperator({ id: 'subset-op', name: 'Subset Op', token: ops.generateToken(), isPrimary: true })
+    const ids = Array.from({ length: 4 }, (_, i) => events.insertEvent('shell',
+      { subtype: 'command_start', command: `echo subset-${i}` }, { operatorId: 'subset-op' })!.id)
+    const bundle = bundleExport.exportBundle('default', { includeEventIds: new Set([ids[1], ids[3]]) })
+    const eventPath = path.join(bundle.outDir, 'events.jsonl')
+    const manifestPath = path.join(bundle.outDir, 'manifest.json')
+    const original = fs.readFileSync(eventPath, 'utf8').trim().split('\n')
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    expect(spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' }).status).toBe(0)
+    for (const mutation of ['delete', 'duplicate', 'payload'] as const) {
+      const rows = [...original]
+      if (mutation === 'delete') rows.pop()
+      if (mutation === 'duplicate') rows[1] = rows[0]
+      if (mutation === 'payload') {
+        const row = JSON.parse(rows[0]); row.data = JSON.stringify({ subtype: 'command_start', command: 'injected' }); rows[0] = JSON.stringify(row)
+      }
+      const text = rows.join('\n') + '\n'
+      fs.writeFileSync(eventPath, text)
+      manifest.files.find((f: { path: string }) => f.path === 'events.jsonl').sha256 = crypto.createHash('sha256').update(text).digest('hex')
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+      fs.writeFileSync(path.join(bundle.outDir, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex'))
+      const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+      expect(r.status, mutation).not.toBe(0)
+    }
+  })
+
+  it('verifies masked projection bytes but explicitly does not verify transformed source payloads', { timeout: 30_000 }, () => {
+    ops.createOperator({ id: 'masked-op', name: 'Masked Op', token: ops.generateToken(), isPrimary: true })
+    events.insertEvent('shell', { subtype: 'command_start', command: 'private command', stdout: 'private output' },
+      { operatorId: 'masked-op', targetId: '198.51.100.1' })
+    const bundle = bundleExport.exportBundle('default', { scope: { targets: ['192.0.2.0/24'] } })
+    expect(bundle.manifest.evidence.transformedEventIds).toHaveLength(1)
+    const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0)
+    expect(r.stdout).toContain('Transformed rows : 1 (source payload/signature not verified)')
+    expect(r.stdout).not.toContain('Chain            : INTACT')
+  })
+
+  it('rejects missing projection files, unknown kinds, uncovered digests and a logged-tier count mismatch', { timeout: 30_000 }, () => {
+    ops.createOperator({ id: 'invalid-op', name: 'Invalid Op', token: ops.generateToken(), isPrimary: true })
+    const a = events.insertEvent('shell', { subtype: 'command_start', command: 'one' }, { operatorId: 'invalid-op' })!
+    events.insertEvent('shell', { subtype: 'command_start', command: 'two' }, { operatorId: 'invalid-op' })
+    const bundle = bundleExport.exportBundle('default', { includeEventIds: new Set([a.id]) })
+    const manifestPath = path.join(bundle.outDir, 'manifest.json')
+    const original = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    for (const mutation of ['kind', 'count', 'digest'] as const) {
+      const manifest = structuredClone(original)
+      if (mutation === 'kind') manifest.evidence.kind = 'unknown'
+      if (mutation === 'count') manifest.tiers.logged = 1
+      if (mutation === 'digest') delete manifest.files.find((f: { path: string }) => f.path === 'events.jsonl').sha256
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+      fs.writeFileSync(path.join(bundle.outDir, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex'))
+      expect(spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' }).status, mutation).not.toBe(0)
+    }
+    fs.writeFileSync(manifestPath, JSON.stringify(original))
+    fs.writeFileSync(path.join(bundle.outDir, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex'))
+    fs.unlinkSync(path.join(bundle.outDir, 'operators.json'))
+    expect(spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' }).status).not.toBe(0)
+  })
+
+  it('reports policy exclusions from an approved plan instead of resetting them to zero', () => {
+    const a = events.insertEvent('shell', { subtype: 'command_start', command: 'public' }, { operatorId: 'op', targetId: '192.0.2.1' })!
+    events.insertEvent('shell', { subtype: 'command_start', command: 'private' }, { operatorId: 'op', targetId: '127.0.0.1' })
+    const bundle = bundleExport.exportBundle('default', {
+      includeEventIds: new Set([a.id]),
+      exportPlan: { id: 'plan', fingerprint: 'fingerprint', counts: {
+        examined: 2, included: 1, excludedPersonal: 1, excludedDoNotExport: 0, excludedBlacklist: 0,
+        maskedOutOfScope: 0, sanitized: 0, attachmentsIncluded: 0, attachmentsMissing: 0,
+        attachmentsUnattributed: 0, attachmentsExcludedByOperator: 0, unsupported: 0
+      } }
+    })
+    expect(bundle.manifest.personalDropped).toBe(1)
+  })
+
+  it('rejects changed projection manifest metadata even when event bytes are unchanged', { timeout: 30_000 }, () => {
+    const a = events.insertEvent('shell', { subtype: 'command_start', command: 'a' }, { operatorId: 'op' })!
+    events.insertEvent('shell', { subtype: 'command_start', command: 'b' }, { operatorId: 'op' })
+    const bundle = bundleExport.exportBundle('default', { includeEventIds: new Set([a.id]) })
+    const manifestPath = path.join(bundle.outDir, 'manifest.json')
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    manifest.tiers.chained = 0
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+    const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toContain('manifest checksum mismatch')
+  })
+
 })

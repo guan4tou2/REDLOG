@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { Globe } from 'lucide-react'
-import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
+import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { SectionLabel } from './SectionLabel'
 import IPStatusCard from './IPStatusCard'
@@ -119,6 +119,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
+  const [setupOpen, setSetupOpen] = useState(false)
   const refreshCaptureRef = useRef<() => void>(() => {})
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
@@ -182,7 +183,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   // §22 / turn 9a. Nothing has been captured yet, so the dashboard's three
   // empty stat cards and ten-source checklist have nothing to describe. Same
   // view id, so every route and every spec that says `dashboard` still works.
-  if (firstRun) {
+  if (firstRun || setupOpen) {
     return (
       <FirstRunView
         onNavigate={onNavigate}
@@ -210,7 +211,13 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
+          onSetup={() => setSetupOpen(true)}
         />
+      )}
+      {!capture && (
+        <Button level="secondary" data-testid="capture-open-setup" onClick={() => setSetupOpen(true)}>
+          {t('capture.openSetup')}
+        </Button>
       )}
 
       <section>

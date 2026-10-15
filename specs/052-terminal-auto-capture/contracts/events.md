@@ -5,6 +5,27 @@ with `agent_type: 'shell'`, a `subtype`, the command string, the bearer token
 and the identity block. This contract adds fields and one subtype; it does not
 introduce a second transport.
 
+`source` identifies the originating terminal, while `captured_by` identifies
+how output was recorded. When `REDLOG_TERMINAL=1`, both command boundaries
+retain `source: builtin-terminal` and `terminalId`, including when an automatic
+relay captures the bytes. They must not become external-shell evidence merely
+because `captured_by` is `auto-relay`; ingest uses the source to attach the pane's
+`.cast` range.
+
+## Internal relay completion
+
+The Zsh adapter acknowledges opening both stream PTYs with `opened`. After
+restoring its original descriptors, it writes `closed`: EOF/EIO before this
+boundary must not close a master that the command may still write to. The
+recorder waits without spinning; an exited owner also ends the interval.
+
+A suspended/background job can outlive the foreground drain deadline. Removing
+the work directory retires the evidence interval; it must not interrupt that
+job's terminal output or recreate retired part files. The existing incomplete
+drain disposition remains authoritative; late forwarding is not proof that
+all bytes were retained. The explicit session recorder uses its child exit
+status as the corresponding boundary, rather than this adapter marker.
+
 ## `command_start`
 
 Already emitted. Gains:
@@ -49,8 +70,8 @@ Already emitted with `exit_code`, `duration_sec`, `cwd`. Gains:
 {
   "subtype": "command_end",
   "command_id": "<command>",
-  "completeness": "complete",        // complete | truncated | metadata-only
-  "output_disposition": "captured",  // captured | redirected | interactive | not-captured
+  "completeness": "full",            // full | truncated | metadata-only | partial
+  "output_disposition": "captured",  // captured | redirected | interactive | not-captured | project-boundary
   "limit_hit": null                  // e.g. "stdout:102400" when truncated
 }
 ```

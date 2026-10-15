@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
-import { queryEvents, queryEventById, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { parseQuery } from './query/contract'
 import { decodeCursor } from './query-page'
 import { createBookmark, listBookmarks } from './db/bookmarks'
@@ -291,6 +291,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 409, { error: 'engagement changed; session capture refused' })
         return
       }
+      const capturedIdentity = body._identity as { engagementId?: unknown } | undefined
+      if (capturedIdentity?.engagementId != null && capturedIdentity.engagementId !== engagementId) {
+        json(res, 409, { error: 'engagement changed; captured event refused' })
+        return
+      }
       const agentType = String(body.agent_type || body.agentType || 'external')
       // Types an outside tool may report. The ones deliberately absent are
       // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
@@ -332,22 +337,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
       let targetId = (body.target_id || body.targetId || undefined) as string | undefined
 
-      // v0.9.5: bail before ANY derivation while paused. The insertEvent gate
-      // would drop the main row anyway, but the normalisation below runs first
-      // and emits its own rows — scope_violation, loot, pivot, cleanup,
-      // file_transfer. Those are `system`/derived and would leak the very
-      // content the operator paused to keep out: a scope_violation names the
-      // target host of a command that was never recorded.
-      //
-      // Must answer 200. The shell hook posts with `curl -sf`, so any non-2xx
-      // makes it spool the payload to ~/.redlog/pending/ — which RedLog
-      // replays on the next project open, putting the paused commands into the
-      // chain after all. A refusal has to read as success on the wire.
-      if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && eventBus.paused) {
-        json(res, 200, { ok: true, recording: false, skipped: 'recording paused' })
-        return
-      }
-
       // Causal links, enrichment, redaction, insert, publish, scope and
       // companions all run inside ingest() below (docs/DESIGN-plugin-kernel.md
       // §3) — the same pipeline the in-process producers use.
@@ -373,6 +362,16 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
       })
       if (!result.event) {
+        // A deliberate pause/unrecorded interval is acknowledged so the hook
+        // never spools it. Ingest still settles runtime pairs before its gate.
+        if (result.skipped === 'paused') {
+          json(res, 200, { ok: true, recording: false, skipped: 'recording paused' })
+          return
+        }
+        if (result.skipped === 'unrecorded') {
+          json(res, 200, { ok: true, recording: false, skipped: 'terminal not recording' })
+          return
+        }
         // A paused recording is already answered 200 above; the only way to
         // reach here with no event is the 2 s dedup window.
         json(res, 409, { error: 'Duplicate event (dedup window)' })
@@ -609,12 +608,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       if (target.agentType !== 'shell' || td.subtype !== 'command_end' || td.source !== 'builtin-terminal' || !tid) {
         json(res, 400, { error: 'not a builtin-terminal command_end event' }); return
       }
-      // Find the session_start with matching terminalId (most recent one before target.timestamp)
-      const sessions = queryEvents({ agentType: 'shell', limit: 5000 })
-        .filter((e) => e.data?.subtype === 'session_start' && e.data.terminalId === tid && e.timestamp <= target.timestamp)
-      const sess = sessions[0]
+      const sess = typeof td.recordingId === 'string' ? queryBuiltinTerminalSessionStart(td.recordingId) : null
       const castPath = sess?.data?.castPath as string | undefined
-      if (!castPath) { json(res, 404, { error: 'no cast file for this session' }); return }
+      if (!castPath) { json(res, 404, { error: 'no cast file for this recording' }); return }
       // v0.6.93 P0-D: castPath comes from an event whose `data` was written
       // by an attacker with a valid token — verify the resolved path is
       // inside the project's casts/ directory before reading. Was:

@@ -190,7 +190,10 @@ export default function App(): JSX.Element {
   if (!project) {
     return (
       <>
-        <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
+        <div className="h-full flex flex-col">
+          <div className="flex-1 min-h-0 overflow-auto"><ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} /></div>
+          <PickerTerminals />
+        </div>
         <ToastContainer />
         <ConfirmDialogContainer />
       </>
@@ -412,4 +415,17 @@ export default function App(): JSX.Element {
     </div>
     </FilterProvider>
   )
+}
+
+// Surviving shells remain reachable while no project is open. This is a
+// persistent capture condition, not a notification that can disappear.
+function PickerTerminals(): JSX.Element | null {
+  const [hasPanes, setHasPanes] = useState(false)
+  const { t } = useI18n()
+  useEffect(() => { void window.redlog.terminal.list().then(panes => setHasPanes(panes.length > 0)).catch(() => {}) }, [])
+  if (!hasPanes) return null
+  return <section data-testid="picker-terminals" className="shrink-0 h-[40vh] min-h-[200px] border-t border-amber-500/30 flex flex-col">
+    <p role="status" className="px-3 py-2 text-xs text-amber-300 bg-amber-500/10">{t('terminal.noProjectRecording')}</p>
+    <div className="flex-1 min-h-0"><Suspense fallback={<PaneLoading />}><TerminalView allowNew={false} /></Suspense></div>
+  </section>
 }

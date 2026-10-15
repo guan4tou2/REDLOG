@@ -199,8 +199,13 @@ export interface ExportPlan {
   attachments: readonly ExportAttachment[]
   selectedEventIds: readonly string[]
   selectedEvidenceDigest: string
+  attachmentDigest: string
   policyFingerprint: string
   fingerprint: string
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype
 }
 
 export function normalizeExportRequest(request: ExportRequest): NormalizedExportRequest {
@@ -208,7 +213,7 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
   const subset = structuredClone(request.subset ?? { kind: 'all' as const })
   if (!['all', 'time-range', 'selection'].includes(subset.kind)) throw new Error('Invalid export subset')
   if (subset.kind === 'selection') {
-    if (!['events', 'http'].includes(subset.projection) || !subset.filter || typeof subset.filter !== 'object') throw new Error('Invalid export selection')
+    if (!['events', 'http'].includes(subset.projection) || !isPlainRecord(subset.filter)) throw new Error('Invalid export selection')
     const allowed = new Set(['targetId', 'agentType', 'since', 'before', 'inScopeOnly', 'hidePersonal', 'tier'])
     for (const [key, value] of Object.entries(subset.filter)) {
       if (!allowed.has(key)) throw new Error('Invalid export filter')
@@ -221,8 +226,9 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
     if (subset.query !== undefined && (typeof subset.query !== 'string' || !parseQuery(subset.query).ok)) throw new Error('Invalid export query')
     if (subset.excludeHousekeeping !== undefined && typeof subset.excludeHousekeeping !== 'boolean') throw new Error('Invalid housekeeping predicate')
     if (subset.projection === 'http' && subset.query) throw new Error('Unsupported HTTP typed query')
-    if (subset.projection !== 'http' && subset.http) throw new Error('Invalid HTTP predicates')
-    if (subset.http) {
+    if (subset.projection !== 'http' && subset.http !== undefined) throw new Error('Invalid HTTP predicates')
+    if (subset.http !== undefined) {
+      if (!isPlainRecord(subset.http)) throw new Error('Invalid HTTP predicates')
       for (const [key,value] of Object.entries(subset.http)) {
         if (!['method','statusPrefix','host','text'].includes(key) || typeof value !== 'string') throw new Error('Invalid HTTP predicate')
       }
@@ -254,6 +260,7 @@ interface CreateExportPlanInput {
   attachments?: readonly ExportAttachment[]
   selectedEventIds: string[] | readonly string[]
   selectedEvidenceDigest?: string
+  attachmentDigest?: string
   policyFingerprint?: string
 }
 
@@ -278,6 +285,7 @@ export function createExportPlan(
     counts: input.counts,
     selectedEventIds,
     selectedEvidenceDigest: input.selectedEvidenceDigest ?? '',
+    attachmentDigest: input.attachmentDigest ?? '',
     policyFingerprint: input.policyFingerprint ?? ''
   })
   const plan: ExportPlan = {
@@ -299,6 +307,7 @@ export function createExportPlan(
     attachments: Object.freeze([...(input.attachments ?? [])]),
     selectedEventIds: Object.freeze(selectedEventIds),
     selectedEvidenceDigest: input.selectedEvidenceDigest ?? '',
+    attachmentDigest: input.attachmentDigest ?? '',
     policyFingerprint: input.policyFingerprint ?? '',
     fingerprint: createHash('sha256').update(evidence).digest('hex')
   }

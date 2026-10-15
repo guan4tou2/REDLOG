@@ -868,6 +868,15 @@ class RedLogAddon:
     def _answer_verification(self, flow: http.HTTPFlow) -> bool:
         if flow.request.pretty_host != VERIFY_HOST:
             return False
+        if flow.request.path == "/__redlog_ready":
+            # Private managed-process readiness, not a user capture proof.
+            # The caller never sends this token in its request; another
+            # listener cannot satisfy the check by reflecting a challenge.
+            token = os.environ.get("REDLOG_PROXY_READY_TOKEN", "")
+            flow.response = http.Response.make(200 if token else 403, token.encode("utf-8"), {
+                "content-type": "text/plain", "cache-control": "no-store"
+            })
+            return True
         scheme = flow.request.scheme
         nonce = _verify_nonce(flow.request.path)
         wants_html = "text/html" in flow.request.headers.get("accept", "")

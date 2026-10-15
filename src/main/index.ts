@@ -40,7 +40,7 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
+  killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
@@ -121,6 +121,8 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
+// One owned install per dependency, including the wait for login PATH.
+const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
 // is open to catch chain tampering silently — the on-demand verify button is
 // too easy to skip. Cleared in stopProject so a project switch stops the loop.
@@ -695,7 +697,7 @@ function startProject(project: ProjectMeta): void {
   } catch (e) { console.error('[plugins] init failed:', e) }
   setVpnAdapters(config.network.vpnAdapters)
 
-  configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  configureTerminal({ engagementId, projectId: project.id, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   configureTerminalProxy(() => {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
@@ -810,6 +812,7 @@ function startProject(project: ProjectMeta): void {
     const n = recoverOrphanSessions()
     if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
   } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
+  resumeTerminalRecordings()
 
   // Fill the shell catalog in the background so the picker opens instantly.
   // Not awaited: on Windows it enumerates WSL, and nothing here depends on
@@ -1084,11 +1087,9 @@ function stopProject(): void {
   screenshotAgent.stop()
   closeCastIndex()
   closeHttpBodyIndex()
-  // Audit 2026-09-18 P1: finalize all terminal sessions BEFORE closing the DB
-  // so session_end events (with cast SHA-256) land in the chain. Without this,
-  // terminals survive the project switch with stale identity and their close
-  // events race the DB close.
-  killAllTerminals()
+  // Finish each old project binding while its DB is open. The shell and its
+  // display survive; the next project opens a distinct recording segment.
+  detachTerminalRecordings()
   closeDB()
   resetBodiesDirCache()
   clearSpoolIdentity()
@@ -1389,7 +1390,7 @@ app.whenReady().then(() => {
       excludeTargets: beforeScope.excludeTargets,
       alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
     }, configChangedId)
-    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id,
+    configureTerminal({ engagementId: newConfig.engagement.id, projectId: activeProject!.id, operatorId: newConfig.operator.id,
       maxCastBytes: newConfig.terminal?.maxCastBytes })
     lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({
@@ -1662,11 +1663,32 @@ app.whenReady().then(() => {
   // An install changes what is on PATH, and `commandExists` caches a miss for
   // the session — so without this a mitmdump installed from the first-run card
   // stayed "not installed" in the health row while the proxy ran it (#254).
-  ipcMain.handle('runtime:install', async (_e, id: PreflightCommand) => {
-    await loginPathReady
-    const result = await installDependency(id)
-    invalidateHooksCache(); invalidateHooksDetectCache()
-    return result
+  ipcMain.handle('runtime:install', async (e, id: PreflightCommand) => {
+    if (dependencyInstalls.has(id)) return { success: false, message: `An installation for ${id} is already running` }
+    const controller = new AbortController()
+    dependencyInstalls.set(id, controller)
+    const cancelOwned = (): void => controller.abort()
+    // A renderer reload does not run React unmount cleanup. Never leave a
+    // hidden installer behind when its requesting frame reloads or crashes.
+    e.sender.once('did-start-loading', cancelOwned)
+    e.sender.once('destroyed', cancelOwned)
+    e.sender.once('render-process-gone', cancelOwned)
+    try {
+      await loginPathReady
+      return await installDependency(id, { signal: controller.signal })
+    } finally {
+      e.sender.removeListener('did-start-loading', cancelOwned)
+      e.sender.removeListener('destroyed', cancelOwned)
+      e.sender.removeListener('render-process-gone', cancelOwned)
+      if (dependencyInstalls.get(id) === controller) dependencyInstalls.delete(id)
+      invalidateHooksCache(); invalidateHooksDetectCache()
+    }
+  })
+  ipcMain.handle('runtime:cancelInstall', (_e, id: PreflightCommand) => {
+    const controller = dependencyInstalls.get(id)
+    if (!controller) return false
+    controller.abort()
+    return true
   })
 
   // --- WSL ---
@@ -1751,6 +1773,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   forceQuit = true
+  for (const controller of dependencyInstalls.values()) controller.abort()
 })
 
 app.on('will-quit', () => {

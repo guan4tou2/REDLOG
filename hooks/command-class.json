@@ -21,7 +21,7 @@
     "flags of theirs that take a separate value — so `sudo -u root nc` is",
     "classified as nc and not as root. FR-027."
   ],
-  "native": ["nc", "ncat", "vim", "vi", "nvim", "nano", "emacs", "less", "more"],
+  "native": ["nc", "ncat", "stty", "vim", "vi", "nvim", "nano", "emacs", "less", "more"],
   "pty": ["ssh", "socat", "pwncat-cs"],
   "repl": ["python", "python2", "python3", "ipython", "node", "irb", "ruby", "perl", "php", "lua"],
   "replScriptFlags": ["-c", "-m", "-e"],

@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, resizeMainWindow } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openCaptureProof, resizeMainWindow } from './helpers'
 
 // Spec 052 T043. The install journey, in the real app: the card names the gap,
 // one action closes it, and the card does not call it done until a command
@@ -78,13 +78,16 @@ test.describe.serial('enrolling this machine’s terminals', () => {
   test.beforeAll(async () => {
     tmpHome = makeTempHome('redlog-enrol-')
     app = await electron.launch({
-      args: [MAIN_ENTRY], cwd: REPO_ROOT,
+      ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
     })
     page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'terminal-enrollment')
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
+    await openCaptureProof(page)
     await page.waitForTimeout(2000)
     await resizeMainWindow(app, 1500, 1000)
   })

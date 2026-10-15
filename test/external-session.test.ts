@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 describe.skipIf(process.platform === 'win32')('explicit external PTY session', () => {
-  async function session(maxBytes: number, paused: boolean | 'offline' = false, command = ['/bin/sh', '-c', 'test -t 0 && test -t 1 && printf PTY_OK; printf STDERR_OK >&2; exit 7'], interactive = false) {
+  async function session(maxBytes: number, paused: boolean | 'offline' = false, command = ['/bin/sh', '-c', 'test -t 0 && test -t 1 && printf PTY_OK; printf STDERR_OK >&2; exit 7'], interactive = false, transientRead?: 'eof' | 'eio') {
     const events: Array<Record<string, any>> = []
     const identities: string[] = []
     const server = createServer((req, res) => {
@@ -68,7 +68,30 @@ finally:
     os.close(master)
     if child.poll() is None: child.kill()
 `
-      const child = spawn('python3', [...(interactive ? ['-c', driver] : []), 'hooks/redlog-session.py', '--max-bytes', String(maxBytes), '--',
+      // Inject only the first master read, leaving the actual child, PTY,
+      // subsequent bytes and HTTP recorder intact. A readable PTY can report
+      // EOF/EIO before the child is reaped; that is not an exit boundary.
+      const readFault = `
+import errno, os, pty, runpy, sys
+original_fork, original_read = pty.fork, os.read
+master_fd, injected = None, False
+def fork():
+    global master_fd
+    pid, fd = original_fork()
+    if pid: master_fd = fd
+    return pid, fd
+def read(fd, size):
+    global injected
+    if fd == master_fd and not injected:
+        injected = True
+        print('INJECTED_PTY_${transientRead}', file=sys.stderr)
+        ${transientRead === 'eio' ? "raise OSError(errno.EIO, 'transient PTY read')" : "return b''"}
+    return original_read(fd, size)
+pty.fork, os.read = fork, read
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+`
+      const child = spawn('python3', [...(interactive ? ['-c', driver] : transientRead ? ['-c', readFault] : []), 'hooks/redlog-session.py', '--max-bytes', String(maxBytes), '--',
         ...command],
       { env: { ...process.env, HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] })
       child.stdin.end()
@@ -96,6 +119,18 @@ finally:
     expect(r.events.filter(e => e.subtype === 'session_output').map(e => e.stdout).join('')).toContain('PTY_OK')
     expect(new Set(r.identities)).toEqual(new Set(['project-a']))
     expect(new Set(r.events.map(e => e.terminalId)).size).toBe(1)
+  })
+
+  it.each(['eof', 'eio'] as const)('drains real output after a transient PTY %s while the command is alive', async (failure) => {
+    const r = await session(4096, false, ['/bin/sh', '-c', 'printf READ_RETRY; printf STDERR_RETRY >&2; sleep 0.1; exit 7'], false, failure)
+    expect(r.diagnostic).toContain(`INJECTED_PTY_${failure}`)
+    expect(r.output).toContain('READ_RETRY')
+    expect(r.output).toContain('STDERR_RETRY')
+    expect(r.code).toBe(7)
+    const recorded = r.events.filter(e => e.subtype === 'session_output').map(e => e.stdout).join('')
+    expect(recorded).toContain('READ_RETRY')
+    expect(recorded).toContain('STDERR_RETRY')
+    expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: 7, outputBytes: Buffer.byteLength(recorded), omittedBytes: 0 })
   })
 
   it('preserves terminal geometry and interactive interrupt behavior', async () => {

@@ -31,8 +31,9 @@ import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
 import { eventTitle } from '../lib/eventTitle'
 import { Button } from './Button'
-import { RecordTerminalFlow, MissingList, ExecutionPolicyBlocker, type RecordTarget } from './RecordTerminalFlow'
+import { RecordTerminalFlow, ExecutionPolicyBlocker, type RecordTarget } from './RecordTerminalFlow'
 import { HttpCaptureStep } from './HttpCaptureStep'
+import { CapturePreparation, preparationChecks } from './CapturePreparation'
 import { commandCaptureBlockers, missingDependencies, shellLabel } from '../lib/terminalActivation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { commandsVerification, coreCaptureReady } from '../lib/coreCapture'
@@ -63,6 +64,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [wsl, setWsl] = useState<WslDistro | null>(null)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
   const [httpVerified, setHttpVerified] = useState(false)
+  const [preparing, setPreparing] = useState(true)
   const onHttpVerified = useCallback(() => setHttpVerified(true), [])
 
   // "The check failed" is not "everything is fine". Swallowing the rejection
@@ -81,6 +83,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // Coming back to the window is the re-check. The operator left to install
   // something; there is nothing for them to press on the way back.
   useRevalidateOnFocus(checkRuntime)
+  useEffect(() => {
+    if (preflight && !preflightFailed && preparationChecks(preflight).length === 0) setPreparing(false)
+  }, [preflight, preflightFailed])
+  const openPreparation = (): void => { setHttpVerified(false); setPreparing(true); checkRuntime() }
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -144,11 +150,23 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     ? { kind: 'wsl', distro: wsl.name, shell: wsl.hookStatus.zsh !== 'no-shell' ? 'zsh' : 'bash', label: `WSL ${wsl.name}` }
     : null
 
+  if (preparing) return (
+    <div className="h-full overflow-auto p-4 space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
+        <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+      </div>
+      <CapturePreparation preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
+        onSkip={() => setPreparing(false)} onLeave={() => onNavigate('timeline')} />
+    </div>
+  )
+
   return (
     <div className="h-full flex flex-col p-4 gap-3 overflow-auto">
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+        <p className="text-xs text-redlog-text-faint mt-2">{t('captureSetup.prove')}</p>
       </div>
 
       <div className="flex-1 min-h-0 flex gap-3">
@@ -217,7 +235,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   <div data-testid="first-run-missing-deps" className="space-y-2">
                     <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
                     <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
-                    <MissingList missing={missing} />
+                    <Button level="secondary" onClick={openPreparation}>{t('captureSetup.openPreparation')}</Button>
                   </div>
                 )}
               </div>
@@ -253,12 +271,12 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                     </Button>
                   )}
                 </div>
-                {recording && <RecordTerminalFlow key={recording.label} target={recording} />}
+                {recording && <RecordTerminalFlow key={recording.label} target={recording} onPrepare={openPreparation} />}
               </div>
             )}
           </section>
 
-          <HttpCaptureStep onVerified={onHttpVerified} />
+          <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} />
 
           <div data-testid="first-run-core-footer" className="text-xs space-y-1.5">
             {ready ? (

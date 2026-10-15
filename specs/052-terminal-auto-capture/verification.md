@@ -385,3 +385,139 @@ is the CLAUDE.md rule about changing behaviour:
 <!-- Analyze and Converge are run before the spec moves to Verified, together
      with T044/T045 and the CHANGELOG entry. An empty row reads as never run,
      and that is the correct reading today. -->
+
+
+## 2026-10-14 installation follow-up: embedded provenance
+
+A real macOS package recorded an embedded Zsh command as `auto-relay`, losing
+its `.cast` enrichment and built-in health provenance. Regression reproduced
+this with a real PTY/collector before the fix. `source` now retains
+`builtin-terminal`; `captured_by` still names the relay. Ordinary external Zsh
+retains `auto-relay`.
+
+`test/zsh-builtin-source.test.ts` (2), `test/zsh-auto-capture.pty.test.ts` (8)
+and `test/wsl-manager.test.ts` (9): 19 PASS. The PTY driver now resolves Zsh
+from PATH instead of assuming Linux's /usr/bin/zsh on macOS. This is a harness
+portability correction, not an excuse to remove behavior assertions.
+
+
+## 2026-10-14 offline durability and terminal control
+
+Same-second BSD date spool names previously overwrote events. An actual shell
+regression reproduces three sends becoming one; the final sender keeps the
+time prefix and adds its unique mktemp work ID. All three events and exit 3 now
+remain, and large-body tests preserve 229KB / 4MB output. The final installed
+macOS copy matches the source hooks and policy byte-for-byte.
+
+The shared native class includes stty so it operates on the controlling terminal.
+The transparency harness compares BSD/GNU ls using each platform's real color
+options, sanitizes inherited pager settings, and waits for the requested job in
+this PTY (not a global process match). Darwin terminal writes are drained while
+waiting and closing. All 19 transparency checks pass, including Ctrl-C=130,
+Ctrl-Z/jobs/fg, dimensions, separated streams and recorded text.
+
+Full unit suite: 3540 PASS / 23 SKIP. Skipped nc-upgrade and platform tests are
+not promoted to pass. A fresh Kali Rolling 2026.3 container also records real
+ordinary Zsh stdout/stderr/exit 3/shell/completeness, and Bash 5 fast payloads.
+This is a container capture check, not Kali GUI/package or native WSL acceptance.
+#332 tracks the offline durability defect; this local diff is not released.
+
+
+## 2026-10-14 packaged recording follow-up
+
+A fresh installed macOS candidate (DMG SHA-256 61e175daa81fed2077ce2d9f5a417d3f3864f8e2e86be6421106ef14cbac5875)
+runs 100 ordinary Zsh commands through the installed adapter and writes to
+the actual App project. All 100 command_end rows are unique and retain
+stdout; 90 preserve exit 0, 10 preserve exit 3; 20 exercise stderr, including 10 direct builtin writes. The 100-command
+recording interval took 55,146ms. This is an already-prepared macOS host,
+not SC-001's fresh Kali install or a native Kali GUI acceptance claim.
+
+The explicit PTY helper now confirms child exit before closing the master
+on EOF/EIO. Fault-injected first reads with a real child, actual PTY and HTTP
+recorder were RED (no terminal/recorded output) and GREEN (both streams,
+exit 7, session_end byte counts). All 10 external-session tests PASS, including
+Ctrl-C, geometry, pause and truncation. Installed smoke preserves all five
+short echo sessions in display, store and search, then ordinary Zsh capture
+and profile uninstall.
+
+The original single no-output package failure is retained in #333: its DB
+contains session_start and exit-0 session_end with zero bytes, which excludes
+helper-not-started/installer delivery hypotheses. Its precise system-call
+trace was not captured; the transient-read regression proves a real loss
+path, not retrospective certainty about that particular run.
+
+
+### Automatic relay boundary hardening
+
+The same read-side EOF/EIO assumption also closed automatic stream masters
+while their writers were still open. Actual PTY fault-injection was RED: the
+next write failed with EIO. A shell completion marker after descriptor restore
+now preserves both writable streams and their saved bytes; both fault cases
+are GREEN. A retired incomplete work directory ends evidence collection, but
+does not close output terminals still held by suspended/background jobs. Part
+files must not be recreated after retirement.
+
+The full regression caught an initial cleanup implementation interrupting
+Ctrl-Z/fg resumed output; that cleanup was corrected. Final unit run: 349 files
+PASS, 4 files SKIP; 3552 tests PASS, 23 tests SKIP. All 19 transparency tests
+pass, including Ctrl-C, Ctrl-Z/fg, TTY geometry and direct streams. The explicit
+helper's 10 tests and automatic relay boundary's 3 tests also pass.
+
+An earlier full run had one direct-stderr command return exit 1 and lose its
+output. Original terminal bytes were not saved. Future failures now include
+the exact terminal output in zsh-engagement-100 assertions. No claim is made
+that a later green run alone proves that particular run's root cause.
+
+## 2026-10-14 receiving profile and local closeout
+
+Both Bash/Zsh and automatic/Python payload builders previously embedded the
+stale Linux HOME identity even when the transport had resolved a different
+receiving RedLog profile (four RED cases). Both now use that resolved directory;
+161 focused payload/provenance checks PASS. This is a simulated directory
+boundary, not native WSL acceptance.
+
+Final local gates: 352 files PASS / 4 SKIP; 3,581 tests PASS / 23 SKIP;
+typecheck/spec/architecture/i18n/build PASS. Terminal enrollment and setup
+journeys PASS. T047 is complete. The real Kali VM job-control run and full
+first-enrollment/100-command measurements (T044/T045) remain explicitly open;
+the installed macOS 100-command run is not a substitute for those platform
+acceptance criteria.
+
+## 2026-10-15 actual installed Kali ARM64 follow-up
+
+An experimental ARM64 DEB from bae0415 was installed by the operator in an
+isolated Kali 2026.3 desktop VM. The published Linux architecture remains x64;
+this result does not validate that installer. App/profile fixtures use temporary
+homes and the guest network remains disabled.
+
+The actual installed app records 100/100 unique ordinary Zsh commands with
+their stdout, 20 stderr writes and correct exits (90 zero / 10 exit 3).
+Recording took 52,670ms; enrollment plus verification took 52,828ms. Neither
+includes DEB installation or the operator's setup time. Five explicit PTY
+sessions, search, profile removal and live-pane project rotation/privacy pass.
+
+The native installed-app nc journey compares real bare/enrolled Linux PTYs:
+Ctrl-Z stops the listener, jobs confirms it, raw/fg resumes, peer data arrives,
+all descriptors remain terminal descriptors and terminal settings match.
+The first journey failed because it asserted start-only `class` on command_end;
+the corrected journey checks start classification and end completeness and
+passes. No product schema was changed to accommodate the test.
+
+The operator separately completed quickstart step (c) in the visible terminal
+and supplied a screenshot. The controller independently observed stop, resume,
+terminal descriptors and a valid local chain. Its acknowledgement marker
+arrived after its ten-minute limit, so raw `completed: false` is preserved;
+human confirmation is separate evidence. Offline remote timestamp anchoring
+fails explicitly and is not counted as local-chain failure or anchoring success.
+
+SC-004 has native automated and human evidence. T044 still requires the rest
+of the manual quickstart, and T045 still requires SC-001's whole first-enrollment
+stopwatch. The feature remains Draft; neither task is blanket-checked.
+
+Final installed Kali group: five journeys PASS in one run, now explicitly
+isolating Electron user data and asserting app.isPackaged. It includes actual
+HTTP/HTTPS, projection export with the shipped verifier and restart in addition
+to ordinary capture, native nc, PTY helper and project rotation. The repeat
+100-command interval is 83,956ms (84,047ms enrollment plus verification), under
+concurrent host checks; it is not a clean-host performance comparison. HTTP
+tools were prepared separately, not installed through the offline guest UI.

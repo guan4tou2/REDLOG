@@ -117,6 +117,31 @@ describeDB('api-server', () => {
     }
   })
 
+  it('refuses a queued payload captured for another engagement even without a pinned header', async () => {
+    const before = getEventCount()
+    const response = await fetch(`${base}/api/events`, {
+      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_type: 'shell', _identity: { engagementId: 'other-client' }, data: { subtype: 'command_end', command: 'must stay with other client' } })
+    })
+    expect(response.status).toBe(409)
+    expect(getEventCount()).toBe(before)
+  })
+
+  it('acknowledges an unrecorded owned pane without asking its hook to spool and replay it', async () => {
+    const { configureIngest } = await import('../src/core/ingest')
+    const before = getEventCount()
+    configureIngest({ terminalLifecycle: { prepare: () => false, recorded: () => undefined } })
+    try {
+      const response = await fetch(`${base}/api/events`, {
+        method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_type: 'shell', data: { source: 'builtin-terminal', terminalId: 'failed-pane', subtype: 'command_start', command: 'deliberately unrecorded' } })
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ recording: false, skipped: 'terminal not recording' })
+      expect(getEventCount()).toBe(before)
+    } finally { configureIngest({ terminalLifecycle: null }) }
+  })
+
   it('serves bookmarks only on the current route', async () => {
     const c = await fetch(`${base}/api/bookmarks`, {
       method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' },

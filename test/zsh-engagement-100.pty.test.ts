@@ -124,6 +124,11 @@ describeShell(`a ${COUNT}-command engagement (${target?.label ?? 'no zsh reachab
       if (p.stderr !== undefined && !String(end.stderr ?? '').includes(p.stderr)) {
         problems.push(`#${p.n}: stderr lost — wanted "${p.stderr}", got ${JSON.stringify(end.stderr)}`)
       }
+      if (end.exit_code !== p.exit || (p.stderr !== undefined && !String(end.stderr ?? '').includes(p.stderr))) {
+        problems.push(`#${p.n}: terminal output ${JSON.stringify(report.steps[p.n - 1]?.output)}`)
+        problems.push(`#${p.n}: end ${JSON.stringify(end)}`)
+        problems.push(`#${p.n}: adjacent driver output ${JSON.stringify(report.steps.slice(Math.max(0, p.n - 2), p.n + 1))}`)
+      }
       // The pair is correlated by the id the adapter minted, on both ends.
       if (starts[0] && starts[0].data.command_id !== end.command_id) {
         problems.push(`#${p.n}: command_start and command_end carry different ids`)

@@ -56,6 +56,18 @@ describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => 
     expect(report.transcript).toContain('EXIT<0>')
   }, 240_000)
 
+  it('does not mistake a repeated old prompt for the next command completing', async () => {
+    const report = await runZsh(target!, {
+      rc: 'autoload -Uz add-zsh-hook\n_redraw() { print -nP -- "$PROMPT" }\nadd-zsh-hook precmd _redraw',
+      commands: ['echo first-command-output', 'echo second-command-output'],
+      keepRaw: true
+    })
+    expect(report.ok, report.error).toBe(true)
+    expect(report.steps[0].output).toContain('first-command-output')
+    expect(report.steps[1].output).toContain('second-command-output')
+    expect(report.steps[1].output).not.toContain('first-command-output')
+  }, 240_000)
+
   it('RED: with no adapter installed, nothing is recorded', async () => {
     const before = collector.events.length
     const report = await runZsh(target!, {

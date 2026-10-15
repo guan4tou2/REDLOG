@@ -22,6 +22,25 @@ unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION
 `
 
 describeShell('a command typed when the hook has no api-port / api-token', () => {
+  it('keeps every event when date has only second precision (BSD date)', async () => {
+    const script = `${prelude}
+source ${hookPath(target!, 'shell-common.sh')}
+date() { printf '%s\\n' 1700000000N; }
+_redlog_send_event command_start first
+_redlog_send_event command_end first '{"exit_code":3}'
+_redlog_send_event command_start second
+python3 - "$HOME/.redlog/pending" <<'PY'
+import glob, json, sys
+rows = [json.load(open(f))['data'] for f in glob.glob(sys.argv[1] + '/*.json')]
+print('ROWS', len(rows))
+print('ENDS', sum(r['subtype'] == 'command_end' and r['exit_code'] == 3 for r in rows))
+PY
+`
+    const run = await runInShell(target!, script, { timeoutMs: 60_000 })
+    expect(run.stdout, run.stderr).toContain('ROWS 3')
+    expect(run.stdout).toContain('ENDS 1')
+  }, 90_000)
+
   it('is spooled for replay, with no token to deliver it', async () => {
     const script = `${prelude}
 source ${hookPath(target!, 'shell-common.sh')}

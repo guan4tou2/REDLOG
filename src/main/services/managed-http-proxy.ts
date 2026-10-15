@@ -1,7 +1,9 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { X509Certificate } from 'node:crypto'
+import { X509Certificate, randomBytes } from 'node:crypto'
+import http from 'node:http'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
+import { VERIFY_HOST } from '../../core/http-verify'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
 
@@ -42,14 +44,40 @@ interface Dependencies {
   exists: typeof existsSync
   fingerprint: (caPath: string) => CaFingerprint | null
   readinessTimeoutMs: number
+  probe: (url: string, token: string) => Promise<boolean>
 }
 
-const READY_PATTERN = /proxy server listening|listening at/i
+/** The token is delivered to the owned addon through its environment, never
+ * in the request. A listening foreign proxy cannot pass by reflecting input. */
+export function probeManagedProxy(url: string, token: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(new URL(url), {
+      method: 'GET', path: `http://${VERIFY_HOST}/__redlog_ready`,
+      headers: { host: VERIFY_HOST }, agent: false
+    }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk: string) => {
+        body += chunk
+        if (body.length > token.length) { resolve(false); req.destroy() }
+      })
+      res.on('end', () => resolve(res.statusCode === 200 && body === token))
+      res.on('error', () => resolve(false))
+    })
+    req.on('error', () => resolve(false))
+    req.setTimeout(500, () => { resolve(false); req.destroy() })
+    req.end()
+  })
+}
+
 const DEFAULT_DEPS: Dependencies = {
   spawn: nodeSpawn,
   exists: existsSync,
   fingerprint: readCaFingerprint,
-  readinessTimeoutMs: 5_000
+  // First start after installing Python packages can still be importing them
+  // at five seconds. Keep it starting, with a bounded opportunity to bind.
+  readinessTimeoutMs: 30_000,
+  probe: probeManagedProxy
 }
 
 export function buildManagedProxyArgs(addonPath: string, port: number, listenHost = '127.0.0.1'): string[] {
@@ -65,6 +93,7 @@ export class ManagedHttpProxy {
   private child: ChildProcess | null = null
   private snapshot: ManagedProxyStatus = { state: 'stopped', url: null }
   private startPromise: Promise<ManagedProxyStatus> | null = null
+  private cancelStart: (() => void) | null = null
   private generation = 0
   private listeners = new Set<StatusListener>()
   private caPath: string | null = null
@@ -135,29 +164,34 @@ export class ManagedHttpProxy {
 
     this.update({ state: 'starting', url })
     const generation = ++this.generation
+    const token = randomBytes(32).toString('hex')
     this.startPromise = new Promise((resolve) => {
       let settled = false
       let diagnostics = ''
       let timer: ReturnType<typeof setTimeout> | null = null
+      let poll: ReturnType<typeof setInterval> | null = null
 
       const finish = (next: ManagedProxyStatus): void => {
         if (settled) return
         settled = true
         if (timer) clearTimeout(timer)
+        if (poll) clearInterval(poll)
         if (generation !== this.generation) {
           resolve(this.status())
           return
         }
         this.update(next)
         this.startPromise = null
+        this.cancelStart = null
         resolve(this.status())
       }
+      this.cancelStart = () => finish(this.status())
 
       let child: ChildProcess
       try {
         child = this.deps.spawn('mitmdump', buildManagedProxyArgs(input.addonPath, input.port, listenHost), {
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: process.env
+          env: { ...process.env, REDLOG_PROXY_READY_TOKEN: token }
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -166,12 +200,20 @@ export class ManagedHttpProxy {
       }
 
       this.child = child
+      let probing = false
+      const checkReady = async (): Promise<void> => {
+        if (settled || probing || generation !== this.generation || child.exitCode !== null || child.killed) return
+        probing = true
+        const ready = await this.deps.probe(url, token).catch(() => false)
+        probing = false
+        if (ready && !settled && generation === this.generation && this.child === child && child.exitCode === null && !child.killed) {
+          finish({ state: 'running', url, pid: child.pid })
+        }
+      }
       const consume = (chunk: Buffer | string): void => {
         const text = String(chunk)
         diagnostics = `${diagnostics}${text}`.slice(-4_000)
-        if (READY_PATTERN.test(text)) {
-          finish({ state: 'running', url, pid: child.pid })
-        }
+        void checkReady()
       }
       child.stdout?.on('data', consume)
       child.stderr?.on('data', consume)
@@ -201,22 +243,29 @@ export class ManagedHttpProxy {
         }
       })
       timer = setTimeout(() => {
+        finish({ state: 'failed', url: null, error: `mitmdump did not confirm owned readiness within ${this.deps.readinessTimeoutMs / 1000}s${diagnostics.trim() ? `: ${diagnostics.trim()}` : ''}` })
+        if (this.child === child) this.child = null
         if (child.exitCode === null && !child.killed) {
-          finish({ state: 'running', url, pid: child.pid })
-        } else {
-          finish({ state: 'failed', url: null, error: diagnostics.trim() || 'mitmdump did not become ready' })
+          try { child.kill() } catch { /* already exited */ }
         }
       }, this.deps.readinessTimeoutMs)
+      poll = setInterval(() => { void checkReady() }, 200)
+      void checkReady()
     })
-    return this.startPromise
+    const started = this.startPromise
+    void started.then(() => { if (this.startPromise === started) this.startPromise = null })
+    return started
   }
 
   stop(): ManagedProxyStatus {
     this.generation++
     const child = this.child
+    const cancel = this.cancelStart
     this.child = null
     this.startPromise = null
+    this.cancelStart = null
     this.update({ state: 'stopped', url: null })
+    cancel?.()
     if (child && child.exitCode === null && !child.killed) {
       try { child.kill() } catch { /* already exited */ }
     }

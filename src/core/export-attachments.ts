@@ -14,6 +14,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FIELDS } from './http-body-store'
@@ -48,6 +49,23 @@ export interface ExportAttachment {
   status: ExportAttachmentStatus
   /** terminal or session the file came from, when an event says so */
   source?: string
+}
+
+/** Freeze the included files, not just their count/size. An equal-size edit
+ * or a same-count replacement must invalidate the operator's preview. */
+export function exportAttachmentDigest(projectDir: string, attachments: readonly ExportAttachment[]): string {
+  const digest = crypto.createHash('sha256')
+  const buffer = Buffer.allocUnsafe(64 * 1024)
+  for (const attachment of [...attachments].filter(item => item.status === 'included').sort((a, b) => a.id.localeCompare(b.id))) {
+    const fd = fs.openSync(path.join(projectDir, attachment.id), 'r')
+    const hash = crypto.createHash('sha256')
+    try {
+      let bytes: number
+      while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes))
+    } finally { fs.closeSync(fd) }
+    digest.update(JSON.stringify([attachment.id, hash.digest('hex')]))
+  }
+  return digest.digest('hex')
 }
 
 const ID_RE = /^(screenshots|casts|http-bodies|artifacts)\/[^/\\]+$/

@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
@@ -29,12 +29,14 @@ test.describe.serial('command I/O capture', () => {
   test.beforeAll(async () => {
     tmpHome = makeTempHome('redlog-io-')
     app = await electron.launch({
-      args: [MAIN_ENTRY], cwd: REPO_ROOT,
+      ...(process.env.REDLOG_PACKAGED_APP ? { executablePath: process.env.REDLOG_PACKAGED_APP } : {}),
+      args: process.env.REDLOG_PACKAGED_APP ? [] : [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
     })
     page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await openTestProject(page, 'command-io')
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     await page.waitForTimeout(1500)
     base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
@@ -80,34 +82,17 @@ test.describe.serial('command I/O capture', () => {
   })
 
   test('a .cast was written for the session', async () => {
-    const castsDir = join(tmpHome, '.redlog', 'projects')
-    const found: string[] = []
-    const walk = (d: string): void => {
-      for (const e of readdirSync(d, { withFileTypes: true })) {
-        const p = join(d, e.name)
-        if (e.isDirectory()) walk(p)
-        else if (e.name.endsWith('.cast')) found.push(p)
-      }
-    }
-    if (existsSync(castsDir)) walk(castsDir)
-    expect(found.length, 'no .cast file produced by the pty session').toBeGreaterThan(0)
-    expect(statSync(found[0]).size).toBeGreaterThan(0)
+    const session = (await events()).find(e => e.data?.subtype === 'session_start' && e.data?.terminalId === 'io-test' && e.data?.source === 'builtin-terminal')
+    expect(session?.data?.castPath, 'io-test must reference its own recording').toBeTruthy()
+    const castPath = String(session!.data!.castPath)
+    expect(existsSync(castPath)).toBe(true)
+    expect(statSync(castPath).size).toBeGreaterThan(0)
   })
 
   test('terminal geometry changes are persisted in asciicast v2', async () => {
-    const castsDir = join(tmpHome, '.redlog', 'projects')
-    const found: string[] = []
-    const walk = (d: string): void => {
-      for (const e of readdirSync(d, { withFileTypes: true })) {
-        const p = join(d, e.name)
-        if (e.isDirectory()) walk(p)
-        else if (e.name.endsWith('.cast')) found.push(p)
-      }
-    }
-    walk(castsDir)
-    const castPath = found.find((file) => file.endsWith('_io-test.cast'))
-    expect(castPath, 'io-test cast was not found').toBeTruthy()
-    const frames = readFileSync(castPath!, 'utf8').trim().split('\n').slice(1).map((line) => JSON.parse(line) as unknown[])
+    const session = (await events()).find(e => e.data?.subtype === 'session_start' && e.data?.terminalId === 'io-test' && e.data?.source === 'builtin-terminal')
+    expect(session?.data?.castPath, 'io-test must reference its own recording').toBeTruthy()
+    const frames = readFileSync(String(session!.data!.castPath), 'utf8').trim().split('\n').slice(1).map((line) => JSON.parse(line) as unknown[])
     const resizeFrames = frames.filter((frame) => frame[1] === 'r')
     expect(resizeFrames).toEqual([[expect.any(Number), 'r', '120x40']])
   })

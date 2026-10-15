@@ -151,6 +151,7 @@ def run(command, recorder):
     old_resize = signal.signal(signal.SIGWINCH, resize)
     old_term = signal.signal(signal.SIGTERM, lambda *_: os.kill(pid, signal.SIGTERM))
     inputs = [master, 0]
+    child_status = None
     try:
         resize()
         if interactive:
@@ -162,13 +163,24 @@ def run(command, recorder):
                     data = os.read(master, 16384)
                 except OSError as error:
                     if error.errno == errno.EIO:
-                        break
-                    raise
+                        data = b''
+                    else:
+                        raise
                 if not data:
-                    break
-                sys.stdout.buffer.write(data)
-                sys.stdout.buffer.flush()
-                recorder.output(decoder.decode(data))
+                    # EOF/EIO describes this PTY read, not the child's exit.
+                    # Closing here can discard a short command's later bytes.
+                    # Reap only once, and leave the master open while it lives.
+                    ended, status = os.waitpid(pid, os.WNOHANG)
+                    if ended:
+                        child_status = status
+                        break
+                    # A hung-up master stays readable; avoid a busy loop while
+                    # waiting for the child to exit or the PTY to yield bytes.
+                    time.sleep(0.01)
+                else:
+                    sys.stdout.buffer.write(data)
+                    sys.stdout.buffer.flush()
+                    recorder.output(decoder.decode(data))
             if 0 in ready:
                 data = os.read(0, 16384)
                 if data:
@@ -187,7 +199,8 @@ def run(command, recorder):
             os.killpg(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        os.waitpid(pid, 0)
+        if child_status is None:
+            os.waitpid(pid, 0)
         raise
     finally:
         if saved is not None:
@@ -195,8 +208,9 @@ def run(command, recorder):
         signal.signal(signal.SIGWINCH, old_resize)
         signal.signal(signal.SIGTERM, old_term)
         os.close(master)
-    _, status = os.waitpid(pid, 0)
-    return os.waitstatus_to_exitcode(status)
+    if child_status is None:
+        _, child_status = os.waitpid(pid, 0)
+    return os.waitstatus_to_exitcode(child_status)
 
 
 def run_unrecorded(command):

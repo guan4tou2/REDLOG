@@ -53,6 +53,58 @@ describe('export plan IPC contract', () => {
     })
   })
 
+  it.each([[], new Map(), new Date(0)])('rejects a malformed selection filter instead of widening it to all events: %s', filter => {
+    addEvent('events', 'must-not-widen', 1000)
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format: 'json', subset: { kind: 'selection', projection: 'events', filter } } as never)
+    expect(result).toMatchObject({ ok: false })
+  })
+
+  it.each([[], null, new Map()])('rejects malformed HTTP predicates: %s', http => {
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http } } as never)
+    expect(result).toMatchObject({ ok: false })
+  })
+
+  it.each(['json', 'ndjson', 'timeline'])('exports every matching row beyond the first page, frozen at preview, as %s', format => {
+    const wanted = Array.from({ length: 1005 }, (_, n) => `selected-${n}`)
+    getDB().transaction(() => {
+      for (let n = 0; n < wanted.length; n++) {
+        addEvent('events', wanted[n], 1000 + n, { targetId: 'example.test', data: { command: 'selected' } })
+        addEvent('events', `other-${n}`, 1000 + n, { targetId: 'other.test', data: { command: 'other' } })
+      }
+    })()
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format, subset: { kind: 'selection', projection: 'events', filter: { targetId: 'EXAMPLE.TEST', agentType: 'shell', since: 1000, before: 2004 } } } as never) as { ok: true; plan: { id: string; counts: { included: number } } }
+    expect(resolved.ok).toBe(true)
+    expect(resolved.plan.counts.included).toBe(1005)
+    addEvent('events', 'backdated-after-preview', 1500)
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    const content = fs.readFileSync(executed.artifactPath, 'utf8')
+    const rows = format === 'ndjson' ? content.trim().split('\n').map(line => JSON.parse(line)) : JSON.parse(content).events
+    expect(rows.map((e: { id: string }) => e.id).sort()).toEqual(wanted.sort())
+  })
+
+  it('exports selected HTTP exchanges with late responses and the latest response update, frozen at preview', () => {
+    const addFlow = (id: string, method: string, status: number, ts: number): void => {
+      addEvent('events_logged', `${id}-req`, ts, { agentType: 'scanner', subtype: 'http_request_start', data: { flow_id: id, method, host: 'example.test', url: `http://example.test/needle/${id}` } })
+      addEvent('events_logged', `${id}-res`, ts + 500, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: id, status, host: 'example.test', content_type: 'text/plain' } })
+    }
+    addFlow('selected-flow', 'GET', 500, 1000)
+    addEvent('events_logged', 'selected-flow-update', 1600, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'selected-flow', status: 201 } })
+    addFlow('other-method', 'POST', 201, 1001)
+    addFlow('other-status', 'GET', 404, 1002)
+    addEvent('events_logged', 'response-only', 1003, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'response-only', method: 'GET', status: 202, host: 'example.test', url: 'http://example.test/needle/orphan' } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 1000, before: 1010 }, http: { method: 'GET', statusPrefix: '2', host: 'EXAMPLE.TEST', text: 'needle' } } } as never) as { ok: true; plan: { id: string; counts: { included: number; exchanges: number } } }
+    expect(resolved.ok).toBe(true)
+    expect(resolved.plan.counts).toMatchObject({ included: 4, exchanges: 2 })
+    addEvent('events_logged', 'future-update', 1700, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'selected-flow', status: 503 } })
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    const entries = JSON.parse(fs.readFileSync(executed.artifactPath, 'utf8')).log.entries
+    expect(entries).toHaveLength(2)
+    expect(entries.find((e: any) => e._redlog.flowId === 'selected-flow')).toMatchObject({ response: { status: 201 }, _redlog: { responseEventId: 'selected-flow-update', incomplete: false } })
+    expect(entries.find((e: any) => e._redlog.flowId === 'response-only')).toMatchObject({ response: { status: 202 }, _redlog: { requestEventId: null, incomplete: true } })
+  })
+
   it('executes JSON from the approved snapshot and reports matching identity/counts', () => {
     addEvent('events', 'before-a', 1000)
     addEvent('events_logged', 'before-b', 1001)
@@ -123,6 +175,14 @@ describe('export plan IPC contract', () => {
       ok: false,
       error: 'project-changed'
     })
+  })
+
+  it('refuses a bundle when an included attachment changes without changing its byte count', () => {
+    addEvent('events', 'attachment-owner', 1000)
+    const file = addExportAttachment(dir, 'casts/frozen.cast', 'before')
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    fs.writeFileSync(file, 'change')
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
   })
 
   it('returns plan-expired and writes no artifact after the approval lifetime', () => {
