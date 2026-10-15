@@ -1,6 +1,6 @@
 name: Linux package smoke
 
-# Native x64 Ubuntu runner: install the DEB, then launch the AppImage wrapper.
+# Native x64 Ubuntu runner: install, record with and remove the supported DEB.
 # This does not replace the remaining manual Kali desktop quickstart.
 on:
   workflow_dispatch:
@@ -48,8 +48,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Build
         run: npm run build
-      - name: Build DEB and AppImage x64 candidates
-        run: npx electron-builder --linux deb AppImage --x64 --publish never
+      - name: Build DEB x64 candidate
+        run: npx electron-builder --linux deb --x64 --publish never
       - name: Verify packaged capture resources
         run: npm run verify:package-resources
       - name: Clean precondition and actual DEB installation
@@ -81,33 +81,8 @@ jobs:
         run: |
           sudo apt-get remove -y redlog
           test ! -e /opt/RedLog/redlog
-      - name: Select AppImage in a path containing spaces
-        id: appimage
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import os, shutil
-          images = list(Path('dist').glob('*.AppImage'))
-          assert len(images) == 1, images
-          target = Path(os.environ['RUNNER_TEMP']) / 'RedLog AppImage candidate' / images[0].name
-          target.parent.mkdir(parents=True, exist_ok=True)
-          shutil.copy2(images[0], target)
-          target.chmod(0o755)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f'exe={target}\n')
-          PY
-      - name: Actual AppImage wrapper records and exports after relocation
-        env:
-          REDLOG_PACKAGED_APP: ${{ steps.appimage.outputs.exe }}
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/linux-appimage-smoke.json
-        run: >-
-          xvfb-run -a npx playwright test e2e/packaged-smoke.spec.ts
-          e2e/packaged-session-smoke.spec.ts --workers=1 --reporter=list,json
-      - name: Require actual AppImage execution
-        run: node scripts/verify-smoke-report.mjs test-results/linux-appimage-smoke.json
       - name: Candidate checksums
-        run: sha256sum dist/*.deb dist/*.AppImage > dist/SHA256SUMS.txt
+        run: sha256sum dist/*.deb > dist/SHA256SUMS.txt
       - name: Upload Linux candidates and reports
         if: always()
         uses: actions/upload-artifact@v5
@@ -116,7 +91,6 @@ jobs:
           path: |
             test-results/
             dist/*.deb
-            dist/*.AppImage
             dist/SHA256SUMS.txt
           if-no-files-found: ignore
           retention-days: 7

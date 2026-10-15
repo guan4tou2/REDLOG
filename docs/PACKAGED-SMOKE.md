@@ -6,8 +6,8 @@ artifact an operator installs, rather than the source checkout.
 | Platform | Package | Required smoke |
 | --- | --- | --- |
 | macOS arm64 | `.app`, DMG/ZIP | Launch with a clean HOME; confirm the API port/token are created with `0600`; confirm health says no project is open; create a project and install the zsh or bash adapter. |
-| Windows x64 | NSIS and portable | Launch each with a clean USERPROFILE; create a project; install PowerShell capture; run one command and confirm command and exit evidence. |
-| Kali Linux | DEB/AppImage | First launch on a clean desktop, zsh/Bash enrollment, real stdout/stderr/exit and job-control recovery. |
+| Windows x64 | NSIS | Launch with a clean USERPROFILE; create a project; install PowerShell capture; run one command and confirm command and exit evidence. |
+| Kali / Debian / Ubuntu x64 | DEB | First launch on a clean desktop, zsh/Bash enrollment, real stdout/stderr/exit and job-control recovery. |
 | WSL | Windows install + selected distro | Select the explicit WSL Bash entry; run one command; confirm the Bash adapter is sourced and evidence returns to the Windows project. |
 
 Every packaged build must also run:
@@ -19,6 +19,16 @@ npm run verify:package-resources
 The gate requires the current bash, zsh and PowerShell adapters, their shared
 runtime, the declarative starter pack and evidence verifier. It fails if any removed pre-release
 compatibility hook is present.
+
+## v0.18.1 distribution policy
+
+Supported downloads are NSIS, DEB and DMG. The macOS ZIP remains a supplementary
+archive. Windows portable and Linux AppImage targets and their active smoke
+branches are removed; older results below are historical evidence. Linux
+release packaging is required, not best-effort. Release verification rejects a
+missing platform, a wrong version, unexpected portable packages and Windows
+update metadata whose artifact, size or SHA-512 differs from the installer.
+The retained DEB JSON is no longer cleared by a following AppImage journey.
 
 ## 2026-09-22 macOS arm64 result
 

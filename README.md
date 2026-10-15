@@ -15,20 +15,24 @@ Install RedLog on **your operator machine** (the Kali box or laptop you attack
 from), not on a target. It records what you do; it is not an implant.
 
 Grab the installer for your platform from the
-[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.18.0**.
+[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.18.1**.
 Builds are unsigned (ad-hoc signed, not notarised), so each OS asks you to
 confirm once.
 
 | Platform | File | Install |
 |----------|------|---------|
-| Kali / Debian / Ubuntu (x64) | [`redlog_0.18.0_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.0/redlog_0.18.0_amd64.deb) | `sudo apt install ./redlog_*.deb` |
-| Other Linux (x64) | [`RedLog-0.18.0.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.0/RedLog-0.18.0.AppImage) | `chmod +x RedLog-*.AppImage && ./RedLog-*.AppImage` |
-| Windows (x64 installer) | [`RedLog.Setup.0.18.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.0/RedLog.Setup.0.18.0.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
-| Windows (x64 portable) | [`RedLog.0.18.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.0/RedLog.0.18.0.exe) | No install; same SmartScreen prompt |
-| macOS (Apple Silicon) | [`RedLog-0.18.0-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.0/RedLog-0.18.0-arm64.dmg) | Drag to `/Applications`, then see below |
+| Kali / Debian / Ubuntu (x64) | [`redlog_0.18.1_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/redlog_0.18.1_amd64.deb) | `sudo apt install ./redlog_*.deb` |
+| Windows (x64 installer) | [`RedLog.Setup.0.18.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/RedLog.Setup.0.18.1.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
+| macOS (Apple Silicon) | [`RedLog-0.18.1-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/RedLog-0.18.1-arm64.dmg) | Drag to `/Applications`, then see below |
 | macOS (Intel) | — | No installer; [build from source](#development) |
 
-**macOS** — the first launch is blocked because the app is unsigned. Right-click
+Official downloads are installed packages: NSIS on Windows, DEB on Kali /
+Debian / Ubuntu, and DMG on Apple Silicon macOS. Portable Windows and AppImage
+packages are no longer published. The macOS ZIP is a supplementary app archive;
+the guided installation path uses the DMG.
+
+**macOS** — this app is ad-hoc sealed but has no Developer ID or notarization;
+Gatekeeper may block the first launch. Right-click
 `RedLog.app` → **Open**, or open **System Settings ▸ Privacy & Security**,
 scroll to the blocked-app notice and choose **Open Anyway**. If macOS instead
 says *"RedLog is damaged and can't be opened"* (the quarantine flag on an
@@ -553,8 +557,8 @@ npm run build          # production build of main + renderer
 
 ```bash
 npx electron-builder --mac      # DMG + zip, arm64 (Intel Mac: add --x64)
-npx electron-builder --win      # NSIS installer + portable
-npx electron-builder --linux    # AppImage + deb
+npx electron-builder --win      # NSIS installer
+npx electron-builder --linux    # DEB installer
 ```
 
 Built artifacts go to `dist/`. Tagged releases are built by

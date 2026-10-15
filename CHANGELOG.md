@@ -5,6 +5,21 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.1 — 2026-10-16
+
+- Official installation uses Windows NSIS, Debian/Kali/Ubuntu DEB and macOS
+  DMG. Windows portable and Linux AppImage distribution are retired; the
+  macOS app ZIP remains a supplementary archive. Every supported platform is
+  required for release, and a gate checks the complete versioned asset set.
+- Builtin terminal capture initializes before operator input, so the first
+  command after a fast shell prompt is no longer silently missed.
+- Dependency installation tolerates bounded slow downloads, shows elapsed
+  waiting, and supports cancellation/retry. Leaving, reloading or quitting
+  stops only its owned install process tree.
+- Verification fixtures stop only their own relay PID; parallel tests no
+  longer kill each other's recorders. Time-range fixtures also work at midnight.
+
+
 - Built-in terminal panes, running jobs and bounded scrollback survive project
   switches. Each project owns a separate hashed recording; the picker keeps
   panes reachable and visibly unrecorded. Late command completions use origin
