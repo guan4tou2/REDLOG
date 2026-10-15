@@ -32,5 +32,7 @@ Dependencies: T001→T002→US1→US2→US3→T013/T014. T015 environment invent
 
 T002 adds new RED regressions for malformed predicates; HTTP query/pagination
 coverage characterizes the already-implemented main contract. T015 remains
-open for native installer acceptance; local macOS and Kali shell results do not
-stand in for Windows/WSL or Kali desktop.
+open for the remaining native installer acceptance. Windows NSIS at bae0415
+passed run 38580377642, including the original loopback-before/after verifier
+case. Portable, native WSL, Kali desktop and downloaded macOS acceptance are
+not covered by that run or the local macOS/Kali-shell results.

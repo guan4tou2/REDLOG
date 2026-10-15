@@ -18,12 +18,13 @@ test('packaged setup installs missing HTTP tools and reaches real capture', asyn
   mkdirSync(bin)
   symlinkSync(uv, join(bin, 'uv'))
   symlinkSync(python, join(bin, 'python3'))
-  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, env: {
+  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, args: [`--user-data-dir=${join(home, 'userdata')}`], env: {
     ...process.env, HOME: home, USERPROFILE: home, REDLOG_E2E: '1', NODE_ENV: 'test',
     UV_TOOL_DIR: join(home, 'uv-tools'), UV_TOOL_BIN_DIR: bin,
     UV_CACHE_DIR: join(home, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(home, 'uv-python')
   } })
   try {
+    expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     const page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
@@ -53,6 +54,10 @@ test('packaged setup installs missing HTTP tools and reaches real capture', asyn
     console.log('Isolated dependency install evidence:', home)
   } catch (error) {
     console.error('Packaged dependency install failed:', error)
+    console.error('Isolated installation home:', home)
+    console.error('Visible preparation state:', await app.firstWindow()
+      .then(page => page.getByTestId('capture-prepare').innerText())
+      .catch(() => 'preparation view unavailable after the original failure'))
     throw error
   } finally {
     await app.close()

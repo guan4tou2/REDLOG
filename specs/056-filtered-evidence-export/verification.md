@@ -53,9 +53,13 @@ the policy-omission scenario on macOS, not only synthetic fixtures.
 
 ## Still not verified
 
-Local package execution is macOS. Windows clean-host installer acceptance is
-tracked in PR #335's dedicated CI, not inferred from macOS or a previous main
-run. Kali desktop and native WSL acceptance remain unrun. Do not close #329 or
+Local package execution is macOS. Windows NSIS clean-host acceptance now
+passes at bae0415 in
+[run 38580377642](https://github.com/guan4tou2/REDLOG/actions/runs/38580377642),
+including eligible commands before and after real loopback traffic and the
+shipped projection verifier. This is its own installed-app result, not an
+inference from macOS or a previous main run. Portable, Kali desktop and native
+WSL acceptance remain unrun. Do not close #329 or
 mark the full Spec Verified while its platform criteria remain incomplete.
 
 ## 2026-10-14 selection and attachment completion
@@ -79,8 +83,9 @@ actually honors REDLOG_PACKAGED_APP rather than silently using source output.
 
 The 18-journey source round includes these flows, setup recovery/dependency
 failure, terminal enrollment and project rotation. Final installed-candidate
-results and gate counts are recorded in the delivery artifact. Windows/WSL and
-Kali desktop acceptance remain T015; no unsupported Verified claim is made.
+results and gate counts are recorded in the delivery artifact. The remaining
+portable/WSL, Kali desktop and downloaded macOS checks keep T015 open; Windows
+NSIS is no longer reported as pending. No unsupported Verified claim is made.
 
 Installed macOS verification includes both locales' filtered/frozen JSON
 export. Final journey counts are recorded with the candidate. Direct UI

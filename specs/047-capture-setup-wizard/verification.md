@@ -36,8 +36,12 @@ Status: Implemented; not merged, not fully Verified.
   runs uv into private tool/cache directories, observes the new executable,
   advances, restarts the real proxy and verifies an HTTP nonce. HTTPS and
   Commands correctly remain unverified. No system trust/profile changes.
-- Current local DMG SHA-256: 9d964ea671e39d3441e1c3c8f216841feacdedee6582655dca49783572180686.
+- Historical local DMG SHA-256: 9d964ea671e39d3441e1c3c8f216841feacdedee6582655dca49783572180686.
   Installed via read-only mount and copy to an isolated directory.
+  Superseded after strict signing verification found its missing resource seal;
+  see docs/PACKAGED-SMOKE.md for the replacement signed candidate and separately
+  recorded checks. The replacement's dependency-install download initially
+  times out at 180 seconds; earlier success is not relabeled as that run's result.
 - Final installed-candidate counts are recorded with its hash in the delivery
   artifact. Direct UI launchers now honor REDLOG_PACKAGED_APP and assert
   app.isPackaged; their earlier source runs are not counted as package runs.
@@ -82,10 +86,17 @@ case-management feature, compatibility shim or new framework was added.
 
 ## Remaining native acceptance
 
-Windows PowerShell/WSL and Kali desktop installers; downloaded macOS
+Windows portable/native WSL and Kali desktop installers; downloaded macOS
 quarantine/Gatekeeper, Dock launch and notarization. The isolated macOS
 dependency installation is real, but it is not a wholly clean OS image.
 T010 remains unchecked; the spec is Implemented, not Verified.
+
+Windows NSIS is now verified for bae0415: clean-runner install, own-profile
+first launch, native PowerShell, HTTP/HTTPS, loopback projection verification,
+no unexpected skips and uninstall all PASS in
+[run 38580377642](https://github.com/guan4tou2/REDLOG/actions/runs/38580377642).
+This supersedes the earlier pending Windows NSIS status, not the remaining
+portable/WSL or full native matrix. See docs/PACKAGED-SMOKE.md for exact counts.
 
 Final owned-probe candidate: 27 installed journeys PASS (4.2 minutes), all direct
 UI launchers checked app.isPackaged. Actual 100-command capture took 48,796ms.

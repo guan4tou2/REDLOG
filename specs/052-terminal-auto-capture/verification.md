@@ -482,3 +482,34 @@ journeys PASS. T047 is complete. The real Kali VM job-control run and full
 first-enrollment/100-command measurements (T044/T045) remain explicitly open;
 the installed macOS 100-command run is not a substitute for those platform
 acceptance criteria.
+
+## 2026-10-15 actual installed Kali ARM64 follow-up
+
+An experimental ARM64 DEB from bae0415 was installed by the operator in an
+isolated Kali 2026.3 desktop VM. The published Linux architecture remains x64;
+this result does not validate that installer. App/profile fixtures use temporary
+homes and the guest network remains disabled.
+
+The actual installed app records 100/100 unique ordinary Zsh commands with
+their stdout, 20 stderr writes and correct exits (90 zero / 10 exit 3).
+Recording took 52,670ms; enrollment plus verification took 52,828ms. Neither
+includes DEB installation or the operator's setup time. Five explicit PTY
+sessions, search, profile removal and live-pane project rotation/privacy pass.
+
+The native installed-app nc journey compares real bare/enrolled Linux PTYs:
+Ctrl-Z stops the listener, jobs confirms it, raw/fg resumes, peer data arrives,
+all descriptors remain terminal descriptors and terminal settings match.
+The first journey failed because it asserted start-only `class` on command_end;
+the corrected journey checks start classification and end completeness and
+passes. No product schema was changed to accommodate the test.
+
+The operator separately completed quickstart step (c) in the visible terminal
+and supplied a screenshot. The controller independently observed stop, resume,
+terminal descriptors and a valid local chain. Its acknowledgement marker
+arrived after its ten-minute limit, so raw `completed: false` is preserved;
+human confirmation is separate evidence. Offline remote timestamp anchoring
+fails explicitly and is not counted as local-chain failure or anchoring success.
+
+SC-004 has native automated and human evidence. T044 still requires the rest
+of the manual quickstart, and T045 still requires SC-001's whole first-enrollment
+stopwatch. The feature remains Draft; neither task is blanket-checked.

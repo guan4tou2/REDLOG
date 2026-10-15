@@ -5,18 +5,20 @@ import { makeTempHome, openTestProject } from './helpers'
 import { findShellTarget, runZsh } from '../test/helpers/zsh-pty'
 
 test('installed Zsh preserves all 100 commands, output and failure boundaries in the actual project', async () => {
-  test.skip(process.platform !== 'darwin' || !process.env.REDLOG_PACKAGED_APP, 'Requires a current macOS package')
+  test.skip(process.platform === 'win32' || !process.env.REDLOG_PACKAGED_APP, 'Requires an installed POSIX package and Zsh')
   test.setTimeout(240_000)
   const shell = findShellTarget()
   expect(shell).toBeTruthy()
   const home = makeTempHome('redlog-package-100-')
-  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, env: {
+  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, args: [`--user-data-dir=${join(home, 'userdata')}`], env: {
     ...process.env, HOME: home, USERPROFILE: home, REDLOG_E2E: '1', NODE_ENV: 'test'
   } })
   try {
+    expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     const page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await openTestProject(page, '100-command-integrity')
+    const enrollmentStarted = Date.now()
     expect(await page.evaluate(() => window.redlog.hooks.install('shell-zsh'))).toMatchObject({ success: true })
     const commands = Array.from({ length: 100 }, (_, n) => n % 10 === 9
       ? `sh -c 'printf output-${n}; printf error-${n} >&2; exit 3'`
@@ -42,7 +44,11 @@ test('installed Zsh preserves all 100 commands, output and failure boundaries in
         expect(ends[0].data.stderr).toContain(`error-${n}`)
       }
     }
-    console.log('100-command installed recording evidence:', { home, elapsedMs: Date.now() - started })
+    console.log('100-command installed recording evidence:', {
+      home, elapsedMs: Date.now() - started,
+      enrollmentAndVerificationMs: Date.now() - enrollmentStarted,
+      platform: process.platform, architecture: process.arch
+    })
   } catch (error) {
     console.error('100-command package integrity failed:', error)
     throw error

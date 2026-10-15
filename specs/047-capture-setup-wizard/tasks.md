@@ -18,3 +18,6 @@
 - [ ] T010 Complete native clean-host installation acceptance on Windows/WSL
   and macOS download quarantine/Gatekeeper. Local container/DMG-copy evidence
   does not satisfy this task.
+  Windows NSIS passed at bae0415 in run 38580377642. Portable, native WSL and
+  the macOS downloaded-app checks remain unrun; do not label all Windows
+  installation or this task complete from the NSIS result alone.

@@ -6,14 +6,15 @@ import { makeTempHome, openTestProject, openView } from './helpers'
 import { findShellTarget, runZsh } from '../test/helpers/zsh-pty'
 
 // Opt-in so ordinary source E2E never mistakes a stale package for this build.
-test('macOS package installs and records with the bundled session helper', async () => {
-  test.skip(process.platform !== 'darwin' || !process.env.REDLOG_PACKAGED_APP, 'Requires a freshly built macOS app')
+test('POSIX package installs and records with the bundled session helper', async () => {
+  test.skip(process.platform === 'win32' || !process.env.REDLOG_PACKAGED_APP, 'Requires an installed POSIX package and Zsh')
   test.setTimeout(90_000)
   const tmpHome = makeTempHome('redlog-package-session-')
-  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, env: {
+  const app = await electron.launch({ executablePath: process.env.REDLOG_PACKAGED_APP!, args: [`--user-data-dir=${join(tmpHome, 'userdata')}`], env: {
     ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, NODE_ENV: 'test', REDLOG_E2E: '1'
   } })
   try {
+    expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     const page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
@@ -57,7 +58,7 @@ done`], {
     // Read the exact profile the installer wrote and let a new interactive
     // Zsh source it. This proves ordinary commands, not only an explicit helper.
     const shell = findShellTarget()
-    expect(shell, 'the host must have a real Zsh for this macOS test').toBeTruthy()
+    expect(shell, 'the host must have a real Zsh for this POSIX test').toBeTruthy()
     const session = await runZsh(shell!, {
       rc: readFileSync(rc, 'utf8'),
       env: { _REDLOG_DIR: join(tmpHome, '.redlog'), REDLOG_TERMINAL: '', REDLOG_EXTERNAL_SESSION: '' },
