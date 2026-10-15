@@ -53,13 +53,20 @@ the policy-omission scenario on macOS, not only synthetic fixtures.
 
 ## Still not verified
 
+2026-10-15 native follow-up: an experimental ARM64 DEB installed in an isolated
+Kali 2026.3 desktop VM passes the actual managed loopback HTTP/HTTPS, eligible
+evidence on both sides, projection export, shipped verifier and restart journey.
+HTTP tools were separately prepared while the guest stays offline. This is an
+ARM64 native result, not published Linux x64, WSL or guest UI installation proof.
+
 Local package execution is macOS. Windows NSIS clean-host acceptance now
 passes at bae0415 in
 [run 38580377642](https://github.com/guan4tou2/REDLOG/actions/runs/38580377642),
 including eligible commands before and after real loopback traffic and the
 shipped projection verifier. This is its own installed-app result, not an
-inference from macOS or a previous main run. Portable, Kali desktop and native
-WSL acceptance remain unrun. Do not close #329 or
+inference from macOS or a previous main run. Portable, published Kali x64 and
+native WSL acceptance remain unrun; full manual first-enrollment timing is also
+still required. Do not close #329 or
 mark the full Spec Verified while its platform criteria remain incomplete.
 
 ## 2026-10-14 selection and attachment completion
@@ -84,7 +91,7 @@ actually honors REDLOG_PACKAGED_APP rather than silently using source output.
 The 18-journey source round includes these flows, setup recovery/dependency
 failure, terminal enrollment and project rotation. Final installed-candidate
 results and gate counts are recorded in the delivery artifact. The remaining
-portable/WSL, Kali desktop and downloaded macOS checks keep T015 open; Windows
+portable/WSL, published Kali x64/full manual enrollment and downloaded macOS checks keep T015 open; Windows
 NSIS is no longer reported as pending. No unsupported Verified claim is made.
 
 Installed macOS verification includes both locales' filtered/frozen JSON

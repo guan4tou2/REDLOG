@@ -86,7 +86,8 @@ case-management feature, compatibility shim or new framework was added.
 
 ## Remaining native acceptance
 
-Windows portable/native WSL and Kali desktop installers; downloaded macOS
+Windows portable/native WSL, published Kali x64 and full manual first-enrollment
+timing; downloaded macOS
 quarantine/Gatekeeper, Dock launch and notarization. The isolated macOS
 dependency installation is real, but it is not a wholly clean OS image.
 T010 remains unchecked; the spec is Implemented, not Verified.
@@ -98,8 +99,19 @@ no unexpected skips and uninstall all PASS in
 This supersedes the earlier pending Windows NSIS status, not the remaining
 portable/WSL or full native matrix. See docs/PACKAGED-SMOKE.md for exact counts.
 
-Final owned-probe candidate: 27 installed journeys PASS (4.2 minutes), all direct
+Historical owned-probe candidate (1606a2c): 27 installed journeys PASS (4.2 minutes), all direct
 UI launchers checked app.isPackaged. Actual 100-command capture took 48,796ms.
 Full regression: 354 files PASS / 4 SKIP; 3,593 tests PASS / 24 SKIP.
 The missing-tool installation and real HTTP/HTTPS/bundle flows pass with
 buffered mitmdump output; probe traffic remains outside evidence/user proof.
+
+The replacement sealed macOS DMG passes 26 journeys with the dependency-install
+case skipped in that group. Its two explicit cold-install follow-ups time out
+after 180 seconds; diagnostics preserve the visible Retry/manual remedy.
+The same public Linux tool download takes over eight minutes separately, so
+the earlier install success does not prove this environment's cold download.
+An installed experimental Kali ARM64 DEB now passes five native recording,
+HTTP/HTTPS, export/verifier and restart journeys. A JSON-reported HTTP/bundle
+follow-up has no skipped steps or not-exercised annotations. Guest tools were
+separately prepared, not installed by the offline guest UI. Spec status remains
+Implemented; docs/PACKAGED-SMOKE.md records exact artifacts and limits.

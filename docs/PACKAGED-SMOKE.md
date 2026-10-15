@@ -110,6 +110,10 @@ rejects this candidate. No system policy was disabled.
 Replacement macOS ARM DMG SHA-256:
 `7a6dbbea8ce02022727ba3af710ad5f3e6da1565a1973df3e447dad942f431af`.
 Its installed-app journeys: 26 PASS / 1 opt-in dependency-install SKIP.
+After explicitly isolating Electron's user-data directory as well as HOME,
+the changed 100-command and PTY-helper journeys both PASS again (62,432ms
+for the 100-command interval). All four POSIX installed-only drivers now assert
+`app.isPackaged`; selecting a source executable cannot satisfy them.
 The actual missing-tool follow-up is separate from those 26 checks; an initial
 attempt hit the existing 180-second download/install bound and is retained as
 a failed run. Do not count that skipped or failed case as passed.
@@ -139,6 +143,16 @@ tests use only its own loopback address.
   marker arrived (`completed: false`), so this is recorded as human-confirmed
   evidence, not a wholly successful unattended controller run. Remote timestamp
   anchoring could not complete in the deliberately offline guest.
+
+The final installed Kali group passes all five journeys in one run: 100-command
+integrity, native nc upgrade, PTY helper/profile removal, actual managed
+HTTP/HTTPS plus projection export/shipped verifier/restart, and pane rotation.
+This run additionally isolates Electron user data and asserts the packaged
+runtime. Its 100-command interval is 83,956ms (84,047ms including enrollment and
+verification), measured under concurrent host verification; it supersedes the
+earlier timing for this run, not the earlier run's result. HTTP tools were
+prepared separately via verified public packages; this is not a successful
+guest UI dependency-install or cold-download claim.
 
 Spec 052 T044 remains open for the rest of the manual quickstart, and T045
 for the full first-install stopwatch. The ARM64 DEB is an acceptance artifact,

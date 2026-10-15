@@ -34,5 +34,7 @@ T002 adds new RED regressions for malformed predicates; HTTP query/pagination
 coverage characterizes the already-implemented main contract. T015 remains
 open for the remaining native installer acceptance. Windows NSIS at bae0415
 passed run 38580377642, including the original loopback-before/after verifier
-case. Portable, native WSL, Kali desktop and downloaded macOS acceptance are
-not covered by that run or the local macOS/Kali-shell results.
+case. An experimental installed Kali ARM64 DEB now passes that same HTTP/HTTPS,
+bundle/verifier and restart path with no not-exercised annotations. Portable,
+native WSL, published Kali x64, full manual enrollment timing and downloaded
+macOS acceptance still keep T015 open.

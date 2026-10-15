@@ -513,3 +513,11 @@ fails explicitly and is not counted as local-chain failure or anchoring success.
 SC-004 has native automated and human evidence. T044 still requires the rest
 of the manual quickstart, and T045 still requires SC-001's whole first-enrollment
 stopwatch. The feature remains Draft; neither task is blanket-checked.
+
+Final installed Kali group: five journeys PASS in one run, now explicitly
+isolating Electron user data and asserting app.isPackaged. It includes actual
+HTTP/HTTPS, projection export with the shipped verifier and restart in addition
+to ordinary capture, native nc, PTY helper and project rotation. The repeat
+100-command interval is 83,956ms (84,047ms enrollment plus verification), under
+concurrent host checks; it is not a clean-host performance comparison. HTTP
+tools were prepared separately, not installed through the offline guest UI.
