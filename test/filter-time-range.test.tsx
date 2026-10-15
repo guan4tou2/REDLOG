@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FilterBar } from '../src/renderer/src/components/FilterBar'
 import { FilterProvider, useSharedFilter, formatTimeRange } from '../src/renderer/src/lib/FilterContext'
 import { toLocalInputValue, fromLocalInputValue, timeRangeError, windowAround } from '../src/renderer/src/lib/timeRangeInput'
@@ -90,8 +90,12 @@ describe('an absolute time range can be asked for', () => {
 // that had become "since 15:03". It names the absolute window now — with the
 // date whenever time-of-day alone would be a puzzle.
 describe('the time chip names the window the query actually holds', () => {
-  beforeEach(() => setDisplayZone('local'))
-  afterEach(() => setDisplayZone('local'))
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 16, 12))
+    setDisplayZone('local')
+  })
+  afterEach(() => { vi.useRealTimers(); setDisplayZone('local') })
 
   const at = (d: number, h: number, mi = 0): number => new Date(2026, 7, d, h, mi).getTime()
 
@@ -106,6 +110,14 @@ describe('the time chip names the window the query actually holds', () => {
     const label = formatTimeRange({ since: at(14, 23, 40), before: at(15, 1, 10) }, t)
     expect(label).toContain('2026-08-14')
     expect(label).toContain('2026-08-15')
+  })
+
+  it('includes both dates when the last hour crosses midnight', () => {
+    vi.setSystemTime(new Date(2026, 7, 16, 0, 30))
+    const now = Date.now()
+    const label = formatTimeRange({ since: now - 3600_000, before: now }, t)
+    expect(label).toContain('2026-08-15')
+    expect(label).toContain('2026-08-16')
   })
 
   it('carries the date for a past day, even within it', () => {

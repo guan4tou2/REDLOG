@@ -292,19 +292,22 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
     beforeAll(async () => {
       collector = await startCollector(token)
       run = await runZsh(target!, {
-        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}
+python3 -c 'import time; time.sleep(90)' redlog-relay.py pty &!
+typeset -g _REDLOG_OTHER_PID=$!
+TRAPEXIT() { kill "$_REDLOG_OTHER_PID" 2>/dev/null }
+`,
         commands: [
           // The command kills its own relay and then exits 7. The relay goes,
           // so the shell is left holding descriptors whose far end is gone —
           // which is the shape of a relay that crashed, an OOM kill, or an
           // operator's own `pkill python3`.
-          // The bracket is not decoration: `pkill -f` matches full command
-          // lines, and this command's own line contains the pattern — without
-          // it the command kills itself and reports 143, which looks exactly
-          // like the bug being tested for.
-          `sh -c 'pkill -f "redlog-rela[y].py pty" 2>/dev/null; exit 7'`,
+          // A global pkill also killed other concurrently tested relays (or
+          // an operator's). Address only this preexec's owned relay PID.
+          `sh -c 'kill "$1" 2>/dev/null || exit 98; exit 7' redlog-test "$_REDLOG_RELAY_PID"`,
           'echo code=$?',
-          'echo still-here'
+          'echo still-here',
+          'if kill -0 "$_REDLOG_OTHER_PID" 2>/dev/null; then echo unrelated-alive; else echo unrelated-dead; fi'
         ],
         redlog: { port: collector.port, token },
         timeoutSeconds: 90
@@ -323,6 +326,10 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
     it('reports the command’s own exit status to the shell', () => {
       expect(run.steps[1].output, 'the relay replaced the command’s status')
         .toContain('code=7')
+    })
+
+    it('does not terminate another process whose name matches the relay', () => {
+      expect(run.steps[3].output).toContain('unrelated-alive')
     })
 
     it('reports the command’s own exit status to the record', () => {

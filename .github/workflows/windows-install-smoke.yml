@@ -1,8 +1,7 @@
 name: Windows install smoke
 
-# Builds the NSIS installer and portable wrapper on separate clean Windows
-# runners. NSIS installs/captures/uninstalls; portable launches its real
-# self-extracting wrapper and preserves captured evidence across termination.
+# Builds, installs, captures through and uninstalls the supported NSIS package.
+# Portable distribution was retired for the installer-only release policy.
 #
 # Why this is its own workflow: nothing else exercises the installer. `unit`
 # builds the renderer and main bundles but never packages; e2e launches
@@ -17,7 +16,6 @@ on:
     paths:
       - '.github/workflows/windows-install-smoke.yml'
       - 'e2e/packaged-smoke.spec.ts'
-      - 'e2e/portable-smoke.spec.ts'
       - 'scripts/verify-smoke-report.mjs'
       - 'electron-builder.yml'
       - 'hooks/shell-hook.ps1'
@@ -82,7 +80,7 @@ jobs:
       - name: Silent install
         id: install
         run: |
-          $setup = Get-ChildItem dist -Filter 'RedLog Setup *.exe' | Select-Object -First 1
+          $setup = Get-ChildItem dist -Filter 'RedLog.Setup.*.exe' | Select-Object -First 1
           if (-not $setup) { throw 'no installer in dist/' }
           Write-Host "Installer: $($setup.Name) ($([math]::Round($setup.Length/1MB,1)) MB)"
           $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
@@ -197,65 +195,6 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: install-smoke-artifacts
-          path: |
-            test-results/
-            dist/*.exe
-          if-no-files-found: ignore
-          retention-days: 7
-
-  portable-smoke:
-    runs-on: windows-latest
-    timeout-minutes: 40
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: 'npm'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Build
-        run: npm run build
-      - name: Package the actual portable wrapper
-        run: npx electron-builder --win portable --x64 --publish never
-      - name: Verify packaged capture resources
-        run: npm run verify:package-resources
-      - name: Select the portable candidate in a path containing spaces
-        id: portable
-        run: |
-          $existing = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' }
-          if ($existing) { throw 'RedLog is already installed on this runner' }
-          $wrappers = @(Get-ChildItem dist -File -Filter '*.exe')
-          if ($wrappers.Count -ne 1) { throw "expected one portable wrapper, got $($wrappers.Count)" }
-          $dir = Join-Path $env:RUNNER_TEMP 'RedLog portable candidate'
-          New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          $exe = Join-Path $dir $wrappers[0].Name
-          Copy-Item $wrappers[0].FullName $exe
-          "exe=$exe" >> $env:GITHUB_OUTPUT
-      - name: Record through the portable wrapper, export and restart
-        env:
-          REDLOG_PORTABLE_APP: ${{ steps.portable.outputs.exe }}
-          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/portable-smoke.json
-        run: npx playwright test e2e/portable-smoke.spec.ts --reporter=list,json
-      - name: Require actual portable execution
-        run: node scripts/verify-smoke-report.mjs test-results/portable-smoke.json
-      - name: Portable did not create an installer registration
-        run: |
-          $entries = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-            Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -match '^RedLog( |$)' }
-          if ($entries) { throw 'portable execution unexpectedly registered an installer' }
-      - name: Upload portable candidate and report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: portable-smoke-artifacts
           path: |
             test-results/
             dist/*.exe

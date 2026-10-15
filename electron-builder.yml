@@ -59,21 +59,16 @@ win:
     - target: nsis
       arch:
         - x64
-    - target: portable
-      arch:
-        - x64
 nsis:
+  artifactName: RedLog.Setup.${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
 linux:
-  # The .deb target needs a package maintainer and package.json's `author` is a
-  # bare name with no email, so electron-builder refused to build the deb (the
-  # AppImage, which needs no maintainer, shipped fine). Set it here from the
-  # repo's public git author identity — change the address if you want a
-  # different maintainer on the package.
+  # DEB requires a maintainer email; package.json's author is only a name.
+  # Use the repository's public maintainer identity for the installed package.
   maintainer: Guan4Tou2 <mole30608@gmail.com>
   # A DIRECTORY of NxN.png (electron-builder's Linux icon-set format) instead of
   # a single 256px file every panel/launcher had to downscale itself — the
@@ -81,9 +76,6 @@ linux:
   # resources/icon-<N>.png; these are the same renders named <N>x<N>.png.
   icon: resources/icons
   target:
-    - target: AppImage
-      arch:
-        - x64
     - target: deb
       arch:
         - x64
