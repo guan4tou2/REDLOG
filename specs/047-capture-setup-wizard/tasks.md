@@ -25,3 +25,6 @@
   elapsed waiting time, scoped cancellation/leave/quit, single owned install
   per dependency and real missing-tool installed-app verification. Preserve
   the original three-minute failures and distinguish cancellation from failure.
+- [x] T012 Enqueue builtin hook initialization before operator input; preserve
+  the installed Bash first-command RED and verify its command, exit and actual
+  cast output on native package acceptance without adding test sleeps.

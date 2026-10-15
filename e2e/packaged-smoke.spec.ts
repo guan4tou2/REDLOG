@@ -114,6 +114,8 @@ test.describe('packaged app', () => {
         const cast = (end.data.io as { ref?: string } | undefined)?.ref
         expect(cast, 'command_end should point at its recording').toBeTruthy()
         expect(existsSync(cast!)).toBe(true)
+        await expect.poll(async () => (await readCastSlice(cast!, 0, Number.MAX_SAFE_INTEGER))?.text)
+          .toMatch(/(?:^|[\r\n])redlog-ok-builtin[ \t]*(?:[\r\n]|$)/)
       })
 
       if (process.platform === 'win32') {
@@ -333,6 +335,13 @@ test.describe('packaged app', () => {
       })
     } catch (error) {
       console.error('Packaged smoke failed:', error)
+      console.error('Terminal failure state:', {
+        home,
+        panes: await page.evaluate(() => window.redlog.terminal.list()).catch(() => []),
+        screen: await page.locator('.xterm').first().innerText().catch(() => ''),
+        commands: (await events(page).catch(() => [])).filter(e => e.agentType === 'shell')
+      })
+      await page.screenshot({ path: test.info().outputPath('packaged-failure.png') }).catch(() => {})
       throw error
     } finally {
       await app.close().catch(() => undefined)

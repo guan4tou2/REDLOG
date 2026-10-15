@@ -42,3 +42,12 @@ Only one install per dependency may run; cancellation while login PATH is
 pending must prevent spawning. Abort listeners/timers and retained output are
 bounded. Cancellation and failure remain different UI states. A fresh private
 tool/cache installation must pass through the real UI before T011 is complete.
+
+## First-command startup integrity
+
+The builtin PTY receives its hook source line synchronously before spawn IPC
+returns. Later operator input follows it in the same ordered PTY stream; a
+600ms timer must not expose a usable prompt before capture enrollment. Keep
+the first-command package test free of startup sleeps and require both its
+end event/exit code and the output line in the actual cast. Preserve the
+installed Bash RED trace separately from the corrected candidate.

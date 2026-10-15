@@ -22,6 +22,7 @@ on:
       - 'electron-builder.yml'
       - 'hooks/shell-hook.ps1'
       - 'src/main/services/dependency-installer.ts'
+      - 'src/main/terminal-manager.ts'
       - 'src/preload/index.ts'
 
 concurrency:

@@ -626,9 +626,11 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     const sourceCmd = flavour === 'powershell'
       ? ` . "${hookPath}" *> $null; Clear-Host\r`
       : ` source "${posixPath}" >/dev/null 2>&1; clear\r`
-    setTimeout(() => {
-      if (sessions.get(id) === session) term.write(sourceCmd)
-    }, 600)
+    // Queue setup before returning the pane to the renderer. A timed delay
+    // exposed a real prompt first: a fast operator's first command ran before
+    // the hook and silently had no command event. The PTY preserves input order
+    // while its shell starts, so later operator input follows this source line.
+    term.write(sourceCmd)
   }
 
   // `hookSourced: false` is the pane saying "my commands are not being

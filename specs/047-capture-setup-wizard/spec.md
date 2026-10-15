@@ -3,6 +3,10 @@
 **Feature Branch**: `feat/047-capture-setup-wizard`
 **Created**: 2026-09-29
 **Status**: Implemented
+
+First-command integrity: the built-in terminal must enqueue its capture hook
+before accepting operator input. A visible prompt alone cannot justify a
+startup delay that lets the first command run without a command event.
 **Renumbered**: written as 040; main merged 040-046 from parallel work
 before this branch opened its PR, so the folder moved to 047. Commits
 earlier in the branch still say 040.

@@ -148,3 +148,34 @@ Its strict resource signature check passes; publisher signing/notarization
 remain absent. The earlier renderer-reload failure is retained. Installer
 success/cancel/skip alone never verifies capture. T011 is complete; T010 and
 the overall native matrix remain open.
+
+## First-command startup regression
+
+The initial ddea520 Linux DEB matrix has five passing native journeys and one
+failure: the first builtin command has no end event. A real installed macOS
+Bash reproduction confirms the cause: its cast shows the operator command
+executing at 0.224s, then the injected hook at 0.604s. The fixed 600ms timer
+allowed a real prompt and command before enrollment. Initialization is now
+enqueued before exposing the pane to the renderer; package acceptance also
+requires the actual output line in the cast. The original RED is retained.
+
+The ddea520 Windows portable wrapper actually launches, but its driver stops
+on missing-HTTP-tool preparation instead of continuing to independent command
+proof. The driver now follows that UI action. NSIS passes separately. Neither
+driver fixes nor earlier passing jobs certify the new source before its own
+native reruns.
+
+The rebuilt macOS installed candidate passes all thirteen journeys with Bash
+selected: immediate first-command end/exit/output, bundle/verifier/restart,
+cancel/leave/reload, ten controlled setup cases and actual fresh private tool
+installation followed by HTTP/HTTPS nonce proof. JSON gate: thirteen passed,
+zero skipped/not-exercised. This cold install takes 42,381ms; network timings
+are not a timer-fix speed claim. Final startup-order DMG SHA-256:
+`39acaebdb1b8c85f1be53f2d87a6320752f59216d21f6c1b9b15e5b7cf13a9a6`.
+Strict resource sealing passes; notarization remains absent. T012 is complete
+from actual installed acceptance; native x64 reruns remain separately required.
+
+Local ordered gates pass: 3,605 unit PASS / 24 SKIP. A prior full run had one
+external Zsh output downgraded to metadata-only; its raw diagnosis is retained.
+That untouched six-test engagement passes in isolation, then all 3,605 tests
+pass together. This does not establish that earlier occurrence's root cause.

@@ -15,6 +15,7 @@ on:
       - 'e2e/dependency-cancel.spec.ts'
       - 'e2e/terminal-session-rotation.spec.ts'
       - 'src/main/services/dependency-installer.ts'
+      - 'src/main/terminal-manager.ts'
       - 'src/preload/index.ts'
 
 concurrency:

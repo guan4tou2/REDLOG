@@ -202,3 +202,30 @@ Zero tests, skipped tests, flaky/failed tests, absent summary data and any
 not-exercised annotation fail the gate. Candidate artifacts remain distinct
 from a release. WSL, full manual first-enrollment timing and actual Mac
 quarantine/Dock/notarization stay open.
+
+The first native x64 follow-up at ddea520 has an important RED: the DEB installs
+and five journeys pass, but its first builtin command is absent from events.
+Installed macOS Bash reproduces it: the cast executes the canary at 0.224s,
+while hook injection happens at 0.604s. A real prompt was visible during the
+fixed 600ms delay. Startup now enqueues the source line before the pane is
+returned to the renderer; the package test requires the real output line in
+the cast as well as its command/end row. No test sleep is added to mask it.
+
+ddea520 NSIS passes its complete install/capture/export/uninstall flow. Its
+portable wrapper launches, but the driver tries to use the terminal while
+still on missing-HTTP-tool preparation; the driver now explicitly continues
+to independent command proof. The original failed jobs remain evidence, and
+AppImage was not reached in that failed DEB run. New native results must be
+recorded for the corrected head.
+
+The corrected installed macOS candidate passes all thirteen journeys with Bash
+selected, including the immediate first-command output and real HTTP(S),
+export/verifier and restart. The JSON gate confirms zero skips/not-exercised;
+ten setup/recovery cases use controlled IPC, while the process-lifecycle,
+cold-install/HTTP and full package journey are actual installed paths. Cold
+installation takes 42,381ms, without attributing network speed to the timer.
+The startup-order candidate supersedes the 86431a… candidate; its SHA-256 is
+`39acaebdb1b8c85f1be53f2d87a6320752f59216d21f6c1b9b15e5b7cf13a9a6`.
+Local ordered gates: 3,605 PASS / 24 SKIP. One prior external Zsh output
+downgrade remains in raw evidence; its focused six-test and subsequent full
+reruns pass without changes to that adapter. No retrospective cause is claimed.

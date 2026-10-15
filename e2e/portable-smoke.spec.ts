@@ -56,6 +56,10 @@ test('portable wrapper records, exports and finds its evidence after a restart',
     expect(await health.json()).toMatchObject({ ok: true, projectOpen: false })
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'portable-recording')
+    // This job deliberately has no HTTP tools. Continue from preparation to
+    // the independent command proof instead of assuming that phase auto-skips.
+    const prepare = page.getByTestId('capture-prepare-skip')
+    if (await prepare.isVisible()) await prepare.click()
     await expect(page.locator('.xterm').first()).toContainText(/PS .*>\s*$/, { timeout: 30_000 })
     await page.locator('.xterm-helper-textarea').first().focus()
     await page.keyboard.type('echo portable-builtin-canary')
