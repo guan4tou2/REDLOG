@@ -1,159 +1,81 @@
-# 發版 Smoke Test
+# 安裝包人工驗收
 
-每次發版（含 patch）都用**打包好的安裝檔**，在**乾淨環境**跑一遍：沒裝過 RedLog、沒有
-`~/.redlog`、沒有 hook、沒裝 mitmproxy。不要用 `npm run dev`，開發環境會掩蓋打包問題
-（例如下方 EXPORT 一節的已知缺漏）。
+這份清單補足自動測試碰不到的下載、桌面啟動、系統信任提示與操作摩擦。
+自動測試入口見 [TESTING.md](TESTING.md)，既有結果與未測範圍見
+[PACKAGED-SMOKE.md](PACKAGED-SMOKE.md)。不要把原始碼測試當成正式下載包驗收。
 
-順序：**Kali / Debian → Windows（PowerShell、WSL）→ macOS ARM**，最後跑 UPGRADE。
+每次記錄版本、下載 URL、檔案 SHA-256、OS／架構、shell、工具版本與日期。
+每項填 Action / Expected / Actual / Friction，以及 PASS / FAIL / NOT TESTED；
+失敗保留原始輸出及畫面。未操作、被略過或前置條件不足均不算 PASS。
 
-每一項照這個格式記，**Friction 最重要**：
+## 1. 下載與安裝
 
-| 欄位 | 內容 |
-|---|---|
-| Action | 做了什麼 |
-| Expected | 以為接下來會怎樣 |
-| Actual | 實際發生什麼 |
-| Friction | 有沒有停下來思考、查文件或進設定（無／低／高） |
+- [ ] 從正式 Release 下載與平台相符的安裝包，對照 SHA256SUMS.txt。
+  Windows 使用 NSIS、Kali／Debian／Ubuntu x64 使用 DEB、macOS ARM 使用 DMG。
+  不再驗收或提供 portable／AppImage。
+- [ ] 在乾淨使用者或測試 VM 安裝，記錄所需步驟與系統提示。
+  Linux 用 `sudo apt install ./redlog_<version>_amd64.deb`；Mac 拖入 Applications。
+- [ ] 從開始選單／應用程式選單／Dock 啟動，記錄真實 Gatekeeper、SmartScreen
+  或權限提示。從未隔離的建置目錄直接啟動不能替代這一步。
+- [ ] 第一次畫面無別人的專案、來源、憑證或 hook。安裝流程不改既有個人設定。
+- [ ] 分別計時「安裝開始到第一份可驗證的記錄」與「接入後 100 道指令」；
+  不把後者當成前者，不把工具已預裝的環境當成缺依賴情境。
 
-勾選框代表「照預期」。沒勾的，在表格裡記下 Actual 與 Friction，不要只寫「有 bug」。
+## 2. 建立專案與擷取設定
 
----
+- [ ] 以名稱建立專案；在 Settings → Scope 設定測試 CIDR、exclude 和私人網域。
+  目前建立卡不輸入 scope，排除是顯示／交付規則，不是停止本機記錄。
+- [ ] 開啟 Capture setup。缺少相關工具時先 Prepare，再 Prove；
+  完成工具安裝或按略過不能直接變成「已驗證」。
+- [ ] 在隔離環境的 PATH／測試帳號模擬缺依賴，不移除主機的全域 Python／curl。
+  按準備、取消、重試，確認等待時間、失敗原因與可執行的手動修復。
+- [ ] 離開設定、重新整理、關閉 App，確認只清理它啟動的安裝程序，無關程序仍存活。
+- [ ] 略過後從 Dashboard → Capture Health → Capture setup 重新進入；
+  即使已有事件或重啟過也能找到，未驗證項目仍保持未驗證。
+- [ ] 在 800×720 視窗用鍵盤完成操作，錯誤及修復按鈕不被裁切。
 
-## INSTALL
+## 3. 指令與輸出
 
-- [ ] **下載檔對得上 checksum**。在下載目錄：`sha256sum -c SHA256SUMS.txt --ignore-missing`
-  （macOS 用 `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`）→ 你下載的那個檔 `OK`。
-- [ ] **安裝**。
-  - Kali：`sudo apt install ./redlog_*.deb`，沒有相依錯誤。
-  - Windows：SmartScreen 選「其他資訊 → 仍要執行」。
-  - macOS：拖進 `/Applications`，右鍵 ▸ 打開。
-  - 以上都照 README 的說明就過得去。
-- [ ] **啟動**。從選單 / Dock / 開始功能表開（**不是**從終端機），視窗出現。
-- [ ] **專案選擇畫面乾淨**。第一次啟動只有專案選擇畫面 —— 沒有浮動的就緒卡，沒有舊版 hook 橫幅。環境檢查在開專案後的首次執行畫面上。
-- [ ] **故意少一個**。需要哪些工具**依平台而異**（`src/core/runtime-preflight.ts`），照自己測的平台選：
-  - **Linux / macOS**（zsh、bash hook）：環境檢查列出 python3、curl、你的 shell、mitmproxy。移除或改名 python3，開一個專案，首次執行畫面的「指令」點名 python3，並說明內建終端**仍可開啟、畫面輸出仍會記錄，但指令不會進時間軸**，直到裝好 python3 與 curl（#209）。**不應**出現「內建終端仍可記錄指令」這類說法。
-  - **Windows**（PowerShell hook）：只列 PowerShell 與 mitmproxy。**python3 與 curl 在 Windows 原生不是需求**，把 Store 版 python3 從 PATH 拿掉卡片也**不會**提到它——這是預期，不是漏報（#257）。要看這一項，改成移除或改名 `mitmdump`；python3／curl 的預期只在測 WSL 或 Git Bash 裡的 zsh／bash 時適用。
-  - 裝回去之後**切到別的視窗再切回來**，畫面自己更新，不需要按任何按鈕。
-  - 失敗時查：`src/core/runtime-preflight.ts`、`FirstRunView.tsx`、`hooks/useRevalidateOnFocus.ts`。
-- [ ] **PATH（macOS/Linux）**：先 `uv tool install mitmproxy`，再從 Dock / 選單開 app 並開專案，HTTP 擷取自動啟動。
-  - 失敗時查：`src/main/login-path.ts`、`src/core/http-autostart.ts`。
+- [ ] 在內建終端立即輸入第一道指令，確認指令、stdout／stderr、退出碼及 cast。
+  提示符先出現不能當成 hook 已接上；不能靠人工等待掩蓋第一筆遺漏。
+- [ ] 安裝外部 shell hook 兩次只留一行；開新互動終端再做 canary。
+  驗證結果要區分「指令有到」及「輸出有到」。
+- [ ] 用普通 Zsh 執行 echo、printf、多行、stderr、失敗指令、pipeline 和 redirect，
+  逐一對照終端、事件及輸出。Zsh 自動輸出有界；Bash／PowerShell 普通 hook
+  主要記指令／退出資訊，輸出改測內建終端或對應明確錄製方式。
+- [ ] `redlog-session` 長互動錄製、Ctrl-C、Ctrl-Z／fg、終端 resize 能恢復；
+  區分 native nc 不擷取輸出與明確 PTY 錄製，不把刻意未錄當作完整輸出。
+- [ ] 100 道不同指令逐筆核對數量、stdout、stderr、退出碼及重複事件。
+  cap、暫停、工具失敗及離線皆須留下正確的完整性／缺口狀態。
+- [ ] App 停止、恢復或重啟時 shell 仍可用；離線 spool 不覆寫、不進錯專案，
+  身分不明的資料保留隔離。重啟後能找回已保存輸出。
+- [ ] Windows PowerShell 與 Windows App＋原生 WSL 分開驗收；
+  Linux 或模擬路徑的結果不代替原生 WSL。
 
-## PROJECT
+## 4. HTTP／HTTPS
 
-> 建立卡現在只問專案名稱（另有「匯入設定檔」），範圍與排除目標改由 設定 ▸ 範圍 管理（`test/project-picker-create-card.test.tsx`）。下面前三項仍照舊寫成「在建立卡貼上」，**要改在 設定 ▸ 範圍 做**；預期結果（無效項被標出、留空的說明）尚未對照 ScopePage 重新確認，下次跑 smoke 時順手核對並更新這幾行。
+- [ ] App 準備並啟動自己的代理；程序存在或埠有 listener 不足以顯示 running。
+  遇到外來 listener／啟動失敗有明確原因與 retry，不終止外來程序。
+- [ ] 從受管瀏覽器或明確設好的終端送出真正測試請求，核對 request、response、
+  status、headers、body 與 flow_id。開代理不代表所有工具或所有協定會自動經過它。
+- [ ] HTTP、HTTPS 各完成本次 nonce 驗證；略過憑證錯誤不算信任 CA。
+  測試用暫存 CA 與系統／瀏覽器信任變更分別記錄，只清理測試自己安裝的項目。
+- [ ] 停止代理後狀態反映停止或失敗；記錄既有終端仍帶代理環境時的實際限制。
 
-- [ ] **建立專案時貼上範圍**。範圍貼 `10.10.11.0/24, *.corp.local, bad$host`：
-  - `bad$host` 當場被標成無效；
-  - 建好後，設定 ▸ 範圍 只列出前兩筆。
-- [ ] **範圍留空也能建立**，卡片顯示「無法判斷越界」的說明。
-- [ ] **排除目標**：貼一個 IP，建好後出現在排除清單。
-- [ ] **建立卡只問名稱**：建立專案的卡片**沒有**「忽略本機流量」勾選項（70438fe9 刻意移除，範圍由 設定 ▸ 範圍 管理）。建好後 設定 ▸ 範圍 的個人流量是預設值 `127.0.0.0/8`、`::1`、`localhost`；自己的 IP 要在那裡手動加（#253）。
+## 5. 證據交付與隔離
 
-## BUILTIN TERMINAL
+- [ ] 截圖、拖入檔案、標記均能找到原始附件，空截圖不當成有效證據。
+- [ ] 兩個專案／多個 pane 同時有工作：切換後 PID／cwd／輸出仍存在，
+  錄製片段與附件各屬自己的專案；停止一個 pane 不停止另一個。
+- [ ] 套用時間／目標／類型等篩選後預覽並匯出，核對實際事件、數量及逐檔附件。
+  預覽後修改附件不得悄悄交付不同內容。
+- [ ] 包含 loopback／scope／私人內容排除的交付副本，以隨包 verifier 驗證。
+  正常投影要明說省略及驗證邊界；修改一列或附件必須報錯。
+- [ ] 重啟 App 仍能搜尋記錄、讀輸出及再次匯出。卸載測試 hook 後恢復自己的
+  profile；移除測試安裝，但不要把刪除使用者證據當成卸載通過條件。
 
-- [ ] 新專案開在「讓這場開始被完整記錄」畫面，右側並列「指令與終端」與「HTTP(S)」，兩項都是「○ 尚未驗證」；沒有「Web／主機／兩者」選項，HTTP(S) 不需先跑指令就能開始。
-- [ ] 在內建終端執行 `echo first-test`：
-  - 「指令與終端」變成「✓ 已驗證」，並寫明外部終端尚未接上；
-  - 「HTTP(S)」仍是「○ 尚未驗證」。
-- [ ] 按「稍後處理」離開 → 儀表板「核心擷取」列顯示 HTTP(S) 尚未完成。
-- [ ] 時間軸出現一筆 `command_start` 和一筆 `command_end`，結束碼是 0。
-- [ ] 專案目錄的 `casts/` 下有 `.cast` 檔（`~/.redlog/projects/<id>/casts/`），逐字稿看得到輸出。
+## 結果
 
-## EXTERNAL SHELL
-
-- [ ] **按「記我的 Zsh／Bash／PowerShell 終端」**：
-  - 畫面顯示 `echo redlog-ok-xxxx`；
-  - `~/.zshrc`（或 `~/.bashrc`、`$PROFILE`）多一行 source，而且**只多一行**。
-- [ ] **沒開新分頁就貼**：在**已經開著**的終端貼上，不會通過驗證。60 秒後列出原因，第一條是「開一個新的分頁」。
-- [ ] **開新分頁貼上** → 顯示「✓ … 已連線」。
-- [ ] **（#159 合併後）** 已連線的畫面寫明「不含輸出」，並提供 `redlog-session`（PowerShell 則是建議內建終端或 Windows 輸出 pack）。
-- [ ] 在外部終端執行 `pwd`、`whoami`、`nmap -sV 127.0.0.1`，三道指令都進時間軸，而且有結束碼、耗時、工作目錄。
-- [ ] **比較三種記錄方式**。在外部終端依序：
-  - 直接跑 `nmap -sV 127.0.0.1`：只有中繼資料，沒有輸出；
-  - `redlog-run nmap -sV 127.0.0.1`：有輸出；
-  - `redlog-session`，然後跑同一道指令，再 `exit`：有輸出。
-  - 記下：你**直覺**以為第一種會不會記到輸出？
-- [ ] **輸出驗證（#218）**：連線後的畫面有「確認輸出有被留下」：
-  - 直接貼 `printf '%s-%s\n' redlog-out <碼>`（不加 redlog-run）→ 顯示「只收到指令本身」；
-  - 貼畫面給的 `redlog-run printf …` → 顯示「✓ 輸出已記錄（經由 redlog-run）」；
-  - 在 `redlog-session` 裡跑同一個 printf → 顯示「經由 redlog-session」，搜尋 `redlog-out-<碼>` 找得到。
-- [ ] **tmux 與長 session（#218，需真機）**。每一項記下 Action / Expected / Actual：
-  - 先 `redlog-session`，裡面開 `tmux`：新 pane 的輸出有被錄到（外層 PTY 看得到整個畫面）；在 pane 裡再跑 `redlog-session` 會被拒絕並說明原因（避免重複錄製）。
-  - 反過來：在 tmux **裡**的每個 pane 各自跑 `redlog-session`：各 pane 分開錄；detach 後 attach 回來，錄製不會中斷或重複。
-  - `ssh`、`nc` 互動 session 在 `redlog-session` 裡：遠端輸出有進時間軸；`Ctrl-C` 中斷前景程式不會結束錄製；`exit` 正常結束時有 `session_end`（含 outputBytes）。
-  - 錄到一半關掉 RedLog 再開：shell 不中斷；`session_end` 或終端上的 `[redlog] omitted N bytes` 說明缺了多少，**不會**假裝補回。
-  - 暫停錄製一段：`pausedBytes` 反映那段；恢復後繼續錄。
-  - 用 `--max-bytes 1000` 跑大量輸出：終端照常，`truncated: true`。
-- [ ] **WSL（Windows）**：「記我的 WSL 終端」流程與上面相同，nonce 能驗證通過。
-- [ ] **破壞測試**：
-  - 關掉 RedLog 後打指令：不記錄（這是設計）。重開後，你能不能理解剛才為什麼沒記到？
-  - 關掉專案（回到專案選擇）後打指令：一樣不記錄。
-  - 失敗時查：`hooks/shell-common.sh`、`RecordTerminalFlow.tsx`、`lib/terminalActivation.ts`。
-
-## HTTP
-
-- [ ] **沒裝 mitmproxy**：首次畫面的 HTTP 卡顯示「mitmproxy 尚未安裝」和 `uv tool install mitmproxy`；裝好後按重新檢查，就能啟動。
-- [ ] **按「開始 HTTP 擷取」**（首次畫面的 HTTP 卡或 設定 ▸ Browser；標題列沒有這顆鈕），顯示正在監聽 `127.0.0.1:<port>`。儀表板擷取健康度的 HTTP 列也要寫「擷取中」並附同一個位址，**不得**寫「未安裝」（#254）。
-- [ ] **背景流量不會讓驗證通過（#220）**：啟動擷取瀏覽器但不按驗證，等 30 秒——HTTP、HTTPS 都仍是「○ 尚未驗證」。
-- [ ] 什麼都不做 60 秒：
-  - 列出原因：瀏覽器、HTTPS 憑證（未就緒時才出現）、終端代理選項；
-  - 之後再驗證一次，仍然會變成「✓ HTTP 擷取已驗證」。
-- [ ] **按「用擷取瀏覽器驗證」**：HTTP、HTTPS 都顯示「✓ 已驗證（Chromium）」，HTTPS 附帶「擷取瀏覽器會忽略憑證錯誤」的提醒；時間軸與 HTTP 頁**沒有** `redlog.verify.invalid` 的紀錄。
-- [ ] **終端驗證（CA 未信任）**：在內建終端跑畫面上的 HTTPS 指令 → curl 失敗，HTTPS 列顯示「有 client 拒絕了 RedLog 的憑證」。
-- [ ] **信任後再驗證**：跑「HTTPS 憑證」裡的信任指令，按「重新驗證」後再跑 HTTPS 指令 → 「✓ 已驗證（curl/…）」，沒有提醒。
-  - Windows 的 HTTPS 指令是 `curl.exe -sS --ssl-no-revoke -x …`。`curl.exe` 走 Schannel，會檢查憑證是否被撤銷，而 mitmproxy 簽的 leaf 憑證沒有 CRL／OCSP，少了這個旗標即使 CA 已受信任也會回 `000`（#256）。它只關掉撤銷檢查，**不是** `-k`，信任鏈仍會驗證；**不應**在指令裡看到 `-k` 或 `--insecure`。
-- [ ] **移除信任**：跑移除指令，確認它以指紋（Windows／macOS）或 `redlog-mitmproxy-<指紋>.crt`（Linux）移除；另一個工具的 mitmproxy CA（若有）仍在。重新驗證 HTTPS 指令應再次失敗。
-- [ ] **打開一個 HTTP 網站**，HTTP 頁出現這筆往返（有 request 和 response）。
-- [ ] **終端走代理的選項**：
-  - 關閉時：內建終端的 `curl http://example.com` 不進 HTTP 頁；
-  - 打開後**新開**內建終端，再 `curl` 一次：會進 HTTP 頁；
-  - `nmap` 永遠不會進 HTTP 頁。確認 UI 沒讓你以為「所有網路流量都會被擷取」。
-- [ ] **HTTP 流量走 Burp 時**：記下 RedLog 看得到什麼、看不到什麼，以及 UI 有沒有講清楚。
-
-## SEARCH
-
-- [ ] 搜尋頁搜 `whoami` → 找到外部終端那筆指令。
-- [ ] 搜剛才瀏覽的網域 → 找到 HTTP 那筆。
-- [ ] 對範圍內的一個 lab 目標跑 `nmap`，目標頁出現那個 IP（從指令自動編目），點進去看得到相關證據。
-  （不要用 `127.0.0.1`：它在預設的個人流量裡。）
-
-## EXPORT
-
-- [ ] 標題列「匯出 ▸ 證據包（含驗證器）」：
-  - 預覽列出事件總數、包含數與丟棄數；
-  - 按執行，產出一個資料夾。
-- [ ] 資料夾裡有 `manifest.json`、`manifest.sha256`、`events.jsonl`、**`redlog-verify.py`、`verify.sh`、`verify.cmd`、`README.md`**。
-  - v0.17.0 以前的版本會少掉後面四個檔：打包版沒有附上 `tools/redlog-verify.py`。v0.17.1 已修正（#157），
-    現在找不到驗證器時，匯出會直接失敗並說明原因。
-- [ ] 在資料夾裡跑 `bash verify.sh`（Windows 用 `verify.cmd`），exit 0，並回報 chain 完整。
-- [ ] 改掉 `events.jsonl` 的任一個字元再驗證 → 失敗（exit 不是 0）。
-
-## UPGRADE（從 v0.16 以前升級）
-
-準備：在乾淨的帳號，於 `~/.zshrc` 加上 `source ~/.redlog/shell-preexec-hook.sh`，然後安裝新版。
-
-- [ ] 啟動後出現舊 hook 的提示，並指出是哪個檔案。
-- [ ] 按一下更新：
-  - 產生 `~/.zshrc.redlog-bak-<時間戳>`，內容就是更新前的原檔；
-  - 舊的那行被移除，新的 source 行只有**一行**。
-- [ ] 開新分頁 → 用 nonce 驗證通過。
-- [ ] 重開 app → **不再**出現提示。
-- [ ] **故意讓遷移失敗**：先把 `~/.zshrc` 改成唯讀再按更新 →
-  - 顯示失敗原因；
-  - `.zshrc` 內容不變，沒有寫出一半的檔（可能會留下一份備份檔，這沒關係）。
-- [ ] **pack 設定**：用舊版開過剪貼簿或 AI agent 監聽的專案，升級後照 CHANGELOG「Upgrading」的說明在 設定 ▸ 擷取 打開 pack，就恢復記錄。
-- [ ] **剪貼簿要另外勾選（#224）**：新專案打開「主機監看」pack → 行程／連線／檔案監看開始記錄，剪貼簿**沒有**；儀表板的剪貼簿列顯示關閉。勾選剪貼簿後才開始記錄。
-
-## 真實工作流（30–60 分鐘，每個大版本一次）
-
-在 lab 或 HTB 正常操作：recon、nmap、ffuf、curl、ssh、瀏覽器、代理、戰利品、截圖、標記、搜尋、匯出。
-
-只記錄一件事：**RedLog 有沒有逼你停下手上的工作去照顧它？**
-
-例如：
-- 我是不是要去看擷取健康度？
-- HTTP 擷取還開著嗎？
-- 這個輸出有沒有被記到？
-- 我是不是該用 `redlog-run`？
-
-結束後，回頭找三件你一小時前做過的事，每件記下花了多久才找到。
+每平台獨立列結果與剩餘摩擦，不設「全部已完成」的預填勾選。
+原生 WSL、完整人工 Kali quickstart／首次安裝計時，以及 Mac 真正 quarantine
+下載／Dock／Developer ID／公證，在沒有新證據前仍是未完成的驗收或發布限制。

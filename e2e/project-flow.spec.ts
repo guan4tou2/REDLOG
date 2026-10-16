@@ -1,9 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
-import { dirname, join } from 'node:path'
-import { mkdirSync } from 'node:fs'
 import { launchWithTempHome, openTestProject, type RedLogBridge } from './helpers'
-
-const SCREENSHOT_DIR = join(__dirname, 'screenshots')
 
 // Serial + shared electronApp so the three tests reuse one ~2s launch:
 // Test 1 opens a project, Tests 2 & 3 exercise it. Nothing here should run
@@ -24,6 +20,7 @@ test.describe.serial('project flow', () => {
 
   test('creates a project and opens the dashboard', async () => {
     // Fresh HOME → no projects yet, so ProjectPicker owns the window.
+    await expect(page).toHaveTitle(/RedLog/)
     await expect(page.locator('[data-testid="project-picker"]')).toBeVisible()
 
     const project = await openTestProject(page, 'e2e-flow')
@@ -35,8 +32,7 @@ test.describe.serial('project flow', () => {
     const viewRoot = page.locator('[data-testid="view-root"]')
     await expect(viewRoot).toHaveAttribute('data-view', 'dashboard')
 
-    mkdirSync(SCREENSHOT_DIR, { recursive: true })
-    await page.screenshot({ path: join(SCREENSHOT_DIR, 'project-opened.png') })
+    await page.screenshot({ path: test.info().outputPath('project-opened.png') })
   })
 
   test('⌘1..9 switches views (v0.6.67 focus fix)', async () => {

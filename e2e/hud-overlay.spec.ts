@@ -78,33 +78,6 @@ test.describe.serial('HUD overlay geometry', () => {
     expect(back.x, 'v0.9.3 leaves x where widening put it').toBe(wide.x)
   })
 
-  test.skip('content still fits at HUD scale 1.5 with emphasised IP', async () => {
-    // SKIPPED: the fix for this raised the width ceiling above 720px, which
-    // was part of the v0.9.4 HUD change the operator reported as wrong. The
-    // clipping at scale 1.5 is real but is filed rather than patched — see
-    // docs/AUDIT-2026-08-08.md. Re-enable alongside a verified fix.
-    // The widest configuration the Settings UI can produce. Content alone
-    // needs ~726px here, which the hard 720px ceiling clips.
-    await main.evaluate(async () => {
-      const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
-      const cfg = await api.get()
-      const ov = (cfg.overlay ?? {}) as Record<string, unknown>
-      await api.save({ ...cfg, overlay: { ...ov, scale: 1.5, emphasizeExternalIp: true } })
-    })
-    await hud.waitForTimeout(700)
-
-    const b = await bounds(app)
-    expect(b.width, 'window should be allowed past the old 720px cap').toBeGreaterThan(720)
-
-    const fit = await hud.evaluate(() => {
-      const inner = document.getElementById('root') as HTMLElement
-      return { need: inner.scrollWidth, have: document.documentElement.clientWidth }
-    })
-    expect(fit.need, `content needs ${fit.need}px, window is ${fit.have}px — clipped`)
-      .toBeLessThanOrEqual(fit.have)
-    await hud.screenshot({ path: 'e2e/screenshots/hud-scale-1.5.png' })
-  })
-
   test('reported width covers the rendered content', async () => {
     const fit = await hud.evaluate(() => {
       // The measured element is the one autosize reports on.

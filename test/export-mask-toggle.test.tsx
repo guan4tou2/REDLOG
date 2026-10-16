@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
 
@@ -56,11 +56,10 @@ function installBridge(failResolve = false): void {
 const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
 const clickBundle = (): void => { fireEvent.click(screen.getByText('Evidence bundle (with verifier)')) }
 const clickConfirm = async (): Promise<void> => {
-  await waitFor(() => expect(screen.getByText('Export')).toBeTruthy())
-  const buttons = screen.getAllByText('Export')
-  const confirm = buttons.find(b => b.closest('button')?.classList.contains('bg-red-600'))
-  expect(confirm).toBeTruthy()
-  fireEvent.click(confirm!.closest('button')!)
+  const dialog = await screen.findByRole('dialog')
+  const confirm = await within(dialog).findByTestId('export-confirm')
+  expect((confirm as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.click(confirm)
 }
 
 describe('ExportMenu — out-of-scope mask override (A2)', () => {
@@ -94,8 +93,7 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     open()
     clickBundle()
     expect((await screen.findByRole('alert')).textContent).toContain('selection-failed')
-    const confirm = screen.getAllByText('Export').find((node) => node.closest('button')?.classList.contains('bg-red-600'))
-    expect(confirm).toBeUndefined()
+    expect(screen.queryByTestId('export-confirm')).toBeNull()
     expect(executeCalls).toBe(0)
   })
 })
