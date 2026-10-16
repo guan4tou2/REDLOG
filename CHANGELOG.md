@@ -5,12 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.3 — 2026-10-16
+
 - Consolidate test coverage owners and current test/install walkthroughs. Remove
   duplicate startup/package-text checks, historical plugin-file absence checks,
   repeated contrast assertions and an obsolete permanently skipped HUD case.
   Keep manifest validation, actual installed verifier checks and recording regressions.
-
-## v0.18.3 — 2026-10-16
 
 - Recheck PTY readiness after observing command completion before closing the
   retained slave copies. A previously empty poll could be stale if a command

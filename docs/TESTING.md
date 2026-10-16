@@ -19,8 +19,8 @@ npm run build
 ```
 
 `npm test` rebuilds SQLite for Node, then runs Vitest. `npm run e2e` rebuilds it
-for Electron. Do not run these concurrently. A subsequent `npm test` restores
-a Node rebuild. If the binding still fails, check the rebuild log, node-gyp
+for Electron. Do not run these concurrently. Use `npm test` to request a Node
+rebuild again. If the binding still fails, check the rebuild log, node-gyp
 selection and headers before changing product code or skipping database tests.
 
 | Purpose | Command | What it proves |
