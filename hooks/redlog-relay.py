@@ -433,6 +433,11 @@ def pty_pipe(argv):
                 except ProcessLookupError:
                     completed = True
             if completed:
+                # The empty poll above may predate completion: the command
+                # can write and close while this process is descheduled.
+                # Observe the boundary first, THEN prove its queue is empty.
+                if select.select([leg["master"] for leg in legs], [], [], 0)[0]:
+                    continue
                 # No queued bytes remain, and the foreground command cannot
                 # produce more. Closing our copies now cannot flush its body.
                 # If a background writer survives, keep forwarding until EOF

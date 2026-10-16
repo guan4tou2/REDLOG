@@ -5,6 +5,60 @@ import os from 'node:os'
 import path from 'node:path'
 
 describe.skipIf(process.platform === 'win32')('automatic relay PTY completion boundary', () => {
+  it('rechecks queued bytes after completion arrives during an empty readiness poll', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-relay-stale-poll-'))
+    const wrapper = `
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location('relay', 'hooks/redlog-relay.py')
+relay = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(relay)
+original = relay.select.select
+injected = False
+def select(*args):
+    global injected
+    ready = original(*args)
+    if not injected and not ready[0]:
+        injected = True
+        print('EMPTY_POLL', file=sys.stderr, flush=True)
+        deadline = time.monotonic() + 5
+        while not os.path.exists(os.path.join(sys.argv[2], 'closed')):
+            if time.monotonic() > deadline: raise RuntimeError('completion was not supplied')
+            time.sleep(0.005)
+    return ready
+relay.select.select = select
+sys.exit(relay.pty_pipe(sys.argv[1:]))
+`
+    const child = spawn('python3', ['-c', wrapper, '--dir', dir, '--err-fd', '3'], { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
+    const finished = new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve) })
+    let stdout = '', stderr = '', diagnostic = ''
+    child.stdout.on('data', b => { stdout += b })
+    child.stderr.on('data', b => { diagnostic += b })
+    child.stdio[3]?.on('data', b => { stderr += b })
+    const writers: number[] = []
+    try {
+      await expect.poll(() => fs.existsSync(path.join(dir, 'pts'))).toBe(true)
+      for (const name of fs.readFileSync(path.join(dir, 'pts'), 'utf8').split('\n')) writers.push(fs.openSync(name, 'w'))
+      fs.writeFileSync(path.join(dir, 'opened'), '')
+      await expect.poll(() => diagnostic).toContain('EMPTY_POLL')
+      // Reproduce descheduling after select saw no bytes, then completing the
+      // whole command before the recorder observes the completion marker.
+      fs.writeSync(writers[0], 'after-poll-out\n')
+      fs.writeSync(writers[1], 'after-poll-err\n')
+      for (const fd of writers.splice(0)) fs.closeSync(fd)
+      fs.writeFileSync(path.join(dir, 'closed'), '')
+      expect(await finished).toBe(0)
+      expect(stdout).toBe('after-poll-out\n')
+      expect(stderr).toBe('after-poll-err\n')
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'stdout.json'), 'utf8'))).toMatchObject({ text: 'after-poll-out\n', bytes: 15 })
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'stderr.json'), 'utf8'))).toMatchObject({ text: 'after-poll-err\n', bytes: 15 })
+    } finally {
+      for (const fd of writers) fs.closeSync(fd)
+      child.kill('SIGKILL')
+      await finished
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('drains a command that closes both writers before the relay receives its handover', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-relay-fast-close-'))
     const child = spawn('python3', ['hooks/redlog-relay.py', 'pty', '--dir', dir, '--err-fd', '3'], { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] })
