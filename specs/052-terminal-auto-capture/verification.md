@@ -550,3 +550,18 @@ every expected body/status: total 48,698ms, mean 483ms, p95 536ms, max 604ms
 (including driver settle). All terminal transparency and degradation tests pass.
 macOS is now included in PR unit/build CI so this native regression gates
 merging, rather than first being observed after a release tag.
+
+### Follow-up: readiness must be sampled after completion
+
+PR #338's unchanged 100-command capture check caught one missing stderr body
+on macOS after v0.18.2 publication. The preceding empty select result could
+predate command completion: a descheduled recorder could resume after bytes
+arrived and the shell closed. A deterministic scheduling fixture was RED
+(empty output), then GREEN after rechecking queued bytes after the completion
+marker. The release was marked prerelease with this limitation; this correction
+prepares v0.18.3. No original trace or earlier failure is relabeled retrospectively.
+
+Correction validation: all five ordered local gates and production build PASS;
+3,613 tests PASS / 24 explicit SKIP. All five native PTY boundary cases pass,
+including the forced stale-empty-poll window; the 100-command, degradation and
+terminal transparency checks remain intact and pass.

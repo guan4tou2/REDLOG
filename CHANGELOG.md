@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.3 — 2026-10-16
+
+- Recheck PTY readiness after observing command completion before closing the
+  retained slave copies. A previously empty poll could be stale if a command
+  wrote and finished while the recorder was descheduled, still losing output
+  on macOS. A deterministic scheduling regression covers that exact window.
+- v0.18.2 was published, then marked prerelease after this remaining loss was
+  found by native CI. It is superseded; its original tag and evidence remain.
+
 ## v0.18.2 — 2026-10-16
 
 v0.18.1 was tagged but its macOS recording tests blocked publication; no
