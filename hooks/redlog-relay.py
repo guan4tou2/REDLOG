@@ -322,10 +322,11 @@ def pty_pipe(argv):
     (FR-005).
 
     The hand-over: this process makes the pair and says where the slave side
-    is; the shell opens it and says so; only then is this process's own copy
-    of the slave closed. Closing it any earlier is a pty that has already been
-    hung up when the shell gets to it, and keeping it would mean the master
-    never sees the command finish.
+    is; the shell opens it and says so. Keep our slave copies until the shell
+    signals completion AND queued output has been drained: macOS flushes unread
+    master data when the last slave closes. A short command may already have
+    closed its copies before this process even observes the hand-over. Once
+    drained, release ours so remaining writers can still determine real EOF.
     """
     import fcntl
     import termios
@@ -375,11 +376,10 @@ def pty_pipe(argv):
         if time.time() > deadline:
             return 1
         time.sleep(0.005)
-    for leg in legs:
-        os.close(leg["slave"])
-
     while legs:
-        ready, _, _ = select.select([leg["master"] for leg in legs], [], [], 0.25)
+        # Also notice the file-based completion signal promptly. Waiting a
+        # quarter second here would add that delay to every short command.
+        ready, _, _ = select.select([leg["master"] for leg in legs], [], [], 0.05)
         # A resize while a command is running: the shell's own terminal is
         # resized, and only the foreground process group is told. This
         # process is not in it, so it looks.
@@ -395,6 +395,11 @@ def pty_pipe(argv):
                     raise
                 alive = False
             if not alive:
+                # While we retain a slave, an EOF/EIO cannot be the final
+                # stream boundary. Drain first, then release it below.
+                if leg["slave"] is not None:
+                    retry_read = True
+                    continue
                 # A transient read-side hangup is not a command boundary.
                 # Closing the master here makes the shell's next write fail
                 # with EIO. The adapter signals completion after restoring
@@ -420,6 +425,22 @@ def pty_pipe(argv):
                         "truncated": leg["stream"].truncated(),
                         "cap": opts["max_bytes"],
                     })
+        if not ready:
+            completed = os.path.exists(closed) or not os.path.isdir(directory)
+            if not completed:
+                try:
+                    os.kill(owner, 0)
+                except ProcessLookupError:
+                    completed = True
+            if completed:
+                # No queued bytes remain, and the foreground command cannot
+                # produce more. Closing our copies now cannot flush its body.
+                # If a background writer survives, keep forwarding until EOF
+                # or the caller retires this interval after its drain timeout.
+                for leg in legs:
+                    if leg["slave"] is not None:
+                        os.close(leg["slave"])
+                        leg["slave"] = None
         if retry_read:
             time.sleep(0.01)
     return 0

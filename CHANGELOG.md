@@ -5,7 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-## v0.18.1 — 2026-10-16
+## v0.18.2 — 2026-10-16
+
+v0.18.1 was tagged but its macOS recording tests blocked publication; no
+installers were released. This version includes that preparation and the fix.
+
+- macOS automatic Zsh capture retains its PTY slave copies until command
+  completion and drains queued output before closing them. Short commands
+  no longer lose stdout/stderr when macOS flushes the final closed slave.
+  A deterministic real-PTY regression covers the fast-close handover.
 
 - Official installation uses Windows NSIS, Debian/Kali/Ubuntu DEB and macOS
   DMG. Windows portable and Linux AppImage distribution are retired; the

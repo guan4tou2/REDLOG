@@ -15,15 +15,15 @@ Install RedLog on **your operator machine** (the Kali box or laptop you attack
 from), not on a target. It records what you do; it is not an implant.
 
 Grab the installer for your platform from the
-[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.18.1**.
+[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.18.2**.
 Builds are unsigned (ad-hoc signed, not notarised), so each OS asks you to
 confirm once.
 
 | Platform | File | Install |
 |----------|------|---------|
-| Kali / Debian / Ubuntu (x64) | [`redlog_0.18.1_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/redlog_0.18.1_amd64.deb) | `sudo apt install ./redlog_*.deb` |
-| Windows (x64 installer) | [`RedLog.Setup.0.18.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/RedLog.Setup.0.18.1.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
-| macOS (Apple Silicon) | [`RedLog-0.18.1-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.1/RedLog-0.18.1-arm64.dmg) | Drag to `/Applications`, then see below |
+| Kali / Debian / Ubuntu (x64) | [`redlog_0.18.2_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.2/redlog_0.18.2_amd64.deb) | `sudo apt install ./redlog_*.deb` |
+| Windows (x64 installer) | [`RedLog.Setup.0.18.2.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.2/RedLog.Setup.0.18.2.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
+| macOS (Apple Silicon) | [`RedLog-0.18.2-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.18.2/RedLog-0.18.2-arm64.dmg) | Drag to `/Applications`, then see below |
 | macOS (Intel) | — | No installer; [build from source](#development) |
 
 Official downloads are installed packages: NSIS on Windows, DEB on Kali /

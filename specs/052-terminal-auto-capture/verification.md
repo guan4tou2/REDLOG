@@ -521,3 +521,32 @@ to ordinary capture, native nc, PTY helper and project rotation. The repeat
 100-command interval is 83,956ms (84,047ms enrollment plus verification), under
 concurrent host checks; it is not a clean-host performance comparison. HTTP
 tools were prepared separately, not installed through the offline guest UI.
+
+## 2026-10-16 macOS final-slave close regression
+
+The v0.18.1 Release run 38777593503 was blocked by real macOS recording
+failures (four assertions, including missing stdout/stderr in the 100-command
+journey). No v0.18.1 installers were published. A minimal native PTY probe
+confirmed that closing the final slave before reading flushes queued master
+data on macOS. The recorder closed its copy at handover; a fast command could
+already have closed both of its own writers.
+
+A deterministic real-PTY regression queues stdout and stderr, closes the
+command's writers, then permits handover. It was RED (empty stdout), and is
+GREEN with the recorder retaining its slave copies until explicit completion
+and queue drain. This does not disable the EOF/EIO, retirement or job-control
+checks. Focused native tests: 52 PASS across five files, including 100 exact
+commands, both transient read faults, exit status, Ctrl-C and Ctrl-Z/fg.
+
+The first focused run used a 250ms completion poll (100 commands: 69,616ms,
+mean 692ms, p95 777ms including the driver's 250ms settle). The poll is reduced
+to 50ms for the full verification to avoid a quarter-second prompt penalty.
+These are local measurements, not a new claim that T044/T045 are complete.
+The failed v0.18.1 tag is retained; the corrected package will be v0.18.2.
+
+Final 50ms-poll run: all five ordered gates PASS; 3,612 tests PASS / 24 explicit
+SKIP; production build PASS. The actual 100-command native Zsh run retained
+every expected body/status: total 48,698ms, mean 483ms, p95 536ms, max 604ms
+(including driver settle). All terminal transparency and degradation tests pass.
+macOS is now included in PR unit/build CI so this native regression gates
+merging, rather than first being observed after a release tag.

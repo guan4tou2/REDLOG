@@ -20,7 +20,7 @@ The gate requires the current bash, zsh and PowerShell adapters, their shared
 runtime, the declarative starter pack and evidence verifier. It fails if any removed pre-release
 compatibility hook is present.
 
-## v0.18.1 distribution policy
+## v0.18.2 distribution policy
 
 Supported downloads are NSIS, DEB and DMG. The macOS ZIP remains a supplementary
 archive. Windows portable and Linux AppImage targets and their active smoke
@@ -29,6 +29,15 @@ release packaging is required, not best-effort. Release verification rejects a
 missing platform, a wrong version, unexpected portable packages and Windows
 update metadata whose artifact, size or SHA-512 differs from the installer.
 The retained DEB JSON is no longer cleared by a following AppImage journey.
+
+## 2026-10-16 blocked release and macOS PTY correction
+
+v0.18.1 was tagged but its macOS unit/PTY gate failed, so it did not publish
+installers. The short-command loss was reproduced on a real macOS PTY: closing
+the last slave before reading flushes queued output. The relay now retains its
+slave copies until completion and queue drain; a deterministic RED/GREEN test
+and all 52 focused boundary/capture/job-control assertions pass. The v0.18.1
+tag and failed logs remain intact. v0.18.2 supersedes that unpublished attempt.
 
 ## 2026-09-22 macOS arm64 result
 
