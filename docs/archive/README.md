@@ -39,3 +39,9 @@ describing code that has since changed.
 Still live, and deliberately **not** archived: [`ALERT-ROLES.md`](../ALERT-ROLES.md)
 (cited by `src/core/alert/`), [`DESIGN-PRINCIPLES.md`](../DESIGN-PRINCIPLES.md)
 (§1 superseded, the rest in force) and [`TESTING.md`](../TESTING.md).
+
+### Archived 2026-10-16 — historical test inventory
+
+[The former test/config matrix](TEST-MATRIX-2026-10-16.md) preserves the old
+Part 1–6 and G-* audit references. Its listed gaps are historical; current test
+commands and coverage owners are in [Testing](../TESTING.md).

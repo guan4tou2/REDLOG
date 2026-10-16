@@ -11,7 +11,7 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 ## Start here
 
 - **[操作者手冊](USER-GUIDE.md)** — for the person *using* RedLog rather than building it: the first ten minutes, what each screen answers, how to wire the three capture sources that matter, how to export. 繁體中文, like the interface.
-- **Picking the work up?** Work is specified and tracked in [`specs/`](../specs/) (Spec Kit — one directory per change, each with spec, plan, tasks and verification); the rules every change is checked against are in [`.specify/memory/constitution.md`](../.specify/memory/constitution.md). [Architecture](ARCHITECTURE.md) is the current map of the code, and [Testing](TESTING.md) lists every config option with the test that proves it.
+- **Picking the work up?** Work is specified and tracked in [`specs/`](../specs/) (Spec Kit — one directory per change, each with spec, plan, tasks and verification); the rules every change is checked against are in [`.specify/memory/constitution.md`](../.specify/memory/constitution.md). [Architecture](ARCHITECTURE.md) is the current map of the code, and [Testing](TESTING.md) lists the current test layers, commands and coverage owners.
 - **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to driving RedLog from an agent.
 
 ## Product & planning

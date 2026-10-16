@@ -344,3 +344,31 @@ describe('tailer contributions respect the trust gate', () => {
     warn.mockRestore(); err.mockRestore()
   })
 })
+
+const manifestBase = { id: 'sample-plugin', name: 'Sample', version: '1.0.0', redlogApi: 1 }
+
+describe('retired code contributions are refused, not silently inert', () => {
+  for (const retired of ['exporters', 'monitors']) {
+    it(`rejects a manifest contributing ${retired}, saying why`, () => {
+      const parsed = validateManifest({ ...manifestBase, contributes: { [retired]: './index.js' } }, '/tmp/x')
+      expect(parsed.ok).toBe(false)
+      if (parsed.ok) return
+      expect(parsed.error).toMatch(new RegExp(retired))
+      expect(parsed.error).toMatch(/not supported/)
+    })
+  }
+
+  it('rejects a manifest contributing mappers: nothing applies them (POST /api/ingest was never built)', () => {
+    const parsed = validateManifest({ ...manifestBase, contributes: {
+      mappers: [{ id: 'm', version: '1', agentType: 'scanner', fields: { host: '$.h' } }]
+    } }, '/tmp/x')
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.error).toMatch(/contributes\.mappers is not supported/)
+    expect(parsed.error).toMatch(/api\/events/)
+  })
+
+  it('still treats tailers as privileged, so the trust gate keeps guarding it', () => {
+    expect(tierOf({ ...manifestBase, contributes: { tailers: './tailer.js' } } as Parameters<typeof tierOf>[0])).toBe('privileged')
+  })
+})

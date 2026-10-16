@@ -142,7 +142,7 @@ jobs:
             libgtk-3-0 libasound2t64 xvfb zsh
 
       - name: Build the app the e2e test launches
-        # e2e/smoke.spec.ts asserts out/main/index.js exists — build it first.
+        # Electron journeys launch out/main/index.js — build it first.
         run: npm run build
 
       - name: Playwright for Electron

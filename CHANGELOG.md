@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Consolidate test coverage owners and current test/install walkthroughs. Remove
+  duplicate startup/package-text checks, historical plugin-file absence checks,
+  repeated contrast assertions and an obsolete permanently skipped HUD case.
+  Keep manifest validation, actual installed verifier checks and recording regressions.
+
 ## v0.18.2 — 2026-10-16
 
 v0.18.1 was tagged but its macOS recording tests blocked publication; no

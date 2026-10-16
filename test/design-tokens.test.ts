@@ -85,6 +85,15 @@ describe('token palette', () => {
     expect(failures).toEqual([])
   })
 
+  it('keeps text on solid action fills above 4.5:1', () => {
+    const t = redlogTokens()
+    const amber = /--color-amber-400:\s*(#[0-9a-fA-F]{6})/.exec(INDEX_CSS)?.[1]
+    expect(amber, 'warning fill is defined').toBeTruthy()
+    for (const [fill, on] of [[t.accent, t['on-accent']], [t.danger, t['on-danger']], [amber!, t['on-warn']]]) {
+      expect(contrast(on, fill), `${on} on ${fill}`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('keeps each step of the text ramp visibly apart', () => {
     // Contrast alone does not make a hierarchy: `text-dim` and `text-faint`
     // were 2.7 L* apart, which is at the edge of a just-noticeable difference.
