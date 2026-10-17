@@ -111,11 +111,24 @@ export interface ExportBundleOpts {
   attachments?: readonly ExportAttachment[]
 }
 
-export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
-  if (reps.length === 0) { fs.copyFileSync(src, dst); return }
+/** Copy the first `limit` bytes of `src` (all of it when `limit` is not smaller). */
+function copyPrefix(src: string, dst: string, limit: number): void {
+  if (limit >= fs.statSync(src).size) { fs.copyFileSync(src, dst); return }
   const fd = fs.openSync(src, 'r')
   try {
-    const stat = fs.fstatSync(fd)
+    const buf = Buffer.allocUnsafe(limit)
+    let got = 0
+    while (got < limit) { const n = fs.readSync(fd, buf, got, limit - got, got); if (n === 0) break; got += n }
+    fs.writeFileSync(dst, buf.subarray(0, got))
+  } finally { fs.closeSync(fd) }
+}
+
+/** `limit`: copy only this many leading bytes (a cast's frozen prefix). */
+export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024, limit = Infinity): void {
+  if (reps.length === 0) { copyPrefix(src, dst, limit); return }
+  const fd = fs.openSync(src, 'r')
+  try {
+    const stat = { size: Math.min(fs.fstatSync(fd).size, limit) }
     if (stat.size === 0) { fs.writeFileSync(dst, ''); return }
     const CHUNK = chunkSize
     const buf = Buffer.alloc(Math.min(CHUNK, stat.size))
@@ -123,7 +136,7 @@ export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]
     let headerEnd = 0
     let bytesRead = 0
     while (bytesRead < stat.size) {
-      const n = fs.readSync(fd, buf, 0, buf.length, bytesRead)
+      const n = fs.readSync(fd, buf, 0, Math.min(buf.length, stat.size - bytesRead), bytesRead)
       if (n === 0) break
       const nlIdx = buf.indexOf(0x0a, 0)
       if (nlIdx >= 0 && nlIdx < n) {
@@ -134,9 +147,9 @@ export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]
       headerLine += buf.subarray(0, n).toString('utf-8')
       bytesRead += n
     }
-    if (!headerEnd) { fs.copyFileSync(src, dst); return }
+    if (!headerEnd) { copyPrefix(src, dst, limit); return }
     let header: Record<string, unknown>
-    try { header = JSON.parse(headerLine) } catch { fs.copyFileSync(src, dst); return }
+    try { header = JSON.parse(headerLine) } catch { copyPrefix(src, dst, limit); return }
     if (header.env && typeof header.env === 'object') {
       for (const k of Object.keys(header.env as Record<string, unknown>)) {
         let v = String((header.env as Record<string, string>)[k])
@@ -151,7 +164,7 @@ export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]
       let pos = headerEnd
       let carry = ''
       while (pos < stat.size) {
-        const n = fs.readSync(fd, buf, 0, buf.length, pos)
+        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, stat.size - pos), pos)
         if (n === 0) break
         const chunk = carry + buf.subarray(0, n).toString('utf-8')
         const lines = chunk.split('\n')
@@ -494,7 +507,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
-        scrubCast(s, d, piiReps)
+        scrubCast(s, d, piiReps, undefined, opts.attachments?.find((a) => a.id === `casts/${name}`)?.frozenBytes)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++

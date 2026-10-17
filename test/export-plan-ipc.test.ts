@@ -276,6 +276,45 @@ describe('export plan IPC contract', () => {
     expect(manifest.files.map((f) => f.path)).not.toContain('casts/term-1.cast')
   })
 
+  // A live terminal keeps appending to its cast. Hashing the whole file made the
+  // digest stale the moment the terminal printed, so the export was refused
+  // ("source-unavailable") for as long as anything was running.
+  it('exports a cast that grew after the preview, with exactly the part that was previewed', () => {
+    const castFile = path.join(dir, 'casts', 'live.cast')
+    addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n[0.2,"o","tw')
+    addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
+    type Plan = { id: string; attachments: Array<{ id: string; bytes: number; frozenBytes?: number }> }
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    // Frozen at the last complete line, not at the half-written one.
+    const row = resolved.plan.attachments.find((a) => a.id === 'casts/live.cast')
+    expect(row).toMatchObject({ bytes: 30, frozenBytes: 30 })
+
+    fs.appendFileSync(castFile, 'o"]\n[0.3,"o","three"]\n')    // the terminal went on
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    expect(fs.readFileSync(path.join(executed.artifactPath, 'casts', 'live.cast'), 'utf8')).toBe('{"version":2}\n[0.1,"o","one"]\n')
+    // The recording itself is untouched.
+    expect(fs.readFileSync(castFile, 'utf8')).toContain('three')
+  })
+
+  it('still refuses when the previewed part of a cast was rewritten', () => {
+    const castFile = path.join(dir, 'casts', 'live.cast')
+    addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n')
+    addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    fs.writeFileSync(castFile, '{"version":2}\n[0.1,"o","ONE"]\n[0.2,"o","more"]\n')
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
+  })
+
+  it('refuses when the cast was cut shorter than what was previewed', () => {
+    const castFile = path.join(dir, 'casts', 'live.cast')
+    addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n')
+    addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    fs.writeFileSync(castFile, '{"version":2}\n')
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
+  })
+
   it('carries an operator-added artifact with its event, and leaves it out when the operator does (#221)', () => {
     addExportAttachment(dir, 'artifacts/abc-report.xml', '<nmaprun/>')
     addExportAttachment(dir, 'artifacts/def-stray.txt', 'no event added this')

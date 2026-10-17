@@ -1500,7 +1500,7 @@
   "app.evidenceFile": "加入證據檔案…（也可把檔案拖進視窗）",
   "export.reveal": "在資料夾中顯示",
   "export.running": "匯出中…",
-  "export.error.source-unavailable": "預覽之後記錄又變動了——有新事件，或有檔案仍在寫入（例如進行中的終端錄影）。請重新計算，預覽現在會匯出的內容。",
+  "export.error.source-unavailable": "預覽之後記錄又變動了——有新事件，或預覽過的檔案內容被改寫。請重新計算，預覽現在會匯出的內容。",
   "export.error.policy-changed": "預覽之後，影響這次匯出的設定（範圍、隱私清單）有變更。請重新計算以看到影響。",
   "export.runFailed": "匯出未完成。預覽已保留，沒有寫出任何你沒看過的內容。",
   "export.retryResolve": "重新計算後再試一次",
