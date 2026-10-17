@@ -548,6 +548,27 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
     expect((await screen.findByTestId('record-terminal-output-verified')).textContent).toContain('redlog-run')
   })
 
+  // The session helper and output check are optional; they used to push the
+  // Start button off the screen the moment the shell connected.
+  it('folds the optional session and output steps, and the toggle carries the output result', async () => {
+    install()
+    draw()
+    await verifyShell()
+    const details = screen.getByTestId('record-terminal-details')
+    expect(details.hasAttribute('hidden')).toBe(true)
+    const toggle = screen.getByTestId('record-terminal-details-toggle')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    // Folded, but still listening: a result that lands while folded shows on the toggle.
+    const cmd = screen.getByTestId('record-terminal-output-command').textContent ?? ''
+    const nonce = cmd.split(' ').at(-1)!
+    expect(toggle.textContent).not.toContain('✓')
+    emit([{ id: 'o1', timestamp: 21, agentType: 'shell', data: { subtype: 'command_end', command: cmd, stdout: `redlog-out-${nonce}\n`, captured_by: 'redlog-run' } }])
+    await waitFor(() => expect(screen.getByTestId('record-terminal-details-toggle').textContent).toContain('✓'))
+    fireEvent.click(toggle)
+    expect(screen.getByTestId('record-terminal-details').hasAttribute('hidden')).toBe(false)
+    expect(screen.getByTestId('record-terminal-details-toggle').getAttribute('aria-expanded')).toBe('true')
+  })
+
   it('does not offer redlog-session for PowerShell, which has no such command', async () => {
     install({ pre: preflight({ platform: 'win32', shell: { name: 'powershell', hookId: 'shell-powershell' } }) })
     draw()
