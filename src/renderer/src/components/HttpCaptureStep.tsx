@@ -6,8 +6,9 @@
 //
 // It drives the managed proxy the dashboard already owns (httpCapture IPC and
 // its stopped/starting/running/unavailable/failed state) and the existing
-// proxied-browser launch. The CA path stays behind a link: an operator who is
-// only proxying the browser RedLog launches never needs it.
+// proxied-browser launch. The default route is the operator's own browser:
+// point it at the listener, trust the CA, open the check address. The browser
+// RedLog launches stays as the alternative.
 //
 // Spec 039: a running proxy is not "capturing". #220: nor is "some HTTP event
 // arrived" — the capture browser makes its own requests the moment it starts.
@@ -27,7 +28,7 @@ import { isMac, isWindows } from '../lib/platform'
 import {
   applyVerifyReport, httpTimeoutReasons, httpsProvesTrust, newAttempt, verifyCommand, type VerifyAttempt
 } from '../lib/httpVerification'
-import { clientLabel, newVerifyNonce, type HttpVerifyReport } from '../../../core/http-verify'
+import { clientLabel, newVerifyNonce, verifyUrl, type HttpVerifyReport } from '../../../core/http-verify'
 import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
 
 /** Same window as the shell activation: long enough to launch a browser and
@@ -130,7 +131,8 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
-  const [showCa, setShowCa] = useState(false)
+  // Open: trusting the CA is step two of the default route, not a footnote.
+  const [showCa, setShowCa] = useState(true)
   const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
   const running = status.state === 'running'
@@ -263,7 +265,17 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
-          <p className="font-mono text-redlog-text-faint">{listenAddress(status.url)}</p>
+          {/* The default route, as Burp does it: a listener the operator points
+              their own browser at, a CA they trust once, and a check. The
+              browser RedLog launches is the alternative, not the plan. */}
+          <div data-testid="first-run-http-proxy" className="space-y-0.5">
+            <p className="text-redlog-text-dim">{t('firstRun.http.proxyLead')}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">{listenAddress(status.url)}</code>
+              <CopyButton text={listenAddress(status.url)} />
+            </div>
+            <p className="text-redlog-text-faint">{t('firstRun.http.proxyHint')}</p>
+          </div>
           <ul data-testid="first-run-http-checks" className="space-y-1">
             <VerifyRow
               label="HTTPS"
@@ -282,6 +294,15 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
                   <li key={r}>{t(`firstRun.http.reason.${r}`)}</li>
                 ))}
               </ul>
+            </div>
+          )}
+          {!verified && (
+            <div data-testid="first-run-http-own-browser" className="space-y-0.5">
+              <p className="text-redlog-text-dim">{t('firstRun.http.verifyOwn')}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text break-all">{verifyUrl('https', attempt.nonce)}</code>
+                <CopyButton text={verifyUrl('https', attempt.nonce)} />
+              </div>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -329,6 +350,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
                   {status.certReady !== false && status.caFingerprint && (
                     <>
                       <p className="text-redlog-text-dim">{t('httpCapture.caTrustWhy')}</p>
+                      <p data-testid="first-run-http-ca-download" className="text-redlog-text-faint">{t('firstRun.http.caDownload')}</p>
                       <CaCommand
                         label={t('httpCapture.caTrust')}
                         command={caTrustCommand(status.caPath, status.caFingerprint, os)}

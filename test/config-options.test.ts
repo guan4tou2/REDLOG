@@ -81,7 +81,8 @@ const DEFAULTS: Record<string, Check> = {
   'browser.proxy': 'http://127.0.0.1:6661',
   'browser.cdpPort': 9222,
   'browser.isolateProfile': true,
-  'browser.ignoreCertErrors': true,
+  // Off: the default route is the operator's own browser with the CA trusted.
+  'browser.ignoreCertErrors': false,
   'browser.startUrl': '',
   'browser.extraArgs': [],
 

@@ -149,6 +149,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.routeTerminalsHint',
     'httpCapture.stop',
     'httpCapture.restart',
+    'settings.proxyListener',
     'httpCapture.staleTerminals',
     'httpCapture.caReady',
     'httpCapture.caMissing',

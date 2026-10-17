@@ -36,4 +36,13 @@ describe('settings: removing the CA trust', () => {
     await waitFor(() => expect(screen.getByText('httpCapture.caReady')).toBeTruthy())
     expect(screen.queryByTestId('http-capture-untrust')).toBeNull()
   })
+
+  it('shows the listener address to put in your own browser, only while it is running', async () => {
+    draw({ state: 'running', url: 'http://127.0.0.1:6661', certReady: true, caPath: '/home/u/.mitmproxy/mitmproxy-ca-cert.pem' })
+    const row = await screen.findByTestId('http-capture-listener')
+    expect(row.textContent).toContain('127.0.0.1:6661')
+    cleanup()
+    draw({ state: 'stopped', url: null })
+    await waitFor(() => expect(screen.queryByTestId('http-capture-listener')).toBeNull())
+  })
 })

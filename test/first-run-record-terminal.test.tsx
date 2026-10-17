@@ -450,10 +450,15 @@ describe('first run: HTTP(S) card', () => {
     // neither belongs on the screen where capture is being proved.
     expect(screen.queryByTestId('first-run-route-terminals')).toBeNull()
     expect(card.textContent).not.toContain('nmap SYN')
-    // The CA stays behind a link until asked for.
+    // The default route is the operator's own browser: the listener to copy,
+    // the CA to trust and the address to open are all on the card from the
+    // start. The CA link only folds them away.
+    expect(screen.getByTestId('first-run-http-proxy').textContent).toContain('127.0.0.1:8080')
+    expect(screen.getByTestId('first-run-http-own-browser').textContent).toContain('redlog.verify.invalid')
+    expect(card.textContent).toContain('/home/op/.mitmproxy/mitmproxy-ca-cert.pem')
+    fireEvent.click(screen.getByText('HTTPS 憑證'))
     expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
     fireEvent.click(screen.getByText('HTTPS 憑證'))
-    expect(card.textContent).toContain('/home/op/.mitmproxy/mitmproxy-ca-cert.pem')
 
     const nonce = await shownNonce()
     fireEvent.click(screen.getByTestId('first-run-http-verify-browser'))
@@ -602,16 +607,28 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await waitFor(() => expect(verifyListeners.length).toBe(0))
   })
 
-  it('shows HTTPS from the capture browser with the caveat that it ignores certificate errors', async () => {
+  it('shows HTTPS from the capture browser, with the caveat only when it is set to ignore certificate errors', async () => {
+    // Off by default: the default route trusts the CA, so a pass is a real one.
     install({ proxy: RUNNING })
     draw()
     const nonce = await shownNonce()
     await report({ scheme: 'https', nonce, userAgent: 'Mozilla/5.0 (X11) AppleWebKit/537.36 Chrome/140.0 Safari/537.36' })
     const https = await screen.findByTestId('first-run-http-check-https')
     await waitFor(() => expect(https.textContent).toContain('Chromium'))
-    expect(https.textContent).toContain('忽略憑證錯誤')
+    expect(https.textContent).not.toContain('忽略憑證錯誤')
     // HTTPS is the principal proof; HTTP is not a prerequisite.
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
+  })
+
+  it('still carries the caveat when the operator turned ignore-certificate-errors on', async () => {
+    install({ proxy: RUNNING })
+    ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
+      async () => ({ httpCapture: { port: 8080, routeTerminals: false }, browser: { ignoreCertErrors: true } })
+    draw()
+    const nonce = await shownNonce()
+    await report({ scheme: 'https', nonce, userAgent: 'Mozilla/5.0 (X11) AppleWebKit/537.36 Chrome/140.0 Safari/537.36' })
+    const https = await screen.findByTestId('first-run-http-check-https')
+    await waitFor(() => expect(https.textContent).toContain('忽略憑證錯誤'))
   })
 
   it('says when a client refused the certificate', async () => {
