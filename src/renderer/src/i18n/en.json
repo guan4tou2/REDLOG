@@ -1333,6 +1333,8 @@
   "export.preview.attachmentsUnsupported": "this format carries none",
   "export.preview.attachmentsMissing": "Attachments missing",
   "export.preview.attachmentsUnattributed": "Attachments unattributed",
+  "export.preview.truncatedOutputs": "Outputs cut short at capture",
+  "export.preview.pauseWindows": "Recording pauses in this export",
   "firstRun.readFailedTitle": "Could not read the timeline",
   "firstRun.readFailedWhy": "This is a read failure, not an empty log — capture may well be running.",
   "firstRun.preflightFailedTitle": "The environment check could not run",

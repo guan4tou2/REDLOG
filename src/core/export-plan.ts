@@ -62,6 +62,10 @@ export interface ExportCounts {
   /** attachments the operator chose to leave out (#222) */
   attachmentsExcludedByOperator: number
   unsupported: number
+  /** exported Events whose recorded output or body was cut short at capture */
+  truncatedOutputs?: number
+  /** recording pauses among the exported Events: stretches nothing was recorded */
+  pauseWindows?: number
 }
 
 export interface ExportAttachmentCounts {
@@ -69,6 +73,34 @@ export interface ExportAttachmentCounts {
   missing: number
   unattributed: number
   excludedByOperator: number
+}
+
+/** Events whose captured output or body was cut short. The Event is still
+ *  exported; the reader needs to know the text they see is not all of it. */
+export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
+  let n = 0
+  for (const event of events) {
+    const d = event.data
+    let cut = d.stdout_truncated === true || d.stderr_truncated === true || d.truncated === true
+    if (!cut) {
+      const io = d.io as { truncated?: unknown } | undefined
+      cut = io?.truncated === true
+    }
+    if (!cut) {
+      for (const key of BODY_REF_FIELDS) {
+        const ref = d[key] as { truncated?: unknown } | undefined
+        if (ref && typeof ref === 'object' && ref.truncated === true) { cut = true; break }
+      }
+    }
+    if (cut) n++
+  }
+  return n
+}
+
+/** Recording pauses among these Events. Counts what the export carries: a
+ *  selection that filters system Events out will not show its pauses. */
+export function countPauseWindows(events: readonly RedLogEvent[]): number {
+  return events.filter(e => e.agentType === 'system' && e.data.subtype === 'recording_paused').length
 }
 
 export function countReferencedAttachments(events: readonly RedLogEvent[]): number {
