@@ -1,5 +1,5 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { parseScopeInput } from '../../lib/scopeInput'
 import { testScopeSubject, type ScopeTestResult } from '../../lib/scopeTest'
 
@@ -34,13 +34,39 @@ const TONE: Record<'good' | 'bad' | 'warn' | 'neutral', string> = {
 
 /** Module scope, not inside ScopePage: a component declared in another's body
  *  is a new type every render and loses its input on each keystroke. */
+type ScopeFileState = Awaited<ReturnType<Window['redlog']['scope']['fileInForce']>> | 'failed' | undefined
+
 function ScopeTester({ targets, excludeTargets, t }: { targets: string[]; excludeTargets: string[]; t: Translate }): JSX.Element {
   const [input, setInput] = useState('')
-  const verdict = verdictLines(testScopeSubject(input, { targets, excludeTargets }), t)
+  // The scope the app enforces is these lists PLUS the scope file. Testing the
+  // lists alone called a host listed only in the file "out of scope", and an
+  // empty list "no scope" while the file's scope was being enforced.
+  const [file, setFile] = useState<ScopeFileState>(undefined)
+  useEffect(() => {
+    let live = true
+    const read = (window as { redlog?: Window['redlog'] }).redlog?.scope?.fileInForce
+    if (!read) return
+    read().then((f) => { if (live) setFile(f) }).catch(() => { if (live) setFile('failed') })
+    return () => { live = false }
+  }, [])
+  const fromFile = file && file !== 'failed' && file.ok ? file.entries : []
+  const merged = [...targets, ...fromFile.filter((e) => !targets.includes(e))]
+  const verdict = verdictLines(testScopeSubject(input, { targets: merged, excludeTargets }), t)
   return (
     <FieldGroup title={t('settings.scopeTest.title')}>
       <Field label={t('settings.scopeTest.label')} value={input} onChange={setInput} />
       <p className="text-xs text-redlog-text-faint">{t('settings.scopeTest.hint')}</p>
+      {file === 'failed' && <p data-testid="scope-file-state" role="alert" className="text-xs text-amber-400">{t('settings.scopeTest.fileUnknown')}</p>}
+      {file && file !== 'failed' && (
+        <p data-testid="scope-file-state" role={file.ok && file.entries.length > 0 ? 'status' : 'alert'}
+          className={`text-xs ${file.ok && file.entries.length > 0 ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+          {!file.ok
+            ? t(file.reason === 'invalid' ? 'settings.scopeTest.fileInvalid' : 'settings.scopeTest.fileUnreadable', { path: file.path })
+            : file.entries.length === 0
+              ? t('settings.scopeTest.fileEmpty', { path: file.path })
+              : t('settings.scopeTest.fileRead', { count: file.entries.length })}
+        </p>
+      )}
       {verdict && (
         <div data-testid="scope-test-verdict" data-tone={verdict.tone} role="status" className={`text-xs space-y-1 ${TONE[verdict.tone]}`}>
           {verdict.lines.map((line) => <p key={line}>{line}</p>)}

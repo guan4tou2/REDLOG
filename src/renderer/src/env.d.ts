@@ -295,6 +295,7 @@ interface RedLogAPI {
     }>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
+    fileInForce: () => Promise<{ path: string } & ({ ok: true; entries: string[] } | { ok: false; reason: 'unreadable' | 'invalid' }) | null>
     /** The newest scope_recomputed summary, or null. The Scope banner is a
      *  projection of this row, which is why it needs no dismissal state. */
     getLastRecompute: () => Promise<Record<string, unknown> | null>

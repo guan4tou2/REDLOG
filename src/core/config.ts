@@ -495,25 +495,32 @@ export function snapshotScope(config: RedLogConfig): ScopeInForce {
   }
 }
 
-export function loadScopeFile(scopeFilePath: string): string[] {
-  try {
-    const raw = fs.readFileSync(scopeFilePath, 'utf-8')
-    const ext = path.extname(scopeFilePath).toLowerCase()
+export type ScopeFileRead =
+  | { ok: true; entries: string[] }
+  /** `unreadable`: missing or no permission. `invalid`: JSON that does not parse. */
+  | { ok: false; reason: 'unreadable' | 'invalid' }
 
-    if (ext === '.json') {
-      const data = JSON.parse(raw)
-      if (data.target?.scope) {
-        return data.target.scope.flatMap((s: { host?: string }) => {
-          if (s.host) return [s.host.replace(/^\\Q|\\E$/g, '').replace(/^\.\*/g, '*')]
-          return []
-        })
-      }
-      if (Array.isArray(data)) return data.filter((x: unknown) => typeof x === 'string')
-      return []
+/** Like `loadScopeFile`, but says WHY nothing came back. An unreadable scope
+ *  file used to read as an empty one, so a scope that was silently not
+ *  enforced looked the same as a scope file with no entries in it. */
+export function readScopeFile(scopeFilePath: string): ScopeFileRead {
+  let raw: string
+  try { raw = fs.readFileSync(scopeFilePath, 'utf-8') } catch { return { ok: false, reason: 'unreadable' } }
+  const ext = path.extname(scopeFilePath).toLowerCase()
+  if (ext === '.json') {
+    let data: unknown
+    try { data = JSON.parse(raw) } catch { return { ok: false, reason: 'invalid' } }
+    const d = data as { target?: { scope?: Array<{ host?: string }> } }
+    if (d?.target?.scope) {
+      return { ok: true, entries: d.target.scope.flatMap((s) => (s.host ? [s.host.replace(/^\\Q|\\E$/g, '').replace(/^\.\*/g, '*')] : [])) }
     }
-
-    return raw.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-  } catch {
-    return []
+    if (Array.isArray(data)) return { ok: true, entries: data.filter((x: unknown): x is string => typeof x === 'string') }
+    return { ok: true, entries: [] }
   }
+  return { ok: true, entries: raw.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) }
+}
+
+export function loadScopeFile(scopeFilePath: string): string[] {
+  const r = readScopeFile(scopeFilePath)
+  return r.ok ? r.entries : []
 }
