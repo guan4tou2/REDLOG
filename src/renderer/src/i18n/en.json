@@ -1416,6 +1416,8 @@
   "export.attachments.status.excluded-by-operator": "left out",
   "export.attachments.status.excluded-out-of-scope": "out of scope — dropped",
   "export.attachments.status.missing": "file missing",
+  "firstRun.record.detailsShow": "Full session and output check",
+  "firstRun.record.detailsHide": "Hide full session and output check",
   "firstRun.record.outputCheck": "Check that output is kept — run this in that terminal:",
   "firstRun.record.outputCheckSession": "Or inside a redlog-session shell run: {{command}}",
   "firstRun.record.outputVerified": "✓ Output recorded (via {{via}})",

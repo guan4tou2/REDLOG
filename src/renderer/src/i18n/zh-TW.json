@@ -1416,6 +1416,8 @@
   "export.attachments.status.excluded-by-operator": "已排除",
   "export.attachments.status.excluded-out-of-scope": "範圍外——不納入",
   "export.attachments.status.missing": "檔案不見了",
+  "firstRun.record.detailsShow": "完整 session 與輸出檢查",
+  "firstRun.record.detailsHide": "收合完整 session 與輸出檢查",
   "firstRun.record.outputCheck": "確認輸出有被留下——在那個終端執行：",
   "firstRun.record.outputCheckSession": "或在 redlog-session 裡執行：{{command}}",
   "firstRun.record.outputVerified": "✓ 輸出已記錄（經由 {{via}}）",
