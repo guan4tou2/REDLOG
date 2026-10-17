@@ -6,6 +6,7 @@ import fs from 'fs'
 import type { IpcContext } from './types'
 import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
+import { testSample } from '../../core/plugins/test-sample'
 import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins } from '../../core/plugins'
 import { invalidateHooksCache } from '../../core/capture-health'
 import { invalidateHooksCache as invalidateHooksDetectCache } from '../../core/hooks-manager'
@@ -27,6 +28,8 @@ function pluginView() {
 
 export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('plugins:list', () => pluginView())
+  // Dry run on pasted text: writes nothing, emits nothing.
+  ipcMain.handle('plugins:testSample', (_e, text: unknown) => testSample(typeof text === 'string' ? text : ''))
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
   ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); ctx.onPluginsChanged(); return pluginView() })
   // Open the user plugin dir in Finder/Explorer so operators can drop new
