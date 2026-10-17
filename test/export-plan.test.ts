@@ -19,7 +19,6 @@ const counts: ExportCounts = {
   included: 15,
   excludedDoNotExport: 1,
   excludedPersonal: 1,
-  excludedBlacklist: 0,
   maskedOutOfScope: 2,
   sanitized: 3,
   attachmentsIncluded: 2,
@@ -29,10 +28,9 @@ const counts: ExportCounts = {
 }
 
 describe('ExportPlan domain contract', () => {
-  it('normalizes sharing protections and rejects invalid time bounds', () => {
-    expect(normalizeExportRequest({ format: 'json', sharing: true })).toMatchObject({
+  it('normalizes the request and rejects invalid time bounds', () => {
+    expect(normalizeExportRequest({ format: 'json', scrubPii: true })).toMatchObject({
       format: 'json',
-      sharing: true,
       scrubPii: true,
       subset: { kind: 'all' }
     })
@@ -50,7 +48,7 @@ describe('ExportPlan domain contract', () => {
   it('creates a frozen plan with a deterministic evidence fingerprint', () => {
     const input = {
       projectId: 'eng-1',
-      request: normalizeExportRequest({ format: 'json', sharing: true }),
+      request: normalizeExportRequest({ format: 'json', scrubPii: true }),
       snapshot,
       scopeSnapshot: { targets: ['example.test'], excludeTargets: [], personalDomains: [] },
       counts,

@@ -10,10 +10,10 @@ function plan(included: number): ResolvedExportPlan {
     snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
     scopeSnapshot: { targets: ['10.0.0.0/24'], excludeTargets: [], personalDomains: [] },
     capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-    request: { format: 'json', subset: { kind: 'all' }, sharing: true, maskOutOfScope: true, scopeOnly: false, scrubPii: true },
+    request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: true },
     counts: {
       examined: included, included, excludedDoNotExport: 0, excludedPersonal: 0,
-      excludedBlacklist: 0, maskedOutOfScope: 0, sanitized: 0,
+      maskedOutOfScope: 0, sanitized: 0,
       attachmentsIncluded: 0, attachmentsMissing: 0,
       attachmentsUnattributed: 0, unsupported: 0
     }

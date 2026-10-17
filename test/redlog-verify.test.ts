@@ -232,7 +232,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     const bundle = bundleExport.exportBundle('default', {
       includeEventIds: new Set([a.id]),
       exportPlan: { id: 'plan', fingerprint: 'fingerprint', counts: {
-        examined: 2, included: 1, excludedPersonal: 1, excludedDoNotExport: 0, excludedBlacklist: 0,
+        examined: 2, included: 1, excludedPersonal: 1, excludedDoNotExport: 0, 
         maskedOutOfScope: 0, sanitized: 0, attachmentsIncluded: 0, attachmentsMissing: 0,
         attachmentsUnattributed: 0, attachmentsExcludedByOperator: 0, unsupported: 0
       } }

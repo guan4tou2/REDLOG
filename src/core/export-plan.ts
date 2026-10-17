@@ -29,7 +29,6 @@ export type ExportSubset =
 export interface ExportRequest {
   format: ExportFormat
   subset?: ExportSubset
-  sharing?: boolean
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
@@ -40,7 +39,6 @@ export interface ExportRequest {
 export interface NormalizedExportRequest {
   format: ExportFormat
   subset: ExportSubset
-  sharing: boolean
   maskOutOfScope: boolean
   scopeOnly: boolean
   scrubPii: boolean
@@ -53,7 +51,6 @@ export interface ExportCounts {
   included: number
   excludedDoNotExport: number
   excludedPersonal: number
-  excludedBlacklist: number
   maskedOutOfScope: number
   sanitized: number
   attachmentsIncluded: number
@@ -213,7 +210,6 @@ export interface ExportScopeSnapshot {
   targets: string[]
   excludeTargets: string[]
   personalDomains: string[]
-  blacklist?: string[]
   sourceHash?: string
 }
 
@@ -275,10 +271,9 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
   return Object.freeze({
     format: request.format,
     subset: Object.freeze({ ...subset }),
-    sharing: request.sharing === true,
     maskOutOfScope: request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
-    scrubPii: request.scrubPii === true || request.sharing === true,
+    scrubPii: request.scrubPii === true,
     excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort())
   })
 }
@@ -306,7 +301,6 @@ export function createExportPlan(
     targets: [...input.scopeSnapshot.targets],
     excludeTargets: [...input.scopeSnapshot.excludeTargets],
     personalDomains: [...input.scopeSnapshot.personalDomains],
-    blacklist: [...(input.scopeSnapshot.blacklist ?? [])],
     ...(input.scopeSnapshot.sourceHash ? { sourceHash: input.scopeSnapshot.sourceHash } : {})
   }
   const evidence = JSON.stringify({
@@ -331,8 +325,7 @@ export function createExportPlan(
       ...scopeSnapshot,
       targets: Object.freeze(scopeSnapshot.targets) as unknown as string[],
       excludeTargets: Object.freeze(scopeSnapshot.excludeTargets) as unknown as string[],
-      personalDomains: Object.freeze(scopeSnapshot.personalDomains) as unknown as string[],
-      blacklist: Object.freeze(scopeSnapshot.blacklist) as unknown as string[]
+      personalDomains: Object.freeze(scopeSnapshot.personalDomains) as unknown as string[]
     }),
     capabilities: Object.freeze(capabilitiesFor(input.request.format)),
     counts: Object.freeze({ ...input.counts }),

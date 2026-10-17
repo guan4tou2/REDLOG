@@ -20,9 +20,9 @@ function plan(excluded: string[]): ResolvedExportPlan {
     snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
     scopeSnapshot: { targets: ['a.test'], excludeTargets: [], personalDomains: [] },
     capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
-    request: { format: 'bundle', subset: { kind: 'all' }, sharing: false, maskOutOfScope: true, scopeOnly: false, scrubPii: false, excludeAttachments: excluded },
+    request: { format: 'bundle', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: false, excludeAttachments: excluded },
     counts: {
-      examined: 3, included: 3, excludedDoNotExport: 0, excludedPersonal: 0, excludedBlacklist: 0, maskedOutOfScope: 0, sanitized: 0,
+      examined: 3, included: 3, excludedDoNotExport: 0, excludedPersonal: 0, maskedOutOfScope: 0, sanitized: 0,
       attachmentsIncluded: 2 - excluded.length, attachmentsMissing: 1, attachmentsUnattributed: 0,
       attachmentsExcludedByOperator: excluded.length, unsupported: 0
     },

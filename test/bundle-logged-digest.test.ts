@@ -145,7 +145,7 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
         fingerprint: 'f'.repeat(64),
         counts: {
           examined: 2, included: 2, excludedDoNotExport: 0,
-          excludedPersonal: 0, excludedBlacklist: 0, maskedOutOfScope: 0,
+          excludedPersonal: 0, maskedOutOfScope: 0,
           sanitized: 0, attachmentsIncluded: 0, attachmentsMissing: 0,
           attachmentsUnattributed: 0, unsupported: 0
         }

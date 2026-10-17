@@ -24,7 +24,7 @@ Immutable main-process approval object:
 ## ExportCounts
 
 `examined`, `included`, `excludedDoNotExport`, `excludedPersonal`,
-`excludedBlacklist`, `maskedOutOfScope`, `sanitized`,
+`maskedOutOfScope`, `sanitized`,
 `attachmentsIncluded`, `attachmentsMissing`, `attachmentsUnattributed`,
 and `unsupported`. Event and attachment totals remain separate.
 

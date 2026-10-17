@@ -432,7 +432,6 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
                     <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />
-                    <PreviewRow label={t('export.preview.blacklisted')} value={resolvedPlan.counts.excludedBlacklist} warn />
                     <PreviewRow label={t('export.preview.sanitized')} value={resolvedPlan.counts.sanitized} />
                     {/* Three different things that all used to read as "0
                         attachments": this format carries none, none were

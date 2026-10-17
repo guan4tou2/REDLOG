@@ -1022,7 +1022,6 @@
   "export.preview.included": "包含",
   "export.preview.dropped": "丟棄（不匯出標記）",
   "export.preview.personalDropped": "丟棄（私人/本機）",
-  "export.preview.blacklisted": "丟棄（操作者基礎設施）",
   "export.preview.outOfScope": "越界（內容遮罩）",
   "export.preview.sanitized": "欄位已脫敏",
   "export.preview.confirm": "匯出",

@@ -1022,7 +1022,6 @@
   "export.preview.included": "Included",
   "export.preview.dropped": "Dropped (do-not-export)",
   "export.preview.personalDropped": "Dropped (personal/local)",
-  "export.preview.blacklisted": "Dropped (operator infra)",
   "export.preview.outOfScope": "Out of scope (masked)",
   "export.preview.sanitized": "Fields redacted",
   "export.preview.confirm": "Export",

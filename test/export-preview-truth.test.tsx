@@ -19,10 +19,10 @@ const plan = (over: Partial<ResolvedExportPlan> = {}): ResolvedExportPlan => ({
   snapshot: { chainedMaxRowId: 9, loggedMaxRowId: 4, takenAt: 1_700_000_000_000 },
   scopeSnapshot: SCOPE,
   capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-  request: { format: 'json', subset: { kind: 'all' }, sharing: false, maskOutOfScope: true, scopeOnly: false, scrubPii: false },
+  request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: false },
   counts: {
     examined: 120, included: 100, excludedDoNotExport: 5, excludedPersonal: 7,
-    excludedBlacklist: 3, maskedOutOfScope: 5, sanitized: 2,
+    maskedOutOfScope: 5, sanitized: 2,
     attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0
   },
   ...over
@@ -119,7 +119,7 @@ describe('the export preview shows only what the plan measured', () => {
       request: {
         format: 'timeline',
         subset: { kind: 'time-range', since: 1_700_000_000_000, before: 1_700_003_600_000, targetId: '10.0.0.5' },
-        sharing: false, maskOutOfScope: true, scopeOnly: false, scrubPii: false
+        maskOutOfScope: true, scopeOnly: false, scrubPii: false
       }
     }))
     const subset = screen.getByTestId('export-preview-subset').textContent ?? ''
@@ -129,7 +129,7 @@ describe('the export preview shows only what the plan measured', () => {
 
   it('names each policy decision, not one preset word', async () => {
     await draw(plan({
-      request: { format: 'json', subset: { kind: 'all' }, sharing: true, maskOutOfScope: false, scopeOnly: true, scrubPii: true }
+      request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: false, scopeOnly: true, scrubPii: true }
     }))
     const policy = screen.getByTestId('export-preview-policy').textContent ?? ''
     expect(policy).toMatch(/masking off/i)
