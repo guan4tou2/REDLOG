@@ -3,6 +3,7 @@ import { Button } from '../Button'
 import { toast, toastUndo } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
+import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 
 interface PluginView {
@@ -322,6 +323,8 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           )
         })}
       </div>
+
+      <PluginSampleTester t={t} />
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (

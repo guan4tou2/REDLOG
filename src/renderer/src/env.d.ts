@@ -438,6 +438,12 @@ interface RedLogAPI {
     list: () => Promise<unknown[]>
     eventTypes: () => Promise<PluginEventType[]>
     reload: () => Promise<unknown>
+    testSample: (text: string) => Promise<{
+      masked: string; maskedSpans: number; truncated: boolean
+      loot: Array<{ type: string; confidence: 'high' | 'medium' | 'low'; pluginId?: string; patternName?: string }>
+      target: { host: string | null; pluginId?: string; extractorName?: string }
+      tags: Record<string, string>
+    }>
     openFolder: () => Promise<void>
     setEnabled: (id: string, enabled: boolean) => Promise<unknown>
     grant: (id: string) => Promise<unknown>

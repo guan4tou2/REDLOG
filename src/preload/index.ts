@@ -239,6 +239,7 @@ const api: RedLogAPI = {
     list: () => ipcRenderer.invoke('plugins:list'),
     eventTypes: () => ipcRenderer.invoke('plugins:eventTypes'),
     reload: () => ipcRenderer.invoke('plugins:reload'),
+    testSample: (text: string) => ipcRenderer.invoke('plugins:testSample', text),
     openFolder: () => ipcRenderer.invoke('plugins:openFolder'),
     setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('plugins:setEnabled', id, enabled),
     grant: (id: string) => ipcRenderer.invoke('plugins:grant', id),
