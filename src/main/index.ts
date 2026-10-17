@@ -1783,6 +1783,16 @@ app.on('window-all-closed', () => {
 let quitText: QuitText | null = null
 let quitPrompt: Promise<void> | null = null
 
+/** When a command last arrived from a terminal outside RedLog, or null. A
+ *  failed health read means "unknown", which must not block a quit. */
+function externalShellLastEventAt(): number | null {
+  if (!activeProject) return null
+  try {
+    const terminal = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    return terminal?.ownShellLastEventAt ?? null
+  } catch { return null }
+}
+
 /** A quit that stops live sources is the operator's call (#346). Returns true
  *  when the quit should be held for the dialog. */
 function holdQuitForConfirmation(): boolean {
@@ -1792,7 +1802,8 @@ function holdQuitForConfirmation(): boolean {
   const impact = quitImpact({
     terminals: listTerminals().length,
     proxyState: managedHttpProxy.status().state,
-    project: activeProject?.name ?? null
+    project: activeProject?.name ?? null,
+    externalLastEventAt: externalShellLastEventAt()
   })
   if (!impact) return false
   if (!quitPrompt) {
