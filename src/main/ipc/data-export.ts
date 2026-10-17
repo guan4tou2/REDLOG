@@ -33,7 +33,7 @@ import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
 
-function sliceExport(ctx: IpcContext, name: string, payload: unknown): string | null {
+function sliceExport(ctx: IpcContext, name: string, payload: unknown, scrubPii = false): string | null {
   const project = ctx.getActiveProject()
   if (!project) return null
   const projectDir = getProjectPath(project)
@@ -41,7 +41,8 @@ function sliceExport(ctx: IpcContext, name: string, payload: unknown): string | 
   fs.mkdirSync(outDir, { recursive: true })
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const filePath = path.join(outDir, `redlog-${name}-${ts}.json`)
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
+  const content = JSON.stringify(payload, null, 2)
+  fs.writeFileSync(filePath, scrubPii ? scrubOperatorPii(content) : content)
   return filePath
 }
 
@@ -277,7 +278,7 @@ export function registerDataExportIpc(
           selection: subset,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint },
           ...sliceWithAmendments(redactEventsForExport(events, planRedaction), redactEventsForExport(amendments, planRedaction))
-        })
+        }, plan.request.scrubPii)
       } else {
         return { ok: false as const, error: 'unsupported-format' }
       }
