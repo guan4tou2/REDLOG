@@ -123,6 +123,18 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
     case 'clipboard':
       return t('eventTitle.clipboard', { preview: (d.content as string)?.slice(0, 60) || '' })
     case 'file_transfer': {
+      // A file the operator added is evidence they will want to find by name,
+      // not one more transfer line: name, size and the start of its hash.
+      if (d.subtype === 'artifact_added') {
+        const source = String(d.path ?? d.stored ?? '')
+        const name = source.split(/[\\/]/).pop() || source
+        const title = t('eventTitle.artifact', {
+          name,
+          size: formatBytes(typeof d.size === 'number' ? d.size : 0),
+          hash: typeof d.sha256 === 'string' ? d.sha256.slice(0, 8) : '?'
+        })
+        return d.duplicate ? `${title} ${t('eventTitle.artifactAgain')}` : title
+      }
       const label = d.subtype || d.direction || 'transfer'
       const target = d.path || d.filename || d.localPath || d.remotePath || ''
       const size = d.size != null ? ` (${d.size}B)` : d.bytes ? ` (${d.bytes}B)` : ''

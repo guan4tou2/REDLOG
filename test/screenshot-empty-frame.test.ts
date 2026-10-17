@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   events: [] as Array<{ type: string; data: Record<string, unknown> }>,
   captureErrors: [] as Array<{ source: string; message: string }>,
   dbErrors: [] as string[],
+  ingest: 'ok' as 'ok' | 'null' | 'throw',
   dir: ''
 }))
 
@@ -43,7 +44,12 @@ vi.mock('electron', () => ({
   }
 }))
 vi.mock('../src/core/ingest', () => ({
-  ingestEvent: (type: string, data: Record<string, unknown>) => { h.events.push({ type, data }); return { id: 'e1' } }
+  ingestEvent: (type: string, data: Record<string, unknown>) => {
+    if (h.ingest === 'throw') throw new Error('database is locked')
+    if (h.ingest === 'null') return null
+    h.events.push({ type, data })
+    return { id: 'e1' }
+  }
 }))
 vi.mock('../src/core/event-bus', () => ({ eventBus: { paused: false } }))
 vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir }))
@@ -66,7 +72,7 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     ScreenshotAgent = (await import('../src/main/services/screenshot-agent')).ScreenshotAgent
     h.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-shot-'))
     h.events = []; h.captureErrors = []; h.dbErrors = []
-    h.jpegBytes = 0; h.empty = true; h.sources = 1
+    h.jpegBytes = 0; h.empty = true; h.sources = 1; h.ingest = 'ok'
   })
   afterEach(() => { fs.rmSync(h.dir, { recursive: true, force: true }) })
 
@@ -100,6 +106,25 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     expect(shots()).toHaveLength(1)
     expect(h.events).toHaveLength(1)
     expect(h.events[0].data.size).toBe(4096)
+  })
+
+  // The frame was real, but nothing recorded it. A picture no event points at
+  // is a file the project cannot account for, and "saved" must not be reported.
+  it('leaves no file behind, and reports no save, when the event is not recorded', async () => {
+    h.jpegBytes = 4096; h.empty = false; h.ingest = 'null'
+    const result = await agent().captureNow('manual')
+    expect(result).toBeNull()
+    expect(shots()).toEqual([])
+    expect(h.captureErrors.map((e) => e.message).join(' ')).toMatch(/not recorded/)
+    expect(h.dbErrors).toEqual([])
+  })
+
+  it('leaves no file behind when recording the event throws', async () => {
+    h.jpegBytes = 4096; h.empty = false; h.ingest = 'throw'
+    const result = await agent().captureNow('manual')
+    expect(result).toBeNull()
+    expect(shots()).toEqual([])
+    expect(h.captureErrors.map((e) => e.message).join(' ')).toMatch(/database is locked/)
   })
 
   // POST /api/screenshot is an operator (or their agent) asking for THIS

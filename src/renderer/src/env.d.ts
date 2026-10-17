@@ -199,6 +199,8 @@ interface RedLogAPI {
     add: (title?: string) => Promise<ArtifactAddResponse | null>
     /** Files dropped on the window; the main process asks before adding. */
     addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) => Promise<ArtifactAddResponse | null>
+    /** Show an evidence file in the file manager (never opens it). */
+    reveal: (kind: 'artifact' | 'screenshot', file: string) => Promise<boolean>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>

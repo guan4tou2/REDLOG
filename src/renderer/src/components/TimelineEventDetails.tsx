@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } from './HttpDetail'
+import { toast } from './Toast'
 
 // ── Shell command_end ────────────────────────────────────────────────
 
@@ -125,6 +126,46 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           ['captured_by', data.captured_by]
         ]}
       />
+    </div>
+  )
+}
+
+// ── Operator-added evidence file ─────────────────────────────────────
+
+/** A file the operator added: what it is, its hash, and where RedLog keeps its
+ *  copy. "Show in folder" reveals that copy and never opens it — the file may
+ *  be a sample the operator was handed. */
+export function EvidenceFileDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const stored = typeof data.stored === 'string' && data.stored !== '' ? data.stored : null
+  const original = typeof data.path === 'string' ? data.path : ''
+  const reveal = async (): Promise<void> => {
+    const ok = stored ? await window.redlog.artifacts.reveal('artifact', stored).catch(() => false) : false
+    if (!ok) toast(t('artifacts.revealFailed'), { type: 'warning', why: t('artifacts.revealFailedWhy') })
+  }
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="evidence-file-detail">
+      <MetadataGrid
+        entries={[
+          ['file', original.split(/[\\/]/).pop() || original],
+          ['size', typeof data.size === 'number' ? formatBytes(data.size) : undefined],
+          ['sha256', data.sha256],
+          ['kept_as', stored],
+          ['original_path', original],
+          ['file_modified', typeof data.mtime === 'number' ? new Date(data.mtime).toISOString() : undefined],
+          ['already_stored', data.duplicate === true ? 'yes' : undefined]
+        ]}
+      />
+      {stored && (
+        <button
+          type="button"
+          data-testid="evidence-file-reveal"
+          onClick={() => void reveal()}
+          className="text-xs text-redlog-cyan hover:text-redlog-text underline"
+        >
+          {t('artifacts.reveal')}
+        </button>
+      )}
     </div>
   )
 }

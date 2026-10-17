@@ -199,7 +199,12 @@ export function ingest(input: IngestInput): IngestResult {
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
   if (plan.targetId && !targetId) targetId = plan.targetId
-  if (!targetId && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType) && activeTarget) {
+  // A file the operator adds by hand is their act, like a marker or a
+  // screenshot, so it belongs to the target they are working on. Transfers RedLog
+  // detects itself are not: nothing says which target they were for.
+  const operatorAct = ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)
+    || (agentType === 'file_transfer' && data.subtype === 'artifact_added')
+  if (!targetId && operatorAct && activeTarget) {
     targetId = activeTarget
   }
 

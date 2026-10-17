@@ -251,7 +251,8 @@ export class ScreenshotAgent {
       // fs.promises.writeFile off-loads the syscall to libuv's thread pool.
       await fs.promises.writeFile(filepath, jpeg)
 
-      const evt = ingestEvent('screenshot', {
+      let evt: ReturnType<typeof ingestEvent> = null
+      try { evt = ingestEvent('screenshot', {
         trigger,
         filePath: filepath,
         filename,
@@ -274,7 +275,18 @@ export class ScreenshotAgent {
         engagementId: this.engagementId,
         operatorId: this.operatorId,
         bypassPause: deliberate
-      })
+      }) } catch (e) {
+        // The picture is on disk but no event points at it: a file nothing in
+        // the project accounts for. Remove it rather than leave one behind.
+        await fs.promises.rm(filepath, { force: true }).catch(() => {})
+        throw e
+      }
+      if (!evt) {
+        // Same orphan, and the caller must not be told a screenshot was saved.
+        await fs.promises.rm(filepath, { force: true }).catch(() => {})
+        noteCaptureError('screenshot', new Error('The screenshot was captured but its event was not recorded'))
+        return null
+      }
       clearCaptureError('screenshot')
       return filepath
     } catch (e) {
