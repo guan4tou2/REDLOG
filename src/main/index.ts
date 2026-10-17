@@ -8,7 +8,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -1481,6 +1481,14 @@ app.whenReady().then(() => {
   ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
+  // The scope file merged into the lists, as the app enforces it. Only the
+  // path saved in this project's config is read: the renderer never supplies a
+  // path, so this cannot be used to read an arbitrary file.
+  ipcMain.handle('scope:fileInForce', () => {
+    if (!activeProject) return null
+    const file = loadConfig(getProjectPath(activeProject)).scope?.scopeFile
+    return file ? { path: file, ...readScopeFile(file) } : null
+  })
 
   // §22: which nouns this engagement has the data for. Read-only, and the
   // flags are monotonic, so a mature project costs no queries at all.
