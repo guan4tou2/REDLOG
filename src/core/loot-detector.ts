@@ -130,6 +130,22 @@ export function _listExternalLootPatterns(): Array<{
   }))
 }
 
+/** Run `fn`, then undo any "stopped for overrunning its time budget" mark it
+ *  caused and say which rules that was. A dry run on pasted text must not
+ *  switch off a rule the live capture is using. */
+export function withoutLeavingRulesStopped<T>(fn: () => T): { result: T; overran: string[] } {
+  const before = new Set(externalPatterns.filter((p) => p.stopped).map((p) => p))
+  const result = fn()
+  const overran: string[] = []
+  for (const p of externalPatterns) {
+    if (p.stopped && !before.has(p)) {
+      overran.push(pluginRuleId(p.pluginId, p.patternName))
+      delete p.stopped
+    }
+  }
+  return { result, overran }
+}
+
 /** Every rule the detector runs, built-in first, for the Settings list.
  *  `id` is what `disabledRules` holds. */
 export function listLootRules(): Array<{

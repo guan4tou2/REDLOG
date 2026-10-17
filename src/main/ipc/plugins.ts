@@ -32,7 +32,11 @@ function pluginView() {
 export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('plugins:list', () => pluginView())
   // Dry run on pasted text: writes nothing, emits nothing.
-  ipcMain.handle('plugins:testSample', (_e, text: unknown) => testSample(typeof text === 'string' ? text : ''))
+  ipcMain.handle('plugins:testSample', (_e, text: unknown) => {
+    const project = ctx.getActiveProject()
+    const disabledRules = project ? loadConfig(getProjectPath(project)).loot?.disabledRules ?? [] : []
+    return testSample(typeof text === 'string' ? text : '', { disabledRules })
+  })
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
   ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); ctx.onPluginsChanged(); return pluginView() })
   // Open the user plugin dir in Finder/Explorer so operators can drop new
