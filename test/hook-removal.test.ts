@@ -23,36 +23,36 @@ const alive = (map: Record<number, string>) => (pid: number): string | null => m
 describe('stopOpenTerminals', () => {
   it('stops a live zsh terminal and records why', () => {
     put('1792255597960919000-18140-7246')
-    const r = stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: 'zsh' }) })
+    const r = stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: 'zsh' }), platform: 'darwin' })
     expect(r.stopped).toBe(1)
     expect(readTerminalEnrollment(home, '1792255597960919000-18140-7246')).toMatchObject({ recording: false, stoppedReason: 'hook-removed' })
   })
 
   it('treats a login shell name (-zsh) as zsh', () => {
     put('1792255597960919000-18140-7246')
-    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: '-zsh' }) }).stopped).toBe(1)
+    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: '-zsh' }), platform: 'darwin' }).stopped).toBe(1)
   })
 
   it('leaves a bash terminal alone when the zsh hook is removed', () => {
     put('1792255597960919000-200-1')
-    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 200: 'bash' }) }).stopped).toBe(0)
+    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 200: 'bash' }), platform: 'darwin' }).stopped).toBe(0)
     expect(readTerminalEnrollment(home, '1792255597960919000-200-1')?.recording).toBe(true)
   })
 
   it('leaves a terminal whose process is gone, and RedLog\'s own built-in terminals', () => {
     put('1792255597960919000-300-1')           // pid 300 no longer exists
     put('term-1')                                // a built-in terminal id, not a hook id
-    expect(stopOpenTerminals('zsh', { home, shellOf: alive({}) }).stopped).toBe(0)
+    expect(stopOpenTerminals('zsh', { home, shellOf: alive({}), platform: 'darwin' }).stopped).toBe(0)
     expect(readTerminalEnrollment(home, 'term-1')?.recording).toBe(true)
   })
 
   it('does not rewrite a terminal that already stopped', () => {
     put('1792255597960919000-18140-7246', { recording: false })
-    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: 'zsh' }) }).stopped).toBe(0)
+    expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: 'zsh' }), platform: 'darwin' }).stopped).toBe(0)
   })
 
   it('does nothing without a state directory, and on Windows', () => {
-    expect(stopOpenTerminals('zsh', { home, shellOf: alive({}) }).stopped).toBe(0)
+    expect(stopOpenTerminals('zsh', { home, shellOf: alive({}), platform: 'darwin' }).stopped).toBe(0)
     put('1792255597960919000-18140-7246')
     expect(stopOpenTerminals('zsh', { home, shellOf: alive({ 18140: 'zsh' }), platform: 'win32' }).stopped).toBe(0)
   })
