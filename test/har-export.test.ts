@@ -320,4 +320,18 @@ describe('har-export', () => {
     expect(headers).toContainEqual({ name: 'X-Custom', value: 'value1' })
     expect(headers).toContainEqual({ name: 'Accept', value: 'text/html' })
   })
+  describe('event cap', () => {
+    it('does not cap an approved selection, so the file matches the previewed count', () => {
+      mockQueryEvents.mockClear()
+      exportHar({ includeEventIds: new Set(['a']) })
+      expect(mockQueryEvents).toHaveBeenCalledWith(expect.objectContaining({ limit: -1 }))
+    })
+    it('keeps the cap for an ad-hoc export with no selection, and honours an explicit limit', () => {
+      mockQueryEvents.mockClear()
+      exportHar()
+      expect(mockQueryEvents).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 50000 }))
+      exportHar({ limit: 7 })
+      expect(mockQueryEvents).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 7 }))
+    })
+  })
 })
