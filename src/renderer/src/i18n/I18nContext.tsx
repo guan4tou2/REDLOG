@@ -51,7 +51,7 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
     const text = (key: string): string => locales[locale]?.[key] ?? locales['en'][key] ?? key
     send({
       title: text('quit.title'), message: text('quit.message'), terminals: text('quit.terminals'),
-      proxy: text('quit.proxy'), external: text('quit.external'), stay: text('quit.stay'), quit: text('quit.quit')
+      proxy: text('quit.proxy'), external: text('quit.external'), externalLive: text('quit.externalLive'), stay: text('quit.stay'), quit: text('quit.quit')
     })
   }, [locale])
 

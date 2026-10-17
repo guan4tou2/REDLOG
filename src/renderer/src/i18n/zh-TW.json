@@ -1550,6 +1550,7 @@
   "quit.message": "關閉視窗會讓記錄繼續在背景進行。結束 App 會停止：",
   "quit.terminals": "{{count}} 個內建終端：工作階段結束，錄影一併收尾",
   "quit.proxy": "受管網頁擷取代理：經由它的工具會失去代理服務",
+  "quit.externalLive": "你在 RedLog 外開啟的終端在最近 10 分鐘內有指令被記錄。它會繼續執行，但結束 App 後它的指令不會歸到任何專案。",
   "quit.external": "你在 RedLog 外開啟的終端不會被關閉，但之後的指令不再被記錄。",
   "quit.stay": "留在背景",
   "quit.quit": "停止並結束",

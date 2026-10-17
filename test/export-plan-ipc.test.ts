@@ -363,7 +363,8 @@ describe('export plan IPC contract', () => {
     const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
     const content = fs.readFileSync(executed.artifactPath, 'utf8')
     expect(content).toContain('notes.txt')
-    expect(content.includes(home)).toBe(kept)
+    // The file is JSON: a Windows path appears with its backslashes escaped.
+    expect(content.includes(JSON.stringify(home).slice(1, -1))).toBe(kept)
     const manifest = JSON.parse(fs.readFileSync(`${executed.artifactPath}.manifest.json`, 'utf8')) as { exportPlan: { request: { scrubPii: boolean } } }
     expect(manifest.exportPlan.request.scrubPii).toBe(scrubPii)
   })

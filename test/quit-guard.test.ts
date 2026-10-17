@@ -9,7 +9,7 @@ describe('quitting RedLog (#346)', () => {
 
   it('names what a quit stops: built-in terminals and the managed proxy', () => {
     const impact = quitImpact({ terminals: 2, proxyState: 'running', project: 'acme' })!
-    expect(impact).toEqual({ terminals: 2, proxyRunning: true, project: 'acme' })
+    expect(impact).toEqual({ terminals: 2, proxyRunning: true, externalActive: false, project: 'acme' })
     const d = quitDialog(impact, defaultQuitText('en-US'))
     expect(d.message).toContain('acme')
     expect(d.detail).toContain('2 built-in terminal(s)')
@@ -28,6 +28,32 @@ describe('quitting RedLog (#346)', () => {
     expect(d.detail).toContain('outside RedLog keep running')
   })
 
+  describe('a terminal opened outside RedLog that is recording', () => {
+    const now = 1_000_000_000
+    it('asks even when no built-in terminal or proxy is live', () => {
+      const impact = quitImpact({ terminals: 0, proxyState: 'stopped', project: 'acme', externalLastEventAt: now - 60_000, now })
+      expect(impact).toMatchObject({ terminals: 0, proxyRunning: false, externalActive: true })
+      const d = quitDialog(impact!, defaultQuitText('en'))
+      expect(d.detail).toContain('recorded a command in the last 10 minutes')
+      expect(d.detail).toContain('go to no project')
+      expect(d.detail).not.toContain('built-in terminal')
+    })
+    it('does not ask for one that has been quiet longer than the window', () => {
+      expect(quitImpact({ terminals: 0, proxyState: 'stopped', project: 'acme', externalLastEventAt: now - 11 * 60_000, now })).toBeNull()
+    })
+    it('does not ask when it never recorded, or when no project is open', () => {
+      expect(quitImpact({ terminals: 0, proxyState: 'stopped', project: 'acme', externalLastEventAt: null, now })).toBeNull()
+      expect(quitImpact({ terminals: 0, proxyState: 'stopped', project: null, externalLastEventAt: now - 1000, now })).toBeNull()
+    })
+    it('states the consequence, not only the standing note, when other things stop too', () => {
+      const impact = quitImpact({ terminals: 1, proxyState: 'running', project: 'acme', externalLastEventAt: now - 1000, now })!
+      const d = quitDialog(impact, defaultQuitText('en'))
+      expect(d.detail).toContain('1 built-in terminal(s)')
+      expect(d.detail).toContain('go to no project')
+      expect(d.detail).not.toContain('keep running; their commands are no longer recorded')
+    })
+  })
+
   it('makes the safe choice the first, the default, and what Escape does', () => {
     const d = quitDialog(quitImpact({ terminals: 1, proxyState: 'stopped', project: null })!, defaultQuitText('en'))
     expect(d.buttons).toEqual(['Stay in background', 'Stop and quit'])
@@ -42,7 +68,7 @@ describe('quitting RedLog (#346)', () => {
   })
 
   it('rejects a malformed text payload instead of blanking the dialog', () => {
-    const good = { title: 'a', message: 'b', terminals: 'c {{count}}', proxy: 'd', external: 'e', stay: 'f', quit: 'g' }
+    const good = { title: 'a', message: 'b', terminals: 'c {{count}}', proxy: 'd', external: 'e', externalLive: 'x', stay: 'f', quit: 'g' }
     expect(parseQuitText(good)).toEqual(good)
     expect(parseQuitText({ ...good, quit: '' })).toBeNull()
     expect(parseQuitText({ ...good, stay: 3 })).toBeNull()
