@@ -317,6 +317,7 @@
   "browser.failed": "無法啟動瀏覽器",
   "httpCapture.restart": "重新啟動 HTTP 擷取",
   "httpCapture.stop": "停止 HTTP 擷取",
+  "httpCapture.staleTerminals": "還有 {{count}} 個已開啟的內建終端機仍指向已停止的 proxy，網路請求會失敗。請開新終端機，或重新啟動 HTTP 擷取。",
   "httpCapture.starting": "正在啟動 HTTP…",
   "httpCapture.failed": "無法啟動 HTTP 擷取",
   "httpCapture.state.stopped": "HTTP 擷取已停止",
