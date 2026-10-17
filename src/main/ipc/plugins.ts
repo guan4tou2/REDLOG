@@ -6,6 +6,7 @@ import fs from 'fs'
 import type { IpcContext } from './types'
 import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
+import { getContributionReport } from '../../core/plugins/contributions'
 import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins } from '../../core/plugins'
 import { invalidateHooksCache } from '../../core/capture-health'
 import { invalidateHooksCache as invalidateHooksDetectCache } from '../../core/hooks-manager'
@@ -21,7 +22,9 @@ function pluginView() {
     source: p.source, tier: p.tier, status: p.status,
     capabilities: p.manifest.capabilities ?? [],
     contributes: Object.keys(p.manifest.contributes ?? {}),
-    error: p.error
+    error: p.error,
+    apiAhead: p.apiAhead === true,
+    report: getContributionReport(p.manifest.id) ?? null
   }))
 }
 

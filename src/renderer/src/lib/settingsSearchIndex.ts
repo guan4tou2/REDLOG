@@ -235,6 +235,10 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.integrityEvents'
   ],
   plugins: [
+    'plugins.apiAhead',
+    'plugins.results.loot',
+    'plugins.results.tailerRejected',
+    'plugins.results.tailerAccepted',
     'plugins.disabled',
     'plugins.disabledWhy',
     'plugins.granted',

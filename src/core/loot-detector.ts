@@ -54,7 +54,10 @@ const externalPatterns: ExternalPattern[] = []
  *  rule over a 100 KB command output takes a few milliseconds. */
 const PLUGIN_RULES_BUDGET_MS = 250
 
-/** Register loot patterns from a plugin. Invalid regexes are skipped, not thrown. */
+export interface RuleRejection { name: string; reason: string }
+
+/** Register loot patterns from a plugin. Invalid regexes are skipped, not
+ *  thrown, and each one is named in `rejected` so the caller can say which. */
 export function registerLootPatterns(
   pluginId: string,
   patterns: Array<{
@@ -67,15 +70,19 @@ export function registerLootPatterns(
     name?: string
     description?: string
   }>
-): number {
+): { added: number; rejected: RuleRejection[] } {
   let added = 0
+  const rejected: RuleRejection[] = []
   patterns.forEach((p, i) => {
+    const patternName = p.name && p.name.trim() ? p.name.trim() : `${p.type}#${i}`
     try {
       const flags = new Set(['g', ...(p.flags ?? '').split('')].filter(Boolean))
       const re = new RegExp(p.pattern, [...flags].join(''))
       const group = p.group ?? 0
-      if (!Number.isInteger(group) || group < 0) return
-      const patternName = p.name && p.name.trim() ? p.name.trim() : `${p.type}#${i}`
+      if (!Number.isInteger(group) || group < 0) {
+        rejected.push({ name: patternName, reason: `group must be a non-negative integer, got ${String(p.group)}` })
+        return
+      }
       externalPatterns.push({
         type: p.type,
         pattern: re,
@@ -86,9 +93,11 @@ export function registerLootPatterns(
         description: p.description
       })
       added++
-    } catch { /* bad regex from plugin — skip */ }
+    } catch (e) {
+      rejected.push({ name: patternName, reason: (e as Error).message })
+    }
   })
-  return added
+  return { added, rejected }
 }
 
 /** Drop all patterns a plugin registered (on disable/reload). */
