@@ -12,6 +12,34 @@ import { capabilitiesFor } from '../../../core/export-capabilities'
 
 export interface ExportMenuProps {
   totalCount?: number
+  /** Opens Settings ▸ Scope, for the preview's "set a scope first". */
+  onOpenScopeSettings?: () => void
+}
+
+/** What the preview says about scope, in the two places it is easy to assume
+ *  wrongly: an empty scope is not "everything verified in scope", and the web
+ *  scope does not select commands. Module scope on purpose — declared inside
+ *  ExportMenu it would remount on every render. */
+function ScopeNotes({ scopeSet, onSetScope, t }: {
+  scopeSet: boolean
+  onSetScope?: () => void
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  return (
+    <div className="px-3 pt-2 space-y-1 text-xs">
+      {!scopeSet && (
+        <div data-testid="export-scope-unset" className="text-amber-400 space-y-1">
+          <p>{t('export.scopeUnset')}</p>
+          {onSetScope && (
+            <button type="button" data-testid="export-set-scope" onClick={onSetScope} className="underline hover:text-amber-300">
+              {t('export.scopeSetFirst')}
+            </button>
+          )}
+        </div>
+      )}
+      <p data-testid="export-commands-note" className="text-redlog-text-faint">{t('export.commandsNotScoped')}</p>
+    </div>
+  )
 }
 
 interface PendingExport {
@@ -145,7 +173,7 @@ function Toggle({ on, setOn, label, warn }: {
   )
 }
 
-export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
+export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const narrow = useNarrowViewport()
   const viewExport = useViewExport()
@@ -389,6 +417,11 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         `inScope` used to be `included - maskedOutOfScope`,
                         which is not a scope classification, and `screenshots`
                         was hardcoded 0 - both are gone rather than guessed. */}
+                    <ScopeNotes
+                      scopeSet={(resolvedPlan.scopeSnapshot?.targets ?? []).length > 0 || (resolvedPlan.scopeSnapshot?.excludeTargets ?? []).length > 0}
+                      onSetScope={onOpenScopeSettings ? () => { setPending(null); setResolvedPlan(null); setRunError(null); setOpen(false); onOpenScopeSettings() } : undefined}
+                      t={t}
+                    />
                     {resolvedPlan.request.subset.kind !== 'all' && <p data-testid="export-projection-notice" className="px-3 py-2 text-xs text-amber-400">{t('export.projectionNotice')}</p>}
                     {resolvedPlan.counts.exchanges !== undefined && <p className="px-3 text-xs">{t('export.exchanges', { count: resolvedPlan.counts.exchanges })}</p>}
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />

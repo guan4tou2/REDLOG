@@ -34,7 +34,7 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
-import { parseTarget } from './lib/navigation'
+import { parseTarget, settingsTarget } from './lib/navigation'
 import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
@@ -293,7 +293,7 @@ export default function App(): JSX.Element {
             {/* §10: one export control, in the shell rather than six places.
                 Its scope is an option, not a location. */}
             <ControlBoundary name={t('export.title')}>
-              <ExportMenu totalCount={exportableCount} />
+              <ExportMenu totalCount={exportableCount} onOpenScopeSettings={() => navigate(settingsTarget('scope'))} />
             </ControlBoundary>
             <ControlBoundary name={t('browser.launch')}>
               <LaunchBrowserButton onNavigate={navigate} />
