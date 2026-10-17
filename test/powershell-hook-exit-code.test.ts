@@ -48,6 +48,13 @@ async function runInteractive(exe: string, home: string, commands: string[]): Pr
   return out
 }
 
+/** Every spooled payload, in order, with the fields the timing test reads. */
+function readSpooled(home: string): Array<{ subtype: string; command: string; source_timestamp?: number }> {
+  const pending = path.join(home, '.redlog', 'pending')
+  const files = fs.existsSync(pending) ? fs.readdirSync(pending).filter((f) => f.endsWith('.json')).sort() : []
+  return files.map((f) => (JSON.parse(fs.readFileSync(path.join(pending, f), 'utf8')) as { data: { subtype: string; command: string; source_timestamp?: number } }).data)
+}
+
 // Register explicit skips when the runtime is absent, rather than declaring
 // an empty file (which Vitest treats as a failed suite).
 const describePowerShell = shells.length ? describe : describe.skip
@@ -91,5 +98,19 @@ describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('th
     const byCommand = new Map(recorded.map((r) => [r.command, r.exit_code]))
     expect(byCommand.get(native)).toBe(5)
     expect(byCommand.get('Write-Output after')).toBe(0)
+  }, 60_000)
+  it('stamps start and end with when they happened, not when the prompt drew', async () => {
+    const before = Date.now()
+    await runInteractive(ps, home, ['Start-Sleep -Seconds 2', 'exit'])
+    const after = Date.now()
+    const rows = readSpooled(home).filter((r) => r.command === 'Start-Sleep -Seconds 2')
+    const start = rows.find((r) => r.subtype === 'command_start')?.source_timestamp
+    const end = rows.find((r) => r.subtype === 'command_end')?.source_timestamp
+    expect(start, 'command_start has no source_timestamp').toBeTypeOf('number')
+    expect(end, 'command_end has no source_timestamp').toBeTypeOf('number')
+    // The start row is at the start, so it precedes the end by the sleep.
+    expect(end! - start!).toBeGreaterThanOrEqual(1500)
+    expect(start!).toBeGreaterThanOrEqual(before - 1000)
+    expect(end!).toBeLessThanOrEqual(after + 1000)
   }, 60_000)
 })
