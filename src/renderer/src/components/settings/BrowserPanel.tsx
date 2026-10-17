@@ -4,6 +4,7 @@ import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '..
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-proxy-url'
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
+import { CaCommand, caUntrustCommand, thisOs } from '../HttpCaptureStep'
 
 export default function BrowserPanel({
   t, config, setConfig
@@ -124,6 +125,19 @@ export default function BrowserPanel({
               it sits with the setting rather than on the first-run screen,
               where it was four clauses between the operator and a check. */}
           <p className="text-xs text-redlog-text-faint leading-relaxed">{t('httpCapture.caTrustStores')}</p>
+          {/* The same by-fingerprint command the first-run step shows beside
+              the one that trusts it. This is where an operator comes back to
+              at the end of an engagement, and a root CA left behind is the
+              longest-lived thing RedLog can leave on a machine. */}
+          {proxyStatus.caFingerprint && (
+            <div data-testid="http-capture-untrust" className="text-xs">
+              <CaCommand
+                label={t('httpCapture.caUntrust')}
+                command={caUntrustCommand(proxyStatus.caPath, proxyStatus.caFingerprint, thisOs())}
+                t={t}
+              />
+            </div>
+          )}
         </>
       )}
       <Field

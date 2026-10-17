@@ -73,7 +73,7 @@ export function caUntrustCommand(caPath: string, fp: CaFingerprint | null | unde
   return `sudo rm -f ${linuxCaFile(fp)} && sudo update-ca-certificates --fresh`
 }
 
-function CaCommand({ label, command, t }: {
+export function CaCommand({ label, command, t }: {
   label: string
   command: string
   t: (key: string, vars?: Record<string, string | number>) => string
