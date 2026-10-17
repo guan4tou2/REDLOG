@@ -18,6 +18,7 @@ export default function BrowserPanel({
   const exposed = !isLoopbackHost(listenHost)
   const [detected, setDetected] = useState<string | null>(null)
   const [proxyStatus, setProxyStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
+  const [staleTerminals, setStaleTerminals] = useState(0)
 
   useEffect(() => {
     window.redlog.browser.detect().then(setDetected).catch(() => setDetected(null))
@@ -91,15 +92,27 @@ export default function BrowserPanel({
         </span>
         <button
           data-testid="http-capture-toggle"
-          onClick={async () => setProxyStatus(proxyStatus.state === 'running'
-            ? await window.redlog.httpCapture.stop()
-            : await window.redlog.httpCapture.start())}
+          onClick={async () => {
+            if (proxyStatus.state === 'running') {
+              const { staleTerminals: stale, ...stopped } = await window.redlog.httpCapture.stop()
+              setProxyStatus(stopped)
+              setStaleTerminals(stale ?? 0)
+            } else {
+              setStaleTerminals(0)
+              setProxyStatus(await window.redlog.httpCapture.start())
+            }
+          }}
           className="px-2 py-1 bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
           {proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.restart')}
         </button>
       </div>
       {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}
+      {proxyStatus.state !== 'running' && staleTerminals > 0 && (
+        <p data-testid="http-capture-stale-terminals" className="text-xs text-amber-400">
+          {t('httpCapture.staleTerminals', { count: staleTerminals })}
+        </p>
+      )}
       {proxyStatus.caPath && (
         <>
           <p className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>

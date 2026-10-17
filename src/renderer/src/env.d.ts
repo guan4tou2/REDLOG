@@ -331,7 +331,8 @@ interface RedLogAPI {
   httpCapture: {
     status: () => Promise<ManagedProxyStatus>
     start: () => Promise<ManagedProxyStatus>
-    stop: () => Promise<ManagedProxyStatus>
+    /** `staleTerminals`: open built-in panes whose environment still names the proxy that just stopped. */
+    stop: () => Promise<ManagedProxyStatus & { staleTerminals: number }>
     /** Load the #220 verification page for `nonce` in the capture browser. */
     verifyInBrowser: (nonce: string) => Promise<{ ok: boolean; error?: string }>
     /** Capture checks reported by the mitmproxy addon. */

@@ -41,7 +41,7 @@ import {
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
-  getCastPosition, listTerminals
+  getCastPosition, listTerminals, countProxiedTerminals
 } from './terminal-manager'
 import { markerForOpen } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
@@ -1554,7 +1554,10 @@ app.whenReady().then(() => {
   // --- Proxied browser ---
   ipcMain.handle('httpCapture:status', () => managedHttpProxy.status())
   ipcMain.handle('httpCapture:start', () => startManagedHttpCapture())
-  ipcMain.handle('httpCapture:stop', () => stopManagedHttpCapture())
+  // The panes opened while routing was on keep a proxy URL in their
+  // environment, which no longer answers. Say how many, so the operator is
+  // told to reopen them rather than left to a pane where every request fails.
+  ipcMain.handle('httpCapture:stop', () => ({ ...stopManagedHttpCapture(), staleTerminals: countProxiedTerminals() }))
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
   ipcMain.handle('browser:launch', () => launchCaptureBrowser())

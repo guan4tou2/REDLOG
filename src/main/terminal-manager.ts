@@ -119,6 +119,18 @@ interface TerminalSession {
   operatorPaused: boolean
   consentBeforeSwitch?: boolean
   pendingCommands: Map<string, { projectId: string; recordingId: string; commandId: string; startEventId?: string }>
+  /** The managed proxy this pane's environment points at, fixed at spawn: a
+   *  running shell's environment cannot be changed from outside, so the pane
+   *  keeps this URL after the proxy is stopped. */
+  proxiedVia: string | null
+}
+
+/** Open panes whose environment names a proxy URL. Asked right after the
+ *  managed proxy stops, when every one of them points at a dead port. */
+export function countProxiedTerminals(): number {
+  let n = 0
+  for (const s of sessions.values()) if (s.proxiedVia && !s.finalised) n++
+  return n
 }
 
 // A binding closes while its own DB is still open; the PTY can outlive it.
@@ -519,13 +531,14 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // Audit P0-2 (docs/WINDOWS_COMPAT_AUDIT.md).
   const cwd = os.homedir()
 
+  const proxiedVia = managedProxyUrlProvider()
   const term = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',
     cols,
     rows,
     cwd,
     env: {
-      ...withManagedProxyEnv(process.env, managedProxyUrlProvider(), true),
+      ...withManagedProxyEnv(process.env, proxiedVia, true),
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
       REDLOG_TERMINAL: '1',
@@ -564,7 +577,8 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     shell,
     shellLabel,
     hookSourced: false,
-    recordingId: '', projectDir: '', pendingCommands: new Map(), operatorPaused: false
+    recordingId: '', projectDir: '', pendingCommands: new Map(), operatorPaused: false,
+    proxiedVia
   }
 
   term.onData((data: string) => {
