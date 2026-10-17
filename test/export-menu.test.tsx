@@ -115,6 +115,32 @@ describe('ExportMenu as a dialog', () => {
     await waitFor(() => expect(screen.queryByTestId('export-run-error')).toBeNull())
   })
 
+  it.each([
+    ['source-unavailable', 'changed between the preview and Confirm'],
+    ['policy-changed', 'Settings that affect this export']
+  ])('explains the known failure %s in words, and still shows the code', async (code, words) => {
+    install(async () => ({ ok: true as const, plan: plan(2) }))
+    ;(window as unknown as { redlog: { data: Record<string, unknown> } }).redlog.data.executeExportPlan =
+      vi.fn(async () => ({ ok: false, error: code }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    fireEvent.click(await screen.findByTestId('export-confirm'))
+    const err = await screen.findByTestId('export-run-error')
+    expect(screen.getByTestId('export-run-error-meaning').textContent).toContain(words)
+    expect(err.textContent).toContain(code)
+  })
+
+  it('does not invent a meaning for an unknown failure', async () => {
+    install(async () => ({ ok: true as const, plan: plan(2) }))
+    ;(window as unknown as { redlog: { data: Record<string, unknown> } }).redlog.data.executeExportPlan =
+      vi.fn(async () => ({ ok: false, error: 'disk full' }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    fireEvent.click(await screen.findByTestId('export-confirm'))
+    await screen.findByTestId('export-run-error')
+    expect(screen.queryByTestId('export-run-error-meaning')).toBeNull()
+  })
+
   it('closes on success', async () => {
     install(async () => ({ ok: true, plan: plan(2) }))
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)

@@ -1500,6 +1500,8 @@
   "app.evidenceFile": "Add evidence file… (or drop files on the window)",
   "export.reveal": "Show in folder",
   "export.running": "Exporting…",
+  "export.error.source-unavailable": "The recording changed between the preview and Confirm — new events, or a file still being written such as a live terminal recording. Recalculate to preview what would be exported now.",
+  "export.error.policy-changed": "Settings that affect this export (scope, privacy lists) changed after the preview. Recalculate to see the effect.",
   "export.runFailed": "The export did not complete. The preview is kept; nothing was written that you were not shown.",
   "export.retryResolve": "Recalculate and try again",
   "nav.backTo": "Back to {{view}}",

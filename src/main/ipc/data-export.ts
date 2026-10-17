@@ -229,7 +229,7 @@ export function registerDataExportIpc(
         const projectDir = getProjectPath(project)
         const config = loadConfig(projectDir)
         const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: plan.snapshot }), planRedaction)
-          .filter((event) => plan.selectedEventIds.includes(event.id))
+          .filter((event) => selectedIds.has(event.id))
         const outDir = path.join(projectDir, 'exports')
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
@@ -238,7 +238,7 @@ export function registerDataExportIpc(
         fs.writeFileSync(artifactPath, content)
       } else if (plan.request.format === 'ndjson') {
         const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
-        const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => plan.selectedEventIds.includes(event.id))
+        const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
         const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
         const outDir = path.join(getProjectPath(project), 'exports')
         fs.mkdirSync(outDir, { recursive: true })
