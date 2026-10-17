@@ -71,6 +71,7 @@ const CASES: Case[] = [
   { name: 'an identity with non-ASCII in it', command: 'whoami', identity: '{"engagementId":"eng-1","operatorId":"操作員"}', fast: false },
 
   { name: 'a built-in terminal', command: 'ls', identity: '{"engagementId":"builtin-project","operatorId":"op-1"}', env: { REDLOG_TERMINAL: '1', REDLOG_TERMINAL_ID: 'term-7' }, fast: true },
+  { name: 'WSL distro identity', command: 'id', env: { WSL_DISTRO_NAME: 'Ubuntu' }, fast: true },
   { name: 'a terminal id that needs escaping', command: 'ls', env: { REDLOG_TERMINAL_ID: 'a"b\\c' }, fast: true },
   { name: 'a terminal id that is not ASCII', command: 'ls', env: { REDLOG_TERMINAL_ID: 'ターミナル' }, fast: false },
   { name: 'a shell name that needs escaping', command: 'ls', env: { SHELL: '/bin/we"ird' }, fast: true }
@@ -91,6 +92,8 @@ echo "CLOCK \${EPOCHREALTIME:+available}"
 unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION REDLOG_TERMINAL REDLOG_TERMINAL_ID
 export SHELL=\${SHELL:-/bin/sh}
 . ${hook}
+# Payload-only fixture: an explicitly resolved offline directory, including WSL.
+_redlog_is_running() { export _REDLOG_DIR="$HOME/.redlog"; return 1; }
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 
@@ -177,6 +180,10 @@ describeShell('the shell-built event payload', () => {
           const { py, fast } = results[shell]!.dump[String(i)]
           // Sent, in both homes — or dropped, in both.
           expect(fast).toEqual(py)
+          if (c.env?.WSL_DISTRO_NAME) {
+            expect(fast).toHaveLength(1)
+            expect((fast[0] as { data: { wsl_distro: string } }).data.wsl_distro).toBe(c.env.WSL_DISTRO_NAME)
+          }
         })
 
         it(`${c.name}: ${c.fast ? 'is built by the shell' : 'is handed to python'}`, () => {

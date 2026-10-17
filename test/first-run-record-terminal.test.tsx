@@ -74,6 +74,7 @@ let bridge: {
   install: ReturnType<typeof vi.fn>
   runtimeInstall: ReturnType<typeof vi.fn>
   query: ReturnType<typeof vi.fn>
+  commandEvidence: ReturnType<typeof vi.fn>
   proxyStatus: ReturnType<typeof vi.fn>
   proxyStart: ReturnType<typeof vi.fn>
   launch: ReturnType<typeof vi.fn>
@@ -91,6 +92,10 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
     install: vi.fn(async () => ({ success: true, message: 'ok' })),
     runtimeInstall: vi.fn(async () => ({ success: true, message: 'ok' })),
     query: vi.fn(async () => opts.rows ?? [BUILTIN]),
+    commandEvidence: vi.fn(async () => {
+      const commands = (opts.rows ?? [BUILTIN]).filter(e => e.agentType === 'shell' && ['command_start', 'command', 'command_end'].includes(String(e.data.subtype)))
+      return { builtin: commands.some(e => e.data.source === 'builtin-terminal'), external: commands.some(e => e.data.source !== 'builtin-terminal') }
+    }),
     proxyStatus: vi.fn(async () => opts.proxy ?? { state: 'stopped', url: null }),
     proxyStart: vi.fn(async () => ({ state: 'running', url: 'http://127.0.0.1:8080' })),
     launch: vi.fn(async () => ({ ok: true })),
@@ -100,12 +105,18 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
     wslInstall: vi.fn(async () => ({ success: true, message: 'ok' }))
   }
   ;(window as unknown as { redlog: unknown }).redlog = {
+    platform: opts.pre?.platform ?? 'darwin',
     events: {
       query: bridge.query,
+      commandEvidence: bridge.commandEvidence,
       onNewBatch: (cb: (evs: Ev[]) => void) => { listeners.push(cb); return () => { listeners = listeners.filter((l) => l !== cb) } }
     },
     runtime: { preflight: bridge.preflight, install: bridge.runtimeInstall, cancelInstall: vi.fn(async () => true) },
-    hooks: { install: bridge.install },
+    hooks: { install: bridge.install, detect: vi.fn(async () => [
+      { id: 'shell-zsh', available: (opts.pre?.platform ?? 'darwin') !== 'win32', installed: false },
+      { id: 'shell-bash', available: (opts.pre?.platform ?? 'darwin') !== 'win32', installed: false },
+      { id: 'shell-powershell', available: opts.pre?.platform === 'win32', installed: false }
+    ]) },
     app: { openExternal: vi.fn(async () => {}) },
     httpCapture: {
       status: bridge.proxyStatus,
@@ -128,6 +139,7 @@ function emit(evs: Ev[]): void {
 /** The nonce this attempt would accept. The per-tool commands that used to
  *  carry it are now the fallback shown once a check has not landed. */
 async function shownNonce(): Promise<string> {
+  await screen.findByTestId('first-run-http-checks')
   const card = await screen.findByTestId('first-run-http')
   const nonce = card.getAttribute('data-nonce')
   expect(nonce, 'card has no attempt nonce').toBeTruthy()
@@ -183,12 +195,12 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     await waitFor(() => expect(bridge.proxyStart).toHaveBeenCalled())
   })
 
-  it('verifies HTTP from a request alone, with no shell event, and leaves Commands pending', async () => {
+  it('HTTP alone leaves HTTPS verification and Commands pending', async () => {
     install({ rows: [], proxy: RUNNING })
     draw()
     await screen.findByText('127.0.0.1:8080')
     await report({ scheme: 'http', nonce: await shownNonce(), userAgent: 'curl/8.5.0' })
-    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
+    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('○ 尚未驗證')
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
   })
@@ -226,7 +238,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
     await screen.findByText('127.0.0.1:8080')
-    await report({ scheme: 'http', nonce: await shownNonce() })
+    await report({ scheme: 'https', nonce: await shownNonce() })
     expect((await screen.findByTestId('first-run-core-ready')).textContent).toBe('✓ 核心擷取已就緒')
     fireEvent.click(screen.getByTestId('first-run-start-work'))
     expect(onNavigate).toHaveBeenCalledWith('timeline')
@@ -304,7 +316,7 @@ describe('first run: record my terminal', () => {
     emit([{ id: 'x3', timestamp: 4, agentType: 'shell', data: { subtype: 'session_start', command: cmd } }])
     expect(screen.queryByTestId('record-terminal-verified')).toBeNull()
 
-    emit([{ id: 'x4', timestamp: 5, agentType: 'shell', data: { subtype: 'command_start', command: `echo ${nonce}` } }])
+    emit([{ id: 'x4', timestamp: 5, agentType: 'shell', data: { subtype: 'command_start', shell: 'zsh', command: `echo ${nonce}` } }])
     expect((await screen.findByTestId('record-terminal-verified')).textContent).toContain('Zsh 已連線')
   })
 
@@ -343,7 +355,7 @@ describe('first run: record my terminal', () => {
     // that render settle before delivering the operator's canary event.
     await act(async () => {})
     const before = snapshot()
-    emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
+    emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd, shell: (await bridge.preflight()).shell?.name === 'powershell' ? 'powershell' : 'zsh' } }])
     await screen.findByTestId('record-terminal-verified')
     // The flow dropped its own subscription. Anything else that subscribed
     // meanwhile is irrelevant to that.
@@ -375,7 +387,7 @@ describe('first run: HTTP(S) card', () => {
   it('keeps capture unverified when returning from preparation with a fresh HTTP attempt', async () => {
     install({ proxy: RUNNING })
     draw()
-    await report({ scheme: 'http', nonce: await shownNonce() })
+    await report({ scheme: 'https', nonce: await shownNonce() })
     expect(await screen.findByTestId('first-run-core-ready')).toBeTruthy()
     bridge.preflight.mockResolvedValue(preflight({ missing: ['mitmdump'] }))
     bridge.proxyStatus.mockResolvedValue({ state: 'unavailable', url: null })
@@ -396,6 +408,7 @@ describe('first run: HTTP(S) card', () => {
   it('when mitmdump is missing, installs it in one click and re-probes on return', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()
+    fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
     const card = await screen.findByTestId('capture-prepare')
     expect(card.textContent).toContain('mitmproxy')
     // No re-check button: mitmproxy may have been installed in a terminal
@@ -421,6 +434,7 @@ describe('first run: HTTP(S) card', () => {
       success: false, message: 'uv required', needsPrereq: { command: 'uv', url: 'https://astral.sh/uv' }
     })
     draw()
+    fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
     fireEvent.click(await screen.findByTestId('prepare-install-mitmdump'))
     const prereq = await screen.findByTestId('prepare-prereq-mitmdump')
     expect(prereq.textContent).toContain('安裝 uv')
@@ -504,18 +518,18 @@ async function verifyShell(): Promise<HTMLElement> {
   // waits for a command that has already been and gone. The subscription is
   // set up in an effect, so it lands a tick after the click: wait for it.
   await waitFor(() => expect(arrivalsSince(before)).toBeGreaterThanOrEqual(1))
-  emit([{ id: 'v', timestamp: 9, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
+  emit([{ id: 'v', timestamp: 9, agentType: 'shell', data: { subtype: 'command_end', command: cmd, shell: (await bridge.preflight()).shell?.name === 'powershell' ? 'powershell' : 'zsh' } }])
   return screen.findByTestId('record-terminal-verified')
 }
 
 describe('first run: a verified shell says what it records (Spec 039)', () => {
-  it('names the metadata, says output is not included, and offers redlog-session', async () => {
+  it('describes Zsh automatic output and keeps session recording as an optional fallback', async () => {
     install()
     draw()
     await verifyShell()
     const scope = screen.getByTestId('record-terminal-scope')
-    expect(scope.textContent).toContain('指令、結束碼、耗時、工作目錄')
-    expect(scope.textContent).toContain('不含輸出')
+    expect(scope.textContent).toContain('普通指令的輸出會自動保存')
+    expect(scope.textContent).not.toContain('不含輸出')
     expect(screen.getByTestId('record-terminal-session-command').textContent).toBe('redlog-session')
   })
 
@@ -525,7 +539,7 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
     draw()
     await verifyShell()
     const cmd = (await screen.findByTestId('record-terminal-output-command')).textContent ?? ''
-    expect(cmd).toMatch(/^redlog-run printf '%s-%s\\n' redlog-out \S+$/)
+    expect(cmd).toMatch(/^printf '%s-%s\\n' redlog-out \S+$/)
     const nonce = cmd.split(' ').at(-1)!
     // The plain hook recorded the line, not what it printed.
     emit([{ id: 'm1', timestamp: 20, agentType: 'shell', data: { subtype: 'command_end', command: `printf '%s-%s\\n' redlog-out ${nonce}`, exit_code: 0 } }])
@@ -559,8 +573,8 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
 
     await report({ scheme: 'http', nonce, userAgent: 'curl/8.5.0' })
-    await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
-    expect(screen.getByTestId('first-run-http-check-http').textContent).toContain('curl/8.5.0')
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    expect(screen.queryByTestId('first-run-http-check-http')).toBeNull()
     expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('false')
     await report({ scheme: 'https', nonce, userAgent: 'curl/8.5.0' })
     await waitFor(() => expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('true'))
@@ -575,8 +589,8 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const https = await screen.findByTestId('first-run-http-check-https')
     await waitFor(() => expect(https.textContent).toContain('Chromium'))
     expect(https.textContent).toContain('忽略憑證錯誤')
-    // HTTPS alone is not HTTP: the core step is still open.
-    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    // HTTPS is the principal proof; HTTP is not a prerequisite.
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
   })
 
   it('says when a client refused the certificate', async () => {
@@ -599,7 +613,6 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const codes = [...screen.getByTestId('first-run-http-verify-commands').querySelectorAll('code')].map((c) => c.textContent ?? '')
     expect(codes).toEqual([
-      expect.stringContaining(`-x http://127.0.0.1:8080 http://redlog.verify.invalid/${nonce}`),
       expect.stringContaining(`-x http://127.0.0.1:8080 https://redlog.verify.invalid/${nonce}`)
     ])
     for (const c of codes) expect(c).not.toMatch(/\s-k\b|--insecure/)
@@ -613,9 +626,9 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     fireEvent.click(await screen.findByTestId('first-run-http-retry'))
     const second = await shownNonce()
     expect(second).not.toBe(first)
-    await report({ scheme: 'http', nonce: first })
+    await report({ scheme: 'https', nonce: first })
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
-    await report({ scheme: 'http', nonce: second })
+    await report({ scheme: 'https', nonce: second })
     await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
   })
 
@@ -629,7 +642,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     bridge.proxyStatus.mockResolvedValue(RUNNING)
     await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
     await screen.findByText('127.0.0.1:8080')
-    await report({ scheme: 'http', nonce: await shownNonce() })
+    await report({ scheme: 'https', nonce: await shownNonce() })
     expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('✓ 已驗證')
   })
 
@@ -660,8 +673,72 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     expect(why.textContent).toContain('用擷取瀏覽器驗證')
     expect(why.textContent).toContain('HTTPS')
     expect(why.textContent).toContain('預設關閉')
-    await report({ scheme: 'http', nonce: await shownNonce() })
+    await report({ scheme: 'https', nonce: await shownNonce() })
     await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
     expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
   })
+})
+
+
+describe('project command proof independent of recent display rows', () => {
+  it('keeps historical command proof when only newer markers are displayed', async () => {
+    install({ rows: [{ id: 'm1', timestamp: 3, agentType: 'marker', data: { text: 'latest marker' } }] })
+    bridge.commandEvidence.mockResolvedValue({ builtin: false, external: true })
+    draw()
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+    expect(bridge.query).toHaveBeenCalledWith({ limit: 20, excludeHousekeeping: true })
+  })
+
+  it('shows a recoverable read failure when historical proof cannot be queried', async () => {
+    install()
+    bridge.commandEvidence.mockRejectedValueOnce(new Error('database unavailable'))
+    draw()
+    const failure = await screen.findByTestId('first-run-read-failed')
+    expect(screen.getByTestId('first-run-commands-status').textContent).not.toBe('✓ 已驗證')
+    fireEvent.click(failure.querySelector('button')!)
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+  })
+})
+
+
+describe('external terminal first', () => {
+  it('opens the built-in fallback only when requested', async () => {
+    install({ rows: [] }); draw()
+    await screen.findByTestId('first-run-record-terminal')
+    expect(screen.queryByTestId('terminal')).toBeNull()
+    fireEvent.click(screen.getByTestId('first-run-builtin-toggle'))
+    expect(await screen.findByTestId('terminal')).toBeTruthy()
+  })
+
+  it('does not gate shell setup on optional web dependencies', async () => {
+    install({ rows: [], pre: preflight({ missing: ['mitmdump'] }) }); draw()
+    expect(await screen.findByTestId('first-run-record-terminal')).toBeTruthy()
+    expect(screen.queryByTestId('capture-prepare')).toBeNull()
+    fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
+    expect(await screen.findByTestId('capture-prepare')).toBeTruthy()
+  })
+})
+
+it('invalidates HTTPS readiness on proxy stop and rejects the old nonce after restart', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  install({ proxy: RUNNING }); draw()
+  const oldNonce = await shownNonce()
+  await report({ scheme: 'https', nonce: oldNonce })
+  await screen.findByTestId('first-run-core-ready')
+  bridge.proxyStatus.mockResolvedValue({ state: 'stopped', url: null })
+  await act(async () => { await vi.advanceTimersByTimeAsync(3100) })
+  expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+  expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
+  bridge.proxyStatus.mockResolvedValue(RUNNING)
+  await act(async () => { await vi.advanceTimersByTimeAsync(3100) })
+  expect(await shownNonce()).not.toBe(oldNonce)
+  await report({ scheme: 'https', nonce: oldNonce })
+  expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+  await report({ scheme: 'https', nonce: await shownNonce() })
+  expect(await screen.findByTestId('first-run-core-ready')).toBeTruthy()
+})
+
+it('offers manual shell setup even when the login shell is not supported', async () => {
+  install({ rows: [], pre: preflight({ shell: null }) }); draw()
+  expect(await screen.findByTestId('first-run-record-terminal')).toBeTruthy()
 })

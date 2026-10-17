@@ -9,26 +9,14 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
-import { commandsVerification, coreCaptureReady, isCommandEvent } from '../src/renderer/src/lib/coreCapture'
-
-const shell = (subtype: string, source?: string): { agentType: string; data: Record<string, unknown> } =>
-  ({ agentType: 'shell', data: { subtype, command: 'id', ...(source ? { source } : {}) } })
-const http = { agentType: 'scanner', data: { subtype: 'http_request_start' } }
+import { commandsVerification, coreCaptureReady } from '../src/renderer/src/lib/coreCapture'
 
 describe('core capture verification', () => {
-  it('counts commands, not session bookkeeping or other capture', () => {
-    expect(isCommandEvent(shell('command_start'))).toBe(true)
-    expect(isCommandEvent(shell('command'))).toBe(true)
-    expect(isCommandEvent(shell('command_end'))).toBe(true)
-    expect(isCommandEvent(shell('session_start'))).toBe(false)
-    expect(isCommandEvent(http)).toBe(false)
-  })
-
-  it('says which command path has delivered', () => {
-    expect(commandsVerification([])).toBe('none')
-    expect(commandsVerification([http, shell('session_start')])).toBe('none')
-    expect(commandsVerification([shell('command_end', 'builtin-terminal')])).toBe('builtin')
-    expect(commandsVerification([shell('command_end', 'builtin-terminal'), shell('command_end')])).toBe('external')
+  it('maps the complete project command summary to the delivered path', () => {
+    expect(commandsVerification({ builtin: false, external: false })).toBe('none')
+    expect(commandsVerification({ builtin: true, external: false })).toBe('builtin')
+    expect(commandsVerification({ builtin: false, external: true })).toBe('external')
+    expect(commandsVerification({ builtin: true, external: true })).toBe('external')
   })
 
   it('is ready only with both, and the built-in terminal alone counts for Commands', () => {

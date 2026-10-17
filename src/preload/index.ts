@@ -75,6 +75,7 @@ const api: RedLogAPI = {
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   events: {
+    commandEvidence: () => ipcRenderer.invoke('events:commandEvidence') as Promise<{ builtin: boolean; external: boolean }>,
     query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),
     queryPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null; excludeHousekeeping?: boolean }) =>
       ipcRenderer.invoke('events:queryPage', opts) as Promise<{

@@ -103,6 +103,7 @@ test.describe('packaged app', () => {
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {
         // Wait for the shell's own prompt: keys typed before it starts are lost.
+        if (await page.getByTestId('first-run-builtin-toggle').count()) await page.getByTestId('first-run-builtin-toggle').click()
         await expect(page.locator('.xterm').first()).toContainText(/PS .*>|[$#%]\s+$/, { timeout: 30_000 })
         await page.locator('.xterm').first().click()
         await page.keyboard.type('echo redlog-ok-builtin')
@@ -235,7 +236,7 @@ test.describe('packaged app', () => {
 
           const card = page.getByTestId('first-run-http')
           // Wait for the card's running state, which mounts its verification listener.
-          await expect(page.getByTestId('first-run-http-check-http')).toBeVisible({ timeout: 15_000 })
+          await expect(page.getByTestId('first-run-http-checks')).toBeVisible({ timeout: 15_000 })
           await expect(card).toHaveAttribute('data-nonce', /^rv-/)
           const nonce = (await card.getAttribute('data-nonce'))!
           expect(status.caPath).toBeTruthy()
@@ -249,7 +250,7 @@ test.describe('packaged app', () => {
             ], { ...process.env, HOME: home, USERPROFILE: home })
             expect(result.code, result.out).toBe(0)
             expect(result.out).toBe('200')
-            await expect(page.getByTestId(`first-run-http-check-${scheme}`)).toHaveAttribute('data-verified', 'true', { timeout: 20_000 })
+            await expect(page.getByTestId('first-run-http-status')).toHaveText(scheme === 'https' ? '✓ Verified' : '○ Not verified', { timeout: 20_000 })
           }
         })
       }

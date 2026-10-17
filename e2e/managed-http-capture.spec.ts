@@ -131,15 +131,18 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[sys.argv.index('--listen-port'
     // in a way nothing could see: the element simply was not there.
     const card = page.getByTestId('first-run-http')
     await expect(card).toHaveAttribute('data-nonce', /^rv-/, { timeout: 15_000 })
+    await expect(page.getByTestId('first-run-http-checks')).toBeVisible()
     const nonce = (await card.getAttribute('data-nonce'))!
-    const httpRow = page.getByTestId('first-run-http-check-http')
+    const httpsRow = page.getByTestId('first-run-http-check-https')
     expect(await verifyReport({ scheme: 'http', nonce: 'rv-notthisone0' })).toBe(200)
     await page.waitForTimeout(500)
-    await expect(httpRow).toHaveAttribute('data-verified', 'false')
+    await expect(httpsRow).toHaveAttribute('data-verified', 'false')
     expect(await verifyReport({ scheme: 'http', nonce, user_agent: 'curl/8.5.0' })).toBe(200)
-    await expect(httpRow).toHaveAttribute('data-verified', 'true')
-    await expect(httpRow).toContainText('curl/8.5.0')
-    await expect(page.getByTestId('first-run-http-check-https')).toHaveAttribute('data-verified', 'false')
+    await expect(httpsRow).toHaveAttribute('data-verified', 'false')
+    await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    expect(await verifyReport({ scheme: 'https', nonce, user_agent: 'curl/8.5.0' })).toBe(200)
+    await expect(httpsRow).toHaveAttribute('data-verified', 'true')
+    await expect(httpsRow).toContainText('curl/8.5.0')
 
     const terminalProxy = (id: string) => page.evaluate(async (terminalId) => {
       const api = window.redlog.terminal

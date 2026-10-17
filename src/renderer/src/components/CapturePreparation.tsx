@@ -24,6 +24,7 @@ function DependencyRow({ check, onRecheck }: {
   const pending = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [requires, setRequires] = useState(check.remediationRequires)
+  useEffect(() => { setRequires(check.remediationRequires) }, [check])
   useEffect(() => () => {
     if (pending.current) void window.redlog.runtime.cancelInstall(check.id).catch(e => console.warn('Could not cancel dependency installation', e))
   }, [check.id])
@@ -65,9 +66,13 @@ function DependencyRow({ check, onRecheck }: {
     <li data-testid={`prepare-dependency-${check.id}`} className="border border-redlog-border rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <span className="font-mono text-redlog-text">{check.id === 'mitmdump' ? 'mitmproxy' : check.id}</span>
-        <Button level="secondary" disabled={busy} onClick={() => void install()} data-testid={`prepare-install-${check.id}`}>
+        {requires ? (
+          <Button level="secondary" data-testid={`prepare-prereq-${check.id}`} onClick={() => void window.redlog.app.openExternal(requires.url)}>
+            {t('firstRun.http.installPrereq', { command: requires.command })}
+          </Button>
+        ) : <Button level="secondary" disabled={busy} onClick={() => void install()} data-testid={`prepare-install-${check.id}`}>
           {busy ? t('captureSetup.installing') : error || cancelled ? t('common.retry') : t('captureSetup.install')}
-        </Button>
+        </Button>}
       </div>
       {busy && (
         <div className="space-y-2 text-xs text-redlog-text-dim" data-testid={`prepare-install-status-${check.id}`}>
@@ -91,11 +96,6 @@ function DependencyRow({ check, onRecheck }: {
                 <Button level="quiet" onClick={() => requestRunInTerminal(check.remediation!)}>{t('settings.hookRun')}</Button>
               </div>
             </>
-          )}
-          {requires && (
-            <Button level="secondary" data-testid={`prepare-prereq-${check.id}`} onClick={() => void window.redlog.app.openExternal(requires.url)}>
-              {t('firstRun.http.installPrereq', { command: requires.command })}
-            </Button>
           )}
         </div>
       )}
