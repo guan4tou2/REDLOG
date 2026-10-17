@@ -352,4 +352,19 @@ describe('export plan IPC contract', () => {
     expect(content).toContain('timeline-before')
     expect(content).not.toContain('timeline-after')
   })
+  // The Timeline slice offered "PII scrubbed" and its manifest recorded
+  // scrubPii: true, but the slice path never ran the scrub.
+  it.each([[true, false], [false, true]])('Timeline slice with scrubPii=%s keeps the operator home path: %s', (scrubPii, kept) => {
+    const home = os.homedir()
+    addEvent('events', 'timeline-pii', 1000, { data: { command: `cat ${home}/notes.txt` } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+      format: 'timeline', scrubPii, subset: { kind: 'time-range', since: 900, before: 1500 }
+    } as never) as { ok: true; plan: { id: string } }
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
+    const content = fs.readFileSync(executed.artifactPath, 'utf8')
+    expect(content).toContain('notes.txt')
+    expect(content.includes(home)).toBe(kept)
+    const manifest = JSON.parse(fs.readFileSync(`${executed.artifactPath}.manifest.json`, 'utf8')) as { exportPlan: { request: { scrubPii: boolean } } }
+    expect(manifest.exportPlan.request.scrubPii).toBe(scrubPii)
+  })
 })
