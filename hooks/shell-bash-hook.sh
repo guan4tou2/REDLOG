@@ -56,6 +56,9 @@ _redlog_current_line() {
 _redlog_debug_trap() {
   [[ -z "${_REDLOG_TRAP_ARMED:-}" ]] && return
   [[ "$BASH_COMMAND" == "$PROMPT_COMMAND" ]] && return
+  # An empty Enter or a bare function definition runs no simple command, so
+  # the first thing traced after it is our own prompt hook.
+  [[ "$BASH_COMMAND" == _redlog_prompt_command || "$BASH_COMMAND" == _redlog_arm ]] && return
   [[ -n "$_REDLOG_LAST_CMD" ]] && return
   local cmd
   cmd=$(_redlog_current_line) || cmd="$BASH_COMMAND"
@@ -65,11 +68,16 @@ _redlog_debug_trap() {
     "{\"cwd\":\"${PWD//\"/\\\"}\"}"
 }
 
+# The DEBUG trap fires for every simple command, including the ones inside
+# PROMPT_COMMAND. Without this pair the operator's own prompt command (history
+# -a, a prompt function) was recorded as "the command", and because a command
+# was then "in flight" the next real one was dropped: nothing they typed was
+# recorded. Disarm first, re-arm last; the trap only counts while armed.
+_redlog_arm() { _REDLOG_TRAP_ARMED=1; }
+
 _redlog_prompt_command() {
   local exit_code=$?
-  if [[ -z "${_REDLOG_TRAP_ARMED:-}" ]]; then
-    _REDLOG_TRAP_ARMED=1
-  fi
+  _REDLOG_TRAP_ARMED=
   if [[ -n "$_REDLOG_LAST_CMD" ]]; then
     local duration=""
     if [[ -n "$_REDLOG_CMD_START" ]]; then
@@ -83,7 +91,15 @@ _redlog_prompt_command() {
 }
 
 trap '_redlog_debug_trap' DEBUG
-PROMPT_COMMAND="_redlog_prompt_command;${PROMPT_COMMAND:-}"
+_redlog_user_pc="${PROMPT_COMMAND:-}"
+# A trailing `;` or blank in the operator's value would make `;;` a syntax error.
+_redlog_user_pc="${_redlog_user_pc%"${_redlog_user_pc##*[![:space:];]}"}"
+if [[ -n "$_redlog_user_pc" ]]; then
+  PROMPT_COMMAND="_redlog_prompt_command;${_redlog_user_pc};_redlog_arm"
+else
+  PROMPT_COMMAND="_redlog_prompt_command;_redlog_arm"
+fi
+unset _redlog_user_pc
 # Commands only: the automatic output relay is the zsh adapter's (spec 052
 # D1 is built on `preexec`, which bash does not have). `redlog-run` is still
 # how a bash user captures a command's output on purpose.
