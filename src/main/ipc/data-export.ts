@@ -68,15 +68,12 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   const doNotExportIds = getDoNotExportIds()
   const snapshot = takeExportSnapshot()
   const events = resolveExportSelection(request, snapshot, scope)
-  const blacklist = request.sharing ? (cfg.network?.blacklist ?? []) : []
   const rOpts: RedactExportOpts = {
     scope: request.maskOutOfScope ? scope : undefined,
-    doNotExportIds,
-    ...(request.sharing ? { maskMetadata: true, blacklist } : {})
+    doNotExportIds
   }
   let excludedDoNotExport = 0
   let excludedPersonal = 0
-  let excludedBlacklist = 0
   let maskedOutOfScope = 0
   let sanitized = 0
   const selectedEventIds: string[] = []
@@ -84,7 +81,6 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   for (const event of events) {
     if (doNotExportIds.has(event.id)) { excludedDoNotExport++; continue }
     if (isPersonalDomain(event.targetId, scope)) { excludedPersonal++; continue }
-    if (request.sharing && event.targetId && blacklist.includes(event.targetId)) { excludedBlacklist++; continue }
     const redacted = redactEventForExport(event, rOpts)
     if (!redacted) continue
     selectedEventIds.push(event.id)
@@ -109,7 +105,6 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       targets: scopeSnap.targets,
       excludeTargets: scopeSnap.excludeTargets,
       personalDomains: scopeSnap.personalDomains,
-      blacklist,
       ...(scopeSnap.scopeFileSha256 ? { sourceHash: scopeSnap.scopeFileSha256 } : {})
     },
     counts: {
@@ -118,7 +113,6 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       included: selectedEventIds.length,
       excludedDoNotExport,
       excludedPersonal,
-      excludedBlacklist,
       maskedOutOfScope,
       sanitized,
       attachmentsIncluded: attachmentCounts.included,
@@ -197,8 +191,7 @@ export function registerDataExportIpc(
       const selectedIds = new Set(plan.selectedEventIds)
       const available = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
       const planRedaction: RedactExportOpts = {
-        scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined,
-        ...(plan.request.sharing ? { maskMetadata: true, blacklist: plan.scopeSnapshot.blacklist ?? [] } : {})
+        scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
       }
       const approvedNow = redactEventsForExport(available, planRedaction)
       if (approvedNow.length !== plan.selectedEventIds.length || fingerprintValue(approvedNow) !== plan.selectedEvidenceDigest) {

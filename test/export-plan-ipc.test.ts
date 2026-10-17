@@ -215,7 +215,7 @@ describe('export plan IPC contract', () => {
   it('rejects a requested protection that the selected format cannot apply', () => {
     const resolved = handlers.get('data:resolveExportPlan')?.({}, {
       format: 'bundle',
-      sharing: true
+      scrubPii: true
     } as never)
     expect(resolved).toMatchObject({ ok: false, error: expect.stringContaining('unsupported-policy') })
   })

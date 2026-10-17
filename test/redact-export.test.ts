@@ -48,29 +48,6 @@ describe('redactEventForExport', () => {
     expect(redactEventForExport(e, {})).toBe(e)
   })
 
-  // ── Blacklist exclusion ──
-
-  it('returns null when targetId is in blacklist and maskMetadata is on', () => {
-    const e = mkEvent({ targetId: '192.168.1.1' })
-    expect(redactEventForExport(e, { maskMetadata: true, blacklist: ['192.168.1.1'] })).toBeNull()
-  })
-
-  it('does NOT exclude when maskMetadata is false', () => {
-    const e = mkEvent({ targetId: '192.168.1.1' })
-    const result = redactEventForExport(e, { maskMetadata: false, blacklist: ['192.168.1.1'] })
-    expect(result).not.toBeNull()
-  })
-
-  it('does NOT exclude when blacklist is empty', () => {
-    const e = mkEvent({ targetId: '192.168.1.1' })
-    expect(redactEventForExport(e, { maskMetadata: true, blacklist: [] })).not.toBeNull()
-  })
-
-  it('does NOT exclude when targetId is null', () => {
-    const e = mkEvent({ targetId: null })
-    expect(redactEventForExport(e, { maskMetadata: true, blacklist: ['192.168.1.1'] })).not.toBeNull()
-  })
-
   // ── Layer-4 sanitize ──
 
   it('applies getSanitizedFields replacements', () => {
@@ -129,74 +106,6 @@ describe('redactEventForExport', () => {
     expect(result.data.request_body_ref).toBeDefined()
   })
 
-  // ── Metadata masking ──
-
-  it('blanks metadata for out-of-scope events when maskMetadata is on', () => {
-    const e = mkEvent({
-      targetId: '10.99.99.99',
-      data: { url: 'https://secret.internal/admin', host: 'secret.internal', command: 'nmap -sV 10.99.99.99' }
-    })
-    const result = redactEventForExport(e, {
-      scope: { targets: ['10.0.0.1'] },
-      maskMetadata: true
-    })!
-    expect(result.data.url).toContain('[redacted')
-    expect(result.data.host).toContain('[redacted')
-    expect(result.data.command).toContain('[redacted')
-  })
-
-  it('scrubs only sensitive header values for in-scope events', () => {
-    const e = mkEvent({
-      targetId: '10.0.0.1',
-      data: {
-        url: 'https://target.com/api?token=secret123&page=1',
-        request_headers: { authorization: 'Bearer xyz', 'content-type': 'application/json' }
-      }
-    })
-    const result = redactEventForExport(e, {
-      scope: { targets: ['10.0.0.1'] },
-      maskMetadata: true
-    })!
-    expect(result.data.url).toContain('REDACTED')
-    expect(result.data.url).not.toContain('secret123')
-    expect(result.data.url).toContain('page=1')
-    const hdrs = result.data.request_headers as Record<string, string>
-    expect(hdrs.authorization).toBe('[REDACTED]')
-    expect(hdrs['content-type']).toBe('application/json')
-  })
-
-  it('does not apply metadata masking when maskMetadata is false', () => {
-    const e = mkEvent({
-      targetId: '10.99.99.99',
-      data: { url: 'https://secret.internal', host: 'secret.internal' }
-    })
-    const result = redactEventForExport(e, {
-      scope: { targets: ['10.0.0.1'] },
-      maskMetadata: false
-    })!
-    expect(result.data.url).toBe('https://secret.internal')
-  })
-
-  // ── Operator ID scrub ──
-
-  it('replaces operatorId with "operator" when maskMetadata is on', () => {
-    const e = mkEvent({ operatorId: 'op-alice' })
-    const result = redactEventForExport(e, { maskMetadata: true })!
-    expect(result.operatorId).toBe('operator')
-  })
-
-  it('preserves operatorId when maskMetadata is off', () => {
-    const e = mkEvent({ operatorId: 'op-alice' })
-    const result = redactEventForExport(e, { maskMetadata: false })!
-    expect(result.operatorId).toBe('op-alice')
-  })
-
-  it('skips operatorId scrub when operatorId is falsy', () => {
-    const e = mkEvent({ operatorId: null })
-    const result = redactEventForExport(e, { maskMetadata: true })!
-    expect(result.operatorId).toBeNull()
-  })
-
   // ── Backward compat ──
 
   it('accepts ScopeForSanitize directly (backward compat)', () => {
@@ -224,12 +133,12 @@ describe('redactEventsForExport', () => {
     mockGetSanitizedFields.mockReturnValue({})
   })
 
-  it('filters out null (blacklisted) events', () => {
+  it('filters out events the operator marked do-not-export', () => {
     const events = [
       mkEvent({ id: 'e1', targetId: '192.168.1.1' }),
       mkEvent({ id: 'e2', targetId: '10.0.0.1' })
     ]
-    const result = redactEventsForExport(events, { maskMetadata: true, blacklist: ['192.168.1.1'] })
+    const result = redactEventsForExport(events, { doNotExportIds: new Set(['e1']) })
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('e2')
   })

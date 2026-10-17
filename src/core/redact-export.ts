@@ -1,5 +1,5 @@
 import { getSanitizedFields } from './sanitize'
-import { scopeMaskReplacements, scopeMetadataReplacements, isOutOfScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
+import { scopeMaskReplacements, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
 
 // The redaction every export MUST funnel through before event data leaves
@@ -37,36 +37,24 @@ export const BODY_REF_FOR: Record<string, string> = {
 
 export interface RedactExportOpts {
   scope?: ScopeForSanitize
-  /** "For sharing" mode: mask metadata of out-of-scope events, scrub sensitive
-   *  values (auth headers, credential query params) from in-scope events. */
-  maskMetadata?: boolean
-  /** Operator-infrastructure IPs. Events whose targetId matches are excluded
-   *  entirely (not just masked) when maskMetadata is on. */
-  blacklist?: string[]
   /** Row-level "don't export this event" flags. Loaded once by the caller. */
   doNotExportIds?: Set<string>
 }
 
 /** Redact one event's data for export. Returns the same object when nothing
  *  changed, so callers can cheaply skip re-serialization.
- *  Returns null when the event should be EXCLUDED entirely (operator-infra). */
+ *  Returns null when the event should be EXCLUDED entirely (do-not-export or personal). */
 export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanitize | RedactExportOpts): RedLogEvent | null {
   const opts: RedactExportOpts = scopeOrOpts && 'targets' in scopeOrOpts
     ? { scope: scopeOrOpts }
     : (scopeOrOpts as RedactExportOpts | undefined) ?? {}
-  const { scope, maskMetadata, blacklist, doNotExportIds } = opts
+  const { scope, doNotExportIds } = opts
 
   if (doNotExportIds?.has(e.id)) return null
 
   // Personal/local traffic: always dropped — these rows should never leave
   // the local machine regardless of export mode (merge or delivery).
   if (isPersonalDomain(e.targetId, scope)) return null
-
-  // Operator-infrastructure exclusion: events targeting the operator's own IPs
-  // are excluded entirely in sharing mode — they reveal infra, not findings.
-  if (maskMetadata && blacklist && blacklist.length > 0 && e.targetId) {
-    if (blacklist.includes(e.targetId)) return null
-  }
 
   const maskedFields: string[] = []
   let data: Record<string, unknown> = e.data
@@ -92,27 +80,7 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
     if (ref && ref in data) { if (data === e.data) data = { ...e.data }; delete data[ref] }
   }
 
-  // "For sharing" metadata masking: out-of-scope events get all metadata
-  // blanked; in-scope events get sensitive values (auth headers, credential
-  // query params, cookie values) surgically scrubbed.
-  if (maskMetadata && scope) {
-    const oos = isOutOfScope(e.targetId, scope)
-    const metaRepl = scopeMetadataReplacements(data, { outOfScope: oos })
-    if (metaRepl) {
-      if (data === e.data) data = { ...e.data }
-      for (const [f, v] of Object.entries(metaRepl)) data[f] = v
-    }
-  }
-
-  let result: RedLogEvent = data === e.data ? e : { ...e, data }
-
-  // Metadata masking: scrub operator_id to generic label.
-  if (maskMetadata && result.operatorId) {
-    result = result === e ? { ...e } : result
-    ;(result as unknown as Record<string, unknown>).operatorId = 'operator'
-  }
-
-  return result
+  return data === e.data ? e : { ...e, data }
 }
 
 /** Redact a whole list for export (map of the above, filtering out nulls). */

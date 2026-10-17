@@ -30,7 +30,6 @@ type ExportSubset = import('../../core/export-plan').ExportSubset
 interface ExportRequest {
   format: ExportFormat
   subset?: ExportSubset
-  sharing?: boolean
   maskOutOfScope?: boolean
   scopeOnly?: boolean
   scrubPii?: boolean
@@ -60,7 +59,7 @@ interface ResolvedExportPlan {
   request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
   /** The boundary this plan was resolved against, so the menu can name it
    *  rather than guess at it. */
-  scopeSnapshot: { targets: string[]; excludeTargets: string[]; personalDomains: string[]; blacklist?: string[] }
+  scopeSnapshot: { targets: string[]; excludeTargets: string[]; personalDomains: string[] }
   capabilities: {
     snapshot: boolean
     boundedSubset: boolean
@@ -74,7 +73,6 @@ interface ResolvedExportPlan {
     included: number
     excludedDoNotExport: number
     excludedPersonal: number
-    excludedBlacklist: number
     maskedOutOfScope: number
     sanitized: number
     attachmentsIncluded: number

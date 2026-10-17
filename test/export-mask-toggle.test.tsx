@@ -27,10 +27,10 @@ function installBridge(failResolve = false): void {
             snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
     scopeSnapshot: { targets: ['10.0.0.0/24'], excludeTargets: [], personalDomains: [] },
             capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
-            request: { ...request, format: 'bundle', subset: { kind: 'all' }, sharing: false, scopeOnly: false, scrubPii: false, maskOutOfScope: request.maskOutOfScope !== false },
+            request: { ...request, format: 'bundle', subset: { kind: 'all' }, scopeOnly: false, scrubPii: false, maskOutOfScope: request.maskOutOfScope !== false },
             counts: {
               examined: 10, included: 8, excludedDoNotExport: 1,
-              excludedPersonal: 1, excludedBlacklist: 0, maskedOutOfScope: 2,
+              excludedPersonal: 1, maskedOutOfScope: 2,
               sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0,
               attachmentsUnattributed: 0, unsupported: 0
             }
@@ -41,13 +41,13 @@ function installBridge(failResolve = false): void {
         executeCalls++
         return {
           ok: true, planId: 'plan-1', fingerprint: 'abc', artifactPath: '/tmp/b', warnings: [],
-          counts: { examined: 10, included: 8, excludedDoNotExport: 1, excludedPersonal: 1, excludedBlacklist: 0, maskedOutOfScope: 2, sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0 }
+          counts: { examined: 10, included: 8, excludedDoNotExport: 1, excludedPersonal: 1, maskedOutOfScope: 2, sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0 }
         }
       },
       exportPreview: async () => ({
         total: 10, included: 8, dropped: 1, personalDropped: 1,
         blacklisted: 0, outOfScope: 2, inScope: 6, sanitized: 3,
-        doNotExportCount: 1, hasScope: true, sharing: false
+        doNotExportCount: 1, hasScope: true
       })
     }
   }

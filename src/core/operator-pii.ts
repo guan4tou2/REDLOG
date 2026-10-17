@@ -3,7 +3,7 @@ import os from 'os'
 // Operator PII scrubbing — replaces identifiers that reveal the operator's
 // real-world identity (OS home path, account username, machine hostname) in
 // serialized export strings. Originally NDJSON-only; now shared across all
-// export paths when the "For sharing" preset is active.
+// export paths when "Scrub PII" is on.
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
