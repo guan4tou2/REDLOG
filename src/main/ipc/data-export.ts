@@ -14,6 +14,8 @@ import {
   ExportPlanRegistry,
   countExportAttachments,
   countReferencedAttachments,
+  countTruncatedOutputs,
+  countPauseWindows,
   createExportPlan,
   fingerprintValue,
   normalizeExportRequest,
@@ -121,7 +123,9 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       attachmentsMissing: attachmentCounts.missing,
       attachmentsUnattributed: attachmentCounts.unattributed,
       attachmentsExcludedByOperator: attachmentCounts.excludedByOperator,
-      unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents)
+      unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents),
+      truncatedOutputs: countTruncatedOutputs(selectedEvents),
+      pauseWindows: countPauseWindows(selectedEvents)
     },
     attachments,
     selectedEventIds,

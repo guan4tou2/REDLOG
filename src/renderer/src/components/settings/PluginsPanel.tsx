@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '../Button'
-import { toast, toastDeferred } from '../Toast'
+import { toast, toastUndo } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
@@ -117,6 +117,11 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   const [plugins, setPlugins] = useState<PluginView[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Every answer from main carries the whole list. Only the newest request may
+  // replace what is on screen, so a slow reload cannot undo a later disable.
+  const newest = useRef(0)
 
   const api = (window.redlog as unknown as { plugins: {
     list: () => Promise<PluginView[]>
@@ -127,51 +132,86 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     revoke: (id: string) => Promise<PluginView[]>
   } }).plugins
 
-  useEffect(() => { api.list().then(setPlugins) }, [])
+  const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-  const doReload = async (): Promise<void> => { setBusy('*'); setPlugins(await api.reload()); setBusy(null) }
-  const toggle = async (p: PluginView, enabled: boolean): Promise<void> => {
-    // Enabling is the recoverable direction and takes effect at once.
-    if (enabled) {
-      setBusy(p.id); setPlugins(await api.setEnabled(p.id, true)); setBusy(null)
-      return
+  // A list that failed to load is not an empty list: the first says "try
+  // again", the second says "there is nothing here".
+  const load = async (): Promise<void> => {
+    const mine = ++newest.current
+    setLoading(true); setLoadError(null)
+    try {
+      const next = await api.list()
+      if (mine === newest.current) setPlugins(next)
+    } catch (e) {
+      if (mine === newest.current) setLoadError(errorText(e))
+    } finally {
+      if (mine === newest.current) setLoading(false)
     }
-    // SS10 gives disabling a window and defers the write itself, not just the
-    // undo: the list shows the plugin as disabled immediately, nothing is
-    // persisted until the eight seconds are up.
-    //
-    // This used to claim the deferral kept the mistake out of the audit log.
-    // It does not, because there is nothing to keep out: `plugins:setEnabled`
-    // writes ~/.redlog/plugins/state.json and no event. The only writer of
-    // `system.config_changed` is logConfigDiff on `config:save`, and
-    // config-audit covers packs and pack members, never plugins. Switching a
-    // capture source off leaves no trace of who did it or when -- a real gap,
-    // and a separate one from this window.
-    setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'disabled' } : x)))
-    toastDeferred(
-      t('plugins.disabled', { name: p.name }),
-      () => { void api.setEnabled(p.id, false).then(setPlugins) },
-      {
-        type: 'warning',
-        why: t('plugins.disabledWhy'),
-        revert: () => setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: p.status } : x)))
-      }
-    )
   }
-  const grant = async (p: PluginView): Promise<void> => {
-    setBusy(p.id); setConfirmGrant(null)
-    const r = await api.grant(p.id)
-    setPlugins(r.plugins); setBusy(null)
-    if (r.ok) toast(t('plugins.granted'), 'success')
-    else {
-      toast(t('plugins.grantFailed', { name: p.id }), {
-        type: 'error',
-        why: t('plugins.grantFailedWhy'),
-        detail: r.error
+  useEffect(() => { void load() }, [])
+
+  /** One operation on the plugin list. The screen shows what main answered, never
+   *  what the operator asked for: on failure the real list is read back, so a
+   *  switch that did not flip does not stay drawn as flipped. */
+  const run = async (id: string, op: () => Promise<PluginView[]>, failure: string): Promise<boolean> => {
+    const mine = ++newest.current
+    setBusy(id)
+    try {
+      const next = await op()
+      if (mine === newest.current) setPlugins(next)
+      return true
+    } catch (e) {
+      toast(failure, { type: 'error', why: t('plugins.failedWhy'), detail: errorText(e) })
+      void load()
+      return false
+    } finally {
+      setBusy((current) => (current === id ? null : current))
+    }
+  }
+
+  const doReload = (): Promise<boolean> => run('*', () => api.reload(), t('plugins.reloadFailed'))
+  const enable = (p: PluginView): Promise<boolean> =>
+    run(p.id, () => api.setEnabled(p.id, true), t('plugins.enableFailed', { name: p.name }))
+  const toggle = async (p: PluginView, enabled: boolean): Promise<void> => {
+    if (enabled) { await enable(p); return }
+    // Disabling is written now, and "disabled" is shown only once main says it
+    // is. It used to be drawn at once and written eight seconds later, with a
+    // toast that said both — a plugin the operator believed was off kept
+    // capturing for the whole window, and for good if the page was left first.
+    // Undo is what it says: enabling it again.
+    const ok = await run(p.id, () => api.setEnabled(p.id, false), t('plugins.disableFailed', { name: p.name }))
+    if (ok) {
+      toastUndo(t('plugins.disabled', { name: p.name }), () => { void enable(p) }, {
+        type: 'warning',
+        why: t('plugins.disabledWhy')
       })
     }
   }
-  const revoke = async (p: PluginView): Promise<void> => { setBusy(p.id); setPlugins(await api.revoke(p.id)); setBusy(null) }
+  const grant = async (p: PluginView): Promise<void> => {
+    setConfirmGrant(null)
+    const mine = ++newest.current
+    setBusy(p.id)
+    try {
+      const r = await api.grant(p.id)
+      if (mine === newest.current) setPlugins(r.plugins)
+      if (r.ok) toast(t('plugins.granted'), 'success')
+      else {
+        toast(t('plugins.grantFailed', { name: p.id }), {
+          type: 'error',
+          why: t('plugins.grantFailedWhy'),
+          detail: r.error
+        })
+      }
+    } catch (e) {
+      toast(t('plugins.grantFailed', { name: p.id }), { type: 'error', why: t('plugins.failedWhy'), detail: errorText(e) })
+      void load()
+    } finally {
+      setBusy((current) => (current === p.id ? null : current))
+    }
+  }
+  const revoke = async (p: PluginView): Promise<void> => {
+    await run(p.id, () => api.revoke(p.id), t('plugins.revokeFailed', { name: p.name }))
+  }
 
   const STATUS_STYLE: Record<PluginView['status'], string> = {
     active: 'bg-green-900/50 text-green-400',
@@ -197,7 +237,19 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         </Button>
       </div>
 
-      {shown.length === 0 && (
+      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote')}</p>
+
+      {loading && plugins.length === 0 && !loadError && (
+        <p role="status" className="text-xs text-redlog-text-faint py-3">{t('plugins.loading')}</p>
+      )}
+      {loadError !== null && (
+        <div role="alert" data-testid="plugins-load-error" className="text-xs py-3 space-y-1">
+          <p className="text-amber-300">{t('plugins.loadFailed')}</p>
+          <p className="text-redlog-text-faint break-all">{loadError}</p>
+          <button type="button" onClick={() => void load()} className="underline text-redlog-cyan hover:text-redlog-text">{t('common.retry')}</button>
+        </div>
+      )}
+      {!loading && loadError === null && shown.length === 0 && (
         <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>
       )}
 
