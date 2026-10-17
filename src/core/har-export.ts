@@ -141,7 +141,11 @@ export function exportHar(opts?: {
   const events = redactEventsForExport(queryEvents({
     agentType: 'scanner',
     tier: 'logged',
-    limit: opts?.limit ?? 50000,
+    // A plan has already decided which events are in the export, and its
+    // preview reports that full count. A default cap here dropped the oldest
+    // events silently — scanner rows include DNS, connections and C2 check-ins,
+    // which spend the same budget as HTTP. Only the ad-hoc call keeps a cap.
+    limit: opts?.limit ?? (selected ? -1 : 50000),
     since: opts?.since,
     before: opts?.before,
     snapshot: opts?.snapshot,
