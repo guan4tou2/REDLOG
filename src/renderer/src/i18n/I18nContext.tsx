@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 import en from './en.json'
 import zhTW from './zh-TW.json'
 
@@ -41,6 +41,18 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
   const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
     const str = locales[locale]?.[key] ?? locales['en'][key] ?? key
     return interpolate(str, vars)
+  }, [locale])
+
+  // The quit confirmation is drawn by the main process; it speaks the language
+  // the operator chose here. `{{count}}` stays for main to fill.
+  useEffect(() => {
+    const send = window.redlog?.app?.setQuitText
+    if (typeof send !== 'function') return
+    const text = (key: string): string => locales[locale]?.[key] ?? locales['en'][key] ?? key
+    send({
+      title: text('quit.title'), message: text('quit.message'), terminals: text('quit.terminals'),
+      proxy: text('quit.proxy'), external: text('quit.external'), stay: text('quit.stay'), quit: text('quit.quit')
+    })
   }, [locale])
 
   return (

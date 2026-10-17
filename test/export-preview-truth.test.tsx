@@ -67,6 +67,42 @@ describe('the export preview shows only what the plan measured', () => {
     expect(screen.getByTestId('export-preview-scope').textContent).toMatch(/not set/i)
   })
 
+  it('warns that web traffic is unfiltered when no scope is set, and still lets the export go ahead', async () => {
+    await draw(plan({ scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] } }))
+    expect(screen.getByTestId('export-scope-unset').textContent).toMatch(/not filtered by scope/i)
+    // Confirming is not blocked by the warning.
+    expect((screen.getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('offers "set a scope first" only when the menu can open Settings, and closes the dialog when used', async () => {
+    const open = vi.fn()
+    install(plan({ scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] } }))
+    render(<I18nProvider><ExportMenu totalCount={120} onOpenScopeSettings={open} /></I18nProvider>)
+    openJson()
+    await waitFor(() => expect(screen.getByTestId('export-set-scope')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('export-set-scope'))
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('export-dialog')).toBeNull()
+  })
+
+  it('has no set-scope action without a way to open Settings', async () => {
+    await draw(plan({ scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] } }))
+    expect(screen.queryByTestId('export-set-scope')).toBeNull()
+  })
+
+  it('does not warn about an unset scope when one is set, and exclusions alone count as set', async () => {
+    await draw(plan())
+    expect(screen.queryByTestId('export-scope-unset')).toBeNull()
+    cleanup()
+    await draw(plan({ scopeSnapshot: { targets: [], excludeTargets: ['login.corp.local'], personalDomains: [] } }))
+    expect(screen.queryByTestId('export-scope-unset')).toBeNull()
+  })
+
+  it('always says commands are not filtered by the web scope', async () => {
+    await draw(plan())
+    expect(screen.getByTestId('export-commands-note').textContent).toMatch(/Commands and their output are not filtered by web scope/)
+  })
+
   it('shows no invented in-scope or screenshot counts', async () => {
     await draw(plan())
     const panel = screen.getByRole('dialog').textContent ?? ''

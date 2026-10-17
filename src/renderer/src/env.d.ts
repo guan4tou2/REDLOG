@@ -158,6 +158,7 @@ interface RedLogAPI {
   app: {
     checkForUpdates: () => Promise<void>
     openExternal: (url: string) => Promise<void>
+    setQuitText: (text: Record<string, string>) => void
   }
   ui: {
     contextMenu: (
