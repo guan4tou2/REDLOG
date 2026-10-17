@@ -60,12 +60,13 @@ export function verifyCommand(scheme: VerifyScheme, nonce: string, proxyUrl: str
   return `${curl} -sS${noRevoke} -x ${proxyUrl} ${verifyUrl(scheme, nonce)}`
 }
 
-export type HttpTimeoutReason = 'browser' | 'ca' | 'caRejected' | 'terminalsOff' | 'terminalsNew'
+export type HttpTimeoutReason = 'paused' | 'browser' | 'ca' | 'caRejected' | 'terminalsOff' | 'terminalsNew'
 
 /** Reasons that apply to this machine's state, most likely first. The browser
  *  is always listed: a browser RedLog did not launch does not use the proxy. */
-export function httpTimeoutReasons(state: { certReady?: boolean; routeTerminals: boolean; rejected?: boolean }): HttpTimeoutReason[] {
+export function httpTimeoutReasons(state: { certReady?: boolean; routeTerminals: boolean; rejected?: boolean; paused?: boolean }): HttpTimeoutReason[] {
   const reasons: HttpTimeoutReason[] = []
+  if (state.paused) reasons.push('paused')
   if (state.rejected) reasons.push('caRejected')
   reasons.push('browser')
   if (state.certReady === false) reasons.push('ca')

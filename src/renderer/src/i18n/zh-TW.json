@@ -1204,6 +1204,7 @@
   "firstRun.http.needsPrereq": "mitmproxy 需以 {{command}} 安裝，但這台機器沒有。請先安裝 {{command}}，再重新檢查。",
   "firstRun.http.installPrereq": "安裝 {{command}}",
   "firstRun.http.timeoutTitle": "60 秒內沒有收到 HTTP 請求。最可能的原因：",
+  "firstRun.http.reason.paused": "錄製已暫停，所以檢查不會通過：目前什麼都沒有被記錄。請先在狀態列恢復錄製，再做一次新的檢查。",
   "firstRun.http.reason.browser": "你平常的瀏覽器沒有走這個代理——按「用擷取瀏覽器驗證」，或把工具指到這個代理。",
   "firstRun.http.reason.ca": "HTTPS 憑證還沒產生或未被信任，HTTPS 網站無法經過代理——見下方「HTTPS 憑證」。",
   "firstRun.http.reason.terminalsOff": "終端裡的 curl、wget 不會走代理——「讓新開的終端走這個代理」預設關閉。",

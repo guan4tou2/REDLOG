@@ -494,6 +494,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const report = parseVerifyReport(body)
       if (!report) { json(res, 400, { error: 'Not a verification report' }); return }
+      // Same answer as an ingest while paused. A check is evidence that the
+      // path records; with recording paused it would show "verified" for
+      // traffic that is being dropped.
+      if (eventBus.paused) { json(res, 200, { ok: true, skipped: 'recording paused' }); return }
       httpVerifySinkRef?.(report)
       json(res, 200, { ok: true })
       return
