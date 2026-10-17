@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
@@ -41,8 +41,9 @@ import {
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
-  getCastPosition
+  getCastPosition, listTerminals
 } from './terminal-manager'
+import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
@@ -1743,6 +1744,12 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  ipcMain.on('app:setQuitText', (_e, raw: unknown) => {
+    const parsed = parseQuitText(raw)
+    if (parsed) quitText = parsed
+  })
+  // The OS going down is not the operator choosing to quit.
+  powerMonitor.on('shutdown', () => { allowQuit() })
   // Renderer needs a way to open a URL in the operator's real browser (marks
   // page, plugin homepage, etc.). Only http/https allowed — Electron's
   // openExternal can dispatch file:/// and other schemes with unbounded side
@@ -1771,7 +1778,39 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+// The renderer sends its current language's wording; until it does the dialog
+// follows the system language.
+let quitText: QuitText | null = null
+let quitPrompt: Promise<void> | null = null
+
+/** A quit that stops live sources is the operator's call (#346). Returns true
+ *  when the quit should be held for the dialog. */
+function holdQuitForConfirmation(): boolean {
+  if (forceQuit || isQuitAllowed()) return false
+  // The e2e harness closes the app with live terminals; nothing is there to ask.
+  if (process.env.REDLOG_E2E === '1') return false
+  const impact = quitImpact({
+    terminals: listTerminals().length,
+    proxyState: managedHttpProxy.status().state,
+    project: activeProject?.name ?? null
+  })
+  if (!impact) return false
+  if (!quitPrompt) {
+    mainWindow?.show()
+    const options = quitDialog(impact, quitText ?? defaultQuitText(app.getLocale()))
+    const win = mainWindow
+    quitPrompt = (win ? dialog.showMessageBox(win, { type: 'question', ...options }) : dialog.showMessageBox({ type: 'question', ...options }))
+      .then((answer) => {
+        if (answer.response === 1) { forceQuit = true; app.quit() }
+      })
+      .catch((e) => console.warn('quit confirmation failed:', (e as Error).message))
+      .finally(() => { quitPrompt = null })
+  }
+  return true
+}
+
+app.on('before-quit', (event) => {
+  if (holdQuitForConfirmation()) { event.preventDefault(); return }
   forceQuit = true
   for (const controller of dependencyInstalls.values()) controller.abort()
 })

@@ -1,5 +1,6 @@
 import { app, dialog, shell, BrowserWindow } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
+import { allowQuit } from '../quit-guard'
 
 // Windows: in-app auto-download+install via electron-updater (NSIS works
 // unsigned). macOS/Linux: open the GitHub releases page — macOS auto-update
@@ -212,6 +213,8 @@ async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
   if (!progressWin.isDestroyed()) progressWin.destroy()
 
   console.log(TAG, 'quitting to install…')
+  // The operator already confirmed the update; a second dialog would hold the install.
+  allowQuit()
   autoUpdater.quitAndInstall(false, true)
   return true
 }

@@ -14,7 +14,8 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
-    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
+    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+    setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text)
   },
   ui: {
     // Pops a native menu at the cursor and resolves with the clicked item's id
