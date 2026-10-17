@@ -153,6 +153,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'httpCapture.caReady',
     'httpCapture.caMissing',
     'httpCapture.caTrustStores',
+    'httpCapture.caUntrust',
     'settings.cdpPort',
     'settings.browserStartUrl',
     'settings.browserIsolate',
