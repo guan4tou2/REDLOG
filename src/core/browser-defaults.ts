@@ -18,7 +18,7 @@ export const DEFAULT_BROWSER: Readonly<BrowserConfig> = Object.freeze({
   proxy: 'http://127.0.0.1:6661',
   cdpPort: 9222,
   isolateProfile: true,
-  ignoreCertErrors: true,
+  ignoreCertErrors: false,
   startUrl: '',
   extraArgs: []
 })

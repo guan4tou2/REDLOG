@@ -5,6 +5,9 @@ import { FieldGroup, Field, type ConfigState } from './SettingsShared'
 import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-proxy-url'
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
 import { CaCommand, caUntrustCommand, thisOs } from '../HttpCaptureStep'
+import { CopyButton } from '../CopyButton'
+
+const listenerOf = (url: string): string => { try { return new URL(url).host } catch { return url } }
 
 export default function BrowserPanel({
   t, config, setConfig
@@ -109,6 +112,15 @@ export default function BrowserPanel({
         </button>
       </div>
       {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}
+      {/* The listener, as Burp shows it: the address to put in your own
+          browser's proxy settings. */}
+      {proxyStatus.state === 'running' && proxyStatus.url && (
+        <div data-testid="http-capture-listener" className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-redlog-text-dim">{t('settings.proxyListener')}</span>
+          <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text">{listenerOf(proxyStatus.url)}</code>
+          <CopyButton text={listenerOf(proxyStatus.url)} />
+        </div>
+      )}
       {proxyStatus.state !== 'running' && staleTerminals > 0 && (
         <p data-testid="http-capture-stale-terminals" className="text-xs text-amber-400">
           {t('httpCapture.staleTerminals', { count: staleTerminals })}
