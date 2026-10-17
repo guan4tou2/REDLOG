@@ -58,6 +58,17 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const { t } = useI18n()
   const [rows, setRows] = useState<RedLogEvent[]>([])
   const [commands, setCommands] = useState<CommandsVerification>('none')
+  // Verified earlier is history; whether capture is on now is a separate fact.
+  // `null` until main answers, so a slow answer is not drawn as "paused".
+  const [recordingOn, setRecordingOn] = useState<boolean | null>(null)
+  useEffect(() => {
+    const rec = window.redlog.recording
+    if (!rec) return
+    let live = true
+    rec.get().then((on) => { if (live) setRecordingOn(on) }).catch(() => { /* unknown stays unknown */ })
+    const off = rec.onChange((on) => setRecordingOn(on))
+    return () => { live = false; off() }
+  }, [])
   const readGeneration = useRef(0)
   const [showSources, setShowSources] = useState(false)
   const [stuck, setStuck] = useState(false)
@@ -220,6 +231,11 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <p className="text-redlog-text">
                   {commands === 'external' ? t('firstRun.commands.verifiedExternal') : t('firstRun.commands.verifiedBuiltin')}
                 </p>
+                {recordingOn === false && (
+                  <p data-testid="first-run-commands-paused" role="status" className="text-amber-400">
+                    {t('firstRun.commands.pausedNow')}
+                  </p>
+                )}
                 {/* Command capture works; the operator's own terminal being
                     unconnected is a separate fact, so it is said separately
                     rather than holding the checkmark back. */}

@@ -93,6 +93,32 @@ describe('capture preparation', () => {
     expect(skip).toHaveBeenCalledOnce()
     expect(leave).toHaveBeenCalledOnce()
   })
+  it('says commands can be recorded when only the web tool is missing', () => {
+    draw()
+    expect(screen.getByTestId('capture-prepare-web-only').textContent).toContain('record commands without it')
+  })
+  it('does not claim commands are unaffected when a shell dependency is missing too', () => {
+    const pf = preflight()
+    pf.checks = pf.checks.map(c => c.id === 'python3' ? { ...c, found: false } : c)
+    draw(pf)
+    expect(screen.queryByTestId('capture-prepare-web-only')).toBeNull()
+  })
+  it('explains what each way out does, so the two are not guessed apart', () => {
+    draw()
+    const text = screen.getByTestId('capture-prepare-exits').textContent ?? ''
+    expect(text).toContain('Continue without installing')
+    expect(text).toContain('web traffic stays off')
+    expect(text).toContain('Finish later')
+    expect(text).toContain('nothing is lost')
+  })
+  it('offers the prerequisite on the first screen when preflight already says it is needed', () => {
+    const pf = preflight()
+    pf.checks = pf.checks.map(c => c.id === 'mitmdump' ? { ...c, remediationRequires: { command: 'uv', url: 'https://docs.astral.sh/uv/' } } as typeof c : c)
+    draw(pf)
+    expect(screen.getByTestId('prepare-prereq-mitmdump')).toBeTruthy()
+    expect(screen.queryByTestId('prepare-install-mitmdump')).toBeNull()
+    expect(window.redlog.runtime.install).not.toHaveBeenCalled()
+  })
   it('does not call an unknown or failed preflight prepared', () => {
     const { recheck } = draw(null, true)
     expect(screen.getByTestId('first-run-preflight-failed')).toBeTruthy()

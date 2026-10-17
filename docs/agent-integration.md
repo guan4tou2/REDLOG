@@ -43,7 +43,7 @@ So the division of labour is:
 
 | Use **hooks** for (logging) | Use the **API** for (operating the app) |
 |---|---|
-| Every shell / Bash command — command, exit code, duration, cwd (automatic; output only via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
+| Every shell / Bash command — command, exit code, duration, cwd (automatic; output is automatic in zsh, and in bash/PowerShell comes via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
 | mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
 | File transfers detected from commands (automatic); screenshots and clipboard once turned on (periodic screenshots, Host monitors pack) | Loot scanning of pasted output (`redlog_loot_scan`) |
 | | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
@@ -115,9 +115,12 @@ Only these sources record a command's stdout/stderr:
 | `redlog-session` (macOS/Linux) | The full terminal session, bounded — see [external session recording](external-session-recording.md) |
 | **Windows terminal output** capture pack (off by default) | PowerShell sessions, via a `Start-Transcript` follower |
 
-The ordinary shell hook (zsh/bash/PowerShell) records **command metadata only**:
-command, exit code, duration and working directory. On the timeline such a
-command shows *output not captured*.
+The shell hook records command, exit code, duration and working directory in
+zsh, bash and PowerShell. **zsh also keeps the output of ordinary commands
+automatically**; bash and PowerShell record **command metadata only**, and on
+the timeline such a command shows *output not captured*. A zsh command left
+alone on purpose (`nc`, editors, pagers) is marked `metadata-only` with the
+reason.
 
 ## 1. Terminal Hooks (Passive Capture)
 
@@ -184,7 +187,8 @@ source /path/to/redlog/hooks/shell-bash-hook.sh
 2. `PROMPT_COMMAND` fires after each command
 3. Same event emission as zsh
 
-**Output coverage:** The ordinary hook records command metadata only. Prefix a
+**Output coverage:** In bash the ordinary hook records command metadata only
+(zsh keeps ordinary output by itself). Prefix a
 command with `redlog-run` to stream stdout/stderr to the terminal while also
 including capped, separated output in the `command_end` event. Interactive TUI
 sessions should use RedLog's built-in terminal so the PTY is recorded.
