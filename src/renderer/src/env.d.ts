@@ -440,7 +440,8 @@ interface RedLogAPI {
     reload: () => Promise<unknown>
     testSample: (text: string) => Promise<{
       masked: string; maskedSpans: number; truncated: boolean
-      loot: Array<{ type: string; confidence: 'high' | 'medium' | 'low'; pluginId?: string; patternName?: string }>
+      overran: string[]
+      loot: Array<{ type: string; confidence: 'high' | 'medium' | 'low'; reported: boolean; pluginId?: string; patternName?: string }>
       target: { host: string | null; pluginId?: string; extractorName?: string }
       tags: Record<string, string>
     }>

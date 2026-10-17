@@ -40,6 +40,7 @@ export function PluginSampleTester({ t }: { t: T }): JSX.Element {
       {result && (
         <div data-testid="plugin-sample-result" className="mt-2 text-xs space-y-1">
           {result.truncated && <p className="text-amber-500">{t('plugins.sample.truncated')}</p>}
+          {result.overran.length > 0 && <p role="status" className="text-amber-500">{t('plugins.sample.overran', { rules: result.overran.join(', ') })}</p>}
           <p className="text-redlog-text-dim">{t('plugins.sample.masked', { count: result.maskedSpans })}</p>
           <pre className="font-mono whitespace-pre-wrap break-all bg-redlog-elevated rounded p-2">{result.masked}</pre>
           <div>
@@ -48,6 +49,7 @@ export function PluginSampleTester({ t }: { t: T }): JSX.Element {
             {result.loot.map((h, i) => (
               <p key={i} className="pl-3">
                 {h.type} ({h.confidence}) — {h.pluginId ? `${h.pluginId}:${h.patternName}` : t('plugins.sample.builtin')}
+                {!h.reported && <span className="text-amber-500"> — {t('plugins.sample.switchedOff')}</span>}
               </p>
             ))}
           </div>

@@ -692,6 +692,8 @@
   "plugins.sample.target": "Target",
   "plugins.sample.tags": "Tags",
   "plugins.sample.none": "none",
+  "plugins.sample.switchedOff": "switched off in this project: matches, but would not be recorded as loot",
+  "plugins.sample.overran": "Too slow on this sample, so it was cut off: {{rules}}. Live capture would stop such a rule.",
   "plugins.sample.builtin": "built-in",
   "plugins.apiAhead": "Targets a newer plugin API than this RedLog. Only the parts it understands are read; anything newer is ignored.",
   "plugins.results.loot": "Loot rules: {{accepted}} accepted, {{rejected}} rejected",

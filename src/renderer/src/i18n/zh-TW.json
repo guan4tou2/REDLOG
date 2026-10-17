@@ -692,6 +692,8 @@
   "plugins.sample.target": "目標",
   "plugins.sample.tags": "標籤",
   "plugins.sample.none": "無",
+  "plugins.sample.switchedOff": "此專案已關閉：會符合，但不會記成戰利品",
+  "plugins.sample.overran": "這段樣本跑太久而被中斷：{{rules}}。實際擷取時這類規則會被停用。",
   "plugins.sample.builtin": "內建",
   "plugins.apiAhead": "此插件針對比目前 RedLog 更新的插件 API。只讀取看得懂的部分，較新的內容會被忽略。",
   "plugins.results.loot": "戰利品規則：{{accepted}} 條生效、{{rejected}} 條被拒絕",
