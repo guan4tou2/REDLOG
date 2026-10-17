@@ -317,6 +317,7 @@
   "browser.failed": "Could not launch browser",
   "httpCapture.restart": "Restart HTTP capture",
   "httpCapture.stop": "Stop HTTP capture",
+  "httpCapture.staleTerminals": "{{count}} open built-in terminal(s) still point at the stopped proxy, so their network requests fail. Open a new terminal, or restart HTTP capture.",
   "httpCapture.starting": "Starting HTTP…",
   "httpCapture.failed": "HTTP capture could not start",
   "httpCapture.state.stopped": "HTTP capture stopped",
