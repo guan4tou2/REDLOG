@@ -206,6 +206,7 @@ interface RedLogAPI {
     pickPath: (title?: string) => Promise<string | null>
   }
   events: {
+    commandEvidence: () => Promise<{ builtin: boolean; external: boolean }>
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
     queryPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null; excludeHousekeeping?: boolean }) => Promise<{
       items: RedLogEvent[]

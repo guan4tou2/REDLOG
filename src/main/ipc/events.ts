@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, distinctAgentTypes, aggregateTargets,
@@ -17,6 +17,8 @@ import { attributionStats } from '../../core/socket-attribution'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
+  ipcMain.handle('events:commandEvidence', () =>
+    ctx.getActiveProject() ? commandEvidence() : { builtin: false, external: false })
   const withActiveScope = <T extends Pick<EventFilter, 'inScopeOnly' | 'hidePersonal'>>(opts: T): T => {
     if (!opts.inScopeOnly && !opts.hidePersonal) return opts
     const project = ctx.getActiveProject()

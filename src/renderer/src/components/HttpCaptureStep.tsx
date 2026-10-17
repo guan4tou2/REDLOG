@@ -16,7 +16,7 @@
 // without HTTP the card names the reasons that apply and keeps listening, so a
 // late request still verifies.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
@@ -118,8 +118,8 @@ function VerifyRow({ label, report, caveat, rejected, testId, t }: {
 }
 
 export function HttpCaptureStep({ onVerified, onPrepare }: {
-  /** Called once, when HTTP is verified by this card's own nonce. */
-  onVerified?: () => void
+  /** Current HTTPS proof, including invalidation after restart or retry. */
+  onVerified?: (verified: boolean) => void
   onPrepare: () => void
 }): JSX.Element {
   const { t } = useI18n()
@@ -132,15 +132,14 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
   const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
   const running = status.state === 'running'
-  const verified = attempt.http !== null
-  const complete = attempt.http !== null && attempt.https !== null
+  const verified = running && attempt.https !== null
 
   // Reports arrive for as long as the card is up: HTTPS can verify after
   // HTTP, and a check from a terminal can land at any time.
   useEffect(() => {
-    if (!running || complete) return
+    if (!running || verified) return
     return window.redlog.httpCapture.onVerify((r) => setAttempt((a) => applyVerifyReport(a, r)))
-  }, [running, complete])
+  }, [running, verified])
 
   useEffect(() => {
     if (!running || verified) return
@@ -149,12 +148,13 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
     return () => clearTimeout(timer)
   }, [running, verified])
 
-  useEffect(() => { if (verified) onVerified?.() }, [verified, onVerified])
+  useEffect(() => { onVerified?.(verified) }, [verified, onVerified])
 
   const check = async (): Promise<void> => {
-    const [pf, st] = await Promise.all([
+    const [pf, st, cfg] = await Promise.all([
       window.redlog.runtime.preflight().catch(() => null),
-      window.redlog.httpCapture.status().catch(() => null)
+      window.redlog.httpCapture.status().catch(() => null),
+      window.redlog.config.get().catch(() => null)
     ])
     // A failed environment check is not "mitmproxy is installed".
     setPreflightFailed(pf === null)
@@ -163,11 +163,11 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
       setMitmMissing(mitm ? !mitm.found : false)
     }
     if (st) setStatus(st)
+    if (cfg) setConfig(cfg as Record<string, unknown>)
   }
 
   useEffect(() => {
     void check()
-    window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
   }, [])
 
   // mitmproxy may have been installed in a terminal while RedLog was in the
@@ -222,6 +222,16 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
     ? t('firstRun.http.captureBrowserCaveat')
     : undefined
   const os = thisOs()
+  // A check belongs to its endpoint, CA and client policy. Historical success
+  // must not light a restarted or reconfigured proxy with the old nonce.
+  const verificationContext = JSON.stringify([running, status.url, status.caFingerprint?.sha256, ignoresCertErrors, routeTerminals])
+  const lastContext = useRef(verificationContext)
+  useEffect(() => {
+    if (lastContext.current === verificationContext) return
+    lastContext.current = verificationContext
+    setAttempt(newAttempt(newVerifyNonce()))
+    setTimedOut(false)
+  }, [verificationContext])
 
   // `data-nonce` carries the attempt the card would accept. The per-tool
   // commands that used to be the only place it appeared are now the fallback
@@ -253,7 +263,6 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
         <div className="space-y-2">
           <p className="font-mono text-redlog-text-faint">{listenAddress(status.url)}</p>
           <ul data-testid="first-run-http-checks" className="space-y-1">
-            <VerifyRow label="HTTP" report={attempt.http} testId="first-run-http-check-http" t={t} />
             <VerifyRow
               label="HTTPS"
               report={attempt.https}
@@ -284,7 +293,6 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
           {status.url && timedOut && !verified && (
             <div data-testid="first-run-http-verify-commands" className="space-y-1">
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyFromTool')}</p>
-              <CaCommand label="HTTP" command={verifyCommand('http', attempt.nonce, status.url, os)} t={t} />
               <CaCommand label="HTTPS" command={verifyCommand('https', attempt.nonce, status.url, os)} t={t} />
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyNoInsecure')}</p>
             </div>

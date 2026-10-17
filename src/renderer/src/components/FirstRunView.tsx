@@ -36,7 +36,7 @@ import { HttpCaptureStep } from './HttpCaptureStep'
 import { CapturePreparation, preparationChecks } from './CapturePreparation'
 import { commandCaptureBlockers, missingDependencies, shellLabel } from '../lib/terminalActivation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
-import { commandsVerification, coreCaptureReady } from '../lib/coreCapture'
+import { commandsVerification, coreCaptureReady, type CommandsVerification } from '../lib/coreCapture'
 import { ChevronRight } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
 
@@ -57,6 +57,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
 }): JSX.Element {
   const { t } = useI18n()
   const [rows, setRows] = useState<RedLogEvent[]>([])
+  const [commands, setCommands] = useState<CommandsVerification>('none')
+  const readGeneration = useRef(0)
   const [showSources, setShowSources] = useState(false)
   const [stuck, setStuck] = useState(false)
   const waitingSince = useRef<number | null>(null)
@@ -65,7 +67,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [recording, setRecording] = useState<RecordTarget | null>(null)
   const [httpVerified, setHttpVerified] = useState(false)
   const [preparing, setPreparing] = useState(true)
-  const onHttpVerified = useCallback(() => setHttpVerified(true), [])
+  const preparationRequested = useRef(false)
+  const [showBuiltin, setShowBuiltin] = useState(false)
+  const onHttpVerified = useCallback((verified: boolean) => setHttpVerified(verified), [])
 
   // "The check failed" is not "everything is fine". Swallowing the rejection
   // left `preflight` null, and a null preflight reports no missing
@@ -84,9 +88,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // something; there is nothing for them to press on the way back.
   useRevalidateOnFocus(checkRuntime)
   useEffect(() => {
-    if (preflight && !preflightFailed && preparationChecks(preflight).length === 0) setPreparing(false)
+    if (preflight && !preflightFailed && (preparationChecks(preflight).length === 0 || (!preparationRequested.current && commandCaptureBlockers(preflight).length === 0))) setPreparing(false)
   }, [preflight, preflightFailed])
-  const openPreparation = (): void => { setHttpVerified(false); setPreparing(true); checkRuntime() }
+  const openPreparation = (): void => { preparationRequested.current = true; setHttpVerified(false); setPreparing(true); checkRuntime() }
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -103,12 +107,25 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // exist, or worse, conclude the opposite once events appear later.
   const [rowsFailed, setRowsFailed] = useState(false)
   const loadRows = useCallback((): void => {
-    void window.redlog.events.query({ limit: 20, excludeHousekeeping: true })
+    const generation = ++readGeneration.current
+    void Promise.all([
+      window.redlog.events.query({ limit: 20, excludeHousekeeping: true }),
+      window.redlog.events.commandEvidence()
+    ])
       // `isEvidence`, not `!isHousekeeping`: an IP verdict lands within
       // seconds of opening any project and would light this strip before the
       // operator had done anything.
-      .then((r: RedLogEvent[]) => { setRows((r ?? []).filter(isEvidence)); setRowsFailed(false) })
-      .catch(() => setRowsFailed(true))
+      .then(([r, evidence]) => {
+        if (generation !== readGeneration.current) return
+        setRows((r ?? []).filter(isEvidence))
+        setCommands(commandsVerification(evidence))
+        setRowsFailed(false)
+      })
+      .catch(() => {
+        if (generation !== readGeneration.current) return
+        setCommands('none')
+        setRowsFailed(true)
+      })
   }, [])
 
   useEffect(() => {
@@ -119,14 +136,13 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       if (timer) clearTimeout(timer)
       timer = setTimeout(load, 300)
     })
-    return () => { if (timer) clearTimeout(timer); unsub() }
+    return () => { readGeneration.current++; if (timer) clearTimeout(timer); unsub() }
   }, [loadRows])
 
   // "Nothing has arrived" and "capture is broken" look identical for the first
   // few seconds and completely different after ten. A missing dependency is
   // known up front from preflight and shown without waiting; this timer only
   // covers what preflight cannot see.
-  const commands = commandsVerification(rows)
   useEffect(() => {
     if (commands !== 'none') { setStuck(false); return }
     const onKey = (): void => { if (waitingSince.current === null) waitingSince.current = Date.now() }
@@ -143,8 +159,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // a missing command — it is the execution policy (F6).
   const blockers = commandCaptureBlockers(preflight)
   const policyBlocker = blockers.find((b) => b.kind === 'execution-policy')
-  const hostTarget: RecordTarget | null = preflight?.shell
-    ? { kind: 'host', hookId: preflight.shell.hookId, label: shellLabel(preflight.shell.name) }
+  const hostTarget: RecordTarget | null = preflight
+    ? { kind: 'host', hookId: preflight.shell?.hookId ?? '', label: preflight.shell ? shellLabel(preflight.shell.name) : t('firstRun.record.externalTerminal') }
     : null
   const wslTarget: RecordTarget | null = wsl
     ? { kind: 'wsl', distro: wsl.name, shell: wsl.hookStatus.zsh !== 'no-shell' ? 'zsh' : 'bash', label: `WSL ${wsl.name}` }
@@ -169,15 +185,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         <p className="text-xs text-redlog-text-faint mt-2">{t('captureSetup.prove')}</p>
       </div>
 
-      <div className="flex-1 min-h-0 flex gap-3">
-        <div className="flex-1 min-w-0 border border-redlog-border rounded-lg overflow-hidden">
-          <Suspense fallback={<div className="h-full bg-redlog-surface animate-pulse" />}>
-            <TerminalView />
-          </Suspense>
-        </div>
-
+      <div className="space-y-3">
         <div
-          className="w-[360px] shrink-0 border border-redlog-border rounded-lg p-3 overflow-auto space-y-3"
+          className="w-full max-w-3xl border border-redlog-border rounded-lg p-3 space-y-3"
           data-testid="first-run-strip"
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
@@ -258,11 +268,11 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <div className="flex flex-wrap gap-2">
                   {hostTarget && (
                     <Button
-                      level={commands === 'builtin' ? 'primary' : 'secondary'}
+                      level={commands === 'none' ? 'primary' : 'secondary'}
                       onClick={() => setRecording(hostTarget)}
                       data-testid="first-run-record-terminal"
                     >
-                      {t('firstRun.recordMyTerminal', { shell: hostTarget.label })}
+                      {preflight?.shell ? t('firstRun.recordMyTerminal', { shell: hostTarget.label }) : t('firstRun.record.chooseTerminal')}
                     </Button>
                   )}
                   {wslTarget && (
@@ -279,12 +289,14 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} />
 
           <div data-testid="first-run-core-footer" className="text-xs space-y-1.5">
+            {commands !== 'none' && (
+              <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-start-work">
+                {t('firstRun.core.start')}
+              </Button>
+            )}
             {ready ? (
               <>
                 <p data-testid="first-run-core-ready" className="text-emerald-500 font-medium">{t('firstRun.core.ready')}</p>
-                <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-start-work">
-                  {t('firstRun.core.start')}
-                </Button>
               </>
             ) : (
               <>
@@ -315,6 +327,18 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+        <div className="w-full max-w-3xl space-y-2">
+          <button type="button" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin}
+            onClick={() => setShowBuiltin((v) => !v)}
+            className="text-xs text-redlog-text-dim underline hover:text-redlog-text">
+            {t(showBuiltin ? 'firstRun.builtin.hide' : 'firstRun.builtin.show')}
+          </button>
+          {showBuiltin && (
+            <div className="h-[420px] min-h-[240px] border border-redlog-border rounded-lg overflow-hidden">
+              <Suspense fallback={<div className="h-full bg-redlog-surface animate-pulse" />}><TerminalView /></Suspense>
             </div>
           )}
         </div>

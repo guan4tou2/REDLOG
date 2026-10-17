@@ -151,6 +151,21 @@ export const EVIDENCE_SQL = `
   )
 `
 
+/** Historical command proof for the open project, independent of recent rows.
+ * This does not assert that the source is still running or that stdout arrived. */
+export function commandEvidence(): { builtin: boolean; external: boolean } {
+  const db = getReadonlyDB()
+  const has = (builtin: boolean): boolean => {
+    const source = builtin
+      ? "COALESCE(json_extract(data, '$.source'), '') = 'builtin-terminal'"
+      : "COALESCE(json_extract(data, '$.source'), '') <> 'builtin-terminal'"
+    const predicate = `agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND ${source} AND (${EVIDENCE_SQL})`
+    return !!db.prepare(`SELECT 1 FROM events WHERE ${predicate}
+      UNION ALL SELECT 1 FROM events_logged WHERE ${predicate} LIMIT 1`).get()
+  }
+  return { builtin: has(true), external: has(false) }
+}
+
 // Ingest now drops RedLog's own plumbing before it is written at all
 // (src/core/capture-plumbing.ts), which is the real fix — a chained row
 // cannot be removed from an export without breaking the chain. This filter

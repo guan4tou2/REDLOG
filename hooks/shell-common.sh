@@ -164,8 +164,11 @@ _redlog_build_payload_fast() {
     shell_name="$_redlog_shell"
   fi
   local tid="${REDLOG_TERMINAL_ID:-}"
+  # Which WSL distro this shell is in. The renderer's connection check matches
+  # on it, so two distros that both run bash cannot verify each other.
+  local wsl="${WSL_DISTRO_NAME:-}"
 
-  [[ "$subtype$command$shell_name$tid" == *[^\ -~]* ]] && return 1
+  [[ "$subtype$command$shell_name$tid$wsl" == *[^\ -~]* ]] && return 1
   (( ${#command} + ${#extra} > 32768 )) && return 1
   [[ "$extra" == *[[:cntrl:]]* ]] && return 1
 
@@ -216,6 +219,9 @@ _redlog_build_payload_fast() {
   [[ "${REDLOG_TERMINAL:-}" == "1" ]] && body+=',"source":"builtin-terminal"'
   if [[ -n "$tid" ]]; then
     _redlog_json_quote "$tid"; body+=',"terminalId":"'"$_redlog_json"'"'
+  fi
+  if [[ -n "$wsl" ]]; then
+    _redlog_json_quote "$wsl"; body+=',"wsl_distro":"'"$_redlog_json"'"'
   fi
   if [[ -n "$inner" ]]; then body+=",$inner"; else body+='}'; fi
   [[ -n "$ident" ]] && body+=',"_identity":'"$ident"
@@ -324,6 +330,9 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
 tid = os.environ.get('REDLOG_TERMINAL_ID')
 if tid:
     d['data']['terminalId'] = tid
+wsl = os.environ.get('WSL_DISTRO_NAME')
+if wsl:
+    d['data']['wsl_distro'] = wsl
 extra = pathlib.Path(sys.argv[3]).read_text(encoding='utf-8', errors='replace')
 if extra.strip():
     d['data'].update(json.loads(extra))

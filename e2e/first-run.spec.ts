@@ -85,6 +85,7 @@ test('a dependency install failure stays beside the retry and manual command', a
     await recoveryPage.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(recoveryPage, 'installer-recovery')
     await resizeMainWindow(recoveryApp, 800, 720)
+    await recoveryPage.getByTestId('first-run-http-prepare').click()
     const install = recoveryPage.getByTestId('prepare-install-mitmdump')
     await install.click()
     const error = recoveryPage.getByTestId('prepare-error-mitmdump')
@@ -116,6 +117,9 @@ test('a dependency install failure stays beside the retry and manual command', a
     await expect(recoveryPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
     await expect(recoveryPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
     await recoveryPage.screenshot({ path: join(REPO_ROOT, 'test-results', 'capture-prepare-to-prove.png') })
+  } catch (error) {
+    console.error('Capture setup recovery failed:', error)
+    throw error
   } finally {
     await recoveryApp.close()
   }
@@ -155,6 +159,21 @@ test.describe.serial('the first run', () => {
     await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('○ Not verified')
     await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
     await expect(page.locator('[data-testid="first-run-strip"]')).toHaveAttribute('data-core-ready', 'false')
+  })
+
+  test('external setup is primary and the built-in terminal is an explicit fallback', async () => {
+    await expect(page.getByTestId('first-run-record-terminal')).toBeVisible()
+    await expect(page.locator('.xterm')).toHaveCount(0)
+    await expect.poll(() => page.evaluate(async () => (await window.redlog.terminal.list()).length)).toBe(0)
+    await resizeMainWindow(app, 800, 600)
+    const toggle = page.getByTestId('first-run-builtin-toggle')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(page.locator('.xterm')).toBeVisible()
+    await expect.poll(() => page.evaluate(async () => (await window.redlog.terminal.list()).length)).toBe(1)
+    await toggle.click()
+    await expect(page.locator('.xterm')).toHaveCount(0)
+    await resizeMainWindow(app, 1280, 800)
   })
 
   test('keeps the other capture sources one disclosure away', async () => {
@@ -202,6 +221,13 @@ test.describe.serial('the first run', () => {
     // A command does not make HTTP(S) any less unverified.
     await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
     await expect(page.locator('[data-testid="first-run-later"]')).toBeVisible()
+  })
+
+  test('retains command proof after newer markers displace it from the recent display', async () => {
+    for (let n = 0; n < 25; n++) await post('marker', { subtype: 'marker', text: `proof-window-fixture-${n}` })
+    await expect.poll(() => page.evaluate(async () => (await window.redlog.events.query({ limit: 20, excludeHousekeeping: true })).every(e => e.agentType !== 'shell'))).toBe(true)
+    await expect(page.getByTestId('first-run-commands-status')).toHaveText('✓ Verified')
+    await expect(page.getByTestId('first-run-start-work')).toBeVisible()
   })
 
   test('hands over to the real dashboard, and does not come back', async () => {

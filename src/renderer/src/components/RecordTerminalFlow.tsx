@@ -7,12 +7,34 @@
 // "installed". Two exits sit beside the happy path: `blocked` (preflight says a
 // dependency is missing — nothing is installed until it is there) and
 // `timed-out` (no event in 60 s — say the likely reasons in plain words).
+//
+// The shell is a *recommendation* now, not a decision made for the operator.
+// Preflight answers with the login shell; `hooks.detect()` answers which fixed
+// adapters this host actually has. The two are shown together — the detected
+// one recommended, every other hookable one selectable — because the operator
+// who works in bash behind a zsh login was previously left with a hook for a
+// shell they do not use and a timeout that named nothing about it.
+//
+// The choice governs everything downstream: which adapter is installed, whose
+// prerequisites are read from preflight, and which shell's event may carry the
+// nonce. Changing it starts a fresh attempt and marks the old one stale, so an
+// install that lands late cannot report on the shell that replaced it.
 
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
-import { activationCommand, activationNonce, isActivationEvent, missingDependencies, SET_EXECUTION_POLICY } from '../lib/terminalActivation'
+import {
+  activationCommand,
+  activationNonce,
+  isActivationEvent,
+  missingDependencies,
+  hostAdapterChoices,
+  shellNameForHook,
+  SET_EXECUTION_POLICY,
+  type AdapterChoice,
+  type ShellName
+} from '../lib/terminalActivation'
 import { requestRunInTerminal } from '../lib/terminalRunner'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { classifyCanaryEvent, mergeCanary, outputCanary, type CanaryResult } from '../lib/outputCanary'
@@ -25,6 +47,8 @@ export type RecordTarget =
 type Phase =
   | 'not-installed'
   | 'blocked'
+  | 'detect-failed'
+  | 'unavailable'
   | 'install-failed'
   | 'installed'
   | 'waiting-for-activation'
@@ -35,36 +59,98 @@ type Phase =
  *  named while the operator is still looking at this screen. */
 const ACTIVATION_TIMEOUT_MS = 60_000
 
+/** Which adapter the flow actually installs.
+ *
+ *  The detected one wins when it exists here; when it does not, it stays
+ *  selected so the screen can say why rather than silently swapping in a shell
+ *  the operator did not ask for. Only with no recommendation at all does the
+ *  first available adapter become the default. */
+function pickInitialAdapter(choices: AdapterChoice[], recommended: string | null): string | null {
+  if (choices.length === 0) return recommended
+  if (recommended && choices.some((c) => c.hookId === recommended)) return recommended
+  return choices.find((c) => c.available)?.hookId ?? choices[0].hookId
+}
+
 export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget; onPrepare: () => void }): JSX.Element {
   const { t } = useI18n()
   const [phase, setPhase] = useState<Phase>('not-installed')
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
   const [installError, setInstallError] = useState('')
   const [nonce, setNonce] = useState('')
-  // A retry, or an unmount, makes every still-pending await from the previous
-  // attempt stale.
+  const [choices, setChoices] = useState<AdapterChoice[]>([])
+  const recommended = target.kind === 'host' ? target.hookId : null
+  const [selectedHook, setSelectedHook] = useState<string | null>(recommended)
+  // WSL has one path and no picker, so it is "detected" from the first frame.
+  const [detected, setDetected] = useState(target.kind !== 'host')
+  const [detectVersion, setDetectVersion] = useState(0)
+  const wslDistro = target.kind === 'wsl' ? target.distro : null
+  const wslShell = target.kind === 'wsl' ? target.shell : null
+  // A retry, a new selection, or an unmount makes every still-pending await
+  // from the previous attempt stale.
   const attempt = useRef(0)
 
-  const run = async (): Promise<void> => {
+  // Which fixed adapters the backend reports on this host. A read, and the only
+  // source for the picker: an adapter the backend cannot see is not offered as
+  // selected and connected on the strength of an install that copied files.
+  useEffect(() => {
+    if (target.kind !== 'host') return
+    let live = true
+    attempt.current++
+    setDetected(false)
+    setPhase('not-installed')
+    window.redlog.hooks.detect()
+      .then((hooks) => {
+        if (!live) return
+        const found = hostAdapterChoices(hooks ?? [], window.redlog.platform ?? '')
+        setChoices(found)
+        setSelectedHook(pickInitialAdapter(found, recommended))
+        setDetected(true)
+      })
+      .catch((error) => {
+        if (!live) return
+        setInstallError(String(error instanceof Error ? error.message : error))
+        setPhase('detect-failed')
+      })
+    return () => { live = false }
+  }, [recommended, target.kind, detectVersion])
+
+  const selectedChoice = choices.find((c) => c.hookId === selectedHook) ?? null
+  const expectedShell: ShellName | null = target.kind === 'wsl'
+    ? target.shell
+    : selectedChoice?.shell ?? shellNameForHook(selectedHook)
+  const activeLabel = selectedChoice?.label ?? target.label
+
+  const run = async (override?: string | null): Promise<void> => {
     const mine = ++attempt.current
     const current = (): boolean => attempt.current === mine
     setPhase('not-installed')
     setInstallError('')
+    setNonce('')
+    const hookId = target.kind === 'host' ? (override === undefined ? selectedHook : override) : null
     try {
       if (target.kind === 'host') {
+        if (!hookId) { setPhase('unavailable'); return }
         const pf = await window.redlog.runtime.preflight()
         if (!current()) return
         setPreflight(pf)
-        if (missingDependencies(pf).length > 0) { setPhase('blocked'); return }
-      }
-      const r = target.kind === 'host'
-        ? await window.redlog.hooks.install(target.hookId)
-        : await window.redlog.wsl.installHook(target.distro, target.shell)
-      if (!current()) return
-      if (!r.success) {
-        setInstallError(('error' in r && r.error) || r.message || '')
-        setPhase('install-failed')
-        return
+        if (missingDependencies(pf, hookId).length > 0) { setPhase('blocked'); return }
+        const choice = choices.find((c) => c.hookId === hookId)
+        if (!choice?.available) { setPhase('unavailable'); return }
+        const r = await window.redlog.hooks.install(hookId)
+        if (!current()) return
+        if (!r.success) {
+          setInstallError(('error' in r && r.error) || r.message || '')
+          setPhase('install-failed')
+          return
+        }
+      } else {
+        const r = await window.redlog.wsl.installHook(target.distro, target.shell)
+        if (!current()) return
+        if (!r.success) {
+          setInstallError(r.message || '')
+          setPhase('install-failed')
+          return
+        }
       }
     } catch (e) {
       if (!current()) return
@@ -72,17 +158,25 @@ export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget
       setPhase('install-failed')
       return
     }
+    if (!current()) return
     setPhase('installed')
     setNonce(activationNonce())
     setPhase('waiting-for-activation')
   }
 
+  // One attempt once the adapter list has settled, and a fresh one whenever the
+  // selection changes. The cleanup marks the previous attempt stale, so an
+  // install or preflight it was still awaiting cannot land on the new choice.
+  //
+  // Keyed on `detected` and `selectedHook`, never on `run` or `target`: the
+  // parent re-creates the target object on every render, so keying on identity
+  // would re-install in a loop.
   useEffect(() => {
+    if (!detected) return
     void run()
     return () => { attempt.current++ }
-    // One attempt per mount; retries go through run() directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [detected, selectedHook, target.kind, wslDistro, wslShell])
 
   // Blocked means a dependency was missing, and the operator has gone to
   // install it. Coming back re-runs the attempt: the click that started this
@@ -97,7 +191,8 @@ export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget
     if (phase !== 'waiting-for-activation' || !nonce) return
     const mine = attempt.current
     const unsub = window.redlog.events.onNewBatch((evs: RedLogEvent[]) => {
-      if ((evs ?? []).some((ev) => isActivationEvent(ev, nonce))) setPhase('verified')
+      if (attempt.current !== mine) return
+      if ((evs ?? []).some((ev) => isActivationEvent(ev, nonce, expectedShell, wslDistro))) setPhase('verified')
     })
     const timer = setTimeout(() => {
       // Re-check the machine: the reasons worth naming are the ones true now.
@@ -110,29 +205,62 @@ export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget
       else done(null)
     }, ACTIVATION_TIMEOUT_MS)
     return () => { clearTimeout(timer); unsub() }
-  }, [phase, nonce, target.kind])
+  }, [phase, nonce, target.kind, expectedShell, wslDistro])
 
-  const missing = missingDependencies(preflight)
-  const command = activationCommand(nonce)
+  const missing = missingDependencies(preflight, target.kind === 'host' ? selectedHook ?? undefined : undefined)
+  const command = activationCommand(nonce, expectedShell)
+
+  // Changing the shell throws away the attempt that was in flight for the old
+  // one: its nonce, its install, its waiting state. It is not "retry" — there
+  // is nothing to retry — so no error is kept either.
+  const selectAdapter = (hookId: string): void => {
+    if (hookId === selectedHook) return
+    attempt.current++
+    setNonce('')
+    setSelectedHook(hookId)
+  }
 
   return (
     <div className="mt-3 border-t border-redlog-border pt-3 text-xs" data-testid="record-terminal-flow" data-phase={phase}>
-      {phase === 'not-installed' || phase === 'installed' ? (
-        <p className="text-redlog-text-dim">{t('firstRun.record.installing', { shell: target.label })}</p>
+      {target.kind === 'host' && phase !== 'detect-failed' && (choices.length > 1 || !detected || phase === 'unavailable') && (
+        <AdapterPicker
+          choices={choices}
+          selectedHook={selectedHook}
+          recommended={recommended}
+          detected={detected}
+          onSelect={selectAdapter}
+        />
+      )}
+      {phase === 'detect-failed' ? (
+        <div data-testid="record-terminal-detect-failed" role="alert" className="space-y-2">
+          <p>{t('firstRun.record.detectFailed')}</p>
+          <p className="text-redlog-text-faint break-all">{installError}</p>
+          <Button level="secondary" onClick={() => setDetectVersion((v) => v + 1)}>{t('common.retry')}</Button>
+        </div>
+      ) : phase === 'not-installed' || phase === 'installed' ? (
+        <p className="text-redlog-text-dim">
+          {detected ? t('firstRun.record.installing', { shell: activeLabel }) : t('firstRun.record.detecting')}
+        </p>
       ) : phase === 'blocked' ? (
         <div data-testid="record-terminal-missing" className="space-y-2">
-          <p className="text-redlog-text">{t('firstRun.record.blocked', { shell: target.label })}</p>
+          <p className="text-redlog-text">{t('firstRun.record.blocked', { shell: activeLabel })}</p>
           <p className="text-redlog-text-dim">{t('firstRun.record.reasonMissing', { names: missing.map(c => c.id).join(', ') })}</p>
           <Button level="secondary" onClick={onPrepare}>{t('captureSetup.openPreparation')}</Button>
         </div>
+      ) : phase === 'unavailable' ? (
+        <div data-testid="record-terminal-unavailable" className="space-y-2">
+          <p className="text-redlog-text">{t('firstRun.record.adapterUnavailableWhy', { shell: activeLabel })}</p>
+          <p className="text-redlog-text-dim">{t('firstRun.record.adapterUnavailableHint')}</p>
+          <Button level="secondary" onClick={() => setDetectVersion((v) => v + 1)}>{t('common.retry')}</Button>
+        </div>
       ) : phase === 'install-failed' ? (
-        <div className="space-y-2">
-          <p className="text-redlog-text">{t('firstRun.record.installFailed', { shell: target.label })}</p>
+        <div data-testid="record-terminal-install-failed" className="space-y-2">
+          <p className="text-redlog-text">{t('firstRun.record.installFailed', { shell: activeLabel })}</p>
           {installError && <p className="font-mono text-redlog-text-faint break-all">{installError}</p>}
           <Button level="secondary" onClick={() => void run()}>{t('firstRun.record.retry')}</Button>
         </div>
       ) : phase === 'verified' ? (
-        <VerifiedScope target={target} />
+        <VerifiedScope shell={expectedShell ?? 'bash'} label={activeLabel} />
       ) : (
         <div className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.record.paste')}</p>
@@ -166,6 +294,68 @@ export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** The detected/recommended adapter and every other hookable one on this host.
+ *
+ *  Only shown once there is more than one to choose from, while detection is
+ *  still running, or when the selection turned out to be unavailable — a
+ *  one-adapter host has nothing to decide and does not get a decision to make.
+ *  An unavailable adapter is listed but not selectable: it explains itself,
+ *  rather than disappearing and leaving the operator to guess why. */
+function AdapterPicker({ choices, selectedHook, recommended, detected, onSelect }: {
+  choices: AdapterChoice[]
+  selectedHook: string | null
+  recommended: string | null
+  detected: boolean
+  onSelect: (hookId: string) => void
+}): JSX.Element {
+  const { t } = useI18n()
+  if (!detected) {
+    return <p data-testid="record-terminal-detecting" className="text-redlog-text-faint mb-2">{t('firstRun.record.detecting')}</p>
+  }
+  return (
+    <div data-testid="record-terminal-adapters" className="mb-2 space-y-1.5">
+      <p className="text-redlog-text-faint">{t('firstRun.record.adapterTitle')}</p>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('firstRun.record.adapterTitle')}>
+        {choices.map((c) => {
+          const selected = c.hookId === selectedHook
+          return (
+            <button
+              key={c.hookId}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={!c.available}
+              onClick={() => onSelect(c.hookId)}
+              data-testid={`record-terminal-adapter-${c.hookId}`}
+              data-selected={selected ? 'true' : 'false'}
+              data-available={c.available ? 'true' : 'false'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs transition-colors ${
+                selected
+                  ? 'border-redlog-accent text-redlog-text bg-redlog-elevated'
+                  : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated'
+              } ${c.available ? '' : 'opacity-60 cursor-not-allowed'}`}
+            >
+              {c.label}
+              {c.hookId === recommended && (
+                <span data-testid={`record-terminal-adapter-detected-${c.hookId}`} className="text-xs text-redlog-text-faint">
+                  {t('firstRun.record.adapterDetected')}
+                </span>
+              )}
+              {!c.available && (
+                <span className="text-xs text-amber-400">{t('firstRun.record.adapterUnavailable')}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+      {/* The hook is a file on the operator's machine. Settings ▸ 掛勾 owns
+          turning it off again, so the flow says where rather than implying the
+          choice here is one-way. */}
+      <p className="text-redlog-text-faint">{t('firstRun.record.adapterRecoverable')}</p>
     </div>
   )
 }
@@ -206,30 +396,38 @@ export function ExecutionPolicyBlocker({ blocker }: {
   )
 }
 
-/** Spec 039: "connected" is not "the session is recorded". The hook records
- *  command metadata only, so the verified state says so and names the way to
- *  keep output — `redlog-session` where the POSIX adapter provides it. */
-function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {
+/** Spec 039: "connected" is not "the session is recorded". Where the adapter
+ *  records only command metadata, the verified state says so and names the way
+ *  to keep output; where it records output by itself (zsh, spec 052), it says
+ *  that instead of borrowing the caveat this component was written for. */
+function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): JSX.Element {
   const { t } = useI18n()
-  const hasSession = !(target.kind === 'host' && target.hookId === 'shell-powershell')
+  // PowerShell has no `redlog-session` helper; its output path is `Redlog-Run`.
+  const hasSessionHelper = shell !== 'powershell'
   return (
     <div className="space-y-2">
       <p data-testid="record-terminal-verified" className="text-emerald-500 font-medium">
-        {t('firstRun.record.verified', { shell: target.label })}
+        {t('firstRun.record.verified', { shell: label })}
       </p>
       <div data-testid="record-terminal-scope" className="space-y-1">
-        <p className="text-redlog-text-dim">{t('firstRun.record.scope')}</p>
-        {hasSession ? (
-          <>
-            <p className="text-redlog-text-dim">{t('firstRun.record.sessionHint')}</p>
-            <div className="flex items-center gap-2">
-              <code data-testid="record-terminal-session-command" className="font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">redlog-session</code>
-              <CopyButton text={'redlog-session'} />
-            </div>
-            <OutputCheck />
-          </>
+        <p className="text-redlog-text-dim">
+          {shell === 'zsh' ? t('firstRun.record.scopeZsh') : t('firstRun.record.scope')}
+        </p>
+        {shell === 'powershell' ? (
+          <p className="text-redlog-text-dim">{t('firstRun.record.outputPwsh')}</p>
         ) : (
-          <p className="text-redlog-text-dim">{t('firstRun.record.outputBuiltin')}</p>
+          <>
+            <p className="text-redlog-text-dim">
+              {shell === 'zsh' ? t('firstRun.record.sessionHintSession') : t('firstRun.record.sessionHint')}
+            </p>
+            {hasSessionHelper && (
+              <div className="flex items-center gap-2">
+                <code data-testid="record-terminal-session-command" className="font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">redlog-session</code>
+                <CopyButton text={'redlog-session'} />
+              </div>
+            )}
+            <OutputCheck shell={shell} />
+          </>
         )}
       </div>
     </div>
@@ -239,8 +437,12 @@ function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {
 /** #218: prove the output path, not just the hook. The canary prints text its
  *  own command line does not contain, so an event carrying it in `stdout`
  *  means output was recorded, and the same line with no output means only
- *  the metadata was. Nothing is claimed about output that was never seen. */
-function OutputCheck(): JSX.Element {
+ *  the metadata was. Nothing is claimed about output that was never seen.
+ *
+ *  The bare command is what proves zsh's automatic relay; bash has no
+ *  printf-style relay at its prompt, so there it runs behind `redlog-run` and
+ *  the check proves the wrapper — the only output path bash has. */
+function OutputCheck({ shell }: { shell: ShellName }): JSX.Element {
   const { t } = useI18n()
   const [canary] = useState(() => outputCanary(activationNonce()))
   const [result, setResult] = useState<CanaryResult | null>(null)
@@ -252,7 +454,7 @@ function OutputCheck(): JSX.Element {
     })
   }, [canary, result?.kind])
 
-  const viaRun = `redlog-run ${canary.command}`
+  const viaRun = shell === 'bash' ? `redlog-run ${canary.command}` : canary.command
   return (
     <div data-testid="record-terminal-output-check" className="space-y-1 pt-1">
       <p className="text-redlog-text-dim">{t('firstRun.record.outputCheck')}</p>

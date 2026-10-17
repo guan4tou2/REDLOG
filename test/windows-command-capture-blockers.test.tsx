@@ -39,7 +39,7 @@ const winPreflight = (over: Partial<RuntimePreflight> = {}): RuntimePreflight =>
 
 function install(pre: RuntimePreflight): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
-    events: { query: vi.fn(async () => []), onNewBatch: () => () => {} },
+    events: { commandEvidence: vi.fn(async () => ({ builtin: false, external: false })), query: vi.fn(async () => []), onNewBatch: () => () => {} },
     runtime: { preflight: vi.fn(async () => pre), install: vi.fn() },
     hooks: { install: vi.fn(async () => ({ success: true, message: 'ok' })) },
     app: { openExternal: vi.fn(async () => {}) },

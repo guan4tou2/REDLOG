@@ -109,3 +109,14 @@ describe('capture preparation', () => {
     expect(window.redlog.app.openExternal).toHaveBeenCalledWith('https://docs.astral.sh/uv/getting-started/installation/')
   })
 })
+
+it('offers a known missing installer before attempting a dependency install', () => {
+  const pf = preflight()
+  pf.checks.find(c => c.id === 'mitmdump')!.remediationRequires = { command: 'uv', url: 'https://docs.astral.sh/uv/getting-started/installation/' }
+  draw(pf)
+  const action = screen.getByTestId('prepare-prereq-mitmdump')
+  expect(action.textContent).toContain('uv')
+  expect(screen.queryByTestId('prepare-install-mitmdump')).toBeNull()
+  fireEvent.click(action)
+  expect(window.redlog.runtime.install).not.toHaveBeenCalled()
+})
