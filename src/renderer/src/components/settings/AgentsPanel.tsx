@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { usePackAvailability } from './CapturePackGroup'
+import { isWindows } from '../../lib/platform'
 
 // Spec 049: one switch per decision.
 //
@@ -106,7 +107,7 @@ export function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, s
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath(draft); setDraft('') } }}
-          placeholder="C:\\Users\\user\\Desktop\\engagement"
+          placeholder={isWindows ? 'C:\\Users\\user\\Desktop\\engagement' : '/Users/you/engagement'}
           className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
         />
         <button
