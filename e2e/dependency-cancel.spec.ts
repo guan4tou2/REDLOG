@@ -42,6 +42,9 @@ setInterval(() => {}, 1000);
     await app.evaluate((_electron, bin) => { process.env.PATH = `${bin}:/usr/bin:/bin:/usr/sbin:/sbin` }, bin)
     await openTestProject(page, 'cancel-install')
     await resizeMainWindow(app, 800, 720)
+    // Web capture tools are no longer the first screen: the terminal comes
+    // first, and preparation opens from the web card.
+    await page.getByTestId('first-run-http-prepare').click()
     const start = page.getByTestId('prepare-install-mitmdump')
     await start.click()
     await expect(page.getByTestId('prepare-install-status-mitmdump')).toContainText('15 minutes')

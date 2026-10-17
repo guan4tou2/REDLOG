@@ -103,7 +103,12 @@ test.describe('packaged app', () => {
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {
         // Wait for the shell's own prompt: keys typed before it starts are lost.
-        if (await page.getByTestId('first-run-builtin-toggle').count()) await page.getByTestId('first-run-builtin-toggle').click()
+        // The first run keeps the built-in terminal behind a toggle; a project
+        // past it shows the terminal directly. Wait for whichever is there:
+        // counting the toggle before it has rendered skips the click.
+        const toggle = page.getByTestId('first-run-builtin-toggle')
+        await expect(toggle.or(page.locator('.xterm').first())).toBeVisible({ timeout: 30_000 })
+        if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click()
         await expect(page.locator('.xterm').first()).toContainText(/PS .*>|[$#%]\s+$/, { timeout: 30_000 })
         await page.locator('.xterm').first().click()
         await page.keyboard.type('echo redlog-ok-builtin')
