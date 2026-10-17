@@ -368,4 +368,36 @@ describe('export plan IPC contract', () => {
     const manifest = JSON.parse(fs.readFileSync(`${executed.artifactPath}.manifest.json`, 'utf8')) as { exportPlan: { request: { scrubPii: boolean } } }
     expect(manifest.exportPlan.request.scrubPii).toBe(scrubPii)
   })
+  // A JSON export embedded the whole config, including the operator's own IPs
+  // and the domains the export itself drops as personal.
+  it('JSON export carries the scope but not the operator-private configuration', () => {
+    fs.writeFileSync(path.join(dir, 'config.yaml'), [
+      'engagement:',
+      '  id: eng-1',
+      'operator:',
+      '  id: op-1',
+      '  name: Ada Operator',
+      'network:',
+      '  blacklist:',
+      '    - 203.0.113.7',
+      '  whitelist:',
+      '    - 198.51.100.9',
+      'scope:',
+      '  targets:',
+      '    - client.test',
+      '  excludeTargets:',
+      '    - admin.client.test',
+      '  personalDomains:',
+      '    - my-private-blog.test'
+    ].join('\n'))
+    addEvent('events', 'e1', 1000, { targetId: 'client.test', data: { command: 'id' } })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as { ok: true; plan: { id: string } }
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
+    const text = fs.readFileSync(executed.artifactPath, 'utf8')
+    for (const secret of ['203.0.113.7', '198.51.100.9', 'my-private-blog.test', 'Ada Operator']) expect(text).not.toContain(secret)
+    const doc = JSON.parse(text) as { config: { engagement: { id: string }; scope: { targets: string[]; excludeTargets: string[] } }; events: unknown[] }
+    expect(doc.config.engagement.id).toBe('eng-1')
+    expect(doc.config.scope).toEqual({ targets: ['client.test'], excludeTargets: ['admin.client.test'] })
+    expect(doc.events.length).toBeGreaterThan(0)
+  })
 })

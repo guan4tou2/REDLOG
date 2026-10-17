@@ -32,6 +32,7 @@ import { listExportAttachments, exportAttachmentDigest } from '../../core/export
 import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
+import { exportableConfig } from '../../core/export-config'
 
 function sliceExport(ctx: IpcContext, name: string, payload: unknown, scrubPii = false): string | null {
   const project = ctx.getActiveProject()
@@ -232,7 +233,7 @@ export function registerDataExportIpc(
         const outDir = path.join(projectDir, 'exports')
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
-        let content = JSON.stringify({ config, events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
+        let content = JSON.stringify({ config: exportableConfig(config), events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
         if (plan.request.scrubPii) content = scrubOperatorPii(content)
         fs.writeFileSync(artifactPath, content)
       } else if (plan.request.format === 'ndjson') {
