@@ -742,3 +742,51 @@ it('offers manual shell setup even when the login shell is not supported', async
   install({ rows: [], pre: preflight({ shell: null }) }); draw()
   expect(await screen.findByTestId('first-run-record-terminal')).toBeTruthy()
 })
+
+// #340: "verified earlier" is history. Whether capture is on right now is a
+// separate fact, and a paused app must not read as a recording one.
+describe('first run: verification history is not the current state (#340)', () => {
+  const withRecording = (get: () => Promise<boolean>): { push: (on: boolean) => void } => {
+    let cb: (on: boolean) => void = () => {}
+    ;(window as unknown as { redlog: { recording: unknown } }).redlog.recording = {
+      get, onChange: (f: (on: boolean) => void) => { cb = f; return () => { cb = () => {} } }
+    }
+    return { push: (on) => act(() => cb(on)) }
+  }
+
+  it('keeps the verification and says recording is paused right now', async () => {
+    install({ rows: [BUILTIN] })
+    withRecording(async () => false)
+    draw()
+    expect((await screen.findByTestId('first-run-commands-paused')).textContent).toContain('暫停')
+    expect(screen.getByTestId('first-run-commands-verified')).toBeTruthy()
+  })
+
+  it('says nothing about pause while recording is on, and follows a change', async () => {
+    install({ rows: [BUILTIN] })
+    const rec = withRecording(async () => true)
+    draw()
+    await screen.findByTestId('first-run-commands-verified')
+    expect(screen.queryByTestId('first-run-commands-paused')).toBeNull()
+    rec.push(false)
+    expect(await screen.findByTestId('first-run-commands-paused')).toBeTruthy()
+    rec.push(true)
+    await waitFor(() => expect(screen.queryByTestId('first-run-commands-paused')).toBeNull())
+  })
+
+  it('does not draw an unanswered state as paused', async () => {
+    install({ rows: [BUILTIN] })
+    withRecording(() => new Promise<boolean>(() => {}))
+    draw()
+    await screen.findByTestId('first-run-commands-verified')
+    expect(screen.queryByTestId('first-run-commands-paused')).toBeNull()
+  })
+
+  it('keeps the verification after more than 20 non-command events', async () => {
+    const noise: Ev[] = Array.from({ length: 30 }, (_, i) => ({ id: `n${i}`, timestamp: 100 + i, agentType: 'marker', data: { subtype: 'marker', text: `m${i}` } }))
+    install({ rows: [BUILTIN, ...noise] })
+    bridge.query.mockImplementation(async () => noise.slice(0, 20))
+    draw()
+    expect(await screen.findByTestId('first-run-commands-verified')).toBeTruthy()
+  })
+})

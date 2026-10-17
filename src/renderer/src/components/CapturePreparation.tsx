@@ -111,6 +111,9 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
   onLeave: () => void
 }): JSX.Element {
   const { t } = useI18n()
+  const missing = preflight ? preparationChecks(preflight) : []
+  // Only the web-traffic tool is missing: commands need nothing from this page.
+  const onlyWeb = missing.length > 0 && missing.every(c => c.id === 'mitmdump')
   return (
     <section data-testid="capture-prepare" className="w-full max-w-xl space-y-3">
       <h3 className="font-semibold text-redlog-text">{t('captureSetup.prepare')}</h3>
@@ -125,13 +128,15 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
       ) : (
         <>
           <p className="text-sm text-redlog-text-dim">{t('captureSetup.missing')}</p>
-          <ul className="space-y-2">{preparationChecks(preflight).map(check => <DependencyRow key={check.id} check={check} onRecheck={onRecheck} />)}</ul>
+          {onlyWeb && <p data-testid="capture-prepare-web-only" className="text-sm text-redlog-text">{t('captureSetup.webOnly')}</p>}
+          <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={onRecheck} />)}</ul>
         </>
       )}
       <div className="flex flex-wrap gap-3 pt-2">
         <Button level="secondary" data-testid="capture-prepare-skip" onClick={onSkip}>{t('captureSetup.skip')}</Button>
         <Button level="quiet" data-testid="first-run-later" onClick={onLeave}>{t('firstRun.core.later')}</Button>
       </div>
+      <p data-testid="capture-prepare-exits" className="text-xs text-redlog-text-faint">{t('captureSetup.exitsExplained')}</p>
     </section>
   )
 }
