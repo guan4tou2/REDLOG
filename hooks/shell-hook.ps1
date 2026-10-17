@@ -143,12 +143,22 @@ function prompt {
         $duration = [int]($entry.EndExecutionTime - $entry.StartExecutionTime).TotalSeconds
         $exitCode = if ($success) { 0 } else { if ($lastExit) { $lastExit } else { 1 } }
 
+        # WHEN each thing happened, not when this prompt drew. Both rows are
+        # sent here, after the command finished, so without the history's own
+        # times a 30-minute scan had its start row stamped at its end, and a
+        # command spooled while RedLog was closed replayed at the moment the
+        # project was opened. The POSIX adapters send `source_timestamp` for
+        # the same reason (shell-common.sh).
+        $startedAt = ([DateTimeOffset]$entry.StartExecutionTime).ToUnixTimeMilliseconds()
+        $endedAt   = ([DateTimeOffset]$entry.EndExecutionTime).ToUnixTimeMilliseconds()
         _RedLogSendEvent -Subtype 'command_start' -Command $cmd -Extra @{
             cwd = (Get-Location).Path
+            source_timestamp = $startedAt
         }
         _RedLogSendEvent -Subtype 'command_end' -Command $cmd -Extra @{
-            exit_code    = $exitCode
+            exit_code = $exitCode
             duration_sec = $duration
+            source_timestamp = $endedAt
         }
         $script:_RedLogLastId = $entry.Id
     }
