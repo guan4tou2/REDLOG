@@ -25,7 +25,7 @@ import path from 'node:path'
 import { classifyCommand, type CommandClass, type ClassOverlay } from './terminal-class'
 
 export type TerminalMode = 'auto' | 'manual'
-export type TerminalStopReason = 'operator' | 'project-switched'
+export type TerminalStopReason = 'operator' | 'project-switched' | 'hook-removed'
 
 export interface TerminalEnrollment {
   sessionId: string

@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
 import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
+import { stopOpenTerminals } from './hook-removal'
 
 export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
@@ -839,7 +840,16 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
             else writeFileSync(rcPath, after)
           }
         }
-        return { success: true, message: `${plugin.name} hook removed. Run: source ~/${rcFile}` }
+        // The rc edit only reaches shells started from now on. Terminals that
+        // are already open have the hook loaded; stop them too, or "removed"
+        // would be said while they keep recording.
+        const shell = /zsh/i.test(plugin.id) ? 'zsh' : /bash/i.test(plugin.id) ? 'bash' : null
+        const { stopped } = shell ? stopOpenTerminals(shell) : { stopped: 0 }
+        return {
+          success: true,
+          message: `${plugin.name} hook removed. New terminals will not record.` +
+            (stopped > 0 ? ` ${stopped} open terminal${stopped === 1 ? '' : 's'} stopped recording (redlog start resumes one).` : '')
+        }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }

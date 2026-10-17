@@ -1679,8 +1679,31 @@ app.whenReady().then(() => {
     mode: readTerminalMode(),
     ...mergeClassPolicy(readClassOverlay())
   }))
-  ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
-  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
+  // Installing or removing a capture hook changes what the record contains
+  // from then on, so the record says when it happened.
+  const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }): void => {
+    if (!r.success || !currentEngagementId || !currentOperatorId) return
+    try {
+      const ev = insertEvent('system', {
+        subtype: 'config_changed',
+        changed: { [`hook.${hookId}.installed`]: { from: !installed, to: installed } },
+        description: r.message
+      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+      if (ev) eventBus.publish(ev)
+    } catch { /* additive */ }
+  }
+  ipcMain.handle('hooks:install', (_e, hookId: string) => {
+    invalidateHooksCache(); invalidateHooksDetectCache()
+    const r = installHook(hookId)
+    auditHookChange(hookId, true, r)
+    return r
+  })
+  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => {
+    invalidateHooksCache(); invalidateHooksDetectCache()
+    const r = uninstallHook(hookId)
+    auditHookChange(hookId, false, r)
+    return r
+  })
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
   // with a minimal PATH, and probing before it lands reports installed tools
   // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.

@@ -6,6 +6,5 @@
   "src/core/db/operators.ts#deleteOperator": "Kept by decision in #143 (see slugifyOperatorId).",
   "src/core/raw-store.ts#readRaw": "Reserved for POST /api/ingest (docs/DESIGN-plugin-kernel.md §3): the raw store's read side and format contract. Decided 2026-09-24 to keep the store and build the reader with ingest; remove both if ingest is dropped.",
   "src/core/raw-store.ts#isRawRef": "Reserved for POST /api/ingest (see readRaw).",
-  "src/core/terminal-enrollment.ts#applyTerminalAction": "Spec 052 T017. Every transition in the state machine: mode (T032), stop/start (T031), and the project switch that stops a terminal rather than re-attributing it (T035, FR-010). Tested now because the rules only make sense beside each other; wired as each command lands.",
   "src/core/terminal-enrollment.ts#captureDecision": "Spec 052 T017. What the adapter asks before each command; its caller is the preexec routing in T020. Here now because the policy is RedLog's, not the shell's (research.md D7) — one classifier, read by every adapter."
 }
