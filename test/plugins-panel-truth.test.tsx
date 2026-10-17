@@ -144,4 +144,42 @@ describe('the plugins page shows what main has done', () => {
     expect(screen.getByRole('button', { name: 'Enable' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Disable' })).toBeNull()
   })
+  // The consent dialog said the plugin runs "in a separate process, walled off
+  // from the evidence log, signing keys, and hash chain". It is loaded into the
+  // main process with no isolation (core/plugins/types.ts says so).
+  describe('consent', () => {
+    const privileged = (id: string, over: Record<string, unknown> = {}) => ({
+      ...view(id), tier: 'privileged' as const, status: 'needs-consent', capabilities: ['events:write'], ...over
+    })
+
+    it('tells the truth about isolation before the operator trusts code', async () => {
+      api.list.mockResolvedValue([privileged('p', { source: 'bundled' })])
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const body = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
+      expect(body).toContain('main process')
+      expect(body).toContain('not isolated')
+      expect(body).toContain('evidence log')
+      expect(body).not.toMatch(/separate process|walled off/)
+    })
+
+    it('offers no consent for a third-party tailer, which is refused whatever is agreed', async () => {
+      api.list.mockResolvedValue([privileged('t', { source: 'user', report: { tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' } } })])
+      draw()
+      await screen.findByText('Plugin t')
+      expect(screen.queryByRole('button', { name: 'Review & trust' })).toBeNull()
+      expect(screen.getByTestId('plugin-results-t').textContent).toContain('not supported')
+    })
+
+    it('does not blame the manifest when a grant is refused, and shows the real reason', async () => {
+      api.list.mockResolvedValue([privileged('p', { source: 'bundled' })])
+      api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [privileged('p', { source: 'bundled' })] })
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Trust & run' }))
+      await waitFor(() => expect(toasts.plain.length).toBe(1))
+      expect(JSON.stringify(toasts.plain[0].opts)).toContain('plugin failed to load')
+      expect(JSON.stringify(toasts.plain[0].opts)).not.toContain('manifest may have changed')
+    })
+  })
 })
