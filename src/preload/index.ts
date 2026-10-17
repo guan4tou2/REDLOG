@@ -67,7 +67,8 @@ const api: RedLogAPI = {
     // A dropped File's path is only reachable here (contextIsolation); the
     // main process confirms the list with the operator before reading any.
     addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) =>
-      ipcRenderer.invoke('artifacts:addDropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean), text) as Promise<ArtifactAddResponse | null>
+      ipcRenderer.invoke('artifacts:addDropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean), text) as Promise<ArtifactAddResponse | null>,
+    reveal: (kind: 'artifact' | 'screenshot', file: string) => ipcRenderer.invoke('artifacts:reveal', kind, file) as Promise<boolean>
   },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,

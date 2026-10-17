@@ -5,7 +5,8 @@
 // never read on the renderer's word alone.
 
 import path from 'path'
-import { dialog, type IpcMain } from 'electron'
+import { dialog, shell, type IpcMain } from 'electron'
+import { resolveEvidenceFile } from '../../core/evidence-file'
 import type { IpcContext } from './types'
 import type { ProjectMeta } from '../../core/project-manager'
 import { ingestEvent } from '../../core/ingest'
@@ -51,6 +52,19 @@ const label = (value: unknown, fallback: string): string =>
   typeof value === 'string' && value.trim() ? value.slice(0, 200) : fallback
 
 export function registerArtifactsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
+  // Show an evidence file in the file manager. Reveal, never open: the file may
+  // be a sample the operator was handed, and opening runs it with whatever the
+  // OS associates. Only a file inside this project's artifacts/ or screenshots/
+  // resolves; the renderer names it, it does not choose the location.
+  ipcMain.handle('artifacts:reveal', (_e, kind: unknown, file: unknown): boolean => {
+    const proj = ctx.getActiveProject()
+    if (!proj || (kind !== 'artifact' && kind !== 'screenshot')) return false
+    const resolved = resolveEvidenceFile(getProjectDir(proj), kind, file)
+    if (!resolved) return false
+    shell.showItemInFolder(resolved)
+    return true
+  })
+
   ipcMain.handle('artifacts:add', async (_e, title?: unknown): Promise<ArtifactAddResponse | null> => {
     const proj = ctx.getActiveProject()
     const win = ctx.getMainWindow()

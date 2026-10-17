@@ -217,7 +217,7 @@ export function CommandPalette({
     out.push({
       id: 'action:addArtifact', section: 'action', icon: FilePlus,
       label: t('artifacts.add'),
-      run: () => { void addArtifactsWithFeedback(t) }
+      run: () => { void addArtifactsWithFeedback(t, onOpenEvent) }
     })
 
     const density = resolveDensity(1, storedDensity())

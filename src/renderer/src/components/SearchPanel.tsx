@@ -29,6 +29,7 @@ function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
     const eff = fold?.effective
     return `[${eff?.severity ?? d.severity}] ${eff?.title ?? d.title}`
   }
+  if (e.agentType === 'file_transfer' && d.subtype === 'artifact_added') return eventTitle(e)
   if (e.agentType === 'file_transfer') return `${d.direction}: ${d.filename || d.localPath || d.remotePath}`
   if (e.agentType === 'loot') return `Loot: ${d.type} (${d.confidence})`
   if (e.agentType === 'agent') {

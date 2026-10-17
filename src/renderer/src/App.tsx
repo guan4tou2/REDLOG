@@ -219,7 +219,7 @@ export default function App(): JSX.Element {
         if (!e.dataTransfer.files.length) return
         e.preventDefault()
         setDropping(false)
-        void addDroppedWithFeedback([...e.dataTransfer.files], t)
+        void addDroppedWithFeedback([...e.dataTransfer.files], t, openInTimeline)
       }}
     >
       {dropping && (
@@ -313,7 +313,7 @@ export default function App(): JSX.Element {
             <button
               type="button"
               data-testid="titlebar-add-file"
-              onClick={() => { void addArtifactsWithFeedback(t) }}
+              onClick={() => { void addArtifactsWithFeedback(t, openInTimeline) }}
               aria-label={t('app.evidenceFile')}
               title={t('app.evidenceFile')}
               className={`${TITLEBAR_ICON} border-transparent text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated hover:border-redlog-border focus-visible:ring-redlog-text-dim/40`}

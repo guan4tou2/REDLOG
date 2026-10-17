@@ -159,6 +159,19 @@ describeDB('ingest', () => {
     expect(system.targetId).toBeNull()
   })
 
+  it('files the operator adds by hand follow the active target; detected transfers do not', () => {
+    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+    const added = ingestMod.ingest({
+      ...base, agentType: 'file_transfer',
+      data: { subtype: 'artifact_added', source: 'operator', path: '/tmp/a-added.xml', stored: 'artifacts/aa-a-added.xml', sha256: 'aa', size: 1, mtime: 1 }
+    }).event!
+    const detected = ingestMod.ingest({
+      ...base, agentType: 'file_transfer', data: { direction: 'upload', filename: 'seen-by-watcher.bin' }
+    }).event!
+    expect(added.targetId).toBe('10.10.11.24')
+    expect(detected.targetId).toBeNull()
+  })
+
   // Spec 041 retired: there is no per-session target layer any more. A
   // terminal pane declares nothing, and neither does an external shell — what
   // host a command touched is read from the command itself, and the sequence

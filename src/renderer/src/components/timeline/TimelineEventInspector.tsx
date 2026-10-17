@@ -15,7 +15,7 @@ import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
 import { TierBadge } from '../TierBadge'
 import { ReplayCommand } from '../ReplayCommand'
-import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from '../TimelineEventDetails'
+import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail } from '../TimelineEventDetails'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
 
@@ -475,6 +475,9 @@ export function TimelineEventInspector({
       )}
       {event.agentType === 'browser' && (
         <BrowserConsoleDetail data={event.data as Record<string, unknown>} />
+      )}
+      {event.agentType === 'file_transfer' && event.data?.subtype === 'artifact_added' && (
+        <EvidenceFileDetail data={event.data as Record<string, unknown>} />
       )}
       {event.agentType === 'marker' && (
         <MarkerDetail

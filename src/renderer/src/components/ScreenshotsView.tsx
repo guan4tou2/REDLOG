@@ -240,6 +240,21 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                     {(s.data.sha256 as string).slice(0, 12)}
                   </button>
                 )}
+                {!deletedIds.has(s.id) && typeof s.data.filePath === 'string' && (
+                  <button
+                    type="button"
+                    data-testid="screenshot-reveal"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      const ok = await window.redlog.artifacts.reveal('screenshot', s.data.filePath as string).catch(() => false)
+                      if (!ok) toast(t('artifacts.revealFailed'), { type: 'warning', why: t('artifacts.revealFailedWhy') })
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    className="text-xs text-redlog-text-faint hover:text-redlog-text text-left underline-offset-2 hover:underline transition-colors"
+                  >
+                    {t('artifacts.reveal')}
+                  </button>
+                )}
               </div>
             </div>
           ))}
