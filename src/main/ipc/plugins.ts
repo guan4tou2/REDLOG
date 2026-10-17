@@ -29,6 +29,19 @@ function pluginView() {
   }))
 }
 
+/** Write a plugin state change into the open project's record, when there is
+ *  one. No open project means no chain to write to; the change still happens
+ *  (the flag is app-wide) and the next project inherits it. */
+function auditPluginChange(ctx: IpcContext, changed: Record<string, { from: unknown; to: unknown }>, description: string): void {
+  const engagementId = ctx.getCurrentEngagementId()
+  const operatorId = ctx.getCurrentOperatorId()
+  if (!engagementId || !operatorId) return
+  try {
+    const ev = insertEvent('system', { subtype: 'config_changed', changed, description }, { engagementId, operatorId })
+    if (ev) eventBus.publish(ev)
+  } catch { /* additive: the state change is not undone by a failed log */ }
+}
+
 export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('plugins:list', () => pluginView())
   // Dry run on pasted text: writes nothing, emits nothing.
@@ -57,27 +70,34 @@ export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const before = listPlugins().find((p) => p.manifest.id === id)
     setPluginEnabled(id, enabled)
     invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()
-    const engagementId = ctx.getCurrentEngagementId()
-    const operatorId = ctx.getCurrentOperatorId()
-    // No open project means no chain to write to. The state change still
-    // happens -- refusing it would be worse -- and the next project to open
-    // inherits it, which is the app-wide scope doing what it says.
-    if (engagementId && operatorId) {
-      try {
-        const ev = insertEvent('system', {
-          subtype: 'config_changed',
-          changed: { [`plugin.${id}.enabled`]: { from: before ? before.status !== 'disabled' : null, to: enabled } },
-          description: `Plugin ${enabled ? 'enabled' : 'disabled'}: ${before?.manifest.name ?? id}`
-        }, { engagementId, operatorId })
-        if (ev) eventBus.publish(ev)
-      } catch { /* additive: the state change is not undone by a failed log */ }
-    }
+    auditPluginChange(ctx, {
+      [`plugin.${id}.enabled`]: { from: before ? before.status !== 'disabled' : null, to: enabled }
+    }, `Plugin ${enabled ? 'enabled' : 'disabled'}: ${before?.manifest.name ?? id}`)
     return pluginView()
   })
+  // Trust decides whether a plugin's code runs, so the grant and the revoke
+  // are as much a part of the record as enable/disable are: a handed-over
+  // record has to be able to explain why a source started or stopped.
   ipcMain.handle('plugins:grant', (_e, id: string) => {
     const project = ctx.getActiveProject()
     const opId = project ? loadConfig(getProjectPath(project)).operator.id : 'unknown'
-    const r = grantPluginTrust(id, opId); return { ...r, plugins: pluginView() }
+    const before = listPlugins().find((p) => p.manifest.id === id)
+    const r = grantPluginTrust(id, opId)
+    if (r.ok) {
+      invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()
+      auditPluginChange(ctx, {
+        [`plugin.${id}.trusted`]: { from: false, to: true },
+        [`plugin.${id}.capabilities`]: { from: null, to: before?.manifest.capabilities ?? [] },
+        ...(before?.contentHash ? { [`plugin.${id}.content_sha256`]: { from: null, to: before.contentHash } } : {})
+      }, `Plugin trusted: ${before?.manifest.name ?? id}`)
+    }
+    return { ...r, plugins: pluginView() }
   })
-  ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
+  ipcMain.handle('plugins:revoke', (_e, id: string) => {
+    const before = listPlugins().find((p) => p.manifest.id === id)
+    revokePluginTrust(id)
+    invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()
+    auditPluginChange(ctx, { [`plugin.${id}.trusted`]: { from: true, to: false } }, `Plugin trust revoked: ${before?.manifest.name ?? id}`)
+    return pluginView()
+  })
 }

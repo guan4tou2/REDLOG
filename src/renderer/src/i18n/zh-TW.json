@@ -696,6 +696,7 @@
   "plugins.sample.overran": "這段樣本跑太久而被中斷：{{rules}}。實際擷取時這類規則會被停用。",
   "plugins.sample.builtin": "內建",
   "plugins.apiAhead": "此插件針對比目前 RedLog 更新的插件 API。只讀取看得懂的部分，較新的內容會被忽略。",
+  "plugins.results.redaction": "遮蔽規則：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.loot": "戰利品規則：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.tailerRejected": "Tailer 未執行：{{reason}}",
   "plugins.results.tailerAccepted": "Tailer 執行中",

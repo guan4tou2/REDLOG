@@ -8,11 +8,13 @@ import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manag
 import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
 import type { LoadedPlugin } from './types'
 import type { RuleRejection } from '../loot-detector'
+import type { RedactionRuleRejection } from '../redaction'
 
 /** What actually took effect from one plugin. A manifest that loads is not the
  *  same as every rule in it working; this is where the difference is kept. */
 export interface ContributionReport {
   lootPatterns?: { accepted: number; rejected: RuleRejection[] }
+  redaction?: { accepted: number; rejected: RedactionRuleRejection[] }
   tailers?: { state: 'accepted' | 'rejected'; reason?: string }
 }
 
@@ -54,7 +56,10 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     const r = registerLootPatterns(id, c.lootPatterns)
     report.lootPatterns = { accepted: r.added, rejected: r.rejected }
   }
-  if (c.redaction) registerRedactionRules(id, c.redaction)
+  if (c.redaction) {
+    const r = registerRedactionRules(id, c.redaction)
+    report.redaction = { accepted: r.accepted, rejected: r.rejected }
+  }
   if (c.commandTags?.length) registerCommandTags(id, c.commandTags)
   if (c.targetExtractors?.length) registerTargetExtractors(id, c.targetExtractors, p.source)
   if (c.eventTypes?.length) registerEventTypes(id, c.eventTypes)
