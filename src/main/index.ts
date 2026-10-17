@@ -12,7 +12,7 @@ import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, DEFAULT_CONF
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
 } from '../core/db/bookmarks'
@@ -43,6 +43,7 @@ import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals
 } from './terminal-manager'
+import { markerForOpen } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
@@ -966,6 +967,15 @@ function startProject(project: ProjectMeta): void {
   onApiProjectOpen()
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
+  // Pause lives in memory, not in the project: say in this record what it
+  // would otherwise leave unexplained (see core/recording-state-marker).
+  try {
+    const marker = markerForOpen(eventBus.paused, lastRecordingSubtype())
+    if (marker) {
+      const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, { engagementId, operatorId })
+      if (ev) eventBus.publish(ev, { bypassPause: true })
+    }
+  } catch { /* additive: a marker that fails to write must not stop the project opening */ }
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
   // anchoring, NTP sync, and the update check. Capture and the local API are

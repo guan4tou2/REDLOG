@@ -151,6 +151,16 @@ export const EVIDENCE_SQL = `
   )
 `
 
+/** The last pause/resume this project's record holds, or null if none. */
+export function lastRecordingSubtype(): string | null {
+  const row = getReadonlyDB().prepare(
+    `SELECT subtype FROM events
+     WHERE agent_type = 'system' AND subtype IN ('recording_paused', 'recording_resumed')
+     ORDER BY timestamp DESC, rowid DESC LIMIT 1`
+  ).get() as { subtype: string } | undefined
+  return row?.subtype ?? null
+}
+
 /** Historical command proof for the open project, independent of recent rows.
  * This does not assert that the source is still running or that stdout arrived. */
 export function commandEvidence(): { builtin: boolean; external: boolean } {
