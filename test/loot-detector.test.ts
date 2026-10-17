@@ -186,7 +186,7 @@ describe('LootDetector class', () => {
 
   it('plugin patterns are added and honored, then removed by unregister', () => {
     const d = new LootDetector()
-    const added = registerLootPatterns('plug-a', [
+    const { added } = registerLootPatterns('plug-a', [
       { type: 'acme_token', pattern: 'ACME-[0-9]{8}', confidence: 'high' }
     ])
     expect(added).toBe(1)
@@ -199,12 +199,13 @@ describe('LootDetector class', () => {
     expect(second.some((m) => m.type === 'acme_token')).toBe(false)
   })
 
-  it('bad plugin regex is silently skipped (count reflects only compiled patterns)', () => {
-    const added = registerLootPatterns('bad-plug', [
+  it('bad plugin regex is skipped and named (count reflects only compiled patterns)', () => {
+    const { added, rejected } = registerLootPatterns('bad-plug', [
       { type: 'broken', pattern: '[unterminated', confidence: 'low' },
       { type: 'works', pattern: 'WORKS-\\d+', confidence: 'high' }
     ])
     expect(added).toBe(1)
+    expect(rejected.map((r) => r.name)).toEqual(['broken#0'])
     const d = new LootDetector()
     const m = d.scan('event WORKS-42 done')
     expect(m.some((x) => x.type === 'works')).toBe(true)

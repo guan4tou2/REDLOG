@@ -17,6 +17,38 @@ interface PluginView {
   capabilities: string[]
   contributes: string[]
   error?: string
+  /** manifest targets a newer plugin API than this RedLog implements */
+  apiAhead?: boolean
+  report?: {
+    lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    tailers?: { state: 'accepted' | 'rejected'; reason?: string }
+  } | null
+}
+
+// What took effect, not just what the manifest declared. A manifest that
+// loads says nothing about whether each rule in it works.
+function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element | null {
+  const loot = p.report?.lootPatterns
+  const tailer = p.report?.tailers
+  const rejected = loot?.rejected ?? []
+  if (!p.apiAhead && !loot && !tailer) return null
+  return (
+    <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
+      {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
+      {loot && (
+        <p className={rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
+          {t('plugins.results.loot', { accepted: loot.accepted, rejected: rejected.length })}
+        </p>
+      )}
+      {rejected.map((r) => (
+        <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
+      ))}
+      {tailer?.state === 'rejected' && (
+        <p className="text-red-400">{t('plugins.results.tailerRejected', { reason: tailer.reason ?? '' })}</p>
+      )}
+      {tailer?.state === 'accepted' && <p className="text-redlog-text-dim">{t('plugins.results.tailerAccepted')}</p>}
+    </div>
+  )
 }
 
 // SS10: two levels, not four. This page used to hold sub-tabs for installed
@@ -251,6 +283,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                     <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
                   {p.status === 'error' && p.error && <p className="text-xs text-red-400 mt-0.5">{p.error}</p>}
+                  <ContributionResults p={p} t={t} />
                 </div>
 
                 <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
