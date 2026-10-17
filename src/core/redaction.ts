@@ -19,9 +19,33 @@ let activeRules: RedactionRules = { ...DEFAULT_RULES }
 // on disable. Merged into the effective rules at read time.
 const pluginRules = new Map<string, { denylist: string[]; allowlist: string[] }>()
 
-export function registerRedactionRules(pluginId: string, rules: { denylist?: string[]; allowlist?: string[] }): void {
-  pluginRules.set(pluginId, { denylist: rules.denylist ?? [], allowlist: rules.allowlist ?? [] })
+export interface RedactionRuleRejection { list: 'denylist' | 'allowlist'; entry: string; reason: string }
+
+/** Register a plugin's redaction entries. An entry written `/…/` is a regex;
+ *  one that does not compile used to be dropped when the rules were first read,
+ *  with nothing said, while the plugin stayed ACTIVE. It is kept out here and
+ *  named in `rejected` so the caller can report it. Plain entries (substring
+ *  matches) always compile. */
+export function registerRedactionRules(pluginId: string, rules: { denylist?: string[]; allowlist?: string[] }): { accepted: number; rejected: RedactionRuleRejection[] } {
+  const rejected: RedactionRuleRejection[] = []
+  let accepted = 0
+  const check = (list: 'denylist' | 'allowlist', entries: string[] | undefined): string[] => {
+    const kept: string[] = []
+    for (const entry of entries ?? []) {
+      if (typeof entry !== 'string' || entry === '') { rejected.push({ list, entry: String(entry), reason: 'empty entry' }); continue }
+      if (entry.startsWith('/') && entry.endsWith('/') && entry.length > 2) {
+        try { new RegExp(entry.slice(1, -1)) }
+        catch (e) { rejected.push({ list, entry, reason: (e as Error).message }); continue }
+      }
+      kept.push(entry); accepted++
+    }
+    return kept
+  }
+  const denylist = check('denylist', rules.denylist)
+  const allowlist = check('allowlist', rules.allowlist)
+  pluginRules.set(pluginId, { denylist, allowlist })
   invalidateCache()
+  return { accepted, rejected }
 }
 
 export function unregisterRedactionRules(pluginId: string): void {

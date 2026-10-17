@@ -92,3 +92,29 @@ describe('plugins page shows results', () => {
     expect(screen.queryByTestId('plugin-results-q')).toBeNull()
   })
 })
+
+describe('redaction rules in the report', () => {
+  afterEach(() => { removeContributions('red'); cleanup() })
+
+  it('names a regex entry that does not compile, and keeps the rest', () => {
+    const r = applyContributions(plugin('red', { redaction: { denylist: ['/ok[0-9]+/', '/([unclosed/', 'plain'], allowlist: ['/(/'] } }))
+    expect(r.redaction?.accepted).toBe(2)
+    expect(r.redaction?.rejected.map((x) => `${x.list}:${x.entry}`)).toEqual(['denylist:/([unclosed/', 'allowlist:/(/'])
+    expect(r.redaction?.rejected[0].reason).toMatch(/Invalid regular expression/)
+  })
+
+  it('the page lists the rejected entry', async () => {
+    const t = (k: string, v?: Record<string, string | number>): string =>
+      ((en as Record<string, string>)[k] ?? k).replace(/\{\{(\w+)\}\}/g, (_, n) => String(v?.[n] ?? ''))
+    const view = {
+      id: 'r', name: 'R', version: '1', description: '', author: '', source: 'user', tier: 'declarative',
+      status: 'active', capabilities: [], contributes: ['redaction'],
+      report: { redaction: { accepted: 2, rejected: [{ list: 'denylist', entry: '/(/', reason: 'Invalid regular expression' }] } }
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    render(<PluginsPanel t={t} />)
+    const box = await screen.findByTestId('plugin-results-r')
+    expect(box.textContent).toContain('Redaction rules: 2 accepted, 1 rejected')
+    expect(box.textContent).toContain('denylist: /(/ — Invalid regular expression')
+  })
+})

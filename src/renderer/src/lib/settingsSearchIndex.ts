@@ -240,6 +240,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   plugins: [
     'plugins.apiAhead',
     'plugins.results.loot',
+    'plugins.results.redaction',
     'plugins.results.tailerRejected',
     'plugins.results.tailerAccepted',
     'plugins.failedWhy',

@@ -22,6 +22,7 @@ interface PluginView {
   apiAhead?: boolean
   report?: {
     lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    redaction?: { accepted: number; rejected: Array<{ list: string; entry: string; reason: string }> }
     tailers?: { state: 'accepted' | 'rejected'; reason?: string }
   } | null
 }
@@ -31,8 +32,10 @@ interface PluginView {
 function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element | null {
   const loot = p.report?.lootPatterns
   const tailer = p.report?.tailers
+  const redaction = p.report?.redaction
   const rejected = loot?.rejected ?? []
-  if (!p.apiAhead && !loot && !tailer) return null
+  const redactionRejected = redaction?.rejected ?? []
+  if (!p.apiAhead && !loot && !tailer && !redaction) return null
   return (
     <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
       {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
@@ -43,6 +46,14 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
       )}
       {rejected.map((r) => (
         <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
+      ))}
+      {redaction && (
+        <p className={redactionRejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
+          {t('plugins.results.redaction', { accepted: redaction.accepted, rejected: redactionRejected.length })}
+        </p>
+      )}
+      {redactionRejected.map((r) => (
+        <p key={`${r.list}:${r.entry}`} className="text-red-400 pl-3">{r.list}: {r.entry} — {r.reason}</p>
       ))}
       {tailer?.state === 'rejected' && (
         <p className="text-red-400">{t('plugins.results.tailerRejected', { reason: tailer.reason ?? '' })}</p>
