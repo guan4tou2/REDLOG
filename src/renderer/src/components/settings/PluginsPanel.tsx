@@ -258,6 +258,9 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         {shown.map((p) => {
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
+          // A third-party tailer is refused whatever the operator agrees to
+          // (see the results line), so offering consent would only fail.
+          const cannotBeTrusted = p.source === 'user' && p.report?.tailers?.state === 'rejected'
           return (
             <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-start justify-between p-3">
@@ -301,7 +304,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                     </button>
                   )}
                   {/* privileged awaiting consent */}
-                  {needsConsent && (
+                  {needsConsent && !cannotBeTrusted && (
                     <button
                       disabled={busy === p.id}
                       onClick={() => setConfirmGrant(p)}
