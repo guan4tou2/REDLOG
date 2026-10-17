@@ -848,7 +848,10 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         return {
           success: true,
           message: `${plugin.name} hook removed. New terminals will not record.` +
-            (stopped > 0 ? ` ${stopped} open terminal${stopped === 1 ? '' : 's'} stopped recording (redlog start resumes one).` : '')
+            (stopped > 0 ? ` ${stopped} open terminal${stopped === 1 ? '' : 's'} stopped recording (redlog start resumes one).` : '') +
+            // The bash adapter keeps no per-terminal state, so there is nothing
+            // to stop from outside: say so rather than imply it is handled.
+            (shell === 'bash' ? ' Bash terminals that are already open keep recording until you close them.' : '')
         }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
