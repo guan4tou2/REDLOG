@@ -455,6 +455,10 @@ describe('first run: HTTP(S) card', () => {
     // start. The CA link only folds them away.
     expect(screen.getByTestId('first-run-http-proxy').textContent).toContain('127.0.0.1:8080')
     expect(screen.getByTestId('first-run-http-own-browser').textContent).toContain('redlog.verify.invalid')
+    // …and they read 1, 2, 3 down the card: proxy, then the CA, then the check.
+    const before = (a: HTMLElement, b: HTMLElement): boolean => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(before(screen.getByTestId('first-run-http-proxy'), screen.getByTestId('first-run-http-ca'))).toBe(true)
+    expect(before(screen.getByTestId('first-run-http-ca'), screen.getByTestId('first-run-http-own-browser'))).toBe(true)
     expect(card.textContent).toContain('/home/op/.mitmproxy/mitmproxy-ca-cert.pem')
     fireEvent.click(screen.getByText('HTTPS 憑證'))
     expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
