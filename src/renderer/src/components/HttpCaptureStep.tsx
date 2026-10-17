@@ -265,9 +265,10 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
-          {/* The default route, as Burp does it: a listener the operator points
-              their own browser at, a CA they trust once, and a check. The
-              browser RedLog launches is the alternative, not the plan. */}
+          {/* The default route, as Burp does it, in the order the operator does
+              it: a listener to point their own browser at (1), a CA to trust
+              once (2), and a check (3). The browser RedLog launches is the
+              alternative, not the plan. */}
           <div data-testid="first-run-http-proxy" className="space-y-0.5">
             <p className="text-redlog-text-dim">{t('firstRun.http.proxyLead')}</p>
             <div className="flex flex-wrap items-center gap-2">
@@ -276,6 +277,61 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
             </div>
             <p className="text-redlog-text-faint">{t('firstRun.http.proxyHint')}</p>
           </div>
+          {status.caPath && (
+            <div>
+              {status.certReady !== false && status.caFingerprint && (
+                <p data-testid="first-run-http-ca-download" className="text-redlog-text-dim">{t('firstRun.http.caDownload')}</p>
+              )}
+              <button onClick={() => setShowCa((v) => !v)} className="text-redlog-text-faint underline hover:text-redlog-text">
+                {t('firstRun.http.caLink')}
+              </button>
+              {showCa && (
+                <div data-testid="first-run-http-ca" className="mt-1 space-y-1.5">
+                  <p className="font-mono text-redlog-text-faint break-all">
+                    {status.certReady === false
+                      ? t('httpCapture.caMissing', { path: status.caPath })
+                      : t('httpCapture.caReady', { path: status.caPath })}
+                  </p>
+                  {status.caFingerprint && (
+                    <p data-testid="first-run-http-ca-fingerprint" className="font-mono text-redlog-text-faint break-all">
+                      SHA-256 {status.caFingerprint.sha256}
+                    </p>
+                  )}
+                  {/* Until this CA is trusted, a client that checks certificates
+                      — curl, a scanner, an implant, and now the operator's own
+                      browser — refuses the connection or is not proxied at all,
+                      and the operator reads an HTTP-only timeline as "the
+                      target used no TLS". Trusting a root CA is a change to the
+                      machine, so it is typed into RedLog's terminal for the
+                      operator to read and run, and the command that undoes it
+                      — this CA, by fingerprint — is shown beside it. */}
+                  {status.certReady !== false && status.caFingerprint && (
+                    <>
+                      <CaCommand
+                        label={t('httpCapture.caTrust')}
+                        command={caTrustCommand(status.caPath, status.caFingerprint, os)}
+                        t={t}
+                      />
+                      <CaCommand
+                        label={t('httpCapture.caUntrust')}
+                        command={caUntrustCommand(status.caPath, status.caFingerprint, os)}
+                        t={t}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {!verified && (
+            <div data-testid="first-run-http-own-browser" className="space-y-0.5">
+              <p className="text-redlog-text-dim">{t('firstRun.http.verifyOwn')}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text break-all">{verifyUrl('https', attempt.nonce)}</code>
+                <CopyButton text={verifyUrl('https', attempt.nonce)} />
+              </div>
+            </div>
+          )}
           <ul data-testid="first-run-http-checks" className="space-y-1">
             <VerifyRow
               label="HTTPS"
@@ -296,15 +352,6 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
               </ul>
             </div>
           )}
-          {!verified && (
-            <div data-testid="first-run-http-own-browser" className="space-y-0.5">
-              <p className="text-redlog-text-dim">{t('firstRun.http.verifyOwn')}</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text break-all">{verifyUrl('https', attempt.nonce)}</code>
-                <CopyButton text={verifyUrl('https', attempt.nonce)} />
-              </div>
-            </div>
-          )}
           <div className="flex flex-wrap gap-2">
             <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
               {t('firstRun.http.verifyInBrowser')}
@@ -318,53 +365,6 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyFromTool')}</p>
               <CaCommand label="HTTPS" command={verifyCommand('https', attempt.nonce, status.url, os)} t={t} />
               <p className="text-redlog-text-faint">{t('firstRun.http.verifyNoInsecure')}</p>
-            </div>
-          )}
-          {status.caPath && (
-            <div>
-              <button onClick={() => setShowCa((v) => !v)} className="text-redlog-text-faint underline hover:text-redlog-text">
-                {t('firstRun.http.caLink')}
-              </button>
-              {showCa && (
-                <div data-testid="first-run-http-ca" className="mt-1 space-y-1.5">
-                  <p className="font-mono text-redlog-text-faint break-all">
-                    {status.certReady === false
-                      ? t('httpCapture.caMissing', { path: status.caPath })
-                      : t('httpCapture.caReady', { path: status.caPath })}
-                  </p>
-                  {status.caFingerprint && (
-                    <p data-testid="first-run-http-ca-fingerprint" className="font-mono text-redlog-text-faint break-all">
-                      SHA-256 {status.caFingerprint.sha256}
-                    </p>
-                  )}
-                  {/* Without this, HTTPS capture covers only the browser
-                      RedLog launches, which is told to ignore certificate
-                      errors. Every other tool on the machine — curl, a
-                      scanner, an implant — refuses the connection or is not
-                      proxied at all, and the operator reads an HTTP-only
-                      timeline as "the target used no TLS". Trusting a root CA
-                      is a change to the machine, so it is typed into RedLog's
-                      terminal for the operator to read and run, and the
-                      command that undoes it — this CA, by fingerprint — is
-                      shown beside it. */}
-                  {status.certReady !== false && status.caFingerprint && (
-                    <>
-                      <p className="text-redlog-text-dim">{t('httpCapture.caTrustWhy')}</p>
-                      <p data-testid="first-run-http-ca-download" className="text-redlog-text-faint">{t('firstRun.http.caDownload')}</p>
-                      <CaCommand
-                        label={t('httpCapture.caTrust')}
-                        command={caTrustCommand(status.caPath, status.caFingerprint, os)}
-                        t={t}
-                      />
-                      <CaCommand
-                        label={t('httpCapture.caUntrust')}
-                        command={caUntrustCommand(status.caPath, status.caFingerprint, os)}
-                        t={t}
-                      />
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>

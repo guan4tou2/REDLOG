@@ -65,7 +65,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
               />
               <span className="text-xs text-redlog-text">{a.name}</span>
             </label>
-            <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
+            <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[240px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
               <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">&times;</button>
             )}

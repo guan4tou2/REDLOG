@@ -29,6 +29,9 @@ describe('settings: removing the CA trust', () => {
     // (Linux uses the first 16 hex digits in the file name it created).
     expect(box.textContent).toMatch(new RegExp(`${FP.sha1}|redlog-mitmproxy-${'aa'.repeat(8)}`))
     expect(box.textContent).toContain('httpCapture.caUntrust')
+    // The command that trusts it is there too: the settings page is the only
+    // place left to find it once the first-run card is gone.
+    expect(box.textContent).toContain('httpCapture.caTrust')
   })
 
   it('shows nothing without a fingerprint: RedLog does not offer to remove a CA it cannot identify', async () => {
