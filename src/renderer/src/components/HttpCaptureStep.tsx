@@ -117,10 +117,12 @@ function VerifyRow({ label, report, caveat, rejected, testId, t }: {
   )
 }
 
-export function HttpCaptureStep({ onVerified, onPrepare }: {
+export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   /** Current HTTPS proof, including invalidation after restart or retry. */
   onVerified?: (verified: boolean) => void
   onPrepare: () => void
+  /** Recording is paused right now: no check can pass, so a timed-out check says so. */
+  paused?: boolean
 }): JSX.Element {
   const { t } = useI18n()
   const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
@@ -276,7 +278,7 @@ export function HttpCaptureStep({ onVerified, onPrepare }: {
             <div data-testid="first-run-http-timeout" className="space-y-1">
               <p className="text-redlog-text">{t('firstRun.http.timeoutTitle')}</p>
               <ul className="list-disc pl-4 text-redlog-text-dim space-y-0.5">
-                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals, rejected: attempt.rejectedAt !== null }).map((r) => (
+                {httpTimeoutReasons({ certReady: status.certReady, routeTerminals, rejected: attempt.rejectedAt !== null, paused }).map((r) => (
                   <li key={r}>{t(`firstRun.http.reason.${r}`)}</li>
                 ))}
               </ul>

@@ -302,7 +302,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
             )}
           </section>
 
-          <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} />
+          <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} paused={recordingOn === false} />
 
           <div data-testid="first-run-core-footer" className="text-xs space-y-1.5">
             {commands !== 'none' && (

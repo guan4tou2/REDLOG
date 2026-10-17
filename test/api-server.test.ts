@@ -176,6 +176,25 @@ describeDB('api-server', () => {
     expect(getEventCount()).toBe(before)
   })
 
+  // A check that passes while recording is paused would light "verified" for a
+  // path whose traffic is being dropped.
+  it('does not count a capture check while recording is paused', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const got: unknown[] = []
+    api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', httpVerifySink: (r) => got.push(r) })
+    const post = (): Promise<Response> =>
+      fetch(`${base}/api/http-verify`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ scheme: 'https', nonce: 'rv-abcdefgh1234' }) })
+    eventBus.pause('ui')
+    try {
+      const r = await post()
+      expect(r.status).toBe(200)
+      expect(await r.json()).toMatchObject({ ok: true, skipped: 'recording paused' })
+      expect(got).toEqual([])
+    } finally { eventBus.resume('ui') }
+    await post()
+    expect(got).toHaveLength(1)
+  })
+
   it('serves /api/health without auth', async () => {
     const r = await fetch(`${base}/api/health`)
     expect(r.status).toBe(200)

@@ -677,6 +677,17 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
     expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
   })
+
+  it('names a paused recording first when the check times out, since no check can pass then', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install({ proxy: { ...RUNNING } })
+    ;(window as unknown as { redlog: { recording: unknown } }).redlog.recording = { get: async () => false, onChange: () => () => {} }
+    draw()
+    await screen.findByText('127.0.0.1:8080')
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
+    const why = await screen.findByTestId('first-run-http-timeout')
+    expect(why.querySelector('li')?.textContent).toContain('錄製已暫停')
+  })
 })
 
 

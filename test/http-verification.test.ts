@@ -114,6 +114,13 @@ describe('what the addon reports', () => {
   })
 })
 
+describe('httpTimeoutReasons when recording is paused', () => {
+  it('names the pause first, since nothing can verify until it is resumed', () => {
+    expect(httpTimeoutReasons({ certReady: true, routeTerminals: false, paused: true })[0]).toBe('paused')
+    expect(httpTimeoutReasons({ certReady: true, routeTerminals: false })).not.toContain('paused')
+  })
+})
+
 describe('httpTimeoutReasons', () => {
   it('always names the browser; the CA only when it is not ready; terminals by the routing switch', () => {
     expect(httpTimeoutReasons({ certReady: true, routeTerminals: false })).toEqual(['browser', 'terminalsOff'])
