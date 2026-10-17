@@ -73,7 +73,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserE
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
-import { whoHoldsPort } from './services/port-holder'
+import { whoHoldsPort, reclaimOrphanProxy } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
@@ -196,7 +196,25 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   // running or starting; this probe just ran first and failed before reaching
   // it.
   if (!proxyAlreadyOn(current, endpoint)) {
-    const holder = await whoHoldsPort(endpoint)
+    let holder = await whoHoldsPort(endpoint)
+    // The holder may be RedLog's own mitmdump left behind by a force-quit or
+    // crash. That one is stopped, and the record says so; any other holder
+    // keeps the message below.
+    if (holder) {
+      const reclaimed = await reclaimOrphanProxy(endpoint)
+      if (reclaimed) {
+        if (currentEngagementId && currentOperatorId) {
+          ingestEvent('system', {
+            subtype: 'http_proxy_orphan_reclaimed',
+            source: 'managed-http-proxy',
+            proxy: `${endpoint.host}:${endpoint.port}`,
+            pid: reclaimed.pid,
+            description: `Stopped a mitmdump left running by an earlier RedLog (PID ${reclaimed.pid}) that held ${endpoint.host}:${endpoint.port}`
+          }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+        }
+        holder = await whoHoldsPort(endpoint)
+      }
+    }
     if (holder) {
       // The event was already written here; what was missing is the status.
       // An operator reading "stopped" has no reason to look for an event.
