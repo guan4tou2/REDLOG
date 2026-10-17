@@ -173,6 +173,10 @@ function Toggle({ on, setOn, label, warn }: {
   )
 }
 
+/** Codes the export IPC returns that mean something specific to the operator;
+ *  anything else is shown as the raw message alone. */
+const KNOWN_RUN_ERRORS: ReadonlySet<string> = new Set(['source-unavailable', 'policy-changed'])
+
 export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
   const narrow = useNarrowViewport()
@@ -459,6 +463,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     {runError && (
                       <div data-testid="export-run-error" role="alert" className="mx-3 mt-2 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
                         <div>{t('export.runFailed')}</div>
+                        {KNOWN_RUN_ERRORS.has(runError) && <div data-testid="export-run-error-meaning" className="mt-1">{t(`export.error.${runError}`)}</div>}
                         <div className="mt-1 break-all font-mono text-redlog-text-faint">{runError}</div>
                         <button type="button" onClick={() => void retryRun()} className="mt-2 text-red-300 underline hover:text-red-200">
                           {t('export.retryResolve')}
