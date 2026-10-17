@@ -82,6 +82,8 @@ interface ResolvedExportPlan {
     attachmentsUnattributed: number
     attachmentsExcludedByOperator: number
     unsupported: number
+    truncatedOutputs?: number
+    pauseWindows?: number
   }
   attachments: ExportAttachmentRow[]
 }

@@ -1,5 +1,5 @@
 import { loadPlugins } from './loader'
-import { applyContributions, removeContributions } from './contributions'
+import { applyContributions, removeContributions, tailerUnsupportedReason } from './contributions'
 import { grant, revoke } from './trust'
 import { setDisabled } from './state'
 import { getEventTypes } from '../event-registry'
@@ -71,6 +71,9 @@ export function grantPluginTrust(pluginId: string, grantedBy?: string): { ok: bo
   if (!p) return { ok: false, error: 'plugin not found' }
   if (p.tier !== 'privileged') return { ok: false, error: 'plugin requests no privileged capabilities' }
   if (p.status === 'error') return { ok: false, error: p.error ?? 'plugin failed to load' }
+  // Consent cannot make an unsupported source work, and must not look as if it did.
+  const unsupported = tailerUnsupportedReason(p)
+  if (unsupported) return { ok: false, error: unsupported }
   grant(pluginId, p.contentHash, (p.manifest.capabilities ?? []) as Capability[], grantedBy)
   reloadPlugins()
   return { ok: true }
