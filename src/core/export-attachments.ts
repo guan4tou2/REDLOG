@@ -49,21 +49,65 @@ export interface ExportAttachment {
   status: ExportAttachmentStatus
   /** terminal or session the file came from, when an event says so */
   source?: string
+  /** A cast is append-only and a live terminal keeps writing to it. The
+   *  preview fixes how much of it is being approved: the bytes up to its last
+   *  complete line. `bytes` is this value too. The digest covers that prefix
+   *  and the bundle copies exactly that prefix, so output written after the
+   *  preview neither blocks the export nor leaves with it unseen. */
+  frozenBytes?: number
+}
+
+/** Length of the longest prefix of `file` (at most `size` bytes) that ends on a
+ *  newline. A file with no newline at all is not a cast being appended to, so
+ *  it is frozen whole, as before. Reads backwards from `size`, so a large cast
+ *  costs one small read, not a scan. */
+export function completeLinePrefix(file: string, size: number): number {
+  if (size <= 0) return 0
+  const fd = fs.openSync(file, 'r')
+  try {
+    const buf = Buffer.allocUnsafe(Math.min(64 * 1024, size))
+    let end = size
+    while (end > 0) {
+      const start = Math.max(0, end - buf.length)
+      const n = fs.readSync(fd, buf, 0, end - start, start)
+      const at = buf.subarray(0, n).lastIndexOf(0x0a)
+      if (at >= 0) return start + at + 1
+      end = start
+    }
+    return size
+  } finally { fs.closeSync(fd) }
+}
+
+/** Carry the approved preview's frozen sizes onto a fresh listing, so the
+ *  digest is recomputed over the same prefixes the operator was shown. */
+export function withFrozenSizes(current: readonly ExportAttachment[], approved: readonly ExportAttachment[]): ExportAttachment[] {
+  const frozen = new Map(approved.filter((a) => a.frozenBytes !== undefined).map((a) => [a.id, a.frozenBytes as number]))
+  return current.map((a) => {
+    const { frozenBytes: _drop, ...rest } = a
+    void _drop
+    return frozen.has(a.id) ? { ...rest, frozenBytes: frozen.get(a.id) as number } : rest
+  })
 }
 
 /** Freeze the included files, not just their count/size. An equal-size edit
- * or a same-count replacement must invalidate the operator's preview. */
+ * or a same-count replacement must invalidate the operator's preview. A file
+ * with a frozen size is hashed over that prefix only, and a file now shorter
+ * than its prefix hashes differently, so a rewritten cast still refuses. */
 export function exportAttachmentDigest(projectDir: string, attachments: readonly ExportAttachment[]): string {
   const digest = crypto.createHash('sha256')
   const buffer = Buffer.allocUnsafe(64 * 1024)
   for (const attachment of [...attachments].filter(item => item.status === 'included').sort((a, b) => a.id.localeCompare(b.id))) {
     const fd = fs.openSync(path.join(projectDir, attachment.id), 'r')
     const hash = crypto.createHash('sha256')
+    let total = 0
     try {
       let bytes: number
-      while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes))
+      const cap = attachment.frozenBytes ?? Infinity
+      while (total < cap && (bytes = fs.readSync(fd, buffer, 0, Math.min(buffer.length, cap - total), null)) > 0) {
+        hash.update(buffer.subarray(0, bytes)); total += bytes
+      }
     } finally { fs.closeSync(fd) }
-    digest.update(JSON.stringify([attachment.id, hash.digest('hex')]))
+    digest.update(JSON.stringify([attachment.id, hash.digest('hex'), total]))
   }
   return digest.digest('hex')
 }
@@ -152,13 +196,14 @@ export function listExportAttachments(
   const castsDir = path.join(projectDir, 'casts')
   if (fs.existsSync(castsDir)) {
     for (const name of fs.readdirSync(castsDir)) {
-      const bytes = sizeOf(path.join(castsDir, name))
-      if (bytes === null) continue
+      const size = sizeOf(path.join(castsDir, name))
+      if (size === null) continue
+      const bytes = completeLinePrefix(path.join(castsDir, name), size)
       const id = `casts/${name}`
       const targets = castTargets.get(name) ?? new Set<string>()
       const source = castSource.get(name)
       out.push({
-        id, kind: 'cast', bytes, targets: [...targets].sort(), attribution: attribution(targets),
+        id, kind: 'cast', bytes, frozenBytes: bytes, targets: [...targets].sort(), attribution: attribution(targets),
         // Never excluded by scope: RedLog does not trim a recording, so an
         // out-of-scope command inside it stays unless the operator drops it.
         status: status(id, 'included'),

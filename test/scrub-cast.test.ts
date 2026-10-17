@@ -87,3 +87,26 @@ describe('scrubCast', () => {
     expect(result).toContain('[SCRUBBED]')
   })
 })
+
+describe('scrubCast limit', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scrub-limit-'))
+  const body = '{"version":2,"env":{"HOME":"/Users/guantou"}}\n[0.1,"o","a /Users/guantou b"]\n[0.2,"o","later"]\n'
+  const cut = body.indexOf('[0.2')
+
+  it('copies only the leading bytes, with and without scrubbing', () => {
+    const src = path.join(tmp, 's.cast'); fs.writeFileSync(src, body)
+    const plain = path.join(tmp, 'plain.cast'); scrubCast(src, plain, [], undefined, cut)
+    expect(fs.readFileSync(plain, 'utf8')).toBe(body.slice(0, cut))
+    const scrubbed = path.join(tmp, 'scrubbed.cast'); scrubCast(src, scrubbed, [[/\/Users\/guantou/g, '[HOME]']], 16, cut)
+    const out = fs.readFileSync(scrubbed, 'utf8')
+    expect(out).not.toContain('later')
+    expect(out).not.toContain('guantou')
+    expect(out.endsWith('b"]\n')).toBe(true)
+  })
+
+  it('a limit past the end changes nothing', () => {
+    const src = path.join(tmp, 't.cast'); fs.writeFileSync(src, body)
+    const dst = path.join(tmp, 'full.cast'); scrubCast(src, dst, [], undefined, body.length + 100)
+    expect(fs.readFileSync(dst, 'utf8')).toBe(body)
+  })
+})
