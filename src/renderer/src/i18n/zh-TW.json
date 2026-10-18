@@ -1230,7 +1230,7 @@
   "loot.noMatchesReason": "目前的類型篩選或去重把所有命中都藏起來了。紀錄本身沒有少任何一筆。",
   "loot.clearFilter": "清除篩選",
   "settings.hookDesc.shell-zsh": "擷取 zsh 的每一道指令，含結束碼與耗時",
-  "settings.hookDesc.shell-bash": "透過 preexec / precmd hook 擷取 bash 的每一道指令",
+  "settings.hookDesc.shell-bash": "透過 DEBUG trap / PROMPT_COMMAND 擷取 bash 的每一道指令與其輸出",
   "settings.hookDesc.codex": "包住 Codex 的 shell，記下代理執行的指令",
   "settings.hookDesc.mitmproxy": "透過 mitmproxy addon 擷取 HTTP 與 DNS 流量",
   "settings.hookDesc.shell-powershell": "透過 prompt hook 擷取 PowerShell 指令",

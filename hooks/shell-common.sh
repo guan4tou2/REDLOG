@@ -520,7 +520,7 @@ _redlog_announce_shell() {
   echo "[redlog] shell hook active${where} — ${what} will be recorded"
   # Said at startup because it is the one thing an operator cannot discover by
   # looking: everything else about this adapter is visible in the timeline.
-  if [[ "${_REDLOG_ADAPTER_SHELL:-}" == "zsh" ]]; then
+  if [[ "${_REDLOG_ADAPTER_SHELL:-}" == "zsh" || "${_REDLOG_ADAPTER_SHELL:-}" == "bash" ]]; then
     echo "[redlog] redlog status  ·  redlog stop"
   fi
 }
