@@ -5,6 +5,9 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
+  On by default, so nothing changes unless you turn it off; off keeps it hidden
+  until you open it from the status bar or the menu bar icon.
 - Bash records what a command prints, not only the command and its exit status.
   The adapter does what the zsh adapter does in `preexec`, in bash's DEBUG trap:
   stdout and stderr go through the same per-command relay for the length of the

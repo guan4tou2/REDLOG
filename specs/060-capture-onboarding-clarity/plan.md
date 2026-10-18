@@ -31,7 +31,7 @@ pieces, one PR each:
 **3a HUD has a switch, on by default (FR-014 as amended).** Today the HUD
 opens on every project start and nothing stores a choice. Keep it on by
 default; add `overlay.autoShow` (default true) to config and a switch on the HUD
-settings page. `startProject` creates the overlay only when it is true. The
+settings page. `startProject` still creates the window (the toggle, tray and IPC handlers need one) but creates it hidden when the switch is off. The
 in-HUD toggle and the tray stay transient (they hide for the session); the
 settings switch is the persisted choice. No behaviour change for anyone who
 leaves it on. spec.md US1.1 and FR-014 were amended to match.
