@@ -5,8 +5,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import TranscriptView from '../src/renderer/src/components/TranscriptView'
 
 // The transcript reads newest first: what just happened is what is looked for.
-// Blocks are still built oldest first, and the Markdown a person pastes into a
-// document still reads forward.
+// Blocks are still built oldest first; the copied Markdown follows the list on
+// screen, newest first.
 
 vi.mock('../src/renderer/src/lib/FilterContext', () => ({
   useSharedFilter: () => ({ filter: { targetId: null, agentType: null, timeRange: null, inScopeOnly: false } }),
@@ -61,14 +61,14 @@ describe('Transcript order', () => {
     expect(newestRow.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('still copies the Markdown oldest first, like a document', async () => {
+  it('copies the Markdown in the order shown, newest first', async () => {
     install(false)
     render(<TranscriptView />)
     await screen.findByText('$ first')
     fireEvent.click(screen.getByRole('button', { name: 'transcript.copyMd' }))
     await waitFor(() => expect(clipboardWrite).toHaveBeenCalled())
     const md = clipboardWrite.mock.calls[0][0] as string
-    expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'))
-    expect(md.indexOf('second')).toBeLessThan(md.indexOf('third'))
+    expect(md.indexOf('third')).toBeLessThan(md.indexOf('second'))
+    expect(md.indexOf('second')).toBeLessThan(md.indexOf('first'))
   })
 })

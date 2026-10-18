@@ -541,7 +541,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const copyAsMarkdown = useCallback(async () => {
     // The one report-adjacent thing RedLog can offer without becoming a
     // reporting tool: a verbatim transcript, not an assessment.
-    const text = blocksToMarkdown(shown, t, {
+    // Same order as the list on screen: what you see is what you paste.
+    const text = blocksToMarkdown(displayed, t, {
       clipAt: MAX_INLINE,
       partialNote: hasMore ? t('transcript.partialMarkdown') : undefined,
       selection: pickedOnly ? t('transcript.selectionPicked') : undefined
@@ -554,7 +555,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
         why: t('transcript.copyFailedWhy')
       })
     }
-  }, [hasMore, pickedOnly, shown, t])
+  }, [hasMore, pickedOnly, displayed, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
 
