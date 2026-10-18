@@ -42,14 +42,14 @@ const api = (): { base: string; token: string } => ({
  *  on the card's text that names neither. The first run of this file lost a
  *  round to exactly that.
  */
-const postCommand = async (source: string, command: string): Promise<void> => {
+const postCommand = async (source: string, command: string, extra: Record<string, unknown> = {}): Promise<void> => {
   const { base, token } = api()
   const res = await fetch(`${base}/api/events/seed`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({
       agent_type: 'shell',
-      data: { subtype: 'command_end', command, exit_code: 0, cwd: '/root', source }
+      data: { subtype: 'command_end', command, exit_code: 0, cwd: '/root', source, ...extra }
     })
   })
   expect(res.status, `seeding "${command}" failed: ${await res.text()}`).toBeLessThan(300)
@@ -157,7 +157,9 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     // A command with nothing in it to detect. `nmap -sV 10.0.0.1` would send
     // target extraction and a possible scope violation down the same path,
     // and this test is about one field: `source`.
-    await postCommand('auto-relay', 'echo from-my-own-terminal')
+    // With its output: "is included" is said only once an output has been
+    // recorded (Spec 060 FR-003), and a bare command says so instead.
+    await postCommand('auto-relay', 'echo from-my-own-terminal', { output_disposition: 'captured', stdout: 'from-my-own-terminal\n' })
     // The payload, before the text. `postCommand` has already proved the row
     // is in the record; this proves main computed it; the text assertion
     // below then proves the card was told.

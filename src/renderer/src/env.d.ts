@@ -523,6 +523,8 @@ interface CaptureSourceInfo {
    *  has. An install is finished when this is set, not when a file was
    *  copied. */
   ownShellLastEventAt?: number | null
+  /** `terminal` only: when one of them last arrived with its output captured. */
+  ownShellOutputAt?: number | null
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */

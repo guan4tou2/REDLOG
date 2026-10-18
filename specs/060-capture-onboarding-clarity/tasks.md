@@ -11,7 +11,7 @@
 - [x] T008 Electron journey: e2e/export-preview and filtered-export pass (5 tests). Capture health has no e2e of its own; covered by unit tests.
 
 ## Slice 2
-- [ ] T010 Terminal row: waiting / command received / output received, with time and source (FR-003, FR-007).
+- [x] T010 Terminal row: waiting / command received / output received, with time (FR-003). `ownShellOutputAt` comes from own-shell `command_end` with `output_disposition: captured`; the source is the installed shell filter from slice 1.
 
 ## Slice 3
 - [ ] T020 Plan review, then setup re-entry, platform ordering, HUD (FR-001/002/004/005/010/014).

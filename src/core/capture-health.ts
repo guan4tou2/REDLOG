@@ -99,6 +99,11 @@ export interface CaptureSource {
    *  landed. Until then the card says so, rather than reporting on its own
    *  setup flow. */
   ownShellLastEventAt?: number | null
+  /** …and when one of them last arrived WITH its output. A command alone proves
+   *  the adapter loaded and the transport works; it does not prove output is
+   *  being recorded (Spec 060 FR-003). Null when none has, or every one was
+   *  interactive, redirected or not captured. */
+  ownShellOutputAt?: number | null
 }
 
 export interface CaptureHealth {
@@ -501,12 +506,14 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const installedShellNames = SHELL_HOOK_IDS
     .filter((id) => hookInstalled(id) === true)
     .map((id) => id.replace(/^shell-/, ''))
-  const ownShellLast = lastEventFor(
-    `agent_type = 'shell' AND subtype IN ('command_start','command_end')
+  const ownShellWhere = `agent_type = 'shell'
      AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
-     AND (json_extract(data,'$.shell') IS NULL OR json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"}))`,
-    installedShellNames
-  )
+     AND (json_extract(data,'$.shell') IS NULL OR json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"}))`
+  const ownShellLast = lastEventFor(
+    `${ownShellWhere} AND subtype IN ('command_start','command_end')`, installedShellNames)
+  const ownShellOutput = lastEventFor(
+    `${ownShellWhere} AND subtype = 'command_end'
+     AND json_extract(data,'$.output_disposition') = 'captured'`, installedShellNames)
   // Which concrete hook id an Install button should act on. Prefer whichever
   // is already known to the detector for this platform.
   const shellHookId = hooks.find((h) => h.id === (process.platform === 'win32' ? 'shell-powershell' : 'shell-zsh'))?.id
@@ -582,7 +589,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // that from reading as "terminal capture is missing" when RedLog's own
     // panes are recording perfectly well without it.
     { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
-      ...enrolledTerminals(), ownShellLastEventAt: ownShellLast },
+      ...enrolledTerminals(), ownShellLastEventAt: ownShellLast, ownShellOutputAt: ownShellOutput },
     mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
