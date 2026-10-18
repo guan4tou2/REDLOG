@@ -193,7 +193,13 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
       return `agent: ${sub}`
     }
     case 'system':
-      if (d.subtype === 'scope_violation') return t('eventTitle.scopeViolation', { target: String(d.target || d.command || '') })
+      if (d.subtype === 'scope_violation') {
+        // A hit that landed inside the scope is stored under the same subtype
+        // so adherence can be counted; it is a tally, not a violation, and
+        // must not read as one.
+        const key = d.distance === 'in_scope' ? 'eventTitle.scopeInScope' : 'eventTitle.scopeViolation'
+        return t(key, { target: String(d.target || d.command || '') })
+      }
       if (d.subtype === 'ip_transition') return `⇋ ${d.description || t('eventTitle.ipTransition')}`
       if (d.subtype === 'opsec_state_changed') return t('eventTitle.opsecChanged', { description: String(d.description || t('eventTitle.opsecChangedDefault')) })
       if (d.subtype === 'recording_paused') return t('eventTitle.recordingPaused')

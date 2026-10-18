@@ -36,7 +36,13 @@ export default function AboutPage({ t }: {
               type="checkbox"
               data-testid="debug-log-toggle"
               checked={debug.enabled}
-              onChange={(e) => void window.redlog.debug.set(e.target.checked).then(setDebug)}
+              onChange={(e) => {
+                // Show the choice at once, then take main's word for it: it
+                // is the one that owns the flag file.
+                const on = e.target.checked
+                setDebug({ ...debug, enabled: on })
+                void window.redlog.debug.set(on).then(setDebug, () => window.redlog.debug.status().then(setDebug))
+              }}
               className="accent-red-600"
             />
             <span className="text-xs text-redlog-text">{t('settings.debugLogToggle')}</span>

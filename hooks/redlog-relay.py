@@ -37,6 +37,7 @@ relay's status instead would make every recorded failure a lie.
 Standard library only, and no third-party anything: this runs on the
 operator's machine, inside their shell, on every command.
 """
+import datetime
 import errno
 import json
 import os
@@ -46,8 +47,45 @@ import shlex
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 DEFAULT_MAX_BYTES = 102400  # 100 KB per stream, as redlog-run has always used
+
+_TRACE_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _trace_target():
+    """The debug log, when Settings > About > Debug log is on (same switch and
+    file as redlog-session.py: ~/.redlog/debug-enabled -> ~/.redlog/debug.log).
+    REDLOG_SESSION_TRACE=<file> overrides it. Decided once per process."""
+    explicit = os.environ.get("REDLOG_SESSION_TRACE")
+    if explicit:
+        return explicit
+    home = Path.home() / ".redlog"
+    return str(home / "debug.log") if (home / "debug-enabled").exists() else None
+
+
+_TRACE = _trace_target()
+
+
+def trace(event, detail=""):
+    """One line per completeness decision. Counts and verdicts only — never the
+    command, its cwd or what it printed, so the file can be attached to an
+    issue. A write failure is ignored: tracing must not change the command."""
+    if not _TRACE:
+        return
+    try:
+        try:
+            if os.path.getsize(_TRACE) > _TRACE_MAX_BYTES:
+                os.replace(_TRACE, _TRACE + ".1")
+        except OSError:
+            pass
+        now = datetime.datetime.now(datetime.timezone.utc)
+        stamp = now.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (now.microsecond // 1000)
+        with open(_TRACE, "a") as out:
+            out.write("%s relay %s %spid=%d\n" % (stamp, event, detail + " " if detail else "", os.getpid()))
+    except OSError:
+        pass
 
 # `env FOO=bar cmd` — the assignments belong to the wrapper, not the command.
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -197,6 +235,8 @@ def emit(opts, code, started_at, out, err):
     # caller falls back to bare metadata, as it always has — losing the body is
     # survivable, losing the exit code is not, and the shell already holds that.
     write_json(opts["event_out"], event)
+    trace("run-emit", "exit=%d completeness=%s disposition=%s stdout_bytes=%d stderr_bytes=%d limit_hit=%s" % (
+        code, completeness, disposition, event["stdout_bytes"], event["stderr_bytes"], event["limit_hit"] or "-"))
     return code
 
 
@@ -531,6 +571,9 @@ def finish(argv):
     }
     if opts["source"]:
         event["source"] = opts["source"]
+    trace("finish", "exit=%s completeness=%s disposition=%s stdout_bytes=%d stderr_bytes=%d drained=%s limit_hit=%s" % (
+        event["exit_code"], completeness, disposition, event["stdout_bytes"], event["stderr_bytes"],
+        drained, event["limit_hit"] or "-"))
     sys.stdout.write(json.dumps(event))
     return 0
 
