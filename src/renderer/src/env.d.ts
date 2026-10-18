@@ -157,6 +157,10 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    updateStatus: () => Promise<import('../../main/services/update-status').UpdateStatus>
+    cancelUpdate: () => Promise<boolean>
+    installUpdate: () => Promise<void>
+    onUpdateStatus: (cb: (status: import('../../main/services/update-status').UpdateStatus) => void) => () => void
     openExternal: (url: string) => Promise<void>
     setQuitText: (text: Record<string, string>) => void
   }
