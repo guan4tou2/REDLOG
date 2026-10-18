@@ -95,7 +95,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.screenshot.diffHint',
     'settings.screenshot.onCommand',
     'settings.screenshot.onCommandHint',
-    'settings.agents.sourcesTitle',
     'settings.agents.detected',
     'settings.agents.notDetected',
     'settings.agents.scopeAll',

@@ -151,7 +151,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
   const SOURCE_LABEL: Record<string, string> = {
     'terminal': t('capture.terminal'),     // RedLog's panes + the operator's own shell
     'mitmproxy': t('capture.mitmproxy'),   // HTTP + DNS — one addon, one row
-    'agent-tailer': t('capture.agentTailer'),
+    'agent-claude-code': t('capture.agentClaudeCode'),
+    'agent-codex': t('capture.agentCodex'),
+    'agent-opencode': t('capture.agentOpencode'),
     'screenshot': t('capture.screenshot'),
     'clipboard': t('capture.clipboard'),
     // v0.6.92 W-project producers.

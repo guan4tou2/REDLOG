@@ -9,7 +9,7 @@ import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
-import { isPackMemberOn, isPackOn } from '../core/capture-packs'
+import { isPackMemberOn, isPackOn, AGENT_MEMBER_KIND } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -429,7 +429,9 @@ function applyCapturePacks(cfg: RedLogConfig): void {
   configureConnectionMonitor({ enabled: on('connectionMonitor') })
   configureProcessMonitor({ enabled: on('processMonitor') })
   void configurePowershellTranscript({ enabled: on('powershellTranscript') })
-  configureAgentTailer({ enabled: on('agentTailer') })
+  const agents = (Object.keys(AGENT_MEMBER_KIND) as Array<keyof typeof AGENT_MEMBER_KIND>)
+    .filter((m) => on(m)).map((m) => AGENT_MEMBER_KIND[m])
+  configureAgentTailer({ enabled: agents.length > 0, enabledAgents: agents })
 }
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,

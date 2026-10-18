@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
 import AgentsPanel from '../src/renderer/src/components/settings/AgentsPanel'
 
-vi.mock('../src/renderer/src/components/settings/CapturePackGroup', () => ({
+vi.mock('../src/renderer/src/components/settings/CapturePackGroup', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/renderer/src/components/settings/CapturePackGroup')>()),
   default: ({ children }: { children: unknown }) => <div>{children as never}</div>,
   usePackAvailability: () => null
 }))
@@ -23,7 +24,7 @@ function bridge(watchPaths: string[]): void {
   }
 }
 
-describe('AI capture: what can be read, shown where it is turned on', () => {
+describe('AI tools: one switch each, with what is on this machine', () => {
   afterEach(cleanup)
 
   it('says which tools exist on this machine and where they are read from', async () => {
@@ -45,5 +46,16 @@ describe('AI capture: what can be read, shown where it is turned on', () => {
     bridge(['/work/a', '/work/b'])
     render(<AgentsPanel t={t} config={{} as never} setConfig={() => {}} />)
     await waitFor(() => expect(screen.getByTestId('agent-scope').textContent).toContain('"n":2'))
+  })
+
+  it('gives each tool its own switch, on until the operator turns it off', async () => {
+    bridge([])
+    const setConfig = vi.fn()
+    render(<AgentsPanel t={t} config={{ packMembers: { codex: false } } as never} setConfig={setConfig} />)
+    await screen.findByTestId('agent-source-claude-code')
+    expect((screen.getByTestId('pack-member-claudeCode') as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByTestId('pack-member-codex') as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByTestId('pack-member-claudeCode'))
+    expect(setConfig).toHaveBeenCalledWith({ packMembers: { codex: false, claudeCode: false } })
   })
 })

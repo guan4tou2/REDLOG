@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { FieldGroup, type ConfigState } from './SettingsShared'
-import CapturePackGroup, { usePackAvailability } from './CapturePackGroup'
+import CapturePackGroup, { PackMember, usePackAvailability, type PackMemberId } from './CapturePackGroup'
 import { isWindows } from '../../lib/platform'
 
 // Spec 049: one switch per decision.
@@ -19,9 +19,19 @@ import { isWindows } from '../../lib/platform'
 // checkbox could not.
 type AgentSource = { id: string; label: string; root: string; detected: boolean }
 
-/** What can be read, what is on this machine, and what the folder limit does.
- *  Declared at module scope so it keeps its state across renders. */
-function AgentSources({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element | null {
+/** The member switch each tailer adapter answers to (`AGENT_MEMBER_KIND`
+ *  inverted). */
+const MEMBER_OF_AGENT: Record<string, PackMemberId> = { 'claude-code': 'claudeCode', codex: 'codex', opencode: 'opencode' }
+
+/** One switch per AI tool, in the same shape as the host monitors: a row says
+ *  whether the tool is on this machine, where its sessions are read from, and
+ *  records it only if its own box is ticked. Declared at module scope so it
+ *  keeps its state across renders. */
+function AgentMembers({ t, config, setConfig }: {
+  t: (key: string, vars?: Record<string, string | number>) => string
+  config: ConfigState
+  setConfig: (c: ConfigState) => void
+}): JSX.Element | null {
   const [sources, setSources] = useState<AgentSource[] | null>(null)
   const [limited, setLimited] = useState<number | null>(null)
   useEffect(() => {
@@ -30,20 +40,21 @@ function AgentSources({ t }: { t: (key: string, vars?: Record<string, string | n
   }, [])
   if (!sources || sources.length === 0) return null
   return (
-    <div data-testid="agent-sources" className="space-y-1.5 text-xs">
-      <p className="text-redlog-text-dim">{t('settings.agents.sourcesTitle')}</p>
-      <ul className="space-y-1">
-        {sources.map((s) => (
-          <li key={s.id} data-testid={`agent-source-${s.id}`} data-detected={s.detected ? 'true' : 'false'} className="flex items-baseline gap-2">
-            <span className="w-24 shrink-0 text-redlog-text">{s.label}</span>
-            <span className={`shrink-0 ${s.detected ? 'text-emerald-500' : 'text-redlog-text-faint'}`}>
-              {s.detected ? t('settings.agents.detected') : t('settings.agents.notDetected')}
-            </span>
-            <span title={s.root} className="min-w-0 flex-1 truncate font-mono text-redlog-text-faint">{s.root}</span>
-          </li>
-        ))}
-      </ul>
-      <p data-testid="agent-scope" className={limited === 0 ? 'text-amber-400' : 'text-redlog-text-faint'}>
+    <div data-testid="agent-sources" className="space-y-1">
+      {sources.map((s) => {
+        const member = MEMBER_OF_AGENT[s.id]
+        if (!member) return null
+        return (
+          <div key={s.id} data-testid={`agent-source-${s.id}`} data-detected={s.detected ? 'true' : 'false'}>
+            <PackMember
+              member={member} title={s.label}
+              hint={`${s.detected ? t('settings.agents.detected') : t('settings.agents.notDetected')} · ${s.root}`}
+              config={config} setConfig={setConfig} t={t}
+            />
+          </div>
+        )
+      })}
+      <p data-testid="agent-scope" className={`text-xs pt-1 ${limited === 0 ? 'text-amber-400' : 'text-redlog-text-faint'}`}>
         {limited === null ? '' : limited === 0 ? t('settings.agents.scopeAll') : t('settings.agents.scopeLimited', { n: limited })}
       </p>
     </div>
@@ -66,7 +77,7 @@ export default function AgentsPanel({
     >
       <div className="space-y-2 mt-2">
         <p className="text-xs text-redlog-text-faint">{t('settings.agents.enableHint')}</p>
-        <AgentSources t={t} />
+        <AgentMembers t={t} config={config} setConfig={setConfig} />
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
