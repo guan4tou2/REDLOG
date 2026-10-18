@@ -412,7 +412,8 @@ interface RedLogAPI {
     onPassThroughChanged: (cb: (on: boolean) => void) => () => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
-    instantMark?: () => Promise<{ ok: boolean; id?: string }>
+    addMarker?: (input: { title?: string; notes?: string; at?: number }) => Promise<{ ok: boolean; id?: string }>
+    releaseFocus?: () => void
     /** §8: turn HUD click-through ON from the action row (main owns the exits). */
     setPassThrough?: (on: boolean) => void
     mouseEnter?: () => void

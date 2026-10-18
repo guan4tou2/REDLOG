@@ -16,6 +16,31 @@ import type { ScreenshotAgent } from '../services/screenshot-agent'
 
 export const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 
+const DAY_MS = 24 * 3_600_000
+
+/** The fields of a marker added from the HUD form. `at` is when the operator
+ *  clicked "Add marker"; it is believed only if it is a real moment in the last
+ *  day, otherwise the marker is timed at `now` rather than at a value nobody
+ *  can vouch for. An empty title is allowed and named after the time, which is
+ *  what a bare mark has always been called. */
+export function hudMarkerFields(
+  input: { title?: unknown; notes?: unknown; at?: unknown },
+  now: number
+): { title: string; notes: string; source_timestamp: number; source: 'hud' | 'hud-instant' } {
+  const at = typeof input.at === 'number' && Number.isFinite(input.at) && input.at <= now && input.at > now - DAY_MS
+    ? input.at : now
+  const title = (typeof input.title === 'string' ? input.title : '').trim().slice(0, 200)
+  const notes = (typeof input.notes === 'string' ? input.notes : '').slice(0, 10_000)
+  return {
+    title: title || `HUD mark ${new Date(at).toLocaleTimeString()}`,
+    notes,
+    source_timestamp: at,
+    // A bare mark is marked as such, so a reviewer knows a time-only title is
+    // intentional.
+    source: notes || title ? 'hud' : 'hud-instant'
+  }
+}
+
 /** Event ids a marker may cite: strings of a sane length, at most 20. */
 export function markerCauses(value: unknown): string[] {
   if (!Array.isArray(value)) return []

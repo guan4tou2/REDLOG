@@ -95,7 +95,7 @@ import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
-import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
+import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields } from './ipc/markers'
 import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
@@ -321,28 +321,29 @@ function triggerBookmark(): void {
   })
 }
 
-// v0.9.7: the HUD's instant mark. Drops a timestamped marker straight into the
-// chain without raising the main window — the whole point of a heads-up
-// display is that it does not pull the operator out of what they are doing.
-// The detailed path above still exists for when a title and notes are worth
-// stopping for; this one is for "something just happened, timestamp it".
-function triggerInstantMark(): { ok: boolean; id?: string } {
+// The HUD's "Add marker" form. Drops a marker straight into the chain without
+// raising the main window — a heads-up display should not pull the operator out
+// of what they are doing. The marker's time is `at`, taken when the operator
+// CLICKED "Add marker", not when the form was saved: filling in a title takes
+// seconds, and the marker is about the moment they reached for it. An empty
+// title is allowed and gets the time as its name, which is what a bare mark
+// has always been called.
+function addHudMarker(input: { title?: string; notes?: string; at?: number }): { ok: boolean; id?: string } {
   if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
   try {
-    const at = new Date()
+    const f = hudMarkerFields(input, Date.now())
     const event = insertEvent('marker', redactFields({
-      title: `HUD mark ${at.toLocaleTimeString()}`,
-      notes: '',
+      title: f.title,
+      notes: f.notes,
       severity: 'info',
       category: 'custom',
-      // Distinguishes an un-annotated instant mark from one the operator
-      // filled in, so a reviewer knows a bare title is intentional.
-      source: 'hud-instant'
+      source_timestamp: f.source_timestamp,
+      source: f.source
     }, MARKER_TEXT_FIELDS), { engagementId: currentEngagementId, operatorId: currentOperatorId })
     if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
-    noteDbError('hud-instant-mark', e)
+    noteDbError('hud-add-marker', e)
     return { ok: false }
   }
 }
@@ -1290,7 +1291,7 @@ app.whenReady().then(() => {
     getCurrentOperatorId: () => currentOperatorId,
     send,
     triggerBookmark,
-    triggerInstantMark,
+    addHudMarker,
     onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)

@@ -19,8 +19,8 @@ export interface IpcContext {
   send: (win: BrowserWindow | null, channel: string, ...payload: unknown[]) => void
   /** Opens the marker dialog in the main window. */
   triggerBookmark: () => void
-  /** Drops an instant HUD mark into the chain. */
-  triggerInstantMark: () => { ok: boolean; id?: string }
+  /** Drops a HUD marker into the chain, timed at `at` (the click). */
+  addHudMarker: (input: { title?: string; notes?: string; at?: number }) => { ok: boolean; id?: string }
   /** Re-applies the open project's capture packs after a plugin was enabled,
    *  disabled or reloaded (Spec 035: a pack runs only while its plugin is). */
   onPluginsChanged: () => void
