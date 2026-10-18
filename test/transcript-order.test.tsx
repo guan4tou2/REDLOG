@@ -40,7 +40,7 @@ const rowOrder = (): string[] =>
   screen.getAllByText(/^\$ (first|second|third)$/).map((el) => el.textContent ?? '')
 
 describe('Transcript order', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks(); try { localStorage.clear() } catch { /* jsdom */ } })
   afterEach(cleanup)
 
   it('lists the newest step first', async () => {
@@ -70,5 +70,37 @@ describe('Transcript order', () => {
     const md = clipboardWrite.mock.calls[0][0] as string
     expect(md.indexOf('first')).toBeLessThan(md.indexOf('second'))
     expect(md.indexOf('second')).toBeLessThan(md.indexOf('third'))
+  })
+
+  it('flips to oldest first with the sort button, and remembers it', async () => {
+    install(false)
+    const { unmount } = render(<TranscriptView />)
+    await screen.findByText('$ first')
+    fireEvent.click(screen.getByTestId('transcript-order'))
+    expect(rowOrder()).toEqual(['$ first', '$ second', '$ third'])
+    unmount()
+    render(<TranscriptView />)
+    await screen.findByText('$ first')
+    expect(rowOrder()).toEqual(['$ first', '$ second', '$ third'])
+  })
+
+  it('moves "load older" above the rows when oldest is on top', async () => {
+    install(true)
+    render(<TranscriptView />)
+    await screen.findByText('$ first')
+    fireEvent.click(screen.getByTestId('transcript-order'))
+    const older = screen.getByRole('button', { name: 'transcript.loadOlder' })
+    expect(older.compareDocumentPosition(screen.getByText('$ first')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('copies Markdown oldest first even while the list shows newest first', async () => {
+    install(false)
+    render(<TranscriptView />)
+    await screen.findByText('$ first')
+    expect(rowOrder()[0]).toBe('$ third')
+    fireEvent.click(screen.getByRole('button', { name: 'transcript.copyMd' }))
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalled())
+    const md = clipboardWrite.mock.calls[0][0] as string
+    expect(md.indexOf('first')).toBeLessThan(md.indexOf('third'))
   })
 })
