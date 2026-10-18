@@ -19,6 +19,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/home/pending"
 printf 1 > "$work/home/api-port"          # nothing listens here: the POST fails
 printf t > "$work/home/api-token"
+printf '{"engagementId":"eng-1","operatorId":"op-1"}' > "$work/home/active-identity.json"
 seq 1 5000 | sed "s|^|$work/home/pending/|; s|\\$|.json.unattributed|" | xargs touch
 export _REDLOG_DIR="$work/home" _REDLOG_HOST=127.0.0.1
 source ${hookPath(target!, 'shell-common.sh')}
