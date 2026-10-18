@@ -1,4 +1,4 @@
-import { shell, type IpcMain } from 'electron'
+import { dialog, shell, type IpcMain } from 'electron'
 import { isInsideDir } from '../../core/paths'
 import path from 'path'
 import fs from 'fs'
@@ -33,12 +33,12 @@ import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
 import { exportableConfig } from '../../core/export-config'
+import { defaultExportDir, resolveExportDestination } from '../../core/export-destination'
 
-function sliceExport(ctx: IpcContext, name: string, payload: unknown, scrubPii = false): string | null {
+function sliceExport(ctx: IpcContext, name: string, payload: unknown, scrubPii = false, outDir?: string): string | null {
   const project = ctx.getActiveProject()
   if (!project) return null
-  const projectDir = getProjectPath(project)
-  const outDir = path.join(projectDir, 'exports')
+  outDir ??= defaultExportDir(getProjectPath(project))
   fs.mkdirSync(outDir, { recursive: true })
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const filePath = path.join(outDir, `redlog-${name}-${ts}.json`)
@@ -160,6 +160,24 @@ export function registerDataExportIpc(
   options: { planRegistry?: ExportPlanRegistry } = {}
 ): void {
   const exportPlans = options.planRegistry ?? new ExportPlanRegistry()
+  // Folders the operator picked in the system dialog this session. Only these
+  // can be named as an export destination.
+  const approvedDestinations = new Set<string>()
+
+  ipcMain.handle('data:exportDestination', () => {
+    const project = ctx.getActiveProject()
+    return project ? defaultExportDir(getProjectPath(project)) : null
+  })
+
+  ipcMain.handle('data:pickExportDir', async () => {
+    const win = ctx.getMainWindow()
+    const options = { properties: ['openDirectory' as const, 'createDirectory' as const] }
+    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    const dir = path.resolve(result.filePaths[0])
+    approvedDestinations.add(dir)
+    return dir
+  })
   ipcMain.handle('data:resolveExportPlan', (_e, request: ExportRequest) => {
     try {
       return { ok: true as const, plan: exportPlanPreview(resolveExportPlan(ctx, request, exportPlans)) }
@@ -175,15 +193,20 @@ export function registerDataExportIpc(
     const project = ctx.getActiveProject()
     if (!project || typeof target !== 'string') return false
     const resolved = path.resolve(target)
-    if (!isInsideDir(getProjectPath(project), resolved) || !fs.existsSync(resolved)) return false
+    const inApproved = [...approvedDestinations].some((dir) => isInsideDir(dir, resolved))
+    if ((!isInsideDir(getProjectPath(project), resolved) && !inApproved) || !fs.existsSync(resolved)) return false
     shell.showItemInFolder(resolved)
     return true
   })
 
-  ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string }) => {
+  ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string; destDir?: string }) => {
     const project = ctx.getActiveProject()
     if (!project) return { ok: false as const, error: 'no-active-project' }
     if (!input?.planId) return { ok: false as const, error: 'invalid-request' }
+    // Checked before the plan is claimed: a plan is single-use, and a refused
+    // destination must not spend it.
+    const destination = resolveExportDestination(getProjectPath(project), input.destDir, approvedDestinations)
+    if (!destination.ok) return destination
     const claimed = exportPlans.claim(input.planId, project.id)
     if (!claimed.ok) return claimed
     const plan = claimed.plan
@@ -223,7 +246,7 @@ export function registerDataExportIpc(
         const config = loadConfig(projectDir)
         const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: plan.snapshot }), planRedaction)
           .filter((event) => selectedIds.has(event.id))
-        const outDir = path.join(projectDir, 'exports')
+        const outDir = destination.dir
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
         let content = JSON.stringify({ config: exportableConfig(config), events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
@@ -233,7 +256,7 @@ export function registerDataExportIpc(
         const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
         const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
         const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
-        const outDir = path.join(getProjectPath(project), 'exports')
+        const outDir = destination.dir
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.ndjson`)
         fs.writeFileSync(artifactPath, content)
@@ -246,7 +269,8 @@ export function registerDataExportIpc(
           includeEventIds: new Set(plan.selectedEventIds),
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts, request: plan.request },
           excludeAttachments: new Set(plan.request.excludeAttachments),
-          attachments: plan.attachments
+          attachments: plan.attachments,
+          ...(destination.custom ? { outRoot: destination.dir } : {})
         })
         artifactPath = result.outDir
       } else if (plan.request.format === 'har') {
@@ -258,7 +282,7 @@ export function registerDataExportIpc(
           includeEventIds: selectedIds,
           doNotExportIds: new Set()
         })
-        const outDir = path.join(getProjectPath(project), 'exports')
+        const outDir = destination.dir
         fs.mkdirSync(outDir, { recursive: true })
         artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.har`)
         fs.writeFileSync(artifactPath, content)
@@ -272,7 +296,7 @@ export function registerDataExportIpc(
           selection: subset,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint },
           ...sliceWithAmendments(redactEventsForExport(events, planRedaction), redactEventsForExport(amendments, planRedaction))
-        }, plan.request.scrubPii)
+        }, plan.request.scrubPii, destination.dir)
       } else {
         return { ok: false as const, error: 'unsupported-format' }
       }
