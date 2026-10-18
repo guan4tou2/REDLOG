@@ -1,6 +1,7 @@
-import { app, dialog, shell, BrowserWindow } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
-import { allowQuit } from '../quit-guard'
+import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
+import { UpdateFlow } from './update-flow'
 
 // Windows: in-app auto-download+install via electron-updater (NSIS works
 // unsigned). macOS/Linux: open the GitHub releases page — macOS auto-update
@@ -75,7 +76,90 @@ function setupWindowsUpdater(): void {
   console.log(TAG, 'electron-updater initialised (win32)')
 }
 
-// Runs the full check→prompt→download→install flow on Windows.
+// What a restart would end right now, supplied by the main process so the
+// answer is read when it is asked for (Spec 061 FR-005).
+let impactProvider: () => QuitImpact | null = () => null
+export function setUpdateImpactProvider(fn: () => QuitImpact | null): void { impactProvider = fn }
+
+const zh = (): boolean => app.getLocale().toLowerCase().startsWith('zh')
+
+let flow: UpdateFlow | null = null
+function getFlow(autoUpdater: typeof import('electron-updater').autoUpdater): UpdateFlow {
+  if (flow) return flow
+  flow = new UpdateFlow({
+    port: {
+      download: async () => { await autoUpdater.downloadUpdate() },
+      quitAndInstall: () => autoUpdater.quitAndInstall(false, true)
+    },
+    askDownload: async (version) => (await dialog.showMessageBox({
+      type: 'info',
+      buttons: zh() ? ['下載', '稍後'] : ['Download', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: zh() ? '有新版本' : 'Update available',
+      message: zh()
+        ? `RedLog ${version} 可用（目前 ${app.getVersion()}）`
+        : `RedLog ${version} is available (you have ${app.getVersion()})`,
+      detail: zh()
+        ? '下載在背景進行，擷取不受影響。下載完成後不會自動重新啟動，由你決定何時安裝。'
+        : 'The download runs in the background and recording is not affected. It will not restart on its own; you choose when to install.'
+    })).response === 0,
+    announceReady: async (version) => (await dialog.showMessageBox({
+      type: 'info',
+      buttons: zh() ? ['稍後', '安裝並重新啟動'] : ['Later', 'Install and restart'],
+      defaultId: 0,
+      cancelId: 0,
+      title: zh() ? '更新已準備完成' : 'Update ready',
+      message: zh() ? `RedLog ${version} 已下載完成` : `RedLog ${version} is downloaded`,
+      detail: zh()
+        ? '擷取仍在進行，不會自動重新啟動。之後可在「關於」按「檢查更新」再安裝。'
+        : 'Recording continues and nothing restarts by itself. Install later from About ▸ Check for updates.'
+    })).response === 1 ? 'now' : 'later',
+    impact: () => impactProvider(),
+    confirmRestart: async (impact, version) => {
+      // The list of what stops is the quit dialog's own, so the two never
+      // describe the same restart differently.
+      const lines = quitDialog(impact, defaultQuitText(app.getLocale())).detail
+      return (await dialog.showMessageBox({
+        type: 'question',
+        buttons: zh() ? ['稍後', '停止並更新'] : ['Later', 'Stop and update'],
+        defaultId: 0,
+        cancelId: 0,
+        title: zh() ? '安裝更新並重新啟動？' : 'Install the update and restart?',
+        message: impact.project
+          ? `${impact.project}\n\n${zh() ? `重新啟動到 RedLog ${version} 會停止：` : `Restarting into RedLog ${version} stops:`}`
+          : (zh() ? `重新啟動到 RedLog ${version} 會停止：` : `Restarting into RedLog ${version} stops:`),
+        detail: lines
+      })).response === 1
+    },
+    onDownloadFailed: async (error) => {
+      console.error(TAG, 'download failed:', error.message)
+      await dialog.showMessageBox({
+        type: 'error',
+        buttons: [zh() ? '好' : 'OK'],
+        title: zh() ? '更新失敗' : 'Update failed',
+        message: zh()
+          ? '下載更新失敗。目前版本照常運作，可稍後再試或前往 GitHub 手動下載。'
+          : 'The download failed. The current version keeps working; try again later or download it from GitHub.'
+      })
+    },
+    beforeRestart: async (version) => {
+      // Anchor the chain head before quit-and-install.
+      try {
+        await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: version })
+        console.log(TAG, 'chain head anchored before restart')
+      } catch (e) {
+        console.warn(TAG, 'anchor failed (best-effort):', (e as Error).message)
+      }
+    },
+    allowQuit
+  })
+  autoUpdater.on('download-progress', (info) => console.log(TAG, `downloading… ${Math.round(info.percent)}%`))
+  return flow
+}
+
+// Windows: check → ask → download in the background → say "ready". Restarting
+// is a separate step the operator takes (see update-flow.ts).
 // Returns true if it handled the flow (even "no update"), false to fall back.
 async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
   if (process.platform !== 'win32') return false
@@ -87,6 +171,12 @@ async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
   }
 
   const { autoUpdater } = require('electron-updater') as typeof import('electron-updater')
+
+  // Already downloaded, or being downloaded: do not check again. A ready update
+  // goes straight to the restart question, which is how "later" is found again.
+  const current = flow?.status().state
+  if (current === 'downloading' || current === 'installing') return true
+  if (current === 'ready') { await flow!.install(); return true }
 
   let result: Awaited<ReturnType<typeof autoUpdater.checkForUpdates>>
   try {
@@ -125,97 +215,7 @@ async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
     return true
   }
 
-  // Ask the user whether to download.
-  const ask = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['下載並安裝', '稍後'],
-    defaultId: 0,
-    cancelId: 1,
-    title: '有新版本',
-    message: `RedLog ${remoteVer} 可用（目前 ${app.getVersion()}）`,
-    detail: '下載完成後將自動安裝並重新啟動。'
-  })
-  if (ask.response !== 0) {
-    console.log(TAG, 'user deferred update')
-    return true
-  }
-
-  console.log(TAG, `downloading ${remoteVer}…`)
-  // Show a progress dialog while downloading.
-  const progressWin = new BrowserWindow({
-    width: 400, height: 130,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    closable: false,
-    frame: false,
-    alwaysOnTop: true,
-    webPreferences: { nodeIntegration: false, contextIsolation: true }
-  })
-  progressWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
-<html><head><style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px;
-         background: #1e1e2e; color: #cdd6f4; user-select: none; }
-  h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; }
-  .bar { height: 6px; background: #313244; border-radius: 3px; overflow: hidden; }
-  .fill { height: 100%; background: #89b4fa; width: 0%; transition: width 0.2s; border-radius: 3px; }
-  .pct { margin-top: 8px; font-size: 12px; color: #a6adc8; }
-</style></head><body>
-  <h3 id="t">正在下載 RedLog ${remoteVer}…</h3>
-  <div class="bar"><div class="fill" id="f"></div></div>
-  <div class="pct" id="p">0%</div>
-  <script>
-    window.setProgress = (pct) => {
-      document.getElementById('f').style.width = pct + '%';
-      document.getElementById('p').textContent = Math.round(pct) + '%';
-    };
-    window.setDone = () => {
-      document.getElementById('t').textContent = '下載完成，正在安裝…';
-      document.getElementById('p').textContent = '';
-      document.getElementById('f').style.width = '100%';
-    };
-  </script>
-</body></html>`)}`)
-
-  autoUpdater.on('download-progress', (info) => {
-    if (!progressWin.isDestroyed()) {
-      progressWin.webContents.executeJavaScript(`window.setProgress(${info.percent})`)
-    }
-  })
-
-  try {
-    await autoUpdater.downloadUpdate()
-    console.log(TAG, 'download complete')
-  } catch (e) {
-    console.error(TAG, 'download failed:', (e as Error).message)
-    if (!progressWin.isDestroyed()) progressWin.destroy()
-    await dialog.showMessageBox({
-      type: 'error', buttons: ['好'], title: '更新失敗',
-      message: '下載更新失敗，請稍後再試或前往 GitHub 手動下載。'
-    })
-    return true
-  }
-
-  if (!progressWin.isDestroyed()) {
-    progressWin.webContents.executeJavaScript('window.setDone()')
-  }
-
-  // Anchor the chain head before quit-and-install.
-  try {
-    await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: remoteVer })
-    console.log(TAG, 'chain head anchored before restart')
-  } catch (e) {
-    console.warn(TAG, 'anchor failed (best-effort):', (e as Error).message)
-  }
-
-  // Small delay so the user sees "installing…"
-  await new Promise((r) => setTimeout(r, 800))
-  if (!progressWin.isDestroyed()) progressWin.destroy()
-
-  console.log(TAG, 'quitting to install…')
-  // The operator already confirmed the update; a second dialog would hold the install.
-  allowQuit()
-  autoUpdater.quitAndInstall(false, true)
+  await getFlow(autoUpdater).offer(remoteVer)
   return true
 }
 
