@@ -1511,6 +1511,8 @@
   "http.loadingPaired": "Loading the paired event…",
   "transcript.sessionChunk": "Session {{terminal}} · #{{seq}}",
   "transcript.metaPtyMerged": "PTY · stdout/stderr merged",
+  "transcript.metaLateRunning": "background output still arriving",
+  "transcript.metaLateIncomplete": "background output incomplete",
   "transcript.metaExit": "exit {{code}}",
   "transcript.metaExitUnknown": "exit unknown",
   "transcript.toolInterrupted": "(tool interrupted)",
