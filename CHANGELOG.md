@@ -5,6 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Bash records what a command prints, not only the command and its exit status.
+  The adapter does what the zsh adapter does in `preexec`, in bash's DEBUG trap:
+  stdout and stderr go through the same per-command relay for the length of the
+  command and are put back at the prompt. Works on macOS's bash 3.2 (fixed
+  descriptors 7-9, no `exec {fd}`, no `sleep` in the trap). Found while building
+  it: the relay inherited a pipeline's pipe from the DEBUG trap and hung
+  `echo x | cat`; it now closes every descriptor past stderr when it starts.
+  Known, shared with zsh: a backgrounded command keeps the relay's ptys, so the
+  prompt waits out the relay's drain timeout (about 10 s).
+
 ## v0.18.3 — 2026-10-16
 
 - Consolidate test coverage owners and current test/install walkthroughs. Remove

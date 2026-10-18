@@ -266,10 +266,14 @@ def parse(argv):
         "command": None,
         "dir": None,
         "err_fd": "2",
+        "owner": None,
+        "notify": None,
     }
     flags = {
         "--dir": "dir",
         "--err-fd": "err_fd",
+        "--owner": "owner",
+        "--notify": "notify",
         "--event-out": "event_out",
         "--max-bytes": "max_bytes",
         "--cwd": "cwd",
@@ -370,6 +374,13 @@ def pty_pipe(argv):
     """
     import fcntl
     import termios
+    # Nothing past stderr is ours. bash starts the relay from its DEBUG trap,
+    # which runs after the shell has made the pipe of `a | b` and before it
+    # forks either side, so the relay is born holding that pipe's write end and
+    # `b` never sees EOF: `echo x | cat` hung the prompt. The shell cannot name
+    # the descriptor, so the relay lets go of everything it was not handed.
+    # `--err-fd` is 3 by contract; the pty pairs are opened below, after this.
+    os.closerange(4, 4096)
     opts = normalise(parse(argv)[0])
     directory = opts["dir"]
     err_sink = os.fdopen(int(opts["err_fd"]), "wb", buffering=0)
@@ -405,12 +416,29 @@ def pty_pipe(argv):
 
     sync_size()
     write_text(os.path.join(directory, "pts"), "\n".join(names))
+    # A shell that cannot wait without starting a process (bash 3.2: `read -t`
+    # takes whole seconds, and a `sleep` is a foreground job that Ctrl-C lands
+    # on) opens a FIFO read-write, and is woken by one byte here. Best effort:
+    # a shell that gave up has closed it, and polling `pts` still works.
+    if opts["notify"]:
+        try:
+            fd = os.open(opts["notify"], os.O_WRONLY | os.O_NONBLOCK)
+            try:
+                os.write(fd, b"1\n")
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
 
     # The shell is slow to say it has opened them, or has died; either way
     # this must not wait for ever.
     opened = os.path.join(directory, "opened")
     closed = os.path.join(directory, "closed")
-    owner = os.getppid()
+    # The shell, by pid. Its parent is the default because zsh starts the relay
+    # as its own child; bash starts it from a throwaway subshell (so the shell
+    # prints no job notice), and that subshell is gone before the command ends,
+    # which would read as "the owner died" and close the ptys under the command.
+    owner = int(opts["owner"]) if opts["owner"] else os.getppid()
     deadline = time.time() + float(opts["drain_timeout"])
     while not os.path.exists(opened):
         if time.time() > deadline:
