@@ -1,6 +1,8 @@
 import { createServer } from 'node:net'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const run = promisify(execFile)
 
@@ -78,16 +80,33 @@ export async function whoHoldsPort(
 // keeps the capture port, so the next launch could not start HTTP capture
 // until the operator found it with lsof and killed it by hand.
 //
-// What is reclaimed is narrow on purpose: POSIX only (a parent id means
-// nothing on Windows), the holder of exactly this port, parentless, running
-// `mitmdump` with RedLog's own addon file. Anything else — Burp, a mitmproxy
-// the operator started, a mitmdump that still has a parent — keeps the old
-// "already in use by …" message.
+// What is reclaimed is narrow on purpose, and the proof is RedLog's own record,
+// not the look of the process. When RedLog starts its mitmdump it writes down
+// the pid, the endpoint, the exact addon path and when that process started.
+// A process on the port is stopped only if every one of those still matches,
+// it has no parent, and it is `mitmdump`. A command line alone is not proof: a
+// mitmdump the operator started with `-s /elsewhere/mitmproxy-addon.py` has the
+// same shape as ours, and a pid can be reused by a stranger after a reboot.
+// No record means no reclaim — the holder is reported and the operator decides.
+// POSIX only: a parent id means nothing on Windows.
 
-const ADDON_FILE = 'mitmproxy-addon.py'
+export interface ProxyOwner {
+  pid: number
+  host: string
+  port: number
+  /** Exactly as it was passed to `-s`. */
+  addonPath: string
+  /** `ps -o lstart=` of the process when RedLog recorded it. */
+  startedAt: string
+}
 
 export interface OrphanDeps {
   platform: NodeJS.Platform
+  /** What RedLog wrote when it started the proxy, or null. */
+  owner: () => Promise<ProxyOwner | null>
+  /** When that pid started, in the same form the record holds. */
+  startedAt: (pid: number) => Promise<string | null>
+  clearOwner: () => void
   pidOnPort: (port: number) => Promise<number | null>
   inspect: (pid: number) => Promise<{ ppid: number; command: string } | null>
   kill: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => void
@@ -111,8 +130,54 @@ async function inspectProcess(pid: number): Promise<{ ppid: number; command: str
   } catch { return null }
 }
 
+async function processStartedAt(pid: number): Promise<string | null> {
+  try {
+    const { stdout } = await run('ps', ['-o', 'lstart=', '-p', String(pid)], { timeout: 4_000 })
+    return stdout.trim() || null
+  } catch { return null }
+}
+
+/** Where the record lives: machine-wide, like the port it is about. */
+export function proxyOwnerFile(homeDir: string): string {
+  return path.join(homeDir, '.redlog', 'managed-proxy-owner.json')
+}
+
+/** Write down what RedLog just started. Best effort: without a record the
+ *  worst outcome is that a later orphan is reported instead of reclaimed. */
+export async function recordProxyOwner(
+  file: string,
+  owner: { pid: number; host: string; port: number; addonPath: string },
+  startedAtOf: (pid: number) => Promise<string | null> = processStartedAt
+): Promise<void> {
+  try {
+    const startedAt = await startedAtOf(owner.pid)
+    if (!startedAt) return
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify({ ...owner, startedAt } satisfies ProxyOwner), { mode: 0o600 })
+  } catch { /* best-effort */ }
+}
+
+function readProxyOwner(file: string): ProxyOwner | null {
+  try {
+    const o = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ProxyOwner>
+    return typeof o.pid === 'number' && typeof o.port === 'number' && typeof o.host === 'string'
+      && typeof o.addonPath === 'string' && typeof o.startedAt === 'string' ? o as ProxyOwner : null
+  } catch { return null }
+}
+
+export function orphanDepsFor(file: string): OrphanDeps {
+  return {
+    ...DEFAULT_ORPHAN_DEPS,
+    owner: async () => readProxyOwner(file),
+    clearOwner: () => { try { fs.rmSync(file, { force: true }) } catch { /* nothing to clear */ } }
+  }
+}
+
 export const DEFAULT_ORPHAN_DEPS: OrphanDeps = {
   platform: process.platform,
+  owner: async () => null,
+  startedAt: processStartedAt,
+  clearOwner: () => {},
   pidOnPort,
   inspect: inspectProcess,
   kill: (pid, signal) => { try { process.kill(pid, signal) } catch { /* already gone */ } },
@@ -120,14 +185,17 @@ export const DEFAULT_ORPHAN_DEPS: OrphanDeps = {
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function isRedLogProxy(command: string, port: number): boolean {
+/** The command is mitmdump on this port running exactly the addon RedLog
+ *  recorded. `-s <path>` is last in RedLog's argument list and the path may
+ *  hold spaces, so it is everything after the flag. */
+function isRecordedProxy(command: string, owner: ProxyOwner, port: number): boolean {
   const args = command.split(/\s+/)
   const exe = (args[0] ?? '').split('/').pop() ?? ''
   if (exe !== 'mitmdump') return false
   const at = args.indexOf('--listen-port')
   if (at < 0 || args[at + 1] !== String(port)) return false
-  // `-s <path>` is last in RedLog's own argument list; the path may hold spaces.
-  return new RegExp(`\\s-s\\s+.*/${ADDON_FILE.replace('.', '\\.')}\\s*$`).test(command)
+  const flag = command.lastIndexOf(' -s ')
+  return flag >= 0 && command.slice(flag + 4).trim() === owner.addonPath
 }
 
 /** Stop RedLog's own leftover mitmdump on this endpoint. Returns the pid it
@@ -141,13 +209,18 @@ export async function reclaimOrphanProxy(
   try {
     const pid = await deps.pidOnPort(endpoint.port)
     if (!pid) return null
+    const owner = await deps.owner()
+    if (!owner || owner.pid !== pid || owner.port !== endpoint.port || owner.host !== endpoint.host) return null
     const info = await deps.inspect(pid)
-    if (!info || info.ppid !== 1 || !isRedLogProxy(info.command, endpoint.port)) return null
+    if (!info || info.ppid !== 1 || !isRecordedProxy(info.command, owner, endpoint.port)) return null
+    // The pid is the same; is it the same process? A reboot hands pids to
+    // strangers, and the command line of a stranger can be made to match.
+    if ((await deps.startedAt(pid)) !== owner.startedAt) return null
     for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
       deps.kill(pid, signal)
       for (let i = 0; i < 10; i++) {
         await deps.sleep(250)
-        if (await deps.portFree(endpoint.host, endpoint.port)) return { pid }
+        if (await deps.portFree(endpoint.host, endpoint.port)) { deps.clearOwner(); return { pid } }
       }
     }
     return null
