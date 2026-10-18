@@ -74,7 +74,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserE
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
-import { whoHoldsPort, reclaimOrphanProxy } from './services/port-holder'
+import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
@@ -202,7 +202,7 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
     // crash. That one is stopped, and the record says so; any other holder
     // keeps the message below.
     if (holder) {
-      const reclaimed = await reclaimOrphanProxy(endpoint)
+      const reclaimed = await reclaimOrphanProxy(endpoint, orphanDepsFor(proxyOwnerFile(homedir())))
       if (reclaimed) {
         if (currentEngagementId && currentOperatorId) {
           ingestEvent('system', {
@@ -231,6 +231,10 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
     caPath: path.join(homedir(), '.mitmproxy', 'mitmproxy-ca-cert.pem')
   })
   if (status.state === 'running') {
+    // The proof a later launch needs before it may stop this process as ours.
+    if (before !== 'running' && status.pid) {
+      void recordProxyOwner(proxyOwnerFile(homedir()), { pid: status.pid, host: endpoint.host, port: endpoint.port, addonPath })
+    }
     if (before !== 'running') publishManagedProxyEvent('http_proxy_started', status)
   } else {
     publishManagedProxyEvent('http_proxy_failed', status)
