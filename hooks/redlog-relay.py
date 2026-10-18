@@ -47,6 +47,8 @@ import shlex
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 DEFAULT_MAX_BYTES = 102400  # 100 KB per stream, as redlog-run has always used
@@ -105,6 +107,10 @@ class Stream:
         self.cap = cap
         self.kept = bytearray()
         self.total = 0
+        # Set once the command's record has been written and a background
+        # writer is still on this descriptor: from then on the bytes belong to
+        # the late-output sender, not to `kept`.
+        self.late = None
 
     def pump(self):
         chunk = os.read(self.source.fileno(), 65536)
@@ -120,6 +126,9 @@ class Stream:
                 # draining, so the command is not blocked and the event is
                 # still written. The record outlives the pipe.
                 self.sink = None
+        if self.late is not None:
+            self.late.feed(chunk)
+            return True
         self.total += len(chunk)
         room = self.cap - len(self.kept)
         if room > 0:
@@ -133,6 +142,177 @@ class Stream:
 
     def truncated(self):
         return self.total > self.cap
+
+
+class LateOutput:
+    """What a command's background jobs print after its record was written.
+
+    `nmap -p- host &` returns the prompt at once and keeps printing for
+    minutes. The relay used to wait for that to finish before the prompt could
+    return (about ten seconds, then give up), and the record held whatever had
+    arrived by then. The record has to be whole, so the body that existed when
+    the prompt came back is `command_end`, marked `partial`, and everything
+    after it is sent here as `command_output` chunks carrying the same
+    command_id — attributed by the pty pair that was opened for that command,
+    never by reading the bytes (FR-002). `command_end` is not edited: it is
+    already in the chain.
+
+    Chunks end on a line boundary so cleaning (colour, redrawn lines) does not
+    cut an escape sequence in half. The identity is pinned when the late
+    output begins; a project switch or a paused recording makes the server
+    refuse, and refused bytes are counted, never replayed into another
+    interval. Bytes are never lost silently: `dropped_bytes` on the final row.
+    """
+
+    FLUSH_BYTES = 16384
+    FLUSH_SECONDS = 1.0
+    STALE_PARTIAL_SECONDS = 5.0
+    RETRY_MAX = 64
+
+    def __init__(self, opts):
+        self.command_id = opts["command_id"]
+        self.source = opts["source"]
+        self.captured_by = opts["captured_by"]
+        self.cap = int(opts["max_bytes"])
+        self.seq = 0
+        self.kept_bytes = 0
+        self.over_cap = 0
+        self.dropped = 0
+        self.truncated = False
+        self.bufs = {"stdout": bytearray(), "stderr": bytearray()}
+        self.since = {"stdout": 0.0, "stderr": 0.0}
+        self.pending = []
+        self.client = self._client(opts)
+        trace("late-start", "client=%s" % ("yes" if self.client else "no"))
+
+    @staticmethod
+    def _client(opts):
+        try:
+            directory = Path(terminal_home(opts)) / ".redlog"
+            identity = json.loads((directory / "active-identity.json").read_text())
+            return {
+                "engagement": identity["engagementId"],
+                "token": (directory / "api-token").read_text().strip(),
+                "url": "http://127.0.0.1:%d/api/events" % int((directory / "api-port").read_text()),
+                "opener": urllib.request.build_opener(urllib.request.ProxyHandler({})),
+            }
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def feed(self, stream_name, chunk):
+        buf = self.bufs[stream_name]
+        if not buf:
+            self.since[stream_name] = time.time()
+        room = self.cap - self.kept_bytes - sum(len(b) for b in self.bufs.values())
+        if room < len(chunk):
+            self.truncated = True
+            self.over_cap += len(chunk) - max(room, 0)
+            chunk = chunk[:max(room, 0)]
+        buf.extend(chunk)
+        if len(buf) >= self.FLUSH_BYTES:
+            self.flush(stream_name)
+
+    def tick(self):
+        now = time.time()
+        for name, buf in self.bufs.items():
+            if not buf:
+                continue
+            age = now - self.since[name]
+            if (age >= self.FLUSH_SECONDS and b"\n" in buf) or age >= self.STALE_PARTIAL_SECONDS:
+                self.flush(name, whole=age >= self.STALE_PARTIAL_SECONDS)
+        self.retry()
+
+    def flush(self, name, whole=False):
+        buf = self.bufs[name]
+        if not buf:
+            return
+        cut = len(buf) if whole else buf.rfind(b"\n") + 1
+        if cut <= 0:
+            # No complete line yet; a very long line is not held for ever.
+            cut = len(buf) if len(buf) >= 4 * self.FLUSH_BYTES else 0
+        if cut <= 0:
+            return
+        raw = bytes(buf[:cut])
+        del buf[:cut]
+        self.since[name] = time.time()
+        self.kept_bytes += len(raw)
+        self.seq += 1
+        self.pending.append(self._payload({
+            "seq": self.seq, "stream": name, "bytes": len(raw),
+            name: clean(raw.decode("utf-8", errors="replace")),
+            "final": False,
+        }))
+        self.retry()
+
+    def _payload(self, extra):
+        data = {
+            "subtype": "command_output", "command_id": self.command_id, "late": True,
+            "captured_by": self.captured_by, "timestamp": int(time.time() * 1000),
+        }
+        if self.source:
+            data["source"] = self.source
+        data.update(extra)
+        return {"agent_type": "shell", "data": data}
+
+    def retry(self):
+        while self.pending:
+            verdict = self._send(self.pending[0])
+            if verdict == "failed":
+                if len(self.pending) > self.RETRY_MAX:
+                    self._drop(self.pending.pop(0))
+                return
+            sent = self.pending.pop(0)
+            if verdict != "accepted":
+                self._drop(sent)
+
+    def _drop(self, payload):
+        self.dropped += int(payload["data"].get("bytes", 0))
+
+    def _send(self, payload):
+        if not self.client:
+            return "refused"
+        request = urllib.request.Request(
+            self.client["url"], json.dumps(payload).encode(),
+            {"Content-Type": "application/json", "Authorization": "Bearer " + self.client["token"],
+             "X-Redlog-Engagement": self.client["engagement"]})
+        try:
+            with self.client["opener"].open(request, timeout=1) as response:
+                result = json.load(response)
+            return "paused" if result.get("recording") is False else "accepted"
+        except urllib.error.HTTPError:
+            return "refused"
+        except Exception:
+            return "failed"
+
+    def finish(self):
+        for name in ("stdout", "stderr"):
+            self.flush(name, whole=True)
+        self.seq += 1
+        self.pending.append(self._payload({
+            "seq": self.seq, "stream": "both", "final": True, "bytes": 0,
+            "late_bytes": self.kept_bytes, "truncated": self.truncated,
+            "over_cap_bytes": self.over_cap, "dropped_bytes": self.dropped,
+        }))
+        # A stalled API must not keep this process alive: a few tries, then the
+        # shortfall is in the debug log if the final row never reaches the server.
+        for _ in range(3):
+            self.retry()
+            if not self.pending:
+                break
+            time.sleep(0.5)
+        unsent = len(self.pending)
+        for payload in self.pending:
+            self._drop(payload)
+        trace("late-end", "kept=%d dropped=%d over_cap=%d truncated=%s unsent=%d" % (
+            self.kept_bytes, self.dropped, self.over_cap, self.truncated, unsent))
+
+    def stream_tap(self, name):
+        late = self
+
+        class Tap:
+            def feed(self, chunk):
+                late.feed(name, chunk)
+        return Tap()
 
 
 def run(argv):
@@ -439,6 +619,8 @@ def pty_pipe(argv):
     # prints no job notice), and that subshell is gone before the command ends,
     # which would read as "the owner died" and close the ptys under the command.
     owner = int(opts["owner"]) if opts["owner"] else os.getppid()
+    late = None
+    released_at = None
     deadline = time.time() + float(opts["drain_timeout"])
     while not os.path.exists(opened):
         if time.time() > deadline:
@@ -485,7 +667,9 @@ def pty_pipe(argv):
                 # A suspended/background job may still write after the shell
                 # times out its drain and removes the work directory. Keep
                 # forwarding until EOF, but do not recreate retired evidence.
-                if os.path.isdir(directory):
+                # A leg whose record was already written as a snapshot is not
+                # written again: what came after went out as chunks.
+                if leg["stream"].late is None and os.path.isdir(directory):
                     write_json(os.path.join(directory, leg["name"] + ".json"), {
                         "stream": leg["name"],
                         "text": leg["stream"].text(),
@@ -514,8 +698,34 @@ def pty_pipe(argv):
                     if leg["slave"] is not None:
                         os.close(leg["slave"])
                         leg["slave"] = None
+                        released_at = released_at or time.time()
+        # A leg that is still open a moment after we let go of our slave has a
+        # writer that is not the foreground command: a background job. Record
+        # what the command printed up to now, so the prompt is not held for it,
+        # and send the rest as it comes. A leg with no writer reads EOF at once
+        # and takes the normal path above; the grace keeps a snapshot from
+        # being written for it.
+        if legs and released_at and late is None and time.time() - released_at > 0.3 \
+                and os.path.isdir(directory):
+            late = LateOutput(opts)
+            for leg in legs:
+                stream = leg["stream"]
+                write_json(os.path.join(directory, leg["name"] + ".json"), {
+                    "stream": leg["name"],
+                    "text": stream.text(),
+                    "bytes": stream.total,
+                    "truncated": stream.truncated(),
+                    "cap": opts["max_bytes"],
+                    "background": True,
+                })
+                stream.late = late.stream_tap(leg["name"])
+            trace("late-snapshot", "legs=%d" % len(legs))
+        if late is not None:
+            late.tick()
         if retry_read:
             time.sleep(0.01)
+    if late is not None:
+        late.finish()
     return 0
 
 
@@ -565,6 +775,7 @@ def finish(argv):
             cut.append("%s:%d" % (name, part.get("cap", 0)))
 
     stdout_bytes = (parts["stdout"] or {}).get("bytes", 0)
+    background = any(p and p.get("background") for p in parts.values())
     if looks_redirected(opts["command_line"]) and stdout_bytes == 0:
         # `nmap -oN scan.txt` with an empty body and `completeness: complete`
         # reads as a scan that printed nothing, and a reader believes it. The
@@ -576,6 +787,11 @@ def finish(argv):
         # lie the record cannot afford, and saying nothing would be the other.
         completeness, disposition = "truncated", "captured"
         cut.append("drain-timeout")
+    elif background:
+        # A background job still holds the terminal. What this row carries is
+        # what had been printed when the prompt came back; the rest follows as
+        # `command_output` rows with this command_id (`late_output`).
+        completeness, disposition = "partial", "captured"
     elif cut:
         completeness, disposition = "truncated", "captured"
     else:
@@ -597,6 +813,8 @@ def finish(argv):
         "output_disposition": disposition,
         "limit_hit": ",".join(cut) if cut else None,
     }
+    if background:
+        event["late_output"] = True
     if opts["source"]:
         event["source"] = opts["source"]
     trace("finish", "exit=%s completeness=%s disposition=%s stdout_bytes=%d stderr_bytes=%d drained=%s limit_hit=%s" % (

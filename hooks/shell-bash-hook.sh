@@ -191,8 +191,14 @@ _redlog_divert() {
   # subshell around it was tried first and left a "Done" entry per command,
   # which also pushed the operator's own job numbers up by one each time.
   local relay_pid
+  local home=$HOME
+  [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
+  # The command id, source and home let the relay send what a background job
+  # prints after the prompt is back, attributed to this command.
   { python3 "$_REDLOG_RELAY" pty --dir "$dir" --err-fd 3 --notify "$dir/ready" \
-      --max-bytes "$_REDLOG_MAX_BYTES" >&8 3>&9 8>&- 9>&- </dev/null &
+      --max-bytes "$_REDLOG_MAX_BYTES" --command-id "$_REDLOG_CMD_ID" \
+      --source "$_REDLOG_EVENT_SOURCE" --captured-by auto-relay --home "$home" \
+      >&8 3>&9 8>&- 9>&- </dev/null &
     relay_pid=$!; } 2>/dev/null
   disown "$relay_pid" 2>/dev/null
   echo "$relay_pid" >"$dir/pid"

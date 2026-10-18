@@ -27,6 +27,8 @@ const HOUSEKEEPING: RedLogEvent[] = [
   ev('system', { subtype: 'session_start' }),
   ev('shell', { subtype: 'session_start' }),
   ev('terminal', { subtype: 'session_start' }),
+  // Background output belongs to its command; the command's detail shows it.
+  ev('shell', { subtype: 'command_output', command_id: 'c1', late: true, seq: 1, stdout: 'x\n' }),
   ev('shell', { subtype: 'command_start', command: 'source /opt/redlog/shell-bash-hook.sh' }),
   ev('shell', { subtype: 'command_start', command: 'source /opt/redlog/shell-zsh-hook.zsh' }),
   ev('shell', { subtype: 'command_start', command: '. "C:\\Users\\op\\hooks\\shell-hook.ps1" *> $null; Clear-Host' }),

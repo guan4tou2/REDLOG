@@ -192,6 +192,7 @@ export const HOUSEKEEPING_SQL = `
   NOT (
     (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'command_output' AND COALESCE(json_extract(data,'$.late'), 0) = 1)
     OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
     OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%tlogger_prompt_command%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%Microsoft.PowerShell_profile.ps1%'))
   )
@@ -930,6 +931,24 @@ export function queryByFlowId(flowId: string): RedLogEvent[] {
      ORDER BY timestamp ASC LIMIT 10`
   ).all(flowId) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
+}
+
+/** The output a command printed after its prompt came back, in the order it was
+ *  sent. These rows are hidden from the Timeline (HOUSEKEEPING_SQL) because they
+ *  belong to the command, not beside it; the command's detail reads them here.
+ *  Both tiers, because a chunk lands wherever its command did. */
+export function queryCommandOutput(commandId: string, limit = 2000): RedLogEvent[] {
+  const db = getReadonlyDB()
+  const where = `agent_type = 'shell' AND subtype = 'command_output'
+     AND json_extract(data, '$.command_id') = ? AND json_extract(data, '$.late') = 1`
+  const rows = [
+    ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>),
+    ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>)
+  ]
+  return rows
+    .map(rowToEvent)
+    .sort((a, b) => Number(a.data.seq ?? 0) - Number(b.data.seq ?? 0) || a.timestamp - b.timestamp)
+    .slice(0, limit)
 }
 
 /** Count rows in the chained tier by default. The chain-anchor code path

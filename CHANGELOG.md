@@ -12,8 +12,13 @@ for full commit body + generated notes.
   descriptors 7-9, no `exec {fd}`, no `sleep` in the trap). Found while building
   it: the relay inherited a pipeline's pipe from the DEBUG trap and hung
   `echo x | cat`; it now closes every descriptor past stderr when it starts.
-  Known, shared with zsh: a backgrounded command keeps the relay's ptys, so the
-  prompt waits out the relay's drain timeout (about 10 s).
+- A command that leaves a job running in the background no longer loses what the
+  job prints. The prompt comes back at once (the relay stops waiting for the
+  job); the relay keeps showing the output in the terminal and records it as
+  follow-up `command_output` rows tied to the command by id, with a final row
+  that counts anything it could not keep. The command's `command_end` says
+  `partial` / `late_output`. The Timeline hides the chunk rows and the command's
+  detail shows them under "Background output", running or finished. Bash and zsh.
 
 ## v0.18.3 — 2026-10-16
 

@@ -195,6 +195,15 @@ export function ingest(input: IngestInput): IngestResult {
     })
   }
 
+  // 2b. A background job's late output has no command text to read a target
+  //     from, and must not get one by reading its bytes. The command it belongs
+  //     to was filed under a target when it ended; the chunk goes to the same.
+  const lateCommandId = agentType === 'shell' && data.subtype === 'command_output'
+    && typeof data.command_id === 'string' ? data.command_id : null
+  if (lateCommandId && !targetId && lateTargetByCommand.has(lateCommandId)) {
+    targetId = lateTargetByCommand.get(lateCommandId) ?? undefined
+  }
+
   // 3. Enrichment stamps + what the companions will need. Only for primary
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
@@ -220,6 +229,14 @@ export function ingest(input: IngestInput): IngestResult {
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
   if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
+  if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
+    if (data.subtype === 'command_end' && data.late_output === true) {
+      if (lateTargetByCommand.size >= LATE_TARGET_MAX) lateTargetByCommand.delete(lateTargetByCommand.keys().next().value as string)
+      lateTargetByCommand.set(data.command_id, targetId ?? null)
+    } else if (data.subtype === 'command_output' && data.final === true) {
+      lateTargetByCommand.delete(data.command_id)
+    }
+  }
 
   if (agentType === 'scanner') {
     try { linkHttpBodyEvent(event) } catch (error) { noteDbError('http-body-index', error) }
@@ -327,6 +344,12 @@ interface Plan {
  *  chunk before the loot scan. Long enough for a JWT or a key line; bounded
  *  in count so sessions that never sent `session_end` cannot accumulate. */
 const sessionTail = new Map<string, string>()
+
+// command_id → the target its command was filed under, for commands whose
+// `command_end` said a background job would keep printing. The chunks that
+// follow are filed there too. Bounded; released at the relay's `final` row.
+const lateTargetByCommand = new Map<string, string | null>()
+const LATE_TARGET_MAX = 256
 const SESSION_TAIL_CHARS = 4096
 const SESSION_TAIL_MAX = 64
 
@@ -418,6 +441,27 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
     } else if (data.subtype === 'session_start' || data.subtype === 'session_end') {
       sessionTail.delete(tid)
       if (data.source === 'builtin-terminal') castOffsetAtStart.delete(tid)
+    }
+  }
+
+  // Late output of a background job (`command_output`) is scanned the way PTY
+  // session output is: arbitrary line-ish boundaries, so each scan carries the
+  // tail of the previous chunk of the same command and stream.
+  if (agentType === 'shell' && data.subtype === 'command_output' && typeof data.command_id === 'string') {
+    const stream = data.stream === 'stderr' ? 'stderr' : 'stdout'
+    const key = `cmd:${data.command_id}:${stream}`
+    const body = typeof data[stream] === 'string' ? data[stream] as string : ''
+    if (body && lootDetectorRef?.findMatches) {
+      const text = (sessionTail.get(key) ?? '') + body
+      sessionTail.delete(key)
+      sessionTail.set(key, text.slice(-SESSION_TAIL_CHARS))
+      if (sessionTail.size > SESSION_TAIL_MAX) sessionTail.delete(sessionTail.keys().next().value as string)
+      plan.pendingLootMatches = lootDetectorRef.findMatches(text)
+      plan.lootValues = plan.pendingLootMatches.map((m) => m.value).filter((v) => v && v.length >= 6)
+    }
+    if (data.final === true) {
+      sessionTail.delete(`cmd:${data.command_id}:stdout`)
+      sessionTail.delete(`cmd:${data.command_id}:stderr`)
     }
   }
 
@@ -527,6 +571,7 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
 export function _resetIngest(): void {
   castOffsetAtStart.clear()
   sessionTail.clear()
+  lateTargetByCommand.clear()
   resetCausesResolver()
   lootDetectorRef = null
   alertRuntimeRef = null

@@ -63,6 +63,58 @@ function RefBackedStream({ label, refValue, bytes, accent }: {
   )
 }
 
+/** What a command printed after its prompt came back — `sleep 30; echo done &`.
+ *
+ *  The relay keeps recording it as follow-up `command_output` rows tied to the
+ *  command by id. Those rows are hidden from the list (they belong to the
+ *  command, not beside it) and gathered here, so the record reads as one
+ *  command with all of its output. Module scope for the same reason as above.
+ */
+function LateOutput({ commandId }: { commandId: string }): JSX.Element {
+  const { t } = useI18n()
+  const [rows, setRows] = useState<Array<{ id: string; data: Record<string, unknown> }> | null>(null)
+
+  useEffect(() => {
+    let live = true
+    const load = (): void => {
+      window.redlog.events.commandOutput(commandId)
+        .then((r) => { if (live) setRows(r) })
+        .catch(() => { if (live) setRows([]) })
+    }
+    load()
+    const unsub = window.redlog.events.onNewBatch(load)
+    return () => { live = false; unsub() }
+  }, [commandId])
+
+  const chunks = rows ?? []
+  const text = (key: 'stdout' | 'stderr'): string =>
+    chunks.map((c) => (typeof c.data[key] === 'string' ? (c.data[key] as string) : '')).join('')
+  const stdout = text('stdout')
+  const stderr = text('stderr')
+  const last = chunks.find((c) => c.data.final === true)
+  const lateBytes = Number(last?.data.late_bytes ?? 0)
+  const lost = Number(last?.data.dropped_bytes ?? 0) + Number(last?.data.over_cap_bytes ?? 0)
+  const status = last
+    ? (last.data.truncated === true || lost > 0 ? t('timeline.detail.lateTruncated') : t('timeline.detail.lateDone'))
+    : t('timeline.detail.lateRunning')
+
+  return (
+    <div className="space-y-1.5" data-testid="late-output">
+      <p className="text-xs text-redlog-text-dim font-mono">
+        {t('timeline.detail.lateHeading')} · {status}
+        {last && lateBytes > 0 ? ` · ${formatBytes(lateBytes)}` : ''}
+        {last && lost > 0 ? ` · ${t('timeline.detail.lateLost', { bytes: formatBytes(lost) })}` : ''}
+      </p>
+      {stdout !== '' && (
+        <CollapsibleStream label={t('timeline.detail.stdout')} content={stdout} accent="emerald" startOpen />
+      )}
+      {stderr !== '' && (
+        <CollapsibleStream label={t('timeline.detail.stderr')} content={stderr} accent="amber" startOpen />
+      )}
+    </div>
+  )
+}
+
 /** Structured detail body for a shell command_end event. */
 export function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
@@ -107,6 +159,9 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           bytes={typeof data.stderr_bytes === 'number' ? data.stderr_bytes : undefined}
           accent="amber"
         />
+      )}
+      {data.late_output === true && typeof data.command_id === 'string' && (
+        <LateOutput commandId={data.command_id} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
       {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && (

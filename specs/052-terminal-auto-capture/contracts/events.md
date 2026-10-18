@@ -43,24 +43,41 @@ Already emitted. Gains:
 
 ## `command_output` (NEW subtype)
 
-One per chunk. Correlated **only** by identifiers; nothing in `bytes` is ever
-read to decide where a chunk belongs (FR-002).
+Background output only (FR-007): what a job the command left running printed
+after the prompt came back. Foreground output stays on `command_end`. The relay
+sends these directly to the local API, whole lines at a time, and correlates
+**only** by identifiers; nothing in the text is ever read to decide where a chunk
+belongs (FR-002).
 
 ```jsonc
 {
   "subtype": "command_output",
   "session_id": "<terminal session>",
   "command_id": "<command>",
+  "late": true,
   "seq": 3,                      // ordering within the command
-  "stream": "stdout",            // stdout | stderr, kept separate
-  "bytes_b64": "...",            // raw as captured
-  "truncated": false,
-  "bytes_total": 4096            // before any bound was applied
+  "stream": "stdout",            // stdout | stderr | both (the final row)
+  "stdout": "text…",             // cleaned text; or "stderr" for stream:"stderr"
+  "bytes": 4096                  // bytes this chunk covers
 }
 ```
 
-An ingested chunk whose `command_id` matches no open command is stored with
-`unattributed: true` rather than dropped (background output, FR-007).
+The last row of a command carries the accounting and releases the id:
+
+```jsonc
+{
+  "subtype": "command_output", "late": true, "final": true, "stream": "both",
+  "late_bytes": 8192,            // everything the job printed after the prompt
+  "truncated": false,
+  "over_cap_bytes": 0,           // past --max-bytes
+  "dropped_bytes": 0             // could not be delivered after retries
+}
+```
+
+An ingested chunk whose `command_id` matches no known command is stored with
+`unattributed: true` rather than dropped. Chunks inherit the command's target
+and are loot-scanned across chunk boundaries. The Timeline hides them
+(`HOUSEKEEPING_SQL`); the command's detail gathers them (`events:commandOutput`).
 
 ## `command_end`
 
@@ -73,6 +90,7 @@ Already emitted with `exit_code`, `duration_sec`, `cwd`. Gains:
   "completeness": "full",            // full | truncated | metadata-only | partial
   "output_disposition": "captured",  // captured | redirected | interactive | not-captured | project-boundary
   "limit_hit": null                  // e.g. "stdout:102400" when truncated
+  // late_output: true when a background job outlived the prompt (completeness is then "partial")
 }
 ```
 

@@ -336,8 +336,13 @@ _redlog_pagers_restore() {
 _redlog_divert() {
   local dir=$1 i=0
   exec {_REDLOG_SAVED_OUT}>&1 {_REDLOG_SAVED_ERR}>&2 || return 1
+  local home=$HOME
+  [[ -n "${_REDLOG_DIR:-}" ]] && home="${_REDLOG_DIR:h}"
+  # The command id, source and home let the relay send what a background job
+  # prints after the prompt is back, attributed to this command.
   python3 "$_REDLOG_RELAY" pty --dir "$dir" --err-fd 3 \
-    --max-bytes "$_REDLOG_MAX_BYTES" \
+    --max-bytes "$_REDLOG_MAX_BYTES" --command-id "$_REDLOG_CMD_ID" \
+    --source "$_REDLOG_EVENT_SOURCE" --captured-by auto-relay --home "$home" \
     >&$_REDLOG_SAVED_OUT 3>&$_REDLOG_SAVED_ERR &!
   _REDLOG_RELAY_PID=$!
   while [[ ! -s "$dir/pts" ]]; do
