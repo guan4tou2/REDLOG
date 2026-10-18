@@ -82,6 +82,21 @@ describe('ExportMenu plan preview', () => {
     expect(screen.getByText('1234567890ab')).toBeTruthy()
     expect(screen.getByText('Data snapshot')).toBeTruthy()
   })
+
+  // Spec 060 FR-009: masking an empty scope masks nothing, and the preview
+  // must not say it did while also saying the web traffic is unfiltered.
+  it('does not claim out-of-scope masking when no web scope is set', async () => {
+    const empty = plan(3)
+    install(async () => ({ ok: true, plan: { ...empty, scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] } } }))
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    openJson()
+    await screen.findByText('Plan fingerprint')
+    const policy = screen.getByTestId('export-preview-policy').textContent ?? ''
+    expect(policy).not.toContain('out-of-scope masked')
+    expect(policy).toContain('no web scope set')
+    expect(screen.getByTestId('export-scope-unset')).toBeTruthy()
+    expect(screen.queryByText('Out of scope (masked)')).toBeNull()
+  })
 })
 
 // UI/UX audit F12: the preview is a dialog, a failed run keeps it, and a

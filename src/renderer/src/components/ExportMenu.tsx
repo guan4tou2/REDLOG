@@ -16,6 +16,12 @@ export interface ExportMenuProps {
   onOpenScopeSettings?: () => void
 }
 
+/** Whether the plan was resolved against a web scope at all. Masking an empty
+ *  scope masks nothing, so the preview must not say it did (Spec 060 FR-009). */
+function planScopeSet(plan: { scopeSnapshot?: { targets?: string[]; excludeTargets?: string[] } }): boolean {
+  return (plan.scopeSnapshot?.targets ?? []).length > 0 || (plan.scopeSnapshot?.excludeTargets ?? []).length > 0
+}
+
 /** What the preview says about scope, in the two places it is easy to assume
  *  wrongly: an empty scope is not "everything verified in scope", and the web
  *  scope does not select commands. Module scope on purpose — declared inside
@@ -391,7 +397,9 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
                           <span data-testid="export-preview-policy" className="text-right text-redlog-text">
                             {[
-                              resolvedPlan.request.maskOutOfScope ? t('export.preview.policyMask') : t('export.preview.policyNoMask'),
+                              !resolvedPlan.request.maskOutOfScope
+                                ? t('export.preview.policyNoMask')
+                                : planScopeSet(resolvedPlan) ? t('export.preview.policyMask') : t('export.preview.policyNoScope'),
                               ...(resolvedPlan.request.scopeOnly ? [t('export.preview.policyScopeOnly')] : []),
                               ...(resolvedPlan.request.scrubPii ? [t('export.preview.policyScrubPii')] : [])
                             ].join(' · ')}
@@ -422,14 +430,14 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         which is not a scope classification, and `screenshots`
                         was hardcoded 0 - both are gone rather than guessed. */}
                     <ScopeNotes
-                      scopeSet={(resolvedPlan.scopeSnapshot?.targets ?? []).length > 0 || (resolvedPlan.scopeSnapshot?.excludeTargets ?? []).length > 0}
+                      scopeSet={planScopeSet(resolvedPlan)}
                       onSetScope={onOpenScopeSettings ? () => { setPending(null); setResolvedPlan(null); setRunError(null); setOpen(false); onOpenScopeSettings() } : undefined}
                       t={t}
                     />
                     {resolvedPlan.request.subset.kind !== 'all' && <p data-testid="export-projection-notice" className="px-3 py-2 text-xs text-amber-400">{t('export.projectionNotice')}</p>}
                     {resolvedPlan.counts.exchanges !== undefined && <p className="px-3 text-xs">{t('export.exchanges', { count: resolvedPlan.counts.exchanges })}</p>}
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
-                    <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />
+                    {planScopeSet(resolvedPlan) && <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />}
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
                     <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />
                     <PreviewRow label={t('export.preview.sanitized')} value={resolvedPlan.counts.sanitized} />

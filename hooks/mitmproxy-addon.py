@@ -85,6 +85,11 @@ REDLOG_PORT_FILE = Path.home() / ".redlog" / "api-port"
 REDLOG_TOKEN_FILE = Path.home() / ".redlog" / "api-token"
 SPOOL_DIR = Path.home() / ".redlog" / "pending"
 
+# Which listener produced an HTTP event. The transparent-proxy producer launches
+# mitmdump with REDLOG_PROXY_MODE=transparent; anything else is a regular proxy.
+# Both emit the same subtypes, so without this stamp a request through the
+# regular proxy would read as proof that the transparent one works (Spec 060 FR-011).
+PROXY_MODE = "transparent" if os.environ.get("REDLOG_PROXY_MODE") == "transparent" else "regular"
 MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "10485760"))
 PREVIEW_BODY = int(os.environ.get("REDLOG_PREVIEW_BODY", "4096"))
 MAX_HEADERS = int(os.environ.get("REDLOG_MAX_HEADERS", "200"))
@@ -969,6 +974,7 @@ class RedLogAddon:
         if req_cookies:
             event_data["cookies"] = req_cookies
 
+        event_data["proxy_mode"] = PROXY_MODE
         payload = {
             "agent_type": "scanner",
             "data": event_data,
@@ -1063,6 +1069,7 @@ class RedLogAddon:
             event_data["set_cookies"] = set_cookies
             self._track_cookies(target, set_cookies)
 
+        event_data["proxy_mode"] = PROXY_MODE
         payload = {
             "agent_type": "scanner",
             "data": event_data,

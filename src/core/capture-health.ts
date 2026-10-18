@@ -260,6 +260,12 @@ const ACTIVE_WINDOW_MS = 10 * 60 * 1000
 // missed beat or two without flapping.
 const PRODUCER_HEARTBEAT_WINDOW_MS = 60 * 1000
 
+/** Producers that share the mitmproxy addon's subtypes with the regular proxy,
+ *  and the `proxy_mode` stamp that is theirs alone (Spec 060 FR-011). */
+const PROXY_MODE_PRODUCERS: Record<string, string> = {
+  'transparent-proxy.mitmproxy-transparent': 'transparent'
+}
+
 // System events (api_started/session_start) are RedLog's own housekeeping — they
 // don't prove anything is being captured, so they never count as "recording".
 function lastEventFor(where: string, params: unknown[] = []): number | null {
@@ -445,14 +451,14 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // `source` is absent on rows from older adapters, so the test is "not
   // builtin-terminal" rather than "is auto-relay": a hook the operator
   // installed before this release still counts as their own terminal.
-  const ownShellLast = lastEventFor(
-    `agent_type = 'shell' AND subtype IN ('command_start','command_end')
-     AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'`
-  )
   // mitmproxy addon writes scanner http_request/http_error events.
   // mitmproxy and the connection monitor both land on agent_type='scanner';
   // split them by subtype so one does not light the other's indicator.
-  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')`)
+  // A transparent-proxy event is not the regular proxy's: both run the same
+  // addon and emit the same subtypes, and `proxy_mode` is the only thing that
+  // tells them apart. Rows from before the stamp count as regular.
+  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
+    AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
   const connLast = lastEventFor(`agent_type = 'scanner' AND subtype IN ('connection','connection_end')`)
   // v0.6.92: DNS/browser/process/file-watcher producers. `installed` is
   // undefined for these because "installed" doesn't really apply — the DNS
@@ -487,6 +493,20 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const SHELL_HOOK_IDS = ['shell-zsh', 'shell-bash', 'shell-powershell']
   const shellKnown = SHELL_HOOK_IDS.map(hookInstalled).filter((v) => v !== undefined)
   const shellInstalled = shellKnown.length > 0 ? shellKnown.some(Boolean) : undefined
+  // Spec 060 FR-003/FR-011: only a command from a shell whose adapter IS
+  // installed vouches for this row. A zsh command says nothing about a bash
+  // hook, so a Bash-only install must not read "included" because zsh typed
+  // something. `shell` is absent on rows from older adapters; those still
+  // count, as `source` does above.
+  const installedShellNames = SHELL_HOOK_IDS
+    .filter((id) => hookInstalled(id) === true)
+    .map((id) => id.replace(/^shell-/, ''))
+  const ownShellLast = lastEventFor(
+    `agent_type = 'shell' AND subtype IN ('command_start','command_end')
+     AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
+     AND (json_extract(data,'$.shell') IS NULL OR json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"}))`,
+    installedShellNames
+  )
   // Which concrete hook id an Install button should act on. Prefer whichever
   // is already known to the detector for this platform.
   const shellHookId = hooks.find((h) => h.id === (process.platform === 'win32' ? 'shell-powershell' : 'shell-zsh'))?.id
@@ -611,9 +631,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
       let last: number | null = null
       if (emits.length > 0) {
         const placeholders = emits.map(() => '?').join(',')
+        const mode = PROXY_MODE_PRODUCERS[h.id]
         last = lastEventFor(
-          `agent_type = ? AND subtype IN (${placeholders})`,
-          [h.agentType, ...emits]
+          `agent_type = ? AND subtype IN (${placeholders})${mode ? ` AND json_extract(data,'$.proxy_mode') = ?` : ''}`,
+          [h.agentType, ...emits, ...(mode ? [mode] : [])]
         )
       }
       // E3: is the operator running this producer right now? A running producer

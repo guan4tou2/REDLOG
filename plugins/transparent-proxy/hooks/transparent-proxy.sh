@@ -83,4 +83,4 @@ esac
 
 trap teardown EXIT INT TERM
 echo "[redlog transparent-proxy] redirecting local 80/443 → mitmproxy :$port (Ctrl-C to stop and remove rules)…" >&2
-exec mitmdump --mode transparent --listen-port "$port" -s "$addon"
+exec env REDLOG_PROXY_MODE=transparent mitmdump --mode transparent --listen-port "$port" -s "$addon"
