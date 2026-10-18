@@ -11,6 +11,15 @@ for full commit body + generated notes.
   includes that output (the Timeline hides it, so a filtered export used to
   drop it), and marking the command "do not export" holds back its later output
   too.
+- Updates no longer restart RedLog on their own (Windows, where in-app update
+  exists). Downloading and restarting are two separate choices: the download
+  runs in the background and ends with "ready"; installing is a second action
+  that lists what the restart will end (built-in terminals, the managed proxy,
+  recently active outside terminals), defaults to "Later", and asks again if
+  that list changed while the question was open. The always-on-top progress
+  window that could not be closed is gone. Checking again while an update is
+  downloaded goes straight to the install question. macOS and Linux still open
+  the release page.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.
