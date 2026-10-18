@@ -98,6 +98,10 @@ export interface RedLogConfig {
     captureOnCommand?: boolean
   }
   overlay: {
+    /** Whether the HUD opens when a project starts. On unless turned off; the
+     *  in-HUD toggle and the tray only hide it for the session (Spec 060
+     *  FR-014). Absent means on. */
+    autoShow?: boolean
     showMarkButton: boolean
     /** macOS: keep a Dock icon (opening the HUD otherwise makes the app Dock-less) */
     showInDock: boolean
@@ -322,6 +326,7 @@ export const DEFAULT_CONFIG: RedLogConfig = {
     captureOnCommand: false
   },
   overlay: {
+    autoShow: true,
     showMarkButton: true,
     showInDock: true,
     flashOnExposed: true,
