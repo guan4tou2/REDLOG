@@ -391,6 +391,8 @@
   "settings.vpnNamePlaceholder": "Name",
   "settings.vpnPatternPlaceholder": "Regex pattern",
   "settings.overlayGroup": "HUD",
+  "settings.overlayAutoShow": "Open the HUD when a project starts",
+  "settings.overlayAutoShowHint": "On by default. Turn it off and the HUD stays hidden until you open it from the status bar or the menu bar icon.",
   "settings.overlayShowMark": "Show Mark button in the expanded overlay",
   "settings.overlayShowMarkHint": "Keeps the collapsed overlay minimal; the Mark button only appears when expanded.",
   "settings.overlayFlashExposed": "Flash HUD when IP exposed",

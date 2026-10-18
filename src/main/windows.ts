@@ -85,7 +85,10 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   return win
 }
 
-export function createOverlayWindow(saved?: { x: number; y: number } | null): BrowserWindow {
+export function createOverlayWindow(
+  saved?: { x: number; y: number } | null,
+  opts: { show?: boolean } = {}
+): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workArea
   const width = 440
   const placed = saved ?? defaultOverlayBounds(workArea, width)
@@ -93,6 +96,9 @@ export function createOverlayWindow(saved?: { x: number; y: number } | null): Br
   const win = new BrowserWindow({
     width,
     height: HUD_INITIAL_H,
+    // Created either way so the toggle, the tray and the IPC handlers always
+    // have a window; `autoShow: false` only keeps it from appearing.
+    show: opts.show !== false,
     x: placed.x,
     y: placed.y,
     frame: false,

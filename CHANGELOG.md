@@ -11,6 +11,9 @@ for full commit body + generated notes.
   recorded yet. A command with no `shell` field (an adapter too old to report
   it) stays in the record for reading but no longer counts as proof that any
   shell works: nothing in it says which adapter sent it.
+- The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
+  On by default, so nothing changes unless you turn it off; off keeps it hidden
+  until you open it from the status bar or the menu bar icon.
 - Bash now records a subshell or group line such as `( make; ./run )` or
   `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
   all. The adapter notices at the prompt that the history number moved by one

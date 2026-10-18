@@ -51,6 +51,7 @@ const DEFAULTS: Record<string, Check> = {
   'screenshot.captureOnCommand': false,
 
   // 2.5 overlay
+  'overlay.autoShow': true,
   'overlay.showMarkButton': true,
   'overlay.showInDock': true,
   'overlay.flashOnExposed': true,
