@@ -76,7 +76,7 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -1912,18 +1912,25 @@ function externalShellLastEventAt(): number | null {
   } catch { return null }
 }
 
+/** What quitting would stop right now. Read when asked, never cached: the
+ *  update restart question and the quit dialog both depend on it being current. */
+function currentQuitImpact(): ReturnType<typeof quitImpact> {
+  return quitImpact({
+    terminals: listTerminals().length,
+    proxyState: managedHttpProxy.status().state,
+    project: activeProject?.name ?? null,
+    externalLastEventAt: externalShellLastEventAt()
+  })
+}
+setUpdateImpactProvider(currentQuitImpact)
+
 /** A quit that stops live sources is the operator's call (#346). Returns true
  *  when the quit should be held for the dialog. */
 function holdQuitForConfirmation(): boolean {
   if (forceQuit || isQuitAllowed()) return false
   // The e2e harness closes the app with live terminals; nothing is there to ask.
   if (process.env.REDLOG_E2E === '1') return false
-  const impact = quitImpact({
-    terminals: listTerminals().length,
-    proxyState: managedHttpProxy.status().state,
-    project: activeProject?.name ?? null,
-    externalLastEventAt: externalShellLastEventAt()
-  })
+  const impact = currentQuitImpact()
   if (!impact) return false
   if (!quitPrompt) {
     mainWindow?.show()

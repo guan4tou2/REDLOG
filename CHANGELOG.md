@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Updates no longer restart RedLog on their own (Windows, where in-app update
+  exists). Downloading and restarting are two separate choices: the download
+  runs in the background and ends with "ready"; installing is a second action
+  that lists what the restart will end (built-in terminals, the managed proxy,
+  recently active outside terminals), defaults to "Later", and asks again if
+  that list changed while the question was open. The always-on-top progress
+  window that could not be closed is gone. Checking again while an update is
+  downloaded goes straight to the install question. macOS and Linux still open
+  the release page.
 - Bash now records a subshell or group line such as `( make; ./run )` or
   `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
   all. The adapter notices at the prompt that the history number moved by one
