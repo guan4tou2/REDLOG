@@ -5,6 +5,48 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+Prepared as v0.18.4; rename this heading to `v0.18.4 — <date>` when it is tagged.
+
+- **Fix: macOS `redlog-session` could exit 0 with no output (#333).** `pty.fork()`
+  leaves the parent without the slave; a command that exits before the first
+  read loses its unread output when macOS closes the last slave descriptor.
+  The helper now holds the slave until the child is reaped and the master is
+  drained. Measured under CPU saturation with the real helper: 15 of 1600 runs
+  lost output before, 0 of 1600 after. A test pins the property that removes
+  the race (it cannot reproduce the race on demand).
+- **Debug log** (Settings → About): a machine-wide switch (`~/.redlog/debug-enabled`)
+  that makes the app, `redlog-session.py` and `redlog-relay.py` append event
+  names, byte counts and completeness verdicts to `~/.redlog/debug.log`. Never
+  commands, paths or output. 2 MB cap, one rotation.
+- Capture and setup: Bash hook records the typed command when `PROMPT_COMMAND`
+  is set; PowerShell hook stamps when a command ran; a capture check does not
+  count while recording is paused; a project's record explains a pause; a
+  leftover `mitmdump` from a crash is reclaimed.
+- Setup flow: terminal-first with per-shell verification; default HTTPS route is
+  the operator's own browser with the CA trusted, the managed proxy offered as a
+  listener address, the capture browser as the alternative; settings show both
+  the trust and the remove-trust commands; first-run steps read in order and
+  optional steps fold once the shell is connected.
+- Quit and removal: confirm before a quit that stops live sources (including an
+  outside terminal); removing a shell hook stops terminals that loaded it
+  (Bash says open terminals keep recording); stopping HTTP capture says how many
+  panes still point at the stopped proxy.
+- Export and evidence: previews say when output was cut short or recording was
+  paused and freeze a live cast at its last complete line; HAR export no longer
+  drops events past 50,000 silently; JSON export no longer embeds private
+  configuration; timeline slice export scrubs operator PII when asked; manually
+  added evidence is findable; the scope tester counts the scope file and says
+  when it is not in force.
+- Plugins: the page reports which contributions took effect, can dry-run rules
+  on pasted text, audits trust changes, reports rejected redaction rules, and no
+  longer claims isolation the code does not have.
+- UI: the status bar stays on one line in narrow windows (#323) and follows a
+  saved scope; the timeline no longer shows an in-scope hit as a scope violation
+  and its pause chip says what it means; the first-run header no longer shows a
+  lone "2 ·"; assorted copy and placeholder fixes.
+- Tests: no large reorganisation; e2e bisect leftovers removed, TESTING.md gains
+  coverage rows and a note on load-only races.
+
 ## v0.18.3 — 2026-10-16
 
 - Consolidate test coverage owners and current test/install walkthroughs. Remove
