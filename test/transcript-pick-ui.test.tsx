@@ -50,7 +50,8 @@ describe('picking steps in the transcript', () => {
   it('records a marker citing the step, then shows only picked steps', async () => {
     render(<TranscriptView />)
     await screen.findByText('$ whoami')
-    fireEvent.click(screen.getAllByTestId('transcript-pick')[1])
+    // Newest first: 'whoami' (ts 2) is the first row.
+    fireEvent.click(screen.getAllByTestId('transcript-pick')[0])
     fireEvent.click(screen.getByTestId('transcript-pick-failed_attempt'))
     await waitFor(() => expect(markerCreate).toHaveBeenCalledTimes(1))
     expect(markerCreate.mock.calls[0][0]).toMatchObject({ category: 'failed_attempt', causes: ['s2'], targetId: '10.0.0.5', atTimestamp: 2 })
@@ -71,7 +72,8 @@ describe('picking steps in the transcript', () => {
   it('copies one step whole, with its provenance', async () => {
     render(<TranscriptView />)
     await screen.findByText('$ id')
-    fireEvent.click(screen.getAllByTestId('transcript-copy-step')[0])
+    // Newest first: 'id' (ts 1) is the second row.
+    fireEvent.click(screen.getAllByTestId('transcript-copy-step')[1])
     await waitFor(() => expect(clipboardWrite).toHaveBeenCalled())
     const md = clipboardWrite.mock.calls[0][0] as string
     expect(md).toContain('snippet.events: `s1`')

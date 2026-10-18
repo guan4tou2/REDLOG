@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The Transcript lists the newest step first. "Load older" and its retry now sit
+  below the list, where the older steps appear. "Copy as Markdown" still reads
+  oldest first, like a document.
+
 - Updates no longer restart RedLog on their own (Windows, where in-app update
   exists). Downloading and restarting are two separate choices: the download
   runs in the background and ends with "ready"; installing is a second action
