@@ -44,6 +44,10 @@ function _RedLogTimestamp {
 function _RedLogSpoolPayload {
     param([string]$Json)
     try {
+        # No open project means nobody to attribute this to; the replay would
+        # only park it as *.unattributed. Same rule as shell-common.sh.
+        $identFile = Join-Path $script:_RedLogDir 'active-identity.json'
+        if (-not (Test-Path $identFile) -or -not (Select-String -Path $identFile -Pattern '"engagementId"' -Quiet)) { return }
         if (-not (Test-Path $script:_RedLogSpoolDir)) {
             New-Item -ItemType Directory -Path $script:_RedLogSpoolDir -Force | Out-Null
         }

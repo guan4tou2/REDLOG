@@ -22,6 +22,9 @@ for full commit body + generated notes.
   window that could not be closed is gone. Checking again while an update is
   downloaded goes straight to the install question. macOS and Linux still open
   the release page.
+- The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
+  On by default, so nothing changes unless you turn it off; off keeps it hidden
+  until you open it from the status bar or the menu bar icon.
 - Bash now records a subshell or group line such as `( make; ./run )` or
   `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
   all. The adapter notices at the prompt that the history number moved by one

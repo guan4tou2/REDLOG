@@ -23,6 +23,17 @@ export default function HudPage({
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
+            data-testid="settings-overlay-autoshow"
+            checked={config.overlay?.autoShow !== false}
+            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: e.target.checked } })}
+            className="accent-red-600"
+          />
+          <span className="text-xs text-redlog-text">{t('settings.overlayAutoShow')}</span>
+        </label>
+        <p className="text-xs text-redlog-text-faint mb-2">{t('settings.overlayAutoShowHint')}</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
             checked={config.overlay?.showMarkButton !== false}
             onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: e.target.checked } })}
             className="accent-red-600"

@@ -301,6 +301,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   ],
   hud: [
     'settings.overlayGroup',
+    'settings.overlayAutoShow',
+    'settings.overlayAutoShowHint',
     'settings.overlayShowMark',
     'settings.overlayShowMarkHint',
     'settings.overlayFlashExposed',
