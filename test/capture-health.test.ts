@@ -221,9 +221,20 @@ describeDB('capture-health', () => {
 
   it('counts a command from the operator’s own terminal as proof', () => {
     mockHooks({ 'shell-zsh': true })
-    ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay' })
-    expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
-      .not.toBeNull()
+    ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay', shell: 'zsh' })
+    const t = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellLastEventAt).not.toBeNull()
+    expect(t?.ownShellName).toBe('zsh')
+  })
+
+  // A row that cannot say which adapter sent it proves nothing about any of
+  // them. It stays in the record; it does not light a shell's verification.
+  it('does not count a command with no shell field as proof', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'old adapter row', source: 'auto-relay' })
+    const t = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellLastEventAt).toBeNull()
+    expect(t?.ownShellName).toBeNull()
   })
 
   // Spec 060 FR-003: a command arriving is not its output arriving.
@@ -285,7 +296,7 @@ describeDB('capture-health', () => {
     expect(getCaptureHealth(t0).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
       .toBeNull()
 
-    const ev = ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay' })
+    const ev = ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay', shell: 'zsh' })
     // The path every real event takes: ingest writes, then publishes, and the
     // bus defers its fanout to a microtask.
     eventBusMod.eventBus.publish(ev!)
@@ -298,14 +309,16 @@ describeDB('capture-health', () => {
       .not.toBeNull()
   })
 
-  it('counts a command from an adapter too old to say where it came from', () => {
-    // `source` is absent on rows from adapters installed before this release.
-    // Reading that as "RedLog's pane" would tell an operator whose hook has
-    // worked for months that their setup is unfinished.
+  it('does not count a command from an adapter too old to say where it came from', () => {
+    // Rows without `source` or `shell` predate the adapters that report them.
+    // They stay in the record for reading, but nothing about them says which
+    // adapter works, so they do not light a shell's verification. The operator
+    // sees "open a new terminal and run a command" until a current adapter
+    // sends one (Spec 060 FR-003, FR-011).
     mockHooks({ 'shell-zsh': true })
     ins('shell', { subtype: 'command_end', command: 'whoami' })
     expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
-      .not.toBeNull()
+      .toBeNull()
   })
 
   // Spec 052 T017. The terminal row has always been able to say whether a

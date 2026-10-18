@@ -33,6 +33,19 @@ function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | nu
     : 'capture.terminalOwnShellCommandOnly'
 }
 
+const SHELL_LABEL: Record<string, string> = { zsh: 'Zsh', bash: 'Bash', powershell: 'PowerShell' }
+
+/** What the card heard and when, as facts. It says what arrived, not what will
+ *  keep being recorded: a shell can be switched, an interactive tool can take
+ *  the terminal, and a source can stop after the last thing it sent. */
+function ownShellVars(s: { ownShellName?: string | null; ownShellLastEventAt?: number | null; ownShellOutputAt?: number | null }): Record<string, string> {
+  return {
+    shell: s.ownShellName ? (SHELL_LABEL[s.ownShellName] ?? s.ownShellName) : '',
+    command: s.ownShellLastEventAt != null ? formatDateTime(s.ownShellLastEventAt) : '',
+    output: s.ownShellOutputAt != null ? formatDateTime(s.ownShellOutputAt) : ''
+  }
+}
+
 /** `127.0.0.1:6661` from the managed proxy's `http://127.0.0.1:6661`, only while
  *  it is running. */
 function proxyListenAddress(proxy: { state: string; url?: string | null } | undefined): string | null {
@@ -480,12 +493,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
                     here they can act on. */}
                 {s.id === 'terminal' && (
                   <span className="block text-xs text-redlog-text-faint">
-                    {t(ownShellKey(s))}
-                    {s.ownShellLastEventAt != null && (
-                      <span data-testid="own-shell-last">{' · '}{t('capture.terminalOwnShellLast', {
-                        time: formatDateTime(s.ownShellOutputAt ?? s.ownShellLastEventAt)
-                      })}</span>
-                    )}
+                    <span data-testid="own-shell-last">{t(ownShellKey(s), ownShellVars(s))}</span>
                     {s.enrolled && s.enrolled.total > 0 && (
                       <span>{' · '}{t('capture.terminalEnrolled', {
                         recording: s.enrolled.recording, total: s.enrolled.total

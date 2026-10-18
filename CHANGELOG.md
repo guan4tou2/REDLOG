@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The terminal row says what it heard, not what it promises. Instead of "Your
+  own terminal is included · commands and their output", it reads e.g. "Zsh ·
+  last command 21:10 · last output 21:09", or says no command output has been
+  recorded yet. A command with no `shell` field (an adapter too old to report
+  it) stays in the record for reading but no longer counts as proof that any
+  shell works: nothing in it says which adapter sent it.
 - Bash now records a subshell or group line such as `( make; ./run )` or
   `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
   all. The adapter notices at the prompt that the history number moved by one
