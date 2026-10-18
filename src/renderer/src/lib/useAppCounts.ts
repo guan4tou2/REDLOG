@@ -84,9 +84,18 @@ export function useAppCounts(): AppCounts {
       void readViolations()
     })
     const onRecount = (): void => { void load() }
+    // A saved config can change what "configured" means (a scope target added
+    // from Settings or from the Targets view). Without this the status bar
+    // kept saying "scope not set" until something else forced a recount.
+    const onConfigSaved = (): void => { void readConfigured(); void readViolations() }
     window.addEventListener(RECOUNT_EVENT, onRecount)
-    return () => { unsub(); window.removeEventListener(RECOUNT_EVENT, onRecount) }
-  }, [load, readViolations])
+    window.addEventListener('redlog:config-saved', onConfigSaved)
+    return () => {
+      unsub()
+      window.removeEventListener(RECOUNT_EVENT, onRecount)
+      window.removeEventListener('redlog:config-saved', onConfigSaved)
+    }
+  }, [load, readViolations, readConfigured])
 
   return {
     eventCount, loggedCount, chainLen, lootCount, scopeViolations, scopeConfigured,

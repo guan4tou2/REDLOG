@@ -1854,7 +1854,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                   setFollowMode(true)
                 }
               }}
-              title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
+              title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint', { time: formatBehind(behindMs) })}
               className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
                 isLive
                   ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
