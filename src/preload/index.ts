@@ -76,6 +76,9 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('artifacts:addDropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean), text) as Promise<ArtifactAddResponse | null>,
     reveal: (kind: 'artifact' | 'screenshot', file: string) => ipcRenderer.invoke('artifacts:reveal', kind, file) as Promise<boolean>
   },
+  agents: {
+    sources: () => ipcRenderer.invoke('agents:sources') as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+  },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,

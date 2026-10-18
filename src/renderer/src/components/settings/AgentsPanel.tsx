@@ -17,6 +17,39 @@ import { isWindows } from '../../lib/platform'
 // This is now the only writer, and it is a pack group like the other two — so
 // it also reports a pack whose plugin was disabled in Plugins, which the bare
 // checkbox could not.
+type AgentSource = { id: string; label: string; root: string; detected: boolean }
+
+/** What can be read, what is on this machine, and what the folder limit does.
+ *  Declared at module scope so it keeps its state across renders. */
+function AgentSources({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element | null {
+  const [sources, setSources] = useState<AgentSource[] | null>(null)
+  const [limited, setLimited] = useState<number | null>(null)
+  useEffect(() => {
+    window.redlog.agents.sources().then(setSources).catch(() => setSources([]))
+    window.redlog.hookConfig.get().then((c) => setLimited((c.watchPaths ?? []).length)).catch(() => setLimited(null))
+  }, [])
+  if (!sources || sources.length === 0) return null
+  return (
+    <div data-testid="agent-sources" className="space-y-1.5 text-xs">
+      <p className="text-redlog-text-dim">{t('settings.agents.sourcesTitle')}</p>
+      <ul className="space-y-1">
+        {sources.map((s) => (
+          <li key={s.id} data-testid={`agent-source-${s.id}`} data-detected={s.detected ? 'true' : 'false'} className="flex items-baseline gap-2">
+            <span className="w-24 shrink-0 text-redlog-text">{s.label}</span>
+            <span className={`shrink-0 ${s.detected ? 'text-emerald-500' : 'text-redlog-text-faint'}`}>
+              {s.detected ? t('settings.agents.detected') : t('settings.agents.notDetected')}
+            </span>
+            <span title={s.root} className="min-w-0 flex-1 truncate font-mono text-redlog-text-faint">{s.root}</span>
+          </li>
+        ))}
+      </ul>
+      <p data-testid="agent-scope" className={limited === 0 ? 'text-amber-400' : 'text-redlog-text-faint'}>
+        {limited === null ? '' : limited === 0 ? t('settings.agents.scopeAll') : t('settings.agents.scopeLimited', { n: limited })}
+      </p>
+    </div>
+  )
+}
+
 export default function AgentsPanel({
   t, config, setConfig
 }: {
@@ -33,6 +66,7 @@ export default function AgentsPanel({
     >
       <div className="space-y-2 mt-2">
         <p className="text-xs text-redlog-text-faint">{t('settings.agents.enableHint')}</p>
+        <AgentSources t={t} />
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"

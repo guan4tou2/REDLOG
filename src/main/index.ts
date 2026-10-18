@@ -60,7 +60,7 @@ import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
-import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
+import { configureAgentTailer, stopAgentTailer, describeAgentSources } from './services/agent-tailer'
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, listPlugins } from '../core/plugins'
@@ -1349,6 +1349,7 @@ app.whenReady().then(() => {
   })
 
   // Settings maintains the watchPaths whitelist through this pair.
+  ipcMain.handle('agents:sources', () => describeAgentSources())
   ipcMain.handle('hookConfig:get', () => readHookConfig())
   ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => {
     try {
