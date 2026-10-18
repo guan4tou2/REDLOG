@@ -8,8 +8,14 @@ import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
 import { scopeIssue } from '../lib/scopeIssue'
 import { settingsTarget } from '../lib/navigation'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
 export default function StatusBar(): JSX.Element {
+  // Narrow: one line, in this order of importance — the issue counters, whether
+  // it is recording, whether the IP is safe, the scope. The event count, the IP
+  // number and the overlay's label go first, and each stays reachable: the
+  // count on the Dashboard, the IP in the tooltip, the overlay by its dot.
+  const narrow = useNarrowViewport()
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
@@ -187,13 +193,17 @@ export default function StatusBar(): JSX.Element {
     ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     : `${mins}:${String(secs).padStart(2, '0')}`
 
-  const Sep = (): JSX.Element => <span className="text-redlog-text-faint select-none">|</span>
+  const Sep = (): JSX.Element | null => narrow ? null : <span className="text-redlog-text-faint select-none">|</span>
 
   const attention = issues.filter((i) => i.tier === 'attention')
   const pending = issues.filter((i) => i.tier === 'pending')
 
   return (
-    <div className="h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-xs font-mono shrink-0 select-none">
+    <div
+      data-testid="status-bar"
+      data-narrow={narrow ? 'true' : 'false'}
+      className={`h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 text-xs font-mono shrink-0 select-none whitespace-nowrap overflow-hidden ${narrow ? 'gap-2' : 'gap-3'}`}
+    >
       {/* §9: persistent faults pinned to the left, split by whether they
           affect the evidence. Attention cannot be dismissed — it clears when
           the condition clears and not before. */}
@@ -280,19 +290,19 @@ export default function StatusBar(): JSX.Element {
 
       <Sep />
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0" title={narrow && ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : undefined}>
         <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
         <span className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
           {safetyLabel}
         </span>
-        {ipStatus?.externalIP && (
+        {!narrow && ipStatus?.externalIP && (
           <span className="text-redlog-text-dim tabular-nums">{ipStatus.externalIP}</span>
         )}
       </div>
 
       <Sep />
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -320,28 +330,32 @@ export default function StatusBar(): JSX.Element {
        *  badge, next to the page it opens; a second copy on the status bar was
        *  the same number twice, and the one place it could not be clicked. */}
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-3 shrink-0">
         {/* One number: how much this project has recorded. The chained ·
          *  logged split used to be spelled out here, and it asked the operator
          *  to hold an audit concept they have no decision to make about —
          *  which tier a row landed in is the verifier's question, not theirs.
          *  The split is still available where it is actually acted on: the
          *  FilterBar's "Chained only" chip (spec 038) and the Dashboard.
+         *  Narrow: left to the Dashboard, to keep the line on one row.
          */}
-        <span
-          data-testid="statusbar-event-count"
-          className="text-redlog-text-dim tabular-nums"
-        >
-          {t('statusBar.events', { count: eventCount + loggedCount })}
-        </span>
+        {!narrow && (
+          <span
+            data-testid="statusbar-event-count"
+            className="text-redlog-text-dim tabular-nums"
+          >
+            {t('statusBar.events', { count: eventCount + loggedCount })}
+          </span>
+        )}
         <button
+          data-testid="status-bar-overlay"
           onClick={() => window.redlog.overlay.toggle()}
           className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           title={t('statusBar.toggleOverlay')}
           aria-label={t('statusBar.toggleOverlay')}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
-          <span>{t('statusBar.overlay')}</span>
+          {!narrow && <span>{t('statusBar.overlay')}</span>}
         </button>
       </div>
     </div>
