@@ -635,7 +635,9 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const nonce = await shownNonce()
     await report({ scheme: 'https', nonce, userAgent: 'Mozilla/5.0 (X11) AppleWebKit/537.36 Chrome/140.0 Safari/537.36' })
     const https = await screen.findByTestId('first-run-http-check-https')
-    await waitFor(() => expect(https.textContent).toContain('忽略憑證錯誤'))
+    // 5 s, not the default 1 s: on a loaded macOS runner the verification
+    // report took just over a second and failed #391 and #395 in CI.
+    await waitFor(() => expect(https.textContent).toContain('忽略憑證錯誤'), { timeout: 5000 })
   })
 
   it('says when a client refused the certificate', async () => {

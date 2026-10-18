@@ -8,6 +8,13 @@ for full commit body + generated notes.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.
+- Bash now records a subshell or group line such as `( make; ./run )` or
+  `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
+  all. The adapter notices at the prompt that the history number moved by one
+  while nothing was started, and writes the line with its exit code and
+  `output_disposition: not-captured` (the output went to the terminal). Lines
+  hidden from history (`ignorespace`, `ignoredups`) are still unrecorded, and
+  function definitions stay out of the record.
 - Bash records what a command prints, not only the command and its exit status.
   The adapter does what the zsh adapter does in `preexec`, in bash's DEBUG trap:
   stdout and stderr go through the same per-command relay for the length of the
