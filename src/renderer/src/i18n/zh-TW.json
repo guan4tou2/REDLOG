@@ -392,6 +392,8 @@
   "settings.vpnNamePlaceholder": "名稱",
   "settings.vpnPatternPlaceholder": "正規表達式",
   "settings.overlayGroup": "HUD",
+  "settings.overlayAutoShow": "專案啟動時開啟 HUD",
+  "settings.overlayAutoShowHint": "預設開啟。關閉後 HUD 會維持隱藏，直到你從狀態列或選單列圖示開啟。",
   "settings.overlayShowMark": "在展開的懸浮視窗顯示標記按鈕",
   "settings.overlayShowMarkHint": "收合狀態保持簡潔;標記按鈕只在展開時出現。",
   "settings.overlayFlashExposed": "IP 暴露時閃爍警示",

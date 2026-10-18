@@ -15,7 +15,7 @@ export interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
-  overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
+  overlay?: { autoShow?: boolean; showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { pollMs?: number; storePreview?: boolean }
   fileWatcher?: { watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { pollMs?: number; ignoreCommands?: string[] }
