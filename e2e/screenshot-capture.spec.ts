@@ -33,9 +33,6 @@ test('an empty screen-source list is reported, not swallowed', async () => {
   const health = async (): Promise<Record<string, unknown>> =>
     fetch(`${base}/api/capture`, { headers: hdr }).then((r) => r.json())
 
-  const before = await health()
-  console.log('BEFORE lastDbError=' + JSON.stringify(before.lastDbError ?? null))
-
   // The claim below is that a camera which cannot see the screen does not make
   // the whole log dark — "every other source is still recording". That premise
   // has to be true for the assertion to mean anything, and in a fresh temp HOME
@@ -59,13 +56,10 @@ test('an empty screen-source list is reported, not swallowed', async () => {
 
   const r = await fetch(`${base}/api/screenshot`, { method: 'POST', headers: hdr, body: '{}' })
     .then((x) => x.json())
-  console.log('API_SHOT ' + JSON.stringify(r))
 
   const after = await health()
   const shot = (after.sources as Array<{ id: string; state: string; lastError?: { message: string } }>)
     .find((s) => s.id === 'screenshot')
-  console.log('AFTER screenshot source=' + JSON.stringify(shot))
-  console.log('AFTER lastDbError=' + JSON.stringify(after.lastDbError ?? null))
 
   expect(r.captured).toBe(false)
   // The endpoint says why, rather than a bare `captured: false` that an
