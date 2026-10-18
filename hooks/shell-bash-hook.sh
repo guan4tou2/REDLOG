@@ -319,9 +319,63 @@ _redlog_debug_trap() {
 # recorded. Disarm first, re-arm last; the trap only counts while armed.
 _redlog_arm() { _REDLOG_TRAP_ARMED=1; }
 
+# A line the DEBUG trap never saw: `( cd x; make )`, `{ a; b; }`, a function
+# definition. A subshell or group compound runs its simple commands where the
+# trap does not follow, so the whole line passes without one `command_start`
+# and the record has a hole exactly where the operator did something.
+#
+# What does show is the history number: typing a line advances it by one
+# whether or not the trap fired. (Not `$HISTCMD`: inside PROMPT_COMMAND it reads
+# a stale 1 on bash 3.2, measured, while `history 1` carries the real number.)
+# So at the prompt, a number that moved by exactly one while nothing was
+# started is a line that ran untraced. Exactly
+# one, on purpose: `history -c`, `history -r` or a hidden line (ignorespace,
+# ignoredups) move it some other way or not at all, and a guess here would
+# write a command the operator did not run. Those stay unrecorded. Only the
+# line and its exit code are known -- the output went to the terminal -- so the
+# row says `not-captured`, which is what happened.
+_redlog_history_number() {
+  local h
+  h=$(HISTTIMEFORMAT='' builtin history 1 2>/dev/null) || return 1
+  h="${h#"${h%%[![:space:]]*}"}"
+  [[ "$h" == [0-9]* ]] || return 1
+  printf '%s' "${h%%[!0-9]*}"
+}
+
+_redlog_record_untraced_line() {
+  local exit_code=$1 line id num=$2
+  [[ -n "$num" && -n "${_REDLOG_HISTNUM:-}" ]] || return 0
+  (( num == _REDLOG_HISTNUM + 1 )) || return 0
+  _redlog_is_recording || return 0
+  line=$(HISTTIMEFORMAT='' builtin history 1 2>/dev/null) || return 0
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line#*[0-9] }"
+  line="${line#"${line%%[![:space:]]*}"}"
+  # A comment typed at the prompt is in history and ran nothing.
+  [[ -n "$line" && "$line" != "#"* ]] || return 0
+  # A definition runs nothing either, and is the one untraced line that is
+  # not an action: `f() { ...; }` and `function f ...` stay out of the record,
+  # as they always have.
+  [[ "$line" =~ ^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_:.-]*[[:space:]]*\(\) ]] && return 0
+  [[ "$line" =~ ^[[:space:]]*function[[:space:]] ]] && return 0
+  id=$(_redlog_new_command_id)
+  _redlog_send_event "command_start" "$line" \
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$id\",\"class\":\"native\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+  _redlog_send_event "command_end" "$line" \
+    "{\"exit_code\":$exit_code,\"duration_sec\":0,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$id\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+}
+
 _redlog_prompt_command() {
   local exit_code=$?
   _REDLOG_TRAP_ARMED=
+  # Nothing started and nothing was deliberately skipped (recording stopped):
+  # the line, if there was one, is the untraced kind.
+  local histnum
+  histnum=$(_redlog_history_number)
+  if [[ -z "$_REDLOG_LAST_CMD" && -z "$_REDLOG_SKIP" ]]; then
+    _redlog_record_untraced_line "$exit_code" "$histnum"
+  fi
+  _REDLOG_HISTNUM="${histnum:-0}"
   _REDLOG_SKIP=""
   local extra=""
   if [[ -n "$_REDLOG_RELAY_DIR" ]]; then
@@ -367,6 +421,10 @@ _redlog_prompt_command() {
   return $exit_code
 }
 
+# Empty history at source time is number 0, so a first line that is untraced
+# is still number 1 and is seen.
+_REDLOG_HISTNUM=$(_redlog_history_number)
+: "${_REDLOG_HISTNUM:=0}"
 trap '_redlog_debug_trap' DEBUG
 _redlog_user_pc="${PROMPT_COMMAND:-}"
 # A trailing `;` or blank in the operator's value would make `;;` a syntax error.
