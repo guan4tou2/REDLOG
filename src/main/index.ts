@@ -1134,6 +1134,18 @@ function stopProject(): void {
   configureIngest({ activeTarget: null })
 }
 
+// e2e only: keep Electron's own state under the temp HOME. `HOME` does not
+// move userData on macOS (it comes from the account's Library), so every run
+// shared ~/Library/Application Support/Electron with the developer's own dev
+// app and with every earlier run. Chromium stores a per-URL zoom level there;
+// one left at 380% made every later run render at half width, under the
+// layout's narrow breakpoint, where the Settings sidebar is a <select> and
+// `[data-settings-page]` does not exist. Linux CI honours HOME and never saw it.
+// Must run before the single-instance lock, which also lives in userData.
+if (process.env.REDLOG_E2E === '1') {
+  app.setPath('userData', path.join(homedir(), '.electron-user-data'))
+}
+
 // One RedLog at a time. Two instances race for port 6660 and clobber each
 // other's ~/.redlog/api-token, which breaks hooks/CLI/MCP and can wedge the UI.
 // A second launch just focuses the window that's already open.
