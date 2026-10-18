@@ -23,11 +23,14 @@ import { formatTime, formatDateTime } from '../lib/time'
  *  has to reach RedLog — and the only evidence of all three is a command that
  *  arrived from a terminal that is not one of RedLog's (FR-015).
  */
-function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | null }): string {
+function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | null; ownShellOutputAt?: number | null }): string {
   if (s.installed !== true) return 'capture.terminalOwnShellMissing'
-  return s.ownShellLastEventAt != null
+  if (s.ownShellLastEventAt == null) return 'capture.terminalOwnShellPending'
+  // Spec 060 FR-003: a command is not its output. "Included … and their
+  // output" is said only once an output has actually been recorded.
+  return s.ownShellOutputAt != null
     ? 'capture.terminalOwnShellIncluded'
-    : 'capture.terminalOwnShellPending'
+    : 'capture.terminalOwnShellCommandOnly'
 }
 
 /** `127.0.0.1:6661` from the managed proxy's `http://127.0.0.1:6661`, only while
@@ -478,6 +481,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
                 {s.id === 'terminal' && (
                   <span className="block text-xs text-redlog-text-faint">
                     {t(ownShellKey(s))}
+                    {s.ownShellLastEventAt != null && (
+                      <span data-testid="own-shell-last">{' · '}{t('capture.terminalOwnShellLast', {
+                        time: formatDateTime(s.ownShellOutputAt ?? s.ownShellLastEventAt)
+                      })}</span>
+                    )}
                     {s.enrolled && s.enrolled.total > 0 && (
                       <span>{' · '}{t('capture.terminalEnrolled', {
                         recording: s.enrolled.recording, total: s.enrolled.total

@@ -226,6 +226,18 @@ describeDB('capture-health', () => {
       .not.toBeNull()
   })
 
+  // Spec 060 FR-003: a command arriving is not its output arriving.
+  it('reports output evidence only from a command whose output was captured', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'vim x', source: 'auto-relay', shell: 'zsh', output_disposition: 'interactive' })
+    let t = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellLastEventAt).not.toBeNull()
+    expect(t?.ownShellOutputAt).toBeNull()
+    ins('shell', { subtype: 'command_end', command: 'echo ok', source: 'auto-relay', shell: 'zsh', output_disposition: 'captured' })
+    t = getCaptureHealth(Date.now() + 5000).sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellOutputAt).not.toBeNull()
+  })
+
   // Spec 060 FR-003/FR-011: proof comes from the shell that was installed.
   it('does not count a zsh command as proof for a Bash-only install', () => {
     mockHooks({ 'shell-zsh': false, 'shell-bash': true })

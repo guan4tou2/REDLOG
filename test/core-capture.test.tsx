@@ -194,8 +194,18 @@ describe('the two terminals are one row', () => {
     expect(installedOnly.textContent).not.toMatch(/Your own terminal is included/)
     cleanup()
 
+    // Spec 060 FR-003: a command arriving is not output being recorded.
+    const commandOnly = draw(
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: null }],
+      { state: 'stopped', url: null })
+    fireEvent.click(within(commandOnly).getByText(/all sources/))
+    expect(commandOnly.textContent).toMatch(/no command output recorded yet/)
+    expect(commandOnly.textContent).not.toMatch(/Your own terminal is included/)
+    expect(commandOnly.querySelector('[data-testid="own-shell-last"]')).toBeTruthy()
+    cleanup()
+
     const proven = draw(
-      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now() }],
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: Date.now() }],
       { state: 'stopped', url: null })
     fireEvent.click(within(proven).getByText(/all sources/))
     expect(proven.textContent).toMatch(/Your own terminal is included/)
