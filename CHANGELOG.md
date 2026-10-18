@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The Dashboard's "Capture setup" button opens Settings ▸ Capture sources
+  instead of reopening the first-run guide. The guide is for the first
+  connection; looking at, changing or repairing a source later goes where each
+  source lives.
+
 - Updates no longer restart RedLog on their own (Windows, where in-app update
   exists). Downloading and restarting are two separate choices: the download
   runs in the background and ends with "ready"; installing is a second action

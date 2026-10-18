@@ -238,8 +238,9 @@ test.describe.serial('the first run', () => {
     expect(await page.locator('[data-testid="first-run-strip"]').count()).toBe(0)
   })
 
-  test('capture setup can be reopened from an existing project and left without losing evidence', async () => {
-    // A recorded project must not need its DB wiped to find setup again.
+  test('the dashboard capture button opens Settings ▸ capture sources, not the first-run guide, and loses no evidence', async () => {
+    // The guide is for the first connection. Looking at, changing or repairing a
+    // source later goes to Settings, where each source lives.
     await post('shell', { subtype: 'command_start', command: 'setup-reopen-evidence' })
     await page.reload()
     await openView(page, 'dashboard')
@@ -250,17 +251,16 @@ test.describe.serial('the first run', () => {
     await expect(setup).toBeVisible()
     await setup.focus()
     await page.keyboard.press('Enter')
-    await openCaptureProof(page)
-    await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
-    await expect(page.getByTestId('first-run-commands-status')).toHaveText('✓ Verified')
-    await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
-    await page.getByTestId('first-run-later').click()
+    // Below the sidebar breakpoint the page list is a <select>.
+    const select = page.getByTestId('settings-page-select')
+    if (await select.count()) await expect(select).toHaveValue('captureControl')
+    else await expect(page.locator('[data-settings-page="captureControl"][aria-current="page"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toHaveCount(0)
     await openView(page, 'dashboard')
     await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
     await expect(setup).toBeVisible()
     const after = await page.evaluate(async () => (await window.redlog.events.query({ limit: 1000 })).map(e => e.id))
     for (const id of before) expect(after).toContain(id)
-    await resizeMainWindow(app, 1280, 800)
   })
 
   test('one terminal session, however many times the view is left and re-entered', async () => {

@@ -336,7 +336,10 @@ test.describe('packaged app', () => {
         const setup = page.getByTestId('capture-open-setup')
         await page.locator('section').filter({ has: setup }).first().screenshot({ path: test.info().outputPath('capture-setup-entry.png') })
         await setup.click()
-        await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+        // It opens Settings ▸ capture sources; the first-run guide is for the first connection.
+        const select = page.getByTestId('settings-page-select')
+        if (await select.count()) await expect(select).toHaveValue('captureControl')
+        else await expect(page.locator('[data-settings-page="captureControl"][aria-current="page"]')).toBeVisible()
         expect(shellEnd(await events(page), 'echo redlog-ok-builtin')).toBeTruthy()
       })
     } catch (error) {
