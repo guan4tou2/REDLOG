@@ -43,7 +43,7 @@ So the division of labour is:
 
 | Use **hooks** for (logging) | Use the **API** for (operating the app) |
 |---|---|
-| Every shell / Bash command — command, exit code, duration, cwd (automatic; output is automatic in zsh, and in bash/PowerShell comes via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
+| Every shell / Bash command — command, exit code, duration, cwd (automatic; output is automatic in zsh and bash, and in PowerShell comes via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
 | mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
 | File transfers detected from commands (automatic); screenshots and clipboard once turned on (periodic screenshots, Host monitors pack) | Loot scanning of pasted output (`redlog_loot_scan`) |
 | | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |

@@ -1232,7 +1232,7 @@
   "loot.noMatchesReason": "The type filter or de-duplication is hiding every hit. Nothing was removed from the record.",
   "loot.clearFilter": "Clear filter",
   "settings.hookDesc.shell-zsh": "Captures every command, with exit code and duration, from zsh",
-  "settings.hookDesc.shell-bash": "Captures every command from bash via preexec / precmd hooks",
+  "settings.hookDesc.shell-bash": "Captures every bash command and its output via the DEBUG trap and PROMPT_COMMAND",
   "settings.hookDesc.codex": "Wraps the Codex shell so the agent's commands are captured",
   "settings.hookDesc.mitmproxy": "Captures HTTP and DNS traffic through the mitmproxy addon",
   "settings.hookDesc.shell-powershell": "Captures commands from PowerShell via a prompt hook",

@@ -49,7 +49,7 @@ node scripts/verify-smoke-report.mjs /absolute/path/to/smoke.json
 | Requirement | Primary tests |
 | --- | --- |
 | Plain Zsh command/output/exit and terminal behavior | `zsh-auto-capture.pty`, `zsh-engagement-100.pty`, `zsh-transparency.pty`, `relay-pty-boundary` |
-| Plain Bash command/output/exit and terminal behavior (bash 3.2 on macOS) | `bash-auto-capture.pty`, `bash-transparency.pty` |
+| Plain Bash command/output/exit and terminal behavior (bash 3.2 on macOS) | `bash-auto-capture.pty`, `bash-transparency.pty`, `bash-redlog-command.pty` (stop/start/mode/class) |
 | Explicit `redlog-session` PTY: output kept, exit status, slave held until reaped | `external-session` |
 | Debug log switch (machine-wide flag file, helper + app trace, no output text) | `debug-log`, `about-debug-log`, `external-session` |
 | Hook transport, identity, spool and outages | `shell-*`, `spool-replay`, `per-project-token`, `powershell-*` |

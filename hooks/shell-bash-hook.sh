@@ -47,6 +47,114 @@ _REDLOG_RELAY_DIR=""
 _REDLOG_CMD_ID=""
 _REDLOG_CMD_CLASS=""
 
+# --- This terminal's own state (spec 052 US2), same contract as zsh ---
+#
+# One id per shell, naming a file this terminal and RedLog both read. `redlog
+# stop` writes it and the next command's trap reads it: a stop held in a shell
+# variable survives neither a subshell nor a prompt, and an operator who types
+# `redlog stop` before a client's credential and sees it recorded anyway
+# uninstalls the tool (FR-022). The transitions live in redlog-relay.py.
+_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
+_REDLOG_SKIP=""
+
+_redlog_state_file() {
+  printf '%s/terminals/%s.json' "${_REDLOG_DIR:-$HOME/.redlog}" "$_REDLOG_SESSION_ID"
+}
+
+_redlog_state() {
+  local home=$HOME
+  [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
+  python3 "$_REDLOG_RELAY" state --home "$home" \
+    --session "$_REDLOG_SESSION_ID" "$@" 2>/dev/null
+}
+
+# No file yet means a terminal that has not been told otherwise: recording.
+_redlog_is_recording() {
+  local file
+  file=$(_redlog_state_file)
+  [[ -f "$file" ]] || return 0
+  grep -q '"recording"[[:space:]]*:[[:space:]]*true' "$file"
+}
+
+redlog() {
+  local sub="${1:-status}"
+  shift 2>/dev/null
+  local home=$HOME
+  [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
+  case "$sub" in
+    status)
+      _redlog_state --action show --format human
+      echo
+      ;;
+    stop)
+      _redlog_state --action stop --reason operator >/dev/null
+      # FR-012: "no events for twenty minutes" must read as a decision, not as
+      # silence. This pair brackets the gap; it is not the global pause's pair.
+      _redlog_send_event "capture_stopped" "redlog stop" \
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+      echo "[redlog] recording stopped in this terminal — redlog start to resume"
+      ;;
+    start)
+      _redlog_state --action start >/dev/null
+      _redlog_send_event "capture_resumed" "redlog start" \
+        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+      echo "[redlog] recording in this terminal"
+      ;;
+    mode)
+      case "${1:-}" in
+        auto|manual)
+          _redlog_state --action mode --mode "$1" >/dev/null
+          echo "[redlog] mode $1"
+          ;;
+        *)
+          echo 'usage: redlog mode auto|manual' >&2
+          return 2
+          ;;
+      esac
+      ;;
+    class)
+      case "${1:-list}" in
+        list)
+          python3 "$_REDLOG_RELAY" policy --home "$home" --action list
+          echo
+          ;;
+        add)
+          if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+            echo 'usage: redlog class add relayed|pty|native <command>' >&2
+            return 2
+          fi
+          python3 "$_REDLOG_RELAY" policy --home "$home" \
+            --action add --field "$2" --command "$3" >/dev/null || {
+            echo "[redlog] no such class: $2" >&2; return 2
+          }
+          echo "[redlog] $3 is now $2"
+          # zsh wraps the pty class in a recorder; bash does not (yet), and
+          # saying otherwise would promise output that is not captured.
+          [[ "$2" == "pty" ]] && echo \
+            "[redlog] note: bash does not wrap pty-class commands — $3 will be recorded as interactive, without its output"
+          ;;
+        remove)
+          if [[ -z "${2:-}" ]]; then
+            echo 'usage: redlog class remove <command>' >&2
+            return 2
+          fi
+          python3 "$_REDLOG_RELAY" policy --home "$home" \
+            --action remove --command "$2" >/dev/null
+          echo "[redlog] $2 is back to the default"
+          ;;
+        *)
+          echo 'usage: redlog class list|add relayed|pty|native <command>|remove <command>' >&2
+          return 2
+          ;;
+      esac
+      ;;
+    *)
+      echo 'usage: redlog status|start|stop|mode auto|manual|class list|add|remove <command>' >&2
+      return 2
+      ;;
+  esac
+}
+
 _redlog_pagers_off() {
   local name
   for name in PAGER GIT_PAGER MANPAGER SYSTEMD_PAGER; do
@@ -141,9 +249,20 @@ _redlog_debug_trap() {
   # An empty Enter or a bare function definition runs no simple command, so
   # the first thing traced after it is our own prompt hook.
   [[ "$BASH_COMMAND" == _redlog_prompt_command || "$BASH_COMMAND" == _redlog_arm ]] && return
-  [[ -n "$_REDLOG_LAST_CMD" ]] && return
+  [[ -n "$_REDLOG_LAST_CMD" || -n "$_REDLOG_SKIP" ]] && return
   local cmd whole=1
   cmd=$(_redlog_current_line) || { cmd="$BASH_COMMAND"; whole=0; }
+
+  # The operator said stop. Nothing below runs: no command_start, no relay, no
+  # command_end, and not a row marked "not captured" — they did not ask for a
+  # record of what they were doing with the recording off. The stop is in the
+  # record and accounts for the gap. `redlog` is exempt so an operator who has
+  # stopped can still see that they have, and start again. The skip flag keeps
+  # the later simple commands of this same line from starting a record.
+  if [[ "$BASH_COMMAND" != redlog && "$BASH_COMMAND" != "redlog "* ]] && ! _redlog_is_recording; then
+    _REDLOG_SKIP=1
+    return
+  fi
   _REDLOG_LAST_CMD="$cmd"
   _REDLOG_CMD_START=$SECONDS
   _REDLOG_CMD_ID=$(_redlog_new_command_id)
@@ -197,6 +316,7 @@ _redlog_arm() { _REDLOG_TRAP_ARMED=1; }
 _redlog_prompt_command() {
   local exit_code=$?
   _REDLOG_TRAP_ARMED=
+  _REDLOG_SKIP=""
   local extra=""
   if [[ -n "$_REDLOG_RELAY_DIR" ]]; then
     # First thing, before anything can print: putting the descriptors back is
@@ -251,4 +371,7 @@ else
   PROMPT_COMMAND="_redlog_prompt_command;_redlog_arm"
 fi
 unset _redlog_user_pc
+# Pin this terminal's identity and starting state before the first prompt.
+# `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
+_redlog_state --action begin >/dev/null 2>&1
 _redlog_announce_shell "commands and their output"
