@@ -114,7 +114,7 @@ hooks/
 ├── shell-common.sh           # EXTEND: transport unchanged; relay body factored out of redlog-run
 ├── redlog-relay.py           # NEW: the output relay, stdlib only
 ├── redlog-session.py         # REUSE: PTY class (spec 022), unchanged
-└── shell-bash-hook.sh        # UNTOUCHED: bash is not in scope (FR-019)
+└── shell-bash-hook.sh        # was UNTOUCHED (bash out of scope); later given its own divert in the DEBUG trap, still its own script per FR-019
 
 src/core/
 ├── hooks-manager.ts          # EXTEND: install/uninstall/detect for the enrolled adapter

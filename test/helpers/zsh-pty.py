@@ -70,6 +70,19 @@ class Session:
         a slow filesystem.
         """
         home = tempfile.mkdtemp(prefix="redlog-zsh-")
+        if self.job.get("shell_kind") == "bash":
+            # The prompt carries a sequence so a redrawn old prompt cannot be
+            # mistaken for the next command finishing. It is counted in a
+            # PROMPT_COMMAND set BEFORE the rc, so the adapter wraps it as the
+            # operator's own and it runs while the DEBUG trap is disarmed;
+            # appended after the adapter it would run armed and be recorded as
+            # the command.
+            with open(os.path.join(home, ".bashrc"), "w") as fh:
+                fh.write("HISTFILE=%s/.bash_history\n" % home)
+                fh.write("_RL_SEQ=-1\n_rl_seq() { _RL_SEQ=$((_RL_SEQ+1)); }\n")
+                fh.write("PROMPT_COMMAND=_rl_seq\n")
+                fh.write("PS1='%s:${_RL_SEQ} '\n" % self.marker)
+                fh.write(self.job.get("rc", "") + "\n")
         with open(os.path.join(home, ".zshrc"), "w") as fh:
             # PROMPT_SP makes zsh print a reverse-video `%` and a line of
             # spaces whenever the previous output did not end with a newline,
@@ -142,8 +155,13 @@ class Session:
         # insecure directories? [y/n]" — so no prompt ever arrived and every
         # spec here failed as "no prompt after startup", on the first run that
         # had zsh installed at all. The rc under test is the one in ZDOTDIR.
+        if self.job.get("shell_kind") == "bash":
+            argv = [self.job.get("shell") or shutil.which("bash", path=env.get("PATH")) or "bash",
+                    "--noprofile", "--rcfile", os.path.join(home, ".bashrc"), "-i"]
+        else:
+            argv = [self.job.get("shell") or shutil.which("zsh", path=env.get("PATH")) or "zsh", "-d", "-i"]
         self.proc = subprocess.Popen(
-            [self.job.get("shell") or shutil.which("zsh", path=env.get("PATH")) or "zsh", "-d", "-i"],
+            argv,
             preexec_fn=become_session_leader_with_this_tty,
             stdin=slave, stdout=slave, stderr=slave,
             env=env, cwd=self.job.get("cwd", home),

@@ -213,6 +213,8 @@ export async function startBlackHole(): Promise<{ port: number; close: () => Pro
 }
 
 export interface ZshRunOptions {
+  /** Which interactive shell to drive; zsh unless said otherwise. */
+  shellKind?: 'zsh' | 'bash'
   /** Lines written into the generated .zshrc before the commands run. */
   rc?: string
   commands: ZshCommand[]
@@ -242,6 +244,7 @@ export async function runZsh(target: ShellTarget, opts: ZshRunOptions): Promise<
   const driver = target.toShellPath(path.join(__dirname, 'zsh-pty.py'))
   const job = JSON.stringify({
     rc: opts.rc ?? '',
+    shell_kind: opts.shellKind,
     redlog: opts.redlog,
     commands: opts.commands,
     env: opts.env, winsize: opts.winsize, keep_raw: opts.keepRaw,
