@@ -114,7 +114,6 @@ class Recorder:
 def run(command, recorder):
     import errno
     import fcntl
-    import pty
     import struct
     import termios
     import tty
@@ -125,10 +124,24 @@ def run(command, recorder):
     # before exec, so a command that starts at once (stty, a TUI) never sees
     # the 0x0 of a PTY the parent has not sized yet.
     initial_size = fcntl.ioctl(0, termios.TIOCGWINSZ, b'\0' * 8) if interactive else struct.pack('HHHH', 24, 80, 0, 0)
-    pid, master = pty.fork()
+    # pty.fork() hands the parent only the master. A short command can then
+    # exit before the first read, and macOS discards whatever the master has
+    # not read once the last slave descriptor closes: exit 0, no output, no
+    # error (#333; ~1% of runs under CPU load, 0 of 800 when the slave is
+    # held). Open the pair ourselves and keep the slave until the master has
+    # been drained.
+    master, slave = os.openpty()
+    pid = os.fork()
     if pid == 0:
         try:
-            fcntl.ioctl(0, termios.TIOCSWINSZ, initial_size)
+            os.close(master)
+            os.setsid()
+            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, initial_size)
+            for fd in (0, 1, 2):
+                os.dup2(slave, fd)
+            if slave > 2:
+                os.close(slave)
             # The PTY owns capture for this shell. Profile-installed metadata
             # hooks must not re-read another project's credentials mid-session.
             os.environ['REDLOG_EXTERNAL_SESSION'] = '1'
@@ -150,14 +163,23 @@ def run(command, recorder):
 
     old_resize = signal.signal(signal.SIGWINCH, resize)
     old_term = signal.signal(signal.SIGTERM, lambda *_: os.kill(pid, signal.SIGTERM))
+    def forward(data):
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+        recorder.output(decoder.decode(data))
+
     inputs = [master, 0]
     child_status = None
+    slave_open = True
     try:
         resize()
         if interactive:
             tty.setraw(0)
         while True:
-            ready, _, _ = select.select(inputs, [], [])
+            # Holding the slave means the master reports no EOF for the child,
+            # so wake briefly to notice it has exited. Once the slave is
+            # closed, EOF means every other holder (a background job) is gone.
+            ready, _, _ = select.select(inputs, [], [], 0.02 if slave_open else None)
             if master in ready:
                 try:
                     data = os.read(master, 16384)
@@ -168,19 +190,15 @@ def run(command, recorder):
                         raise
                 if not data:
                     # EOF/EIO describes this PTY read, not the child's exit.
-                    # Closing here can discard a short command's later bytes.
-                    # Reap only once, and leave the master open while it lives.
-                    ended, status = os.waitpid(pid, os.WNOHANG)
-                    if ended:
-                        child_status = status
+                    # While we hold the slave it cannot be a real hang-up, so
+                    # keep going; after it is closed (child reaped), EOF means
+                    # every other holder has gone.
+                    if slave_open:
+                        time.sleep(0.01)
+                    else:
                         break
-                    # A hung-up master stays readable; avoid a busy loop while
-                    # waiting for the child to exit or the PTY to yield bytes.
-                    time.sleep(0.01)
                 else:
-                    sys.stdout.buffer.write(data)
-                    sys.stdout.buffer.flush()
-                    recorder.output(decoder.decode(data))
+                    forward(data)
             if 0 in ready:
                 data = os.read(0, 16384)
                 if data:
@@ -189,6 +207,24 @@ def run(command, recorder):
                         data = data[written:]
                 else:
                     inputs.remove(0)
+            if slave_open:
+                ended, status = os.waitpid(pid, os.WNOHANG)
+                if ended:
+                    child_status = status
+                    # Everything the child wrote is already queued on the
+                    # master; take it before the slave goes away.
+                    while select.select([master], [], [], 0)[0]:
+                        try:
+                            data = os.read(master, 16384)
+                        except OSError as error:
+                            if error.errno == errno.EIO:
+                                break
+                            raise
+                        if not data:
+                            break
+                        forward(data)
+                    os.close(slave)
+                    slave_open = False
         tail = decoder.decode(b'', final=True)
         if tail:
             recorder.output(tail)
@@ -207,6 +243,8 @@ def run(command, recorder):
             termios.tcsetattr(0, termios.TCSADRAIN, saved)
         signal.signal(signal.SIGWINCH, old_resize)
         signal.signal(signal.SIGTERM, old_term)
+        if slave_open:
+            os.close(slave)
         os.close(master)
     if child_status is None:
         _, child_status = os.waitpid(pid, 0)

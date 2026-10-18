@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 describe.skipIf(process.platform === 'win32')('explicit external PTY session', () => {
-  async function session(maxBytes: number, paused: boolean | 'offline' = false, command = ['/bin/sh', '-c', 'test -t 0 && test -t 1 && printf PTY_OK; printf STDERR_OK >&2; exit 7'], interactive = false, transientRead?: 'eof' | 'eio') {
+  async function session(maxBytes: number, paused: boolean | 'offline' = false, command = ['/bin/sh', '-c', 'test -t 0 && test -t 1 && printf PTY_OK; printf STDERR_OK >&2; exit 7'], interactive = false, transientRead?: 'eof' | 'eio' | 'order') {
     const events: Array<Record<string, any>> = []
     const identities: string[] = []
     const server = createServer((req, res) => {
@@ -71,15 +71,41 @@ finally:
       // Inject only the first master read, leaving the actual child, PTY,
       // subsequent bytes and HTTP recorder intact. A readable PTY can report
       // EOF/EIO before the child is reaped; that is not an exit boundary.
-      const readFault = `
-import errno, os, pty, runpy, sys
-original_fork, original_read = pty.fork, os.read
+      // 'order' injects nothing: it reports, on stderr, whether the parent
+      // closed its slave descriptor before or after reaping the child.
+      const orderFault = `
+import os, runpy, sys
+parent = os.getpid()
+slave_fd, reaped = None, False
+real_openpty, real_waitpid, real_close = os.openpty, os.waitpid, os.close
+def openpty():
+    global slave_fd
+    master, slave = real_openpty()
+    slave_fd = slave
+    print('OPENPTY', file=sys.stderr)
+    return master, slave
+def waitpid(pid, flags):
+    global reaped
+    result = real_waitpid(pid, flags)
+    if os.getpid() == parent and result[0]: reaped = True
+    return result
+def close(fd):
+    if os.getpid() == parent and fd == slave_fd:
+        print('CLOSE_SLAVE_AFTER_REAP' if reaped else 'CLOSE_SLAVE_BEFORE_REAP', file=sys.stderr)
+    return real_close(fd)
+os.openpty, os.waitpid, os.close = openpty, waitpid, close
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+`
+      const eofFault = `
+import errno, os, runpy, sys
+original_openpty, original_read = os.openpty, os.read
 master_fd, injected = None, False
-def fork():
+def openpty():
     global master_fd
-    pid, fd = original_fork()
-    if pid: master_fd = fd
-    return pid, fd
+    master, slave = original_openpty()
+    master_fd = master
+    return master, slave
 def read(fd, size):
     global injected
     if fd == master_fd and not injected:
@@ -87,10 +113,11 @@ def read(fd, size):
         print('INJECTED_PTY_${transientRead}', file=sys.stderr)
         ${transientRead === 'eio' ? "raise OSError(errno.EIO, 'transient PTY read')" : "return b''"}
     return original_read(fd, size)
-pty.fork, os.read = fork, read
+os.openpty, os.read = openpty, read
 sys.argv = sys.argv[1:]
 runpy.run_path(sys.argv[0], run_name='__main__')
 `
+      const readFault = transientRead === 'order' ? orderFault : eofFault
       const child = spawn('python3', [...(interactive ? ['-c', driver] : transientRead ? ['-c', readFault] : []), 'hooks/redlog-session.py', '--max-bytes', String(maxBytes), '--',
         ...command],
       { env: { ...process.env, HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -182,6 +209,22 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.output).toContain('PTY_OK')
     expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
     expect(r.events.at(-1)?.pausedBytes).toBeGreaterThan(0)
+  })
+  // #333: exit 0, no output, outputBytes 0. macOS drops what the master has
+  // not read once the last slave descriptor closes, so a command that is gone
+  // before the first read loses its output. It is a race (~1% of runs under
+  // CPU load; 15 of 1600 measured, 0 of 1600 with the slave held), which a
+  // test cannot reproduce on demand. What it can pin is the property that
+  // removes the race: the parent keeps the slave open until the child has
+  // been reaped and the master drained.
+  it('holds the PTY slave open until the child is reaped', async () => {
+    const r = await session(4096, false, ['/bin/echo', 'held-canary'], false, 'order')
+    expect(r.diagnostic).toContain('OPENPTY')
+    expect(r.diagnostic).toContain('CLOSE_SLAVE_AFTER_REAP')
+    expect(r.diagnostic).not.toContain('CLOSE_SLAVE_BEFORE_REAP')
+    expect(r.output).toContain('held-canary')
+    expect(r.events.filter(e => e.subtype === 'session_output').map(e => e.stdout).join('')).toContain('held-canary')
+    expect(r.code).toBe(0)
   })
 
   // #218: a session inside a session records the same bytes twice. The
