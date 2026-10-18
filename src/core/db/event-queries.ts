@@ -951,6 +951,21 @@ export function queryCommandOutput(commandId: string, limit = 2000): RedLogEvent
     .slice(0, limit)
 }
 
+/** The `command_end` rows of the given commands, either tier. A search hit on a
+ *  command's background output is shown as the command itself, so it needs the
+ *  row the Timeline can open. */
+export function queryCommandEnds(commandIds: string[]): RedLogEvent[] {
+  const ids = [...new Set(commandIds.filter((id) => typeof id === 'string' && id !== ''))].slice(0, 100)
+  if (ids.length === 0) return []
+  const db = getReadonlyDB()
+  const marks = ids.map(() => '?').join(',')
+  const where = `agent_type = 'shell' AND subtype = 'command_end' AND json_extract(data, '$.command_id') IN (${marks})`
+  return [
+    ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>),
+    ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>)
+  ].map(rowToEvent)
+}
+
 /** Count rows in the chained tier by default. The chain-anchor code path
  *  MUST see chained-only (that count sizes the head hash). v0.13.0 adds
  *  the `tier` option for renderer / capture-health callers that want the

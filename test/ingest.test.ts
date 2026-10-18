@@ -345,6 +345,18 @@ describeDB('ingest', () => {
         expect(stray.data.unattributed).toBe(true)
       })
 
+      it('finds the command_end rows of several commands by id, and ignores empty ids', () => {
+        start('cmd-find-1', 'sleep 1 &')
+        const one = endLate('cmd-find-1', 'sleep 1 &')
+        start('cmd-find-2', 'sleep 2 &')
+        const two = endLate('cmd-find-2', 'sleep 2 &')
+        start('cmd-find-3', 'sleep 3 &')
+        endLate('cmd-find-3', 'sleep 3 &')
+        const found = events.queryCommandEnds(['cmd-find-1', 'cmd-find-2', '', 'cmd-find-1', 'cmd-missing'])
+        expect(found.map((e) => e.id).sort()).toEqual([one.id, two.id].sort())
+        expect(events.queryCommandEnds([])).toEqual([])
+      })
+
       it('files the chunks under the target the command was filed under', () => {
         start('cmd-late-t', 'curl https://10.0.0.8/status &')
         const ended = endLate('cmd-late-t', 'curl https://10.0.0.8/status &')

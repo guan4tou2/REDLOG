@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryCommandOutput, commandEvidence,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryCommandOutput, queryCommandEnds, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, distinctAgentTypes, aggregateTargets,
@@ -91,6 +91,9 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:commandOutput', (_e, commandId: string) =>
     ctx.getActiveProject() && typeof commandId === 'string' && commandId ? queryCommandOutput(commandId) : [])
+
+  ipcMain.handle('events:commandEnds', (_e, commandIds: string[]) =>
+    ctx.getActiveProject() && Array.isArray(commandIds) ? queryCommandEnds(commandIds.map(String)) : [])
 
   ipcMain.handle('events:getById', (_e, ids: string[]) =>
     ctx.getActiveProject() && Array.isArray(ids)
