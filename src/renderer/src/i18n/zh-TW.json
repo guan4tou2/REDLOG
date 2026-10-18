@@ -622,7 +622,7 @@
   "timeline.causalGraph.dialogLabel": "因果圖，完整大小",
   "timeline.brokenChain.banner": "⛓️‍💥 證據鏈在事件 {{brokenAtId}}… 之後斷開（走完 {{walked}} 個）。之後的所有事件皆未驗證。",
   "timeline.brokenChain.dismiss": "關閉",
-  "timeline.search.placeholder": "標亮：文字，或 session:、tool:、operator:…",
+  "timeline.search.placeholder": "標亮：文字或 tool:…",
   "timeline.search.hint": "按 / 開始標亮、Esc 清除。解讀方式與搜尋相同；不符合的事件會變暗、不會被移除——要移除事件請用上方的篩選列。",
   "timeline.search.clear": "清除標亮",
   "timeline.follow.live": "● 即時",
