@@ -192,8 +192,14 @@ stopped; restart RedLog and confirm recording resumes without re-enrolling.
 - **FR-006**: Job control, terminal modes and signal handling MUST behave as
   they do without the recorder, including the `Ctrl-Z` / `stty` / `fg`
   sequence on an interactive listener.
-- **FR-007**: Output written while no foreground command is running, or by a
-  background job, MUST NOT be attributed to a command.
+- **FR-007**: Output written while no foreground command is running MUST NOT
+  be attributed to a command. Output written by a job that command started and
+  left running in the background MUST be recorded in full as follow-up
+  `command_output` rows tied to that command by its `command_id` alone, and the
+  command's `command_end` MUST say it is `partial` with `late_output: true`.
+  What could not be kept (rate cap, size cap, local API unreachable) MUST be
+  counted on the final row, never silently dropped. The prompt MUST NOT wait
+  for the job.
 - **FR-008**: A command whose output was redirected away from the terminal MUST
   be recorded as such rather than as a command that produced nothing.
 - **FR-009**: If recording fails for any reason, the command MUST still run,

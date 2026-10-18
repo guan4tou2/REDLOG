@@ -52,6 +52,16 @@ const shellStartMap = new BoundedMap<string>()
 // something hostile, and anything read out of them is attacker-controlled
 // (FR-002).
 const commandIdMap = new BoundedMap<string>()
+
+// `command_id` → command_start event id, for commands whose `command_end` said
+// `late_output: true`: a background job still holds the terminal, and what it
+// prints from now on arrives as `command_output` rows after the command ended.
+// Those rows belong to that command — attributed by the pty pair the relay
+// opened for it, which is an identity, not by anything read from the bytes —
+// so the id is kept until the relay's `final` row says the job is done. Kept
+// apart from `commandIdMap` so a command that really ended stays ended: a
+// chunk for it is still `unattributed`, not a reopened command.
+const lateCommandIdMap = new BoundedMap<string>()
 type CommandCorrelation = { eventId: string; cwd: string; endedAt?: number }
 export type RelatedCommandCandidate = {
   event_id: string
@@ -130,7 +140,10 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
   if (agentType === 'shell' && data.subtype === 'command_output') {
     const commandId = commandIdOf(data)
     if (!commandId) return []
-    const id = commandIdMap.get(commandId)
+    const id = commandIdMap.get(commandId) ?? lateCommandIdMap.get(commandId)
+    // The relay's last row for this command: nothing more will arrive, so the
+    // id is released.
+    if (data.final === true) lateCommandIdMap.delete(commandId)
     return id ? [id] : []
   }
   if (agentType === 'shell' && data.subtype === 'command_end') {
@@ -140,8 +153,11 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
       if (id) {
         // The contract puts `command_end` after the last chunk, so the id has
         // done its work; a chunk arriving after this is late by definition
-        // and is recorded as unattributed rather than reopening the command.
+        // and is recorded as unattributed rather than reopening the command —
+        // unless the relay said at the time that a background job would keep
+        // printing, in which case the late chunks are that command's.
         commandIdMap.delete(commandId)
+        if (data.late_output === true) lateCommandIdMap.set(commandId, id)
         const key = shellKey(data)
         if (key) {
           shellStartMap.delete(key)
@@ -195,6 +211,7 @@ export function resetCausesResolver(): void {
   httpFlowMap.clear()
   shellStartMap.clear()
   commandIdMap.clear()
+  lateCommandIdMap.clear()
   activeShellCommands.clear()
   recentShellCommands.clear()
 }

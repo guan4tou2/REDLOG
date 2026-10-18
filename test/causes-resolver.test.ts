@@ -44,6 +44,36 @@ describe('causes-resolver', () => {
       expect(causes).toEqual(['evt-cmd-1'])
     })
 
+    describe('late output from a background job', () => {
+      const started = (): void => noteStartEvent('shell', { subtype: 'command_start', command: 'nmap -p- h &', command_id: 'cmd-bg' }, 'evt-bg')
+
+      it('keeps a command whose end said a background job is still printing', () => {
+        started()
+        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg', late_output: true })
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', late: true })).toEqual(['evt-bg'])
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', late: true })).toEqual(['evt-bg'])
+      })
+
+      it('lets go of it at the final row', () => {
+        started()
+        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg', late_output: true })
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', final: true })).toEqual(['evt-bg'])
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', late: true })).toEqual([])
+      })
+
+      it('does not reopen a command that ended without saying so', () => {
+        started()
+        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg' })
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg' })).toEqual([])
+      })
+
+      it('never attributes by anything but the id', () => {
+        started()
+        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg', late_output: true })
+        expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'someone-else', stdout: 'command_id=cmd-bg' })).toEqual([])
+      })
+    })
+
     it('returns empty for unmatched command_end', () => {
       const causes = resolveIncomingCauses('shell', { subtype: 'command_end', command: 'ls' })
       expect(causes).toEqual([])

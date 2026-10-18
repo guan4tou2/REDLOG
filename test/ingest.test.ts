@@ -323,6 +323,77 @@ describeDB('ingest', () => {
       expect(orphan.data._causes ?? []).toHaveLength(0)
     })
 
+    // A background job outlives the prompt. The relay writes `command_end` with
+    // what had printed, marks it `late_output`, and sends the rest as chunks.
+    // The chunks are that command's, by id, and are filed under its target; they
+    // are not "unattributed", because the id is exactly what attribution is.
+    describe('late output of a background job', () => {
+      const endLate = (commandId: string, command: string, extra: Record<string, unknown> = {}) =>
+        shell({ subtype: 'command_end', command, command_id: commandId, exit_code: 0, stdout: 'early\n',
+          completeness: 'partial', output_disposition: 'captured', late_output: true, ...extra }).event!
+
+      it('attributes chunks that arrive after command_end to the command, until the final row', () => {
+        const opened = start('cmd-late', 'nmap -p- 10.0.0.7 &')
+        endLate('cmd-late', 'nmap -p- 10.0.0.7 &')
+        const a = chunk({ command_id: 'cmd-late', seq: 1, late: true, stdout: 'open 22\n' })
+        const done = chunk({ command_id: 'cmd-late', seq: 2, late: true, final: true, stream: 'both' })
+        expect(a.data._causes).toContain(opened.id)
+        expect(a.data.unattributed).toBeUndefined()
+        expect(done.data._causes).toContain(opened.id)
+        // After the final row the id is released: a stray chunk is labelled, not attached.
+        const stray = chunk({ command_id: 'cmd-late', seq: 3, late: true, stdout: 'x' })
+        expect(stray.data.unattributed).toBe(true)
+      })
+
+      it('files the chunks under the target the command was filed under', () => {
+        start('cmd-late-t', 'curl https://10.0.0.8/status &')
+        const ended = endLate('cmd-late-t', 'curl https://10.0.0.8/status &')
+        const a = chunk({ command_id: 'cmd-late-t', seq: 1, late: true, stdout: 'open 80\n' })
+        expect(ended.targetId).toBeTruthy()
+        expect(a.targetId).toBe(ended.targetId)
+      })
+
+      it('does not attach a late chunk to a command that ended without saying more was coming', () => {
+        // Not `whoami`: the same end row twice inside two seconds is a duplicate
+        // to the writer, and another test in this file sends that one.
+        start('cmd-plain', 'hostname -f')
+        shell({ subtype: 'command_end', command: 'hostname -f', command_id: 'cmd-plain', exit_code: 0, stdout: 'h\n' })
+        expect(chunk({ command_id: 'cmd-plain', seq: 1, late: true, stdout: 'x' }).data.unattributed).toBe(true)
+      })
+
+      it('finds a secret split across two chunks, as it does for PTY session output', () => {
+        const seen: string[] = []
+        ingestMod.configureIngest({
+          lootDetector: {
+            scan: () => [],
+            findMatches: (text: string) => {
+              seen.push(text)
+              const m = /AKIA[A-Z0-9]{16}/.exec(text)
+              return m ? [{ ruleId: 'aws', type: 'aws_key', value: m[0], line: m[0], confidence: 'high' as const }] : []
+            }
+          }
+        })
+        start('cmd-split', 'curl -s http://10.0.0.9/ &')
+        endLate('cmd-split', 'curl -s http://10.0.0.9/ &')
+        chunk({ command_id: 'cmd-split', seq: 1, late: true, stdout: 'key=AKIAABCDEF' })
+        chunk({ command_id: 'cmd-split', seq: 2, late: true, stdout: 'GHIJKLMNOP\n' })
+        // The scan saw the whole key, because it carried the first chunk's tail.
+        // (The first chunk was stored before the key was complete, so its own
+        // text has no span; the same is true of PTY session output.)
+        expect(seen.at(-1)).toBe('key=AKIAABCDEFGHIJKLMNOP\n')
+      })
+
+      it('keeps a stream\'s tail apart from the other stream\'s', () => {
+        const seen: string[] = []
+        ingestMod.configureIngest({ lootDetector: { scan: () => [], findMatches: (t: string) => { seen.push(t); return [] } } })
+        start('cmd-two', 'tool &')
+        endLate('cmd-two', 'tool &')
+        chunk({ command_id: 'cmd-two', seq: 1, late: true, stdout: 'out-one' })
+        chunk({ command_id: 'cmd-two', seq: 2, late: true, stream: 'stderr', stderr: 'err-one' })
+        expect(seen.at(-1)).toBe('err-one')
+      })
+    })
+
     it('a chunk that arrives late still belongs where its seq puts it', () => {
       const opened = start('cmd-c', 'ffuf -u http://10.0.0.1/FUZZ')
       // Two chunks, the second one first. Arrival order is the network's
