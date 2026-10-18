@@ -68,9 +68,7 @@ test.describe.serial('project flow', () => {
       const bridge = (window as unknown as { redlog: RedLogBridge }).redlog
       return await bridge.chain.verify()
     })
-    // eslint-disable-next-line no-console
-    console.log('chain.verify result:', JSON.stringify(result))
-    expect(result.ok).toBe(true)
+    expect(result.ok, JSON.stringify(result)).toBe(true)
     // verifyChainFull returns `brokenAtEventId: null` when the walk is clean;
     // treat undefined and null as the same "no break" signal so we don't
     // depend on that internal choice.

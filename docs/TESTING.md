@@ -49,6 +49,8 @@ node scripts/verify-smoke-report.mjs /absolute/path/to/smoke.json
 | Requirement | Primary tests |
 | --- | --- |
 | Plain Zsh command/output/exit and terminal behavior | `zsh-auto-capture.pty`, `zsh-engagement-100.pty`, `zsh-transparency.pty`, `relay-pty-boundary` |
+| Explicit `redlog-session` PTY: output kept, exit status, slave held until reaped | `external-session` |
+| Debug log switch (machine-wide flag file, helper + app trace, no output text) | `debug-log`, `about-debug-log`, `external-session` |
 | Hook transport, identity, spool and outages | `shell-*`, `spool-replay`, `per-project-token`, `powershell-*` |
 | Capture setup, preparation/cancel and recovery | `capture-preparation`, `first-run`, `terminal-enrollment`, `dependency-cancel` |
 | HTTP readiness, actual requests and proof | `managed-proxy-readiness`, `http-verification`, `managed-http-capture`, `packaged-smoke` |
@@ -74,6 +76,20 @@ UI events prove rendering and interaction, not producer coverage.
 - Manual download, desktop launch, trust prompts and first-install friction use
   [the release walkthrough](RELEASE-SMOKE-TEST.md). Exact prior package results
   and remaining limitations are in [the package matrix](PACKAGED-SMOKE.md).
+
+## Races a test cannot reproduce
+
+Some loss only happens under load: #333 lost a short command's output in about
+1% of runs with the CPU saturated, and never in an idle suite. Do not add a
+stress loop that passes when idle — it proves nothing and reads as coverage.
+Measure the rate with the real helper under load, find the mechanism, then pin
+the *property that removes it* (`external-session`: the parent keeps the PTY
+slave until the child is reaped) and confirm the test fails against the old
+code before trusting it.
+
+When a capture report arrives without a cause, ask for the debug log first:
+Settings → About → Debug log, reproduce, attach `~/.redlog/debug.log`. It holds
+event names and sizes only, never command output.
 
 ## Keep the suite focused
 
