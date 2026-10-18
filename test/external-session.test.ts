@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createServer } from 'node:http'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -192,6 +192,66 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
     expect(r.events.at(-1)).toMatchObject({ truncated: true })
     expect(r.diagnostic).toContain('limit reached')
+  })
+
+  // The trace exists so a lost-output report can come with a timeline (#333
+  // had none). It is attached to issues, so it must never carry the output.
+  it('writes an opt-in event trace that names events and byte counts but never the output', async () => {
+    const file = path.join(os.tmpdir(), `redlog-trace-${process.pid}-${Date.now()}.log`)
+    process.env.REDLOG_SESSION_TRACE = file
+    try {
+      const r = await session(4096, false, ['/bin/echo', 'SECRET_OUTPUT_TEXT'])
+      expect(r.code).toBe(0)
+      const trace = fs.readFileSync(file, 'utf8')
+      for (const event of ['forked', 'output', 'child-reaped', 'slave-closed', 'loop-exit']) expect(trace).toContain(` ${event}`)
+      expect(trace).toMatch(/output bytes=\d+/)
+      expect(trace).not.toContain('SECRET_OUTPUT_TEXT')
+    } finally {
+      delete process.env.REDLOG_SESSION_TRACE
+      fs.rmSync(file, { force: true })
+    }
+  })
+
+  // A refusal to start is the case a bug report most needs a line for, and its
+  // message can carry a path under the operator's home, so only the type is kept.
+  it('traces a refusal to start by error type, not message', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-refuse-'))
+    const file = path.join(home, 'trace.log')
+    try {
+      const r = spawnSync('python3', ['hooks/redlog-session.py', '--', '/bin/echo', 'x'], {
+        env: { ...process.env, HOME: home, REDLOG_SESSION_TRACE: file }
+      })
+      expect(r.status).toBe(1)
+      const trace = fs.readFileSync(file, 'utf8')
+      expect(trace).toMatch(/session not-started error=\w+ best_effort=False/)
+      expect(trace).not.toContain(home)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  // Settings > About > Debug log creates ~/.redlog/debug-enabled; the helper
+  // runs outside the app, so that file is the only switch it can see.
+  it('traces to ~/.redlog/debug.log only while the debug-log flag file exists', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-flag-'))
+    try {
+      const target = (env: Record<string, string> = {}): string => {
+        const e = { ...process.env, HOME: home, ...env }
+        delete (e as Record<string, string | undefined>).REDLOG_SESSION_TRACE
+        Object.assign(e, env)
+        return execFileSync('python3', ['-c',
+          "import runpy; print(runpy.run_path('hooks/redlog-session.py', run_name='probe')['_trace_target']())"], { env: e }).toString().trim()
+      }
+      expect(target()).toBe('None')
+      fs.mkdirSync(path.join(home, '.redlog'))
+      expect(target()).toBe('None')
+      fs.writeFileSync(path.join(home, '.redlog', 'debug-enabled'), '')
+      expect(fs.realpathSync(path.dirname(target()))).toBe(fs.realpathSync(path.join(home, '.redlog')))
+      expect(path.basename(target())).toBe('debug.log')
+      expect(target({ REDLOG_SESSION_TRACE: '/tmp/explicit.log' })).toBe('/tmp/explicit.log')
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   })
 
   it('keeps the command live on capture failure and records the omission', async () => {

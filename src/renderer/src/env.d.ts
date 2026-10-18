@@ -160,6 +160,11 @@ interface RedLogAPI {
     openExternal: (url: string) => Promise<void>
     setQuitText: (text: Record<string, string>) => void
   }
+  debug: {
+    status: () => Promise<{ enabled: boolean; path: string }>
+    set: (on: boolean) => Promise<{ enabled: boolean; path: string }>
+    reveal: () => Promise<void>
+  }
   ui: {
     contextMenu: (
       items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>

@@ -17,6 +17,11 @@ const api: RedLogAPI = {
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
     setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text)
   },
+  debug: {
+    status: () => ipcRenderer.invoke('debug:status'),
+    set: (on: boolean) => ipcRenderer.invoke('debug:set', on),
+    reveal: () => ipcRenderer.invoke('debug:reveal')
+  },
   ui: {
     // Pops a native menu at the cursor and resolves with the clicked item's id
     // (null if dismissed). Only the renderer knows what a right-click means

@@ -10,6 +10,7 @@ import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
+import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, type RedLogEvent } from '../core/db/events'
@@ -1164,6 +1165,7 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return
   electronApp.setAppUserModelId('com.redlog')
+  debugLog('app', 'start', `version=${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} platform=${process.platform}-${process.arch} packaged=${app.isPackaged}`)
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
   startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
@@ -1553,11 +1555,19 @@ app.whenReady().then(() => {
 
   // --- Proxied browser ---
   ipcMain.handle('httpCapture:status', () => managedHttpProxy.status())
-  ipcMain.handle('httpCapture:start', () => startManagedHttpCapture())
+  ipcMain.handle('httpCapture:start', () => {
+    const status = startManagedHttpCapture()
+    debugLog('httpCapture', 'start', `state=${(status as { state?: string }).state ?? '?'}`)
+    return status
+  })
   // The panes opened while routing was on keep a proxy URL in their
   // environment, which no longer answers. Say how many, so the operator is
   // told to reopen them rather than left to a pane where every request fails.
-  ipcMain.handle('httpCapture:stop', () => ({ ...stopManagedHttpCapture(), staleTerminals: countProxiedTerminals() }))
+  ipcMain.handle('httpCapture:stop', () => {
+    const result = { ...stopManagedHttpCapture(), staleTerminals: countProxiedTerminals() }
+    debugLog('httpCapture', 'stop', `staleTerminals=${result.staleTerminals}`)
+    return result
+  })
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
   ipcMain.handle('browser:launch', () => launchCaptureBrowser())
@@ -1685,6 +1695,7 @@ app.whenReady().then(() => {
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.
   const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }): void => {
+    debugLog('hooks', installed ? 'install' : 'uninstall', `id=${hookId} success=${r.success}`)
     if (!r.success || !currentEngagementId || !currentOperatorId) return
     try {
       const ev = insertEvent('system', {
@@ -1806,6 +1817,17 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
+  ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))
+  ipcMain.handle('debug:set', (_e, on: unknown) => {
+    setDebugLogEnabled(on === true)
+    return { enabled: isDebugLogEnabled(), path: debugLogPath() }
+  })
+  ipcMain.handle('debug:reveal', () => {
+    const file = debugLogPath()
+    if (fs.existsSync(file)) shell.showItemInFolder(file)
+    else void shell.openPath(path.dirname(file))
+  })
   ipcMain.on('app:setQuitText', (_e, raw: unknown) => {
     const parsed = parseQuitText(raw)
     if (parsed) quitText = parsed
