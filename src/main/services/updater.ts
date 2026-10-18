@@ -1,5 +1,7 @@
 import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
+import { getProjectDir } from '../../core/db/index'
+import { writeUpdateMarker, type UpdateOutcome } from './update-marker'
 import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
 import { UpdateFlow } from './update-flow'
 import { UpdateStatusStore, hasInstallerFor, type UpdateStatus } from './update-status'
@@ -178,14 +180,34 @@ function getFlow(autoUpdater: typeof import('electron-updater').autoUpdater): Up
       })
     },
     beforeRestart: async (version) => {
-      // Anchor the chain head before quit-and-install.
+      // Mark the pause in the chain. This machine's own record is the one that
+      // must succeed; the outside timestamp being out of reach, or air-gap
+      // skipping it, is told in the marker and does not stop anything.
+      const result = await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: version, offline: airgap })
+      if (result.localError) throw new Error(result.localError)
+      console.log(TAG, `restart marked in the chain (external timestamp: ${result.external})`)
+      // For the next launch to judge by the version that is then running.
+      let projectDir: string | null = null
+      try { projectDir = getProjectDir() } catch { /* no project open */ }
       try {
-        await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: version })
-        console.log(TAG, 'chain head anchored before restart')
+        writeUpdateMarker(app.getPath('userData'), { fromVersion: app.getVersion(), toVersion: version, at: Date.now(), projectDir })
       } catch (e) {
-        console.warn(TAG, 'anchor failed (best-effort):', (e as Error).message)
+        console.warn(TAG, 'could not record the target version:', (e as Error).message)
       }
     },
+    onRestartBlocked: async (error) => (await dialog.showMessageBox({
+      type: 'warning',
+      buttons: zh() ? ['取消', '重試'] : ['Cancel', 'Try again'],
+      defaultId: 0,
+      cancelId: 0,
+      title: zh() ? '無法安全重新啟動' : 'Cannot restart safely',
+      message: zh()
+        ? '重新啟動前無法保存紀錄狀態，所以沒有重新啟動。'
+        : 'The record could not be saved before the restart, so nothing was restarted.',
+      detail: `${error.message}\n\n${zh()
+        ? '終端、代理與擷取都維持原狀；更新仍已下載，之後可再安裝。'
+        : 'Terminals, the proxy and recording are as they were; the update stays downloaded for later.'}`
+    })).response === 1 ? 'retry' : 'cancel',
     allowQuit
   })
   autoUpdater.on('download-progress', (info) => {
@@ -282,7 +304,7 @@ async function browserFallbackUpdate(): Promise<void> {
   })
   if (r.response === 0) {
     try {
-      await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: latest.version })
+      await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: latest.version, offline: airgap })
     } catch { /* best-effort */ }
     console.log(TAG, `opening release page: ${latest.url}`)
     await shell.openExternal(latest.url)
@@ -293,6 +315,15 @@ async function browserFallbackUpdate(): Promise<void> {
 // Public API
 // ---------------------------------------------------------------------------
 let airgap = false
+// What the first launch after an update found, for the window to say once.
+let pendingOutcome: UpdateOutcome | null = null
+export function setUpdateOutcome(outcome: UpdateOutcome): void { pendingOutcome = outcome }
+export function takeUpdateOutcome(): UpdateOutcome | null {
+  const outcome = pendingOutcome
+  pendingOutcome = null
+  return outcome
+}
+
 export function setUpdaterAirgap(v: boolean): void { airgap = v }
 
 async function runCheck(manual: boolean): Promise<void> {

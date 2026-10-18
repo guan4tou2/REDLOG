@@ -76,7 +76,9 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome } from './services/updater'
+import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
+import { recordUpdateOutcome } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -1012,6 +1014,22 @@ function startProject(project: ProjectMeta): void {
     startNtpLoop()
   }
 
+  // The first launch after an update restart writes down what happened, judged
+  // by the version now running, in the project that was open when it began.
+  // Additive: a record that fails to write must not stop the project opening,
+  // and the marker stays until it is written.
+  try {
+    const marker = readUpdateMarker(app.getPath('userData'))
+    if (marker && (marker.projectDir === null || marker.projectDir === getProjectDir())) {
+      const outcome = judgeUpdateOutcome(marker, app.getVersion())
+      if (marker.projectDir === null || recordUpdateOutcome(outcome, { engagementId, operatorId })) {
+        clearUpdateMarker(app.getPath('userData'))
+        setUpdateOutcome(outcome)
+        send(mainWindow, 'app:updateOutcomeReady')
+      }
+    }
+  } catch (e) { console.warn('[updater] could not record the update outcome:', (e as Error).message) }
+
   // v0.6.89 P1-A: read-path sampling verify. On open, take a big (100)
   // sample immediately so the operator sees an early signal if the chain
   // was tampered with while the app was closed. After that, take a small
@@ -1855,6 +1873,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:updateStatus', () => getUpdateStatus())
   ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
   ipcMain.handle('app:installUpdate', () => installReadyUpdate())
+  ipcMain.handle('app:takeUpdateOutcome', () => takeUpdateOutcome())
   onUpdateStatus((status) => send(mainWindow, 'app:updateStatusChanged', status))
   // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
   ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))

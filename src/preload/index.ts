@@ -17,6 +17,12 @@ const api: RedLogAPI = {
     updateStatus: () => ipcRenderer.invoke('app:updateStatus') as Promise<import('../main/services/update-status').UpdateStatus>,
     cancelUpdate: () => ipcRenderer.invoke('app:cancelUpdate') as Promise<boolean>,
     installUpdate: () => ipcRenderer.invoke('app:installUpdate') as Promise<void>,
+    takeUpdateOutcome: () => ipcRenderer.invoke('app:takeUpdateOutcome') as Promise<import('../main/services/update-marker').UpdateOutcome | null>,
+    onUpdateOutcomeReady: (cb: () => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('app:updateOutcomeReady', handler)
+      return () => ipcRenderer.removeListener('app:updateOutcomeReady', handler)
+    },
     onUpdateStatus: (cb: (status: import('../main/services/update-status').UpdateStatus) => void) => {
       const handler = (_e: unknown, status: import('../main/services/update-status').UpdateStatus): void => cb(status)
       ipcRenderer.on('app:updateStatusChanged', handler)

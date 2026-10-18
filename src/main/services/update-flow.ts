@@ -32,8 +32,12 @@ export interface UpdateFlowDeps {
    *  the default and Escape are no. */
   confirmRestart(impact: QuitImpact, version: string): Promise<boolean>
   onDownloadFailed(error: Error): Promise<void>
-  /** Before the restart. A failure here is the caller's to surface. */
+  /** Before the restart: save what must be saved. A throw means it could not
+   *  be, and the restart does not happen. */
   beforeRestart(version: string): Promise<void>
+  /** Asked when `beforeRestart` threw: try the save again, or leave everything
+   *  running as it is. Absent, the error is rethrown to the caller. */
+  onRestartBlocked?(error: Error, version: string): Promise<'retry' | 'cancel'>
   /** Let the quit through without the quit-guard dialog: the operator has just
    *  answered a more specific one. */
   allowQuit(): void
@@ -117,7 +121,17 @@ export class UpdateFlow {
         if (!(await this.deps.confirmRestart(asked, version))) { this.state = 'ready'; return }
         if (sameImpact(asked, this.deps.impact())) break
       }
-      await this.deps.beforeRestart(version)
+      for (;;) {
+        try {
+          await this.deps.beforeRestart(version)
+          break
+        } catch (e) {
+          if (!this.deps.onRestartBlocked) throw e
+          // Nothing was saved, so nothing may stop: cancelling leaves the
+          // download ready and every source running.
+          if ((await this.deps.onRestartBlocked(e as Error, version)) !== 'retry') { this.state = 'ready'; return }
+        }
+      }
       this.deps.allowQuit()
       this.deps.port.quitAndInstall()
     } catch (e) {

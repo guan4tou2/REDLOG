@@ -5,6 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- An update restart no longer goes ahead when RedLog could not write its own
+  record of the pause: it says so and offers "Try again" or "Cancel", leaving
+  terminals, the proxy and recording as they were. An unreachable outside
+  timestamp is told apart from that and never blocks; in air-gap mode the
+  restart makes no request at all (it used to contact the timestamp servers).
+  After the update, the first launch writes whether it worked, judged by the
+  version actually running, into the project that was open, and says once that
+  terminals and proxy connections from before the restart were ended and are not
+  resumed.
+
 - Settings ▸ About now says where updating stands: how this install updates, what
   the last check found and when, download progress with a cancel, and a
   downloaded update that stays findable with its own "Install and restart"
