@@ -630,7 +630,7 @@
   "timeline.search.hint": "按 / 開始標亮、Esc 清除。解讀方式與搜尋相同；不符合的事件會變暗、不會被移除——要移除事件請用上方的篩選列。",
   "timeline.search.clear": "清除標亮",
   "timeline.follow.live": "● 即時",
-  "timeline.follow.behindFmt": "⏸ 已暫停 · {{time}} 前",
+  "timeline.follow.behindFmt": "⏸ 自動捲動已暫停 · {{time}} 前",
   "timeline.follow.pauseHint": "暫停自動捲動",
   "timeline.follow.resumeHint": "自動捲動已暫停，最新事件在 {{time}} 前。點一下跳到最新並恢復",
   "timeline.boundaries.toggle": "工作階段邊界",

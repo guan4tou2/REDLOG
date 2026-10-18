@@ -630,7 +630,7 @@
   "timeline.search.hint": "Press / to highlight, Escape to clear. Read the way Search reads it; events that do not match are dimmed, not removed — the filter bar above is what removes events.",
   "timeline.search.clear": "Clear highlight",
   "timeline.follow.live": "● Live",
-  "timeline.follow.behindFmt": "⏸ Paused · {{time}} ago",
+  "timeline.follow.behindFmt": "⏸ Auto-scroll paused · {{time}} ago",
   "timeline.follow.pauseHint": "Pause auto-scroll",
   "timeline.follow.resumeHint": "Auto-scroll is paused; the newest event is {{time}} old. Click to jump to the newest and resume",
   "timeline.boundaries.toggle": "Session boundaries",
