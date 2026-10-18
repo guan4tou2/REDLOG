@@ -24,6 +24,23 @@ describe('stripAnsi', () => {
     expect(stripAnsi('\x1b]0;title\x07plain')).toBe('plain')
   })
 
+  // Warp's shell integration: ESC P $d<hex of JSON> ESC \ . Only the two
+  // introducer bytes used to be removed and the hex stayed as command output.
+  it('removes a DCS string with its payload, not just its introducer', () => {
+    expect(stripAnsi('a\x1bP$d7b22686f6f6b223a2274657374227d\x1b\\b')).toBe('ab')
+    expect(stripAnsi('\x1bP$d7b22\x07ls')).toBe('ls')
+  })
+
+  it('removes APC, PM and SOS strings the same way', () => {
+    expect(stripAnsi('x\x1b_payload\x1b\\y')).toBe('xy')
+    expect(stripAnsi('x\x1b^payload\x1b\\y')).toBe('xy')
+    expect(stripAnsi('x\x1bXpayload\x1b\\y')).toBe('xy')
+  })
+
+  it('still removes a lone introducer that never terminates, without eating text before it', () => {
+    expect(stripAnsi('keep\x1bP')).toBe('keep')
+  })
+
   it('leaves innocent text alone', () => {
     expect(stripAnsi('hello world\n$ ls\n')).toBe('hello world\n$ ls\n')
   })
