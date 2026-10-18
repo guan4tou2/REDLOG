@@ -312,6 +312,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                               () => {
                                 const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
                                 void window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                                  .then(() => window.dispatchEvent(new CustomEvent('redlog:config-saved')))
                               },
                               {
                                 why: t('targets.addedToScopeWhy'),
