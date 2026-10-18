@@ -226,6 +226,35 @@ describeDB('capture-health', () => {
       .not.toBeNull()
   })
 
+  // Spec 060 FR-003/FR-011: proof comes from the shell that was installed.
+  it('does not count a zsh command as proof for a Bash-only install', () => {
+    mockHooks({ 'shell-zsh': false, 'shell-bash': true })
+    ins('shell', { subtype: 'command_end', command: 'id', source: 'auto-relay', shell: 'zsh' })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt).toBeNull()
+    ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay', shell: 'bash' })
+    expect(getCaptureHealth(Date.now() + 5000).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt).not.toBeNull()
+  })
+
+  // Spec 060 FR-011: the two proxies emit the same subtypes; a request through
+  // the regular one must not make the transparent one look like it captured.
+  it('does not let a regular-proxy request vouch for the transparent proxy', () => {
+    invalidateHooksCache()
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
+      { id: 'transparent-proxy.mitmproxy-transparent', name: 'transparent-proxy', description: '', agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
+    ])
+    ins('scanner', { subtype: 'http_request_start', url: 'http://a.test/', proxy_mode: 'regular' })
+    ins('scanner', { subtype: 'http_request_start', url: 'http://old.test/' })
+    let tproxy = getCaptureHealth().sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
+    expect(tproxy?.state).toBe('off')
+    expect(tproxy?.lastEventAt).toBeNull()
+
+    ins('scanner', { subtype: 'http_request_start', url: 'http://b.test/', proxy_mode: 'transparent' })
+    tproxy = getCaptureHealth(Date.now() + 5000).sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
+    expect(tproxy?.state).toBe('ready')
+    expect(tproxy?.lastEventAt).not.toBeNull()
+  })
+
   // The card does not poll. It re-reads capture health once on mount and once
   // per batch of new events — so whatever that one read returns is what the
   // operator sees until the NEXT event arrives. If the 750ms cache hands back

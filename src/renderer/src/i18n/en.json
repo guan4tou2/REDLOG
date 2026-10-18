@@ -1372,6 +1372,7 @@
   "export.preview.subsetTarget": "target: {{target}}",
   "export.preview.policyMask": "out-of-scope masked",
   "export.preview.policyNoMask": "masking off",
+  "export.preview.policyNoScope": "no web scope set, nothing masked",
   "export.preview.policyScopeOnly": "in-scope only",
   "export.preview.policyScrubPii": "PII scrubbed",
   "export.preview.attachmentsUnsupported": "this format carries none",

@@ -1372,6 +1372,7 @@
   "export.preview.subsetTarget": "目標：{{target}}",
   "export.preview.policyMask": "範圍外已遮蔽",
   "export.preview.policyNoMask": "未遮蔽",
+  "export.preview.policyNoScope": "尚未設定網頁範圍，未遮蔽任何內容",
   "export.preview.policyScopeOnly": "僅範圍內",
   "export.preview.policyScrubPii": "已清除個資",
   "export.preview.attachmentsUnsupported": "這個格式不帶附件",
