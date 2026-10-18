@@ -1,7 +1,8 @@
 import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
 import { getProjectDir } from '../../core/db/index'
-import { writeUpdateMarker, type UpdateOutcome } from './update-marker'
+import { writeUpdateMarker, readUpdateMarker, judgeUpdateOutcome, type UpdateOutcome } from './update-marker'
+import { isAutoCheckEnabled, setAutoCheckEnabled } from './update-prefs'
 import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
 import { UpdateFlow } from './update-flow'
 import { UpdateStatusStore, hasInstallerFor, type UpdateStatus } from './update-status'
@@ -39,10 +40,26 @@ function store(): UpdateStatusStore {
     method: process.platform === 'win32' ? 'in-app' : 'download-page',
     packaged: app.isPackaged,
     currentVersion: app.getVersion(),
-    releaseUrl: RELEASES_PAGE
+    releaseUrl: RELEASES_PAGE,
+    autoCheck: isAutoCheckEnabled(app.getPath('userData'))
   })
 }
 export function getUpdateStatus(): UpdateStatus { return store().get() }
+
+export function autoCheckEnabled(): boolean { return store().get().autoCheck }
+export function setAutoCheck(on: boolean): void {
+  setAutoCheckEnabled(app.getPath('userData'), on)
+  store().patch({ autoCheck: on })
+}
+
+/** A manual update that was started and not finished stays visible until the
+ *  running version says otherwise. Called once at launch. */
+export function restoreUnfinishedUpdate(): void {
+  const marker = readUpdateMarker(app.getPath('userData'))
+  if (!marker || marker.method !== 'manual') return
+  if (judgeUpdateOutcome(marker, app.getVersion()).kind === 'completed') return
+  store().patch({ stage: 'available', targetVersion: marker.toVersion, unfinished: true })
+}
 export function onUpdateStatus(listener: (status: UpdateStatus) => void): () => void { return store().onChange(listener) }
 
 async function fetchLatest(): Promise<{ version: string; url: string; assets: string[] } | null> {
@@ -275,7 +292,7 @@ async function browserFallbackUpdate(): Promise<void> {
   }
 
   if (!isNewer(latest.version, app.getVersion())) {
-    store().patch({ stage: 'idle', result: 'upToDate', targetVersion: null, checkedAt: Date.now() })
+    store().patch({ stage: 'idle', result: 'upToDate', targetVersion: null, unfinished: false, checkedAt: Date.now() })
     return
   }
 
@@ -303,9 +320,17 @@ async function browserFallbackUpdate(): Promise<void> {
     detail
   })
   if (r.response === 0) {
+    // RedLog restarts nothing on this path, so there is no pause to mark in the
+    // chain and nothing to anchor; only the version aimed for is remembered, so
+    // the running version can say later whether it was finished.
+    let projectDir: string | null = null
+    try { projectDir = getProjectDir() } catch { /* no project open */ }
     try {
-      await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: latest.version, offline: airgap })
-    } catch { /* best-effort */ }
+      writeUpdateMarker(app.getPath('userData'), { fromVersion: app.getVersion(), toVersion: latest.version, at: Date.now(), projectDir, method: 'manual' })
+      store().patch({ unfinished: true })
+    } catch (e) {
+      console.warn(TAG, 'could not record the target version:', (e as Error).message)
+    }
     console.log(TAG, `opening release page: ${latest.url}`)
     await shell.openExternal(latest.url)
   }

@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Updating by hand (macOS and Linux) is described as what it is, per platform,
+  instead of one generic line. Going to the download page no longer counts as an
+  update: it no longer writes an "update pending" mark into the project or
+  contacts the timestamp servers, and About keeps saying the update is not
+  finished until the running version is the new one (a newer version than the
+  one aimed for also counts). Settings ▸ About has a switch for the check at
+  launch; it is on by default, air-gap still prevents the check either way, and
+  pressing "Check for updates" always works.
+
 - An update restart no longer goes ahead when RedLog could not write its own
   record of the pause: it says so and offers "Try again" or "Cancel", leaving
   terminals, the proxy and recording as they were. An unreachable outside

@@ -20,7 +20,7 @@ function stateText(s: UpdateStatus, t: T): string {
   const version = s.targetVersion ?? ''
   switch (s.stage) {
     case 'checking': return t('update.state.checking')
-    case 'available': return t('update.state.available', { version })
+    case 'available': return s.unfinished ? t('update.state.unfinished', { version }) : t('update.state.available', { version })
     case 'downloading':
       return s.progress === null ? t('update.state.downloadingUnknown', { version }) : t('update.state.downloading', { version, percent: s.progress })
     case 'ready': return t('update.state.ready', { version })
@@ -29,6 +29,15 @@ function stateText(s: UpdateStatus, t: T): string {
     case 'unavailable': return s.result === 'airgap' ? t('update.state.airgap') : t('update.state.noInstaller', { version })
     default: return s.result === 'upToDate' ? t('update.state.upToDate') : t('update.state.notChecked')
   }
+}
+
+/** How this install is updated. macOS and Linux are by hand, and each says why
+ *  and what to do rather than letting a page opening read as an update. */
+function methodText(s: UpdateStatus, platform: string, t: T): string {
+  if (s.method === 'in-app') return t('update.method.inApp')
+  if (platform === 'darwin') return t('update.method.downloadPageMac')
+  if (platform === 'linux') return t('update.method.downloadPageLinux')
+  return t('update.method.downloadPage')
 }
 
 function UpdateBlock({ t }: { t: T }): JSX.Element | null {
@@ -47,7 +56,7 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
   return (
     <div className="space-y-1.5" data-testid="update-block">
       <p className="text-xs text-redlog-text-dim" data-testid="update-method">
-        {status.method === 'in-app' ? t('update.method.inApp') : t('update.method.downloadPage')}
+        {methodText(status, window.redlog.platform, t)}
         {status.packaged ? '' : ` · ${t('update.devBuild')}`}
       </p>
       <p className="text-sm text-redlog-text" role="status" data-testid="update-state">{stateText(status, t)}</p>
@@ -62,6 +71,21 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
           {t('update.checkedAt', { time: formatDateTime(status.checkedAt) })}
         </p>
       )}
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          data-testid="update-auto-check"
+          checked={status.autoCheck}
+          onChange={(e) => {
+            // Shown at once, then main's answer replaces it: it owns the flag.
+            const on = e.target.checked
+            setStatus({ ...status, autoCheck: on })
+            void window.redlog.app.setAutoUpdateCheck(on).then(setStatus, () => window.redlog.app.updateStatus().then(setStatus))
+          }}
+          className="accent-red-600"
+        />
+        <span className="text-xs text-redlog-text">{t('update.autoCheck')}</span>
+      </label>
       <div className="flex flex-wrap gap-2">
         <Button level="secondary" disabled={busy} onClick={() => void window.redlog.app.checkForUpdates()} data-testid="update-check">
           {status.stage === 'checking' ? t('update.checking') : status.stage === 'failed' ? t('update.retry') : t('settings.checkUpdate')}

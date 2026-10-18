@@ -203,7 +203,7 @@ describe('updater.ts wiring', () => {
     expect(src).toMatch(/if \(result\.localError\) throw new Error\(result\.localError\)/)
     expect(src).toMatch(/onRestartBlocked/)
     // Air-gap is passed to both places that anchor, so neither asks the network.
-    expect((src.match(/offline: airgap/g) ?? []).length).toBe(2)
+    expect((src.match(/offline: airgap/g) ?? []).length).toBe(1)
   })
 })
 
@@ -225,5 +225,31 @@ describe('the quit that an update ends with', () => {
     expect(at).toBeGreaterThan(-1)
     const block = index.slice(at, at + 900)
     expect(block.indexOf('recordUpdateOutcome(')).toBeLessThan(block.indexOf('clearUpdateMarker('))
+  })
+
+  // Spec 061 US4: on the manual path RedLog restarts nothing, so there is no
+  // pause to mark and no network call to make; the running version decides.
+  it('opening the download page marks nothing in the chain and asks no network, it only remembers the target', () => {
+    const updater = fs.readFileSync(path.join(__dirname, '../src/main/services/updater.ts'), 'utf8')
+    const fallback = updater.slice(updater.indexOf('async function browserFallbackUpdate'), updater.indexOf('// Public API'))
+    expect(fallback).not.toContain('anchorBeforeRestart')
+    expect(fallback).toMatch(/method: 'manual'/)
+  })
+
+  it('does not let a page that was only opened count as an update', () => {
+    const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
+    const at = index.indexOf("marker.method === 'manual'")
+    expect(at).toBeGreaterThan(-1)
+    // The manual-and-not-applied branch comes first and writes nothing.
+    const branch = index.slice(at, index.indexOf('} else if', at))
+    expect(branch).not.toContain('recordUpdateOutcome')
+    expect(branch).not.toContain('clearUpdateMarker')
+  })
+
+  it('looks by itself at launch only when the operator has not switched it off', () => {
+    const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
+    expect(index).toMatch(/if \(autoCheckEnabled\(\)\) checkForUpdates\(\)/)
+    // The switch is not consulted for a press of the button.
+    expect(index).toMatch(/ipcMain\.handle\('app:checkForUpdates', \(\) => checkForUpdates\(\{ manual: true \}\)\)/)
   })
 })

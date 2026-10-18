@@ -76,7 +76,7 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
 import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
 import { recordUpdateOutcome } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
@@ -1022,7 +1022,11 @@ function startProject(project: ProjectMeta): void {
     const marker = readUpdateMarker(app.getPath('userData'))
     if (marker && (marker.projectDir === null || marker.projectDir === getProjectDir())) {
       const outcome = judgeUpdateOutcome(marker, app.getVersion())
-      if (marker.projectDir === null || recordUpdateOutcome(outcome, { engagementId, operatorId })) {
+      if (marker.method === 'manual' && outcome.kind === 'not-applied') {
+        // The operator only went to the download page. Nothing was restarted,
+        // so there is no event to write for an update that did not happen; About
+        // keeps saying it is not finished until the running version moves.
+      } else if (marker.projectDir === null || recordUpdateOutcome(outcome, { engagementId, operatorId })) {
         clearUpdateMarker(app.getPath('userData'))
         setUpdateOutcome(outcome)
         send(mainWindow, 'app:updateOutcomeReady')
@@ -1874,6 +1878,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
   ipcMain.handle('app:installUpdate', () => installReadyUpdate())
   ipcMain.handle('app:takeUpdateOutcome', () => takeUpdateOutcome())
+  ipcMain.handle('app:setAutoUpdateCheck', (_e, on: unknown) => { setAutoCheck(on === true); return getUpdateStatus() })
   onUpdateStatus((status) => send(mainWindow, 'app:updateStatusChanged', status))
   // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
   ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))
@@ -1907,7 +1912,9 @@ app.whenReady().then(() => {
     }
   })
   // Silent check shortly after launch (packaged builds only).
-  setTimeout(() => { checkForUpdates().catch(() => {}) }, 5000)
+  // The operator may have switched it off; air-gap overrides it either way.
+  restoreUnfinishedUpdate()
+  setTimeout(() => { if (autoCheckEnabled()) checkForUpdates().catch(() => {}) }, 5000)
 
   app.on('activate', () => {
     mainWindow?.show()
