@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Output that a background command prints after its prompt returned is kept once
+  and travels with the command. A chunk the relay resent because our reply was
+  late is no longer stored twice, an export that includes the command now
+  includes that output (the Timeline hides it, so a filtered export used to
+  drop it), and marking the command "do not export" holds back its later output
+  too.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.

@@ -195,6 +195,17 @@ export function ingest(input: IngestInput): IngestResult {
     })
   }
 
+  // 2a'. A relay that times out waiting for our answer sends the same chunk
+  //     again, and we may already have it: the request landed, the reply was
+  //     late. Same command, same seq is the same chunk, so it is kept once --
+  //     otherwise the detail pane prints those lines twice and the byte count
+  //     on the final row stops matching what is stored.
+  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output'
+      && data.late === true && typeof data.command_id === 'string' && typeof data.seq === 'number'
+      && lateChunkSeen.get(data.command_id)?.has(data.seq)) {
+    return { event: null, skipped: 'dedup', companions: [] }
+  }
+
   // 2b. A background job's late output has no command text to read a target
   //     from, and must not get one by reading its bytes. The command it belongs
   //     to was filed under a target when it ended; the chunk goes to the same.
@@ -229,12 +240,23 @@ export function ingest(input: IngestInput): IngestResult {
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
   if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
+  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && data.late === true
+      && typeof data.command_id === 'string' && typeof data.seq === 'number') {
+    let seen = lateChunkSeen.get(data.command_id)
+    if (!seen) {
+      if (lateChunkSeen.size >= LATE_TARGET_MAX) lateChunkSeen.delete(lateChunkSeen.keys().next().value as string)
+      seen = new Set()
+      lateChunkSeen.set(data.command_id, seen)
+    }
+    seen.add(data.seq)
+  }
   if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
     if (data.subtype === 'command_end' && data.late_output === true) {
       if (lateTargetByCommand.size >= LATE_TARGET_MAX) lateTargetByCommand.delete(lateTargetByCommand.keys().next().value as string)
       lateTargetByCommand.set(data.command_id, targetId ?? null)
     } else if (data.subtype === 'command_output' && data.final === true) {
       lateTargetByCommand.delete(data.command_id)
+      lateChunkSeen.delete(data.command_id)
     }
   }
 
@@ -349,6 +371,11 @@ const sessionTail = new Map<string, string>()
 // `command_end` said a background job would keep printing. The chunks that
 // follow are filed there too. Bounded; released at the relay's `final` row.
 const lateTargetByCommand = new Map<string, string | null>()
+/** Which chunk numbers of a still-running background command are already
+ *  stored, so a resend is recognised. Cleared when the final row lands; a
+ *  resend after an app restart is not caught here, and the reader keeps one row
+ *  per seq (queryCommandOutput). */
+const lateChunkSeen = new Map<string, Set<number>>()
 const LATE_TARGET_MAX = 256
 const SESSION_TAIL_CHARS = 4096
 const SESSION_TAIL_MAX = 64
