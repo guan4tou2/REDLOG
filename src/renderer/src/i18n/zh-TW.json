@@ -891,6 +891,8 @@
   "plugins.revokeFailed": "無法撤銷 {{name}} 的權限",
   "targets.addedToScope": "已將 {{target}} 加入範圍",
   "targets.addedToScopeWhy": "尚未寫入——8 秒內復原，稽核紀錄不會有任何痕跡。",
+  "targets.addToScopeFailed": "無法將 {{target}} 加入範圍",
+  "targets.addToScopeFailedWhy": "已切換到其他專案，或設定無法儲存。沒有任何變更。",
   "settings.hookRemoved": "已移除 {{name}} hook",
   "settings.hookRemovedWhy": "尚未寫入——8 秒內復原，設定檔完全不會被動到。",
   "issues.attention": "需要注意 {{count}}",

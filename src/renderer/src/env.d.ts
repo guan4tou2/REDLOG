@@ -298,6 +298,9 @@ interface RedLogAPI {
     }>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
+    /** Add one target to the scope of the project the caller meant. False: that
+     *  project is no longer open, or the write failed. */
+    addTarget: (target: string, opts?: { expectProjectId?: string }) => Promise<boolean>
     fileInForce: () => Promise<{ path: string } & ({ ok: true; entries: string[] } | { ok: false; reason: 'unreadable' | 'invalid' }) | null>
     /** The newest scope_recomputed summary, or null. The Scope banner is a
      *  projection of this row, which is why it needs no dismissal state. */

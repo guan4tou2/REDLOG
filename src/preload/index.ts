@@ -177,6 +177,7 @@ const api: RedLogAPI = {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
     isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
+    addTarget: (target: string, opts?: { expectProjectId?: string }) => ipcRenderer.invoke('scope:addTarget', target, opts) as Promise<boolean>,
     fileInForce: () => ipcRenderer.invoke('scope:fileInForce'),
     getLastRecompute: () => ipcRenderer.invoke('scope:getLastRecompute')
   },

@@ -891,6 +891,8 @@
   "plugins.revokeFailed": "Could not revoke permissions for {{name}}",
   "targets.addedToScope": "{{target}} added to scope",
   "targets.addedToScopeWhy": "Not written yet — undo within 8 seconds and nothing reaches the audit log.",
+  "targets.addToScopeFailed": "Could not add {{target}} to scope",
+  "targets.addToScopeFailedWhy": "Another project is open or the settings could not be saved. Nothing was changed.",
   "settings.hookRemoved": "Removed the {{name}} hook",
   "settings.hookRemovedWhy": "Not written yet — undo within 8 seconds and the profile is never touched.",
   "issues.attention": "Needs attention {{count}}",

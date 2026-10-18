@@ -1352,7 +1352,7 @@ app.whenReady().then(() => {
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
   })
-  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) => {
+  const saveProjectConfig = (newConfig: RedLogConfig, opts?: { expectProjectId?: string }): boolean => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     const oldConfig = loadConfig(projectDir)
@@ -1459,6 +1459,25 @@ app.whenReady().then(() => {
       opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
     })
     return true
+  }
+  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) =>
+    saveProjectConfig(newConfig, opts))
+  // Widening the scope by one target. The Targets view used to read the whole
+  // config when the button was pressed and write the whole thing back when the
+  // undo window closed, seconds later: a project switch in between wrote A's
+  // settings into B, and two targets added inside the window overwrote each
+  // other. The merge belongs here, against the config as it is NOW, and the
+  // caller says which project it meant.
+  ipcMain.handle('scope:addTarget', (_e, target: unknown, opts?: { expectProjectId?: string }) => {
+    if (!activeProject || typeof target !== 'string' || !target.trim()) return false
+    const current = loadConfig(getProjectPath(activeProject))
+    if (opts?.expectProjectId && opts.expectProjectId !== current.engagement.id) return false
+    const targets = current.scope?.targets ?? []
+    if (targets.includes(target)) return true
+    return saveProjectConfig(
+      { ...current, scope: { ...current.scope, targets: [...targets, target] } } as RedLogConfig,
+      opts
+    )
   })
   // Per-tick push — fires every IP check so `lastCheck`/link updates reach the
   // UI even when the verdict doesn't flip. IPPolicy dedup ensures the CHAIN

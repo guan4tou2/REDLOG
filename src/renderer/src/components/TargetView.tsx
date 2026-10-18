@@ -297,9 +297,14 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                             // this target to config.scope.targets and reload
                             // scope config (audit #36).
                             e.stopPropagation()
-                            const cfg = await window.redlog.config.get() as { scope?: { targets?: string[] } } | null
-                            const cur = cfg?.scope?.targets ?? []
-                            if (cur.includes(tgt.target)) return
+                            const cfg = await window.redlog.config.get() as
+                              { scope?: { targets?: string[] }; engagement?: { id?: string } } | null
+                            if ((cfg?.scope?.targets ?? []).includes(tgt.target)) return
+                            // Which project this button was pressed in. The write
+                            // happens seconds from now; the main process merges the
+                            // one target into the config as it is THEN, and refuses
+                            // if another project is open by that time.
+                            const projectId = cfg?.engagement?.id
                             // Widening scope is the one direction that can turn
                             // an out-of-scope finding into an in-scope one after
                             // the fact, so §10 defers the write: the chip shows
@@ -310,9 +315,16 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                             toastDeferred(
                               t('targets.addedToScope', { target: tgt.target }),
                               () => {
-                                const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
-                                void window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
-                                  .then(() => window.dispatchEvent(new CustomEvent('redlog:config-saved')))
+                                const failed = (detail?: string): void => {
+                                  setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
+                                  toast(t('targets.addToScopeFailed', { target: tgt.target }), { type: 'error', detail })
+                                }
+                                window.redlog.scope.addTarget(tgt.target, { expectProjectId: projectId })
+                                  .then((ok) => {
+                                    if (ok) window.dispatchEvent(new CustomEvent('redlog:config-saved'))
+                                    else failed(t('targets.addToScopeFailedWhy'))
+                                  })
+                                  .catch((err) => failed(err instanceof Error ? err.message : String(err)))
                               },
                               {
                                 why: t('targets.addedToScopeWhy'),
