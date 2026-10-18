@@ -401,6 +401,33 @@ describe('renderer views render without throwing', () => {
     await waitFor(() => expect(clock.getAttribute('title')).toMatch(/since this project was created .*not this session/))
   })
 
+  // #323: below the narrow threshold the bar stays on one line by giving up its
+  // least important parts — the event count, the IP number, the overlay's label
+  // — and keeps the recording state, uptime, IP safety and scope.
+  it('StatusBar keeps one line when narrow by dropping the count, the IP number and the overlay label', async () => {
+    const before = window.innerWidth
+    try {
+      Object.defineProperty(window, 'innerWidth', { value: 400, configurable: true })
+      renderView(<StatusBar />)
+      const bar = await screen.findByTestId('status-bar')
+      await waitFor(() => expect(bar.getAttribute('data-narrow')).toBe('true'))
+      expect(bar.className).toContain('whitespace-nowrap')
+      expect(screen.queryByTestId('statusbar-event-count')).toBeNull()
+      expect(screen.getByTestId('status-bar-recording')).toBeTruthy()
+      expect(screen.getByTestId('statusbar-uptime')).toBeTruthy()
+      // The overlay toggle stays reachable by its dot, and still says what it is.
+      const overlay = screen.getByTestId('status-bar-overlay')
+      expect(overlay.getAttribute('aria-label')).toBeTruthy()
+      expect(overlay.textContent).toBe('')
+      Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true })
+      window.dispatchEvent(new Event('resize'))
+      await waitFor(() => expect(bar.getAttribute('data-narrow')).toBe('false'))
+      expect(screen.getByTestId('statusbar-event-count')).toBeTruthy()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: before, configurable: true })
+    }
+  })
+
   it('Settings search finds a field and opens the page that holds it', async () => {
     renderView(<Settings />)
     const box = await screen.findByPlaceholderText('Search settings…')
