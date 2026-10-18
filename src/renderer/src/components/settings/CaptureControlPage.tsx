@@ -1,4 +1,4 @@
-import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import { FieldGroup, Field, ListField, isWindows, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
@@ -94,10 +94,23 @@ export default function CaptureControlPage({
           was already on. One writer now, with the tuning it gates. */}
       <AgentsPanel config={config} setConfig={setConfig} t={t} />
 
-      <CapturePackGroup
-        pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
-        available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
-      />
+      {/* A Windows capture on a Mac is not setup that is missing. Off Windows
+          it waits in a collapsed group, and stays in the open if it was ever
+          switched on (Spec 060 FR-010). */}
+      {isWindows || config.packs?.windowsOutput === true ? (
+        <CapturePackGroup
+          pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
+          available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
+        />
+      ) : (
+        <details data-testid="pack-other-platforms" className="mb-4">
+          <summary className="text-xs text-redlog-text-faint cursor-pointer">{t('settings.otherPlatforms')} (1)</summary>
+          <CapturePackGroup
+            pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
+            available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
+          />
+        </details>
+      )}
 
       {/* Last, and the one block on this page that is not per project: what
           the operator wires up on the machine itself. It sits here rather

@@ -16,5 +16,5 @@
 ## Slice 3 (plan: see plan.md; one PR per item)
 - [x] T020 3a `overlay.autoShow` (default true), overlay created hidden when off, switch on the HUD settings page, unit test, CHANGELOG (FR-014).
 - [x] T021 3b Web card: CA block closed by default, nested fingerprint/commands disclosure, toggle testid (US2.1).
-- [ ] T022 3c Settings: platform-ordered hooks, "other platforms" group, Windows pack collapsed off Windows (FR-010).
-- [ ] T023 Regression test: advanced capture sources default to off (US4.2).
+- [x] T022 3c Settings: platform-ordered hooks, "other platforms" group, Windows pack collapsed off Windows (FR-010).
+- [x] T023 Regression test: advanced capture sources default to off (US4.2).
