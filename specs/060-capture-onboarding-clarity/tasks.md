@@ -14,8 +14,7 @@
 - [x] T010 Terminal row: waiting / command received / output received, with time (FR-003). `ownShellOutputAt` comes from own-shell `command_end` with `output_disposition: captured`; the source is the installed shell filter from slice 1.
 
 ## Slice 3 (plan: see plan.md; one PR per item)
-- [ ] T020 3a HUD `overlay.autoShow` default false, hidden creation, settings toggle, hud-overlay e2e, CHANGELOG (FR-014).
+- [ ] T020 3a `overlay.autoShow` (default true), `startProject` honours it, switch on the HUD settings page, unit test, CHANGELOG (FR-014).
 - [ ] T021 3b Web card: CA block closed by default, nested fingerprint/commands disclosure, toggle testid (US2.1).
 - [ ] T022 3c Settings: platform-ordered hooks, "other platforms" group, Windows pack collapsed off Windows (FR-010).
-- [ ] T023 3d Re-entry: palette entry and Settings link to the same setup panel (FR-004).
-- [ ] T024 3e First screen: web card collapsed, "all sources" filtered to core, test pinning advanced-source defaults (FR-001, US4.2).
+- [ ] T023 Regression test: advanced capture sources default to off (US4.2).
