@@ -13,7 +13,7 @@
 
 ## Slice 3
 - [ ] T020 Local anchor failure aborts the install with retry or cancel; external timestamp failure is reported separately.
-- [ ] T021 Record target version; first-launch check against app.getVersion(), after-update event, source re-check, no claim that sessions survived.
+- [ ] T021 Record target version; first-launch check against app.getVersion(), after-update event, re-check only affected sources (reload prompt only when a loaded hook differs), no claim that sessions survived.
 - [ ] T022 Flush recording before quit.
 
 ## Slice 4

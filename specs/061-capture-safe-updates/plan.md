@@ -28,7 +28,9 @@ A main-side status (idle, checking, available, downloading, ready, installing,
 failed, unavailable) with a single-flight guard, pushed to the renderer over IPC
 and shown in About: version, install type, platform applicability, target
 version, notes, last result, cancel and retry. Replaces the native dialogs and
-moves the hard-coded zh-TW/English text into i18n. "No matching installer" is
+moves the hard-coded zh-TW/English text into i18n. It is state in the existing
+About page, not a new panel, and the restart confirmation names only what the
+restart would actually end. "No matching installer" is
 told apart from "up to date" and from a failed check.
 
 ## Slice 3 — evidence around the restart (FR-006, FR-007, FR-009)
@@ -37,8 +39,9 @@ The anchor before restart exists (`update-anchor.ts`) but its failure is
 swallowed and nothing is written after. Make a local write failure abort the
 install with retry or cancel; report an external timestamp failure separately
 and never as a blocker. Store the target version; on first launch compare it to
-`app.getVersion()`, write an after-update event, re-run the source checks, and
-say that PTY and proxy sessions did not survive. Flush recording before quit.
+`app.getVersion()`, write an after-update event, re-check only the sources an update can
+affect (the proxy, and a shell hook that differs from the new version; prompt
+a reload only then), and say that PTY and proxy sessions did not survive. Flush recording before quit.
 
 ## Slice 4 — honest manual paths (FR-003, FR-010, US4)
 
