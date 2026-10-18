@@ -412,7 +412,9 @@ interface RedLogAPI {
     onPassThroughChanged: (cb: (on: boolean) => void) => () => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
-    addMarker?: (input: { title?: string; notes?: string; at?: number }) => Promise<{ ok: boolean; id?: string }>
+    /** The project a marker draft belongs to; hand it back as `bind` on save. */
+    beginMarker?: () => Promise<string | null>
+    addMarker?: (input: { title?: string; notes?: string; at?: number; bind?: string }) => Promise<{ ok: boolean; id?: string; reason?: 'project-changed' }>
     releaseFocus?: () => void
     /** §8: turn HUD click-through ON from the action row (main owns the exits). */
     setPassThrough?: (on: boolean) => void

@@ -218,7 +218,8 @@ export function registerOverlayIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   // --- Quick mark / passthrough (overlay: prefix) ---
   ipcMain.on('overlay:quickMark', ctx.triggerBookmark)
-  ipcMain.handle('overlay:addMarker', (_e, input: { title?: string; notes?: string; at?: number }) =>
+  ipcMain.handle('overlay:beginMarker', () => ctx.hudMarkerBinding?.() ?? null)
+  ipcMain.handle('overlay:addMarker', (_e, input: { title?: string; notes?: string; at?: number; bind?: string }) =>
     ctx.addHudMarker(input && typeof input === 'object' ? input : {}))
   // After the form closes the HUD gives focus back, so the operator returns to
   // the window they were working in.

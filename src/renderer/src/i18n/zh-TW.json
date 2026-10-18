@@ -769,6 +769,7 @@
   "capture.ctaRunCommand": "執行一個指令",
   "capture.ctaInstallShellHook": "安裝 shell hook",
   "overlay.markFailed": "標記失敗",
+  "overlay.markProjectChanged": "開始填寫後專案已切換，這個標記沒有存入。你輸入的文字還在。",
   "overlay.addMarker": "新增標記",
   "overlay.addMarkerHint": "在此刻新增標記，時間以點擊當下為準",
   "overlay.markTitlePlaceholder": "標題（選填）",

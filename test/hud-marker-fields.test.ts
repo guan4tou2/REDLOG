@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hudMarkerFields } from '../src/main/ipc/markers'
+import { hudMarkerFields, hudDraftBelongsHere } from '../src/main/ipc/markers'
 
 const NOW = Date.UTC(2026, 9, 19, 12, 0, 0)
 
@@ -32,5 +32,17 @@ describe('hudMarkerFields', () => {
     const f = hudMarkerFields({ title: 42, notes: { a: 1 } }, NOW)
     expect(f.title).toMatch(/^HUD mark /)
     expect(f.notes).toBe('')
+  })
+})
+
+describe('hudDraftBelongsHere', () => {
+  it('accepts a draft started in the project that is open now', () => {
+    expect(hudDraftBelongsHere('eng-a', 'eng-a')).toBe(true)
+  })
+  it('refuses a draft started in a different project', () => {
+    expect(hudDraftBelongsHere('eng-a', 'eng-b')).toBe(false)
+  })
+  it('accepts an unbound call, as before', () => {
+    expect(hudDraftBelongsHere(undefined, 'eng-b')).toBe(true)
   })
 })

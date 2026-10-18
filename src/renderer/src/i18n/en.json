@@ -769,6 +769,7 @@
   "capture.ctaRunCommand": "Run a command",
   "capture.ctaInstallShellHook": "Install the shell hook",
   "overlay.markFailed": "Mark failed",
+  "overlay.markProjectChanged": "Project changed since you started this marker — not saved. Your text is still here.",
   "overlay.addMarker": "Add marker",
   "overlay.addMarkerHint": "Add a marker for this moment — timed when you click",
   "overlay.markTitlePlaceholder": "Title (optional)",

@@ -40,7 +40,7 @@ export default function OverlayApp(): JSX.Element {
   // sign anything happened — there is no dialog and no window change, which is
   // the entire point of it.
   const [justMarked, setJustMarked] = useState(false)
-  const [markFailed, setMarkFailed] = useState(false)
+  const [markFailed, setMarkFailed] = useState<false | 'failed' | 'project-changed'>(false)
   // The "Add marker" form lives inside the HUD. `markAt` is taken at the click
   // that opened it, so the marker is timed at that moment, not at save.
   const [markOpen, setMarkOpen] = useState(false)
@@ -48,6 +48,7 @@ export default function OverlayApp(): JSX.Element {
   const [markTitle, setMarkTitle] = useState('')
   const [markNotes, setMarkNotes] = useState('')
   const markAtRef = useRef(0)
+  const markBindRef = useRef<Promise<string | null>>(Promise.resolve(null))
   const markedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
@@ -154,6 +155,7 @@ export default function OverlayApp(): JSX.Element {
   // window still fits without clipping.
   const openMarkForm = (): void => {
     markAtRef.current = Date.now()
+    markBindRef.current = (window.redlog.overlay.beginMarker?.() ?? Promise.resolve(null)).catch(() => null)
     setMarkTitle(''); setMarkNotes(''); setMarkMore(false); setMarkFailed(false)
     setMarkOpen(true)
   }
@@ -164,8 +166,10 @@ export default function OverlayApp(): JSX.Element {
   const saveMark = async (): Promise<void> => {
     // A failed save keeps the form open with what was typed, and says so: it
     // must not look like a recorded marker.
-    const r = await window.redlog.overlay.addMarker!({ title: markTitle, notes: markNotes, at: markAtRef.current }).catch(() => null)
-    if (!r?.ok) { setMarkFailed(true); return }
+    // The draft belongs to the project that was open when it was started.
+    const bind = await markBindRef.current
+    const r = await window.redlog.overlay.addMarker!({ title: markTitle, notes: markNotes, at: markAtRef.current, ...(bind ? { bind } : {}) }).catch(() => null)
+    if (!r?.ok) { setMarkFailed(r?.reason === 'project-changed' ? 'project-changed' : 'failed'); return }
     setMarkFailed(false)
     setMarkOpen(false)
     setJustMarked(true)
@@ -431,7 +435,7 @@ export default function OverlayApp(): JSX.Element {
                     />
                   )}
                   {markFailed && (
-                    <p role="alert" data-testid="hud-marker-failed" style={{ margin: 0, fontSize: fs(10), color: HUD.red }}>{`✕ ${t('overlay.markFailed')}`}</p>
+                    <p role="alert" data-testid="hud-marker-failed" style={{ margin: 0, fontSize: fs(10), color: HUD.red }}>{`✕ ${markFailed === 'project-changed' ? t('overlay.markProjectChanged') : t('overlay.markFailed')}`}</p>
                   )}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button type="submit" className="hudBtn" data-testid="hud-marker-save" style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55` }}>

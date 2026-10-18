@@ -95,7 +95,7 @@ import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
-import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields } from './ipc/markers'
+import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields, hudDraftBelongsHere } from './ipc/markers'
 import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
@@ -328,8 +328,10 @@ function triggerBookmark(): void {
 // seconds, and the marker is about the moment they reached for it. An empty
 // title is allowed and gets the time as its name, which is what a bare mark
 // has always been called.
-function addHudMarker(input: { title?: string; notes?: string; at?: number }): { ok: boolean; id?: string } {
+function addHudMarker(input: { title?: string; notes?: string; at?: number; bind?: string }): { ok: boolean; id?: string; reason?: 'project-changed' } {
   if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
+  // A draft written while another project was open must not land in this one.
+  if (!hudDraftBelongsHere(input.bind, currentEngagementId)) return { ok: false, reason: 'project-changed' }
   try {
     const f = hudMarkerFields(input, Date.now())
     const event = insertEvent('marker', redactFields({
@@ -1292,6 +1294,7 @@ app.whenReady().then(() => {
     send,
     triggerBookmark,
     addHudMarker,
+    hudMarkerBinding: () => (activeProject && currentEngagementId ? currentEngagementId : null),
     onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)

@@ -18,6 +18,12 @@ export const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 
 const DAY_MS = 24 * 3_600_000
 
+/** A HUD marker draft is bound to the project open when it was started. No
+ *  binding (older caller) is accepted; a different project is refused. */
+export function hudDraftBelongsHere(bind: string | undefined, currentEngagementId: string): boolean {
+  return bind === undefined || bind === currentEngagementId
+}
+
 /** The fields of a marker added from the HUD form. `at` is when the operator
  *  clicked "Add marker"; it is believed only if it is a real moment in the last
  *  day, otherwise the marker is timed at `now` rather than at a value nobody
