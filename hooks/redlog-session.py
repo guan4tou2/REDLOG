@@ -2,6 +2,7 @@
 """Explicit POSIX PTY capture. No input logging, global hooks, or private spool."""
 import argparse
 import codecs
+import datetime
 import json
 import os
 import queue
@@ -13,6 +14,46 @@ import time
 import urllib.request
 import uuid
 from pathlib import Path
+
+_TRACE_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _trace_target():
+    """Where to write the trace, or None. Decided once per session.
+
+    Settings > About > Debug log creates ~/.redlog/debug-enabled and the app
+    writes ~/.redlog/debug.log beside it; this appends to the same file.
+    REDLOG_SESSION_TRACE=<file> overrides both, for use without the app."""
+    explicit = os.environ.get('REDLOG_SESSION_TRACE')
+    if explicit:
+        return explicit
+    home = Path.home() / '.redlog'
+    return str(home / 'debug.log') if (home / 'debug-enabled').exists() else None
+
+
+_TRACE = _trace_target()
+
+
+def trace(event, detail=''):
+    """Timeline for diagnosing a lost-output report (#333 had none).
+
+    Event names and byte counts only: what the command printed is never
+    written, so the file is safe to attach to an issue. A write failure is
+    ignored; tracing must never change what the command does."""
+    if not _TRACE:
+        return
+    try:
+        try:
+            if os.path.getsize(_TRACE) > _TRACE_MAX_BYTES:
+                os.replace(_TRACE, _TRACE + '.1')
+        except OSError:
+            pass
+        now = datetime.datetime.now(datetime.timezone.utc)
+        stamp = now.strftime('%Y-%m-%dT%H:%M:%S.') + f'{now.microsecond // 1000:03d}Z'
+        with open(_TRACE, 'a') as out:
+            out.write(f'{stamp} session {event} {detail + " " if detail else ""}pid={os.getpid()}\n')
+    except OSError:
+        pass
 
 
 class Recorder:
@@ -151,6 +192,7 @@ def run(command, recorder):
             os._exit(127)
     # Fork before starting the HTTP worker: forking an active urllib thread
     # can inherit locks held by a vanished thread on macOS.
+    trace('forked', f'child={pid} interactive={interactive}')
     recorder.thread.start()
     decoder = codecs.getincrementaldecoder('utf8')('replace')
 
@@ -164,6 +206,7 @@ def run(command, recorder):
     old_resize = signal.signal(signal.SIGWINCH, resize)
     old_term = signal.signal(signal.SIGTERM, lambda *_: os.kill(pid, signal.SIGTERM))
     def forward(data):
+        trace('output', f'bytes={len(data)}')
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
         recorder.output(decoder.decode(data))
@@ -193,6 +236,7 @@ def run(command, recorder):
                     # While we hold the slave it cannot be a real hang-up, so
                     # keep going; after it is closed (child reaped), EOF means
                     # every other holder has gone.
+                    trace('master-eof', f'slave_open={slave_open}')
                     if slave_open:
                         time.sleep(0.01)
                     else:
@@ -211,6 +255,7 @@ def run(command, recorder):
                 ended, status = os.waitpid(pid, os.WNOHANG)
                 if ended:
                     child_status = status
+                    trace('child-reaped', f'status={status}')
                     # Everything the child wrote is already queued on the
                     # master; take it before the slave goes away.
                     while select.select([master], [], [], 0)[0]:
@@ -225,10 +270,13 @@ def run(command, recorder):
                         forward(data)
                     os.close(slave)
                     slave_open = False
+                    trace('slave-closed')
+        trace('loop-exit')
         tail = decoder.decode(b'', final=True)
         if tail:
             recorder.output(tail)
-    except BaseException:
+    except BaseException as error:
+        trace('aborted', type(error).__name__)
         # Reap even when stdout closes or the launcher is interrupted. Kill
         # the PTY session group so a shell cannot leave its command behind.
         try:
@@ -304,6 +352,8 @@ def main():
         recorder.start(' '.join(command))
     except Exception as error:
         print(f'[redlog] session not started: {error}', file=sys.stderr)
+        # Type only: the message can carry a path under the operator's home.
+        trace('not-started', f'error={type(error).__name__} best_effort={args.best_effort}')
         # Spec 052: the adapter wraps `ssh` and the other PTY-class programs
         # automatically, so this path is now reached by a command the operator
         # typed for their own reasons rather than by someone asking to record.
@@ -320,6 +370,7 @@ def main():
         code = 130
     except Exception as error:
         print(f'[redlog] terminal ended unexpectedly: {error}', file=sys.stderr)
+        trace('ended-unexpectedly', f'error={type(error).__name__}')
         code = 1
     if recorder.thread.ident is not None:
         recorder.finish(code)

@@ -318,6 +318,10 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   about: [
     'settings.aboutVersion',
     'settings.checkUpdate',
-    'settings.checkUpdateHint'
+    'settings.checkUpdateHint',
+    'settings.debugLog',
+    'settings.debugLogToggle',
+    'settings.debugLogHint',
+    'settings.debugLogReveal'
   ]
 }
