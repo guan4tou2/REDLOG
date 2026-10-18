@@ -37,6 +37,23 @@ describe('settings: debug log switch', () => {
     expect(debug.set).toHaveBeenCalledWith(true)
   })
 
+  it('flips at once, before main has answered', async () => {
+    const debug = draw(false)
+    debug.set.mockImplementation(() => new Promise(() => {})) // never answers
+    const toggle = (await screen.findByTestId('debug-log-toggle')) as HTMLInputElement
+    fireEvent.click(toggle)
+    expect(toggle.checked).toBe(true)
+  })
+
+  it('goes back to what main reports when switching fails', async () => {
+    const debug = draw(false)
+    debug.set.mockRejectedValueOnce(new Error('disk full'))
+    const toggle = (await screen.findByTestId('debug-log-toggle')) as HTMLInputElement
+    fireEvent.click(toggle)
+    await waitFor(() => expect(debug.status.mock.calls.length).toBeGreaterThan(1))
+    await waitFor(() => expect(toggle.checked).toBe(false))
+  })
+
   it('reveals the file on request', async () => {
     const debug = draw(false)
     fireEvent.click(await screen.findByText('settings.debugLogReveal'))

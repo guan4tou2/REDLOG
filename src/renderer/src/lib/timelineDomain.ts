@@ -226,7 +226,9 @@ export function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
  *  track. Encoded as SHAPE rather than more colour. */
 export function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: DotShape; scale: number } {
   const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return { shape: 'diamond', scale: 1.25 }
+  // An in-scope hit is an adherence tally stored under the same subtype; only
+  // a real violation earns the diamond.
+  if (e.agentType === 'system' && sub === 'scope_violation' && e.data?.distance !== 'in_scope') return { shape: 'diamond', scale: 1.25 }
   if (e.agentType === 'marker') {
     if (sub === 'amended') return { shape: 'circle', scale: 1 }
     const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
@@ -238,7 +240,7 @@ export function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: D
 
 export function shapeTitle(e: RedLogEvent, t: (k: string) => string, effectiveSeverity?: string): string {
   const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}`
+  if (e.agentType === 'system' && sub === 'scope_violation' && e.data?.distance !== 'in_scope') return ` · ${t('timeline.shape.scopeViolation')}`
   if (e.agentType === 'marker') {
     if (sub === 'amended') return ''
     const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
