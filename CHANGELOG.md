@@ -46,6 +46,10 @@ for full commit body + generated notes.
   drop it), and marking the command "do not export" holds back its later output
   too.
 
+- The Transcript lists the newest step first. "Load older" and its retry now sit
+  below the list, where the older steps appear. "Copy as Markdown" still reads
+  oldest first, like a document.
+
 - The Dashboard's "Capture setup" button opens Settings ▸ Capture sources
   instead of reopening the first-run guide. The guide is for the first
   connection; looking at, changing or repairing a source later goes where each
