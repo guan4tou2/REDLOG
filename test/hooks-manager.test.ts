@@ -188,4 +188,33 @@ describe('the rc edit is its own inverse', () => {
     expect(rcWithoutHook(theirs, dest)).toBe(theirs)
     expect(rcWithHook(theirs, dest)).toBe(theirs)
   })
+
+  describe('one hook, several spellings of its path', () => {
+    const home = '/Users/me'
+    const abs = '/Users/me/.redlog/shell-hook.zsh'
+    const block = (p: string): string => `\n# RedLog shell hook\nsource ${p}\n`
+
+    it('does not add a second block next to a ~ spelling', () => {
+      const rc = `export A=1\n${block('~/.redlog/shell-hook.zsh')}`
+      expect(rcWithHook(rc, abs, home)).toBe(rc)
+    })
+
+    it('uninstall takes out every block, in any spelling, and nothing else', () => {
+      // A real rc: the ~ block, something of the operator's between, then the
+      // absolute block — what a double-announcing shell looked like.
+      const rc = `export A=1\n${block('~/.redlog/shell-hook.zsh')}export SSL=1\n${block(abs)}`
+      expect(rcWithoutHook(rc, abs, home)).toBe('export A=1\nexport SSL=1\n')
+    })
+
+    it('removes $HOME and ${HOME} spellings too', () => {
+      for (const p of ['$HOME/.redlog/shell-hook.zsh', '${HOME}/.redlog/shell-hook.zsh', '"$HOME/.redlog/shell-hook.zsh"']) {
+        expect(rcWithoutHook(`x\n${block(p)}`, abs, home), p).toBe('x\n')
+      }
+    })
+
+    it('still leaves a line the operator wrote without our marker', () => {
+      const theirs = '# mine\nsource ~/.redlog/shell-hook.zsh\n'
+      expect(rcWithoutHook(theirs, abs, home)).toBe(theirs)
+    })
+  })
 })
