@@ -345,6 +345,18 @@ describeDB('ingest', () => {
         expect(stray.data.unattributed).toBe(true)
       })
 
+      it('finds the command_end rows of several commands by id, and ignores empty ids', () => {
+        start('cmd-find-1', 'sleep 1 &')
+        const one = endLate('cmd-find-1', 'sleep 1 &')
+        start('cmd-find-2', 'sleep 2 &')
+        const two = endLate('cmd-find-2', 'sleep 2 &')
+        start('cmd-find-3', 'sleep 3 &')
+        endLate('cmd-find-3', 'sleep 3 &')
+        const found = events.queryCommandEnds(['cmd-find-1', 'cmd-find-2', '', 'cmd-find-1', 'cmd-missing'])
+        expect(found.map((e) => e.id).sort()).toEqual([one.id, two.id].sort())
+        expect(events.queryCommandEnds([])).toEqual([])
+      })
+
       // The relay resends a chunk whose reply it never saw; the first one had landed.
       it('stores a resent chunk once, and reads one row per seq', () => {
         start('cmd-dup', 'nmap -p- 10.0.0.9 &')

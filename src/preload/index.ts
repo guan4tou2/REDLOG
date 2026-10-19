@@ -140,6 +140,7 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<RedLogEvent[]>,
+    commandEnds: (commandIds: string[]) => ipcRenderer.invoke('events:commandEnds', commandIds) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
       ipcRenderer.invoke('events:causalChain', anchorId, opts) as Promise<import('../core/db/events').EventCausalChain>,
