@@ -54,7 +54,7 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
   // fed by two terminals — RedLog's own panes and, once the shell hook is
   // installed, the operator's own shell — because they are the same capture in
   // two places, and which one a command came from is on the command.
-  { id: 'commands', core: true, sources: ['terminal', 'agent-tailer'] },
+  { id: 'commands', core: true, sources: ['terminal', 'agent-claude-code', 'agent-codex', 'agent-opencode'] },
   // What was sent over the wire. mitmproxy carries HTTP and DNS on one addon,
   // which is why one source stands for the whole capability.
   { id: 'http', core: true, sources: ['mitmproxy'] },

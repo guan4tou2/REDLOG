@@ -29,7 +29,9 @@ export interface ConfigState {
     connectionMonitor?: boolean
     fileWatcher?: boolean
     clipboard?: boolean
-    agentTailer?: boolean
+    claudeCode?: boolean
+    codex?: boolean
+    opencode?: boolean
     powershellTranscript?: boolean
   }
   browser?: {

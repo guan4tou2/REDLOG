@@ -5,6 +5,49 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Updating by hand (macOS and Linux) is described as what it is, per platform,
+  instead of one generic line. Going to the download page no longer counts as an
+  update: it no longer writes an "update pending" mark into the project or
+  contacts the timestamp servers, and About keeps saying the update is not
+  finished until the running version is the new one (a newer version than the
+  one aimed for also counts). Settings ▸ About has a switch for the check at
+  launch; it is on by default, air-gap still prevents the check either way, and
+  pressing "Check for updates" always works.
+
+- An update restart no longer goes ahead when RedLog could not write its own
+  record of the pause: it says so and offers "Try again" or "Cancel", leaving
+  terminals, the proxy and recording as they were. An unreachable outside
+  timestamp is told apart from that and never blocks; in air-gap mode the
+  restart makes no request at all (it used to contact the timestamp servers).
+  After the update, the first launch writes whether it worked, judged by the
+  version actually running, into the project that was open, and says once that
+  terminals and proxy connections from before the restart were ended and are not
+  resumed.
+
+- Settings ▸ About now says where updating stands: how this install updates, what
+  the last check found and when, download progress with a cancel, and a
+  downloaded update that stays findable with its own "Install and restart"
+  button. A check that failed, or a release with no installer for this computer,
+  is no longer worded like "up to date" (there are separate messages and a link
+  to the download page), and air-gap says it made no request and where the
+  setting is. A second press while a check runs does nothing new. Results that
+  nobody has to decide on no longer pop a dialog.
+
+- The built-in terminal no longer opens without running a shell when node-pty's
+  `spawn-helper` has lost its execute bit (macOS, after an install with scripts
+  off or a copy that drops modes). The first terminal start now restores the bit
+  instead of failing with `posix_spawnp failed` and recording nothing. The README
+  also says what to run when `npm run dev` reports `Electron uninstall`.
+- Updates no longer restart RedLog on their own (Windows, where in-app update
+  exists). Downloading and restarting are two separate choices: the download
+  runs in the background and ends with "ready"; installing is a second action
+  that lists what the restart will end (built-in terminals, the managed proxy,
+  recently active outside terminals), defaults to "Later", and asks again if
+  that list changed while the question was open. The always-on-top progress
+  window that could not be closed is gone. Checking again while an update is
+  downloaded goes straight to the install question. macOS and Linux still open
+  the release page.
+
 - The terminal row says what it heard, not what it promises. Instead of "Your
   own terminal is included · commands and their output", it reads e.g. "Zsh ·
   last command 21:10 · last output 21:09", or says no command output has been

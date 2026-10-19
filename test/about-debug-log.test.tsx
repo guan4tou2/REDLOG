@@ -12,7 +12,7 @@ function draw(initial: boolean) {
     set: vi.fn(async (on: boolean) => { state.enabled = on; return { ...state } }),
     reveal: vi.fn(async () => {})
   }
-  ;(window as unknown as { redlog: unknown }).redlog = { debug, app: { checkForUpdates: vi.fn() } }
+  ;(window as unknown as { redlog: unknown }).redlog = { debug, app: { checkForUpdates: vi.fn(), updateStatus: vi.fn(() => new Promise(() => {})), onUpdateStatus: vi.fn(() => () => {}) } }
   ;(globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = 'test'
   render(<AboutPage t={t} />)
   return debug

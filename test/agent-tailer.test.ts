@@ -518,6 +518,28 @@ describe('catchUpSession — end-to-end', () => {
     _stopOpencodeSecondaryWatcherForTest()
   })
 
+  // Spec 050: one switch per agent. A disabled agent's transcript is refused
+  // before the self-exclusion and watch-path gates, so it is never opened.
+  it('refuses a session of an agent that is switched off, and takes one that is on', () => {
+    const claudeDir = path.join(scratch, 'claude-projects', '-gate-')
+    fs.mkdirSync(claudeDir, { recursive: true })
+    const sid = 'eeeeeeee-bbbb-cccc-dddd-000000000050'
+    const source = path.join(claudeDir, `${sid}.jsonl`)
+    fs.writeFileSync(source, JSON.stringify({
+      type: 'user', uuid: 'g1', cwd: '/tmp/gate',
+      message: { role: 'user', content: [{ type: 'text', text: 'hi' }] }
+    }) + '\n')
+    const base = {
+      enabled: true, engagementId: 'e1', operatorId: OP,
+      claudeProjectsDir: path.join(scratch, 'claude-projects'), idleFlushMs: 50, previewChars: 100
+    }
+    registerSession(source, { ...base, enabledAgents: ['codex', 'opencode'] })
+    expect(_sessionsForTest().size).toBe(0)
+    configureHost({ ...base, enabledAgents: ['claude-code'] })
+    hostRegisterSession('claude-code', source)
+    expect(_sessionsForTest().size).toBe(1)
+  })
+
   it('respects self-exclusion marker', () => {
     const claudeDir = path.join(scratch, 'claude-projects', '-self-')
     fs.mkdirSync(claudeDir, { recursive: true })

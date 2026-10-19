@@ -553,6 +553,13 @@ npm run dev            # run the app with hot reload
 npm run build          # production build of main + renderer
 ```
 
+If `npm run dev` stops with `Electron uninstall`, the install skipped Electron's
+download step (for example `npm install --ignore-scripts`): run
+`node node_modules/electron/install.js`. A built-in terminal that opens but
+fails with `posix_spawnp failed` lost the execute bit on node-pty's
+`spawn-helper`; RedLog restores it the first time a terminal starts, or run
+`chmod +x node_modules/node-pty/prebuilds/*/spawn-helper`.
+
 ### Packaging
 
 ```bash

@@ -44,7 +44,7 @@ describeDB('anchorBeforeRestart (5a backend)', () => {
       { fromVersion: '0.15.1', toVersion: '0.16.0' },
       { anchorNow: fakeAnchor('complete', 'deadbeef') }
     )
-    expect(res).toEqual({ anchored: true, headHash: 'deadbeef', anchorStatus: 'complete' })
+    expect(res).toEqual({ anchored: true, headHash: 'deadbeef', anchorStatus: 'complete', external: 'confirmed', localError: null })
 
     const evs = pendingEvents()
     expect(evs).toHaveLength(1)
@@ -69,17 +69,75 @@ describeDB('anchorBeforeRestart (5a backend)', () => {
     const res = await ua.anchorBeforeRestart(
       { fromVersion: '0.15.1' }, { anchorNow: async () => null }
     )
-    expect(res).toEqual({ anchored: false, headHash: null, anchorStatus: 'none' })
+    expect(res).toEqual({ anchored: false, headHash: null, anchorStatus: 'none', external: 'none', localError: null })
     const evs = pendingEvents()
     expect(evs).toHaveLength(1)
     expect((evs[0].data as Record<string, unknown>).anchored_head).toBeNull()
   })
 
-  it('a throwing anchor is swallowed (never blocks the update)', async () => {
+  // FR-007: the outside timestamp being out of reach is not a local failure.
+  it('an unreachable calendar is reported as unavailable, not as a failure, and the marker is still written', async () => {
     const res = await ua.anchorBeforeRestart(
-      { fromVersion: '0.15.1' }, { anchorNow: async () => { throw new Error('calendar down') } }
+      { fromVersion: '0.15.1' }, { anchorNow: fakeAnchor('failed', 'abc') }
     )
+    expect(res.external).toBe('unavailable')
+    expect(res.localError).toBeNull()
+    expect(pendingEvents()).toHaveLength(1)
+  })
+
+  it('air-gap makes no request: the anchor is never called, the head is read locally, the marker says so', async () => {
+    let called = false
+    const res = await ua.anchorBeforeRestart(
+      { fromVersion: '0.15.1', offline: true },
+      { anchorNow: async () => { called = true; return null }, computeChainHead: () => ({ hash: 'localhead' }) }
+    )
+    expect(called).toBe(false)
+    expect(res).toMatchObject({ external: 'skipped', headHash: 'localhead', localError: null })
+    const d = pendingEvents()[0].data as Record<string, unknown>
+    expect(d.external_timestamp).toBe('skipped')
+    expect(d.anchored_head).toBe('localhead')
+    expect(String(d.description)).toContain('air-gap')
+  })
+
+  it('a failure to read or write the chain locally is reported, so the caller can stop', async () => {
+    const reading = await ua.anchorBeforeRestart(
+      { fromVersion: '0.15.1' }, { anchorNow: async () => { throw new Error('disk error') } }
+    )
+    expect(reading.localError).toContain('disk error')
+    expect(pendingEvents()).toHaveLength(0)
+
+    closeDB()
+    const writing = await ua.anchorBeforeRestart(
+      { fromVersion: '0.15.1' }, { anchorNow: fakeAnchor('complete', 'abc'), projectOpen: () => true }
+    )
+    expect(writing.localError).toContain('marker')
+  })
+
+  it('with no project open there is nothing to mark and nothing has failed', async () => {
+    let called = false
+    const res = await ua.anchorBeforeRestart(
+      { fromVersion: '0.15.1' }, { anchorNow: async () => { called = true; return null }, projectOpen: () => false }
+    )
+    expect(called).toBe(false)
+    expect(res.localError).toBeNull()
     expect(res.anchored).toBe(false)
-    expect(res.anchorStatus).toBe('none')
+  })
+
+  it('records what the update did, and says the sessions before it were not resumed', () => {
+    const done = ua.recordUpdateOutcome(
+      { kind: 'completed', fromVersion: '1.0.0', toVersion: '1.1.0', actualVersion: '1.1.0' },
+      { engagementId: 'default', operatorId: 'upd-op' }
+    )
+    expect(done).not.toBeNull()
+    const miss = ua.recordUpdateOutcome(
+      { kind: 'not-applied', fromVersion: '1.0.0', toVersion: '1.1.0', actualVersion: '1.0.0' },
+      { engagementId: 'default', operatorId: 'upd-op' }
+    )
+    const subs = events.queryEvents({ agentType: 'system', limit: 50 }).map((e) => e.data as Record<string, unknown>)
+    const completed = subs.find((d) => d.subtype === 'update_completed')!
+    expect(completed).toMatchObject({ actual_version: '1.1.0', from_version: '1.0.0', sessions_resumed: false })
+    expect(String(completed.description)).toContain('不會自動恢復')
+    expect(subs.find((d) => d.subtype === 'update_not_applied')).toMatchObject({ actual_version: '1.0.0', to_version: '1.1.0' })
+    expect(miss).not.toBeNull()
   })
 })

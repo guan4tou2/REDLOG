@@ -71,7 +71,7 @@ describe('one case-insensitive target predicate', () => {
       getCurrentOperatorId: () => null,
       send: () => undefined,
       triggerBookmark: () => undefined,
-      triggerInstantMark: () => ({ ok: false })
+      addHudMarker: () => ({ ok: false })
     } as unknown as IpcContext
     registerDataExportIpc(ipcMain as never, ctx, { planRegistry: new ExportPlanRegistry({ now: () => T0 }) })
   })
