@@ -356,8 +356,13 @@ interface RedLogAPI {
   }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
-    executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
-    /** Show a finished export in the file manager (paths inside the project only). */
+    /** `destDir`: a folder returned by `pickExportDir`; omitted means the project's exports folder. */
+    executeExportPlan: (input: { planId: string; destDir?: string }) => Promise<ExportPlanResult>
+    /** The project's default exports folder, or null with no project open. */
+    exportDestination: () => Promise<string | null>
+    /** System folder picker. Only a folder chosen here is accepted as a destination. */
+    pickExportDir: () => Promise<string | null>
+    /** Show a finished export in the file manager (inside the project, or a folder picked above). */
     revealExport: (target: string) => Promise<boolean>
   }
   visibility: {
