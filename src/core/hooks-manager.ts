@@ -295,10 +295,13 @@ export function unregisterCapturePlugins(pluginId: string): void {
 function listableManifests(): Array<PluginManifest & { disabled?: boolean }> {
   const live = allManifests()
   const liveIds = new Set(live.map((m) => m.id))
+  // WSL is a Windows feature. Listing it elsewhere shows an unusable source
+  // the operator might try to install. PowerShell is not handled here: it also
+  // runs on macOS and Linux, so it is a separate question.
   return [
     ...live,
     ...retiredCaptures.filter((m) => !liveIds.has(m.id)).map((m) => ({ ...m, disabled: true }))
-  ]
+  ].filter((m) => m.id !== 'shell-wsl' || process.platform === 'win32')
 }
 
 function allManifests(): PluginManifest[] {

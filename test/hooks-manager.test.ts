@@ -12,6 +12,15 @@ function pretendPlatform(p: NodeJS.Platform): () => void {
   return () => Object.defineProperty(process, 'platform', original)
 }
 
+describe('hooks-manager platform listing', () => {
+  it('lists WSL only on Windows', () => {
+    for (const [platform, expected] of [['darwin', false], ['linux', false], ['win32', true]] as const) {
+      const restore = pretendPlatform(platform)
+      try { expect(detectHooks().some((h) => h.id === 'shell-wsl')).toBe(expected) } finally { restore() }
+    }
+  })
+})
+
 describe('hooks-manager guided setup', () => {
   const hooks = detectHooks()
   const byId = (id: string) => hooks.find((h) => h.id === id)!
