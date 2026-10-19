@@ -47,6 +47,13 @@ for full commit body + generated notes.
   window that could not be closed is gone. Checking again while an update is
   downloaded goes straight to the install question. macOS and Linux still open
   the release page.
+
+- The terminal row says what it heard, not what it promises. Instead of "Your
+  own terminal is included · commands and their output", it reads e.g. "Zsh ·
+  last command 21:10 · last output 21:09", or says no command output has been
+  recorded yet. A command with no `shell` field (an adapter too old to report
+  it) stays in the record for reading but no longer counts as proof that any
+  shell works: nothing in it says which adapter sent it.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.
