@@ -150,16 +150,17 @@ test.describe.serial('enrolling this machine’s terminals', () => {
       await openAllSources()
       return (await terminalRow().textContent()) ?? ''
     }, { timeout: 20_000 }).toMatch(/open a new terminal/i)
-    await expect(terminalRow()).not.toContainText(/is included/i)
+    await expect(terminalRow()).not.toContainText(/last command/i)
   })
 
   test('a command from the operator’s own terminal is', async () => {
     // A command with nothing in it to detect. `nmap -sV 10.0.0.1` would send
     // target extraction and a possible scope violation down the same path,
     // and this test is about one field: `source`.
-    // With its output: "is included" is said only once an output has been
-    // recorded (Spec 060 FR-003), and a bare command says so instead.
-    await postCommand('auto-relay', 'echo from-my-own-terminal', { output_disposition: 'captured', stdout: 'from-my-own-terminal\n' })
+    // With its output, and the shell that sent it: the card names what it heard
+    // (Spec 060 FR-003), and a row that cannot say which adapter sent it does
+    // not count for any of them.
+    await postCommand('auto-relay', 'echo from-my-own-terminal', { shell: 'zsh', output_disposition: 'captured', stdout: 'from-my-own-terminal\n' })
     // The payload, before the text. `postCommand` has already proved the row
     // is in the record; this proves main computed it; the text assertion
     // below then proves the card was told.
@@ -188,7 +189,7 @@ test.describe.serial('enrolling this machine’s terminals', () => {
     await expect.poll(async () => {
       await openAllSources()
       return (await terminalRow().textContent()) ?? ''
-    }, { timeout: 20_000 }).toMatch(/is included/i)
+    }, { timeout: 20_000 }).toMatch(/Zsh · last command .* · last output/i)
 
     // And it says what it now records, which is more than it used to: the
     // banner that said "commands only" stopped being true when the relay

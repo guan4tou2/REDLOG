@@ -945,10 +945,35 @@ export function queryCommandOutput(commandId: string, limit = 2000): RedLogEvent
     ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>),
     ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>)
   ]
-  return rows
+  const ordered = rows
     .map(rowToEvent)
     .sort((a, b) => Number(a.data.seq ?? 0) - Number(b.data.seq ?? 0) || a.timestamp - b.timestamp)
-    .slice(0, limit)
+  // One row per seq: a resend that was stored twice (an app restart between the
+  // two, which ingest's own memory does not span) is the same chunk, not more
+  // output. The earliest is kept.
+  const seen = new Set<number>()
+  return ordered.filter((r) => {
+    const seq = r.data.seq
+    if (typeof seq !== 'number') return true
+    if (seen.has(seq)) return false
+    seen.add(seq)
+    return true
+  }).slice(0, limit)
+}
+
+/** The `command_end` rows of the given commands, either tier. A search hit on a
+ *  command's background output is shown as the command itself, so it needs the
+ *  row the Timeline can open. */
+export function queryCommandEnds(commandIds: string[]): RedLogEvent[] {
+  const ids = [...new Set(commandIds.filter((id) => typeof id === 'string' && id !== ''))].slice(0, 100)
+  if (ids.length === 0) return []
+  const db = getReadonlyDB()
+  const marks = ids.map(() => '?').join(',')
+  const where = `agent_type = 'shell' AND subtype = 'command_end' AND json_extract(data, '$.command_id') IN (${marks})`
+  return [
+    ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>),
+    ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>)
+  ].map(rowToEvent)
 }
 
 /** Count rows in the chained tier by default. The chain-anchor code path

@@ -345,6 +345,75 @@ describeDB('ingest', () => {
         expect(stray.data.unattributed).toBe(true)
       })
 
+      it('finds the command_end rows of several commands by id, and ignores empty ids', () => {
+        start('cmd-find-1', 'sleep 1 &')
+        const one = endLate('cmd-find-1', 'sleep 1 &')
+        start('cmd-find-2', 'sleep 2 &')
+        const two = endLate('cmd-find-2', 'sleep 2 &')
+        start('cmd-find-3', 'sleep 3 &')
+        endLate('cmd-find-3', 'sleep 3 &')
+        const found = events.queryCommandEnds(['cmd-find-1', 'cmd-find-2', '', 'cmd-find-1', 'cmd-missing'])
+        expect(found.map((e) => e.id).sort()).toEqual([one.id, two.id].sort())
+        expect(events.queryCommandEnds([])).toEqual([])
+      })
+
+      // The relay resends a chunk whose reply it never saw; the first one had landed.
+      it('stores a resent chunk once, and reads one row per seq', () => {
+        start('cmd-dup', 'nmap -p- 10.0.0.9 &')
+        endLate('cmd-dup', 'nmap -p- 10.0.0.9 &')
+        const send = (seq: number, stdout: string) =>
+          shell({ subtype: 'command_output', stream: 'stdout', command_id: 'cmd-dup', seq, late: true, stdout })
+        expect(send(1, 'open 22\n').event).not.toBeNull()
+        const again = send(1, 'open 22\n')
+        expect(again.event).toBeNull()
+        expect(again.skipped).toBe('dedup')
+        expect(send(2, 'open 80\n').event).not.toBeNull()
+        expect(send(1, 'open 22\n').skipped).toBe('dedup')
+        expect(events.queryCommandOutput('cmd-dup').map((r) => r.data.seq)).toEqual([1, 2])
+      })
+
+      it('forgets the seq numbers once the final row released the id', () => {
+        start('cmd-dup-f', 'sleep 1 &')
+        endLate('cmd-dup-f', 'sleep 1 &')
+        shell({ subtype: 'command_output', stream: 'both', command_id: 'cmd-dup-f', seq: 1, late: true, final: true })
+        const reused = shell({ subtype: 'command_output', stream: 'stdout', command_id: 'cmd-dup-f', seq: 1, late: true, stdout: 'x' })
+        expect(reused.skipped).toBeUndefined()
+      })
+
+      // The Timeline asks for `excludeHousekeeping`, which hides the chunks; a
+      // selection of the command must still bring what it printed afterwards.
+      it('exports the background output of a selected command', async () => {
+        const sel = await import('../src/core/export-selection')
+        const plan = await import('../src/core/export-plan')
+        start('cmd-exp', 'nmap -p- 10.0.0.11 &')
+        const end = endLate('cmd-exp', 'nmap -p- 10.0.0.11 &')
+        const a = chunk({ command_id: 'cmd-exp', seq: 1, late: true, stdout: 'open 22\n' })
+        const done = chunk({ command_id: 'cmd-exp', seq: 2, late: true, final: true, stream: 'both' })
+        const unrelated = chunk({ command_id: 'cmd-exp-other', seq: 1, late: true, stdout: 'not mine\n' })
+        const request = { format: 'jsonl', subset: { kind: 'selection', filter: { agentType: 'shell' },
+          query: '', excludeHousekeeping: true } } as never
+        const scope = { personalDomains: [] } as never
+        const picked = sel.resolveExportSelection(request, plan.takeExportSnapshot(), scope).map((e) => e.id)
+        expect(picked).toContain(end.id)
+        expect(picked).toContain(a.id)
+        expect(picked).toContain(done.id)
+        expect(picked).not.toContain(unrelated.id)
+      })
+
+      it('carries a do-not-export flag on the command to its background output', async () => {
+        const dne = await import('../src/core/db/do-not-export')
+        start('cmd-dne', 'nmap -p- 10.0.0.10 &')
+        const end = endLate('cmd-dne', 'nmap -p- 10.0.0.10 &')
+        const a = chunk({ command_id: 'cmd-dne', seq: 1, late: true, stdout: 'secret\n' })
+        const other = chunk({ command_id: 'cmd-other', seq: 1, late: true, stdout: 'unrelated\n' })
+        dne.toggleDoNotExport(end.id)
+        const ids = dne.getDoNotExportIds()
+        expect(ids.has(end.id)).toBe(true)
+        expect(ids.has(a.id)).toBe(true)
+        expect(ids.has(other.id)).toBe(false)
+        dne.toggleDoNotExport(end.id)
+      })
+
       it('files the chunks under the target the command was filed under', () => {
         start('cmd-late-t', 'curl https://10.0.0.8/status &')
         const ended = endLate('cmd-late-t', 'curl https://10.0.0.8/status &')

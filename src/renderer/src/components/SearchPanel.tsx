@@ -56,6 +56,29 @@ function hoverTitle(
 /** Resolve orphaned amendments back to their original markers, then build
  *  folds for all markers in the result set. Returns the (possibly adjusted)
  *  rows and the fold map. */
+const isLateChunk = (e: RedLogEvent): boolean =>
+  e.agentType === 'shell' && e.data.subtype === 'command_output' && e.data.late === true && typeof e.data.command_id === 'string'
+
+/** A hit inside what a background command printed after its prompt came back is
+ *  a hit on that command. The follow-up rows are hidden from the Timeline, so
+ *  opening one would land nowhere; the command is the row that opens. A chunk
+ *  whose command cannot be found stays as it is. */
+async function foldLateOutputHits(rows: RedLogEvent[]): Promise<RedLogEvent[]> {
+  const commandIds = [...new Set(rows.filter(isLateChunk).map((e) => e.data.command_id as string))]
+  if (commandIds.length === 0) return rows
+  const ends = (await window.redlog.events.commandEnds(commandIds).catch(() => [])) ?? []
+  const endByCommand = new Map(ends.map((e) => [String(e.data.command_id), e]))
+  const shown = new Set(rows.filter((e) => !isLateChunk(e)).map((e) => e.id))
+  return rows.flatMap((e) => {
+    if (!isLateChunk(e)) return [e]
+    const end = endByCommand.get(e.data.command_id as string)
+    if (!end) return [e]
+    if (shown.has(end.id)) return []
+    shown.add(end.id)
+    return [end]
+  })
+}
+
 async function resolveAndFold(
   rawItems: RedLogEvent[]
 ): Promise<{ rows: RedLogEvent[]; newFolds: Map<string, MarkerFold> }> {
@@ -88,7 +111,7 @@ async function resolveAndFold(
   // Originals come from the page; amendments only from the fetch, so an
   // amendment that also matched the query is not counted twice.
   const newFolds = foldAllMarkers([...rows.filter((e) => !isMarkerAmendment(e)), ...amendments])
-  return { rows, newFolds }
+  return { rows: await foldLateOutputHits(rows), newFolds }
 }
 
 const PAGE_SIZE = 100

@@ -9,6 +9,7 @@ import { useViewExport } from '../lib/exportScope'
 import { formatDateTime } from '../lib/time'
 import { useSharedFilter, toEventFilter } from '../lib/FilterContext'
 import { capabilitiesFor } from '../../../core/export-capabilities'
+import { selectionConditions, subsetSummary } from '../lib/exportSubsetText'
 
 export interface ExportMenuProps {
   totalCount?: number
@@ -179,9 +180,11 @@ function Toggle({ on, setOn, label, warn }: {
   )
 }
 
+const FORMAT_KEY = 'redlog.export.format'
+
 /** Codes the export IPC returns that mean something specific to the operator;
  *  anything else is shown as the raw message alone. */
-const KNOWN_RUN_ERRORS: ReadonlySet<string> = new Set(['source-unavailable', 'policy-changed'])
+const KNOWN_RUN_ERRORS: ReadonlySet<string> = new Set(['source-unavailable', 'policy-changed', 'invalid-destination'])
 
 export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps): JSX.Element {
   const { t } = useI18n()
@@ -189,7 +192,24 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const viewExport = useViewExport()
   const { filter } = useSharedFilter()
   const currentSubset: ExportSubset = viewExport?.request.subset ?? { kind: 'selection', projection: 'events', filter: toEventFilter(filter) }
-  const [currentFormat, setCurrentFormat] = useState<ExportFormat>('json')
+  // The last format picked, kept for next time. Only the three the dropdown
+  // offers are believed: anything else in storage is ignored, and storage that
+  // cannot be read just means the default.
+  const [currentFormat, setCurrentFormatState] = useState<ExportFormat>(() => {
+    try {
+      const saved = localStorage.getItem(FORMAT_KEY)
+      return saved === 'ndjson' || saved === 'bundle' ? saved : 'json'
+    } catch { return 'json' }
+  })
+  const setCurrentFormat = (format: ExportFormat): void => {
+    setCurrentFormatState(format)
+    try { localStorage.setItem(FORMAT_KEY, format) } catch { /* a convenience only */ }
+  }
+  // Where the file goes: the project's exports folder unless the operator
+  // picked another with the system dialog (that pick is the only thing main
+  // accepts as a destination).
+  const [destDir, setDestDir] = useState<string | null>(null)
+  const [defaultDir, setDefaultDir] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [scrubPii, setScrubPii] = useState(false)
@@ -219,6 +239,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
 
   const loadPreview = useCallback(async (p: PendingExport) => {
     const sequence = ++previewSequence.current
+    void window.redlog.data.exportDestination?.().then((dir) => { if (sequence === previewSequence.current) setDefaultDir(dir) }).catch(() => {})
     setPending(p)
     setRunError(null)
     setPreviewLoading(true)
@@ -266,7 +287,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     setRunError(null)
     try {
       if (!resolvedPlan) throw new Error('export plan unavailable')
-      const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id })
+      const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id, ...(destDir ? { destDir } : {}) })
       if (!result.ok) throw new Error(result.error)
       const path = result.artifactPath
       if (!path) throw new Error(t('toast.exportFailedWhy'))
@@ -291,8 +312,15 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     }
   }
 
+  const changeDestination = async (): Promise<void> => {
+    const dir = await window.redlog.data.pickExportDir().catch(() => null)
+    if (dir) { setDestDir(dir); setRunError(null) }
+  }
+
   const retryRun = async (): Promise<void> => {
     if (!pending) return
+    // A destination main refused is not tried again; the default is.
+    if (runError === 'invalid-destination') setDestDir(null)
     await loadPreview(pending)
   }
 
@@ -379,11 +407,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                             {resolvedPlan.request.subset.kind === 'all'
                               ? t('export.preview.subsetAll')
                               : resolvedPlan.request.subset.kind === 'selection'
-                                ? <span className="break-words">{t('export.current')}<br />{[
-                                    ...Object.entries(resolvedPlan.request.subset.filter).map(([key, value]) => `${t(`export.condition.${key}`)}: ${key === 'since' || key === 'before' ? formatDateTime(Number(value), { seconds: true }) : String(value)}`),
-                                    ...(resolvedPlan.request.subset.query ? [`${t('export.condition.query')}: ${resolvedPlan.request.subset.query}`] : []),
-                                    ...Object.entries(resolvedPlan.request.subset.http ?? {}).map(([key, value]) => `${t(`export.condition.${key}`)}: ${value}`)
-                                  ].join(' · ')}</span>
+                                ? <span className="break-words">{t('export.current')}<br />{selectionConditions(resolvedPlan.request.subset, t).join(' · ')}</span>
                                 : <>
                                   {formatDateTime(resolvedPlan.request.subset.since, { seconds: true })}
                                   {' → '}
@@ -421,6 +445,17 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           <span className="text-redlog-text-dim">{t('export.preview.boundary')}</span>
                           <span className="text-right text-redlog-text">
                             {formatDateTime(resolvedPlan.snapshot.takenAt, { seconds: true })}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.destination')}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span data-testid="export-destination" title={destDir ?? defaultDir ?? undefined} className="min-w-0 truncate font-mono text-redlog-text">
+                              {destDir ?? defaultDir ?? t('export.preview.destinationDefault')}
+                            </span>
+                            <button type="button" data-testid="export-change-destination" onClick={() => void changeDestination()} disabled={busy} className="shrink-0 text-redlog-text-dim underline hover:text-redlog-text disabled:opacity-40">
+                              {t('export.preview.destinationChange')}
+                            </button>
                           </span>
                         </div>
                       </div>
@@ -527,6 +562,11 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                   warn={!maskScope}
                 />
                 <div className="border-t border-redlog-border my-1" />
+                {/* What "current" means, before anything is chosen: the
+                    filter in force now, or that there is none. */}
+                <p data-testid="export-range-current" className="px-3 py-1 text-xs text-redlog-text-dim break-words">
+                  {t('export.range.current', { summary: subsetSummary(currentSubset, t) })}
+                </p>
                 {empty && (
                   <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
                 )}
@@ -551,6 +591,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                 <Option
                   busy={busy}
                   label={t('export.all')}
+                  hint={t('export.range.allHint')}
                   disabled={empty}
                   onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', scrubPii, maskOutOfScope: maskScope } })}
                 />

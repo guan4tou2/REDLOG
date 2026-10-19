@@ -191,24 +191,27 @@ describe('the two terminals are one row', () => {
       { state: 'stopped', url: null })
     fireEvent.click(within(installedOnly).getByText(/all sources/))
     expect(installedOnly.textContent).toMatch(/open a new terminal and run a command/)
-    expect(installedOnly.textContent).not.toMatch(/Your own terminal is included/)
+    expect(installedOnly.textContent).not.toMatch(/last command/)
     cleanup()
 
     // Spec 060 FR-003: a command arriving is not output being recorded.
     const commandOnly = draw(
-      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: null }],
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: null, ownShellName: 'powershell' }],
       { state: 'stopped', url: null })
     fireEvent.click(within(commandOnly).getByText(/all sources/))
+    expect(commandOnly.textContent).toMatch(/PowerShell · last command/)
     expect(commandOnly.textContent).toMatch(/no command output recorded yet/)
-    expect(commandOnly.textContent).not.toMatch(/Your own terminal is included/)
+    expect(commandOnly.textContent).not.toMatch(/last output/)
     expect(commandOnly.querySelector('[data-testid="own-shell-last"]')).toBeTruthy()
     cleanup()
 
     const proven = draw(
-      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: Date.now() }],
+      [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: Date.now(), ownShellName: 'powershell' }],
       { state: 'stopped', url: null })
     fireEvent.click(within(proven).getByText(/all sources/))
-    expect(proven.textContent).toMatch(/Your own terminal is included/)
+    // Facts with times, not a promise about what happens next.
+    expect(proven.textContent).toMatch(/PowerShell · last command .* · last output/)
+    expect(proven.textContent).not.toMatch(/will be recorded|are recorded/)
   })
 
   // FR-014. The install was deliberately not the card's action, because

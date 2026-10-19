@@ -39,7 +39,7 @@ function draw(capture: any): HTMLElement {
 // shell hook not installed, tailer never touched, no mitmproxy row at all.
 const DARK = health([
   { id: 'terminal', hookId: 'shell-zsh', installed: false, state: 'ready', lastEventAt: null },
-  { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
+  { id: 'agent-claude-code', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
 ], 'dark')
 
 describe('CaptureHealthCard, before anything has been recorded', () => {
@@ -84,7 +84,7 @@ describe('CaptureHealthCard, before anything has been recorded', () => {
   it('asks for a command once the hook is installed and has never fired', () => {
     const wired = health([
       { id: 'terminal', hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null },
-      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
+      { id: 'agent-claude-code', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
     ], 'partial')
     expect(within(draw(wired)).getByText('Run a command')).toBeTruthy()
   })
@@ -92,7 +92,7 @@ describe('CaptureHealthCard, before anything has been recorded', () => {
   it('drops the action entirely once a command has been recorded', () => {
     const live = health([
       { id: 'terminal', hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: 1 },
-      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
+      { id: 'agent-claude-code', configPath: 'packs.aiAgents', state: 'ready', lastEventAt: null }
     ], 'healthy')
     const el = draw(live)
     expect(within(el).queryByText('Open a terminal')).toBeNull()

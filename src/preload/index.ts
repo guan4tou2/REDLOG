@@ -14,6 +14,21 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    updateStatus: () => ipcRenderer.invoke('app:updateStatus') as Promise<import('../main/services/update-status').UpdateStatus>,
+    cancelUpdate: () => ipcRenderer.invoke('app:cancelUpdate') as Promise<boolean>,
+    installUpdate: () => ipcRenderer.invoke('app:installUpdate') as Promise<void>,
+    setAutoUpdateCheck: (on: boolean) => ipcRenderer.invoke('app:setAutoUpdateCheck', on) as Promise<import('../main/services/update-status').UpdateStatus>,
+    takeUpdateOutcome: () => ipcRenderer.invoke('app:takeUpdateOutcome') as Promise<import('../main/services/update-marker').UpdateOutcome | null>,
+    onUpdateOutcomeReady: (cb: () => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('app:updateOutcomeReady', handler)
+      return () => ipcRenderer.removeListener('app:updateOutcomeReady', handler)
+    },
+    onUpdateStatus: (cb: (status: import('../main/services/update-status').UpdateStatus) => void) => {
+      const handler = (_e: unknown, status: import('../main/services/update-status').UpdateStatus): void => cb(status)
+      ipcRenderer.on('app:updateStatusChanged', handler)
+      return () => ipcRenderer.removeListener('app:updateStatusChanged', handler)
+    },
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
     setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text)
   },
@@ -76,6 +91,9 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('artifacts:addDropped', files.map((f) => webUtils.getPathForFile(f)).filter(Boolean), text) as Promise<ArtifactAddResponse | null>,
     reveal: (kind: 'artifact' | 'screenshot', file: string) => ipcRenderer.invoke('artifacts:reveal', kind, file) as Promise<boolean>
   },
+  agents: {
+    sources: () => ipcRenderer.invoke('agents:sources') as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+  },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
@@ -122,6 +140,7 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<RedLogEvent[]>,
+    commandEnds: (commandIds: string[]) => ipcRenderer.invoke('events:commandEnds', commandIds) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
       ipcRenderer.invoke('events:causalChain', anchorId, opts) as Promise<import('../core/db/events').EventCausalChain>,
@@ -229,7 +248,9 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    executeExportPlan: (input: { planId: string; destDir?: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    exportDestination: () => ipcRenderer.invoke('data:exportDestination') as Promise<string | null>,
+    pickExportDir: () => ipcRenderer.invoke('data:pickExportDir') as Promise<string | null>,
     revealExport: (target: string) => ipcRenderer.invoke('data:revealExport', target) as Promise<boolean>
   },
   hooks: {
