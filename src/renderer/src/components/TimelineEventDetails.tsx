@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } from './HttpDetail'
 import { toast } from './Toast'
+import { summarizeLateOutput } from '../lib/lateOutput'
 
 // ── Shell command_end ────────────────────────────────────────────────
 
@@ -86,17 +87,11 @@ function LateOutput({ commandId }: { commandId: string }): JSX.Element {
     return () => { live = false; unsub() }
   }, [commandId])
 
-  const chunks = rows ?? []
-  const text = (key: 'stdout' | 'stderr'): string =>
-    chunks.map((c) => (typeof c.data[key] === 'string' ? (c.data[key] as string) : '')).join('')
-  const stdout = text('stdout')
-  const stderr = text('stderr')
-  const last = chunks.find((c) => c.data.final === true)
-  const lateBytes = Number(last?.data.late_bytes ?? 0)
-  const lost = Number(last?.data.dropped_bytes ?? 0) + Number(last?.data.over_cap_bytes ?? 0)
-  const status = last
-    ? (last.data.truncated === true || lost > 0 ? t('timeline.detail.lateTruncated') : t('timeline.detail.lateDone'))
-    : t('timeline.detail.lateRunning')
+  const { stdout, stderr, state, lateBytes, lostBytes: lost } = summarizeLateOutput(rows ?? [])
+  const last = state !== 'running'
+  const status = state === 'incomplete' ? t('timeline.detail.lateTruncated')
+    : state === 'done' ? t('timeline.detail.lateDone')
+      : t('timeline.detail.lateRunning')
 
   return (
     <div className="space-y-1.5" data-testid="late-output">

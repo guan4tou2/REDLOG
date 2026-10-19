@@ -1550,6 +1550,8 @@
   "http.loadingPaired": "正在載入配對事件…",
   "transcript.sessionChunk": "Session {{terminal}} · 第 {{seq}} 段",
   "transcript.metaPtyMerged": "PTY · stdout/stderr 合併",
+  "transcript.metaLateRunning": "背景輸出仍在接收",
+  "transcript.metaLateIncomplete": "背景輸出不完整",
   "transcript.metaExit": "結束碼 {{code}}",
   "transcript.metaExitUnknown": "結束碼未知",
   "transcript.toolInterrupted": "（工具執行中斷）",

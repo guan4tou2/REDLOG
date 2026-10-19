@@ -61,6 +61,12 @@ for full commit body + generated notes.
   recorded yet. A command with no `shell` field (an adapter too old to report
   it) stays in the record for reading but no longer counts as proof that any
   shell works: nothing in it says which adapter sent it.
+
+- The Transcript shows what a background command printed after its prompt came
+  back inside that command's own block. Nothing extra is said while the output
+  is whole; the block's line says so only when output is still arriving or
+  bytes were not kept. The Transcript also stops counting those follow-up rows
+  against its page of shell events.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.

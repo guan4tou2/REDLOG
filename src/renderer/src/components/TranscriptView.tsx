@@ -11,6 +11,7 @@ import { AlignLeft } from 'lucide-react'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { blockToMarkdown, blocksToMarkdown } from '../lib/transcriptSnippet'
+import { summarizeLateOutput, type LateOutputSummary } from '../lib/lateOutput'
 import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcriptPicks'
 
 /**
@@ -139,7 +140,7 @@ const KIND_COLOR: Record<Kind, string> = {
  * incomplete — the command is still running, the response never came — the
  * block renders with the half that exists and says so.
  */
-function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string, v?: Record<string, string | number>) => string): Block[] {
+function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string, v?: Record<string, string | number>) => string, late: Record<string, LateOutputSummary> = {}): Block[] {
   const out: Block[] = []
   const pendingTool = new Map<string, Block>()
   const pendingHttp = new Map<string, Block>()
@@ -159,7 +160,12 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
 
     if (e.agentType === 'shell' && sub === 'command_end') {
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
-      const inlineOut = [d.stdout, d.stderr].filter((x) => typeof x === 'string').join('')
+      // A background job's later output is part of this command. Nothing is
+      // said about it while it is whole; only a still-open or lossy one is.
+      const lateSum = d.late_output === true && typeof d.command_id === 'string' ? late[d.command_id] : undefined
+      const inlineOut = [d.stdout, d.stderr, lateSum?.stdout, lateSum?.stderr].filter((x) => typeof x === 'string').join('')
+      const lateNote = lateSum?.state === 'running' ? ` · ${t('transcript.metaLateRunning')}`
+        : lateSum?.state === 'incomplete' ? ` · ${t('transcript.metaLateIncomplete')}` : ''
       const exitRaw = d.exit_code
       const exitKnown = exitRaw != null
       const exit = exitKnown ? Number(exitRaw) : null
@@ -175,7 +181,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
         output, outputBytes, outputNote,
-        meta: `${exitKnown ? t('transcript.metaExit', { code: String(exit) }) : t('transcript.metaExitUnknown')}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        meta: `${exitKnown ? t('transcript.metaExit', { code: String(exit) }) : t('transcript.metaExitUnknown')}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}${lateNote}`,
         exitCode: exit,
         events: [e]
       })
@@ -387,6 +393,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
             : await window.redlog.events.queryPage({
               ...toEventFilter(sharedFilter),
               ...bucket,
+              // Background-output chunks belong to their command, not beside it.
+              excludeHousekeeping: true,
             })
         }))
       )
@@ -433,6 +441,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
           : await window.redlog.events.queryPage({
             ...toEventFilter(sharedFilter),
             ...bucket,
+            excludeHousekeeping: true,
             cursor: bucketPages[bucket.agentType].nextCursor,
           })
       })))
@@ -466,7 +475,25 @@ export default function TranscriptView({ onOpenInTimeline }: {
   }, [])
   useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
 
-  const blocks = useMemo(() => buildBlocks(events, names, t), [events, names, t])
+  // What background commands printed after their prompt came back. It belongs
+  // to the command's own block, so it is read per command rather than listed.
+  const [lateOutput, setLateOutput] = useState<Record<string, LateOutputSummary>>({})
+  useEffect(() => {
+    const ids = events
+      .filter((e) => e.agentType === 'shell' && e.data?.subtype === 'command_end' && e.data?.late_output === true && typeof e.data?.command_id === 'string')
+      .map((e) => e.data?.command_id as string)
+    if (ids.length === 0) { setLateOutput((cur) => (Object.keys(cur).length === 0 ? cur : {})); return }
+    let live = true
+    void Promise.all(ids.map((id) => window.redlog.events.commandOutput(id)
+      .then((rows) => [id, summarizeLateOutput(rows)] as const)
+      .catch(() => null)))
+      .then((pairs) => {
+        if (live) setLateOutput(Object.fromEntries(pairs.filter((p): p is readonly [string, LateOutputSummary] => p !== null)))
+      })
+    return () => { live = false }
+  }, [events])
+
+  const blocks = useMemo(() => buildBlocks(events, names, t, lateOutput), [events, names, t, lateOutput])
   const hasMore = Object.values(bucketPages).some((page) => page.hasMore)
 
   const autoExpandedRef = useRef<Set<string>>(new Set())
