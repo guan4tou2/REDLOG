@@ -12,10 +12,11 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 
 const base: UpdateStatus = {
   stage: 'idle', method: 'download-page', packaged: true, currentVersion: '1.0.0', targetVersion: null,
-  progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test/releases'
+  progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test/releases',
+  autoCheck: true, unfinished: false
 }
 
-function draw(initial: Partial<UpdateStatus>) {
+function draw(initial: Partial<UpdateStatus>, platform = 'darwin') {
   let push: (s: UpdateStatus) => void = () => {}
   const app = {
     checkForUpdates: vi.fn(async () => {}),
@@ -23,9 +24,11 @@ function draw(initial: Partial<UpdateStatus>) {
     onUpdateStatus: vi.fn((cb: (s: UpdateStatus) => void) => { push = cb; return () => {} }),
     cancelUpdate: vi.fn(async () => true),
     installUpdate: vi.fn(async () => {}),
-    openExternal: vi.fn(async () => {})
+    openExternal: vi.fn(async () => {}),
+    setAutoUpdateCheck: vi.fn(async (on: boolean) => ({ ...base, ...initial, autoCheck: on }))
   }
   ;(window as unknown as { redlog: unknown }).redlog = {
+    platform,
     app,
     debug: { status: vi.fn(async () => ({ enabled: false, path: '/x' })), set: vi.fn(), reveal: vi.fn() }
   }
@@ -99,5 +102,29 @@ describe('About: update status', () => {
   it('names a development build', async () => {
     draw({ packaged: false })
     expect((await screen.findByTestId('update-method')).textContent).toContain('update.devBuild')
+  })
+
+  it('says on macOS why the update is by hand, and what to do', async () => {
+    draw({}, 'darwin')
+    expect((await screen.findByTestId('update-method')).textContent).toContain('update.method.downloadPageMac')
+  })
+
+  it('says on Linux that it is by hand and not through a package source', async () => {
+    draw({}, 'linux')
+    expect((await screen.findByTestId('update-method')).textContent).toContain('update.method.downloadPageLinux')
+  })
+
+  it('keeps saying a manual update is not finished, and does not call opening the page an update', async () => {
+    draw({ stage: 'available', targetVersion: '2.0.0', unfinished: true })
+    expect(await state()).toBe('update.state.unfinished|version=2.0.0')
+  })
+
+  it('shows the launch check as on, and turns it off with main having the last word', async () => {
+    const { app } = draw({})
+    const box = (await screen.findByTestId('update-auto-check')) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    fireEvent.click(box)
+    expect(app.setAutoUpdateCheck).toHaveBeenCalledWith(false)
+    await vi.waitFor(() => expect(box.checked).toBe(false))
   })
 })

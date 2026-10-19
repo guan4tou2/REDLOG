@@ -31,14 +31,20 @@ export interface UpdateStatus {
   checkedAt: number | null
   /** Where the installer can be fetched by hand. */
   releaseUrl: string
+  /** Whether RedLog looks by itself at launch. Air-gap overrides it. */
+  autoCheck: boolean
+  /** The operator was sent to the download page for `targetVersion` and the
+   *  running version is still older: not finished, and only a newer running
+   *  version ends it (never the page having been opened). */
+  unfinished: boolean
 }
 
 export class UpdateStatusStore {
   private status: UpdateStatus
   private listeners = new Set<(status: UpdateStatus) => void>()
 
-  constructor(initial: Pick<UpdateStatus, 'method' | 'packaged' | 'currentVersion' | 'releaseUrl'>) {
-    this.status = { stage: 'idle', targetVersion: null, progress: null, result: null, checkedAt: null, ...initial }
+  constructor(initial: Pick<UpdateStatus, 'method' | 'packaged' | 'currentVersion' | 'releaseUrl' | 'autoCheck'>) {
+    this.status = { stage: 'idle', targetVersion: null, progress: null, result: null, checkedAt: null, unfinished: false, ...initial }
   }
 
   get(): UpdateStatus { return { ...this.status } }
