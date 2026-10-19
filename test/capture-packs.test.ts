@@ -55,7 +55,7 @@ describe('capture packs: isPackOn', async () => {
 
   it('names its members', () => {
     expect(CAPTURE_PACKS.hostMonitors.members).toEqual(['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard'])
-    expect(CAPTURE_PACKS.aiAgents.members).toEqual(['agentTailer'])
+    expect(CAPTURE_PACKS.aiAgents.members).toEqual(['claudeCode', 'codex', 'opencode'])
     expect(CAPTURE_PACKS.windowsOutput.members).toEqual(['powershellTranscript'])
   })
 })
@@ -101,8 +101,17 @@ describe('capture packs: isPackMemberOn', async () => {
   })
 
   it('leaves AI agents off until their pack is turned on', () => {
-    expect(isPackMemberOn({}, 'agentTailer', active)).toBe(false)
-    expect(isPackMemberOn({ packs: { aiAgents: true } }, 'agentTailer', active)).toBe(true)
+    for (const member of ['claudeCode', 'codex', 'opencode'] as const) {
+      expect(isPackMemberOn({}, member, active)).toBe(false)
+      expect(isPackMemberOn({ packs: { aiAgents: true } }, member, active)).toBe(true)
+    }
+  })
+
+  it('records one agent without the others (Spec 050)', () => {
+    const cfg = { packs: { aiAgents: true }, packMembers: { codex: false, opencode: false } }
+    expect(isPackMemberOn(cfg, 'claudeCode', active)).toBe(true)
+    expect(isPackMemberOn(cfg, 'codex', active)).toBe(false)
+    expect(isPackMemberOn(cfg, 'opencode', active)).toBe(false)
   })
 
   it('never runs a member whose pack is off, or whose plugin is gone', () => {
@@ -114,7 +123,7 @@ describe('capture packs: isPackMemberOn', async () => {
 
   it('maps every declared member back to its pack', () => {
     expect(packOfMember('clipboard')).toBe('hostMonitors')
-    expect(packOfMember('agentTailer')).toBe('aiAgents')
+    for (const member of ['claudeCode', 'codex', 'opencode'] as const) expect(packOfMember(member)).toBe('aiAgents')
     expect(packOfMember('powershellTranscript')).toBe('windowsOutput')
   })
 })
@@ -149,9 +158,11 @@ describeDB('capture packs: health', () => {
     expect(rows.find((s) => s.id === 'process-monitor')).toMatchObject({
       configPath: 'packMembers.processMonitor', packPath: 'packs.hostMonitors', enabled: true
     })
-    expect(rows.find((s) => s.id === 'agent-tailer')).toMatchObject({
-      configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents', enabled: false
-    })
+    for (const [id, key] of [['agent-claude-code', 'claudeCode'], ['agent-codex', 'codex'], ['agent-opencode', 'opencode']]) {
+      expect(rows.find((s) => s.id === id)).toMatchObject({
+        configPath: `packMembers.${key}`, packPath: 'packs.aiAgents', enabled: false
+      })
+    }
   })
 
   it('reports a member the operator opted out of as off, with its pack still on', () => {
@@ -203,7 +214,7 @@ describeDB('capture packs: health', () => {
     ch.invalidateHooksCache()
     const ids = ch.getCaptureHealth().sources.map((s) => s.id)
     for (const gone of ['process-monitor', 'connection-monitor', 'file-watcher', 'clipboard']) expect(ids).not.toContain(gone)
-    expect(ids).toContain('agent-tailer')
+    expect(ids).toContain('agent-claude-code')
     expect(ids).toContain('terminal')
   })
 })

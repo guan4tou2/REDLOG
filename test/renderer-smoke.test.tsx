@@ -88,6 +88,8 @@ const unsub = (): void => {}
 function installBridge(): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     platform: 'darwin',
+    // Asked at mount for the outcome of an update restart; there was none.
+    app: { takeUpdateOutcome: async () => null, onUpdateOutcomeReady: () => unsub },
     project: {
       list: async () => [{ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }],
       create: async () => ({ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }),
@@ -198,6 +200,7 @@ function installBridge(): void {
     },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
     plugins: { eventTypes: async () => [] },
+    agents: { sources: async () => [] },
     hookConfig: { get: async () => ({ watchPaths: [] }), save: async () => true, pickPath: async () => null },
     operators: {
       list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]

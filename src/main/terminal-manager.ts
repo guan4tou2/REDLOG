@@ -12,10 +12,24 @@ import { eventBus } from '../core/event-bus'
 import { noteDbError, configureBuiltinTerminalHealth } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
 import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
+import { ensurePtyHelperExecutable } from '../core/pty-helper'
 import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 import { indexCast } from '../core/cast-index'
 import { beginTerminal, readTerminalEnrollment, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
+
+// Checked once per run, before the first shell is started. See core/pty-helper.ts.
+let ptyHelperChecked = false
+function ensurePtyHelperOnce(): void {
+  if (ptyHelperChecked) return
+  ptyHelperChecked = true
+  try {
+    const result = ensurePtyHelperExecutable(path.dirname(require.resolve('node-pty/package.json')))
+    for (const file of result.fixed) console.warn('[terminal] restored the execute bit on', file)
+    for (const file of result.failed) console.warn('[terminal] node-pty helper is not executable and could not be fixed:', file)
+  } catch { /* node-pty could not be located; the spawn below reports its own error */ }
+}
+
 
 // The shells this machine can open, discovered asynchronously and read
 // synchronously by spawnTerminal. Probing is what must not happen on the main
@@ -531,6 +545,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // Audit P0-2 (docs/WINDOWS_COMPAT_AUDIT.md).
   const cwd = os.homedir()
 
+  ensurePtyHelperOnce()
   const proxiedVia = managedProxyUrlProvider()
   const term = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',

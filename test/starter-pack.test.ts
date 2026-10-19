@@ -16,7 +16,8 @@ const manifest = JSON.parse(
 describe('starter-pack (§8-2)', () => {
   it('drives the built-in registry with BARE ids (not namespaced)', () => {
     const ids = detectHooks().map((h) => h.id)
-    for (const id of ['shell-zsh', 'shell-bash', 'mitmproxy', 'shell-powershell', 'shell-wsl']) {
+    // shell-wsl is listed on Windows only (see hooks-manager platform listing).
+    for (const id of ['shell-zsh', 'shell-bash', 'mitmproxy', 'shell-powershell', ...(process.platform === 'win32' ? ['shell-wsl'] : [])]) {
       expect(ids, `built-in producer ${id} missing from detectHooks`).toContain(id)
     }
     // Codex is not one of them. The built-ins are the sources RedLog owns —
