@@ -214,6 +214,10 @@ interface RedLogAPI {
     /** Show an evidence file in the file manager (never opens it). */
     reveal: (kind: 'artifact' | 'screenshot', file: string) => Promise<boolean>
   }
+  agents: {
+    /** The AI tools whose local session files RedLog can read, and whether each folder exists here. */
+    sources: () => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+  }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>

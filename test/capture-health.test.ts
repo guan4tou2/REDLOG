@@ -428,13 +428,14 @@ describeDB('capture-health', () => {
   // so the row could never report `installed` and rendered as a permanent
   // idle with an Install button that did nothing. Agent coverage now comes
   // from the transcript tailer, which sees every tool, not just Bash.
-  it('reports agent activity through the tailer row, not a claude-code row', () => {
+  it('reports agent activity through the per-tool tailer rows, not a hook row', () => {
     mockHooks({ 'shell-zsh': false })
     configureCaptureHealth({ packs: { aiAgents: true } })
-    ins('agent', { subtype: 'tool_call', tool_name: 'Bash' })
+    ins('agent', { subtype: 'tool_call', tool_name: 'Bash', agent: 'claude-code' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.lastEventAt).not.toBeNull()
   })
 
   // v0.9.7: DNS and HTTP are the same addon (hooks/mitmproxy-addon.py),
@@ -458,7 +459,7 @@ describeDB('capture-health', () => {
     // Switched on and nothing has come through it yet: it can record, which
     // is all this axis claims. Its silence is reported as an empty
     // `lastEventAt`, not as a second state.
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
   })
 
   it('a switched-off source does not drag the verdict to partial', () => {
@@ -618,5 +619,29 @@ describeDB('the mitmproxy row is fed by either of its two modes', () => {
   it('does not read a socket-table row as HTTP traffic', () => {
     ins('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' })
     expect(mitm()?.lastEventAt).toBeNull()
+  })
+})
+
+// Spec 050: one source per AI tool, so a quiet Claude Code tailer is not
+// hidden by a busy Codex one. `data.agent` is the adapter's agentKind.
+describeDB('each AI tool reports its own last event', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-agents-')); initDB(tmp)
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+    )
+    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+  })
+  afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
+
+  const row = (id: string) => getCaptureHealth().sources.find((s) => s.id === id)
+
+  it('lights only the tool that produced events', () => {
+    ins('agent', { subtype: 'user_prompt', agent: 'codex', session_id: 's1' })
+    expect(row('agent-codex')?.lastEventAt).not.toBeNull()
+    expect(row('agent-claude-code')?.lastEventAt).toBeNull()
+    expect(row('agent-opencode')?.lastEventAt).toBeNull()
   })
 })
