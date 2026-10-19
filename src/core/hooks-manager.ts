@@ -342,17 +342,32 @@ function srcPathFor(plugin: PluginManifest): string {
 // otherwise mean this was first exercised on CI's ubuntu leg.
 const hookBlock = (dest: string): string => `\n# RedLog shell hook\nsource ${dest}\n`
 
-export function rcWithHook(content: string, dest: string): string {
-  // Already there — by our line or by the operator's own — so nothing is added
-  // and nothing will be taken away.
-  if (content.includes(dest)) return content
+// One file, several ways to write its path. An rc that says `source ~/.redlog/…`
+// is the same hook as one that says `source /Users/me/.redlog/…`; checking only
+// the absolute spelling made install append a second block next to a `~` one
+// (the banner then printed twice) and made uninstall leave that `~` block
+// behind, so a "removed" hook still loaded.
+function hookSpellings(dest: string, home: string): string[] {
+  const out = [dest, `"${dest}"`]
+  if (home && dest.startsWith(`${home}/`)) {
+    const rest = dest.slice(home.length)
+    out.push(`~${rest}`, `$HOME${rest}`, `"$HOME${rest}"`, '$' + `{HOME}${rest}`)
+  }
+  return out
+}
+
+export function rcWithHook(content: string, dest: string, home: string = homedir()): string {
+  // Already there — by our line or by the operator's own, in any spelling of
+  // the path — so nothing is added and nothing will be taken away.
+  if (hookSpellings(dest, home).some((s) => content.includes(s))) return content
   return content + hookBlock(dest)
 }
 
-export function rcWithoutHook(content: string, dest: string): string {
-  // An exact string, not a pattern with optional newlines around it: the
-  // optional parts are what made the removal lossy.
-  return content.split(hookBlock(dest)).join('')
+export function rcWithoutHook(content: string, dest: string, home: string = homedir()): string {
+  // An exact string per spelling, not a pattern with optional newlines around
+  // it: the optional parts are what made the removal lossy. Only a block that
+  // carries our marker comment goes; a bare line the operator wrote stays.
+  return hookSpellings(dest, home).reduce((c, s) => c.split(hookBlock(s)).join(''), content)
 }
 
 export function getCaptureHookPath(pluginId: string): string | null {
