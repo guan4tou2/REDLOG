@@ -450,11 +450,15 @@ describe('first run: HTTP(S) card', () => {
     // neither belongs on the screen where capture is being proved.
     expect(screen.queryByTestId('first-run-route-terminals')).toBeNull()
     expect(card.textContent).not.toContain('nmap SYN')
-    // The default route is the operator's own browser: the listener to copy,
-    // the CA to trust and the address to open are all on the card from the
-    // start. The CA link only folds them away.
+    // The default route is the operator's own browser: the listener to copy
+    // and the address to open are on the card from the start. The CA's path,
+    // fingerprint and trust commands are reference (Spec 060 US2.1) and wait
+    // behind the certificate link.
     expect(screen.getByTestId('first-run-http-proxy').textContent).toContain('127.0.0.1:8080')
     expect(screen.getByTestId('first-run-http-own-browser').textContent).toContain('redlog.verify.invalid')
+    expect(screen.queryByTestId('first-run-http-ca')).toBeNull()
+    expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
+    fireEvent.click(screen.getByTestId('first-run-http-ca-toggle'))
     // …and they read 1, 2, 3 down the card: proxy, then the CA, then the check.
     const before = (a: HTMLElement, b: HTMLElement): boolean => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
     expect(before(screen.getByTestId('first-run-http-proxy'), screen.getByTestId('first-run-http-ca'))).toBe(true)
@@ -462,7 +466,6 @@ describe('first run: HTTP(S) card', () => {
     expect(card.textContent).toContain('/home/op/.mitmproxy/mitmproxy-ca-cert.pem')
     fireEvent.click(screen.getByText('HTTPS 憑證'))
     expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
-    fireEvent.click(screen.getByText('HTTPS 憑證'))
 
     const nonce = await shownNonce()
     fireEvent.click(screen.getByTestId('first-run-http-verify-browser'))
@@ -642,6 +645,8 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     draw()
     await shownNonce()
     await report({ scheme: 'https', rejected: true })
+    // The CA is now the current step, so its block opens by itself.
+    await waitFor(() => expect(screen.getByTestId('first-run-http-ca')).toBeTruthy())
     await waitFor(() => expect(screen.getByTestId('first-run-http-check-https').textContent).toContain('拒絕了 RedLog 的憑證'))
   })
 
