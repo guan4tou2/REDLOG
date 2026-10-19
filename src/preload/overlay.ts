@@ -77,8 +77,12 @@ contextBridge.exposeInMainWorld('redlog', {
     setPassThrough: (on: boolean) => ipcRenderer.send('overlay:setPassThrough', on),
     /** Opens the full marker dialog in the main window (raises + focuses it). */
     quickMark: () => ipcRenderer.send('overlay:quickMark'),
-    /** Drops a timestamped marker without touching window focus. */
-    instantMark: (): Promise<{ ok: boolean; id?: string }> => ipcRenderer.invoke('overlay:instantMark'),
+    /** Saves a marker timed at `at` (when "Add marker" was clicked), without raising the main window. */
+    beginMarker: (): Promise<string | null> => ipcRenderer.invoke('overlay:beginMarker'),
+    addMarker: (input: { title?: string; notes?: string; at?: number; bind?: string }): Promise<{ ok: boolean; id?: string; reason?: 'project-changed' }> =>
+      ipcRenderer.invoke('overlay:addMarker', input),
+    /** Give focus back to the window the operator was in before the HUD form. */
+    releaseFocus: () => ipcRenderer.send('overlay:releaseFocus'),
     mouseEnter: () => ipcRenderer.send('overlay:mouseEnter'),
     mouseLeave: () => ipcRenderer.send('overlay:mouseLeave'),
     onInteractive: (cb: (interactive: boolean) => void) => {
