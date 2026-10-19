@@ -31,11 +31,17 @@ import readline from 'readline'
 // won't hit it. Larger files skip.
 const MAX_CAST_BYTES = 60 * 1024 * 1024
 
-// Strip ANSI CSI/OSC/single-char escapes so the returned `text` field is
+// Strip ANSI CSI/OSC/DCS/APC/PM/SOS and single-char escapes so the returned `text` field is
 // grep-friendly and renders sanely in an event detail panel. The raw slice
 // keeps every byte for asciinema replay.
+//
+// String-type sequences (OSC `]`, DCS `P`, SOS `X`, PM `^`, APC `_`) are removed
+// whole, payload included. The single-char rule below also matches `ESC P`, so
+// without the string rule only the two introducer bytes went and the payload
+// stayed in the output: Warp's shell integration sends `ESC P $d<hex> ESC \`
+// and the hex showed up as command stdout.
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\][\s\S]*?(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g
+const ANSI_RE = /\x1b[\]PX^_][\s\S]*?(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g
 
 export function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, '')

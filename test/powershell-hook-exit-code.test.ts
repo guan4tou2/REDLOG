@@ -60,8 +60,21 @@ function readSpooled(home: string): Array<{ subtype: string; command: string; so
 const describePowerShell = shells.length ? describe : describe.skip
 describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('the %s prompt hook records the real exit code', (ps) => {
   let home: string
-  beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pshook-')) })
+  // The hook only spools while a project is open (active-identity.json).
+  const openProject = (): void => {
+    fs.mkdirSync(path.join(home, '.redlog'), { recursive: true })
+    fs.writeFileSync(path.join(home, '.redlog', 'active-identity.json'), JSON.stringify({ engagementId: 'eng-1', operatorId: 'op-1' }))
+  }
+  beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pshook-')); openProject() })
   afterEach(() => { fs.rmSync(home, { recursive: true, force: true }) })
+
+  it('writes nothing to the spool when no project is open', () => {
+    fs.rmSync(path.join(home, '.redlog', 'active-identity.json'))
+    const script = `. '${HOOK.replace(/'/g, "''")}'; _RedLogSpoolPayload -Json '{"sequence":1}'`
+    const result = spawnSync(ps, ['-NoProfile', '-Command', script], { env: { ...process.env, USERPROFILE: home, HOME: home }, encoding: 'utf8' })
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+    expect(fs.existsSync(path.join(home, '.redlog', 'pending'))).toBe(false)
+  }, 60_000)
 
   it('keeps every offline payload even when the timestamp is identical', () => {
     const script = `. '${HOOK.replace(/'/g, "''")}'; function _RedLogTimestamp { '0000000179196240000' }; foreach ($n in 1..3) { _RedLogSpoolPayload -Json ('{"sequence":' + $n + '}') }`

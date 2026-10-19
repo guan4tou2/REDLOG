@@ -4,7 +4,7 @@ import {
   summarizeUnattributedSpool, clearUnattributedSpool,
   type UnattributedSpoolSummary, type ClearUnattributedResult
 } from './spool-replay'
-import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
+import { isMemberSelected, isPackAvailable, AGENT_MEMBER_KIND, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
@@ -486,7 +486,12 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // on this card — an operator could have the tailer off and the health
   // readout would still say healthy.
   const clipboardLast = lastEventFor(`agent_type = 'clipboard'`)
-  const tailerLast = lastEventFor(`agent_type = 'agent'`)
+  // One per agent: a Claude Code tailer that has gone quiet must not be hidden
+  // by a busy Codex one. `data.agent` is the adapter's agentKind.
+  const agentLast = Object.fromEntries(
+    (Object.entries(AGENT_MEMBER_KIND) as Array<[keyof typeof AGENT_MEMBER_KIND, string]>)
+      .map(([member, kind]) => [member, lastEventFor(`agent_type = 'agent' AND json_extract(data,'$.agent') = '${kind}'`)])
+  ) as Record<keyof typeof AGENT_MEMBER_KIND, number | null>
   const screenshotLast = lastEventFor(`agent_type = 'screenshot'`)
 
   // Any shell hook being installed makes the row installed — `??` could not
@@ -590,7 +595,9 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // panes are recording perfectly well without it.
     { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
       ...enrolledTerminals(), ownShellLastEventAt: ownShellLast, ownShellOutputAt: ownShellOutput },
-    mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
+    mk('agent-claude-code', agentLast.claudeCode, { configPath: 'packMembers.claudeCode', packPath: 'packs.aiAgents' }),
+    mk('agent-codex', agentLast.codex, { configPath: 'packMembers.codex', packPath: 'packs.aiAgents' }),
+    mk('agent-opencode', agentLast.opencode, { configPath: 'packMembers.opencode', packPath: 'packs.aiAgents' }),
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
     // `streams` note saying which of the two had traffic in the last ten

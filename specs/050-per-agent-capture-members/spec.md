@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-01
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: The AI agents pack has one member, `agentTailer`, and that member
 watches three different agents' transcript locations. An operator who uses

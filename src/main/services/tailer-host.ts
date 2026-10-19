@@ -215,6 +215,11 @@ export interface TailerAdapter {
 /** Host-level configuration shared across all registered adapters. */
 export interface TailerHostConfig {
   enabled: boolean
+  /** Which agents (`TailerAdapter.agentKind`) may be read. Unset means every
+   *  registered adapter. An agent left out is never watched and a session path
+   *  handed to `registerSession` is refused — checked before the self-exclusion
+   *  and watch-path gates, so a disabled agent's files are not even opened. */
+  enabledAgents?: readonly string[]
   engagementId: string
   operatorId: string
   /** File name that opts a repo out of tailing when found in any
@@ -345,6 +350,10 @@ const hostControlSurface: HostControlSurface = {
       emitTurn(turn, { session: s })
     }
   }
+}
+
+function agentEnabled(agentKind: string): boolean {
+  return !cfg.enabledAgents || cfg.enabledAgents.includes(agentKind)
 }
 
 export function registerAdapter(adapter: TailerAdapter): void {
@@ -1079,6 +1088,7 @@ function takeSeedSlice(sessionId: string, agentKind: string): Map<string, string
 export function registerSession(agentKind: string, sourcePath: string): void {
   const adapter = registeredAdapters.get(agentKind)
   if (!adapter) return
+  if (!agentEnabled(agentKind)) return
   const sessionId = adapter.perMessageDir
     ? path.basename(sourcePath)                                // dir name = session id
     : path.basename(sourcePath, path.extname(sourcePath))      // strip .jsonl
@@ -1260,6 +1270,7 @@ function restartAll(): void {
 function restartAdapter(adapter: TailerAdapter): void {
   const w = watchersByAgent.get(adapter.agentKind)
   if (w) void w.close()
+  if (!agentEnabled(adapter.agentKind)) { watchersByAgent.delete(adapter.agentKind); return }
   const root = expandTilde(adapter.transcriptGlob.split('*')[0] || adapter.transcriptGlob)
   const watchDir = adapter.perMessageDir
     ? root  // per-message: watch parent dir, each subdir/file is a session

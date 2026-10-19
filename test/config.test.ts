@@ -113,6 +113,28 @@ describe('agent transcript capture default', () => {
   })
 })
 
+describe('agent member migration (Spec 050)', () => {
+  const members = (yamlText: string): Record<string, unknown> | undefined => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), yamlText)
+    return loadConfig(tmpDir).packMembers as Record<string, unknown> | undefined
+  }
+  it('turns the old single switch into the three per-agent keys and drops it', () => {
+    const off = members('packMembers:\n  agentTailer: false\n')
+    expect(off).toMatchObject({ claudeCode: false, codex: false, opencode: false })
+    expect(off).not.toHaveProperty('agentTailer')
+    expect(members('packMembers:\n  agentTailer: true\n')).toMatchObject({ claudeCode: true, codex: true, opencode: true })
+  })
+  it('leaves a project with no packMembers key on defaults, so all three stay on', () => {
+    const m = members('packs:\n  aiAgents: true\n')
+    expect(m?.claudeCode).toBeUndefined()
+    expect(m?.codex).toBeUndefined()
+    expect(m?.opencode).toBeUndefined()
+  })
+  it('lets an explicit per-agent key win over the retired one', () => {
+    expect(members('packMembers:\n  agentTailer: false\n  codex: true\n')).toMatchObject({ claudeCode: false, codex: true, opencode: false })
+  })
+})
+
 describe('loadScopeFile', () => {
   it('loads plain text file with one target per line', () => {
     const scopePath = path.join(tmpDir, 'scope.txt')

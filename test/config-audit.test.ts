@@ -52,7 +52,7 @@ describe('diffSecurityConfig', () => {
   })
 
   it('audits every member of every pack, so adding one cannot silently skip it', () => {
-    const members = ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard', 'agentTailer', 'powershellTranscript']
+    const members = ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard', 'claudeCode', 'codex', 'opencode', 'powershellTranscript']
     for (const m of members) {
       const d = diffSecurityConfig(cfg(), cfg({ packMembers: { [m]: false } }))
       expect({ m, row: d[`packMembers.${m}`] }).toEqual({ m, row: { from: undefined, to: false } })

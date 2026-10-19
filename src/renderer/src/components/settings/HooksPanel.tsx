@@ -72,6 +72,27 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
     api?.terminalPolicy?.().then(setPolicy).catch(() => setPolicy(null))
   }, [])
 
+  // mitmproxy missing: install it here rather than typing the command into the
+  // terminal. Same backend as the capture-preparation page; a `sudo` or missing
+  // prerequisite comes back as a message and the manual step stays below.
+  const installMitm = async (hook: HookInfo): Promise<void> => {
+    setHookLoading(hook.id)
+    try {
+      const result = await window.redlog.runtime.install('mitmdump')
+      if (result.success) toast(t('settings.hookInstalled', { name: hook.name }), 'success')
+      else if (!result.cancelled) {
+        toast(t('settings.hookInstallFailed', { name: hook.id }), {
+          type: 'error', why: t('settings.hookFailedWhy'), detail: result.message,
+          action: { label: t('common.retry'), onClick: () => { void installMitm(hook) } }
+        })
+      }
+    } catch (e) {
+      toast(t('settings.hookInstallFailed', { name: hook.id }), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
+    }
+    setHooks(await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect())
+    setHookLoading(null)
+  }
+
   const handleToggle = async (hook: HookInfo): Promise<void> => {
     const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
     if (hook.installed) {
@@ -162,6 +183,16 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                 } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
               >
                 {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
+              </button>
+            )}
+            {hook.id === 'mitmproxy' && !hook.available && (
+              <button
+                data-testid="hook-install-mitmproxy"
+                disabled={hookLoading === hook.id}
+                onClick={() => void installMitm(hook)}
+                className={`px-3 py-1 text-xs rounded ml-3 shrink-0 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors ${hookLoading === hook.id ? 'opacity-50' : ''}`}
+              >
+                {hookLoading === hook.id ? t('captureSetup.installing') : t('captureSetup.install')}
               </button>
             )}
             {hasSteps && (

@@ -5,9 +5,52 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Updating by hand (macOS and Linux) is described as what it is, per platform,
+  instead of one generic line. Going to the download page no longer counts as an
+  update: it no longer writes an "update pending" mark into the project or
+  contacts the timestamp servers, and About keeps saying the update is not
+  finished until the running version is the new one (a newer version than the
+  one aimed for also counts). Settings ▸ About has a switch for the check at
+  launch; it is on by default, air-gap still prevents the check either way, and
+  pressing "Check for updates" always works.
+
+- An update restart no longer goes ahead when RedLog could not write its own
+  record of the pause: it says so and offers "Try again" or "Cancel", leaving
+  terminals, the proxy and recording as they were. An unreachable outside
+  timestamp is told apart from that and never blocks; in air-gap mode the
+  restart makes no request at all (it used to contact the timestamp servers).
+  After the update, the first launch writes whether it worked, judged by the
+  version actually running, into the project that was open, and says once that
+  terminals and proxy connections from before the restart were ended and are not
+  resumed.
+
+- Settings ▸ About now says where updating stands: how this install updates, what
+  the last check found and when, download progress with a cancel, and a
+  downloaded update that stays findable with its own "Install and restart"
+  button. A check that failed, or a release with no installer for this computer,
+  is no longer worded like "up to date" (there are separate messages and a link
+  to the download page), and air-gap says it made no request and where the
+  setting is. A second press while a check runs does nothing new. Results that
+  nobody has to decide on no longer pop a dialog.
+- Updates no longer restart RedLog on their own (Windows, where in-app update
+  exists). Downloading and restarting are two separate choices: the download
+  runs in the background and ends with "ready"; installing is a second action
+  that lists what the restart will end (built-in terminals, the managed proxy,
+  recently active outside terminals), defaults to "Later", and asks again if
+  that list changed while the question was open. The always-on-top progress
+  window that could not be closed is gone. Checking again while an update is
+  downloaded goes straight to the install question. macOS and Linux still open
+  the release page.
 - The HUD has a switch: Settings ▸ HUD ▸ "Open the HUD when a project starts".
   On by default, so nothing changes unless you turn it off; off keeps it hidden
   until you open it from the status bar or the menu bar icon.
+- Bash now records a subshell or group line such as `( make; ./run )` or
+  `{ a; b; }`. The DEBUG trap does not follow those, so they left no record at
+  all. The adapter notices at the prompt that the history number moved by one
+  while nothing was started, and writes the line with its exit code and
+  `output_disposition: not-captured` (the output went to the terminal). Lines
+  hidden from history (`ignorespace`, `ignoredups`) are still unrecorded, and
+  function definitions stay out of the record.
 - Bash records what a command prints, not only the command and its exit status.
   The adapter does what the zsh adapter does in `preexec`, in bash's DEBUG trap:
   stdout and stderr go through the same per-command relay for the length of the
