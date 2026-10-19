@@ -1,6 +1,11 @@
-import { app, dialog, shell, BrowserWindow } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
-import { allowQuit } from '../quit-guard'
+import { getProjectDir } from '../../core/db/index'
+import { writeUpdateMarker, readUpdateMarker, judgeUpdateOutcome, type UpdateOutcome } from './update-marker'
+import { isAutoCheckEnabled, setAutoCheckEnabled } from './update-prefs'
+import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
+import { UpdateFlow } from './update-flow'
+import { UpdateStatusStore, hasInstallerFor, type UpdateStatus } from './update-status'
 
 // Windows: in-app auto-download+install via electron-updater (NSIS works
 // unsigned). macOS/Linux: open the GitHub releases page — macOS auto-update
@@ -28,7 +33,36 @@ function isNewer(a: string, b: string): boolean {
 
 const TAG = '[updater]'
 
-async function fetchLatest(): Promise<{ version: string; url: string } | null> {
+// What About shows. Created on first use so `app` is ready.
+let statusStore: UpdateStatusStore | null = null
+function store(): UpdateStatusStore {
+  return statusStore ??= new UpdateStatusStore({
+    method: process.platform === 'win32' ? 'in-app' : 'download-page',
+    packaged: app.isPackaged,
+    currentVersion: app.getVersion(),
+    releaseUrl: RELEASES_PAGE,
+    autoCheck: isAutoCheckEnabled(app.getPath('userData'))
+  })
+}
+export function getUpdateStatus(): UpdateStatus { return store().get() }
+
+export function autoCheckEnabled(): boolean { return store().get().autoCheck }
+export function setAutoCheck(on: boolean): void {
+  setAutoCheckEnabled(app.getPath('userData'), on)
+  store().patch({ autoCheck: on })
+}
+
+/** A manual update that was started and not finished stays visible until the
+ *  running version says otherwise. Called once at launch. */
+export function restoreUnfinishedUpdate(): void {
+  const marker = readUpdateMarker(app.getPath('userData'))
+  if (!marker || marker.method !== 'manual') return
+  if (judgeUpdateOutcome(marker, app.getVersion()).kind === 'completed') return
+  store().patch({ stage: 'available', targetVersion: marker.toVersion, unfinished: true })
+}
+export function onUpdateStatus(listener: (status: UpdateStatus) => void): () => void { return store().onChange(listener) }
+
+async function fetchLatest(): Promise<{ version: string; url: string; assets: string[] } | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
@@ -40,11 +74,11 @@ async function fetchLatest(): Promise<{ version: string; url: string } | null> {
       console.warn(TAG, `GitHub API responded ${res.status}`)
       return null
     }
-    const data = (await res.json()) as { tag_name?: string; html_url?: string }
+    const data = (await res.json()) as { tag_name?: string; html_url?: string; assets?: Array<{ name?: string }> }
     if (!data.tag_name) return null
     const ver = data.tag_name.replace(/^v/, '')
     console.log(TAG, `latest release: ${ver}`)
-    return { version: ver, url: data.html_url || RELEASES_PAGE }
+    return { version: ver, url: data.html_url || RELEASES_PAGE, assets: (data.assets ?? []).map((a) => String(a.name ?? '')) }
   } catch (e) {
     console.warn(TAG, 'fetch failed:', (e as Error).message)
     return null
@@ -75,18 +109,153 @@ function setupWindowsUpdater(): void {
   console.log(TAG, 'electron-updater initialised (win32)')
 }
 
-// Runs the full check→prompt→download→install flow on Windows.
+// What a restart would end right now, supplied by the main process so the
+// answer is read when it is asked for (Spec 061 FR-005).
+let impactProvider: () => QuitImpact | null = () => null
+export function setUpdateImpactProvider(fn: () => QuitImpact | null): void { impactProvider = fn }
+
+const zh = (): boolean => app.getLocale().toLowerCase().startsWith('zh')
+
+let flow: UpdateFlow | null = null
+let downloadToken: import('electron-updater').CancellationToken | null = null
+
+/** Stop a download in progress. False when there is none to stop. */
+export function cancelUpdateDownload(): boolean { return flow?.cancel() ?? false }
+/** Restart into a downloaded update, after the restart question. */
+export async function installReadyUpdate(): Promise<void> { await flow?.install() }
+function getFlow(autoUpdater: typeof import('electron-updater').autoUpdater): UpdateFlow {
+  if (flow) return flow
+  flow = new UpdateFlow({
+    port: {
+      download: async () => {
+        const { CancellationToken } = require('electron-updater') as typeof import('electron-updater')
+        downloadToken = new CancellationToken()
+        try { await autoUpdater.downloadUpdate(downloadToken) } finally { downloadToken = null }
+      },
+      cancelDownload: () => { downloadToken?.cancel() },
+      quitAndInstall: () => autoUpdater.quitAndInstall(false, true)
+    },
+    askDownload: async (version) => (await dialog.showMessageBox({
+      type: 'info',
+      buttons: zh() ? ['下載', '稍後'] : ['Download', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: zh() ? '有新版本' : 'Update available',
+      message: zh()
+        ? `RedLog ${version} 可用（目前 ${app.getVersion()}）`
+        : `RedLog ${version} is available (you have ${app.getVersion()})`,
+      detail: zh()
+        ? '下載在背景進行，擷取不受影響。下載完成後不會自動重新啟動，由你決定何時安裝。'
+        : 'The download runs in the background and recording is not affected. It will not restart on its own; you choose when to install.'
+    })).response === 0,
+    announceReady: async (version) => (await dialog.showMessageBox({
+      type: 'info',
+      buttons: zh() ? ['稍後', '安裝並重新啟動'] : ['Later', 'Install and restart'],
+      defaultId: 0,
+      cancelId: 0,
+      title: zh() ? '更新已準備完成' : 'Update ready',
+      message: zh() ? `RedLog ${version} 已下載完成` : `RedLog ${version} is downloaded`,
+      detail: zh()
+        ? '擷取仍在進行，不會自動重新啟動。之後可在「關於」按「檢查更新」再安裝。'
+        : 'Recording continues and nothing restarts by itself. Install later from About ▸ Check for updates.'
+    })).response === 1 ? 'now' : 'later',
+    impact: () => impactProvider(),
+    confirmRestart: async (impact, version) => {
+      // The list of what stops is the quit dialog's own, so the two never
+      // describe the same restart differently.
+      const lines = quitDialog(impact, defaultQuitText(app.getLocale())).detail
+      return (await dialog.showMessageBox({
+        type: 'question',
+        buttons: zh() ? ['稍後', '停止並更新'] : ['Later', 'Stop and update'],
+        defaultId: 0,
+        cancelId: 0,
+        title: zh() ? '安裝更新並重新啟動？' : 'Install the update and restart?',
+        message: impact.project
+          ? `${impact.project}\n\n${zh() ? `重新啟動到 RedLog ${version} 會停止：` : `Restarting into RedLog ${version} stops:`}`
+          : (zh() ? `重新啟動到 RedLog ${version} 會停止：` : `Restarting into RedLog ${version} stops:`),
+        detail: lines
+      })).response === 1
+    },
+    onState: (state, readyVersion) => {
+      if (state === 'downloading') store().patch({ stage: 'downloading', progress: 0 })
+      else if (state === 'ready') store().patch({ stage: 'ready', progress: null, targetVersion: readyVersion })
+      else if (state === 'installing') store().patch({ stage: 'installing' })
+      // Back to idle with the update still on offer: cancelled, declined, or
+      // failed (a failure then says so, below).
+      else if (store().get().stage === 'downloading' || store().get().stage === 'installing') store().patch({ stage: 'available', progress: null })
+    },
+    onDownloadFailed: async (error) => {
+      console.error(TAG, 'download failed:', error.message)
+      store().patch({ stage: 'failed', result: 'failed', progress: null, checkedAt: Date.now() })
+      await dialog.showMessageBox({
+        type: 'error',
+        buttons: [zh() ? '好' : 'OK'],
+        title: zh() ? '更新失敗' : 'Update failed',
+        message: zh()
+          ? '下載更新失敗。目前版本照常運作，可稍後再試或前往 GitHub 手動下載。'
+          : 'The download failed. The current version keeps working; try again later or download it from GitHub.'
+      })
+    },
+    beforeRestart: async (version) => {
+      // Mark the pause in the chain. This machine's own record is the one that
+      // must succeed; the outside timestamp being out of reach, or air-gap
+      // skipping it, is told in the marker and does not stop anything.
+      const result = await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: version, offline: airgap })
+      if (result.localError) throw new Error(result.localError)
+      console.log(TAG, `restart marked in the chain (external timestamp: ${result.external})`)
+      // For the next launch to judge by the version that is then running.
+      let projectDir: string | null = null
+      try { projectDir = getProjectDir() } catch { /* no project open */ }
+      try {
+        writeUpdateMarker(app.getPath('userData'), { fromVersion: app.getVersion(), toVersion: version, at: Date.now(), projectDir })
+      } catch (e) {
+        console.warn(TAG, 'could not record the target version:', (e as Error).message)
+      }
+    },
+    onRestartBlocked: async (error) => (await dialog.showMessageBox({
+      type: 'warning',
+      buttons: zh() ? ['取消', '重試'] : ['Cancel', 'Try again'],
+      defaultId: 0,
+      cancelId: 0,
+      title: zh() ? '無法安全重新啟動' : 'Cannot restart safely',
+      message: zh()
+        ? '重新啟動前無法保存紀錄狀態，所以沒有重新啟動。'
+        : 'The record could not be saved before the restart, so nothing was restarted.',
+      detail: `${error.message}\n\n${zh()
+        ? '終端、代理與擷取都維持原狀；更新仍已下載，之後可再安裝。'
+        : 'Terminals, the proxy and recording are as they were; the update stays downloaded for later.'}`
+    })).response === 1 ? 'retry' : 'cancel',
+    allowQuit
+  })
+  autoUpdater.on('download-progress', (info) => {
+    console.log(TAG, `downloading… ${Math.round(info.percent)}%`)
+    store().patch({ progress: Math.round(info.percent) })
+  })
+  return flow
+}
+
+// Windows: check → ask → download in the background → say "ready". Restarting
+// is a separate step the operator takes (see update-flow.ts).
 // Returns true if it handled the flow (even "no update"), false to fall back.
-async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
+// How the check ended goes to the status About shows, not to a dialog: a
+// result nobody has to decide on does not need to interrupt anyone.
+async function windowsAutoUpdate(): Promise<boolean> {
   if (process.platform !== 'win32') return false
   try {
     setupWindowsUpdater()
   } catch (e) {
     console.error(TAG, 'electron-updater setup failed, falling back to browser:', (e as Error).message)
+    store().patch({ method: 'download-page' })
     return false
   }
 
   const { autoUpdater } = require('electron-updater') as typeof import('electron-updater')
+
+  // Already downloaded, or being downloaded: do not check again. A ready update
+  // goes straight to the restart question, which is how "later" is found again.
+  const current = flow?.status().state
+  if (current === 'downloading' || current === 'installing') return true
+  if (current === 'ready') { await flow!.install(); return true }
 
   let result: Awaited<ReturnType<typeof autoUpdater.checkForUpdates>>
   try {
@@ -94,167 +263,76 @@ async function windowsAutoUpdate(manual: boolean): Promise<boolean> {
     result = await autoUpdater.checkForUpdates()
   } catch (e) {
     console.error(TAG, 'checkForUpdates failed:', (e as Error).message)
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'warning', buttons: ['好'], title: '檢查更新',
-        message: '無法連線檢查更新，請稍後再試。'
-      })
-    }
+    store().patch({ stage: 'failed', result: 'failed', checkedAt: Date.now() })
     return true
   }
 
-  if (!result || !result.updateInfo) {
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'info', buttons: ['好'], title: '已是最新版',
-        message: `RedLog ${app.getVersion()} 已是最新版本。`
-      })
-    }
+  const remoteVer = result?.updateInfo?.version
+  if (!remoteVer || !isNewer(remoteVer, app.getVersion())) {
+    console.log(TAG, `remote=${remoteVer ?? 'none'} local=${app.getVersion()}`)
+    store().patch({ stage: 'idle', result: 'upToDate', targetVersion: null, checkedAt: Date.now() })
     return true
   }
 
-  const remoteVer = result.updateInfo.version
   console.log(TAG, `remote=${remoteVer} local=${app.getVersion()}`)
-  if (!isNewer(remoteVer, app.getVersion())) {
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'info', buttons: ['好'], title: '已是最新版',
-        message: `RedLog ${app.getVersion()} 已是最新版本。`
-      })
-    }
-    return true
-  }
-
-  // Ask the user whether to download.
-  const ask = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['下載並安裝', '稍後'],
-    defaultId: 0,
-    cancelId: 1,
-    title: '有新版本',
-    message: `RedLog ${remoteVer} 可用（目前 ${app.getVersion()}）`,
-    detail: '下載完成後將自動安裝並重新啟動。'
-  })
-  if (ask.response !== 0) {
-    console.log(TAG, 'user deferred update')
-    return true
-  }
-
-  console.log(TAG, `downloading ${remoteVer}…`)
-  // Show a progress dialog while downloading.
-  const progressWin = new BrowserWindow({
-    width: 400, height: 130,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    closable: false,
-    frame: false,
-    alwaysOnTop: true,
-    webPreferences: { nodeIntegration: false, contextIsolation: true }
-  })
-  progressWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
-<html><head><style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 20px;
-         background: #1e1e2e; color: #cdd6f4; user-select: none; }
-  h3 { margin: 0 0 12px; font-size: 14px; font-weight: 500; }
-  .bar { height: 6px; background: #313244; border-radius: 3px; overflow: hidden; }
-  .fill { height: 100%; background: #89b4fa; width: 0%; transition: width 0.2s; border-radius: 3px; }
-  .pct { margin-top: 8px; font-size: 12px; color: #a6adc8; }
-</style></head><body>
-  <h3 id="t">正在下載 RedLog ${remoteVer}…</h3>
-  <div class="bar"><div class="fill" id="f"></div></div>
-  <div class="pct" id="p">0%</div>
-  <script>
-    window.setProgress = (pct) => {
-      document.getElementById('f').style.width = pct + '%';
-      document.getElementById('p').textContent = Math.round(pct) + '%';
-    };
-    window.setDone = () => {
-      document.getElementById('t').textContent = '下載完成，正在安裝…';
-      document.getElementById('p').textContent = '';
-      document.getElementById('f').style.width = '100%';
-    };
-  </script>
-</body></html>`)}`)
-
-  autoUpdater.on('download-progress', (info) => {
-    if (!progressWin.isDestroyed()) {
-      progressWin.webContents.executeJavaScript(`window.setProgress(${info.percent})`)
-    }
-  })
-
-  try {
-    await autoUpdater.downloadUpdate()
-    console.log(TAG, 'download complete')
-  } catch (e) {
-    console.error(TAG, 'download failed:', (e as Error).message)
-    if (!progressWin.isDestroyed()) progressWin.destroy()
-    await dialog.showMessageBox({
-      type: 'error', buttons: ['好'], title: '更新失敗',
-      message: '下載更新失敗，請稍後再試或前往 GitHub 手動下載。'
-    })
-    return true
-  }
-
-  if (!progressWin.isDestroyed()) {
-    progressWin.webContents.executeJavaScript('window.setDone()')
-  }
-
-  // Anchor the chain head before quit-and-install.
-  try {
-    await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: remoteVer })
-    console.log(TAG, 'chain head anchored before restart')
-  } catch (e) {
-    console.warn(TAG, 'anchor failed (best-effort):', (e as Error).message)
-  }
-
-  // Small delay so the user sees "installing…"
-  await new Promise((r) => setTimeout(r, 800))
-  if (!progressWin.isDestroyed()) progressWin.destroy()
-
-  console.log(TAG, 'quitting to install…')
-  // The operator already confirmed the update; a second dialog would hold the install.
-  allowQuit()
-  autoUpdater.quitAndInstall(false, true)
+  store().patch({ stage: 'available', result: null, targetVersion: remoteVer, checkedAt: Date.now() })
+  await getFlow(autoUpdater).offer(remoteVer)
   return true
 }
 
 // ---------------------------------------------------------------------------
 // macOS / Linux: open-browser fallback (original behaviour)
 // ---------------------------------------------------------------------------
-async function browserFallbackUpdate(manual: boolean): Promise<void> {
+async function browserFallbackUpdate(): Promise<void> {
   console.log(TAG, 'using browser fallback path')
   const latest = await fetchLatest()
   if (!latest) {
-    if (manual) {
-      await dialog.showMessageBox({
-        type: 'warning', buttons: ['好'], title: '檢查更新',
-        message: '無法連線檢查更新，請稍後再試。'
-      })
-    }
+    store().patch({ stage: 'failed', result: 'failed', checkedAt: Date.now() })
     return
   }
 
-  if (isNewer(latest.version, app.getVersion())) {
-    const detail = process.platform === 'darwin'
-      ? 'macOS 版請前往下載頁手動更新（自動安裝需程式簽章）。'
-      : '前往下載頁取得最新安裝檔。'
-    const r = await dialog.showMessageBox({
-      type: 'info', buttons: ['前往下載', '稍後'], defaultId: 0, cancelId: 1,
-      title: '有新版本', message: `RedLog ${latest.version} 可用（目前 ${app.getVersion()}）`, detail
-    })
-    if (r.response === 0) {
-      try {
-        await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: latest.version })
-      } catch { /* best-effort */ }
-      console.log(TAG, `opening release page: ${latest.url}`)
-      await shell.openExternal(latest.url)
+  if (!isNewer(latest.version, app.getVersion())) {
+    store().patch({ stage: 'idle', result: 'upToDate', targetVersion: null, unfinished: false, checkedAt: Date.now() })
+    return
+  }
+
+  // A newer release with nothing this machine can install is not an update the
+  // operator can take from here, and it is not "up to date" either.
+  if (!hasInstallerFor(latest.assets, process.platform, process.arch)) {
+    console.log(TAG, `${latest.version} has no installer for ${process.platform}/${process.arch}`)
+    store().patch({ stage: 'unavailable', result: 'noInstaller', targetVersion: latest.version, releaseUrl: latest.url, checkedAt: Date.now() })
+    return
+  }
+
+  store().patch({ stage: 'available', result: null, targetVersion: latest.version, releaseUrl: latest.url, checkedAt: Date.now() })
+  const detail = process.platform === 'darwin'
+    ? (zh() ? 'macOS 版請前往下載頁手動更新（自動安裝需程式簽章）。' : 'On macOS, download the installer and replace the app yourself (automatic install needs code signing).')
+    : (zh() ? '前往下載頁取得最新安裝檔。' : 'Open the download page to get the latest installer.')
+  const r = await dialog.showMessageBox({
+    type: 'info',
+    buttons: zh() ? ['前往下載', '稍後'] : ['Open download page', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+    title: zh() ? '有新版本' : 'Update available',
+    message: zh()
+      ? `RedLog ${latest.version} 可用（目前 ${app.getVersion()}）`
+      : `RedLog ${latest.version} is available (you have ${app.getVersion()})`,
+    detail
+  })
+  if (r.response === 0) {
+    // RedLog restarts nothing on this path, so there is no pause to mark in the
+    // chain and nothing to anchor; only the version aimed for is remembered, so
+    // the running version can say later whether it was finished.
+    let projectDir: string | null = null
+    try { projectDir = getProjectDir() } catch { /* no project open */ }
+    try {
+      writeUpdateMarker(app.getPath('userData'), { fromVersion: app.getVersion(), toVersion: latest.version, at: Date.now(), projectDir, method: 'manual' })
+      store().patch({ unfinished: true })
+    } catch (e) {
+      console.warn(TAG, 'could not record the target version:', (e as Error).message)
     }
-  } else if (manual) {
-    await dialog.showMessageBox({
-      type: 'info', buttons: ['好'], title: '已是最新版',
-      message: `RedLog ${app.getVersion()} 已是最新版本。`
-    })
+    console.log(TAG, `opening release page: ${latest.url}`)
+    await shell.openExternal(latest.url)
   }
 }
 
@@ -262,33 +340,55 @@ async function browserFallbackUpdate(manual: boolean): Promise<void> {
 // Public API
 // ---------------------------------------------------------------------------
 let airgap = false
+// What the first launch after an update found, for the window to say once.
+let pendingOutcome: UpdateOutcome | null = null
+export function setUpdateOutcome(outcome: UpdateOutcome): void { pendingOutcome = outcome }
+export function takeUpdateOutcome(): UpdateOutcome | null {
+  const outcome = pendingOutcome
+  pendingOutcome = null
+  return outcome
+}
+
 export function setUpdaterAirgap(v: boolean): void { airgap = v }
 
-export async function checkForUpdates(opts: { manual?: boolean } = {}): Promise<void> {
+async function runCheck(manual: boolean): Promise<void> {
   if (airgap) {
+    // No request is made. About says why, and where the setting is.
     console.log(TAG, 'skipped (air-gap mode)')
-    if (opts.manual) {
-      try {
-        const { dialog } = await import('electron')
-        // No Settings control exists for this; the key is only in config.yaml.
-        await dialog.showMessageBox({ type: 'info', message: 'Update check is disabled in air-gap mode.', detail: "Air-gap is set by network.offline in this project's config.yaml. Set it to false to check for updates." })
-      } catch { /* no window */ }
-    }
+    store().patch({ stage: 'unavailable', result: 'airgap', checkedAt: Date.now() })
     return
   }
-  const manual = opts.manual ?? false
   if (!app.isPackaged && !manual) {
     console.log(TAG, 'skipped (not packaged, non-manual)')
     return
   }
   console.log(TAG, `check starting (manual=${manual}, platform=${process.platform})`)
 
+  // A download or a ready update is not a check in progress; leave its state.
+  const stage = store().get().stage
+  if (stage !== 'downloading' && stage !== 'ready' && stage !== 'installing') store().patch({ stage: 'checking' })
+
   // Windows: in-app download+install. Falls back to browser on failure.
   if (process.platform === 'win32') {
-    const handled = await windowsAutoUpdate(manual)
+    const handled = await windowsAutoUpdate()
     if (handled) return
   }
 
   // macOS / Linux / Windows fallback
-  await browserFallbackUpdate(manual)
+  await browserFallbackUpdate()
+}
+
+// One check at a time: a second press while one runs gets that one, not a
+// second request and a second dialog.
+let inFlight: Promise<void> | null = null
+
+export function checkForUpdates(opts: { manual?: boolean } = {}): Promise<void> {
+  if (inFlight) return inFlight
+  inFlight = runCheck(opts.manual ?? false)
+    .catch((e: unknown) => {
+      console.error(TAG, 'check failed unexpectedly:', (e as Error).message)
+      store().patch({ stage: 'failed', result: 'failed', checkedAt: Date.now() })
+    })
+    .finally(() => { inFlight = null })
+  return inFlight
 }

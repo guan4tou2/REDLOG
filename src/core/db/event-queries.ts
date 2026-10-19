@@ -945,10 +945,20 @@ export function queryCommandOutput(commandId: string, limit = 2000): RedLogEvent
     ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>),
     ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>)
   ]
-  return rows
+  const ordered = rows
     .map(rowToEvent)
     .sort((a, b) => Number(a.data.seq ?? 0) - Number(b.data.seq ?? 0) || a.timestamp - b.timestamp)
-    .slice(0, limit)
+  // One row per seq: a resend that was stored twice (an app restart between the
+  // two, which ingest's own memory does not span) is the same chunk, not more
+  // output. The earliest is kept.
+  const seen = new Set<number>()
+  return ordered.filter((r) => {
+    const seq = r.data.seq
+    if (typeof seq !== 'number') return true
+    if (seen.has(seq)) return false
+    seen.add(seq)
+    return true
+  }).slice(0, limit)
 }
 
 /** The `command_end` rows of the given commands, either tier. A search hit on a

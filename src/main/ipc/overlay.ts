@@ -218,7 +218,15 @@ export function registerOverlayIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   // --- Quick mark / passthrough (overlay: prefix) ---
   ipcMain.on('overlay:quickMark', ctx.triggerBookmark)
-  ipcMain.handle('overlay:instantMark', () => ctx.triggerInstantMark())
+  ipcMain.handle('overlay:beginMarker', () => ctx.hudMarkerBinding?.() ?? null)
+  ipcMain.handle('overlay:addMarker', (_e, input: { title?: string; notes?: string; at?: number; bind?: string }) =>
+    ctx.addHudMarker(input && typeof input === 'object' ? input : {}))
+  // After the form closes the HUD gives focus back, so the operator returns to
+  // the window they were working in.
+  ipcMain.on('overlay:releaseFocus', () => {
+    const w = ctx.getOverlayWindow()
+    if (w && !w.isDestroyed()) w.blur()
+  })
   // §8: the HUD action-row button turns pass-through ON (it can't turn it off —
   // once on, the HUD is click-through). The exits are ⌘⇧P and the menu bar.
   ipcMain.on('overlay:setPassThrough', (_e, on: boolean) => setOverlayPassThrough(!!on))

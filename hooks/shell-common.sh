@@ -371,6 +371,16 @@ sys.stdout.write(json.dumps(d))
     # whole directory let a pile of those fill the cap and silently stop every
     # new event from being spooled. `find`, not a glob: an unmatched glob is an
     # error zsh prints itself, whatever the command's own stderr is sent to.
+    #
+    # And only while a project identity exists. Replay never claims a file that
+    # carries no engagementId — it sets it aside as `*.unattributed` and keeps
+    # it forever (#255) — so spooling without one only builds a pile nothing
+    # reads. RedLog removes active-identity.json when the project closes, which
+    # makes "no identity" the same thing as "no project to record into".
+    if ! grep -qs '"engagementId"' "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" 2>/dev/null; then
+      rm -rf "$work"
+      return 0
+    fi
     mkdir -p "$spool_dir" 2>/dev/null
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')

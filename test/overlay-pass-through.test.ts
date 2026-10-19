@@ -29,7 +29,7 @@ describe('HUD pass-through', () => {
       getCurrentOperatorId: () => null,
       send: vi.fn(),
       triggerBookmark: vi.fn(),
-      triggerInstantMark: () => ({ ok: true })
+      addHudMarker: () => ({ ok: true })
     } as unknown as IpcContext
     registerOverlayIpc({ on: vi.fn(), handle: vi.fn() } as never, ctx)
   })

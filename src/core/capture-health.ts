@@ -4,7 +4,7 @@ import {
   summarizeUnattributedSpool, clearUnattributedSpool,
   type UnattributedSpoolSummary, type ClearUnattributedResult
 } from './spool-replay'
-import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
+import { isMemberSelected, isPackAvailable, AGENT_MEMBER_KIND, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
@@ -104,6 +104,9 @@ export interface CaptureSource {
    *  being recorded (Spec 060 FR-003). Null when none has, or every one was
    *  interactive, redirected or not captured. */
   ownShellOutputAt?: number | null
+  /** Which shell (`zsh`, `bash`, `powershell`) sent that last command, so the
+   *  card can name what it actually heard from. */
+  ownShellName?: string | null
 }
 
 export interface CaptureHealth {
@@ -303,6 +306,18 @@ function lastEventFor(where: string, params: unknown[] = []): number | null {
   return chained > logged ? chained : logged
 }
 
+/** The `shell` field of the newest row matching `where`, across both tiers. */
+function lastShellNameFor(where: string, params: unknown[] = []): string | null {
+  const db = getDB()
+  const q = (table: string): { t: number; s: string | null } | undefined => db.prepare(
+    `SELECT timestamp AS t, json_extract(data,'$.shell') AS s FROM ${table} WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+  ).get(...params) as { t: number; s: string | null } | undefined
+  const a = q('events')
+  const b = q('events_logged')
+  const newest = !a ? b : !b ? a : (a.t >= b.t ? a : b)
+  return newest?.s ?? null
+}
+
 // getCaptureHealth runs eleven of those probes plus a hooks check. It is hit by
 // the Dashboard poll, the StatusBar, every REST /api/status, and every agent
 // calling redlog_status — the skill tells them to do that at session start.
@@ -486,7 +501,12 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // on this card — an operator could have the tailer off and the health
   // readout would still say healthy.
   const clipboardLast = lastEventFor(`agent_type = 'clipboard'`)
-  const tailerLast = lastEventFor(`agent_type = 'agent'`)
+  // One per agent: a Claude Code tailer that has gone quiet must not be hidden
+  // by a busy Codex one. `data.agent` is the adapter's agentKind.
+  const agentLast = Object.fromEntries(
+    (Object.entries(AGENT_MEMBER_KIND) as Array<[keyof typeof AGENT_MEMBER_KIND, string]>)
+      .map(([member, kind]) => [member, lastEventFor(`agent_type = 'agent' AND json_extract(data,'$.agent') = '${kind}'`)])
+  ) as Record<keyof typeof AGENT_MEMBER_KIND, number | null>
   const screenshotLast = lastEventFor(`agent_type = 'screenshot'`)
 
   // Any shell hook being installed makes the row installed — `??` could not
@@ -501,16 +521,18 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // Spec 060 FR-003/FR-011: only a command from a shell whose adapter IS
   // installed vouches for this row. A zsh command says nothing about a bash
   // hook, so a Bash-only install must not read "included" because zsh typed
-  // something. `shell` is absent on rows from older adapters; those still
-  // count, as `source` does above.
+  // something. A row with no `shell` field cannot say which adapter sent it,
+  // so it proves nothing about any of them: it stays in the record for reading
+  // and never lights a shell's verification.
   const installedShellNames = SHELL_HOOK_IDS
     .filter((id) => hookInstalled(id) === true)
     .map((id) => id.replace(/^shell-/, ''))
   const ownShellWhere = `agent_type = 'shell'
      AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
-     AND (json_extract(data,'$.shell') IS NULL OR json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"}))`
+     AND json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"})`
   const ownShellLast = lastEventFor(
     `${ownShellWhere} AND subtype IN ('command_start','command_end')`, installedShellNames)
+  const ownShellName = lastShellNameFor(`${ownShellWhere} AND subtype IN ('command_start','command_end')`, installedShellNames)
   const ownShellOutput = lastEventFor(
     `${ownShellWhere} AND subtype = 'command_end'
      AND json_extract(data,'$.output_disposition') = 'captured'`, installedShellNames)
@@ -589,8 +611,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // that from reading as "terminal capture is missing" when RedLog's own
     // panes are recording perfectly well without it.
     { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
-      ...enrolledTerminals(), ownShellLastEventAt: ownShellLast, ownShellOutputAt: ownShellOutput },
-    mk('agent-tailer', tailerLast, { configPath: 'packMembers.agentTailer', packPath: 'packs.aiAgents' }),
+      ...enrolledTerminals(), ownShellLastEventAt: ownShellLast, ownShellOutputAt: ownShellOutput, ownShellName },
+    mk('agent-claude-code', agentLast.claudeCode, { configPath: 'packMembers.claudeCode', packPath: 'packs.aiAgents' }),
+    mk('agent-codex', agentLast.codex, { configPath: 'packMembers.codex', packPath: 'packs.aiAgents' }),
+    mk('agent-opencode', agentLast.opencode, { configPath: 'packMembers.opencode', packPath: 'packs.aiAgents' }),
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
     // `streams` note saying which of the two had traffic in the last ten

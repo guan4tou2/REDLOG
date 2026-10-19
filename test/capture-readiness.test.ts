@@ -33,13 +33,13 @@ function health(sources: ReadinessSource[], _over: Record<string, unknown> = {})
 // plus the operator's own shell once the hook is installed — and the agent
 // tailer for AI agents. The two terminals are one source because they are one
 // capture in two places; which one a command came from is on the command.
-const CORE = ['terminal', 'agent-tailer']
+const CORE = ['terminal', 'agent-claude-code', 'agent-codex', 'agent-opencode']
 
 describe('computeCaptureReadiness', () => {
   it('is dark with a clear first step when nothing is wired', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
@@ -56,7 +56,7 @@ describe('computeCaptureReadiness', () => {
     // first and may never install a shell hook — and was told they were dark
     // while HTTP events landed on the timeline.
     const h = health([
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' }),
+      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' }),
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' })
     ], { verdict: 'dark' })
 
@@ -89,7 +89,7 @@ describe('computeCaptureReadiness', () => {
     const h = health([
       // shell hook installed but no command has run yet
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
@@ -107,11 +107,11 @@ describe('computeCaptureReadiness', () => {
     // not even when it is the only wired source.
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
     ])
     const r = computeCaptureReadiness(h)
-    expect(r.steps.find((s) => s.id === 'agent-tailer')?.status).toBe('wired')
-    expect(r.groups.find((g) => g.id === 'commands')?.steps.map((s) => s.id)).toContain('agent-tailer')
+    expect(r.steps.find((s) => s.id === 'agent-claude-code')?.status).toBe('wired')
+    expect(r.groups.find((g) => g.id === 'commands')?.steps.map((s) => s.id)).toContain('agent-claude-code')
     expect(r.nextStep?.id).toBe('terminal')
   })
 
@@ -120,7 +120,7 @@ describe('computeCaptureReadiness', () => {
     for (const terminal of states) for (const tailer of states) for (const mitm of states) {
       const r = computeCaptureReadiness(health([
         src('terminal', { state: terminal, installed: terminal !== 'absent' }),
-        src('agent-tailer', { state: tailer, enabled: tailer !== 'off' }),
+        src('agent-claude-code', { state: tailer, enabled: tailer !== 'off' }),
         src('mitmproxy', { state: mitm, enabled: mitm !== 'off' })
       ]))
       expect(['terminal', undefined]).toContain(r.nextStep?.id)
@@ -132,7 +132,7 @@ describe('computeCaptureReadiness', () => {
     // operator's own shell, and the model no longer asks which — the event
     // does, in `data.source`.
     const base = [
-      src('agent-tailer', { state: 'active', lastEventAt: 1 }),
+      src('agent-claude-code', { state: 'active', lastEventAt: 1 }),
       src('mitmproxy', { state: 'active', lastEventAt: 1 })
     ]
     const recorded = computeCaptureReadiness(health([...base, src('terminal', { state: 'active', lastEventAt: 1 })]))
@@ -154,7 +154,7 @@ describe('computeCaptureReadiness', () => {
   it('is recording, with no urgent next step, once any core source is active', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
     ], { verdict: 'healthy', recording: true })
 
     const r = computeCaptureReadiness(h)
@@ -166,7 +166,9 @@ describe('computeCaptureReadiness', () => {
   it('once everything is set up but nothing has been recorded, nudges the operator to generate activity', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' }),
+      src('agent-codex', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' }),
+      src('agent-opencode', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
@@ -182,10 +184,10 @@ describe('computeCaptureReadiness', () => {
     // purposes — offering to enable it is exactly the right nudge.
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: false, state: 'off' })
+      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: false, state: 'off' })
     ], { verdict: 'dark' })
     const r = computeCaptureReadiness(h)
-    expect(r.steps.find((s) => s.id === 'agent-tailer')?.status).toBe('todo')
+    expect(r.steps.find((s) => s.id === 'agent-claude-code')?.status).toBe('todo')
   })
 
   it('is resilient to a health payload missing a core source', () => {

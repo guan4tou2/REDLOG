@@ -221,9 +221,20 @@ describeDB('capture-health', () => {
 
   it('counts a command from the operator’s own terminal as proof', () => {
     mockHooks({ 'shell-zsh': true })
-    ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay' })
-    expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
-      .not.toBeNull()
+    ins('shell', { subtype: 'command_end', command: 'nmap -sV 10.0.0.1', source: 'auto-relay', shell: 'zsh' })
+    const t = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellLastEventAt).not.toBeNull()
+    expect(t?.ownShellName).toBe('zsh')
+  })
+
+  // A row that cannot say which adapter sent it proves nothing about any of
+  // them. It stays in the record; it does not light a shell's verification.
+  it('does not count a command with no shell field as proof', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'old adapter row', source: 'auto-relay' })
+    const t = getCaptureHealth().sources.find((s) => s.id === 'terminal')
+    expect(t?.ownShellLastEventAt).toBeNull()
+    expect(t?.ownShellName).toBeNull()
   })
 
   // Spec 060 FR-003: a command arriving is not its output arriving.
@@ -285,7 +296,7 @@ describeDB('capture-health', () => {
     expect(getCaptureHealth(t0).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
       .toBeNull()
 
-    const ev = ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay' })
+    const ev = ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay', shell: 'zsh' })
     // The path every real event takes: ingest writes, then publishes, and the
     // bus defers its fanout to a microtask.
     eventBusMod.eventBus.publish(ev!)
@@ -298,14 +309,16 @@ describeDB('capture-health', () => {
       .not.toBeNull()
   })
 
-  it('counts a command from an adapter too old to say where it came from', () => {
-    // `source` is absent on rows from adapters installed before this release.
-    // Reading that as "RedLog's pane" would tell an operator whose hook has
-    // worked for months that their setup is unfinished.
+  it('does not count a command from an adapter too old to say where it came from', () => {
+    // Rows without `source` or `shell` predate the adapters that report them.
+    // They stay in the record for reading, but nothing about them says which
+    // adapter works, so they do not light a shell's verification. The operator
+    // sees "open a new terminal and run a command" until a current adapter
+    // sends one (Spec 060 FR-003, FR-011).
     mockHooks({ 'shell-zsh': true })
     ins('shell', { subtype: 'command_end', command: 'whoami' })
     expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt)
-      .not.toBeNull()
+      .toBeNull()
   })
 
   // Spec 052 T017. The terminal row has always been able to say whether a
@@ -428,13 +441,14 @@ describeDB('capture-health', () => {
   // so the row could never report `installed` and rendered as a permanent
   // idle with an Install button that did nothing. Agent coverage now comes
   // from the transcript tailer, which sees every tool, not just Bash.
-  it('reports agent activity through the tailer row, not a claude-code row', () => {
+  it('reports agent activity through the per-tool tailer rows, not a hook row', () => {
     mockHooks({ 'shell-zsh': false })
     configureCaptureHealth({ packs: { aiAgents: true } })
-    ins('agent', { subtype: 'tool_call', tool_name: 'Bash' })
+    ins('agent', { subtype: 'tool_call', tool_name: 'Bash', agent: 'claude-code' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.lastEventAt).not.toBeNull()
   })
 
   // v0.9.7: DNS and HTTP are the same addon (hooks/mitmproxy-addon.py),
@@ -458,7 +472,7 @@ describeDB('capture-health', () => {
     // Switched on and nothing has come through it yet: it can record, which
     // is all this axis claims. Its silence is reported as an empty
     // `lastEventAt`, not as a second state.
-    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
   })
 
   it('a switched-off source does not drag the verdict to partial', () => {
@@ -618,5 +632,29 @@ describeDB('the mitmproxy row is fed by either of its two modes', () => {
   it('does not read a socket-table row as HTTP traffic', () => {
     ins('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' })
     expect(mitm()?.lastEventAt).toBeNull()
+  })
+})
+
+// Spec 050: one source per AI tool, so a quiet Claude Code tailer is not
+// hidden by a busy Codex one. `data.agent` is the adapter's agentKind.
+describeDB('each AI tool reports its own last event', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-agents-')); initDB(tmp)
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+    )
+    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+  })
+  afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
+
+  const row = (id: string) => getCaptureHealth().sources.find((s) => s.id === id)
+
+  it('lights only the tool that produced events', () => {
+    ins('agent', { subtype: 'user_prompt', agent: 'codex', session_id: 's1' })
+    expect(row('agent-codex')?.lastEventAt).not.toBeNull()
+    expect(row('agent-claude-code')?.lastEventAt).toBeNull()
+    expect(row('agent-opencode')?.lastEventAt).toBeNull()
   })
 })
