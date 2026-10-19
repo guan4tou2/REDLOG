@@ -523,6 +523,19 @@ export default function TranscriptView({ onOpenInTimeline }: {
     [blocks, kinds, pickedOnly, picks]
   )
 
+  // Blocks are built oldest first (a tool result pairs with the call before it).
+  // The list shows newest first by default — what just happened is what is
+  // looked for — and the operator can flip it.
+  const [newestFirst, setNewestFirst] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog.transcript.order') !== 'oldest' } catch { return true }
+  })
+  const toggleOrder = (): void => setNewestFirst((v) => {
+    try { localStorage.setItem('redlog.transcript.order', v ? 'oldest' : 'newest') } catch { /* order is a convenience only */ }
+    return !v
+  })
+  // Render order only: the Markdown copy and everything else stay oldest first.
+  const displayed = useMemo(() => (newestFirst ? [...shown].reverse() : shown), [shown, newestFirst])
+
   // Picking a step records a marker that cites it. The step's own events are
   // never edited, and the pick is append-only like any marker.
   const pickStep = useCallback(async (b: Block, category: PickCategory) => {
@@ -579,6 +592,27 @@ export default function TranscriptView({ onOpenInTimeline }: {
     }
   }, [hasMore, pickedOnly, shown, t])
 
+  // What loads older rows (and says it could not) sits where they would appear:
+  // below the list when newest is on top, above it when oldest is.
+  const olderBlock = (
+    <>
+        {!loading && loadError && (
+          <div data-testid="transcript-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            <div>{t(events.length > 0 ? 'transcript.loadOlderFailed' : 'transcript.loadFailed')}</div>
+            <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
+            <button type="button" onClick={() => void (events.length > 0 ? loadOlder() : load())} className="mt-2 text-red-300 underline hover:text-red-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
+        {!loading && hasMore && (
+          <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="w-full rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/10 disabled:text-redlog-text-faint">
+            {loadingOlder ? t('transcript.loadingOlder') : t('transcript.loadOlder')}
+          </button>
+        )}
+    </>
+  )
+
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
 
   return (
@@ -629,6 +663,15 @@ export default function TranscriptView({ onOpenInTimeline }: {
           {t('transcript.pickedOnly', { n: picks.size ? new Set(blocks.filter((b) => b.events.some((e) => picks.has(e.id))).map((b) => b.id)).size : 0 })}
         </button>
         <button
+          type="button"
+          data-testid="transcript-order"
+          onClick={toggleOrder}
+          title={t('transcript.orderHint')}
+          className="text-xs px-2 py-1 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text shrink-0 transition-colors"
+        >
+          {newestFirst ? t('transcript.orderNewest') : t('transcript.orderOldest')}
+        </button>
+        <button
           onClick={() => void copyAsMarkdown()}
           className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
         >
@@ -665,20 +708,6 @@ export default function TranscriptView({ onOpenInTimeline }: {
           </p>
         )}
         {loading && <p className="text-xs text-redlog-text-faint">{t('transcript.loading')}</p>}
-        {!loading && loadError && (
-          <div data-testid="transcript-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-            <div>{t(events.length > 0 ? 'transcript.loadOlderFailed' : 'transcript.loadFailed')}</div>
-            <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
-            <button type="button" onClick={() => void (events.length > 0 ? loadOlder() : load())} className="mt-2 text-red-300 underline hover:text-red-200">
-              {t('common.retry')}
-            </button>
-          </div>
-        )}
-        {!loading && hasMore && (
-          <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="w-full rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/10 disabled:text-redlog-text-faint">
-            {loadingOlder ? t('transcript.loadingOlder') : t('transcript.loadOlder')}
-          </button>
-        )}
         {!loading && !loadError && shown.length === 0 && (
           buckets.length === 0
             ? (
@@ -697,7 +726,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
               />
             )
         )}
-        {shown.map((b) => {
+        {!newestFirst && olderBlock}
+        {displayed.map((b) => {
           const revealed = expanded.has(b.id)
           const hasOutput = !!b.output || !!b.outputNote
           const big = (b.output?.length ?? 0) > MAX_INLINE
@@ -865,6 +895,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             </div>
           )
         })}
+        {newestFirst && olderBlock}
       </div>
     </div>
   )
