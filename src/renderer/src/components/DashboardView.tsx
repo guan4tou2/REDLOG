@@ -119,7 +119,6 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
-  const [setupOpen, setSetupOpen] = useState(false)
   const refreshCaptureRef = useRef<() => void>(() => {})
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
@@ -183,7 +182,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   // §22 / turn 9a. Nothing has been captured yet, so the dashboard's three
   // empty stat cards and ten-source checklist have nothing to describe. Same
   // view id, so every route and every spec that says `dashboard` still works.
-  if (firstRun || setupOpen) {
+  if (firstRun) {
     return (
       <FirstRunView
         onNavigate={onNavigate}
@@ -211,11 +210,11 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
-          onSetup={() => setSetupOpen(true)}
+          onSetup={() => onNavigate(settingsTarget('captureControl'))}
         />
       )}
       {!capture && (
-        <Button level="secondary" data-testid="capture-open-setup" onClick={() => setSetupOpen(true)}>
+        <Button level="secondary" data-testid="capture-open-setup" onClick={() => onNavigate(settingsTarget('captureControl'))}>
           {t('capture.openSetup')}
         </Button>
       )}
