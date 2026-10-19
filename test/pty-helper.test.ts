@@ -7,6 +7,11 @@ import { ensurePtyHelperExecutable } from '../src/core/pty-helper'
 // A shell that cannot be started fails as `posix_spawnp failed` and records
 // nothing. The helper's execute bit is checked where the terminal starts.
 
+// These build fixtures with chmod. Windows keeps no POSIX mode bits, so chmod
+// cannot make a file "not executable" there and the premise does not hold; the
+// helper itself is only ever touched on macOS.
+const posixOnly = it.skipIf(process.platform === 'win32')
+
 describe('node-pty spawn-helper permission', () => {
   let root: string
   beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pty-')) })
@@ -21,7 +26,7 @@ describe('node-pty spawn-helper permission', () => {
   }
   const exec = (file: string): boolean => (fs.statSync(file).mode & 0o111) !== 0
 
-  it('restores the execute bit that an install left off', () => {
+  posixOnly('restores the execute bit that an install left off', () => {
     const arm = helper('prebuilds/darwin-arm64/spawn-helper', 0o644)
     const x64 = helper('prebuilds/darwin-x64/spawn-helper', 0o644)
     const result = ensurePtyHelperExecutable(root, 'darwin')
@@ -30,7 +35,7 @@ describe('node-pty spawn-helper permission', () => {
     expect(exec(arm) && exec(x64)).toBe(true)
   })
 
-  it('leaves a helper that already runs alone, and a build that does not ship one', () => {
+  posixOnly('leaves a helper that already runs alone, and a build that does not ship one', () => {
     const ok = helper('build/Release/spawn-helper', 0o755)
     const before = fs.statSync(ok).mode
     expect(ensurePtyHelperExecutable(root, 'darwin')).toEqual({ fixed: [], failed: [] })
@@ -43,7 +48,7 @@ describe('node-pty spawn-helper permission', () => {
     expect(exec(file)).toBe(false)
   })
 
-  it('checks the unpacked twin of an archive path', () => {
+  posixOnly('checks the unpacked twin of an archive path', () => {
     const unpacked = path.join(root, 'app.asar.unpacked', 'node_modules', 'node-pty')
     const file = path.join(unpacked, 'prebuilds', 'darwin-arm64', 'spawn-helper')
     fs.mkdirSync(path.dirname(file), { recursive: true })
