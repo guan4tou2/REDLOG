@@ -1604,6 +1604,7 @@
   "captureSetup.prove": "以實際紀錄驗證",
   "captureSetup.checking": "正在檢查這台電腦可用的工具…",
   "captureSetup.missing": "安裝下列缺少的工具；已可用的工具無需操作。",
+  "settings.hookInstalled": "{{name}} 已安裝",
   "captureSetup.install": "安裝",
   "captureSetup.installing": "安裝中…",
   "captureSetup.installWait": "正在下載並安裝；網路較慢時最多等待 {{minutes}} 分鐘。可取消或離開此畫面停止安裝。",

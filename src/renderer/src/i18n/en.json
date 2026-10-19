@@ -1604,6 +1604,7 @@
   "captureSetup.prove": "Verify with recorded events",
   "captureSetup.checking": "Checking the tools available on this machine…",
   "captureSetup.missing": "Install the missing tools below. Available tools need no action.",
+  "settings.hookInstalled": "{{name}} installed",
   "captureSetup.install": "Install",
   "captureSetup.installing": "Installing…",
   "captureSetup.installWait": "Downloading and installing. Slow connections can take up to {{minutes}} minutes. Cancel or leave this screen to stop.",
