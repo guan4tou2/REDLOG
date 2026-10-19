@@ -125,6 +125,51 @@ describe('UpdateFlow reports its state and can be cancelled', () => {
   })
 })
 
+describe('UpdateFlow when the save before a restart fails', () => {
+  const ready = async (over: Partial<UpdateFlowDeps>) => {
+    const quit = vi.fn()
+    const deps: UpdateFlowDeps = {
+      port: { download: async () => {}, quitAndInstall: quit },
+      askDownload: async () => true, announceReady: async () => 'later', impact: () => null,
+      confirmRestart: async () => true, onDownloadFailed: async () => {},
+      beforeRestart: async () => {}, allowQuit: vi.fn(), ...over
+    }
+    const flow = new UpdateFlow(deps)
+    await flow.offer('2.0.0')
+    return { flow, deps, quit }
+  }
+
+  it('does not restart, and stays ready, when the operator cancels', async () => {
+    const { flow, deps, quit } = await ready({
+      beforeRestart: async () => { throw new Error('marker: disk full') },
+      onRestartBlocked: vi.fn(async () => 'cancel' as const)
+    })
+    await flow.install()
+    expect(deps.onRestartBlocked).toHaveBeenCalledTimes(1)
+    expect(quit).not.toHaveBeenCalled()
+    expect(deps.allowQuit).not.toHaveBeenCalled()
+    expect(flow.status().state).toBe('ready')
+  })
+
+  it('tries the save again on retry and restarts only once it succeeded', async () => {
+    let attempts = 0
+    const { flow, quit } = await ready({
+      beforeRestart: async () => { if (++attempts < 3) throw new Error('busy') },
+      onRestartBlocked: async () => 'retry'
+    })
+    await flow.install()
+    expect(attempts).toBe(3)
+    expect(quit).toHaveBeenCalledTimes(1)
+  })
+
+  it('without a handler the error reaches the caller and nothing restarts', async () => {
+    const { flow, quit } = await ready({ beforeRestart: async () => { throw new Error('boom') } })
+    await expect(flow.install()).rejects.toThrow('boom')
+    expect(quit).not.toHaveBeenCalled()
+    expect(flow.status().state).toBe('ready')
+  })
+})
+
 // The wiring, not the logic: no check may end in a dialog saying "latest" when
 // it did not find out, and a second press must not start a second check.
 describe('updater.ts wiring', () => {
@@ -152,5 +197,33 @@ describe('updater.ts wiring', () => {
     expect(run.indexOf('if (airgap)')).toBeLessThan(run.indexOf('await browserFallbackUpdate()'))
     expect(src.match(/windowsAutoUpdate\(\)/g)?.length).toBe(2) // declaration + the one call
     expect(src.match(/browserFallbackUpdate\(\)/g)?.length).toBe(2)
+  })
+
+  it('stops the restart when this machine could not write its own record', () => {
+    expect(src).toMatch(/if \(result\.localError\) throw new Error\(result\.localError\)/)
+    expect(src).toMatch(/onRestartBlocked/)
+    // Air-gap is passed to both places that anchor, so neither asks the network.
+    expect((src.match(/offline: airgap/g) ?? []).length).toBe(2)
+  })
+})
+
+// T022: the restart reaches the recording through the ordinary quit. If it did
+// not, finishing recordings would need a path of its own.
+describe('the quit that an update ends with', () => {
+  const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
+
+  it('finishes terminal recordings while the database is still open', () => {
+    const stop = index.slice(index.indexOf('function stopProject'))
+    expect(stop.indexOf('detachTerminalRecordings()')).toBeGreaterThan(-1)
+    expect(stop.indexOf('detachTerminalRecordings()')).toBeLessThan(stop.indexOf('closeDB()'))
+    const willQuit = index.slice(index.indexOf("app.on('will-quit'"))
+    expect(willQuit.slice(0, 400)).toContain('stopProject()')
+  })
+
+  it('judges the update when the project opens, and clears the marker only after the record was written', () => {
+    const at = index.indexOf('readUpdateMarker(')
+    expect(at).toBeGreaterThan(-1)
+    const block = index.slice(at, at + 900)
+    expect(block.indexOf('recordUpdateOutcome(')).toBeLessThan(block.indexOf('clearUpdateMarker('))
   })
 })
