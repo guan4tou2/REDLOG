@@ -272,8 +272,10 @@ test.describe('packaged app', () => {
       await test.step('an evidence bundle exports and its bundled verifier passes', async () => {
         const plan = await page.evaluate(async () => window.redlog.data.resolveExportPlan({ format: 'bundle', subset: { kind: 'all' } })) as { ok: boolean; plan?: { id: string } }
         expect(plan.ok).toBe(true)
-        const done = await page.evaluate(async (id) => window.redlog.data.executeExportPlan({ planId: id }), plan.plan!.id) as { ok: boolean; artifactPath?: string }
-        expect(done.ok).toBe(true)
+        const done = await page.evaluate(async (id) => window.redlog.data.executeExportPlan({ planId: id }), plan.plan!.id) as { ok: boolean; artifactPath?: string; error?: string }
+        // The failure code is the evidence. A bare `expected true` names nothing,
+        // and one export in fourteen failed with no way to say why (#344).
+        expect(done.ok, `export failed: ${JSON.stringify(done)}`).toBe(true)
         const dir = done.artifactPath!
         expect(readdirSync(dir)).toEqual(expect.arrayContaining(['manifest.json', 'events.jsonl', 'redlog-verify.py', 'verify.cmd', 'verify.sh']))
 
