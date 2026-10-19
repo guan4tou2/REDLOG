@@ -1093,7 +1093,7 @@ function startProject(project: ProjectMeta): void {
   }, 5 * 60 * 1000)
 
   if (!overlayWindow) {
-    overlayWindow = createOverlayWindow(loadOverlayPosition())
+    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false })
     // §8: remember where the operator put it, per display. `moved` fires
     // throughout a drag, so debounce to the end of it.
     let moveTimer: ReturnType<typeof setTimeout> | null = null

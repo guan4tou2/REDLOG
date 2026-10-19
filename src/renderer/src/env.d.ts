@@ -634,6 +634,7 @@ interface RedLogConfigPartial {
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
   overlay?: {
+    autoShow?: boolean
     showMarkButton?: boolean
     showInDock?: boolean
     flashOnExposed?: boolean

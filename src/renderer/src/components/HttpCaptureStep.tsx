@@ -131,12 +131,18 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const [preflightFailed, setPreflightFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
-  // Open: trusting the CA is step two of the default route, not a footnote.
-  const [showCa, setShowCa] = useState(true)
+  // Closed until asked for (Spec 060 US2.1): the card shows the step the
+  // operator is on, and the fingerprint and the trust and untrust commands are
+  // reference, not the next action. The one-line cue above the toggle still
+  // says the certificate is step two. A client that refused the certificate
+  // makes the CA the current step, so it opens itself then (effect below).
+  const [showCa, setShowCa] = useState(false)
   const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
   const running = status.state === 'running'
   const verified = running && attempt.https !== null
+  const certRefused = attempt.rejectedAt !== null
+  useEffect(() => { if (certRefused) setShowCa(true) }, [certRefused])
 
   // Reports arrive for as long as the card is up: HTTPS can verify after
   // HTTP, and a check from a terminal can land at any time.
@@ -282,7 +288,13 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
               {status.certReady !== false && status.caFingerprint && (
                 <p data-testid="first-run-http-ca-download" className="text-redlog-text-dim">{t('firstRun.http.caDownload')}</p>
               )}
-              <button onClick={() => setShowCa((v) => !v)} className="text-redlog-text-faint underline hover:text-redlog-text">
+              <button
+                type="button"
+                data-testid="first-run-http-ca-toggle"
+                aria-expanded={showCa}
+                onClick={() => setShowCa((v) => !v)}
+                className="text-redlog-text-faint underline hover:text-redlog-text"
+              >
                 {t('firstRun.http.caLink')}
               </button>
               {showCa && (
