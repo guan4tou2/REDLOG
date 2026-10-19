@@ -5,6 +5,14 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Settings ▸ About now says where updating stands: how this install updates, what
+  the last check found and when, download progress with a cancel, and a
+  downloaded update that stays findable with its own "Install and restart"
+  button. A check that failed, or a release with no installer for this computer,
+  is no longer worded like "up to date" (there are separate messages and a link
+  to the download page), and air-gap says it made no request and where the
+  setting is. A second press while a check runs does nothing new. Results that
+  nobody has to decide on no longer pop a dialog.
 - Updates no longer restart RedLog on their own (Windows, where in-app update
   exists). Downloading and restarting are two separate choices: the download
   runs in the background and ends with "ready"; installing is a second action

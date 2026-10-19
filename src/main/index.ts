@@ -76,7 +76,7 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -1852,6 +1852,10 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  ipcMain.handle('app:updateStatus', () => getUpdateStatus())
+  ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
+  ipcMain.handle('app:installUpdate', () => installReadyUpdate())
+  onUpdateStatus((status) => send(mainWindow, 'app:updateStatusChanged', status))
   // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
   ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))
   ipcMain.handle('debug:set', (_e, on: unknown) => {

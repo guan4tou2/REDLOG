@@ -14,6 +14,8 @@ import type { QuitImpact } from '../quit-guard'
 
 export interface UpdatePort {
   download(): Promise<void>
+  /** Stop a download in progress; the `download()` promise then rejects. */
+  cancelDownload?(): void
   quitAndInstall(): void
 }
 
@@ -35,6 +37,8 @@ export interface UpdateFlowDeps {
   /** Let the quit through without the quit-guard dialog: the operator has just
    *  answered a more specific one. */
   allowQuit(): void
+  /** The flow moved. For whoever shows its state; it changes nothing here. */
+  onState?(state: UpdateFlowState, readyVersion: string | null): void
 }
 
 export type UpdateFlowState = 'idle' | 'downloading' | 'ready' | 'installing'
@@ -46,8 +50,16 @@ const sameImpact = (a: QuitImpact | null, b: QuitImpact | null): boolean =>
     a.externalActive === b.externalActive && a.project === b.project)
 
 export class UpdateFlow {
-  private state: UpdateFlowState = 'idle'
+  private current: UpdateFlowState = 'idle'
   private ready: string | null = null
+  private cancelling = false
+
+  private get state(): UpdateFlowState { return this.current }
+  private set state(next: UpdateFlowState) {
+    if (next === this.current) return
+    this.current = next
+    this.deps.onState?.(next, this.ready)
+  }
 
   constructor(private readonly deps: UpdateFlowDeps) {}
 
@@ -64,17 +76,31 @@ export class UpdateFlow {
     if (!(await this.deps.askDownload(version))) return
     // A second click while the dialog was up must not start a second download.
     if (this.state !== 'idle') return
+    this.cancelling = false
     this.state = 'downloading'
     try {
       await this.deps.port.download()
     } catch (e) {
       this.state = 'idle'
-      await this.deps.onDownloadFailed(e as Error)
+      // Cancelling is the operator's own choice, not a failure to report.
+      const cancelled = this.cancelling
+      this.cancelling = false
+      if (!cancelled) await this.deps.onDownloadFailed(e as Error)
       return
     }
-    this.state = 'ready'
+    this.cancelling = false
     this.ready = version
+    this.state = 'ready'
     if ((await this.deps.announceReady(version)) === 'now') await this.install()
+  }
+
+  /** Stop the download in progress. False when there is none or the port
+   *  cannot stop one, in which case it carries on. */
+  cancel(): boolean {
+    if (this.state !== 'downloading' || !this.deps.port.cancelDownload) return false
+    this.cancelling = true
+    this.deps.port.cancelDownload()
+    return true
   }
 
   /** Restart into the downloaded version, once the operator has seen what that
