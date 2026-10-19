@@ -77,6 +77,10 @@ const CASES: Case[] = [
   { name: 'a shell name that needs escaping', command: 'ls', env: { SHELL: '/bin/we"ird' }, fast: true }
 ]
 
+/** Spooling needs a project identity (a payload without one is never replayed),
+ *  so a case that does not test the identity itself runs inside a project. */
+const DEFAULT_IDENTITY = '{"engagementId":"eng-1","operatorId":"op-1"}'
+
 /** A string as one single-quoted word, whatever is in it. */
 const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
 
@@ -84,7 +88,7 @@ function body(hook: string): string {
   const lines: string[] = []
   CASES.forEach((c, i) => {
     const env = Object.entries(c.env ?? {}).map(([k, v]) => `${k}=${shq(v)}`).join(' ')
-    lines.push(`run_case ${i} ${shq(c.command)} ${shq(c.extra ?? '')} ${shq(c.identity ?? '')} ${shq(env)}`)
+    lines.push(`run_case ${i} ${shq(c.command)} ${shq(c.extra ?? '')} ${shq(c.identity ?? DEFAULT_IDENTITY)} ${shq(env)}`)
   })
   return `
 if [ -n "\${ZSH_VERSION:-}" ]; then zmodload zsh/datetime 2>/dev/null; fi

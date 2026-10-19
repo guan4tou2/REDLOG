@@ -21,9 +21,16 @@ export HOME="$work/home"
 unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION
 `
 
+// Spooling needs a project: RedLog removes active-identity.json when the project
+// closes, and replay sets aside — never replays — a payload without one.
+const inProject = `
+mkdir -p "$work/home/.redlog"
+printf '{"engagementId":"eng-1","operatorId":"op-1"}' > "$work/home/.redlog/active-identity.json"
+`
+
 describeShell('a command typed when the hook has no api-port / api-token', () => {
   it('keeps every event when date has only second precision (BSD date)', async () => {
-    const script = `${prelude}
+    const script = `${prelude}${inProject}
 source ${hookPath(target!, 'shell-common.sh')}
 date() { printf '%s\\n' 1700000000N; }
 _redlog_send_event command_start first
@@ -42,7 +49,7 @@ PY
   }, 90_000)
 
   it('is spooled for replay, with no token to deliver it', async () => {
-    const script = `${prelude}
+    const script = `${prelude}${inProject}
 source ${hookPath(target!, 'shell-common.sh')}
 _redlog_send_event command_start 'nmap -sV 10.0.0.5'
 echo "WAITING=$(find "$work/home/.redlog/pending" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
@@ -55,7 +62,7 @@ f=$(find "$work/home/.redlog/pending" -maxdepth 1 -name '*.json' 2>/dev/null | h
   }, 90_000)
 
   it('keeps the time the command ran, not the time it is replayed', async () => {
-    const script = `${prelude}
+    const script = `${prelude}${inProject}
 source ${hookPath(target!, 'shell-common.sh')}
 before=$(( $(date +%s) * 1000 ))
 _redlog_send_event command_start 'id'
@@ -78,6 +85,16 @@ echo "WAITING=$(find "$work/home/.redlog/pending" -maxdepth 1 -name '*.json' | w
     const run = await runInShell(target!, script, { timeoutMs: 120_000 })
     expect(run.stdout, run.stderr.slice(0, 400)).toContain('WAITING=5000')
   }, 150_000)
+
+  it('keeps nothing when no project is open, because replay would only set it aside', async () => {
+    const script = `${prelude}
+source ${hookPath(target!, 'shell-common.sh')}
+_redlog_send_event command_start 'ls'
+echo "WAITING=$(find "$work/home/.redlog/pending" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
+`
+    const run = await runInShell(target!, script, { timeoutMs: 60_000 })
+    expect(run.stdout, run.stderr.slice(0, 400)).toContain('WAITING=0')
+  }, 90_000)
 
   it('does nothing for a session RedLog itself launched elsewhere', async () => {
     const script = `${prelude}

@@ -157,6 +157,13 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    updateStatus: () => Promise<import('../../main/services/update-status').UpdateStatus>
+    cancelUpdate: () => Promise<boolean>
+    installUpdate: () => Promise<void>
+    setAutoUpdateCheck: (on: boolean) => Promise<import('../../main/services/update-status').UpdateStatus>
+    takeUpdateOutcome: () => Promise<import('../../main/services/update-marker').UpdateOutcome | null>
+    onUpdateOutcomeReady: (cb: () => void) => () => void
+    onUpdateStatus: (cb: (status: import('../../main/services/update-status').UpdateStatus) => void) => () => void
     openExternal: (url: string) => Promise<void>
     setQuitText: (text: Record<string, string>) => void
   }
@@ -206,6 +213,10 @@ interface RedLogAPI {
     addDropped: (files: File[], text: { title: string; message: string; confirm: string; cancel: string }) => Promise<ArtifactAddResponse | null>
     /** Show an evidence file in the file manager (never opens it). */
     reveal: (kind: 'artifact' | 'screenshot', file: string) => Promise<boolean>
+  }
+  agents: {
+    /** The AI tools whose local session files RedLog can read, and whether each folder exists here. */
+    sources: () => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
@@ -349,8 +360,13 @@ interface RedLogAPI {
   }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
-    executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
-    /** Show a finished export in the file manager (paths inside the project only). */
+    /** `destDir`: a folder returned by `pickExportDir`; omitted means the project's exports folder. */
+    executeExportPlan: (input: { planId: string; destDir?: string }) => Promise<ExportPlanResult>
+    /** The project's default exports folder, or null with no project open. */
+    exportDestination: () => Promise<string | null>
+    /** System folder picker. Only a folder chosen here is accepted as a destination. */
+    pickExportDir: () => Promise<string | null>
+    /** Show a finished export in the file manager (inside the project, or a folder picked above). */
     revealExport: (target: string) => Promise<boolean>
   }
   visibility: {
@@ -412,7 +428,10 @@ interface RedLogAPI {
     onPassThroughChanged: (cb: (on: boolean) => void) => () => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
-    instantMark?: () => Promise<{ ok: boolean; id?: string }>
+    /** The project a marker draft belongs to; hand it back as `bind` on save. */
+    beginMarker?: () => Promise<string | null>
+    addMarker?: (input: { title?: string; notes?: string; at?: number; bind?: string }) => Promise<{ ok: boolean; id?: string; reason?: 'project-changed' }>
+    releaseFocus?: () => void
     /** §8: turn HUD click-through ON from the action row (main owns the exits). */
     setPassThrough?: (on: boolean) => void
     mouseEnter?: () => void
@@ -525,6 +544,8 @@ interface CaptureSourceInfo {
   ownShellLastEventAt?: number | null
   /** `terminal` only: when one of them last arrived with its output captured. */
   ownShellOutputAt?: number | null
+  /** `terminal` only: the shell that sent that last command. */
+  ownShellName?: string | null
   /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */

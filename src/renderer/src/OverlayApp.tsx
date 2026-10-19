@@ -40,6 +40,15 @@ export default function OverlayApp(): JSX.Element {
   // sign anything happened — there is no dialog and no window change, which is
   // the entire point of it.
   const [justMarked, setJustMarked] = useState(false)
+  const [markFailed, setMarkFailed] = useState<false | 'failed' | 'project-changed'>(false)
+  // The "Add marker" form lives inside the HUD. `markAt` is taken at the click
+  // that opened it, so the marker is timed at that moment, not at save.
+  const [markOpen, setMarkOpen] = useState(false)
+  const [markMore, setMarkMore] = useState(false)
+  const [markTitle, setMarkTitle] = useState('')
+  const [markNotes, setMarkNotes] = useState('')
+  const markAtRef = useRef(0)
+  const markBindRef = useRef<Promise<string | null>>(Promise.resolve(null))
   const markedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
@@ -144,10 +153,27 @@ export default function OverlayApp(): JSX.Element {
   // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond
   // useful. `autosize` picks up the new content height on every render so the
   // window still fits without clipping.
-  const doInstantMark = async (): Promise<void> => {
-    const r = await window.redlog.overlay.instantMark!()
-    if (!r?.ok) return
+  const openMarkForm = (): void => {
+    markAtRef.current = Date.now()
+    markBindRef.current = (window.redlog.overlay.beginMarker?.() ?? Promise.resolve(null)).catch(() => null)
+    setMarkTitle(''); setMarkNotes(''); setMarkMore(false); setMarkFailed(false)
+    setMarkOpen(true)
+  }
+  const closeMarkForm = (): void => {
+    setMarkOpen(false)
+    window.redlog.overlay.releaseFocus?.()
+  }
+  const saveMark = async (): Promise<void> => {
+    // A failed save keeps the form open with what was typed, and says so: it
+    // must not look like a recorded marker.
+    // The draft belongs to the project that was open when it was started.
+    const bind = await markBindRef.current
+    const r = await window.redlog.overlay.addMarker!({ title: markTitle, notes: markNotes, at: markAtRef.current, ...(bind ? { bind } : {}) }).catch(() => null)
+    if (!r?.ok) { setMarkFailed(r?.reason === 'project-changed' ? 'project-changed' : 'failed'); return }
+    setMarkFailed(false)
+    setMarkOpen(false)
     setJustMarked(true)
+    window.redlog.overlay.releaseFocus?.()
     if (markedTimerRef.current) clearTimeout(markedTimerRef.current)
     markedTimerRef.current = setTimeout(() => setJustMarked(false), 1400)
   }
@@ -355,76 +381,111 @@ export default function OverlayApp(): JSX.Element {
 
               {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: fs(10) }}>{status.error}</p>}
 
-              {/* Bottom action row — two marks + the keep-open toggle.
-                  v0.9.7: the single MARK button opened the full dialog in the
-                  main window, which raises and focuses it — the one thing a
-                  heads-up display should never do to note that something just
-                  happened. Split in two:
-                    quick   — timestamped marker straight into the chain, no
-                              dialog, no focus change; the HUD confirms inline
-                    detail  — the previous behaviour, for when a title and
-                              notes are worth stopping for
-                  Both are kept out of the top-right chrome so ▲/✕ stay
-                  uncluttered for glance operation. */}
-              <div style={{ ...noDrag, display: 'flex', gap: 6, marginTop: 10 }}>
-                {showMark && (
-                  <>
-                    <button
-                      type="button"
-                      className="hudBtn"
-                      onClick={() => { void doInstantMark() }}
-                      style={{ ...hudVerb, color: justMarked ? HUD.green : CYAN, background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09), border: `1px solid ${justMarked ? HUD.green : CYAN}55`, textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55` }}
-                      title={t('overlay.markQuickHint')}
-                    >
-                      {justMarked ? `✓ ${t('overlay.marked').toUpperCase()}` : `⚡ ${t('overlay.markQuick').toUpperCase()}`}
-                    </button>
-                    <button
-                      type="button"
-                      className="hudBtn"
-                      onClick={() => window.redlog.overlay.quickMark!()}
-                      style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, textShadow: `0 0 7px ${CYAN}55` }}
-                      title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
-                    >
-                      ✎ {t('overlay.markDetail').toUpperCase()}
-                    </button>
-                  </>
-                )}
-                {/* Keep-open. This always controlled the 8s auto-collapse, but
-                    a bare 📌 did not say so — relabelled to name the thing it
-                    actually does. */}
-                {/* v0.11.1: back to a compact icon. Spelling out "KEEP OPEN"
-                    made this the widest control in the row and squeezed the
-                    two mark buttons that are the reason the row exists — the
-                    v0.9.3 layout gave MARK the full width for good reason.
-                    The label lives in the tooltip; the filled/hollow square
-                    carries the state, and the border colour reinforces it. */}
-                {/* Pass-through (§8): the discoverable way IN to ghost mode —
-                    the action row, not just Settings. Once on, the HUD is
-                    click-through so this button can't turn it off; the way
-                    back out is ⌘⇧P or the menu bar (both wired in main), and
-                    a 3s hint says so the moment it activates. */}
-                <button
-                  type="button"
-                  className="hudBtn"
-                  onClick={() => window.redlog.overlay.setPassThrough!(true)}
-                  style={{ ...hudToggle, color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}
-                  title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint')}`}
-                  aria-label={t('overlay.passThrough')}
+              {/* One way to add a marker. The click opens a small form here in
+                  the HUD: the time is the click's, the title is optional, Enter
+                  or "Save marker" finishes, Esc cancels, and "More" adds notes.
+                  The global shortcut still opens the full dialog. Below it, the
+                  HUD's own controls (keep expanded, click-through) are a second
+                  row because they are a different kind of control. */}
+              {showMark && !markOpen && (
+                <div style={{ ...noDrag, display: 'flex', gap: 6, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="hudBtn"
+                    data-testid="hud-add-marker"
+                    onClick={openMarkForm}
+                    style={{
+                      ...hudVerb,
+                      color: justMarked ? HUD.green : CYAN,
+                      background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09),
+                      border: `1px solid ${justMarked ? HUD.green : CYAN}55`,
+                      textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55`
+                    }}
+                    title={`${t('overlay.addMarkerHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
+                  >
+                    {justMarked ? `✓ ${t('overlay.marked')}` : t('overlay.addMarker')}
+                  </button>
+                </div>
+              )}
+              {showMark && markOpen && (
+                <form
+                  data-testid="hud-marker-form"
+                  style={{ ...noDrag, display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}
+                  onSubmit={(e) => { e.preventDefault(); void saveMark() }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); closeMarkForm() } }}
                 >
-                  ◌
-                </button>
+                  <input
+                    data-testid="hud-marker-title"
+                    autoFocus
+                    value={markTitle}
+                    onChange={(e) => setMarkTitle(e.target.value)}
+                    placeholder={t('overlay.markTitlePlaceholder')}
+                    aria-label={t('overlay.markTitlePlaceholder')}
+                    style={{ height: rowH, padding: '0 8px', fontSize: fs(11), color: '#eaf7fb', background: 'rgba(255,255,255,0.07)', border: `1px solid ${CYAN}55`, outline: 'none', fontFamily: 'inherit' }}
+                  />
+                  {markMore && (
+                    <textarea
+                      data-testid="hud-marker-notes"
+                      value={markNotes}
+                      onChange={(e) => setMarkNotes(e.target.value)}
+                      placeholder={t('overlay.markNotesPlaceholder')}
+                      aria-label={t('overlay.markNotesPlaceholder')}
+                      rows={3}
+                      style={{ padding: '4px 8px', fontSize: fs(11), color: '#eaf7fb', background: 'rgba(255,255,255,0.07)', border: `1px solid ${CYAN}55`, outline: 'none', resize: 'none', fontFamily: 'inherit' }}
+                    />
+                  )}
+                  {markFailed && (
+                    <p role="alert" data-testid="hud-marker-failed" style={{ margin: 0, fontSize: fs(10), color: HUD.red }}>{`✕ ${markFailed === 'project-changed' ? t('overlay.markProjectChanged') : t('overlay.markFailed')}`}</p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="submit" className="hudBtn" data-testid="hud-marker-save" style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55` }}>
+                      {t('overlay.markSave')}
+                    </button>
+                    {!markMore && (
+                      <button type="button" className="hudBtn" data-testid="hud-marker-more" onClick={() => setMarkMore(true)} style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}>
+                        {t('overlay.markMore')}
+                      </button>
+                    )}
+                    <button type="button" className="hudBtn" data-testid="hud-marker-cancel" onClick={closeMarkForm} style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}>
+                      {t('common.cancel')}
+                    </button>
+                  </div>
+                </form>
+              )}
+              <div style={{ ...noDrag, display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                {/* Keep expanded: controls the 8s auto-collapse. A checkbox
+                    glyph carries the state in words, not a square to decode. */}
                 <button
                   type="button"
                   className="hudBtn"
+                  data-testid="hud-keep-open"
                   onClick={() => setPinned((p) => !p)}
-                  style={{ ...hudToggle, color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}` }}
-                  title={`${t('overlay.keepOpen')} — ${pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}`}
-                  aria-label={t('overlay.keepOpen')}
+                  style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}` }}
+                  title={pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}
                   aria-pressed={pinned}
                 >
-                  {pinned ? '▣' : '▢'}
+                  {pinned ? '☑' : '☐'} {t('overlay.keepOpen')}
+                </button>
+                <span style={{ flex: 1 }} />
+                {/* Pass-through (§8): the way IN to ghost mode. Once on, the HUD
+                    is click-through so this button cannot turn it off; the way
+                    back is the shortcut or the menu bar (both wired in main),
+                    so the button's own tooltip and the line below name it
+                    BEFORE it is pressed. */}
+                <button
+                  type="button"
+                  className="hudBtn"
+                  data-testid="hud-pass-through"
+                  onClick={() => window.redlog.overlay.setPassThrough!(true)}
+                  style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}
+                  title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint', { chord: ptChord })}`}
+                >
+                  {t('overlay.passThrough')}
                 </button>
               </div>
+              <p data-testid="hud-pass-through-hint" style={{ ...noDrag, margin: '4px 0 0', fontSize: fs(10), color: MUTED }}>
+                {t('overlay.passThroughHint', { chord: ptChord })}
+              </p>
             </div>
           )}
           </div>
