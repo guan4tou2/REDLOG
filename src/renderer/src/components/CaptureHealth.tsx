@@ -5,7 +5,6 @@ import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } fro
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
-import { confirmGraded } from './ConfirmDialog'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
@@ -31,6 +30,19 @@ function ownShellKey(s: { installed?: boolean; ownShellLastEventAt?: number | nu
   return s.ownShellOutputAt != null
     ? 'capture.terminalOwnShellIncluded'
     : 'capture.terminalOwnShellCommandOnly'
+}
+
+const SHELL_LABEL: Record<string, string> = { zsh: 'Zsh', bash: 'Bash', powershell: 'PowerShell' }
+
+/** What the card heard and when, as facts. It says what arrived, not what will
+ *  keep being recorded: a shell can be switched, an interactive tool can take
+ *  the terminal, and a source can stop after the last thing it sent. */
+function ownShellVars(s: { ownShellName?: string | null; ownShellLastEventAt?: number | null; ownShellOutputAt?: number | null }): Record<string, string> {
+  return {
+    shell: s.ownShellName ? (SHELL_LABEL[s.ownShellName] ?? s.ownShellName) : '',
+    command: s.ownShellLastEventAt != null ? formatDateTime(s.ownShellLastEventAt) : '',
+    output: s.ownShellOutputAt != null ? formatDateTime(s.ownShellOutputAt) : ''
+  }
 }
 
 /** `127.0.0.1:6661` from the managed proxy's `http://127.0.0.1:6661`, only while
@@ -151,7 +163,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
   const SOURCE_LABEL: Record<string, string> = {
     'terminal': t('capture.terminal'),     // RedLog's panes + the operator's own shell
     'mitmproxy': t('capture.mitmproxy'),   // HTTP + DNS — one addon, one row
-    'agent-tailer': t('capture.agentTailer'),
+    'agent-claude-code': t('capture.agentClaudeCode'),
+    'agent-codex': t('capture.agentCodex'),
+    'agent-opencode': t('capture.agentOpencode'),
     'screenshot': t('capture.screenshot'),
     'clipboard': t('capture.clipboard'),
     // v0.6.92 W-project producers.
@@ -296,40 +310,6 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
     } finally { setBusy(null) }
   }
   const stateLabel = (s: string): string => t(`capture.state.${s}`)
-
-  // Deleting the commands that had no project (#255). Graded `irreversible`,
-  // not `chain`: they are not in the evidence chain — that is the point of the
-  // line — but once the files go nothing can bring them back, so the box has to
-  // be ticked. What is deleted is what the card is showing: the newest write
-  // time goes with the request so a command set aside in the meantime survives.
-  const clearUnattributed = async (spool: { count: number; oldestAt: number; newestAt: number }): Promise<void> => {
-    const ok = await confirmGraded({
-      title: t('capture.unattributedClearTitle', { count: spool.count }),
-      message: t('capture.unattributedClearMessage'),
-      level: 'irreversible',
-      consequences: [
-        t('capture.unattributedClearKeeps'),
-        t('capture.unattributedClearGone', { range: spoolRange(spool.oldestAt, spool.newestAt) })
-      ],
-      ackLabel: t('capture.unattributedClearAck'),
-      confirmLabel: t('capture.unattributedClearConfirm', { count: spool.count })
-    })
-    if (!ok) return
-    try {
-      const r = await window.redlog.capture.clearUnattributedSpool(spool.newestAt)
-      if (r.failed > 0) {
-        toast(t('capture.unattributedClearFailed', { count: r.failed }), { type: 'error' })
-      } else {
-        toast(t('capture.unattributedCleared', { count: r.removed }))
-      }
-    } catch (e) {
-      toast(t('capture.unattributedClearFailed', { count: spool.count }), {
-        type: 'error',
-        detail: e instanceof Error ? e.message : String(e)
-      })
-    }
-    onRefresh()
-  }
 
   // v0.6.98 C: freshness stripe. Pre-v0.6.98 the state chip said only
   // "active / idle / absent" — an active source that hadn't fired in 45s
@@ -480,12 +460,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
                     here they can act on. */}
                 {s.id === 'terminal' && (
                   <span className="block text-xs text-redlog-text-faint">
-                    {t(ownShellKey(s))}
-                    {s.ownShellLastEventAt != null && (
-                      <span data-testid="own-shell-last">{' · '}{t('capture.terminalOwnShellLast', {
-                        time: formatDateTime(s.ownShellOutputAt ?? s.ownShellLastEventAt)
-                      })}</span>
-                    )}
+                    <span data-testid="own-shell-last">{t(ownShellKey(s), ownShellVars(s))}</span>
                     {s.enrolled && s.enrolled.total > 0 && (
                       <span>{' · '}{t('capture.terminalEnrolled', {
                         recording: s.enrolled.recording, total: s.enrolled.total
@@ -604,42 +579,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
             </span>
           </div>
         )}
-        {/* Commands typed while RedLog had no project open. The hooks spool
-            them, but they carry no engagement identity, so replay cannot say
-            which project they belong to and sets them aside (#255). That is by
-            design; what was missing was ever saying so. Like the write gaps
-            above it is a fact about the record that does not clear on its own
-            — the files stay until someone deals with them. */}
-        {capture.unattributedSpool && (
-          <div data-testid="capture-unattributed-spool" className="mt-2 pt-2 border-t border-redlog-border/70 flex items-start gap-2 text-xs">
-            <span className="text-amber-500">!</span>
-            <span className="flex-1 min-w-0 text-redlog-text-dim" title={t('capture.unattributedSpoolWhere')}>
-              {t('capture.unattributedSpool', {
-                count: capture.unattributedSpool.count,
-                range: spoolRange(capture.unattributedSpool.oldestAt, capture.unattributedSpool.newestAt)
-              })}
-            </span>
-            {/* Not a button the card pushes: nothing here is broken, and the
-                files are the operator's to keep. It is for the one who has
-                looked and is done with them. */}
-            <button
-              data-testid="capture-unattributed-clear"
-              onClick={() => { void clearUnattributed(capture.unattributedSpool!) }}
-              className="shrink-0 text-redlog-text-dim hover:text-redlog-text underline"
-            >
-              {t('capture.unattributedClear')}
-            </button>
-          </div>
-        )}
       </div>
     </section>
   )
-}
-
-/** `2026-10-12 09:10` for one moment, `2026-10-12 09:10 – 2026-10-12 11:42` for
- *  a span. Two stamps in the same minute are one moment. */
-function spoolRange(oldestAt: number, newestAt: number): string {
-  const from = formatDateTime(oldestAt)
-  const to = formatDateTime(newestAt)
-  return from === to ? from : `${from} – ${to}`
 }

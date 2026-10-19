@@ -96,6 +96,21 @@ export default function App(): JSX.Element {
   const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage } | null>(null)
   const { t } = useI18n()
 
+  // What the first launch after an update found, said once. It is taken (and so
+  // cleared) in main; asked at mount for an outcome that was ready before this
+  // window was, and again when main says one just became ready.
+  useEffect(() => {
+    const say = (): void => {
+      void window.redlog.app.takeUpdateOutcome().then((outcome) => {
+        if (!outcome) return
+        if (outcome.kind === 'completed') toast(t('update.outcome.completed', { version: outcome.actualVersion }), 'success')
+        else toast(t('update.outcome.notApplied', { version: outcome.actualVersion }), { type: 'warning', why: t('update.outcome.notAppliedWhy', { expected: outcome.toVersion }) })
+      }).catch(() => {})
+    }
+    say()
+    return window.redlog.app.onUpdateOutcomeReady(say)
+  }, [])
+
   // Every link, the palette, the sidebar and the status bar go through here,
   // so a target that names a Settings page opens that page.
   const navigate = useCallback((target: string): void => {

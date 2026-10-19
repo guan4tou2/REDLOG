@@ -1,4 +1,4 @@
-import { executeEventQuery, queryEvents, queryEventsPage, queryHttpFlowPage, type EventFilter, type RedLogEvent } from './db/events'
+import { executeEventQuery, queryEvents, queryEventsPage, queryHttpFlowPage, queryCommandOutput, type EventFilter, type RedLogEvent } from './db/events'
 import { parseQuery } from './query/contract'
 import type { NormalizedExportRequest, ExportScopeSnapshot, ExportSnapshot } from './export-plan'
 
@@ -27,6 +27,16 @@ export function resolveExportSelection(request: NormalizedExportRequest, snapsho
     cursor = page.hasMore ? page.nextCursor : null
     if (page.hasMore && !cursor) throw new Error('Incomplete export query')
   } while (cursor)
+  // A background command's later output is rows of its own, hidden from the
+  // Timeline and absent from any filter the command matched on. A selection
+  // that includes the command includes what it printed afterwards, or the file
+  // says `late_output` and holds nothing to show for it. The snapshot bound is
+  // applied below, with the rest of the canonical order.
+  for (const event of [...events]) {
+    if (event.agentType !== 'shell' || event.data.subtype !== 'command_end' || event.data.late_output !== true) continue
+    if (typeof event.data.command_id !== 'string') continue
+    events.push(...queryCommandOutput(event.data.command_id))
+  }
   // Execution uses this same canonical order to compare the approved digest.
   const ids = new Set(events.map(event => event.id))
   return queryEvents({ limit: -1, snapshot }).filter(event => ids.has(event.id))

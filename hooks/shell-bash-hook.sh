@@ -7,6 +7,12 @@ if [[ -z "${BASH_VERSION:-}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
+# Sourced twice from one rc (a relative and an absolute path to the same file
+# are the usual way) the banner printed twice and the prompt hooks registered
+# twice. Plain, un-exported: a child shell is a new interpreter and must load.
+[[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
+_REDLOG_HOOK_LOADED_IN=$$
+
 _redlog_adapter_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Local identity describes this interpreter; the exported value lets a

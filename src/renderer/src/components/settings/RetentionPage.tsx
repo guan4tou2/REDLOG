@@ -1,4 +1,5 @@
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
+import UnattributedSpoolRow from './UnattributedSpoolRow'
 
 // Spec 049: retention is a deletion policy, so it is filed under Scope and
 // evidence rather than under Capture sources.
@@ -44,6 +45,7 @@ export default function RetentionPage({
         onChange={(v) => setConfig({ ...config, retention: { ...config.retention, loggedTier: { ...config.retention?.loggedTier, keepDays: Math.max(0, parseInt(v) || 0) } } })}
         type="number"
       />
+      <UnattributedSpoolRow t={t} />
     </FieldGroup>
   )
 }
