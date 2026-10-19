@@ -478,9 +478,11 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     install()
     bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
     draw()
-    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }))
-    const card = await screen.findByTestId('first-run-http')
-    await waitFor(() => expect(card.textContent).toContain('port 8080 in use'))
+    // 5 s, not the default 1 s: on a loaded runner the rejected start took
+    // just over a second to show, failing main and a PR within minutes.
+    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }, { timeout: 5000 }))
+    const card = await screen.findByTestId('first-run-http', undefined, { timeout: 5000 })
+    await waitFor(() => expect(card.textContent).toContain('port 8080 in use'), { timeout: 5000 })
     // One label for one button: the failure is stated above it, so the control
     // does not have to say "again" in one state and "start" in another.
     expect(screen.getByTestId('first-run-http-restart')).not.toBeNull()
