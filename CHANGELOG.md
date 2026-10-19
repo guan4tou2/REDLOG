@@ -38,6 +38,13 @@ for full commit body + generated notes.
   off or a copy that drops modes). The first terminal start now restores the bit
   instead of failing with `posix_spawnp failed` and recording nothing. The README
   also says what to run when `npm run dev` reports `Electron uninstall`.
+
+- Output that a background command prints after its prompt returned is kept once
+  and travels with the command. A chunk the relay resent because our reply was
+  late is no longer stored twice, an export that includes the command now
+  includes that output (the Timeline hides it, so a filtered export used to
+  drop it), and marking the command "do not export" holds back its later output
+  too.
 - Updates no longer restart RedLog on their own (Windows, where in-app update
   exists). Downloading and restarting are two separate choices: the download
   runs in the background and ends with "ready"; installing is a second action
