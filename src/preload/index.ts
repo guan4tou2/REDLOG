@@ -14,6 +14,21 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    updateStatus: () => ipcRenderer.invoke('app:updateStatus') as Promise<import('../main/services/update-status').UpdateStatus>,
+    cancelUpdate: () => ipcRenderer.invoke('app:cancelUpdate') as Promise<boolean>,
+    installUpdate: () => ipcRenderer.invoke('app:installUpdate') as Promise<void>,
+    setAutoUpdateCheck: (on: boolean) => ipcRenderer.invoke('app:setAutoUpdateCheck', on) as Promise<import('../main/services/update-status').UpdateStatus>,
+    takeUpdateOutcome: () => ipcRenderer.invoke('app:takeUpdateOutcome') as Promise<import('../main/services/update-marker').UpdateOutcome | null>,
+    onUpdateOutcomeReady: (cb: () => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('app:updateOutcomeReady', handler)
+      return () => ipcRenderer.removeListener('app:updateOutcomeReady', handler)
+    },
+    onUpdateStatus: (cb: (status: import('../main/services/update-status').UpdateStatus) => void) => {
+      const handler = (_e: unknown, status: import('../main/services/update-status').UpdateStatus): void => cb(status)
+      ipcRenderer.on('app:updateStatusChanged', handler)
+      return () => ipcRenderer.removeListener('app:updateStatusChanged', handler)
+    },
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
     setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text)
   },
@@ -229,7 +244,9 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    executeExportPlan: (input: { planId: string; destDir?: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    exportDestination: () => ipcRenderer.invoke('data:exportDestination') as Promise<string | null>,
+    pickExportDir: () => ipcRenderer.invoke('data:pickExportDir') as Promise<string | null>,
     revealExport: (target: string) => ipcRenderer.invoke('data:revealExport', target) as Promise<boolean>
   },
   hooks: {

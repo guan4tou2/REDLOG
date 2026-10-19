@@ -76,7 +76,9 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
+import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
+import { recordUpdateOutcome } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -95,7 +97,7 @@ import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
-import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
+import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields, hudDraftBelongsHere } from './ipc/markers'
 import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
@@ -321,28 +323,31 @@ function triggerBookmark(): void {
   })
 }
 
-// v0.9.7: the HUD's instant mark. Drops a timestamped marker straight into the
-// chain without raising the main window — the whole point of a heads-up
-// display is that it does not pull the operator out of what they are doing.
-// The detailed path above still exists for when a title and notes are worth
-// stopping for; this one is for "something just happened, timestamp it".
-function triggerInstantMark(): { ok: boolean; id?: string } {
+// The HUD's "Add marker" form. Drops a marker straight into the chain without
+// raising the main window — a heads-up display should not pull the operator out
+// of what they are doing. The marker's time is `at`, taken when the operator
+// CLICKED "Add marker", not when the form was saved: filling in a title takes
+// seconds, and the marker is about the moment they reached for it. An empty
+// title is allowed and gets the time as its name, which is what a bare mark
+// has always been called.
+function addHudMarker(input: { title?: string; notes?: string; at?: number; bind?: string }): { ok: boolean; id?: string; reason?: 'project-changed' } {
   if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
+  // A draft written while another project was open must not land in this one.
+  if (!hudDraftBelongsHere(input.bind, currentEngagementId)) return { ok: false, reason: 'project-changed' }
   try {
-    const at = new Date()
+    const f = hudMarkerFields(input, Date.now())
     const event = insertEvent('marker', redactFields({
-      title: `HUD mark ${at.toLocaleTimeString()}`,
-      notes: '',
+      title: f.title,
+      notes: f.notes,
       severity: 'info',
       category: 'custom',
-      // Distinguishes an un-annotated instant mark from one the operator
-      // filled in, so a reviewer knows a bare title is intentional.
-      source: 'hud-instant'
+      source_timestamp: f.source_timestamp,
+      source: f.source
     }, MARKER_TEXT_FIELDS), { engagementId: currentEngagementId, operatorId: currentOperatorId })
     if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
-    noteDbError('hud-instant-mark', e)
+    noteDbError('hud-add-marker', e)
     return { ok: false }
   }
 }
@@ -1012,6 +1017,26 @@ function startProject(project: ProjectMeta): void {
     startNtpLoop()
   }
 
+  // The first launch after an update restart writes down what happened, judged
+  // by the version now running, in the project that was open when it began.
+  // Additive: a record that fails to write must not stop the project opening,
+  // and the marker stays until it is written.
+  try {
+    const marker = readUpdateMarker(app.getPath('userData'))
+    if (marker && (marker.projectDir === null || marker.projectDir === getProjectDir())) {
+      const outcome = judgeUpdateOutcome(marker, app.getVersion())
+      if (marker.method === 'manual' && outcome.kind === 'not-applied') {
+        // The operator only went to the download page. Nothing was restarted,
+        // so there is no event to write for an update that did not happen; About
+        // keeps saying it is not finished until the running version moves.
+      } else if (marker.projectDir === null || recordUpdateOutcome(outcome, { engagementId, operatorId })) {
+        clearUpdateMarker(app.getPath('userData'))
+        setUpdateOutcome(outcome)
+        send(mainWindow, 'app:updateOutcomeReady')
+      }
+    }
+  } catch (e) { console.warn('[updater] could not record the update outcome:', (e as Error).message) }
+
   // v0.6.89 P1-A: read-path sampling verify. On open, take a big (100)
   // sample immediately so the operator sees an early signal if the chain
   // was tampered with while the app was closed. After that, take a small
@@ -1290,7 +1315,8 @@ app.whenReady().then(() => {
     getCurrentOperatorId: () => currentOperatorId,
     send,
     triggerBookmark,
-    triggerInstantMark,
+    addHudMarker,
+    hudMarkerBinding: () => (activeProject && currentEngagementId ? currentEngagementId : null),
     onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
@@ -1852,6 +1878,12 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  ipcMain.handle('app:updateStatus', () => getUpdateStatus())
+  ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
+  ipcMain.handle('app:installUpdate', () => installReadyUpdate())
+  ipcMain.handle('app:takeUpdateOutcome', () => takeUpdateOutcome())
+  ipcMain.handle('app:setAutoUpdateCheck', (_e, on: unknown) => { setAutoCheck(on === true); return getUpdateStatus() })
+  onUpdateStatus((status) => send(mainWindow, 'app:updateStatusChanged', status))
   // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
   ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))
   ipcMain.handle('debug:set', (_e, on: unknown) => {
@@ -1884,7 +1916,9 @@ app.whenReady().then(() => {
     }
   })
   // Silent check shortly after launch (packaged builds only).
-  setTimeout(() => { checkForUpdates().catch(() => {}) }, 5000)
+  // The operator may have switched it off; air-gap overrides it either way.
+  restoreUnfinishedUpdate()
+  setTimeout(() => { if (autoCheckEnabled()) checkForUpdates().catch(() => {}) }, 5000)
 
   app.on('activate', () => {
     mainWindow?.show()
