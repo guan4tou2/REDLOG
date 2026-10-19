@@ -32,6 +32,12 @@ for full commit body + generated notes.
   to the download page), and air-gap says it made no request and where the
   setting is. A second press while a check runs does nothing new. Results that
   nobody has to decide on no longer pop a dialog.
+
+- The built-in terminal no longer opens without running a shell when node-pty's
+  `spawn-helper` has lost its execute bit (macOS, after an install with scripts
+  off or a copy that drops modes). The first terminal start now restores the bit
+  instead of failing with `posix_spawnp failed` and recording nothing. The README
+  also says what to run when `npm run dev` reports `Electron uninstall`.
 - Updates no longer restart RedLog on their own (Windows, where in-app update
   exists). Downloading and restarting are two separate choices: the download
   runs in the background and ends with "ready"; installing is a second action
