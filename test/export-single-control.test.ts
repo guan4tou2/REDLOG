@@ -60,7 +60,7 @@ describe('one export control', () => {
     // they are getting — the label IS the preview (format name + audience).
     const menu = R('src/renderer/src/components/ExportMenu.tsx')
     expect(menu).toMatch(/export\.all/)
-    expect(menu).toMatch(/export\.ndjson/)
+    expect(menu).toMatch(/export\.currentFormat/)
     expect(menu).toMatch(/export\.bundle/)
   })
 

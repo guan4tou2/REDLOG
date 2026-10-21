@@ -38,7 +38,7 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     ;(window as unknown as { redlog: unknown }).redlog = { data: { resolveExportPlan: resolve, executeExportPlan: vi.fn() } }
     render(<I18nProvider><ExportMenu totalCount={3} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
-    fireEvent.click(screen.getByText('Evidence bundle (with verifier)'))
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } })
 
     const list = await screen.findByTestId('export-attachments')
     const cross = within(list).getByTestId('export-attachment-casts/term-1.cast')
@@ -47,11 +47,15 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     // A missing file cannot be chosen.
     expect((within(list).getByLabelText('screenshots/x.jpg') as HTMLInputElement).disabled).toBe(true)
 
-    fireEvent.click(within(list).getByLabelText('casts/term-1.cast'))
+    const checkbox = within(list).getByLabelText('casts/term-1.cast')
+    checkbox.focus()
+    fireEvent.click(checkbox)
     await waitFor(() => expect(resolve).toHaveBeenLastCalledWith(expect.objectContaining({ excludeAttachments: ['casts/term-1.cast'] })))
     const after = await screen.findByTestId('export-attachment-casts/term-1.cast')
     expect(after.getAttribute('data-status')).toBe('excluded-by-operator')
-    expect((within(after).getByLabelText('casts/term-1.cast') as HTMLInputElement).checked).toBe(false)
+    const excluded = within(after).getByLabelText('casts/term-1.cast') as HTMLInputElement
+    expect(excluded.checked).toBe(false)
+    expect(document.activeElement).toBe(excluded)
 
     // Ticking it again puts it back.
     fireEvent.click(within(after).getByLabelText('casts/term-1.cast'))

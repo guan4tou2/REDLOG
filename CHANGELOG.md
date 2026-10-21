@@ -5,6 +5,14 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- 匯出改為單一視窗，範圍、格式、目的地、政策與附件可在原地調整；換格式不再切成整個專案。保留真實 ExportPlan 預覽與錯誤重試，較早返回的預覽不會覆蓋新的選擇。
+
+- Small HTTP text bodies already stored on an event now open in full without a
+  second load action; capture truncation warnings remain visible. Bash setup
+  now describes its automatic ordinary-command output capture, and the export
+  scope option describes the requested masking policy rather than claiming
+  that masking has already happened.
+
 - Updating by hand (macOS and Linux) is described as what it is, per platform,
   instead of one generic line. Going to the download page no longer counts as an
   update: it no longer writes an "update pending" mark into the project or

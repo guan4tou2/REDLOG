@@ -417,7 +417,7 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
       </p>
       <div data-testid="record-terminal-scope" className="space-y-1">
         <p className="text-redlog-text-dim">
-          {shell === 'zsh' ? t('firstRun.record.scopeZsh') : t('firstRun.record.scope')}
+          {shell === 'zsh' ? t('firstRun.record.scopeZsh') : shell === 'bash' ? t('firstRun.record.scopeBash') : t('firstRun.record.scope')}
         </p>
         {shell === 'powershell' ? (
           <p className="text-redlog-text-dim">{t('firstRun.record.outputPwsh')}</p>

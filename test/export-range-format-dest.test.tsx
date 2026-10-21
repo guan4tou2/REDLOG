@@ -61,25 +61,25 @@ describe('Export menu: range, remembered format, destination', () => {
     // The default view already hides personal traffic, and the line says so rather
     // than calling it "no filter".
     expect(screen.getByTestId('export-range-current').textContent).toMatch(/Current view covers: .*Hide personal traffic/)
-    expect(screen.getByText('The whole project; the current filter is not applied')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'all' } })
+    expect(screen.getByTestId('export-range-current').textContent).toBe('The whole project; the current filter is not applied')
   })
 
   it('remembers the format picked in the dropdown', () => {
     draw(); open()
-    fireEvent.change(screen.getByLabelText('Selection export format'), { target: { value: 'ndjson' } })
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'ndjson' } })
     cleanup(); draw(); open()
-    expect((screen.getByLabelText('Selection export format') as HTMLSelectElement).value).toBe('ndjson')
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('ndjson')
   })
 
   it('ignores a stored format it does not offer', () => {
     localStorage.setItem('redlog.export.format', 'har')
     draw(); open()
-    expect((screen.getByLabelText('Selection export format') as HTMLSelectElement).value).toBe('json')
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('json')
   })
 
   it('shows where the file will go, and sends a changed folder with the confirm', async () => {
     draw(); open()
-    fireEvent.click(screen.getByText('Everything'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/proj/exports'))
     fireEvent.click(screen.getByTestId('export-change-destination'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/Volumes/evidence'))
@@ -90,7 +90,6 @@ describe('Export menu: range, remembered format, destination', () => {
   it('sends no folder when the operator did not change it, and a cancelled picker changes nothing', async () => {
     pick.mockResolvedValueOnce(null)
     draw(); open()
-    fireEvent.click(screen.getByText('Everything'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/proj/exports'))
     fireEvent.click(screen.getByTestId('export-change-destination'))
     await waitFor(() => expect(pick).toHaveBeenCalled())

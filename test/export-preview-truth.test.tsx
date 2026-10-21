@@ -40,9 +40,7 @@ function install(p: ResolvedExportPlan): void {
 
 const openJson = (): void => {
   fireEvent.click(screen.getByRole('button', { name: /Export/i }))
-  // By role: the selection-format `<select>` (spec 056) also carries JSON and
-  // NDJSON as `<option>`s, and a bare text match now finds those too.
-  fireEvent.click(screen.getByRole('button', { name: /JSON/i }))
+
 }
 
 describe('the export preview shows only what the plan measured', () => {

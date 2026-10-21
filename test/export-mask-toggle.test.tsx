@@ -54,7 +54,7 @@ function installBridge(failResolve = false): void {
 }
 
 const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
-const clickBundle = (): void => { fireEvent.click(screen.getByText('Evidence bundle (with verifier)')) }
+const clickBundle = (): void => { fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } }) }
 const clickConfirm = async (): Promise<void> => {
   const dialog = await screen.findByRole('dialog')
   const confirm = await within(dialog).findByTestId('export-confirm')
@@ -69,7 +69,7 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
   it('masks by default', async () => {
     render(<I18nProvider><ExportMenu /></I18nProvider>)
     open()
-    expect(screen.getByText(/masked \(recommended\)/i)).toBeTruthy()
+    expect(screen.getByText(/mask out-of-scope content using web scope/i)).toBeTruthy()
     clickBundle()
     await clickConfirm()
     await waitFor(() => expect(lastOpts).toMatchObject({ format: 'bundle', maskOutOfScope: true }))
@@ -80,7 +80,7 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     open()
     // Two checkboxes now that the 自用/交付 preset is gone: this one and the
     // PII scrub it used to stand in for. Pick the mask by its own label.
-    fireEvent.click(screen.getByLabelText(/masked \(recommended\)/i))
+    fireEvent.click(screen.getByLabelText(/mask out-of-scope content using web scope/i))
     expect(screen.getByText(/including out-of-scope content raw/i)).toBeTruthy()
     clickBundle()
     await clickConfirm()

@@ -70,6 +70,29 @@ describe('an HTTP flow with both halves', () => {
 })
 
 describe('a flow with only one half', () => {
+  it('shows the complete inline text body without a second load action', () => {
+    bridge(null)
+    draw({ ...RESPONSE, content_length: 30, response_preview: 'short preview', response_body: { data: 'complete response including END', encoding: 'text', size: 30 } })
+    expect(screen.getByText('complete response including END')).toBeTruthy()
+    expect(screen.queryByText(/載入完整主體/)).toBeNull()
+    expect(window.redlog.httpBody.read).not.toHaveBeenCalled()
+  })
+
+  it('keeps binary inline bodies behind the explicit load action', () => {
+    bridge(null)
+    draw({ ...RESPONSE, response_preview: 'binary preview', response_body: { data: 'AAEC', encoding: 'base64', size: 3 } })
+    expect(screen.queryByText('AAEC')).toBeNull()
+    expect(screen.getByText(/載入完整主體/)).toBeTruthy()
+  })
+
+  it('shows an inline request body immediately and preserves its capture truncation warning', () => {
+    bridge(null)
+    draw({ ...REQUEST, request_body: { data: 'saved request bytes', encoding: 'text', size: 19, truncated: true } })
+    expect(screen.getByText('saved request bytes')).toBeTruthy()
+    expect(screen.getByText(/已截斷/)).toBeTruthy()
+    expect(screen.queryByText(/載入完整主體/)).toBeNull()
+  })
+
   it('draws no tab strip — a single tab asks a question with one answer', async () => {
     // A request whose response has not landed yet. Common, and not a defect.
     bridge(null)
