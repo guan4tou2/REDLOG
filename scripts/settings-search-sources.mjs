@@ -7,13 +7,12 @@ export const PAGE_SOURCES = {
     { file: 'settings/HooksPanel.tsx' },
     { file: 'settings/ManualStepList.tsx' },
     { file: 'WslPanel.tsx' },
-    { file: 'settings/AgentsPanel.tsx', after: 'export function HookWatchPathsPanel' }
   ],
   // Spec 049: the AI agents page folded into Capture sources — one writer for
-  // `packs.aiAgents`, so one place its strings are indexed from.
+  // per-tool project permissions, so one place its strings are indexed from.
   captureControl: [
     { file: 'settings/CaptureControlPage.tsx' },
-    { file: 'settings/AgentsPanel.tsx', before: 'export function HookWatchPathsPanel' },
+    { file: 'settings/AgentsPanel.tsx' },
     { file: 'settings/ExternalCaptureGroup.tsx' }
   ],
   loot: [{ file: 'settings/LootRulesGroup.tsx' }],

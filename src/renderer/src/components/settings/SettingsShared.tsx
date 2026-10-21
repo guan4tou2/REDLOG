@@ -21,7 +21,7 @@ export interface ConfigState {
   processMonitor?: { pollMs?: number; ignoreCommands?: string[] }
   connectionMonitor?: { pollMs?: number }
   // Optional capture packs (Spec 035); mirrors RedLogConfig['packs'].
-  packs?: { hostMonitors?: boolean; aiAgents?: boolean; windowsOutput?: boolean }
+  packs?: { hostMonitors?: boolean; windowsOutput?: boolean }
   // Per-member opt-outs inside a pack that is on. Absent means on: the pack
   // switch is the preset, this records where the operator departed from it.
   packMembers?: {
@@ -29,9 +29,6 @@ export interface ConfigState {
     connectionMonitor?: boolean
     fileWatcher?: boolean
     clipboard?: boolean
-    claudeCode?: boolean
-    codex?: boolean
-    opencode?: boolean
     powershellTranscript?: boolean
   }
   browser?: {
@@ -49,6 +46,7 @@ export interface ConfigState {
   // plugins; the shape here (enabled + emitThinking) stays the "default"
   // per-plugin knob set going forward.
   agentTailer?: {
+    sources?: Partial<Record<import('../../../../core/agent-capture-policy').AgentKind, import('../../../../core/agent-capture-policy').AgentCaptureSourceConfig>>
     emitThinking?: boolean
   }
   // Mirrors RedLogConfig['loot'] (Spec 032).

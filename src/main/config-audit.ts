@@ -41,7 +41,7 @@ export function diffSecurityConfig(
   // What the engagement records is part of the audit trail (Spec 035: packs
   // replaced the per-source switches, including clipboard's).
   check('packs.hostMonitors', oldCfg.packs?.hostMonitors, newCfg.packs?.hostMonitors)
-  check('packs.aiAgents', oldCfg.packs?.aiAgents, newCfg.packs?.aiAgents)
+  check('agentTailer.sources', oldCfg.agentTailer?.sources, newCfg.agentTailer?.sources)
   check('packs.windowsOutput', oldCfg.packs?.windowsOutput, newCfg.packs?.windowsOutput)
   // A per-member opt-out changes what the engagement records just as much as
   // the pack switch does -- switching the clipboard off inside a running Host

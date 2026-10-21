@@ -541,7 +541,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
                       their upstream does (mitmproxy in DNS mode, the launched
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
-                  {!s.configPath && !s.hookId && (
+                  {!s.configPath && !s.hookId && s.id.startsWith('agent-') && (
+                    <button onClick={() => onNavigate(settingsTarget('captureControl'))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
+                  )}
+                  {!s.configPath && !s.hookId && !s.id.startsWith('agent-') && (
                     <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
                   )}
                 </span>

@@ -6,7 +6,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { configureHost, stopHost, registerAdapter, type TailerHostConfig } from './tailer-host'
+import { configureHost, registerAdapter, type TailerHostConfig } from './tailer-host'
 import { claudeCodeAdapter, overrideClaudeProjectsDir } from './adapters/claude-code'
 import { codexAdapter, overrideCodexTranscriptRoot } from './adapters/codex'
 import { opencodeAdapter, overrideOpencodeStorageRoot } from './adapters/opencode'
@@ -40,7 +40,7 @@ export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
 }
 
 export function stopAgentTailer(): void {
-  stopHost()
+  configureHost({ enabled: false, enabledAgents: [] })
 }
 
 export interface AgentSourceInfo {

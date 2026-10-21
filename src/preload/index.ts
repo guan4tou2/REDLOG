@@ -95,8 +95,8 @@ const api: RedLogAPI = {
     sources: () => ipcRenderer.invoke('agents:sources') as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   },
   hookConfig: {
-    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
-    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
+    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[] }>,
+    save: (cfg: { excludedPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   events: {

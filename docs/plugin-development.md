@@ -256,9 +256,7 @@ Read the current shell adapter and wrapper patterns:
 
 - [`hooks/shell-common.sh`](../hooks/shell-common.sh) — shared transport,
   redaction gate, recording-state check, and spool behavior for POSIX shells.
-- [`plugins/pack-ai-agents/hooks/codex-wrapper.sh`](../plugins/pack-ai-agents/hooks/codex-wrapper.sh) — Tier B. Wraps every
-  shell command spawned by Codex; fires a command_start before and a
-  command_end after with exit code + duration.
+- Official AI transcript integrations use `src/core/plugins/official-agents.ts` for explicit local installation and `agent-capture-policy.ts` for per-project permission. They do not inject a shell wrapper.
 
 ##### Full example: OpenCode
 

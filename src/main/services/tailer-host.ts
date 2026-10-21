@@ -143,6 +143,7 @@ export interface ParsedTurn {
  *  react to `add` events on files the host already watches, and use this
  *  surface only for supplemental streams. */
 export interface HostControlSurface {
+  acceptsMessage(agentKind: string, messageId: string): boolean
   emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void
 }
 
@@ -203,13 +204,13 @@ export interface TailerAdapter {
    *  'tool_call', 'tool_result', 'compact_summary', 'thinking'. */
   subtypeFor(t: ParsedTurn): string
   /** v0.8.3: optional lifecycle hook, called once when the adapter is
-   *  registered (i.e. when `registerAdapter(adapter)` is called or a
-   *  restart replays through it). Receives a control surface the adapter
+   *  activated for an enabled source (never merely registered). Receives a control surface the adapter
    *  can use to emit supplemental turns from sources the host does not
    *  natively watch. Idempotent — the host guards against duplicate init
-   *  calls on repeated registerAdapter. Adapter is responsible for tearing
-   *  down its own watchers on process exit. */
+   *  calls on repeated registerAdapter. The host calls stop on disable/project switch so the adapter
+   *  can tear down its auxiliary watchers. */
   init?(host: HostControlSurface): void
+  stop?(): void
 }
 
 /** Host-level configuration shared across all registered adapters. */
@@ -239,6 +240,8 @@ export interface TailerHostConfig {
   /** Whitelist mode. When non-empty, ONLY sessions whose cwd matches one
    *  of these prefixes are tailed — everything else is dropped. */
   watchPaths?: string[]
+  watchPathsByAgent?: Record<string, string[]>
+  activationStarts?: Record<string, number>
   /** v0.12.0: called after every `agent.tool_call` event insert with the
    *  extracted target host (if any). Feeds the alert subsystem's Scope
    *  policy so agent-driven scope violations register the same way shell
@@ -259,6 +262,7 @@ interface SessionState {
   agentKind: string
   adapter: TailerAdapter
   sourcePath: string
+  sourceBaseOffset: number
   sidecarPath: string
   transcriptCwd: string
   pendingLineBuffer: string
@@ -285,6 +289,7 @@ interface SessionState {
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
+let hostGeneration = 0
 let cfg: TailerHostConfig = { enabled: false, engagementId: '', operatorId: '' }
 const watchersByAgent = new Map<string, FSWatcher>()
 // P2-5: write coalescing — rapid chokidar `change` events for the same
@@ -336,6 +341,10 @@ export function getRegisteredSessions(): string[] {
 const initializedAdapters = new Set<string>()
 
 const hostControlSurface: HostControlSurface = {
+  acceptsMessage(agentKind, messageId) {
+    if (!cfg.enabled || !agentEnabled(agentKind) || !/^[a-zA-Z0-9_-]+$/.test(messageId)) return false
+    return [...sessions.values()].some(s => s.agentKind === agentKind && s.adapter.perMessageDir && fs.existsSync(path.join(s.sourcePath, messageId + '.json')))
+  },
   emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void {
     if (eventBus.paused) return
     const s = sessions.get(sessionKey(agentKind, sessionId))
@@ -358,13 +367,6 @@ function agentEnabled(agentKind: string): boolean {
 
 export function registerAdapter(adapter: TailerAdapter): void {
   registeredAdapters.set(adapter.agentKind, adapter)
-  // v0.8.3: one-shot init hook. Guarded so a repeated registerAdapter
-  // (e.g. same adapter re-registered after unregisterAdapter for whatever
-  // reason) doesn't wire duplicate watchers.
-  if (adapter.init && !initializedAdapters.has(adapter.agentKind)) {
-    initializedAdapters.add(adapter.agentKind)
-    try { adapter.init(hostControlSurface) } catch (e) { noteDbError('tailer-host', e) }
-  }
   // If already running, start a watcher for this adapter immediately so
   // late registrations (e.g. plugin loaded after project open) don't miss
   // active sessions. Idempotent — `restart` also handles this.
@@ -376,6 +378,7 @@ export function unregisterAdapter(agentKind: string): void {
   if (w) { void w.close(); watchersByAgent.delete(agentKind) }
   // Also close any sessions that belong to this adapter.
   for (const [key, s] of sessions) if (s.agentKind === agentKind) unregisterSession(key)
+  if (initializedAdapters.has(agentKind)) registeredAdapters.get(agentKind)?.stop?.()
   registeredAdapters.delete(agentKind)
   initializedAdapters.delete(agentKind)
 }
@@ -406,7 +409,10 @@ export function isSelfExcludedCwd(cwd: string, marker: string): boolean {
 }
 
 export function cwdPassesGate(cwd: string, excludedPaths?: string[], watchPaths?: string[]): boolean {
-  const normalize = (p: string): string => path.resolve(expandTilde(p)).replace(/[\\/]$/, '')
+  const normalize = (p: string): string => {
+    const resolved = path.resolve(expandTilde(p))
+    try { return fs.realpathSync(resolved).replace(/[\\/]$/, '') } catch { return resolved.replace(/[\\/]$/, '') }
+  }
   const cwdNorm = normalize(cwd)
   if (excludedPaths && excludedPaths.length) {
     for (const raw of excludedPaths) {
@@ -770,14 +776,15 @@ export function catchUpSession(agentKind: string, sessionId: string): void {
 }
 
 function catchUpJsonl(s: SessionState): void {
+  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
   let sourceSize: number
   try { sourceSize = fs.statSync(s.sourcePath).size } catch { return }
   let sidecarSize = 0
   try { sidecarSize = fs.statSync(s.sidecarPath).size } catch { /* new */ }
 
   const shouldReset = s.adapter.detectReset
-    ? s.adapter.detectReset(sidecarSize, sourceSize)
-    : (sourceSize < sidecarSize)
+    ? s.adapter.detectReset(s.sourceBaseOffset + sidecarSize, sourceSize)
+    : (sourceSize < s.sourceBaseOffset + sidecarSize)
 
   if (shouldReset) {
     const oldHash = fileSha256(s.sidecarPath)
@@ -810,13 +817,18 @@ function catchUpJsonl(s: SessionState): void {
       }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
     } catch (e) { noteDbError('tailer-host', e) }
     sidecarSize = 0
+    s.sourceBaseOffset = 0
+    if (cfg.activationStarts?.[s.agentKind]) {
+      try { fs.writeFileSync(s.sidecarPath + '.offset.json', JSON.stringify({ source: s.sourcePath, startedAt: cfg.activationStarts[s.agentKind], base: 0 }), { mode: 0o600 }) } catch (e) { noteDbError('tailer-host', e); return }
+    }
   }
 
-  if (sourceSize <= sidecarSize) return
+  const sourceOffset = s.sourceBaseOffset + sidecarSize
+  if (sourceSize <= sourceOffset) return
 
   // P0 fix: read delta in bounded chunks to avoid OOM on large transcripts.
   const MAX_CHUNK = 10 * 1024 * 1024 // 10 MB per tick
-  const toRead = Math.min(sourceSize - sidecarSize, MAX_CHUNK)
+  const toRead = Math.min(sourceSize - sourceOffset, MAX_CHUNK)
   let bytes: Buffer
   try {
     const handle = fs.openSync(s.sourcePath, 'r')
@@ -824,7 +836,7 @@ function catchUpJsonl(s: SessionState): void {
       bytes = Buffer.alloc(toRead)
       let readTotal = 0
       while (readTotal < toRead) {
-        const n = fs.readSync(handle, bytes, readTotal, toRead - readTotal, sidecarSize + readTotal)
+        const n = fs.readSync(handle, bytes, readTotal, toRead - readTotal, sourceOffset + readTotal)
         if (n === 0) break
         readTotal += n
       }
@@ -887,7 +899,7 @@ function catchUpJsonl(s: SessionState): void {
   s.bytesAppendedSinceSnapshot += bytes.length
 
   // If there is more data beyond the chunk cap, schedule another tick.
-  if (sourceSize - sidecarSize > toRead) {
+  if (sourceSize - sourceOffset > toRead) {
     setImmediate(() => catchUpJsonl(s))
   }
 }
@@ -896,6 +908,7 @@ function catchUpJsonl(s: SessionState): void {
  *  unit. Sidecar stores an index of processed filenames (line-per-name)
  *  so restart-safe by construction. */
 function catchUpPerMessageDir(s: SessionState): void {
+  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
   // The "source path" for a per-message adapter is a DIRECTORY. List its
   // contents, filter to files we haven't seen, sort by mtime, and process.
   let entries: string[] = []
@@ -910,7 +923,7 @@ function catchUpPerMessageDir(s: SessionState): void {
     const full = path.join(s.sourcePath, name)
     let stat: fs.Stats
     try { stat = fs.statSync(full) } catch { continue }
-    if (!stat.isFile()) continue
+    if (!stat.isFile() || stat.mtimeMs < (cfg.activationStarts?.[s.agentKind] ?? 0)) continue
     toProcess.push({ name, full, mtime: stat.mtimeMs })
   }
   toProcess.sort((a, b) => a.mtime - b.mtime)
@@ -1087,8 +1100,10 @@ function takeSeedSlice(sessionId: string, agentKind: string): Map<string, string
 
 export function registerSession(agentKind: string, sourcePath: string): void {
   const adapter = registeredAdapters.get(agentKind)
-  if (!adapter) return
+  if (!adapter || !cfg.enabled) return
   if (!agentEnabled(agentKind)) return
+  const allowedPaths = cfg.watchPathsByAgent ? cfg.watchPathsByAgent[agentKind] : cfg.watchPaths
+  if (cfg.watchPathsByAgent && !allowedPaths?.length) return
   const sessionId = adapter.perMessageDir
     ? path.basename(sourcePath)                                // dir name = session id
     : path.basename(sourcePath, path.extname(sourcePath))      // strip .jsonl
@@ -1097,21 +1112,39 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   const cwd = adapter.resolveCwd(sourcePath)
   if (!cwd) return
   if (isSelfExcludedCwd(cwd, cfg.selfExclusionMarker ?? '.redlog-app-root')) return
-  if (!cwdPassesGate(cwd, cfg.excludedPaths, cfg.watchPaths)) return
+  if (!cwdPassesGate(cwd, cfg.excludedPaths, allowedPaths)) return
   if (!isSessionRegistered(sessionId)) return
 
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return }
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
   try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
-  const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}.jsonl`)
+  const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}${cfg.activationStarts?.[agentKind] ? `-${cfg.activationStarts[agentKind]}` : ''}.jsonl`)
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 
+  let sourceBaseOffset = 0
+  const startedAt = cfg.activationStarts?.[agentKind]
+  if (startedAt && !adapter.perMessageDir) {
+    const cursorPath = sidecarPath + '.offset.json'
+    try {
+      if (fs.existsSync(cursorPath)) {
+        const cursor = JSON.parse(fs.readFileSync(cursorPath, 'utf8'))
+        if (cursor.source !== sourcePath || cursor.startedAt !== startedAt || !Number.isSafeInteger(cursor.base) || cursor.base < 0) throw new Error('Invalid AI capture start cursor')
+        sourceBaseOffset = cursor.base
+      } else {
+        const source = fs.statSync(sourcePath)
+        sourceBaseOffset = source.birthtimeMs < startedAt ? source.size : 0
+        fs.writeFileSync(cursorPath, JSON.stringify({ source: sourcePath, startedAt, base: sourceBaseOffset }), { flag: 'wx', mode: 0o600 })
+        ingestEvent('agent', { subtype: 'transcript_capture_started', agent: agentKind, session_id: sessionId, skipped_source_bytes: sourceBaseOffset, activation_requested_at: startedAt, sidecar_file: path.basename(sidecarPath) }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }
+    } catch (e) { noteDbError('tailer-host', e); return }
+  }
   const s: SessionState = {
     sessionId,
     agentKind,
     adapter,
     sourcePath,
+    sourceBaseOffset,
     sidecarPath,
     transcriptCwd: cwd,
     pendingLineBuffer: '',
@@ -1240,11 +1273,15 @@ function unregisterSession(key: string): void {
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 export function configureHost(next: Partial<TailerHostConfig>): void {
+  stopHost()
   cfg = { ...cfg, ...next }
   restartAll()
 }
 
 export function stopHost(): void {
+  ++hostGeneration
+  for (const kind of initializedAdapters) registeredAdapters.get(kind)?.stop?.()
+  initializedAdapters.clear()
   for (const [, w] of watchersByAgent) void w.close()
   watchersByAgent.clear()
   for (const [, t] of coalesceTimers) clearTimeout(t)
@@ -1260,7 +1297,6 @@ export function stopHost(): void {
 }
 
 function restartAll(): void {
-  stopHost()
   if (!cfg.enabled || !cfg.engagementId || !cfg.operatorId) {
     return
   }
@@ -1270,24 +1306,36 @@ function restartAll(): void {
 function restartAdapter(adapter: TailerAdapter): void {
   const w = watchersByAgent.get(adapter.agentKind)
   if (w) void w.close()
-  if (!agentEnabled(adapter.agentKind)) { watchersByAgent.delete(adapter.agentKind); return }
+  if (!cfg.enabled || !agentEnabled(adapter.agentKind) || (cfg.watchPathsByAgent && !cfg.watchPathsByAgent[adapter.agentKind]?.length)) { watchersByAgent.delete(adapter.agentKind); return }
+  const generation = hostGeneration
+  const current = (): boolean => generation === hostGeneration && cfg.enabled && agentEnabled(adapter.agentKind)
   const root = expandTilde(adapter.transcriptGlob.split('*')[0] || adapter.transcriptGlob)
   const watchDir = adapter.perMessageDir
     ? root  // per-message: watch parent dir, each subdir/file is a session
     : root  // per-line: same — chokidar filters within
   if (!fs.existsSync(watchDir)) return
+  if (adapter.init && !initializedAdapters.has(adapter.agentKind)) {
+    initializedAdapters.add(adapter.agentKind)
+    adapter.init({ acceptsMessage: (kind, msg) => current() && hostControlSurface.acceptsMessage(kind, msg), emitTurns: (kind, sid, turns) => { if (current()) hostControlSurface.emitTurns(kind, sid, turns) } })
+  }
   const isJsonl = !adapter.perMessageDir
   const watchDirCanon = path.resolve(watchDir)
   const watcher = chokidar.watch(watchDir, {
-    ignored: isJsonl
-      ? /(^|[/\\])\.|node_modules|(?<!\.jsonl)$/
-      : /(^|[/\\])\.|node_modules/,
+    // Ignore nested hidden paths, not the explicitly authorized transcript
+    // root (.codex/.claude). Directories must remain traversable: filtering
+    // every non-jsonl path here also filtered all intermediate directories.
+    ignored: (p: string, stat?: fs.Stats): boolean => {
+      const relative = path.relative(watchDirCanon, path.resolve(p))
+      if (relative.split(path.sep).some(part => part.startsWith('.') || part === 'node_modules')) return true
+      return !!(isJsonl && stat?.isFile() && !p.endsWith('.jsonl'))
+    },
     persistent: true,
     ignoreInitial: false,
     depth: 6,
     awaitWriteFinish: false
   })
   watcher.on('add', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (p.endsWith('.jsonl')) {
         registerSession(adapter.agentKind, p)
@@ -1304,6 +1352,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     else registerSession(adapter.agentKind, sessionDir)
   })
   watcher.on('addDir', (p) => {
+    if (!current()) return
     // v0.8.0.1: per-message layout. Only register directories that are
     // DIRECT children of the watched root — those correspond to session
     // ids (e.g. `~/.../storage/message/ses_abc`). Anything nested or the
@@ -1313,6 +1362,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     registerSession(adapter.agentKind, p)
   })
   watcher.on('change', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
@@ -1330,6 +1380,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
   })
   watcher.on('unlink', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
@@ -1338,6 +1389,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     // Per-message: individual msg-file deletion doesn't close a session.
   })
   watcher.on('unlinkDir', (p) => {
+    if (!current()) return
     if (isJsonl) return
     if (path.dirname(path.resolve(p)) !== watchDirCanon) return
     const sid = path.basename(p)

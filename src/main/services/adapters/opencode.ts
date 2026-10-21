@@ -23,13 +23,8 @@
 // message stub's messageID, so the chain within one message stays
 // intact even though the parts arrive as separate audit events.
 //
-// KNOWN LIMITATION (v0.8.1): parts that land AFTER the msg stub is
-// first observed are not re-scanned. Dedup keys off filename in the
-// sidecar index, so a re-emit would fire on the next msg stub arrival
-// but by then the parts are frozen. For post-hoc audit review this is
-// fine — the on-disk parts remain complete; only live-tail is partial.
-// v0.8.2+ will add a secondary chokidar watch on `storage/part/` to
-// close this gap.
+// A secondary watcher observes new part writes only while the project has
+// enabled this source and registered the message in an allowed session.
 
 import * as fs from 'fs'
 import * as os from 'os'
@@ -320,12 +315,14 @@ function startSecondaryWatcher(host: HostControlSurface): void {
   }
   const watcher = chokidar.watch(partsRoot, {
     persistent: true,
-    ignoreInitial: false,
+    ignoreInitial: true,
     depth: 3,
     awaitWriteFinish: false
   })
   const emitFromPartFile = (p: string): void => {
     if (!p.endsWith('.json')) return
+    const messageId = path.basename(path.dirname(p))
+    if (!host.acceptsMessage('opencode', messageId)) return
     let raw: string
     try { raw = fs.readFileSync(p, 'utf-8') } catch { return }
     let part: OpencodePart
@@ -364,7 +361,8 @@ export const opencodeAdapter: TailerAdapter = {
   subtypeFor: subtypeForOpencode,
   init(host: HostControlSurface): void {
     startSecondaryWatcher(host)
-  }
+  },
+  stop(): void { stopSecondaryWatcher(); secondaryHost = null }
 }
 
 /** Test-only override for the transcript root. Re-attaches the secondary

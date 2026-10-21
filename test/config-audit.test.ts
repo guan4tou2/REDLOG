@@ -52,11 +52,16 @@ describe('diffSecurityConfig', () => {
   })
 
   it('audits every member of every pack, so adding one cannot silently skip it', () => {
-    const members = ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard', 'claudeCode', 'codex', 'opencode', 'powershellTranscript']
+    const members = ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard', 'powershellTranscript']
     for (const m of members) {
       const d = diffSecurityConfig(cfg(), cfg({ packMembers: { [m]: false } }))
       expect({ m, row: d[`packMembers.${m}`] }).toEqual({ m, row: { from: undefined, to: false } })
     }
+  })
+
+  it('audits per-tool project AI permission independently of capture packs', () => {
+    const sources = {codex:{enabled:true,installationId:'receipt',workPaths:['/client'],startedAt:1}}
+    expect(diffSecurityConfig(cfg(),cfg({agentTailer:{sources}}))['agentTailer.sources']).toEqual({from:undefined,to:sources})
   })
 
   it('ignores cosmetic changes (only the audited fields are compared)', () => {

@@ -87,11 +87,7 @@ export default function CaptureControlPage({
         />
       </CapturePackGroup>
 
-      {/* Spec 049: `packs.aiAgents` used to be written here AND by a bare
-          checkbox on a separate AI agents page. The same boolean, so they moved
-          together — but an operator who ticked one then met an identical,
-          unticked-looking control on the other had no way to tell that capture
-          was already on. One writer now, with the tuning it gates. */}
+      {/* Optional AI integrations are installed per tool and authorized per project. */}
       <AgentsPanel config={config} setConfig={setConfig} t={t} />
 
       {/* A Windows capture on a Mac is not setup that is missing. Off Windows

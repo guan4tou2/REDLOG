@@ -30,6 +30,12 @@ describe('official AI capture plugin installation', () => {
     expect(parsed.manifest!.contributes).toEqual({})
     expect(manager().list().map(p => p.state)).toEqual(['not-installed', 'installed', 'not-installed'])
   })
+  it('assigns a different authorization receipt on reinstall', () => {
+    manager().install('codex')
+    const before = manager().list().find(p => p.agentKind === 'codex')!.installationId
+    manager().uninstall('codex'); manager().install('codex')
+    expect(manager().list().find(p => p.agentKind === 'codex')!.installationId).not.toBe(before)
+  })
   it('repeated installation is a no-op', () => {
     manager().install('codex')
     const manifest = path.join(pluginDir(), 'plugin.json')

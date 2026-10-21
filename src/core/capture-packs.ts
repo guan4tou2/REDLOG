@@ -22,10 +22,6 @@ export const CAPTURE_PACKS = {
     pluginId: 'pack-host-monitors',
     members: ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard']
   },
-  aiAgents: {
-    pluginId: 'pack-ai-agents',
-    members: ['claudeCode', 'codex', 'opencode']
-  },
   windowsOutput: {
     pluginId: 'pack-windows-output',
     members: ['powershellTranscript']
@@ -34,8 +30,8 @@ export const CAPTURE_PACKS = {
 
 export type CapturePackId = keyof typeof CAPTURE_PACKS
 
-/** The agent each AI-agents member switches, as the tailer adapter names it
- *  (`TailerAdapter.agentKind`, which lands in every event's `data.agent`). */
+/** Labels used for per-tool health history. Activation is decided by
+ *  agent-capture-policy, independently of capture packs. */
 export const AGENT_MEMBER_KIND = {
   claudeCode: 'claude-code',
   codex: 'codex',

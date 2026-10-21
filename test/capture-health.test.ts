@@ -55,7 +55,7 @@ describeDB('capture-health', () => {
     // pack whose plugin is not active is left out of health (Spec 035).
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
-      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+      [active('pack-host-monitors'), active('pack-windows-output')]
     )
   })
   afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
@@ -441,13 +441,29 @@ describeDB('capture-health', () => {
   // so the row could never report `installed` and rendered as a permanent
   // idle with an Install button that did nothing. Agent coverage now comes
   // from the transcript tailer, which sees every tool, not just Bash.
+  it('uses installation and project permissions for AI health, including reinstall', async () => {
+    vi.spyOn(os, 'homedir').mockReturnValue(tmp)
+    const { createOfficialAgentPluginManager } = await import('../src/core/plugins/official-agents')
+    const manager = createOfficialAgentPluginManager(path.join(tmp, '.redlog', 'plugins'))
+    manager.install('codex')
+    fs.mkdirSync(path.join(tmp,'.codex','sessions'),{recursive:true})
+    const receipt = manager.list().find(p => p.agentKind === 'codex')!.installationId
+    vi.spyOn(pluginsIndex,'listPlugins').mockReturnValue([{manifest:{id:'official-ai-codex'},status:'active'}] as never)
+    configureCaptureHealth({agentTailer:{sources:{codex:{enabled:true,installationId:receipt,workPaths:[tmp],startedAt:1000}}}})
+    expect(getCaptureHealth().sources.find(s => s.id === 'agent-codex')).toMatchObject({installed:true,enabled:true,state:'ready'})
+    manager.uninstall('codex'); invalidateHooksCache()
+    expect(getCaptureHealth().sources.find(s => s.id === 'agent-codex')).toMatchObject({installed:false,enabled:false,state:'off'})
+    manager.install('codex'); invalidateHooksCache()
+    expect(getCaptureHealth().sources.find(s => s.id === 'agent-codex')).toMatchObject({installed:true,enabled:false,state:'off'})
+  })
+
   it('reports agent activity through the per-tool tailer rows, not a hook row', () => {
     mockHooks({ 'shell-zsh': false })
-    configureCaptureHealth({ packs: { aiAgents: true } })
+    configureCaptureHealth({})
     ins('agent', { subtype: 'tool_call', tool_name: 'Bash', agent: 'claude-code' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
-    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('off')
     expect(h.sources.find((s) => s.id === 'agent-claude-code')?.lastEventAt).not.toBeNull()
   })
 
@@ -465,14 +481,14 @@ describeDB('capture-health', () => {
   it('reports a switched-off source as off, not merely unset', () => {
     mockHooks({ 'shell-zsh': false })
     // Spec 035: sources switch by pack. Host monitors off, AI agents on.
-    configureCaptureHealth({ packs: { hostMonitors: false, aiAgents: true } })
+    configureCaptureHealth({ packs: { hostMonitors: false } })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'clipboard')?.state).toBe('off')
     expect(h.sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
     // Switched on and nothing has come through it yet: it can record, which
     // is all this axis claims. Its silence is reported as an empty
     // `lastEventAt`, not as a second state.
-    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('ready')
+    expect(h.sources.find((s) => s.id === 'agent-claude-code')?.state).toBe('off')
   })
 
   it('a switched-off source does not drag the verdict to partial', () => {
@@ -523,7 +539,7 @@ describeDB('capture-health tells the truth about live sources', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap2-')); initDB(tmp)
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
-      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+      [active('pack-host-monitors'), active('pack-windows-output')]
     )
   })
   afterEach(() => {
@@ -607,7 +623,7 @@ describeDB('the mitmproxy row is fed by either of its two modes', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-streams-')); initDB(tmp)
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
-      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+      [active('pack-host-monitors'), active('pack-windows-output')]
     )
     mockHooks({ 'shell-zsh': false, mitmproxy: false })
   })
@@ -643,7 +659,7 @@ describeDB('each AI tool reports its own last event', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-agents-')); initDB(tmp)
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
-      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+      [active('pack-host-monitors'), active('pack-windows-output')]
     )
     mockHooks({ 'shell-zsh': false, mitmproxy: false })
   })

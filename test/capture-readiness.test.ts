@@ -39,7 +39,7 @@ describe('computeCaptureReadiness', () => {
   it('is dark with a clear first step when nothing is wired', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { state: 'ready' })
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
@@ -56,7 +56,7 @@ describe('computeCaptureReadiness', () => {
     // first and may never install a shell hook — and was told they were dark
     // while HTTP events landed on the timeline.
     const h = health([
-      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' }),
+      src('agent-claude-code', { state: 'ready' }),
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' })
     ], { verdict: 'dark' })
 
@@ -89,7 +89,7 @@ describe('computeCaptureReadiness', () => {
     const h = health([
       // shell hook installed but no command has run yet
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready' }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
@@ -107,7 +107,7 @@ describe('computeCaptureReadiness', () => {
     // not even when it is the only wired source.
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
+      src('agent-claude-code', { enabled: true, state: 'ready' })
     ])
     const r = computeCaptureReadiness(h)
     expect(r.steps.find((s) => s.id === 'agent-claude-code')?.status).toBe('wired')
@@ -154,7 +154,7 @@ describe('computeCaptureReadiness', () => {
   it('is recording, with no urgent next step, once any core source is active', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', state: 'ready' })
+      src('agent-claude-code', { state: 'ready' })
     ], { verdict: 'healthy', recording: true })
 
     const r = computeCaptureReadiness(h)
@@ -166,9 +166,9 @@ describe('computeCaptureReadiness', () => {
   it('once everything is set up but nothing has been recorded, nudges the operator to generate activity', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' }),
-      src('agent-codex', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' }),
-      src('agent-opencode', { configPath: 'packs.aiAgents', enabled: true, state: 'ready' })
+      src('agent-claude-code', { enabled: true, state: 'ready' }),
+      src('agent-codex', { enabled: true, state: 'ready' }),
+      src('agent-opencode', { enabled: true, state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)
@@ -184,7 +184,7 @@ describe('computeCaptureReadiness', () => {
     // purposes — offering to enable it is exactly the right nudge.
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: false, state: 'ready' }),
-      src('agent-claude-code', { configPath: 'packs.aiAgents', enabled: false, state: 'off' })
+      src('agent-claude-code', { enabled: false, state: 'off' })
     ], { verdict: 'dark' })
     const r = computeCaptureReadiness(h)
     expect(r.steps.find((s) => s.id === 'agent-claude-code')?.status).toBe('todo')

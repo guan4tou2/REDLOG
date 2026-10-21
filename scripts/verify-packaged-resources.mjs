@@ -32,13 +32,13 @@ const required = [
   'plugins/starter-pack/plugin.json',
   // Spec 035: a capture pack whose manifest is missing does not run.
   'plugins/pack-host-monitors/plugin.json',
-  'plugins/pack-ai-agents/plugin.json',
   'plugins/pack-windows-output/plugin.json'
 ]
 const forbidden = [
   'hooks/shell-preexec-hook.sh',
   'hooks/redlog-hook.zsh',
   'hooks/claude-code-hook.sh',
+  'plugins/pack-ai-agents',
   // The plugin code host was removed in Spec 027; its child script must not ship.
   'plugin-runner.js'
 ]

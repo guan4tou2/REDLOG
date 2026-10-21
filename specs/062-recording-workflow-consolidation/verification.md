@@ -62,3 +62,27 @@ Scope: local catalog/install/uninstall only. Installation metadata does not acti
 Clarify: no additional question for allowlisted local installation; existing decisions are sufficient. Checklist/Analyze: reviewed no default filesystem writes, no extra destination input, no transcript reads in this manager, explicit IO errors, ownership and non-recursive deletion; canonical plugin format/loader/IPC reused. Converge: T014 complete; T007 and T015–T019 remain open, with the activation/scope/UI gap explicitly recorded rather than marked complete. No domain invariant changes in this installation-only increment; capture lifecycle contract integration stays T018.
 
 Release impact: backend scaffolding only, no new operator workflow yet; CHANGELOG explicitly identifies the increment as inactive groundwork. No release or main merge performed.
+
+
+## US5 / T015–T019 integration（2026-10-22）
+
+### Observable RED → GREEN
+
+- Policy tests failed before adding the installed + active + explicit project path/activation decision; lifecycle/UI tests failed before replacing the preset and watcher lifecycle.
+- Real-file Electron E2E initially timed out waiting for `transcript_capture_started`: the watcher ignored `.codex` and non-JSONL parent directories. Fixed root-relative filtering, then the same flow recorded only subsequent authorized content.
+- A full regression found a retired member assertion and a delayed focus frame stealing the attachment checkbox's focus. Updated the audited per-source contract; added failing modal interaction/replacement tests and fixed the pending opening frame to respect prior interaction. Kept the original attachment focus assertion.
+
+### Automated results
+
+- Complete Vitest regression: **411 files passed, 4 skipped; 4082 tests passed, 26 skipped**. No new skip or weakened preservation/isolation assertions. Existing platform/opt-in performance skips remain skips.
+- Typecheck, i18n assertions, architecture gate, Spec Kit gate, build and diff check passed.
+- Electron journeys: **8 passed** across installation ownership/protection, explicit capture, export preview and English/Traditional-Chinese filtered exports. The capture flow verifies actual production watchers, new prompt plus tool input/output, unrelated directory exclusion, stop, uninstall, reinstall and unchanged evidence bytes.
+- Mac **packaged** capture journey: **1 passed**, additionally instrumenting actual source `openSync`/`readFileSync`. Before installation and after installation without activation: zero opens/reads for all three tools. With Codex enabled: Codex is read, Claude/OpenCode remain unread. After disabling: zero further reads. This is automated observation, not manual UI acceptance.
+- Candidate: `/private/tmp/redlog-ai-capture-20261022-dist/mac-arm64/RedLog.app`; arm64 Electron 44.4.1. `app.asar` SHA-256 `aa5e8b33ccc4ab631b45b6fbd296bad4f4ccae1fd0e9c356153671172613cc5c`.
+- Packaged resource contract and deep/strict code-signature verification passed, including absence of the retired AI pack. Signature is ad-hoc; this is not notarization or a published release.
+
+### Native manual acceptance / remaining gates
+
+The isolated candidate was launched with HOME `/private/tmp/redlog-ai-native-20261022/home` and a separate profile, containing only synthetic client/private transcript fixtures. The native control tool reported **Mac locked** before any UI action. An unlock request is pending; do not count the automated journey as manual install/directory-picker/keyboard acceptance. T019 and parent T007 remain unchecked until the remaining native step is run. No real project or private AI transcript was opened.
+
+Clarify/Checklist/Analyze: existing decisions resolve default installation, project permission and evidence retention; no new product direction needed. Converge: T015–T018 implemented and tested; T019 manual UI remains blocked by desktop lock. Overall Spec 062 stays Draft; T008–T013 retain their specific platform/workflow acceptance gates. Windows/Linux native installers and vendor-version capture matrices were not run on this Mac. No merge or release performed.

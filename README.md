@@ -240,7 +240,7 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can additionally be captured by turning on the **AI agents** capture pack (Settings ▸ Packs, screenshots & retention, off by default), whose transcript tailer records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Install the desired integration in Settings ▸ Other sources ▸ AI Agents, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 
@@ -256,16 +256,6 @@ code, and duration. For explicit output recording on macOS/Linux, run
 for one command. Python 3 is required. Output is bounded and searchable; see
 [external session recording](docs/external-session-recording.md) for pause,
 project isolation, truncation and platform limits.
-
-**Codex/GPT wrapper (for agents you can't hook):**
-
-```bash
-# Wrap the agent's shell:
-SHELL=/path/to/redlog/plugins/pack-ai-agents/hooks/codex-wrapper.sh codex run "scan the target"
-
-# Or wrap a single command:
-./plugins/pack-ai-agents/hooks/codex-wrapper.sh nmap -sV target.com
-```
 
 ### Layer 2: HTTP API (Universal)
 
@@ -374,8 +364,6 @@ Hooks
   ├── redlog-relay.py      the output relay, the classifier, per-terminal state
   └── command-class.json   which commands are relayed, PTY-recorded, or left alone
 
-Plugin hooks
-  └── pack-ai-agents/hooks/codex-wrapper.sh   Shell wrapper for Codex/GPT
 ```
 
 ## Project Structure
@@ -420,9 +408,9 @@ hooks/
   shell-common.sh            shared POSIX transport and redlog-run
   redlog-relay.py            output relay, classifier, per-terminal state
   command-class.json         relayed / pty / native, one list for both readers
-plugins/
-  pack-ai-agents/
-    hooks/codex-wrapper.sh   shell wrapper for any agent
+plugins/                    bundled non-AI capture packs
+src/core/plugins/
+  official-agents.ts        optional AI capture catalog, installed only on request
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

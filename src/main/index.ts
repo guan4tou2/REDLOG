@@ -1,3 +1,5 @@
+import { resolveAgentCapture } from '../core/agent-capture-policy'
+import { createOfficialAgentPluginManager } from '../core/plugins/official-agents'
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
@@ -9,7 +11,7 @@ import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
-import { isPackMemberOn, isPackOn, AGENT_MEMBER_KIND } from '../core/capture-packs'
+import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -434,9 +436,12 @@ function applyCapturePacks(cfg: RedLogConfig): void {
   configureConnectionMonitor({ enabled: on('connectionMonitor') })
   configureProcessMonitor({ enabled: on('processMonitor') })
   void configurePowershellTranscript({ enabled: on('powershellTranscript') })
-  const agents = (Object.keys(AGENT_MEMBER_KIND) as Array<keyof typeof AGENT_MEMBER_KIND>)
-    .filter((m) => on(m)).map((m) => AGENT_MEMBER_KIND[m])
-  configureAgentTailer({ enabled: agents.length > 0, enabledAgents: agents })
+  const agents = resolveAgentCapture(cfg, createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list(), plugins)
+  configureAgentTailer({ enabled: agents.length > 0, enabledAgents: agents.map(a => a.agentKind),
+    engagementId: cfg.engagement.id, operatorId: cfg.operator.id, emitThinking: cfg.agentTailer?.emitThinking ?? false,
+    watchPathsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, a.workPaths])),
+    activationStarts: Object.fromEntries(agents.map(a => [a.agentKind, a.startedAt])),
+    excludedPaths: readHookConfig().excludedPaths })
 }
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
@@ -933,15 +938,13 @@ function startProject(project: ProjectMeta): void {
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
   })
-  // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
-  // JSONL sessions, derives per-turn events (user_message / assistant_message
-  // / tool_call / tool_result) plus a whole-file sha256 snapshot event
-  // stream, gated by the path lists in ~/.redlog/hook-config.json.
+  // AI capture is separately installed and authorized by this project.
+  // Shared exclusions remain local; allowed directories are per source/project.
   {
-    const { excludedPaths, watchPaths } = readHookConfig()
+    const { excludedPaths } = readHookConfig()
     configureAgentTailer({
       engagementId, operatorId,
-      excludedPaths, watchPaths,
+      excludedPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
       // v0.12.0: route agent tool_call events through the alert subsystem
       // so a Claude / Codex / OpenCode session hitting an out-of-scope host
@@ -967,28 +970,6 @@ function startProject(project: ProjectMeta): void {
     sessionRegistry: {
       register: registerSessionId,
       list: getRegisteredSessions
-    },
-    watchPathManager: {
-      addPath: (cwd: string): boolean => {
-        try {
-          const { watchPaths } = readHookConfig()
-          const norm = path.resolve(cwd)
-          if (watchPaths.some((p) => path.resolve(p) === norm)) return false
-          configureAgentTailer(saveHookConfig({ watchPaths: [...watchPaths, cwd] }))
-          return true
-        } catch { return false }
-      },
-      removePath: (cwd: string): boolean => {
-        try {
-          const { watchPaths } = readHookConfig()
-          const norm = path.resolve(cwd)
-          const filtered = watchPaths.filter((p) => path.resolve(p) !== norm)
-          if (filtered.length === watchPaths.length) return false
-          configureAgentTailer(saveHookConfig({ watchPaths: filtered }))
-          return true
-        } catch { return false }
-      },
-      listPaths: (): string[] => readHookConfig().watchPaths
     },
     // #220: capture checks go to the screen that asked for them, not to the
     // record.
@@ -1376,13 +1357,15 @@ app.whenReady().then(() => {
     return loadConfig(getProjectPath(activeProject))
   })
 
-  // Settings maintains the watchPaths whitelist through this pair.
+  // AI source metadata and shared hook exclusions. The folder picker itself
+  // does not grant capture permission.
   ipcMain.handle('agents:sources', () => describeAgentSources())
   ipcMain.handle('hookConfig:get', () => readHookConfig())
-  ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => {
+  ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[] }) => {
     try {
       // Live-reconfigure the tailer so the new gate takes effect immediately
-      configureAgentTailer(saveHookConfig(cfg))
+      saveHookConfig(cfg)
+      if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject)))
       return true
     } catch { return false }
   })

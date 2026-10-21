@@ -17,7 +17,7 @@ describe('capture packs: config', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-packs-'))
     try {
       const c = loadConfig(dir) as unknown as Record<string, Record<string, unknown>>
-      expect(c.packs).toEqual({ hostMonitors: false, aiAgents: false, windowsOutput: false })
+      expect(c.packs).toEqual({ hostMonitors: false, windowsOutput: false })
       for (const k of MEMBER_KEYS) expect({ k, enabled: c[k]?.enabled }).toEqual({ k, enabled: undefined })
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
@@ -33,7 +33,7 @@ describe('capture packs: config', () => {
   })
 
   it('ships a bundled plugin manifest for each pack', () => {
-    for (const id of ['pack-host-monitors', 'pack-ai-agents', 'pack-windows-output']) {
+    for (const id of ['pack-host-monitors', 'pack-windows-output']) {
       const m = JSON.parse(read(`plugins/${id}/plugin.json`)) as { id: string; kind: string }
       expect(m).toMatchObject({ id, kind: 'pack' })
     }
@@ -55,7 +55,7 @@ describe('capture packs: isPackOn', async () => {
 
   it('names its members', () => {
     expect(CAPTURE_PACKS.hostMonitors.members).toEqual(['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard'])
-    expect(CAPTURE_PACKS.aiAgents.members).toEqual(['claudeCode', 'codex', 'opencode'])
+    expect(CAPTURE_PACKS).not.toHaveProperty('aiAgents')
     expect(CAPTURE_PACKS.windowsOutput.members).toEqual(['powershellTranscript'])
   })
 })
@@ -64,8 +64,7 @@ describe('capture packs: isPackMemberOn', async () => {
   const { isPackMemberOn, packOfMember, CAPTURE_PACKS } = await import('../src/core/capture-packs')
   const plugin = (id: string, status: string) => ({ manifest: { id }, source: 'bundled', status }) as never
   const active = [
-    plugin(CAPTURE_PACKS.hostMonitors.pluginId, 'active'),
-    plugin(CAPTURE_PACKS.aiAgents.pluginId, 'active')
+    plugin(CAPTURE_PACKS.hostMonitors.pluginId, 'active')
   ]
 
   it('lets the operator drop one member without losing the pack', () => {
@@ -100,20 +99,6 @@ describe('capture packs: isPackMemberOn', async () => {
     expect(isPackMemberOn({ packs: pack, packMembers: { fileWatcher: false } }, 'fileWatcher', active)).toBe(false)
   })
 
-  it('leaves AI agents off until their pack is turned on', () => {
-    for (const member of ['claudeCode', 'codex', 'opencode'] as const) {
-      expect(isPackMemberOn({}, member, active)).toBe(false)
-      expect(isPackMemberOn({ packs: { aiAgents: true } }, member, active)).toBe(true)
-    }
-  })
-
-  it('records one agent without the others (Spec 050)', () => {
-    const cfg = { packs: { aiAgents: true }, packMembers: { codex: false, opencode: false } }
-    expect(isPackMemberOn(cfg, 'claudeCode', active)).toBe(true)
-    expect(isPackMemberOn(cfg, 'codex', active)).toBe(false)
-    expect(isPackMemberOn(cfg, 'opencode', active)).toBe(false)
-  })
-
   it('never runs a member whose pack is off, or whose plugin is gone', () => {
     // A member switch cannot opt into a pack the operator has not turned on,
     // or one whose plugin was disabled in Plugins.
@@ -123,7 +108,6 @@ describe('capture packs: isPackMemberOn', async () => {
 
   it('maps every declared member back to its pack', () => {
     expect(packOfMember('clipboard')).toBe('hostMonitors')
-    for (const member of ['claudeCode', 'codex', 'opencode'] as const) expect(packOfMember(member)).toBe('aiAgents')
     expect(packOfMember('powershellTranscript')).toBe('windowsOutput')
   })
 })
@@ -146,7 +130,7 @@ describeDB('capture packs: health', () => {
   afterEach(() => { vi.restoreAllMocks(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   const bundled = (id: string, status = 'active') => ({ manifest: { id }, source: 'bundled', status }) as never
-  const allPacks = [bundled('pack-host-monitors'), bundled('pack-ai-agents'), bundled('pack-windows-output')]
+  const allPacks = [bundled('pack-host-monitors'), bundled('pack-windows-output')]
 
   it('switches a member row through its pack', () => {
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(allPacks)
@@ -158,9 +142,9 @@ describeDB('capture packs: health', () => {
     expect(rows.find((s) => s.id === 'process-monitor')).toMatchObject({
       configPath: 'packMembers.processMonitor', packPath: 'packs.hostMonitors', enabled: true
     })
-    for (const [id, key] of [['agent-claude-code', 'claudeCode'], ['agent-codex', 'codex'], ['agent-opencode', 'opencode']]) {
+    for (const id of ['agent-claude-code', 'agent-codex', 'agent-opencode']) {
       expect(rows.find((s) => s.id === id)).toMatchObject({
-        configPath: `packMembers.${key}`, packPath: 'packs.aiAgents', enabled: false
+        installed: false, enabled: false, state: 'off'
       })
     }
   })
@@ -208,7 +192,7 @@ describeDB('capture packs: health', () => {
 
   it('drops the rows of a pack whose plugin is not active', () => {
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue([
-      bundled('pack-host-monitors', 'disabled'), bundled('pack-ai-agents'), bundled('pack-windows-output')
+      bundled('pack-host-monitors', 'disabled'), bundled('pack-windows-output')
     ])
     ch.configureCaptureHealth({ packs: { hostMonitors: true } })
     ch.invalidateHooksCache()

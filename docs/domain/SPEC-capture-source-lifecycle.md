@@ -207,3 +207,14 @@ degraded mode: the handler is simply never called, and the product reports
 that the target did nothing. Everything else on this list produces a symptom
 somebody notices. That one produces an absence, and an absence is what this
 product exists to rule out.
+
+
+## Optional AI integrations (Spec 062)
+
+Installation and permission are separate. Claude Code, Codex and OpenCode each start uninstalled. A local managed manifest carries a fresh installation receipt; project activation must match that receipt, select absolute working directories and include a capture-start boundary. An empty list, missing cwd, inactive plugin or missing installation cannot authorize capture. Reinstalling never restores the former receipt's permission.
+
+The runtime and health projection use `resolveAgentCapture`. The settings source row owns installation, native directory selection and explicit project activation. A global AI pack or API watch path is not an alternate authority. Session registration can narrow the enabled sessions, but cannot grant a new working directory.
+
+Adapter initialization, main/auxiliary watchers and delayed callbacks share activation/project boundaries. Disable, uninstall and project switch stop those watchers before replacing project identity. Rejected sessions create no sidecar. Existing JSONL sessions begin at the EOF observed on connection; the checkpoint records skipped source bytes and requested activation time. New source files created after activation may begin at byte zero. Recorded evidence is retained on disable/uninstall.
+
+Only data exposed by the supported local transcript format is captured. Source-reported tool calls/results are distinct from independently observed shell execution and output. No promise is made to recover hidden reasoning, all historical sessions, or every vendor storage version.

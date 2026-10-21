@@ -1,4 +1,5 @@
 import fs from 'fs'
+import { randomUUID } from 'node:crypto'
 import * as path from 'path'
 import { PLUGIN_API_VERSION, type PluginManifest } from './types'
 
@@ -6,6 +7,7 @@ export interface OfficialAgentPlugin {
   agentKind: 'claude-code' | 'codex' | 'opencode'
   pluginId: string
   name: string
+  installationId?: string
   state: 'not-installed' | 'installed' | 'conflict' | 'error'
   error?: string
 }
@@ -21,10 +23,11 @@ const CATALOG: readonly Entry[] = [
 ]
 
 // Templates are not plugin directories and are never auto-discovered. This
-// installation increment adds metadata only: activation and project-scoped
-// transcript access must be wired separately before these can record anything.
-function manifestBytes(entry: Entry): string {
-  const manifest: PluginManifest = {
+// installer supplies an installation receipt. The shared capture policy requires
+// that receipt, an active plugin and explicit project paths before recording.
+function manifestBytes(entry: Entry, installationId: string): string {
+  const manifest: PluginManifest & { redlogInstallationId: string } = {
+    redlogInstallationId: installationId,
     id: entry.pluginId, name: entry.name, version: '1.0.0',
     redlogApi: PLUGIN_API_VERSION, kind: 'pack', author: 'RedLog',
     description: 'Optional RedLog capture integration, not the AI tool itself. Installation alone does not enable recording.',
@@ -58,10 +61,14 @@ export function createOfficialAgentPluginManager(root: string): {
       if (files.length !== 1 || files[0] !== 'plugin.json') return { ...entry, state: 'conflict', error: 'Integration directory contains unrecognized files' }
       const file = path.join(dir, 'plugin.json')
       const manifest = fs.lstatSync(file)
-      if (!manifest.isFile() || manifest.isSymbolicLink() || manifest.size !== Buffer.byteLength(manifestBytes(entry)) || fs.readFileSync(file, 'utf8') !== manifestBytes(entry)) {
+      if (!manifest.isFile() || manifest.isSymbolicLink() || manifest.size > 4096) return { ...entry, state: 'conflict', error: 'Integration manifest is not a managed file' }
+      const bytes = fs.readFileSync(file, 'utf8')
+      let installationId: string
+      try { installationId = JSON.parse(bytes).redlogInstallationId } catch { return { ...entry, state: 'conflict', error: 'Integration manifest is not valid JSON' } }
+      if (typeof installationId !== 'string' || !/^[0-9a-f-]{36}$/.test(installationId) || bytes !== manifestBytes(entry, installationId)) {
         return { ...entry, state: 'conflict', error: 'Integration manifest is not the managed original' }
       }
-      return { ...entry, state: 'installed' }
+      return { ...entry, state: 'installed', installationId }
     } catch (e) { return { ...entry, state: 'error', error: errorText(e) } }
   }
   return {
@@ -81,7 +88,7 @@ export function createOfficialAgentPluginManager(root: string): {
         // directory is not ours to adopt or overwrite.
         fs.mkdirSync(dir)
         created = true
-        fs.writeFileSync(staging, manifestBytes(entry), { flag: 'wx', mode: 0o600 })
+        fs.writeFileSync(staging, manifestBytes(entry, randomUUID()), { flag: 'wx', mode: 0o600 })
         fs.renameSync(staging, path.join(dir, 'plugin.json'))
         return { ok: true, changed: true, pluginId: entry.pluginId }
       } catch (e) {

@@ -7,7 +7,7 @@ import { isMemberSelected, OPT_IN_MEMBERS } from '../../../../core/capture-packs
 // disabled in Plugins is removed — said so here instead of offering a switch
 // that would record nothing.
 
-export type PackId = 'hostMonitors' | 'aiAgents' | 'windowsOutput'
+export type PackId = 'hostMonitors' | 'windowsOutput'
 
 export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMembers']>>
 
@@ -66,7 +66,6 @@ export function PackMember({
 
 const PLUGIN_OF: Record<PackId, string> = {
   hostMonitors: 'pack-host-monitors',
-  aiAgents: 'pack-ai-agents',
   windowsOutput: 'pack-windows-output'
 }
 
@@ -77,12 +76,12 @@ export function usePackAvailability(): Record<PackId, boolean> | null {
     let live = true
     const plugins = (window.redlog as { plugins?: { list?: () => Promise<Array<{ id: string; source: string; status: string }>> } })
       .plugins?.list?.()
-    if (!plugins) { setAvail({ hostMonitors: true, aiAgents: true, windowsOutput: true }); return }
+    if (!plugins) { setAvail({ hostMonitors: true, windowsOutput: true }); return }
     plugins.then((list) => {
       if (!live) return
       const on = (id: string): boolean => list.some((p) => p.id === id && p.source === 'bundled' && p.status === 'active')
-      setAvail({ hostMonitors: on(PLUGIN_OF.hostMonitors), aiAgents: on(PLUGIN_OF.aiAgents), windowsOutput: on(PLUGIN_OF.windowsOutput) })
-    }).catch(() => { if (live) setAvail({ hostMonitors: true, aiAgents: true, windowsOutput: true }) })
+      setAvail({ hostMonitors: on(PLUGIN_OF.hostMonitors), windowsOutput: on(PLUGIN_OF.windowsOutput) })
+    }).catch(() => { if (live) setAvail({ hostMonitors: true, windowsOutput: true }) })
     return () => { live = false }
   }, [])
   return avail

@@ -15,7 +15,6 @@ import CaptureControlPage from './settings/CaptureControlPage'
 import HooksPanel from './settings/HooksPanel'
 import PluginsPanel from './settings/PluginsPanel'
 import IntegrityPanel from './settings/IntegrityPanel'
-import { HookWatchPathsPanel } from './settings/AgentsPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
@@ -358,7 +357,6 @@ export default function Settings({ request = null }: { request?: { page: Setting
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
-            <HookWatchPathsPanel t={t} />
           </>
         )}
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}

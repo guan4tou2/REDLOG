@@ -38,6 +38,8 @@ function catchUpSession(sessionId: string): void {
 
 beforeEach(() => {
   hostConfigured = false
+  // Each test explicitly selects its host policy; stop disables every source.
+  configureHost({ enabled: false, enabledAgents: undefined, watchPathsByAgent: undefined, activationStarts: undefined })
   scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tailer-'))
   initDB(scratch)
   createOperator({ id: OP, name: 'Operator 1', token: generateToken() })

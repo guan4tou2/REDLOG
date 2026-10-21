@@ -1,61 +1,51 @@
 // @vitest-environment jsdom
-
-import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+import { useState } from 'react'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import AgentsPanel from '../src/renderer/src/components/settings/AgentsPanel'
-
-vi.mock('../src/renderer/src/components/settings/CapturePackGroup', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/renderer/src/components/settings/CapturePackGroup')>()),
-  default: ({ children }: { children: unknown }) => <div>{children as never}</div>,
-  usePackAvailability: () => null
-}))
-
-const t = (key: string, vars?: Record<string, string | number>): string => vars ? `${key}:${JSON.stringify(vars)}` : key
-
-function bridge(watchPaths: string[]): void {
-  ;(window as unknown as { redlog: unknown }).redlog = {
-    agents: {
-      sources: async () => [
-        { id: 'claude-code', label: 'Claude Code', root: '/h/.claude/projects', detected: true },
-        { id: 'codex', label: 'Codex CLI', root: '/h/.codex/sessions', detected: false }
-      ]
-    },
-    hookConfig: { get: async () => ({ excludedPaths: [], watchPaths }), save: async () => true, pickPath: async () => null }
-  }
+const t = (key: string): string => key
+let install: ReturnType<typeof vi.fn>
+let remove: ReturnType<typeof vi.fn>
+let catalog: ReturnType<typeof vi.fn>
+let pick: ReturnType<typeof vi.fn>
+let saved: unknown
+const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
+const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
+function Harness() {
+  const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
+  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} />
 }
-
-describe('AI tools: one switch each, with what is on this machine', () => {
-  afterEach(cleanup)
-
-  it('says which tools exist on this machine and where they are read from', async () => {
-    bridge([])
-    render(<AgentsPanel t={t} config={{} as never} setConfig={() => {}} />)
-    const claude = await screen.findByTestId('agent-source-claude-code')
-    expect(claude.getAttribute('data-detected')).toBe('true')
-    expect(claude.textContent).toContain('/h/.claude/projects')
-    expect(screen.getByTestId('agent-source-codex').getAttribute('data-detected')).toBe('false')
+beforeEach(() => {
+  saved = undefined; catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
+    ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick } }
+})
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
+describe('AI optional installation settings', () => {
+  it('shows an uninstalled integration without an activation checkbox', async () => {
+    render(<Harness />); await screen.findByTestId('agent-install-codex')
+    expect(screen.queryByTestId('agent-enabled-codex')).toBeNull(); expect(install).not.toHaveBeenCalled(); expect(saved).toBeUndefined()
   })
-
-  it('says an empty folder list means every discovered session', async () => {
-    bridge([])
-    render(<AgentsPanel t={t} config={{} as never} setConfig={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('agent-scope').textContent).toBe('settings.agents.scopeAll'))
+  it('installs only the chosen tool and does not activate capture', async () => {
+    render(<Harness />); fireEvent.click(await screen.findByTestId('agent-install-codex'))
+    await waitFor(() => expect(install).toHaveBeenCalledWith('codex')); expect(saved).toBeUndefined()
   })
-
-  it('says how many folders limit it once some are set', async () => {
-    bridge(['/work/a', '/work/b'])
-    render(<AgentsPanel t={t} config={{} as never} setConfig={() => {}} />)
-    await waitFor(() => expect(screen.getByTestId('agent-scope').textContent).toContain('"n":2'))
+  it('requires a project directory and explicitly binds activation to this installation', async () => {
+    catalog.mockResolvedValue([installed]); render(<Harness />)
+    const enable = await screen.findByTestId('agent-enabled-codex') as HTMLInputElement
+    expect(enable.disabled).toBe(true)
+    fireEvent.click(screen.getByTestId('agent-add-path-codex'))
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, workPaths: ['/work/client'], installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
   })
-
-  it('gives each tool its own switch, on until the operator turns it off', async () => {
-    bridge([])
-    const setConfig = vi.fn()
-    render(<AgentsPanel t={t} config={{ packMembers: { codex: false } } as never} setConfig={setConfig} />)
-    await screen.findByTestId('agent-source-claude-code')
-    expect((screen.getByTestId('pack-member-claudeCode') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByTestId('pack-member-codex') as HTMLInputElement).checked).toBe(false)
-    fireEvent.click(screen.getByTestId('pack-member-claudeCode'))
-    expect(setConfig).toHaveBeenCalledWith({ packMembers: { codex: false, claudeCode: false } })
+  it('shows a source query error and offers retry instead of an empty list', async () => {
+    catalog.mockRejectedValueOnce(new Error('permission denied')); render(<Harness />)
+    expect((await screen.findByRole('alert')).textContent).toContain('permission denied')
+    fireEvent.click(screen.getByText('common.retry')); await screen.findByTestId('agent-install-codex')
+  })
+  it('keeps installation failures visible', async () => {
+    install.mockResolvedValue({ ok: false, error: 'disk full' }); render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-install-codex'))
+    expect((await screen.findByRole('alert')).textContent).toContain('disk full'); expect(saved).toBeUndefined()
   })
 })

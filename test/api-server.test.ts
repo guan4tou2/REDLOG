@@ -195,6 +195,13 @@ describeDB('api-server', () => {
     expect(got).toHaveLength(1)
   })
 
+  it('does not expose an API that grants global AI directory permission', async () => {
+    for (const method of ['GET','POST','DELETE']) {
+      const response = await fetch(base+'/api/watchpath',{method,headers:{...authHeaders,'content-type':'application/json'},...(method === 'GET' ? {} : {body:JSON.stringify({path:tmpDir})})})
+      expect(response.status).toBe(404)
+    }
+  })
+
   it('serves /api/health without auth', async () => {
     const r = await fetch(`${base}/api/health`)
     expect(r.status).toBe(200)

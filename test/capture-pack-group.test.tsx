@@ -77,12 +77,12 @@ describe('CapturePackGroup', () => {
 
   it('says a pack disabled in Plugins is removed, instead of offering a switch', () => {
     render(
-      <CapturePackGroup pack="aiAgents" title="AI" hint="hint" available={false} config={cfg({ aiAgents: true })} setConfig={() => {}} t={t}>
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
-    expect(screen.getByTestId('pack-removed-aiAgents')).toBeTruthy()
-    expect(screen.queryByTestId('pack-switch-aiAgents')).toBeNull()
+    expect(screen.getByTestId('pack-removed-hostMonitors')).toBeTruthy()
+    expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
     expect(screen.queryByText('member tuning')).toBeNull()
   })
 })

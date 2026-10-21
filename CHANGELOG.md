@@ -5,11 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
-- Added inactive backend groundwork for explicitly installing and removing
-  official AI capture integrations. It writes only the selected local manifest,
-  protects modified files, and preserves evidence. Project activation, working
-  directories and the installation UI are still pending; this does not enable
-  AI capture or install an AI tool.
+- AI capture integrations are now individually optional and uninstalled by
+  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Other
+  sources ▸ AI Agents, select project working directories, then explicitly
+  enable recording. Empty paths do not authorize capture. Existing sessions
+  begin at their observed connection boundary; history is not silently imported.
+  Disabling/uninstalling stops primary and auxiliary watchers and preserves
+  evidence. Reinstalling requires fresh project activation. The old bundled AI
+  preset, Codex shell wrapper and global watch-path API were removed.
+- Fixed transcript discovery ignoring its own hidden .codex/.claude root and
+  non-JSONL intermediate directories. Fixed a delayed modal-opening focus action
+  stealing focus from an attachment while its export preview was recalculated.
 
 - 匯出改為單一視窗，範圍、格式、目的地、政策與附件可在原地調整；換格式不再切成整個專案。保留真實 ExportPlan 預覽與錯誤重試，較早返回的預覽不會覆蓋新的選擇。
 

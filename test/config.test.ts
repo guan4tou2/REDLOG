@@ -22,7 +22,7 @@ describe('loadConfig', () => {
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
     expect(config.scope.warnOnViolation).toBe(true)
-    expect(config.packs?.aiAgents).toBe(false)
+    expect(config.agentTailer?.sources ?? {}).toEqual({})
   })
 
   it('merges partial config with defaults', () => {
@@ -30,7 +30,7 @@ describe('loadConfig', () => {
     const config = loadConfig(tmpDir)
     expect(config.engagement.id).toBe('test-123')
     expect(config.network.checkInterval).toBe(60)
-    expect(config.packs?.aiAgents).toBe(false)
+    expect(config.agentTailer?.sources ?? {}).toEqual({})
   })
 
 })
@@ -101,37 +101,13 @@ describe('loadConfig hands each caller its own defaults', () => {
   })
 })
 
-describe('agent transcript capture default', () => {
-  // Spec 035: agent transcripts run with the AI agents pack. A partial or
-  // hand-written config must never turn it on — including one that still
-  // carries the removed `agentTailer.enabled: true`.
-  it('stays off unless the pack is explicitly on', () => {
-    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'agentTailer:\n  enabled: true\n')
-    expect(loadConfig(tmpDir).packs?.aiAgents).toBe(false)
-    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'packs:\n  aiAgents: true\n')
-    expect(loadConfig(tmpDir).packs?.aiAgents).toBe(true)
-  })
-})
-
-describe('agent member migration (Spec 050)', () => {
-  const members = (yamlText: string): Record<string, unknown> | undefined => {
-    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), yamlText)
-    return loadConfig(tmpDir).packMembers as Record<string, unknown> | undefined
-  }
-  it('turns the old single switch into the three per-agent keys and drops it', () => {
-    const off = members('packMembers:\n  agentTailer: false\n')
-    expect(off).toMatchObject({ claudeCode: false, codex: false, opencode: false })
-    expect(off).not.toHaveProperty('agentTailer')
-    expect(members('packMembers:\n  agentTailer: true\n')).toMatchObject({ claudeCode: true, codex: true, opencode: true })
-  })
-  it('leaves a project with no packMembers key on defaults, so all three stay on', () => {
-    const m = members('packs:\n  aiAgents: true\n')
-    expect(m?.claudeCode).toBeUndefined()
-    expect(m?.codex).toBeUndefined()
-    expect(m?.opencode).toBeUndefined()
-  })
-  it('lets an explicit per-agent key win over the retired one', () => {
-    expect(members('packMembers:\n  agentTailer: false\n  codex: true\n')).toMatchObject({ claudeCode: false, codex: true, opencode: false })
+describe('agent capture project configuration', () => {
+  it('has no permitted sources by default and roundtrips explicit per-tool authorization', () => {
+    const config = loadConfig(tmpDir)
+    expect(config.agentTailer?.sources ?? {}).toEqual({})
+    config.agentTailer = { sources: { codex: { enabled: true, installationId: 'local-receipt', workPaths: [tmpDir], startedAt: 1000 } } }
+    saveConfig(tmpDir, config)
+    expect(loadConfig(tmpDir).agentTailer?.sources).toEqual(config.agentTailer.sources)
   })
 })
 

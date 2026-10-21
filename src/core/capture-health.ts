@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { resolveAgentCapture, agentTranscriptRoot } from './agent-capture-policy'
+import { createOfficialAgentPluginManager } from './plugins/official-agents'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -545,7 +548,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     id: string,
     last: number | null,
     opts: {
-      installed?: boolean; hookId?: string; configPath?: string; packPath?: string
+      installed?: boolean; enabled?: boolean; hookId?: string; configPath?: string; packPath?: string
       /** The source exists whether or not its hook is installed, so `installed:
        *  false` must not make it `absent`. The terminal is the one: RedLog's
        *  own panes record with nothing installed, and the hook only widens the
@@ -566,11 +569,11 @@ function computeCaptureHealth(now: number): CaptureHealth {
     const member = opts.configPath?.startsWith('packMembers.')
       ? opts.configPath.slice('packMembers.'.length) as PackMemberId
       : null
-    const enabled = opts.packPath
+    const enabled = opts.enabled ?? (opts.packPath
       ? packOn === true && member !== null && isMemberSelected({ [member]: cfgFlag(opts.configPath as string) }, member)
       : opts.configPath
         ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
-        : undefined
+        : undefined)
     const lastError = getLiveCaptureError(id, now)
     const state = stateFrom(opts.alwaysPresent ? undefined : opts.installed, last, enabled)
     // An event that landed AFTER the failure says the source recovered. This
@@ -605,6 +608,17 @@ function computeCaptureHealth(now: number): CaptureHealth {
     return { enrolled: { total: all.length, recording: all.filter((t) => t.recording).length } }
   }
 
+  const agentCatalog = createOfficialAgentPluginManager(path.join(os.homedir(), '.redlog', 'plugins')).list()
+  const activeAgents = resolveAgentCapture(cfgSnapshot, agentCatalog, listPlugins())
+  const agentRows = Object.entries(AGENT_MEMBER_KIND).map(([member,kind]) => {
+    const entry = agentCatalog.find(a => a.agentKind === kind)!
+    const enabled = activeAgents.some(a => a.agentKind === kind)
+    const row = mk(`agent-${kind}`, agentLast[member as keyof typeof agentLast], { installed: entry.state === 'installed', enabled })
+    if (entry.state === 'error' || entry.state === 'conflict' || (enabled && !existsSync(agentTranscriptRoot(entry.agentKind, os.homedir())))) {
+      row.state = 'error'; row.lastError = { at: now, message: entry.error ?? 'AI transcript directory not found' }
+    }
+    return row
+  })
   const sources: CaptureSource[] = [
     // One row for both terminals. `installed` is the operator's own shell hook
     // — the only half there is anything to install — and `alwaysPresent` keeps
@@ -612,9 +626,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // panes are recording perfectly well without it.
     { ...mk('terminal', terminalLast, { installed: shellInstalled, hookId: shellHookId, alwaysPresent: true }),
       ...enrolledTerminals(), ownShellLastEventAt: ownShellLast, ownShellOutputAt: ownShellOutput, ownShellName },
-    mk('agent-claude-code', agentLast.claudeCode, { configPath: 'packMembers.claudeCode', packPath: 'packs.aiAgents' }),
-    mk('agent-codex', agentLast.codex, { configPath: 'packMembers.codex', packPath: 'packs.aiAgents' }),
-    mk('agent-opencode', agentLast.opencode, { configPath: 'packMembers.opencode', packPath: 'packs.aiAgents' }),
+    ...agentRows,
     // One row for HTTP and DNS: the addon serves both, and a second row sits
     // permanently grey for everyone not running DNS mode. It used to carry a
     // `streams` note saying which of the two had traffic in the last ten

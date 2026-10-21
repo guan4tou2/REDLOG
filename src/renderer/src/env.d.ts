@@ -219,8 +219,8 @@ interface RedLogAPI {
     sources: () => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   }
   hookConfig: {
-    get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
-    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
+    get: () => Promise<{ excludedPaths: string[] }>
+    save: (cfg: { excludedPaths?: string[] }) => Promise<boolean>
     /** `title`: the picker's title, already translated */
     pickPath: (title?: string) => Promise<string | null>
   }

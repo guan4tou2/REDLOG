@@ -198,7 +198,10 @@ did. Same chain, same operator attribution, same pause semantics.
   the read offset, which makes crash recovery idempotent by construction. A
   shrinking source means `/compact` → reset + `transcript_compacted`.
 - **Gates** — `.redlog-app-root` self-exclusion (RedLog's own repo carries
-  this marker), `excludedPaths` / `watchPaths`, and `eventBus.paused`.
+  this marker), local `excludedPaths`, per-tool project directories and `eventBus.paused`.
+  AI recording also requires a locally installed active integration and a matching
+  project installation receipt. Empty paths deny capture; activation checkpoints
+  prevent silently importing existing JSONL history.
 - **Redaction** — `deepRedactStrings()` walks every string; sensitive paths
   (`.ssh/`, `.env`, `.aws/`) suppress the output field entirely.
 - **Causality** — `redlogIdByUuid` is reseeded from the DB on project open;

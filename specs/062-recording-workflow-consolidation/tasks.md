@@ -1,6 +1,6 @@
 # Tasks: Recording workflow consolidation
 
-Current executable slice: US6. Other stories remain explicit follow-up gates rather than being marked complete from an export test run. No extension hooks are configured.
+Delivered implementation slices: US6 and US5 T014–T018; US5 native manual acceptance remains open in T019. Other stories remain explicit follow-up gates rather than being marked complete from an export test run. No extension hooks are configured.
 
 ## Phase 1 — Setup
 - [x] T001 Record the bounded export plan and canonical contracts in specs/062-recording-workflow-consolidation/plan.md.
@@ -30,10 +30,10 @@ Dependencies: T001 → T002 → T003 RED → T004 → T005 → T006. T007 is ind
 
 ## Phase 4 — US5 incremental installation backend
 - [x] T014 [US5] Test-first and implement allowlisted local official-plugin install/catalog/uninstall in src/core/plugins/official-agents.ts, expose through src/main/ipc/plugins.ts and preload/env bridge; verify managed-file protection and explicit errors in test/official-agent-plugins.test.ts and test/official-agent-plugins-ipc.test.ts.
-- [ ] T015 [US5] Replace the AI preset authority with per-tool installed/active/project-scope decisions in src/core/capture-packs.ts, src/core/config.ts and src/main/services/agent-tailer.ts; test zero transcript reads while uninstalled or disabled.
-- [ ] T016 [US5] Enforce explicit project working directories and activation boundaries in src/main/services/tailer-host.ts and src/main/index.ts; test absent cwd, project switch, old history and late reads.
-- [ ] T017 [US5] Replace the AI settings preset and global watch-path writer with installation, per-tool project activation and directory/error controls in src/renderer/src/components/settings/AgentsPanel.tsx and Settings.tsx.
-- [ ] T018 [US5] Align source health, old bundled pack removal and docs/domain/SPEC-capture-source-lifecycle.md with the new decision; preserve existing evidence during disable/uninstall.
+- [x] T015 [US5] Replace the AI preset authority with per-tool installed/active/project-scope decisions in src/core/capture-packs.ts, src/core/config.ts and src/main/services/agent-tailer.ts; test zero transcript reads while uninstalled or disabled.
+- [x] T016 [US5] Enforce explicit project working directories and activation boundaries in src/main/services/tailer-host.ts and src/main/index.ts; test absent cwd, project switch, old history and late reads.
+- [x] T017 [US5] Replace the AI settings preset and global watch-path writer with installation, per-tool project activation and directory/error controls in src/renderer/src/components/settings/AgentsPanel.tsx and Settings.tsx.
+- [x] T018 [US5] Align source health, old bundled pack removal and docs/domain/SPEC-capture-source-lifecycle.md with the new decision; preserve existing evidence during disable/uninstall.
 - [ ] T019 [US5] Verify clean packaged install, per-tool install/enable/disable/uninstall and preservation in native UI and affected tests; record in specs/062-recording-workflow-consolidation/verification.md.
 
 Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 remains open until all six increments pass.

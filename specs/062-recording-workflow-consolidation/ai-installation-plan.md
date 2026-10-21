@@ -1,8 +1,8 @@
 # 下一切片：AI 擷取插件按需安裝（US5）
 
-**狀態：T014 本機安裝底層完成；啟用、專案目錄與 UI 尚未實作。** 不把現有三個 checkbox 視為已滿足「未安裝」。此文件補足 plan.md 的後續切片，不改變先完成 US6 的順序。
+**狀態：T014–T018 實作及自動驗證完成；T019 打包自動驗證通過，原生人工操作因 Mac 鎖定待續。** 不把現有三個 checkbox 視為已滿足「未安裝」。此文件補足 plan.md 的後續切片，不改變先完成 US6 的順序。
 
-## 程式核對
+## 實作前基線（歷史核對，已由 T015–T018 替換）
 
 - `src/main/services/agent-tailer.ts` 會在第一次 configure 時登錄三個內建 adapter；目前沒有個別安裝生命週期。
 - `plugins/pack-ai-agents/plugin.json` 與 `src/core/capture-packs.ts` 把三種工具當同一個出廠 pack；pack 啟用時未另外關掉的 member 都可能被選中。
@@ -36,3 +36,14 @@
 官方 manifest templates 已置於 `src/core/plugins/official-agents.ts` 的靜態 catalog，而不是會被自動掃描的插件目錄；只有明確 IPC install 才建立一個 managed plugin.json。目前 manifest 僅供安裝生命週期接線，不帶 executable/capture contribution，不是已完成可用的 AI 擷取插件。現有 AI pack 與全機 watchPaths 在 T015–T018 才替換，不能宣稱現在整個 App 已達到 US5 的「未安裝來源零讀取」。
 
 安裝／解除安裝經既有 plugin IPC/preload 可呼叫；不修改專案設定。修改過的 manifest、額外檔案、symlink、未知 id 都拒絕，沒有遞迴刪除。manifest 已移除但目錄清理失敗時，回傳錯誤並標示 changed=true，主程序仍重新整理 metadata／擷取決策，不把部分成功當作完全沒改變。51個插件相關測試、1條隔離 Electron 安裝→衝突→解除安裝及證據保留流程通過。沒有新增 UI 按鈕，沒有手動／安裝包驗收，不將此階段標為 US5 Verified。
+
+
+## T015–T018 整合結果（2026-10-22）
+
+- `resolveAgentCapture` 同時供 runtime／health 決策：本機安裝、active plugin、專案開啟、同一安裝識別、絕對工作目錄與啟用邊界缺一不可。共用 parser 仍隨程式提供；未安裝插件不被 discovery 載入，adapter 不初始化／監看／讀取資料。
+- 舊 AI pack、Codex wrapper、packMembers migration 與全機 watch-path 寫入入口已移除，無相容轉接。共享本機 exclusions 只減少範圍，不授予目錄權限。需要先讀已安裝工具的 session 中繼資料判定 cwd；拒絕目錄不保存內容。
+- 設定單列完成安裝、來源位置說明、專案目錄、明確啟用與解除安裝。查詢／安裝錯誤可見並可重試；資料夾選擇不能把另一專案的設定套回來。
+- 主／輔助 watcher、舊回呼與排程使用同一代數／專案生命週期。stop 先收舊專案再換身分。JSONL 啟用 cursor 與 sidecar 分離；已存在來源從連線觀察到的 EOF 開始，重新開啟同一啟用邊界不重新匯入。
+- 每次重裝產生新 receipt，舊專案即使仍存 enabled=true 也不自行恢復。解除安裝只移除受管理 manifest；事件與 sidecar 不刪除。
+
+測試與打包證據詳見 verification.md。Windows/Linux 原生安裝與其完整人工矩陣仍未在這台 Mac 驗證，不以本輪自動測試宣稱完成。

@@ -110,7 +110,6 @@ const DEFAULTS: Record<string, Check> = {
 
   // 2.12a packs
   'packs.hostMonitors': false,
-  'packs.aiAgents': false,
   'packs.windowsOutput': false,
 
   // 2.13 loot
