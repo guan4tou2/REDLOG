@@ -29,3 +29,9 @@ Evidence integrity and canonical semantics: no source mutation or duplicated sel
 - specs/062-recording-workflow-consolidation/{research,data-model,quickstart,tasks,verification}.md and contracts/export-dialog.md.
 
 No new architecture or domain invariant is required. Existing docs/domain/SPEC-export-event-selection.md remains authoritative.
+
+## US5 first increment — local installation only (2026-10-22)
+
+The next bounded increment is the official AI capture-plugin installation backend, through the existing plugin IPC/preload surface. The three offline manifest templates live in code, outside auto-discovery, and are written to the user plugin directory only on an explicit request. No download, package manager, AI-tool installation, transcript read, or project-config mutation occurs. Core manager owns an allowlist and validates managed bytes before replacing/removing anything. Modified directories, symlinks and unknown ids fail explicitly. Catalog read errors remain errors. Installation state is not recording state.
+
+This increment does not satisfy all US5: per-tool project activation, project-scoped watch paths, start boundary, health/UI and removal of the old AI preset still require T015–T019. The installed templates declare no executable code or capture contribution until that integration is implemented. Do not advertise the backend as a working AI capture plugin UI. No new framework or persisted evidence schema.

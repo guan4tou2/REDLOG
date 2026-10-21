@@ -464,6 +464,10 @@ interface RedLogAPI {
     cancelInstall: (id: RuntimePreflight['checks'][number]['id']) => Promise<boolean>
   }
   plugins: {
+    /** Catalog only: installing an integration does not enable AI capture. */
+    officialAgents: () => Promise<import('../../core/plugins/official-agents').OfficialAgentPlugin[]>
+    installOfficialAgent: (agentKind: string) => Promise<import('../../core/plugins/official-agents').OfficialAgentMutation>
+    uninstallOfficialAgent: (agentKind: string) => Promise<import('../../core/plugins/official-agents').OfficialAgentMutation>
     list: () => Promise<unknown[]>
     eventTypes: () => Promise<PluginEventType[]>
     reload: () => Promise<unknown>

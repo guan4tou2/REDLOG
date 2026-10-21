@@ -1,6 +1,6 @@
 # 下一切片：AI 擷取插件按需安裝（US5）
 
-**狀態：設計／尚未實作。** 不把現有三個 checkbox 視為已滿足「未安裝」。此文件補足 plan.md 的後續切片，不改變先完成 US6 的順序。
+**狀態：T014 本機安裝底層完成；啟用、專案目錄與 UI 尚未實作。** 不把現有三個 checkbox 視為已滿足「未安裝」。此文件補足 plan.md 的後續切片，不改變先完成 US6 的順序。
 
 ## 程式核對
 
@@ -30,3 +30,9 @@
 ## 接線範圍
 
 `src/core/plugins/`（既有 discovery／管理）、`src/core/capture-packs.ts`、`src/core/config.ts`、`src/main/services/{agent-tailer,tailer-host}.ts`、`src/main/index.ts`、IPC/preload/env bridge、`settings/AgentsPanel.tsx`、來源 health、packaged resources、對應測試及 `docs/domain/SPEC-capture-source-lifecycle.md`。正式實作前將 T007 拆成依序可驗證的測試→安裝→範圍→UI→package 任務，不能只更換前端標籤。
+
+## T014 實際交付範圍（2026-10-22）
+
+官方 manifest templates 已置於 `src/core/plugins/official-agents.ts` 的靜態 catalog，而不是會被自動掃描的插件目錄；只有明確 IPC install 才建立一個 managed plugin.json。目前 manifest 僅供安裝生命週期接線，不帶 executable/capture contribution，不是已完成可用的 AI 擷取插件。現有 AI pack 與全機 watchPaths 在 T015–T018 才替換，不能宣稱現在整個 App 已達到 US5 的「未安裝來源零讀取」。
+
+安裝／解除安裝經既有 plugin IPC/preload 可呼叫；不修改專案設定。修改過的 manifest、額外檔案、symlink、未知 id 都拒絕，沒有遞迴刪除。manifest 已移除但目錄清理失敗時，回傳錯誤並標示 changed=true，主程序仍重新整理 metadata／擷取決策，不把部分成功當作完全沒改變。51個插件相關測試、1條隔離 Electron 安裝→衝突→解除安裝及證據保留流程通過。沒有新增 UI 按鈕，沒有手動／安裝包驗收，不將此階段標為 US5 Verified。

@@ -265,6 +265,9 @@ const api: RedLogAPI = {
     cancelInstall: (id: string) => ipcRenderer.invoke('runtime:cancelInstall', id)
   },
   plugins: {
+    officialAgents: () => ipcRenderer.invoke('plugins:officialAgents') as Promise<import('../core/plugins/official-agents').OfficialAgentPlugin[]>,
+    installOfficialAgent: (agentKind: string) => ipcRenderer.invoke('plugins:installOfficialAgent', agentKind) as Promise<import('../core/plugins/official-agents').OfficialAgentMutation>,
+    uninstallOfficialAgent: (agentKind: string) => ipcRenderer.invoke('plugins:uninstallOfficialAgent', agentKind) as Promise<import('../core/plugins/official-agents').OfficialAgentMutation>,
     list: () => ipcRenderer.invoke('plugins:list'),
     eventTypes: () => ipcRenderer.invoke('plugins:eventTypes'),
     reload: () => ipcRenderer.invoke('plugins:reload'),

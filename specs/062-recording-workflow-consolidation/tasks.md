@@ -27,3 +27,13 @@ Independent test: format changes preserve complete store selection; only the lat
 - [ ] T013 Converge against all acceptance scenarios and update specs/062-recording-workflow-consolidation/{verification,spec}.md; do not mark Verified with unrun platform gates.
 
 Dependencies: T001 → T002 → T003 RED → T004 → T005 → T006. T007 is independent of export code; T008–T012 require their specific environments. T013 requires all applicable gates. Independent test files can run together; edits to ExportMenu are sequential. No parallel agent work is necessary. Deliver and validate US6 before changing AI installation.
+
+## Phase 4 — US5 incremental installation backend
+- [x] T014 [US5] Test-first and implement allowlisted local official-plugin install/catalog/uninstall in src/core/plugins/official-agents.ts, expose through src/main/ipc/plugins.ts and preload/env bridge; verify managed-file protection and explicit errors in test/official-agent-plugins.test.ts and test/official-agent-plugins-ipc.test.ts.
+- [ ] T015 [US5] Replace the AI preset authority with per-tool installed/active/project-scope decisions in src/core/capture-packs.ts, src/core/config.ts and src/main/services/agent-tailer.ts; test zero transcript reads while uninstalled or disabled.
+- [ ] T016 [US5] Enforce explicit project working directories and activation boundaries in src/main/services/tailer-host.ts and src/main/index.ts; test absent cwd, project switch, old history and late reads.
+- [ ] T017 [US5] Replace the AI settings preset and global watch-path writer with installation, per-tool project activation and directory/error controls in src/renderer/src/components/settings/AgentsPanel.tsx and Settings.tsx.
+- [ ] T018 [US5] Align source health, old bundled pack removal and docs/domain/SPEC-capture-source-lifecycle.md with the new decision; preserve existing evidence during disable/uninstall.
+- [ ] T019 [US5] Verify clean packaged install, per-tool install/enable/disable/uninstall and preservation in native UI and affected tests; record in specs/062-recording-workflow-consolidation/verification.md.
+
+Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 remains open until all six increments pass.
