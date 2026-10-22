@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { FieldGroup, type ConfigState } from './SettingsShared'
+import { Button } from '../Button'
 import type { OfficialAgentPlugin } from '../../../../core/plugins/official-agents'
 import type { AgentKind, AgentCaptureSourceConfig } from '../../../../core/agent-capture-policy'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 type Source = { id: string; label: string; root: string; detected: boolean }
-function AgentRow({ item, source, active, config, setConfig, t, mutate, busy }: {
+function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, onOpenPlugins }: {
   item: OfficialAgentPlugin; source?: Source; active: boolean; config: ConfigState; setConfig: (c: ConfigState) => void; t: T
   mutate: (kind: AgentKind, operation: 'install' | 'uninstall') => Promise<void>; busy: boolean
+  onOpenPlugins?: () => void
 }): JSX.Element {
   const latest = useRef(config); latest.current = config
   const [error, setError] = useState<string | null>(null)
@@ -39,18 +41,22 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy }: 
     {source && <p className="text-xs break-all text-redlog-text-faint">{t(source.detected ? 'settings.agents.detected' : 'settings.agents.notDetected')} · {source.root}</p>}
     {(item.state === 'conflict' || item.state === 'error') && <p role="alert" className="text-xs text-red-400 break-words">{item.error}</p>}
     {item.state === 'installed' && <>
-      {!active && <p className="text-xs text-amber-400">{t('settings.agents.pluginDisabled')}</p>}
+      {!active && <div className="space-y-1">
+        <p className="text-xs text-amber-400">{t('settings.agents.pluginDisabled')}</p>
+        {onOpenPlugins && <Button level="quiet" disabled={busy || picking} onClick={onOpenPlugins}>{t('settings.agents.openPlugins')}</Button>}
+      </div>}
       <p className="text-xs text-redlog-text-dim">{t('settings.agents.projectWork')}</p>
       <ul className="space-y-1">{paths.map(dir => <li key={dir} className="flex items-center gap-2 text-xs"><span title={dir} className="min-w-0 flex-1 truncate font-mono">{dir}</span><button type="button" disabled={busy} aria-label={t('settings.agents.removeWork', { path: dir })} onClick={() => update({ ...value, workPaths: paths.filter(p => p !== dir), enabled: false, startedAt: undefined })} className="text-redlog-text-dim underline">{t('settings.agents.removeDirectory')}</button></li>)}</ul>
       <button type="button" data-testid={`agent-add-path-${item.agentKind}`} disabled={busy || picking} onClick={() => void pick()} className="text-xs underline text-redlog-text-dim disabled:opacity-40">{t('settings.agents.pickWork')}</button>
       {!paths.length && <p className="text-xs text-amber-400">{t('settings.agents.noWork')}</p>}
+      {active && paths.length > 0 && !(value.enabled === true && authorized) && <p role="status" className="text-xs text-amber-400">{t('settings.agents.notRecording')}</p>}
       <label className="flex items-center gap-2 text-xs text-redlog-text"><input type="checkbox" data-testid={`agent-enabled-${item.agentKind}`} checked={value.enabled === true && authorized} disabled={busy || !active || !paths.length} onChange={e => update({ ...value, enabled: e.target.checked, installationId: item.installationId, startedAt: e.target.checked ? Date.now() : value.startedAt })} className="accent-red-600" />{t('settings.agents.enableProject')}</label>
     </>}
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
   </div>
 }
 
-export default function AgentsPanel({ t, config, setConfig }: { t: T; config: ConfigState; setConfig: (c: ConfigState) => void }): JSX.Element {
+export default function AgentsPanel({ t, config, setConfig, onOpenPlugins }: { t: T; config: ConfigState; setConfig: (c: ConfigState) => void; onOpenPlugins?: () => void }): JSX.Element {
   const [items, setItems] = useState<OfficialAgentPlugin[] | null>(null)
   const [sources, setSources] = useState<Source[]>([])
   const [active, setActive] = useState<string[]>([])
@@ -79,7 +85,7 @@ export default function AgentsPanel({ t, config, setConfig }: { t: T; config: Co
     <p className="text-xs text-redlog-text-faint mb-3">{t('settings.agents.fromNow')}</p>
     {error && <div role="alert" className="mb-3 text-xs text-red-400"><p>{error}</p><button type="button" onClick={() => void load()} className="underline">{t('common.retry')}</button></div>}
     {!items && !error && <p role="status" className="text-xs text-redlog-text-dim">{t('common.loading')}</p>}
-    <div data-testid="agent-sources" className="space-y-3">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} />)}</div>
+    <div data-testid="agent-sources" className="space-y-3">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} onOpenPlugins={onOpenPlugins} />)}</div>
     <label className="flex items-center gap-2 mt-3 text-xs text-redlog-text"><input type="checkbox" checked={config.agentTailer?.emitThinking ?? false} onChange={e => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: e.target.checked } })} className="accent-red-600" />{t('settings.agents.emitThinking')}</label>
     <p className="text-xs text-redlog-text-faint mt-2">{t('settings.agents.selfExclusionHint')}</p>
   </FieldGroup>

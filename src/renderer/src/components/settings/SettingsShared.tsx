@@ -104,12 +104,14 @@ export function FieldGroup({ title, children }: { title: string; children: React
 // and the labels alone do not say which of them is stamped on every event and
 // which is a display string -- so the operator cannot tell the evidence field
 // from the cosmetic one sitting directly beneath it.
-export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false, hint }: {
+export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text', readOnly = false, hint, error }: {
   label: string; value: string; onChange: (v: string) => void; onBlur?: () => void
-  type?: string; readOnly?: boolean; hint?: string
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
+  type?: string; readOnly?: boolean; hint?: string; error?: string | null
 }): JSX.Element {
   const id = useId()
   const hintId = `${id}-hint`
+  const errorId = `${id}-error`
   return (
     <div>
       <div className="flex items-center gap-1 mb-1">
@@ -129,14 +131,17 @@ export function Field({ label, value, onChange, onBlur, type = 'text', readOnly 
         type={type}
         value={value}
         readOnly={readOnly}
-        aria-describedby={hint ? hintId : undefined}
+        aria-describedby={[hint ? hintId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined}
+        aria-invalid={error ? true : undefined}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
+        onKeyDown={onKeyDown}
         // `cursor-not-allowed` on a read-only field was wrong twice over: it is
         // not disabled, and copying the value is the first thing anyone does
         // with it -- a bug report starts there.
         className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
       />
+      {error && <p id={errorId} role="alert" className="text-xs text-red-400 mt-1">{error}</p>}
     </div>
   )
 }

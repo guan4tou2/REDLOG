@@ -249,7 +249,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         </Button>
       </div>
 
-      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote')}</p>
+      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
 
       {loading && plugins.length === 0 && !loadError && (
         <p role="status" className="text-xs text-redlog-text-faint py-3">{t('plugins.loading')}</p>

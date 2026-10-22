@@ -92,9 +92,8 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[sys.argv.index('--listen-port'
     })
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    // "Restart", not "Start": the control says what pressing it does to a
-    // source that has been up once already this session.
-    await expect(toggle).toHaveText('Restart HTTP capture')
+    // A stopped source uses the same Start action in onboarding and Settings.
+    await expect(toggle).toHaveText('Start HTTP capture')
     await toggle.click()
     // Starting the proxy spawns mitmdump, an external Python process, and
     // waits for its addon to answer readiness. A cold start takes well
@@ -186,9 +185,7 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[sys.argv.index('--listen-port'
     await toggle.click()
     await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()))
       .toMatchObject({ state: 'stopped', url: null })
-    // "Restart" again: the proxy has been up this session, so stopping it
-    // never returns the control to its first-press wording.
-    await expect(toggle).toHaveText('Restart HTTP capture')
+    await expect(toggle).toHaveText('Start HTTP capture')
   } finally {
     await app.close()
   }

@@ -4,11 +4,12 @@ import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
 
 export default function CaptureControlPage({
-  config, setConfig, t
+  config, setConfig, t, onOpenPlugins
 }: {
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
+  onOpenPlugins?: () => void
 }): JSX.Element {
   const packs = usePackAvailability()
   return (
@@ -88,7 +89,7 @@ export default function CaptureControlPage({
       </CapturePackGroup>
 
       {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <AgentsPanel config={config} setConfig={setConfig} t={t} />
+      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins} />
 
       {/* A Windows capture on a Mac is not setup that is missing. Off Windows
           it waits in a collapsed group, and stays in the open if it was ever

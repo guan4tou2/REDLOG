@@ -11,7 +11,7 @@
 // it. What it must not do is apply settings the card no longer shows without
 // saying so.
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -47,6 +47,33 @@ function setup(...answers: ProfileImportResult[]) {
   fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
   return { create }
 }
+
+describe('creating once', () => {
+  it('ignores repeated Enter and clicks while the first create is pending', async () => {
+    const { create } = setup()
+    let finish!: (project: Awaited<ReturnType<typeof create>>) => void
+    create.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const input = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    expect(create).toHaveBeenCalledTimes(1)
+    await act(async () => finish({ id: 'p1', name: 'Lab', createdAt: 1, lastOpened: 1, path: '/tmp/p1' }))
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(create).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows a new attempt after a rejected create, retaining the project name', async () => {
+    const { create } = setup()
+    create.mockRejectedValueOnce(new Error('create denied'))
+    const input = screen.getByPlaceholderText('e.g. Client-Pentest-Q3') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(false))
+    expect(input.value).toBe('Lab')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+  })
+})
 
 // #297. What the card shows after an import, and what project.create receives,
 // are the same value; importing replaces rather than layers.

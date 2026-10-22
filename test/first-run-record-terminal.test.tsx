@@ -176,7 +176,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
     // HTTP is reachable without a shell event having landed first.
-    expect(await screen.findByText('重新啟動 HTTP 擷取')).toBeTruthy()
+    expect(await screen.findByText('啟動 HTTP 擷取')).toBeTruthy()
     // The connect-your-terminal path is offered from the start too.
     expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
     // No engagement-type choice, and HTTP cannot be waved away as optional.
@@ -191,7 +191,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
     const missing = await screen.findByTestId('first-run-missing-deps')
     expect(screen.getByTestId('first-run-commands').contains(missing)).toBe(true)
-    fireEvent.click(await screen.findByText('重新啟動 HTTP 擷取'))
+    fireEvent.click(await screen.findByText('啟動 HTTP 擷取'))
     await waitFor(() => expect(bridge.proxyStart).toHaveBeenCalled())
   })
 
@@ -480,12 +480,11 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     draw()
     // 5 s, not the default 1 s: on a loaded runner the rejected start took
     // just over a second to show, failing main and a PR within minutes.
-    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }, { timeout: 5000 }))
+    fireEvent.click(await screen.findByRole('button', { name: '啟動 HTTP 擷取' }, { timeout: 5000 }))
     const card = await screen.findByTestId('first-run-http', undefined, { timeout: 5000 })
     await waitFor(() => expect(card.textContent).toContain('port 8080 in use'), { timeout: 5000 })
-    // One label for one button: the failure is stated above it, so the control
-    // does not have to say "again" in one state and "start" in another.
-    expect(screen.getByTestId('first-run-http-restart')).not.toBeNull()
+    // The failed attempt now offers Retry, matching the settings control.
+    expect(screen.getByTestId('first-run-http-restart').textContent).toBe('重試')
   })
 
   // The terminal-proxy switch moved to Settings ▸ Browser, which owns every
@@ -689,7 +688,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ rows: [], proxy: { state: 'stopped', url: null } })
     draw()
-    await screen.findByText('重新啟動 HTTP 擷取')
+    await screen.findByText('啟動 HTTP 擷取')
     bridge.proxyStatus.mockResolvedValue(RUNNING)
     await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
     await screen.findByText('127.0.0.1:8080')
@@ -703,7 +702,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await screen.findByTestId('first-run-http')
     await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
     expect(verifyListeners.length).toBe(0)
-    fireEvent.click(screen.getByText('重新啟動 HTTP 擷取'))
+    fireEvent.click(screen.getByText('啟動 HTTP 擷取'))
     await waitFor(() => expect(verifyListeners.length).toBeGreaterThanOrEqual(1))
   })
 

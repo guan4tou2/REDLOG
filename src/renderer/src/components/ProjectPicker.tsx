@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { SectionLabel } from './SectionLabel'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -30,6 +30,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const setProjects = (fn: (prev: ProjectMeta[]) => ProjectMeta[]): void => updateList((prev) => fn(prev ?? []))
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const createPending = useRef(false)
   // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
   // by Settings. The card holds them only when a profile was imported, because
   // an import can carry them into a project that does not exist yet (#297).
@@ -54,7 +55,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
   async function handleCreate(): Promise<void> {
     const name = newName.trim()
-    if (!name) return
+    if (!name || createPending.current) return
+    createPending.current = true
     setCreating(true)
     try {
       // Only an imported profile puts anything here: the card asks for a
@@ -65,6 +67,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       const project = await window.redlog.project.create(name, initialConfig)
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
+      createPending.current = false
       setCreating(false)
       toast(t('project.openFailedTitle'), {
         type: 'error',

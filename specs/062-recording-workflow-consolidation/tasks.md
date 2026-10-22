@@ -43,3 +43,15 @@ Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 is complete wi
 - [x] T020 [US4] Close the observed HUD recovery gap: add failing window-event regressions, route the existing release-only shortcut in main/HUD windows, verify persistence/duplicate delivery and native candidate behavior. Keep OS-global delivery separate from the window fallback; no new HUD control or mode. See mac-workflow-acceptance-20261022.md; OS-global delivery remains unresolved under T011.
 
 T020 is a bounded defect found during T011 native acceptance, not a replacement for the remaining platform gates.
+
+## Small settings defects — #298 / #289
+- [x] T021 [US2] Reproduce and repair managed HTTP port editing: preserve incomplete/invalid drafts, validate on blur/Enter, retain the last valid config and custom upstream proxy.
+- [x] T022 [US2] Reproduce and repair external-source health projection and failed reads: retain running, label unknown/stale results, provide retry, reuse the existing read-state contract.
+- [x] T023 [US2] Align managed HTTP start/starting/stop/retry actions with actual state; prevent duplicate actions and surface IPC/read failure. Verify relevant interaction tests, gates and Electron settings flow without closing the full-platform matrix.
+
+T021–T023 are bounded diagnosed settings defects, verified in 103 targeted tests, three Electron journeys and the recorded Mac source-build native port flow. They do not complete T009's full matrix or replace supported-platform installer acceptance.
+
+- [x] T024 [US2] Clarify the optional capture page name without changing routes or adding navigation levels.
+- [x] T025 [US5] Show a persistent not-recording cue beside configured AI scope, and link a disabled plugin directly to existing plugin settings without enabling it or widening authorization; preserve the single explicit project checkbox.
+- [x] T026 [US1] Prevent repeated Enter/click from creating duplicate projects; preserve input and allow retry after failure. Verify affected UI and existing project/AI isolation behavior.
+- [x] T027 [US2] Remove the shared form-width cap only from Plugins and its footer. Verify available width at 1600×900 and no horizontal document overflow at 800×600; preserve other settings form widths.

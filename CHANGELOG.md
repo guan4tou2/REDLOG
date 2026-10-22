@@ -5,12 +5,29 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Optional sources are labeled Other capture sources. Inactive AI integrations
+  link directly to plugin settings; configured directories retain an explicit
+  not-enabled cue until project recording is selected. Navigation never enables
+  recording. Plugin settings use the available width instead of the shared
+  900px form limit, including at compact window sizes.
+- Repeated Enter/click cannot create duplicate projects while creation is
+  pending. Failed creation preserves the name and permits retry.
+
+- HTTP capture port edits now stay as drafts until Enter or blur validates
+  them. Invalid input stays visible and leaves the last valid setting in use;
+  managed browser proxy URLs follow only a valid committed port.
+- External capture settings now retain the producer's running state, distinguish
+  failed reads from stopped sources, and offer retry without hiding the source.
+- HTTP capture actions use Start/Starting/Stop/Retry consistently in setup and
+  Settings. Pending actions cannot be double-submitted; a rejected reply
+  triggers a status check rather than replaying the action.
+
 - The HUD click-through recovery shortcut also works inside RedLog's main and
   HUD windows if the global shortcut is not delivered. It only turns
   click-through off; repeated delivery never turns it back on.
 
 - AI capture integrations are now individually optional and uninstalled by
-  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Capture
+  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Other capture
   sources ▸ AI Agents, select project working directories, then explicitly
   enable recording. Empty paths do not authorize capture. Existing sessions
   begin at their observed connection boundary; history is not silently imported.

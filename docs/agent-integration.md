@@ -59,7 +59,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
-| **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Capture sources ▸ AI Agents: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
+| **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Other capture sources ▸ AI Agents: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd — **not** stdout/stderr | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
@@ -78,7 +78,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 ### AI project working directories
 
-Each tool has an independent capture integration. In **Settings ▸ Capture sources ▸ AI Agents**:
+Each tool has an independent capture integration. In **Settings ▸ Other capture sources ▸ AI Agents**:
 
 1. Install the capture integration for the desired tool. This does not install the AI tool or contact a model.
 2. Add the engagement's working directories with the folder picker.
@@ -124,7 +124,7 @@ Terminal hooks intercept commands at the shell level. The agent doesn't need to 
 
 The optional transcript integrations capture newly written supported messages and tool calls/results from Claude Code, Codex and OpenCode. Only source-provided content is available; thinking blocks require a separate opt-in. They are not a substitute for shell output capture.
 
-**Setup:** Install a per-tool integration in Settings ▸ Capture sources ▸ AI Agents, select allowed working directories, then explicitly enable it for the project. No shell wrapper is required.
+**Setup:** Install a per-tool integration in Settings ▸ Other capture sources ▸ AI Agents, select allowed working directories, then explicitly enable it for the project. No shell wrapper is required.
 
 **What it captures:**
 

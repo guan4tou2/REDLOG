@@ -1,0 +1,150 @@
+import { test, expect } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { launchWithTempHome, openTestProject, openView, openSettingsPage, resizeMainWindow } from './helpers'
+
+test('plugin settings use the available width without overflowing compact windows', async () => {
+  const { app, page } = await launchWithTempHome()
+  try {
+    await openTestProject(page, 'plugin-layout')
+    await page.evaluate(() => window.redlog.httpCapture.stop())
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'plugins')
+    for (const [width, height] of [[1600, 900], [800, 600]]) {
+      await resizeMainWindow(app, width, height)
+      const sample = page.getByTestId('plugin-sample-input')
+      await expect(sample).toBeVisible()
+      await expect.poll(() => sample.evaluate(element => {
+        const pane = element.closest('.overflow-y-auto')!
+        const column = pane.parentElement!
+        return column.getBoundingClientRect().right - element.getBoundingClientRect().right
+      })).toBeLessThanOrEqual(32)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    }
+  } finally { await app.close() }
+})
+
+test('port drafts are validated before autosave in English and Traditional Chinese', async () => {
+  const { app, page } = await launchWithTempHome()
+  try {
+    await openTestProject(page, 'capture-port-drafts')
+    await page.evaluate(() => window.redlog.httpCapture.stop())
+    for (const [locale, label, port] of [
+      ['en', 'Managed HTTP capture port', '7777'],
+      ['zh-TW', 'RedLog 管理的 HTTP 擷取連接埠', '8888']
+    ]) {
+      await page.evaluate(value => localStorage.setItem('redlog-locale', value), locale)
+      await page.reload()
+      await openView(page, 'settings')
+      await openSettingsPage(page, 'browser')
+      await resizeMainWindow(app, 800, 600)
+      const field = page.getByLabel(label, { exact: true })
+      const before = await page.evaluate(async () => (await window.redlog.config.get()).httpCapture.port)
+      await field.fill('6')
+      await expect(field).toHaveValue('6')
+      // The field is still focused: no partial setting goes through autosave.
+      expect(await page.evaluate(async () => (await window.redlog.config.get()).httpCapture.port)).toBe(before)
+      await field.press('Tab')
+      await expect(field).toHaveAttribute('aria-invalid', 'true')
+      await expect(page.getByRole('alert').filter({ hasText: '1024' })).toBeVisible()
+      expect(await page.evaluate(async () => (await window.redlog.config.get()).httpCapture.port)).toBe(before)
+      await field.fill(port)
+      await field.press('Enter')
+      await expect(field).not.toHaveAttribute('aria-invalid', 'true')
+      await expect.poll(() => page.evaluate(async () => (await window.redlog.config.get()).httpCapture.port)).toBe(Number(port))
+      expect(await page.evaluate(async () => (await window.redlog.config.get()).browser.proxy)).toBe(`http://127.0.0.1:${port}`)
+      await page.reload()
+      await openView(page, 'settings')
+      await openSettingsPage(page, 'browser')
+      await expect(page.getByLabel(label, { exact: true })).toHaveValue(port)
+    }
+  } finally { await app.close() }
+})
+
+test('external-source running and failed IPC reads remain distinct in settings', async () => {
+  const { app, page } = await launchWithTempHome()
+  try {
+    await openTestProject(page, 'external-source-status')
+    await page.evaluate(() => window.redlog.httpCapture.stop())
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await page.reload()
+    // Synthetic read responses exercise real IPC and UI, not a live tcpdump.
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('hooks:detect')
+      ipcMain.handle('hooks:detect', () => [{ id: 'pcap-capture.fixture', name: 'Fixture capture', available: true, disabled: true, description: 'tcpdump' }])
+      ipcMain.removeHandler('capture:health')
+      ipcMain.handle('capture:health', () => ({ sources: [{ id: 'pcap-capture.fixture', state: 'ready', running: true }] }))
+    })
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'captureControl')
+    await expect(page.getByText('Switched off — and still receiving', { exact: true })).toBeVisible()
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('capture:health')
+      ipcMain.handle('capture:health', () => { throw new Error('fixture health read rejected') })
+    })
+    await openSettingsPage(page, 'hud')
+    await openSettingsPage(page, 'captureControl')
+    const error = page.getByRole('alert').filter({ hasText: 'fixture health read rejected' })
+    await expect(error).toBeVisible()
+    await expect(page.getByText('Current state unknown', { exact: true })).toBeVisible()
+    await expect(page.getByText('Not running', { exact: true })).toHaveCount(0)
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('capture:health')
+      ipcMain.handle('capture:health', () => ({ sources: [{ id: 'pcap-capture.fixture', state: 'off', running: false }] }))
+    })
+    await error.getByRole('button', { name: 'Retry', exact: true }).click()
+    await expect(page.getByText('Switched off in Plugins', { exact: true })).toBeVisible()
+    await expect(error).toHaveCount(0)
+  } finally { await app.close() }
+})
+
+test('other-source settings link to disabled plugins and require explicit AI scope activation', async () => {
+  const { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    const first = join(tmpHome, 'client-work')
+    const second = join(tmpHome, 'second-client-work')
+    mkdirSync(first); mkdirSync(second)
+    await openTestProject(page, 'source-navigation')
+    await page.evaluate(() => window.redlog.httpCapture.stop())
+    await page.evaluate(async () => {
+      localStorage.setItem('redlog-locale', 'en')
+      const result = await window.redlog.plugins.installOfficialAgent('codex')
+      if (!result.ok) throw new Error(result.error)
+      await window.redlog.plugins.setEnabled('official-ai-codex', false)
+    })
+    await page.reload()
+    await openView(page, 'settings')
+    const other = page.getByRole('button', { name: 'Other capture sources', exact: true })
+    await expect(other).toBeVisible()
+    await other.click()
+    const before = await page.evaluate(() => window.redlog.config.get())
+    const row = page.getByTestId('agent-source-codex')
+    await row.getByRole('button', { name: 'Go to plugin settings' }).click()
+    await expect(page.locator('[data-settings-page="plugins"]')).toHaveAttribute('aria-current', 'page')
+    expect((await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('disabled')
+    expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
+    // Explicitly enable the integration through the existing plugin control.
+    await page.getByRole('button', { name: 'Enable', exact: true }).click()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
+    await other.click()
+    const setPicker = async (path: string) => app.evaluate(({ ipcMain }, next) => {
+      ipcMain.removeHandler('hookConfig:pickPath')
+      ipcMain.handle('hookConfig:pickPath', () => next)
+    }, path)
+    await setPicker(first)
+    await row.getByTestId('agent-add-path-codex').click()
+    const hint = row.getByText('Recording is not enabled for these working directories.', { exact: false })
+    await expect(hint).toBeVisible()
+    const checkbox = row.getByTestId('agent-enabled-codex')
+    await expect(checkbox).not.toBeChecked()
+    await checkbox.check()
+    await expect(hint).toHaveCount(0)
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.codex?.enabled).toBe(true)
+    await setPicker(second)
+    await row.getByTestId('agent-add-path-codex').click()
+    await expect(hint).toBeVisible()
+    await expect(checkbox).not.toBeChecked()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.codex?.enabled).toBe(false)
+    expect((await page.evaluate(() => window.redlog.config.get())).agentTailer.sources.codex.workPaths).toEqual([first, second])
+  } finally { await app.close() }
+})

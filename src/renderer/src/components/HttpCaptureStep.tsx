@@ -383,15 +383,14 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
       ) : status.state === 'starting' || busy ? (
         <p className="text-redlog-text-dim">{t('httpCapture.starting')}</p>
       ) : (
-        /* Opening the project already started this. Reaching here means it
-           failed, or the operator stopped it — neither is a reason to offer
-           "start" as if capture were something they had forgotten to turn on. */
+        /* Use the same actions as Settings: start a stopped source, retry a
+           failed/unavailable attempt. Neither action claims HTTPS is verified. */
         <div className="space-y-2">
           {status.state === 'failed' && (
             <p className="text-redlog-text-dim break-all">{status.error || t('httpCapture.failed')}</p>
           )}
           <Button level="secondary" data-testid="first-run-http-restart" onClick={() => void start()}>
-            {t('httpCapture.restart')}
+            {t(status.state === 'failed' || status.state === 'unavailable' ? 'common.retry' : 'httpCapture.start')}
           </Button>
         </div>
       )}

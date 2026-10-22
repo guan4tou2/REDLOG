@@ -103,3 +103,46 @@ Native testing exposed an unproven global pass-through recovery despite successf
 The user-supplied PID 10253 crash matches the sandboxed E2E launch before AppKit application registration completed. The unchanged build launched and passed outside the sandbox; no product workaround or weakened security was introduced for that environment failure.
 
 Converge: T020 complete as a bounded window-input repair. OS-global delivery while another app is foreground is still unresolved under T011; T009's complete matrix and T008/T010/T012/T013 stay open. Overall status remains Draft; neither a release nor full-platform acceptance is claimed.
+
+## T021–T023: small settings defects / #298 / #289（2026-10-22）
+
+### Assess / scope
+
+Baseline `2b21b690` plus this local change. Use the constitution's diagnosed-defect assess → fix → verify path. No new feature spec, source backend, permission, capture policy or evidence invariant. Reuse canonical managed-proxy endpoint following, health.running, the existing read-state hook and setup flow. The larger terminal/source/export redesigns (#434–#436) remain separate.
+
+### Observable RED → GREEN
+
+- Initial interaction tests: **10 failed / 1 passed**. Failures reproduced eager port clamping, missing validation, lifecycle labels/duplicate actions, lost running and swallowed list/health errors. The custom-proxy preservation case already passed and was retained.
+- Label/transition increment: **3 failed / 17 passed** before the fix; setup still said Restart and an initially observed starting state never became actionable. Existing setup/control tests were updated to the agreed Start/Retry semantics, retaining actual start/stop/verification assertions.
+- A lost stop reply regression failed before adding the status recheck. A rejection can arrive after an action has happened; the repair reads actual state before allowing another action, without automatically replaying Start/Stop. One interaction test was corrected to wait for this deliberate read before submitting another Start.
+
+### Final verification
+
+- **103 tests passed in 8 files**: capture settings interactions, CA removal/listener, ListField/accessibility, autosave/project binding, read states, HTTP autostart, first-run terminal/HTTPS and settings search. No new skips or relaxed failure/provenance assertions.
+- **3 Electron journeys passed**: English and Traditional-Chinese port drafts/validation/persistence at 800×600; external running/disabled and rejected IPC/retry; existing owned proxy/terminal route/nonce flow. External-source responses are synthetic IPC fixtures, not a claim that tcpdump ran. The owned-proxy regression retains its controlled local process fixture.
+- typecheck, architecture, i18n assertion gate, generated settings-search index check, Spec Kit gate, build and diff check passed. This bounded renderer fix did not rerun the previously recorded full regression or package new installers.
+
+### Native Mac source-build check
+
+Started the final built Electron with synthetic HOME `/private/tmp/redlog-ai-native-20261022/home` and a separate profile. Opened only `AI-Native-Acceptance`. Through native UI: stopped the owned proxy; its action became「啟動 HTTP 擷取」. Selected port 6661 and typed `6`: UI retained 6 and explicitly said not applied; disk remained port 6661/proxy `http://127.0.0.1:6661`. Tab displayed the linked range error while retaining the draft. Enter on 7777 saved both the port and the owned browser URL; disk readback confirmed 7777. Restored 6661 through the same UI, visited other-source settings (normal stopped rows loaded), then quit normally, exit 0. Final disk readback confirmed the original 6661 URL and port.
+
+This was a native source-build check, not a fresh DMG install, real external producer test, system CA change or Windows/Linux manual acceptance. Existing evidence and real profiles were untouched.
+
+### Gates / convergence
+
+Clarify: supplied issue requirements resolve the bounded behavior; no new product choice needed. Checklist/Analyze: error/unknown/loading, valid/invalid drafts, managed versus custom proxy, duplicate/lost replies, stale reads, labels and actual save results reviewed against Principles II/III/VI/VIII/IX; no domain-contract update required. Converge: T021–T023 complete for this slice. T008–T013 and overall Draft status stay unchanged; #289/#298 remain broader open work, not closed by these fixes.
+
+## T024–T027: small navigation, duplicate-create and Plugins-width follow-ups (2026-10-22)
+
+Scope: clarify the existing optional-source page, link inactive AI integrations to existing plugin settings, show the pending-scope activation cue, prevent duplicate project creation and remove only the Plugins page's 900px cap. No extra navigation level, capture permission, activation control or source backend. Other forms retain their width cap. Plugin explanatory text references the canonical translated page label.
+
+### Observable RED → GREEN / verification
+
+- After correcting a test-only missing waitFor import, the valid initial behavior run had **3 failures / 23 passes**, reproducing the missing AI route/cue and duplicate creation. No product conclusion was drawn from the import failure.
+- **89 tests passed in 9 targeted files** covering project creation/read states, AI settings/authorization, settings IA/search/autosave, existing capture settings, official plugins and capture policy.
+- **7 Electron journeys passed** covering settings interactions, explicit AI activation, real production watcher isolation/preservation, duplicate Enter creating exactly one real project, view shortcuts and chain verification. Native directory selection is stubbed only in the automated scope-edit flow; production watcher assertions use real synthetic files.
+- Native Mac source build with separate profile and synthetic HOME `/private/tmp/redlog-small-followups-native/home`: chose `/private/tmp/redlog-small-followups-native/client-work` through the real directory picker, observed the persistent cue and unchecked recording checkbox, and confirmed disk config retained `enabled: false`. Disabled Codex in Plugins, followed the new direct route back from Other capture sources, and confirmed it stayed disabled. No real transcript source or project was used.
+- Width regression failed against the previous build with **478.6px** remaining to the right of the sample input at 1600×900. After the bounded fix, **4 affected Electron journeys passed**, including available-width geometry at 1600×900, no horizontal document overflow at 800×600, English/Traditional-Chinese port editing, IPC failure/retry, and explicit AI activation. These overlap the prior seven journeys and are not added as distinct coverage.
+- Final follow-up: **38 tests passed in 4 files** for settings search/IA and Plugins state/sample behavior. Typecheck, architecture, i18n assertions, generated settings-search index and build passed. Restored better-sqlite3 to the project's Node runtime after Electron validation.
+
+Converge: T024–T027 complete as bounded fixes. No release, packaged-installer or full-platform acceptance is claimed. T008–T013 and overall Draft remain open. Broader #434–#436 work is not closed by this slice. The pre-existing unrelated package-lock.json change is preserved outside this task's edits.

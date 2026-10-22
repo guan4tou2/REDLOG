@@ -11,9 +11,9 @@ let pick: ReturnType<typeof vi.fn>
 let saved: unknown
 const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
 const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
-function Harness() {
+function Harness({ onOpenPlugins }: { onOpenPlugins?: () => void } = {}) {
   const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
-  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} />
+  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={onOpenPlugins} />
 }
 beforeEach(() => {
   saved = undefined; catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
@@ -37,6 +37,34 @@ describe('AI optional installation settings', () => {
     await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, workPaths: ['/work/client'], installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
+  })
+  it('offers a direct route to plugin settings without enabling or installing anything', async () => {
+    catalog.mockResolvedValue([installed])
+    window.redlog.plugins.list = vi.fn().mockResolvedValue([{ id: 'official-ai-codex', status: 'disabled' }])
+    const onOpenPlugins = vi.fn()
+    render(<Harness onOpenPlugins={onOpenPlugins} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'settings.agents.openPlugins' }))
+    expect(onOpenPlugins).toHaveBeenCalledTimes(1)
+    expect(saved).toBeUndefined()
+    expect(install).not.toHaveBeenCalled()
+    expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(true)
+  })
+  it('makes a directory change visibly stop recording until the existing checkbox is explicitly enabled again', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+    await screen.findByText('settings.agents.notRecording')
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    expect(screen.queryByText('settings.agents.notRecording')).toBeNull()
+    pick.mockResolvedValueOnce('/work/second-client')
+    fireEvent.click(screen.getByTestId('agent-add-path-codex'))
+    await screen.findByText('settings.agents.notRecording')
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: false, workPaths: ['/work/client', '/work/second-client'] } } } })
+    expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getAllByRole('checkbox').filter(input => input.getAttribute('data-testid') === 'agent-enabled-codex')).toHaveLength(1)
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
+    expect(screen.queryByText('settings.agents.notRecording')).toBeNull()
   })
   it('shows a source query error and offers retry instead of an empty list', async () => {
     catalog.mockRejectedValueOnce(new Error('permission denied')); render(<Harness />)
