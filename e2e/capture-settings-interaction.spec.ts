@@ -133,7 +133,7 @@ test('other-source settings link to disabled plugins and require explicit AI sco
     }, path)
     await setPicker(first)
     await row.getByTestId('agent-add-path-codex').click()
-    const hint = row.getByText('Recording is not enabled for these working directories.', { exact: false })
+    const hint = row.getByText('These working directories are not being recorded yet.', { exact: false })
     await expect(hint).toBeVisible()
     const checkbox = row.getByTestId('agent-enabled-codex')
     await expect(checkbox).not.toBeChecked()
@@ -142,7 +142,11 @@ test('other-source settings link to disabled plugins and require explicit AI sco
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.codex?.enabled).toBe(true)
     await setPicker(second)
     await row.getByTestId('agent-add-path-codex').click()
-    await expect(hint).toBeVisible()
+    // The scope moved under a recording source: the row says so, and the one
+    // control that resolves it is the same checkbox, relabelled.
+    const scopeChanged = row.getByText('Scope changed', { exact: false })
+    await expect(scopeChanged).toBeVisible()
+    await expect(row.getByText('Confirm this range and record')).toBeVisible()
     await expect(checkbox).not.toBeChecked()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.codex?.enabled).toBe(false)
     expect((await page.evaluate(() => window.redlog.config.get())).agentTailer.sources.codex.workPaths).toEqual([first, second])

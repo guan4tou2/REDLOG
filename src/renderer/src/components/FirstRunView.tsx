@@ -193,7 +193,6 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('captureSetup.prove')}</p>
       </div>
 
       <div className="space-y-3">

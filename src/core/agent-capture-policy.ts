@@ -2,7 +2,22 @@ import path from 'node:path'
 import type { OfficialAgentPlugin } from './plugins/official-agents'
 import type { LoadedPlugin } from './plugins/types'
 export type AgentKind = OfficialAgentPlugin['agentKind']
-export interface AgentCaptureSourceConfig { enabled?: boolean; installationId?: string; workPaths?: string[]; startedAt?: number }
+export interface AgentCaptureSourceConfig {
+  enabled?: boolean
+  installationId?: string
+  workPaths?: string[]
+  startedAt?: number
+  /** When the project scope last changed under a recording source.
+   *
+   *  A scope change stops recording on purpose: the operator widened or
+   *  narrowed what this project may read, and the new range has not been
+   *  agreed to yet. `resolveAgentCapture` already stops on `enabled !== true`,
+   *  so this marker buys no behaviour — it buys the SETTINGS a sentence that
+   *  is true: "the scope changed, nothing is being recorded until you
+   *  confirm it", instead of the generic "not recording" that reads the same
+   *  whether the source was never enabled or was just switched off. */
+  scopeChangedAt?: number
+}
 export interface AgentCaptureConfig { agentTailer?: { sources?: Partial<Record<AgentKind, AgentCaptureSourceConfig>> } }
 export interface ActiveAgentCapture { agentKind: AgentKind; workPaths: string[]; startedAt: number }
 export function resolveAgentCapture(config: AgentCaptureConfig, catalog: readonly OfficialAgentPlugin[], plugins: readonly LoadedPlugin[]): ActiveAgentCapture[] {

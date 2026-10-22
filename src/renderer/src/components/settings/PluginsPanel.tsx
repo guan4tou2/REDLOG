@@ -237,8 +237,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
 
   return (
     <FieldGroup title={t('settings.plugins')}>
-      <div className="flex items-center justify-between mb-2 gap-2">
-        <p className="text-xs text-redlog-text-faint flex-1 pr-3">{t('plugins.hint')}</p>
+      <div className="flex items-center justify-end mb-2 gap-2">
         <button onClick={() => api.openFolder()}
           className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0"
           title={t('plugins.openFolderHint')}>

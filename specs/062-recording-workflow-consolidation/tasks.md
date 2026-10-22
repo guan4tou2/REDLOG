@@ -55,3 +55,11 @@ T021–T023 are bounded diagnosed settings defects, verified in 103 targeted tes
 - [x] T025 [US5] Show a persistent not-recording cue beside configured AI scope, and link a disabled plugin directly to existing plugin settings without enabling it or widening authorization; preserve the single explicit project checkbox.
 - [x] T026 [US1] Prevent repeated Enter/click from creating duplicate projects; preserve input and allow retry after failure. Verify affected UI and existing project/AI isolation behavior.
 - [x] T027 [US2] Remove the shared form-width cap only from Plugins and its footer. Verify available width at 1600×900 and no horizontal document overflow at 800×600; preserve other settings form widths.
+
+## Source entry consolidation — #435
+
+- [x] T028 [US5] Give every capture source one entry that states the two axes (installed on this computer, recording for this project), what it reads, and when it last delivered — from the same capture-health snapshot the dashboard card reads. State a changed project scope in place and confirm it with the single project control; ask before a local integration removal and name what stops and what stays. Verify with unit tests, the affected Electron journeys and a native capture-sources check.
+
+- [x] T029 [US5] Extend the same one-entry treatment to the external producers and the pack-management row: each external producer says when it last delivered, and a pack disabled in Plugins offers the direct route to plugin settings instead of describing the way there. Unify the last-delivered wording through a shared SourceLastSeen component so the AI rows, pack rows and external rows cannot drift. Verify with unit and Electron tests.
+
+T028–T029 are bounded settings increments for #435. They do not close #435 (plugin-management and external SourceLastSeen recovery details keep their own follow-ups) and do not replace T008–T013.

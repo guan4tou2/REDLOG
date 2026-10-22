@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- A capture source now says everything about itself in one place: whether its
+  integration is installed on this computer, whether it is recording for this
+  project, what it reads, and when it last delivered something. The
+  last-delivered line comes from the same capture-health snapshot the
+  dashboard's capture card reads, so the two screens cannot disagree.
+- Changing an AI source's working directories while it is recording now stops
+  recording on purpose and says so: the row states that the scope changed and
+  the project checkbox becomes the single action that confirms the new range.
+  A source that was never recording is not reported as a scope change.
+- Removing a local capture integration asks first and names the consequences:
+  every project on this computer stops recording that source, and the records
+  already captured are kept.
 - Optional sources are labeled Other capture sources. Inactive AI integrations
   link directly to plugin settings; configured directories retain an explicit
   not-enabled cue until project recording is selected. Navigation never enables

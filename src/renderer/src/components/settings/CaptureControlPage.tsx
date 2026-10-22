@@ -2,6 +2,17 @@ import { FieldGroup, Field, ListField, isWindows, type ConfigState } from './Set
 import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
+import { SourceLastSeen } from './SourceLastSeen'
+import { useCaptureHealth } from '../../lib/useCaptureHealth'
+
+/** Which health row speaks for a pack member. The health ids are the source
+ *  names the capture runtime uses; the pack member ids are the config keys. */
+const MEMBER_HEALTH_ID: Record<string, string> = {
+  clipboard: 'clipboard',
+  fileWatcher: 'file-watcher',
+  processMonitor: 'process-monitor',
+  connectionMonitor: 'connection-monitor'
+}
 
 export default function CaptureControlPage({
   config, setConfig, t, onOpenPlugins
@@ -12,6 +23,13 @@ export default function CaptureControlPage({
   onOpenPlugins?: () => void
 }): JSX.Element {
   const packs = usePackAvailability()
+  // The same snapshot the dashboard's capture card reads. Every source row on
+  // this page says when it last delivered, so the operator does not have to
+  // leave the page to learn whether a source is feeding the record.
+  const captureSignature = JSON.stringify([config.packs ?? {}, config.packMembers ?? {}, config.screenshot ?? {}])
+  const { health } = useCaptureHealth(5_000, captureSignature)
+  const healthOf = (id: string): CaptureSourceInfo | undefined =>
+    health?.sources.find(s => s.id === id)
   return (
     <>
       {/* Spec 049: the four-bullet "what every project records" list is gone.
@@ -21,7 +39,7 @@ export default function CaptureControlPage({
           the record — which is what an operator came here to find out. */}
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
-        available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t}
+        available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
       >
         {/* Each member carries its own switch now. The clipboard is the
             reason: it samples whatever the operator copies anywhere on the
@@ -31,6 +49,7 @@ export default function CaptureControlPage({
         <PackMember
           member="clipboard" title={t('settings.clipboardGroup')}
           hint={t('settings.clipboardEnableHint')} warn={t('settings.clipboardScopeWarn')}
+          health={healthOf(MEMBER_HEALTH_ID.clipboard)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         >
           <label className="flex items-center gap-2 cursor-pointer">
@@ -48,6 +67,7 @@ export default function CaptureControlPage({
         <PackMember
           member="fileWatcher" title={t('settings.fileWatcherGroup')}
           hint={t('settings.fileWatcherEnableHint')}
+          health={healthOf(MEMBER_HEALTH_ID.fileWatcher)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         >
           <ListField
@@ -68,6 +88,7 @@ export default function CaptureControlPage({
         <PackMember
           member="processMonitor" title={t('settings.processMonitorGroup')}
           hint={t('settings.processMonitorEnableHint')}
+          health={healthOf(MEMBER_HEALTH_ID.processMonitor)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         >
           <ListField
@@ -84,6 +105,7 @@ export default function CaptureControlPage({
         <PackMember
           member="connectionMonitor" title={t('settings.connectionMonitorGroup')}
           hint={t('settings.connectionMonitorEnableHint')} warn={t('settings.connectionMonitorSynNote')}
+          health={healthOf(MEMBER_HEALTH_ID.connectionMonitor)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         />
       </CapturePackGroup>
@@ -97,14 +119,14 @@ export default function CaptureControlPage({
       {isWindows || config.packs?.windowsOutput === true ? (
         <CapturePackGroup
           pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
-          available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
+          available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
         />
       ) : (
         <details data-testid="pack-other-platforms" className="mb-4">
           <summary className="text-xs text-redlog-text-faint cursor-pointer">{t('settings.otherPlatforms')} (1)</summary>
           <CapturePackGroup
             pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
-            available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
+            available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
           />
         </details>
       )}
@@ -128,14 +150,22 @@ export default function CaptureControlPage({
               key={opt.v}
               onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
               className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot.intervalSec ?? 0) === opt.v
+                (config.screenshot?.intervalSec ?? 0) === opt.v
                   ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
                   : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
               }`}
             >{t(opt.k)}</button>
           ))}
         </div>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.intervalHint')}</p>
+
+        {/* The screenshot source is a source like the others: when it last
+            delivered a frame is a fact about the record, not about the
+            switch. */}
+        <SourceLastSeen
+          source={healthOf('screenshot')}
+          active={(config.screenshot?.intervalSec ?? 0) > 0 || config.screenshot?.captureOnCommand === true}
+          t={t}
+        />
 
         <Field
           label={t('settings.jpegQuality')}
@@ -143,9 +173,6 @@ export default function CaptureControlPage({
           onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
           type="number"
         />
-        <p className="text-xs text-redlog-text-faint">
-          {t('settings.qualityHint')}
-        </p>
 
         <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
         <div className="flex items-center gap-2 flex-wrap">
@@ -158,7 +185,7 @@ export default function CaptureControlPage({
               key={opt.v}
               onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
               className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot.diffThreshold ?? 5) === opt.v
+                (config.screenshot?.diffThreshold ?? 5) === opt.v
                   ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
                   : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
               }`}

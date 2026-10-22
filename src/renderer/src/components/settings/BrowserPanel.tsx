@@ -102,7 +102,6 @@ export default function BrowserPanel({
 
   return (
     <FieldGroup title={t('settings.browser')}>
-      <p className="text-xs text-redlog-text-faint">{t('settings.browserHint')}</p>
       <Field label={t('settings.browserBinary')} value={b.binary} onChange={(v) => patch({ binary: v })} />
       <p className="text-xs text-redlog-text-faint font-mono break-all">
         {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}

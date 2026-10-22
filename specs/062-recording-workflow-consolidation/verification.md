@@ -146,3 +146,57 @@ Scope: clarify the existing optional-source page, link inactive AI integrations 
 - Final follow-up: **38 tests passed in 4 files** for settings search/IA and Plugins state/sample behavior. Typecheck, architecture, i18n assertions, generated settings-search index and build passed. Restored better-sqlite3 to the project's Node runtime after Electron validation.
 
 Converge: T024–T027 complete as bounded fixes. No release, packaged-installer or full-platform acceptance is claimed. T008–T013 and overall Draft remain open. Broader #434–#436 work is not closed by this slice. The pre-existing unrelated package-lock.json change is preserved outside this task's edits.
+
+## T028: one capture-source entry (2026-10-22)
+
+Scope: #435. Each capture source states its own facts in the entry that configures it — installed on this computer, recording for this project, what it reads, and when it last delivered. A changed project scope is named in place and confirmed with the one project control. A local integration removal asks first and names what stops and what stays. No new capture permission, no new backend, no new navigation level, and the AI integration stays uninstalled and off by default.
+
+### Observable behaviour
+
+- **Install state and project state are separate sentences.** The row reads "Installed on this computer · recording for this project" (or "not recording for this project"). Before, one line said only "installed", so an operator who had installed the integration everywhere could not tell which of the two axes the row answered.
+- **Last delivered is a fact about the record.** Every pack member row, the screenshot source and each AI source now carry the same line, read from `window.redlog.capture.health()` — the same snapshot the dashboard's capture card reads, so the two screens cannot disagree. A source that is off and has never delivered says nothing; a source that delivered before and is off now keeps the line, because that is how the operator sees that it stopped.
+- **A changed scope is named, not implied.** `agentTailer.sources.<kind>.scopeChangedAt` marks a scope change made while the source was recording. The row then reads "Scope changed — recording stopped until the new range is confirmed." and the project checkbox is relabelled "Confirm this range and record". One control, not two ways to do the same thing. A source that was never recording is not reported as a scope change.
+- **Removal asks.** `confirmGraded` at level `plain` names the consequences: every project on this computer stops recording that source, and the records already captured are kept. Cancelling removes nothing.
+- **Vocabulary is shared.** The health card's agent rows are labelled "Claude Code" / "Codex CLI" / "OpenCode", the same names the settings rows use; the settings verbs are Install integration / Remove integration.
+
+### Verification
+
+- **Unit tests: 22 new/updated assertions across two files.** `test/agent-sources-panel.test.tsx` (13 tests) pins the scope-changed sentence, the relabelled control, the removal consequences and the cancel path; `test/capture-source-rows.test.tsx` (5 tests) pins the last-delivered line, the "never delivered" wording, the absent line for a source the snapshot does not carry, and that a failing health read leaves the controls usable. The two pre-existing AI panel cases were updated to the new scope-changed wording rather than loosened.
+- **Electron journeys: 18 passed** — capture-settings interaction, official-agent installation, official-agent capture, first-run. Two journeys were updated to the new behaviour (the removal now confirms; the scope change now names itself) and the AI capture journey now reads the removal dialog in English.
+- **Native capture-sources check.** Built Electron with a synthetic HOME and a separate profile: turning the host-monitor pack on showed "尚未收到資料" under each enabled member immediately, the clipboard row (opt-in, off) stayed silent, and the uninstalled AI rows showed no last-delivered line at all.
+- Typecheck, the i18n assertion gate, the generated settings-search index check and the build passed. `config.screenshot?.intervalSec` / `?.diffThreshold` now read the optional way their sibling fields already did, so a config without a screenshot section renders instead of throwing.
+- Not claimed: the external-source entries and the plugin-management page keep their own #435 follow-ups; no cross-platform installer acceptance (T008) and no full-platform matrix (T009–T013). Converge: T028 complete as a bounded increment; #435 stays open.
+
+## T029: external sources and pack-management entries (2026-10-22)
+
+Scope: #435 continuation. An external producer (tcpdump, transparent proxy, C2
+tailer) row now says when it last delivered, with the same words the AI and
+pack rows use, through a shared `SourceLastSeen` component. A pack disabled in
+Plugins no longer only describes the way to the Plugins page; the row offers
+the direct route there. The last-delivered wording moved from the AI panel
+onto the shared component so the three surfaces cannot drift.
+
+### Observable behaviour
+
+- **External producers say when they last delivered.** The row already said
+  whether the producer is running now; it now also says when something
+  actually arrived, through the same capture-health snapshot. A producer that
+  is off and has never delivered says nothing.
+- **A disabled pack offers the way back.** The pack-removed row keeps its
+  message and adds "Go to plugin settings", so the operator does not have to
+  find the page themselves. When there is no plugin-settings handler, no link
+  is offered rather than a dead button.
+- **One wording.** `settings.source.lastReceived` / `neverReceived` are shared;
+  the AI panel no longer carries its own copy.
+
+### Verification
+
+- **Unit tests: 11 new assertions.** `test/capture-settings-interaction.test.tsx`
+  gained three external-source cases (last delivered, never delivered, never
+  started and never delivered); `test/capture-pack-group.test.tsx` gained two
+  (direct route offered when disabled, no route when there is nowhere to go).
+- **Electron journeys: 6 passed** — capture-settings, official-agent
+  installation and capture.
+- Typecheck, i18n assertion gate, generated settings-search index check and
+  build passed. Converge: T029 complete as a bounded increment; #435 stays
+  open.

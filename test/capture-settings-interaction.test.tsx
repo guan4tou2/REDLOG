@@ -190,4 +190,32 @@ describe('external source facts and failed reads', () => {
     expect(screen.queryByText('settings.externalFeeding')).toBeNull()
     await waitFor(() => expect(health).toHaveBeenCalledTimes(2))
   })
+
+  // #435: a producer the operator started by hand is asked two questions —
+  // is it running, and when did it last deliver. The chip answered the
+  // first; the row now answers the second with the same words the other
+  // source rows use.
+  it('says when a running producer last delivered', async () => {
+    detect.mockResolvedValue([{ ...external }])
+    health.mockResolvedValue({ sources: [{ id: external.id, state: 'ready', lastEventAt: 1_700_000_000_000, running: true }] })
+    drawExternal()
+    await screen.findByText('settings.externalFeeding')
+    expect(screen.getByTestId(`source-last-${external.id}`).textContent).toContain('settings.source.lastReceived')
+  })
+
+  it('says a running producer that has delivered nothing yet', async () => {
+    detect.mockResolvedValue([{ ...external }])
+    health.mockResolvedValue({ sources: [{ id: external.id, state: 'ready', lastEventAt: null, running: true }] })
+    drawExternal()
+    await screen.findByText('settings.externalFeeding')
+    expect(screen.getByTestId(`source-last-${external.id}`).textContent).toContain('settings.source.neverReceived')
+  })
+
+  it('says nothing about a producer that was never started and never delivered', async () => {
+    detect.mockResolvedValue([{ ...external }])
+    health.mockResolvedValue({ sources: [{ id: external.id, state: 'off', lastEventAt: null, running: false }] })
+    drawExternal()
+    await screen.findByText('settings.externalNotRunning')
+    expect(screen.queryByTestId(`source-last-${external.id}`)).toBeNull()
+  })
 })

@@ -1,6 +1,7 @@
 import { FieldGroup, type HookInfo } from './SettingsShared'
 import { Button } from '../Button'
 import { SetupAndTeardown } from './ManualStepList'
+import { SourceLastSeen } from './SourceLastSeen'
 import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 import { useReadState } from '../../lib/readState'
 
@@ -116,6 +117,12 @@ export default function ExternalCaptureGroup({ t }: {
               {!fresh && l && <p className="text-xs text-redlog-text-faint mt-1">
                 {t('settings.externalLastKnown', { state: t(l.running ? 'settings.externalFeeding' : l.state === 'ready' ? 'settings.externalIdle' : 'settings.externalNotRunning') })}
               </p>}
+              {/* When this producer last delivered. The chip says whether it is
+                  running now; this says when something actually arrived —
+                  the difference between "up" and "feeding", which is the
+                  question an operator actually has about a producer they
+                  started by hand. */}
+              {l && <SourceLastSeen source={l} active={feeding} t={t} />}
               {/* The manifest's own prose is written for whoever maintains
                   the pack, in English. The translated line says what this
                   puts in the record, which is also what makes the source

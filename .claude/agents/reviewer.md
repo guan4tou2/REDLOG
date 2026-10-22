@@ -28,6 +28,14 @@ an enum or a contract, find every place that reads it. Four literal lists that
 had to agree were the real work in one change here, and one of them had been
 silently missing two entries for the whole life of the feature.
 
+**Read the screen, not only the code.** For every visible label, hint, caption or
+empty state, ask what operator question it answers that the heading, control or
+layout does not. A restatement, a slogan, or an explanation of what happens when
+a toggle is off is copy to cut. Errors, destructive consequences, security and
+data-flow facts, platform limits, and commands the operator must run stay. A
+tooltip does not justify a paragraph under the control. The test is
+`docs/UIUX-CONTROLS-AND-COPY.md` §2.
+
 **Check the failure direction.** For anything that records, gates or stops: what
 happens when it fails? An audit tool that loses the recording is bad; one that
 takes the shell, the connection or the exit status with it is worse.

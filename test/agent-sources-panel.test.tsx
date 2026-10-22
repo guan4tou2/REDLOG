@@ -2,12 +2,27 @@
 import { useState } from 'react'
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { ConfirmOpts } from '../src/renderer/src/components/ConfirmDialog'
 import AgentsPanel from '../src/renderer/src/components/settings/AgentsPanel'
+
+// #435: one source entry has to answer the whole question — installed here,
+// recording for this project, what it reads, when it last delivered, and
+// what to do when it is not. These tests pin the answers that used to live on
+// three different screens, and the one action that resolves a changed scope.
+
+const shown: ConfirmOpts[] = []
+let answer = true
+
+vi.mock('../src/renderer/src/components/ConfirmDialog', () => ({
+  confirmGraded: (opts: ConfirmOpts) => { shown.push(opts); return Promise.resolve(answer) }
+}))
+
 const t = (key: string): string => key
 let install: ReturnType<typeof vi.fn>
 let remove: ReturnType<typeof vi.fn>
 let catalog: ReturnType<typeof vi.fn>
 let pick: ReturnType<typeof vi.fn>
+let health: ReturnType<typeof vi.fn>
 let saved: unknown
 const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
 const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
@@ -15,9 +30,14 @@ function Harness({ onOpenPlugins }: { onOpenPlugins?: () => void } = {}) {
   const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
   return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={onOpenPlugins} />
 }
+const healthSnapshot = (sources: unknown[]): unknown => ({
+  verdict: 'healthy', hasRecorded: false, sources, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null
+})
 beforeEach(() => {
-  saved = undefined; catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
-    ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick } }
+  saved = undefined; shown.length = 0; answer = true
+  catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
+  health = vi.fn(async () => healthSnapshot([]))
+  ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick }, capture: { health } }
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('AI optional installation settings', () => {
@@ -43,7 +63,7 @@ describe('AI optional installation settings', () => {
     window.redlog.plugins.list = vi.fn().mockResolvedValue([{ id: 'official-ai-codex', status: 'disabled' }])
     const onOpenPlugins = vi.fn()
     render(<Harness onOpenPlugins={onOpenPlugins} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'settings.agents.openPlugins' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'settings.openPlugins' }))
     expect(onOpenPlugins).toHaveBeenCalledTimes(1)
     expect(saved).toBeUndefined()
     expect(install).not.toHaveBeenCalled()
@@ -58,13 +78,16 @@ describe('AI optional installation settings', () => {
     expect(screen.queryByText('settings.agents.notRecording')).toBeNull()
     pick.mockResolvedValueOnce('/work/second-client')
     fireEvent.click(screen.getByTestId('agent-add-path-codex'))
-    await screen.findByText('settings.agents.notRecording')
+    // The source WAS recording, so the row names what happened — the scope
+    // moved — instead of the generic "not recording" it shows for a source
+    // that never started.
+    await screen.findByText('settings.agents.scopeChanged')
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: false, workPaths: ['/work/client', '/work/second-client'] } } } })
     expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).checked).toBe(false)
     expect(screen.getAllByRole('checkbox').filter(input => input.getAttribute('data-testid') === 'agent-enabled-codex')).toHaveLength(1)
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
-    expect(screen.queryByText('settings.agents.notRecording')).toBeNull()
+    expect(screen.queryByText('settings.agents.scopeChanged')).toBeNull()
   })
   it('shows a source query error and offers retry instead of an empty list', async () => {
     catalog.mockRejectedValueOnce(new Error('permission denied')); render(<Harness />)
@@ -75,5 +98,76 @@ describe('AI optional installation settings', () => {
     install.mockResolvedValue({ ok: false, error: 'disk full' }); render(<Harness />)
     fireEvent.click(await screen.findByTestId('agent-install-codex'))
     expect((await screen.findByRole('alert')).textContent).toContain('disk full'); expect(saved).toBeUndefined()
+  })
+
+  // #435: the scope moved under a source that was recording. The row has to
+  // say THAT happened, not the generic "not recording" that reads the same
+  // whether the source was never enabled or was just switched off — and the
+  // one action that resolves it has to be on the same row.
+  it('says the scope changed and turns the project checkbox into the confirming action', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+    await screen.findByText('settings.agents.notRecording')
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true } } } })
+    pick.mockResolvedValueOnce('/work/second-client')
+    fireEvent.click(screen.getByTestId('agent-add-path-codex'))
+    await screen.findByText('settings.agents.scopeChanged')
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: false, scopeChangedAt: expect.any(Number) } } } })
+    // One control, not two ways to do the same thing: the checkbox is the
+    // action, and its label says what ticking it does.
+    expect(screen.getAllByRole('checkbox').filter(input => input.getAttribute('data-testid') === 'agent-enabled-codex')).toHaveLength(1)
+    expect(screen.getByText('settings.agents.confirmScope')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, startedAt: expect.any(Number) } } } })
+    expect((saved as { agentTailer: { sources: { codex: { scopeChangedAt?: number } } } }).agentTailer.sources.codex.scopeChangedAt).toBeUndefined()
+  })
+
+  it('does not claim the scope changed when nothing was recording yet', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+    await screen.findByText('settings.agents.notRecording')
+    expect(screen.queryByText('settings.agents.scopeChanged')).toBeNull()
+    expect((saved as { agentTailer: { sources: { codex: { scopeChangedAt?: number } } } }).agentTailer.sources.codex.scopeChangedAt).toBeUndefined()
+  })
+
+  it('reports when the source last delivered, and that it never has', async () => {
+    catalog.mockResolvedValue([installed])
+    health.mockResolvedValue(healthSnapshot([{ id: 'agent-codex', installed: true, enabled: true, lastEventAt: Date.now(), state: 'ready' }]))
+    render(<Harness />)
+    expect((await screen.findByTestId('source-last-agent-codex')).textContent).toContain('settings.source.lastReceived')
+    health.mockResolvedValue(healthSnapshot([{ id: 'agent-codex', installed: true, enabled: true, lastEventAt: null, state: 'unset' }]))
+    cleanup(); render(<Harness />)
+    expect((await screen.findByTestId('source-last-agent-codex')).textContent).toContain('settings.source.neverReceived')
+  })
+
+  it('says nothing about a source that is off and has never delivered', async () => {
+    catalog.mockResolvedValue([installed])
+    health.mockResolvedValue(healthSnapshot([{ id: 'agent-codex', installed: true, enabled: false, lastEventAt: null, state: 'off' }]))
+    render(<Harness />)
+    await screen.findByTestId('agent-source-codex')
+    expect(screen.queryByTestId('source-last-agent-codex')).toBeNull()
+  })
+
+  it('names what a local removal stops and what it keeps before removing', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-remove-codex'))
+    await waitFor(() => expect(shown).toHaveLength(1))
+    expect(shown[0].title).toBe('settings.agents.removeTitle')
+    expect(shown[0].consequences).toContain('settings.agents.removeStops')
+    expect(shown[0].consequences).toContain('settings.agents.removeKeeps')
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('codex'))
+  })
+
+  it('keeps the integration when the removal is not confirmed', async () => {
+    catalog.mockResolvedValue([installed])
+    answer = false
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-remove-codex'))
+    await waitFor(() => expect(shown).toHaveLength(1))
+    expect(remove).not.toHaveBeenCalled()
   })
 })

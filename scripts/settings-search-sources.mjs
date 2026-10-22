@@ -13,7 +13,11 @@ export const PAGE_SOURCES = {
   captureControl: [
     { file: 'settings/CaptureControlPage.tsx' },
     { file: 'settings/AgentsPanel.tsx' },
-    { file: 'settings/ExternalCaptureGroup.tsx' }
+    { file: 'settings/ExternalCaptureGroup.tsx' },
+    // The last-delivered line every source row carries (T028). It is a
+    // separate file so the AI rows and the pack rows say it the same way,
+    // and it is listed here so its words are searchable too.
+    { file: 'settings/SourceLastSeen.tsx' }
   ],
   loot: [{ file: 'settings/LootRulesGroup.tsx' }],
   retention: [{ file: 'settings/RetentionPage.tsx' }],

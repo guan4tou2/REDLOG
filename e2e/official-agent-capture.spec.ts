@@ -9,6 +9,9 @@ test('AI integration records only new, authorized turns and stops without deleti
   test.setTimeout(60_000)
   const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
+    // The removal dialog names its consequences, and this spec reads them.
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await page.reload()
     const work = join(tmpHome, 'client-work')
     const privateWork = join(tmpHome, 'private-work')
     const sources = join(tmpHome, '.codex', 'sessions', '2026', '10', '22')
@@ -85,7 +88,14 @@ test('AI integration records only new, authorized turns and stops without deleti
     expect((await rows()).length).toBe(count)
     expect(await reads()).toEqual([])
     expect(readFileSync(file).equals(bytes)).toBe(true)
+    // A local removal is machine-wide, so it asks first and names what stops
+    // and what stays.
     await page.getByTestId('agent-remove-codex').click()
+    const removal = page.getByRole('dialog', { name: 'Remove capture integration' })
+    await expect(removal).toBeVisible()
+    await expect(removal).toContainText('Every project on this computer stops recording this source.')
+    await expect(removal).toContainText('Records already captured are kept.')
+    await removal.getByRole('button', { name: 'Remove', exact: true }).click()
     await expect(page.getByTestId('agent-install-codex')).toBeVisible()
     expect(readFileSync(file).equals(bytes)).toBe(true)
     expect(existsSync(join(tmpHome, '.redlog', 'plugins', 'official-ai-codex'))).toBe(false)

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import CapturePackGroup, { PackMember } from '../src/renderer/src/components/settings/CapturePackGroup'
 import type { ConfigState } from '../src/renderer/src/components/settings/SettingsShared'
@@ -84,5 +84,27 @@ describe('CapturePackGroup', () => {
     expect(screen.getByTestId('pack-removed-hostMonitors')).toBeTruthy()
     expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
     expect(screen.queryByText('member tuning')).toBeNull()
+  })
+
+  // #435: the row that says the pack is disabled offers the way back, so the
+  // operator does not have to find the page themselves.
+  it('offers the direct route to plugin settings when the pack is disabled there', () => {
+    const onOpenPlugins = vi.fn()
+    render(
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t} onOpenPlugins={onOpenPlugins}>
+        <p>member tuning</p>
+      </CapturePackGroup>
+    )
+    fireEvent.click(screen.getByTestId('pack-open-plugins-hostMonitors'))
+    expect(onOpenPlugins).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers no route when there is nowhere to go', () => {
+    render(
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
+        <p>member tuning</p>
+      </CapturePackGroup>
+    )
+    expect(screen.queryByTestId('pack-open-plugins-hostMonitors')).toBeNull()
   })
 })

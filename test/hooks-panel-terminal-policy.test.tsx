@@ -18,7 +18,6 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
     (acc, [k, v]) => acc.replace(`{{${k}}}`, String(v)),
     ({
       'settings.hooksBuiltin': 'Built-in',
-      'settings.hooksHint': 'hint',
       'settings.terminalMode': 'New terminals: {{mode}}',
       'settings.terminalMode.auto': 'recording from the first prompt',
       'settings.terminalMode.manual': 'not recording until redlog start',
@@ -66,7 +65,7 @@ describe('the hooks panel says what the shell will do', () => {
     // panel is still useful without the note.
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     draw(undefined)
-    await waitFor(() => expect(screen.getByText('hint')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Built-in')).toBeTruthy())
     expect(document.body.textContent).not.toMatch(/New terminals/)
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()

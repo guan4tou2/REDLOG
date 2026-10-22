@@ -232,9 +232,6 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
           plugin that brought it, on the Plugins page — here it was padding a
           list the operator reads to answer "is my shell recording". */}
       <FieldGroup title={t('settings.hooksBuiltin')}>
-        <p className="text-xs text-redlog-text-faint mb-2">
-          {t('settings.hooksHint')}
-        </p>
         <TerminalPolicyNote policy={policy} t={t} />
         {hooks.length === 0 && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>

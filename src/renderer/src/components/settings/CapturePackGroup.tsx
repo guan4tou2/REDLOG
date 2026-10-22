@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FieldGroup, type ConfigState } from './SettingsShared'
+import { SourceLastSeen } from './SourceLastSeen'
 import { isMemberSelected, OPT_IN_MEMBERS } from '../../../../core/capture-packs'
 
 // One optional capture pack (Spec 035): a single switch for the project, and
@@ -22,13 +23,18 @@ export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMember
  *  the clipboard's default is off: it is never collected because a pack was
  *  turned on, only because it was ticked (#224). */
 export function PackMember({
-  member, title, hint, warn, config, setConfig, t, children
+  member, title, hint, warn, config, setConfig, t, health, packOn, children
 }: {
   member: PackMemberId
   title: string
   hint: string
   /** Shown in amber under the hint: what turning this one on costs. */
   warn?: string
+  /** The health row for this member, when the snapshot has one. */
+  health?: CaptureSourceInfo
+  /** Whether the member's own pack is on. A member under a pack that is off
+   *  is not delivering, whatever its own switch says. */
+  packOn?: boolean
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -56,6 +62,10 @@ export function PackMember({
         <p className="text-xs text-redlog-text-faint" data-testid={`pack-member-optin-${member}`}>{t('settings.packMemberOptIn')}</p>
       )}
       <p className="text-xs text-redlog-text-faint">{hint}</p>
+      {/* When it last delivered. The switch says what was asked for; this says
+          what arrived — the two are different questions and only one of them
+          was answerable from this row before. */}
+      <SourceLastSeen source={health} active={on && (packOn ?? true)} t={t} />
       {warn && <p className="text-xs text-amber-500/80">{warn}</p>}
       {/* Tuning for a member that is off would be controls for something that
           is not running — the same lie the pack switch avoids above. */}
@@ -88,7 +98,7 @@ export function usePackAvailability(): Record<PackId, boolean> | null {
 }
 
 export default function CapturePackGroup({
-  pack, title, hint, available, config, setConfig, t, children
+  pack, title, hint, available, config, setConfig, t, onOpenPlugins, children
 }: {
   pack: PackId
   title: string
@@ -97,6 +107,9 @@ export default function CapturePackGroup({
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
+  /** Where the pack's plugin is managed. The row that says the pack is
+   *  disabled offers the way back instead of describing the way there. */
+  onOpenPlugins?: () => void
   /** Member tuning, shown while the pack is on. */
   children?: ReactNode
 }): JSX.Element {
@@ -104,7 +117,14 @@ export default function CapturePackGroup({
   return (
     <FieldGroup title={title}>
       {available === false ? (
-        <p className="text-xs text-amber-500/80" data-testid={`pack-removed-${pack}`}>{t('settings.packRemoved')}</p>
+        <div className="space-y-1">
+          <p className="text-xs text-amber-500/80" data-testid={`pack-removed-${pack}`}>{t('settings.packRemoved')}</p>
+          {onOpenPlugins && (
+            <button type="button" data-testid={`pack-open-plugins-${pack}`} onClick={onOpenPlugins} className="text-xs text-redlog-text-dim underline">
+              {t('settings.openPlugins')}
+            </button>
+          )}
+        </div>
       ) : (
         <label className="flex items-center gap-2 cursor-pointer">
           <input

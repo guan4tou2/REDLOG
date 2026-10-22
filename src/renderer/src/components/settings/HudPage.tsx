@@ -40,7 +40,6 @@ export default function HudPage({
           />
           <span className="text-xs text-redlog-text">{t('settings.overlayShowMark')}</span>
         </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowMarkHint')}</p>
         <label className="flex items-center gap-2 cursor-pointer mt-2">
           <input
             type="checkbox"
@@ -50,7 +49,6 @@ export default function HudPage({
           />
           <span className="text-xs text-redlog-text">{t('settings.overlayFlashExposed')}</span>
         </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayFlashExposedHint')}</p>
 
         <div className="mt-3">
           <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
@@ -103,7 +101,6 @@ export default function HudPage({
               </div>
             )
           })()}
-          <p className="text-xs text-redlog-text-faint mt-1">{t('settings.overlayScaleHint')}</p>
         </div>
 
         <label className="flex items-center gap-2 cursor-pointer mt-3">
@@ -115,7 +112,6 @@ export default function HudPage({
           />
           <span className="text-xs text-redlog-text">{t('settings.overlayEmphasizeIp')}</span>
         </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayEmphasizeIpHint')}</p>
 
         <label className="flex items-center gap-2 cursor-pointer mt-3">
           <input

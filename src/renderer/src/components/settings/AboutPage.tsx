@@ -124,7 +124,6 @@ export default function AboutPage({ t }: {
           RedLog v{__APP_VERSION__}
         </p>
         <UpdateBlock t={t} />
-        <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
       </FieldGroup>
       {debug && (
         <FieldGroup title={t('settings.debugLog')}>

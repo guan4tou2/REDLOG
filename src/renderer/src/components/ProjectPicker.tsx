@@ -182,9 +182,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           is what keeps that survivable: `align-items: center` on a scrolling
           box overflows in BOTH directions once the content is taller than the
           box, and the half above the scroll origin cannot be reached. */}
-      <div className="shrink-0 pt-10 pb-8 text-center space-y-2">
+      <div className="shrink-0 pt-10 pb-8 text-center">
         <Wordmark className="text-4xl" />
-        <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
       </div>
       <div
         className="flex-1 flex justify-center px-6 pb-6 overflow-y-auto"
