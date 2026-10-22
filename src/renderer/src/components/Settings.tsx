@@ -347,7 +347,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
 
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div ref={pane} className={`flex-1 overflow-y-auto p-4 space-y-4 ${tab === 'plugins' ? '' : 'max-w-[900px]'}`}>
+      <div ref={pane} className={`flex-1 overflow-y-auto p-pad space-y-4 ${tab === 'plugins' ? '' : 'max-w-[900px]'}`}>
         {tab === 'general' && <GeneralPage config={config} setConfig={setConfig} />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}

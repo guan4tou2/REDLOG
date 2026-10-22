@@ -258,6 +258,28 @@ html {
   --section-gap: 14px;
 }
 
+/* Density has to reach the utilities that actually draw the page.
+ *
+ * §3 defines four variables and says tight density changes row heights AND
+ * padding. Only `--row-h` was ever read: `--pad`, `--gap` and `--section-gap`
+ * were declared here and referenced by nothing, so switching to tight shrank
+ * the sidebar rows and left every card, panel and gap exactly where it was.
+ * `density.ts`'s own comment claimed otherwise.
+ *
+ * Rather than rewrite 271 `rounded`/`p-4`/`gap-3` call sites, bind the three
+ * utilities that carry the page rhythm to the variables. `p-4`, `gap-3` and
+ * `space-y-6` then follow density because they are the tokens' names. */
+/* `@theme` only generates utilities for namespaces Tailwind knows (--color-*,
+ * --spacing-* with a numeric scale). Naming a variable `--spacing-pad` does
+ * not create a `p-pad` class. Plain utilities do, and they read the variable
+ * at use time — which is what makes them follow the density attribute. */
+@utility p-pad { padding: var(--pad); }
+@utility px-pad { padding-inline: var(--pad); }
+@utility py-pad { padding-block: var(--pad); }
+@utility gap-gap { gap: var(--gap); }
+/* A plain rule, not @utility: Tailwind rejects `>` in a utility name. */
+.space-y-section > :not([hidden]) ~ :not([hidden]) { margin-top: var(--section-gap); }
+
 html, body, #root { height: 100%; }
 body {
   margin: 0;

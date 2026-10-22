@@ -178,7 +178,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     : null
 
   if (preparing) return (
-    <div className="h-full overflow-auto p-4 space-y-4">
+    <div className="h-full overflow-auto p-pad space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
@@ -189,7 +189,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   )
 
   return (
-    <div className="h-full flex flex-col p-4 gap-3 overflow-auto">
+    <div className="h-full flex flex-col p-pad gap-gap overflow-auto">
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>

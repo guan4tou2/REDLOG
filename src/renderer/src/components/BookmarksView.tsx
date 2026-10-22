@@ -193,7 +193,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-pad">
         {creating && (
           <BookmarkForm
             browserTab={browserTab}

@@ -612,3 +612,66 @@ smallest target in the app.
 - Not done: the padding/gap/radius token consolidation (26 padding values, 4
   radii, `--pad`/`--gap` largely unused). That is a separate cleanup with no
   behaviour change and a much wider diff.
+
+## T039: the density axis was a no-op (2026-10-22)
+
+docs/UIUX-STANDARD.md §3 declares four density variables and says tight changes
+row heights **and** padding. Measured in the running app:
+
+| Variable | Declared | Read by |
+|---|---|---|
+| `--row-h` | 40 / 32px | Sidebar, Settings nav (2 files) |
+| `--pad` | 16 / 10px | **nothing** |
+| `--gap` | 12 / 8px | **nothing** |
+| `--section-gap` | 24 / 14px | **nothing** |
+
+So switching to tight shrank the sidebar rows and left every card, panel and
+gap exactly where it was — while `lib/density.ts`'s own comment said density
+"changes only row heights and padding". The feature looked implemented and was
+a no-op for two thirds of what it claimed.
+
+### The fix, and why not the obvious one
+
+Rewriting the 271 `rounded` / 300-odd `p-*` / `gap-*` call sites would have been
+a huge diff with no behaviour change. Instead the three variables are bound to
+three utilities, and the containers that carry the page rhythm use them:
+
+```css
+@utility p-pad { padding: var(--pad); }
+@utility gap-gap { gap: var(--gap); }
+.space-y-section > :not([hidden]) ~ :not([hidden]) { margin-top: var(--section-gap); }
+```
+
+`@utility` is required for the first two — Tailwind only emits a utility it has
+been told about; a hand-written `.p-pad` rule is emitted but never recognised,
+which is exactly the failure mode that made `--pad` inert in the first place.
+`space-y-section` is a plain rule because Tailwind rejects `>` in a utility
+name.
+
+Nine page-level containers moved from `p-4` to `p-pad` (Settings, Screenshots,
+ScopeStatus, LootPanel, TargetView, Dashboard, Bookmarks, FirstRun ×2), and the
+two dashboard containers take `gap-gap` / `space-y-section`.
+
+Measured before and after in the running app: comfortable 16px padding and 11px
+block gap; tight 10px and 7px. Density now moves the page.
+
+### What was NOT changed
+
+The radius spread — `rounded` 4px ×271, `rounded-lg` 8px ×28, `rounded-xl` 12px
+×6 — turned out to be a deliberate three-level scheme (panel/input, card,
+dialog), not drift. Consolidating it would have flattened a real hierarchy, so
+it is now **documented in §3** instead. Same for the padding spread: the
+page-level containers are on the token; the ~300 inner paddings are local
+spacing decisions, not a broken system.
+
+### Verification
+
+- `test/density.test.ts` (5 cases): resolution rules, the document attribute,
+  **that every declared variable is read by a utility**, and that the nine page
+  containers use `p-pad`. Stashing the CSS and component changes makes the last
+  two fail — the gate is real.
+- 18 Electron journeys pass, including the small-window matrix, which now
+  measures a page whose padding follows density.
+- typecheck, architecture, i18n assertion and Spec Kit gates and build passed.
+  `npm test`: 4058 passed; the 16 shell/PTY files still fail on this machine
+  against a clean HEAD.

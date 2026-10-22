@@ -200,7 +200,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   }
 
   return (
-    <div className="p-4 space-y-3 overflow-auto h-full">
+    <div className="p-pad space-y-section overflow-auto h-full">
       {/* First, and above the capture card: what is wrong now outranks what is
           merely true now. Renders nothing when nothing is wrong. */}
       <DashboardIssues onNavigate={onNavigate} />

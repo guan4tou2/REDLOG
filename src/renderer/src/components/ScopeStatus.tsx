@@ -150,7 +150,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   }
 
   return (
-    <div className="p-4 space-y-4 overflow-auto h-full">
+    <div className="p-pad space-y-4 overflow-auto h-full">
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('scope.title')}</h2>
       </div>

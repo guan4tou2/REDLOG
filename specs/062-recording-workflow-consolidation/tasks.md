@@ -117,3 +117,9 @@ T037 closes the audit. Nothing was changed: every candidate was inspected and fo
 - [x] T038 [US2] Raise every interactive target to the 24x24 floor the app's own §3 implies (32px, WCAG 2.5.8 at 24): a shared CheckRow for all 22 checkboxes (their label rows were 20px), the terminal tab close/restart buttons (16px), the timeline's event-dot hit area (20px), the timeline help/zoom controls (20px), the status bar's HUD toggle (18x10 when narrow), and the HUD sliders (22px). Pin it with an Electron assertion so it cannot regress.
 
 T038 changes geometry only. It does not touch the padding/gap/radius token consolidation, which is a separate and larger cleanup.
+
+## Density tokens actually consumed — UIUX audit
+
+- [x] T039 [US2] Make the density axis work: `--pad`, `--gap` and `--section-gap` were declared in styles/index.css and read by nothing, so tight density shrank only the sidebar rows while `density.ts` claimed it moved padding. Bind them to `p-pad` / `gap-gap` / `space-y-section` utilities, move the nine page-level containers onto them, and pin "declared but never read" with a test.
+
+T039 is a behaviour fix disguised as a token cleanup. The radius tiers (4/8/12px) were found to be a deliberate three-level scheme and are now documented rather than changed.

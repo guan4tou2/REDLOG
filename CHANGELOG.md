@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Density now changes what it says it changes. `--pad`, `--gap` and
+  `--section-gap` were declared and read by nothing, so switching to tight
+  shrank only the sidebar rows while the comment in `density.ts` claimed the
+  padding moved too. The three variables are bound to `p-pad` / `gap-gap` /
+  `space-y-section` and the nine page containers use them: comfortable is 16px
+  padding and a 12px block gap, tight is 10px and 8px. A test pins "declared but
+  never read", which is the failure this hid behind.
 - Every interactive target now meets the 24x24 floor: 141 of 861 were under it.
   The worst was Settings' checkbox row — the highest-frequency controls
   (clipboard sampling, file watching, loot rules) were the smallest targets at

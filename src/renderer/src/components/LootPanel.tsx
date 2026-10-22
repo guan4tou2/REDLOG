@@ -172,7 +172,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   }
 
   return (
-    <div className="p-4 space-y-4 overflow-auto h-full">
+    <div className="p-pad space-y-4 overflow-auto h-full">
       <div>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-redlog-text">{t('loot.title', { count: visibleMatchCount })}</h2>
