@@ -1796,8 +1796,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         <button
           onClick={() => setShowHelp(true)}
           className="ml-1 w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-          title={t('timeline.help.hint')}
-          aria-label={t('timeline.help.hint')}
+          title={t('timeline.help.title')}
+          aria-label={t('timeline.help.title')}
         >?</button>
 
         {/* The detail pane's dock control moved into the pane's own header

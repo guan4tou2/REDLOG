@@ -27,6 +27,15 @@ Let the layout do the explaining.
 `docs/UIUX-CONTROLS-AND-COPY.md` §2 is the necessity test; `docs/UIUX-STANDARD.md`
 holds the empty-state and settings conventions.
 
+`test/ui-copy.test.ts` is the mechanical half of this rule and runs in CI. It
+fails on: the same explanation stored under two keys, a descriptive key nothing
+renders, a hint that only repeats its label, a tooltip that repeats the visible
+text beside it, and a helper line over three sentences without being on its
+allow-list of warnings. It cannot judge whether a sentence is *worth* saying —
+that is §2's four questions — so it only catches the shapes that are never
+right. If it fails, fix the copy; do not add to the allow-list unless the string
+states a consequence the operator must know before acting.
+
 `請謹慎使用程式碼` also applies to implementation: make the smallest change that
 satisfies the behaviour. Do not add components, props, state or dependencies
 whose only purpose is to render copy that should not exist.

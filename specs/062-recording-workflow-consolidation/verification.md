@@ -390,3 +390,55 @@ security, evidence or platform facts, not restatements.
   gates and build passed.
 - The sweep is a point-in-time check, not a gate: it lives in this record, not
   in CI. Converge: T033 complete.
+
+## T034: the copy rule as a gate (2026-10-22)
+
+AGENTS.md said "Avoid unnecessary secondary labels and descriptions. Let the
+layout do the explaining." That is advice: a reviewer reads it and the next
+agent does not. This turns the mechanical half of it into a test that CI runs.
+
+### What the gate checks
+
+`test/ui-copy.test.ts`, five cases:
+
+1. **One explanation, one key.** Two descriptive keys with the same sentence
+   means one will be edited and the other will not.
+2. **No descriptive key that nothing renders.** A sentence written for an
+   operator who will never see it sits in the translation queue forever.
+3. **A hint may not repeat its label.** Exact equality after trailing
+   punctuation — not a prefix match.
+4. **A tooltip may not repeat the visible text beside it.** A tooltip earns its
+   place by saying what the label cannot.
+5. **Helper lines stay at three sentences or fewer** unless the key is on an
+   allow-list of warnings (clipboard scope, SYN-scan blind spot, unsigned-build
+   update path, plugin consent, …). Adding a key there is a decision.
+
+What it deliberately does not do: judge whether a sentence is worth saying.
+That needs §2's four questions and a human. Length alone is not a failure
+either — the clipboard and SYN-scan warnings are long and belong.
+
+### What it found, and what was fixed
+
+- **Six dead keys** from `settings.hookWatchPaths.*`. `c15f2186` moved AI
+  capture to per-project authorisation and removed the UI that rendered them;
+  the strings stayed. The `hint` was also the only unreferenced descriptive key
+  in the locale. Removed from both locales.
+- **`bookmarks.cdpHint` repeated the state already on screen.** The panel
+  showed "Chrome CDP not connected" and the hint opened with the same words.
+  It now says only the actionable part: launch Chrome with the debugging port.
+- **`timeline.help.hint` was a second copy of `timeline.help.title`** (both
+  "Keyboard shortcuts"). It was used only as the button's `title`/`aria-label`,
+  so the button now references the one string and the duplicate is gone.
+- **One false positive, fixed in the rule.** A prefix match flagged
+  `firstRun.core.laterWhy` ("Core capture that is not verified stays flagged…")
+  because it opens with the heading's words. That sentence says something the
+  heading cannot, and a gate that fails on it is a gate someone turns off. The
+  rule now requires exact equality.
+
+### Verification
+
+- `test/ui-copy.test.ts` 5/5. typecheck, architecture, i18n assertion, Spec Kit
+  gates and build passed; 4 Electron settings journeys still pass.
+- `npm test`: 4051 passed. The 16 shell/PTY files still fail on this machine
+  against a clean HEAD, as recorded earlier.
+- AGENTS.md now names the test and says what to do when it fails.

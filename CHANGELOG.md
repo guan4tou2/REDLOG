@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The AGENTS.md copy rule is now a gate: `test/ui-copy.test.ts` fails on the
+  same explanation stored under two keys, a descriptive key nothing renders, a
+  hint that only repeats its label, a tooltip that repeats the visible text, and
+  a helper line over three sentences that is not an allow-listed warning. It
+  found six dead `settings.hookWatchPaths.*` strings left behind when AI capture
+  moved to per-project authorisation, a bookmark hint that repeated the status
+  already on screen, and a duplicated keyboard-shortcut label — all removed.
 - UIUX audit fixes: the HUD text-size slider has an accessible name and reports
   its step as its value (it had none); loot rules show what they match as text
   instead of only in a tooltip a keyboard cannot reach; and an AI integration
