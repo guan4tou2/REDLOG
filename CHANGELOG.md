@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The copy gate now runs against both locales, and the Chinese side showed two
+  defects the English side did not: two artifact failures that named neither
+  of two different problems (a file over the 200 MB limit, and a full disk),
+  and a project-card label that read exactly like the violation counter on the
+  status bar. Both now say which.
 - The copy gate is mutation-tested: each of its five rules is proven to fail on
   an injected violation. Two of them did not, and are now fixed — the
   duplicate-key rule had only compared descriptive keys, and the tooltip rule's

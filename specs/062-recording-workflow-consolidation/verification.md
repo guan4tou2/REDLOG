@@ -475,3 +475,42 @@ deliberate violation and the suite was run.
 - typecheck, architecture, i18n assertion, Spec Kit gates and build passed;
   19 Electron journeys still pass. `npm test`: 4052 passed; the 16 shell/PTY
   files still fail on this machine against a clean HEAD.
+
+## T036: the copy gate runs against both locales (2026-10-22)
+
+The gate ran against `en.json` only. That was a gap with a shape: a duplicate
+sentence can be invisible in one language and obvious in another, and the
+Chinese is the interface's default locale.
+
+### What the Chinese side showed
+
+- **`artifacts.tooLarge` and `artifacts.noSpace` were the same string in both
+  languages** — "{{name}} was not added" / "未加入 {{name}}". They are different
+  problems: the file is over the 200 MB per-evidence limit, or the disk is
+  full. The `why` line said which, but the message line is the one read first
+  and it named neither. The message now says which; the detail stays in the
+  `why` line.
+- **`project.appliedScope` ("Scope 2") and `statusBar.scopeViolations`
+  ("SCOPE 2") were both "範圍 2" in Chinese.** The first means two in-scope
+  targets were imported from a profile; the second means two scope
+  violations. The card sits next to the profile-import button, so an operator
+  could read "2" as violations and go hunting for out-of-scope commands that
+  do not exist. The status bar now says "越界 2".
+
+### Verification
+
+- All five rules now run against both locales, with a length floor per
+  language (24 characters in English, 10 in Chinese — Chinese carries more
+  meaning per character, so the same floor would flag every label).
+- A mutation test in Chinese (`test.zhDupA` / `test.zhDupB`) confirms the
+  duplicate-key rule fires there too.
+- Two false leads were checked and cleared rather than "fixed": 289 then 27
+  apparently unreferenced keys were both artefacts of the detector — the
+  locale keys are read through `text('quit.title')` and built at runtime from
+  a prefix (`sidebar.${view}`). A corrected detector finds **zero** dead
+  keys, so nothing was removed on a hunch.
+- Placeholder parity between locales was checked separately and holds for
+  every key, and no string over 25 characters is identical in both locales.
+- typecheck, architecture, i18n assertion, Spec Kit gates and build passed;
+  39 unit and 7 Electron tests still pass. `npm test`: 4051 passed; the 16
+  shell/PTY files still fail on this machine against a clean HEAD.

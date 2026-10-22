@@ -40,30 +40,37 @@ function sources(): Array<{ file: string; text: string }> {
 }
 
 describe('UI copy: no redundant descriptions', () => {
+  // Every rule runs against BOTH locales. The English side was the first
+  // implementation, and running only that side missed two real defects the
+  // Chinese side had: a message that named neither of two different problems,
+  // and a card label that read exactly like a violation counter. A duplicate
+  // sentence is invisible in one language and obvious in another.
+  const LOCALES = ['en', 'zh-TW'] as const
+
   it('does not store the same explanation under two keys', () => {
-    const en = load('en')
-    const seen = new Map<string, string[]>()
-    // Every key, not only the descriptive ones. A mutation test showed the
-    // descriptive-only version passing a pair of identical explanations
-    // stored as `test.dupA` / `test.dupB`: the rule's name promised more than
-    // it checked. Duplicated prose is duplicated prose whatever the key is
-    // called, and the cost is the same — one copy gets edited, the other goes
-    // stale in a language nobody re-read.
-    for (const [k, v] of Object.entries(en)) {
-      // Very short values are labels ("Cancel", "Retry") and repeat on purpose.
-      if (v.length < 24) continue
-      // Interpolation makes two strings different sentences even when the
-      // template is identical; `{{name}}` in one and `{{port}}` in the other
-      // are not a duplicate, they are two parameters.
-      const key = norm(v)
-      seen.set(key, [...(seen.get(key) ?? []), k])
+    const offenders: string[] = []
+    for (const loc of LOCALES) {
+      const dict = load(loc)
+      const seen = new Map<string, string[]>()
+      // Every key, not only the descriptive ones. A mutation test showed the
+      // descriptive-only version passing a pair of identical explanations
+      // stored as `test.dupA` / `test.dupB`: the rule's name promised more than
+      // it checked. Duplicated prose is duplicated prose whatever the key is
+      // called, and the cost is the same — one copy gets edited, the other goes
+      // stale in a language nobody re-read.
+      for (const [k, v] of Object.entries(dict)) {
+        // Very short values are labels ("Cancel", "Retry") and repeat on purpose.
+        if (v.length < (loc === 'zh-TW' ? 10 : 24)) continue
+        const key = norm(v)
+        seen.set(key, [...(seen.get(key) ?? []), k])
+      }
+      for (const [v, keys] of seen) {
+        if (keys.length > 1) offenders.push(`${loc}: ${keys.join(' / ')} — "${v.slice(0, 70)}"`)
+      }
     }
-    const dupes = [...seen.entries()]
-      .filter(([, keys]) => keys.length > 1)
-      .map(([v, keys]) => `${keys.join(' / ')} — "${v.slice(0, 70)}"`)
     // Two keys with the same sentence means one of them will be edited and the
     // other will not. Keep one string and reference it, or say different things.
-    expect(dupes).toEqual([])
+    expect(offenders).toEqual([])
   })
 
   it('has no descriptive key that nothing renders', () => {
@@ -84,25 +91,27 @@ describe('UI copy: no redundant descriptions', () => {
   })
 
   it('does not let a hint say exactly what its label already says', () => {
-    const en = load('en')
-    const strip = (s: string): string => norm(s).replace(/[.!?。！？：:]+$/, '')
     const offenders: string[] = []
-    for (const [k, v] of Object.entries(en)) {
-      if (!DESCRIPTIVE.test(k)) continue
-      const ns = k.slice(0, k.lastIndexOf('.'))
-      for (const [k2, v2] of Object.entries(en)) {
-        if (k2 === k || DESCRIPTIVE.test(k2)) continue
-        if (!k2.startsWith(`${ns}.`)) continue
-        // Exact equality after trailing punctuation, not a prefix match.
-        //
-        // A prefix rule was tried first and flagged
-        // `firstRun.core.laterWhy` ("Core capture that is not verified stays
-        // flagged…") because it opens with the heading's words. That sentence
-        // says something the heading cannot, and a gate that fails on it is a
-        // gate someone turns off. Only a hint that carries no information
-        // beyond its label is caught here; judging whether prose is *worth*
-        // saying is §2's four questions, not a regex.
-        if (strip(v) === strip(v2)) offenders.push(`${k} repeats its label ${k2}`)
+    for (const loc of LOCALES) {
+      const dict = load(loc)
+      const strip = (s: string): string => norm(s).replace(/[.!?。！？：:]+$/, '')
+      for (const [k, v] of Object.entries(dict)) {
+        if (!DESCRIPTIVE.test(k)) continue
+        const ns = k.slice(0, k.lastIndexOf('.'))
+        for (const [k2, v2] of Object.entries(dict)) {
+          if (k2 === k || DESCRIPTIVE.test(k2)) continue
+          if (!k2.startsWith(`${ns}.`)) continue
+          // Exact equality after trailing punctuation, not a prefix match.
+          //
+          // A prefix rule was tried first and flagged
+          // `firstRun.core.laterWhy` ("Core capture that is not verified stays
+          // flagged…") because it opens with the heading's words. That sentence
+          // says something the heading cannot, and a gate that fails on it is a
+          // gate someone turns off. Only a hint that carries no information
+          // beyond its label is caught here; judging whether prose is *worth*
+          // saying is §2's four questions, not a regex.
+          if (strip(v) === strip(v2)) offenders.push(`${loc}: ${k} repeats its label ${k2}`)
+        }
       }
     }
     expect(offenders).toEqual([])
@@ -136,28 +145,32 @@ describe('UI copy: no redundant descriptions', () => {
   })
 
   it('keeps helper lines to a sentence or two, and prose only where it is a warning', () => {
-    const en = load('en')
-    const sentences = (v: string): number =>
-      v.split(/(?<=[.!?。！？])\s+/).map((s) => s.trim()).filter(Boolean).length
-    // Strings that are allowed to run long because they state a consequence the
-    // operator must know before acting. Adding a key here is a decision, which
-    // is the point: it cannot happen by accident.
-    const WARNINGS = new Set([
-      'ip.exposedHint',
-      'firstRun.policy.why',
-      'settings.clipboardScopeWarn',
-      'settings.connectionMonitorSynNote',
-      'settings.lootRuleStopped',
-      'update.readyHint',
-      'update.method.downloadPageMac',
-      'plugins.consentBody',
-      'bookmarks.emptyReason',
-      'settings.integrityHint',
-      'settings.rotationHint'
-    ])
-    const long = Object.entries(en)
-      .filter(([k, v]) => DESCRIPTIVE.test(k) && !WARNINGS.has(k) && sentences(v) > 3)
-      .map(([k, v]) => `${k} (${sentences(v)} sentences)`)
-    expect(long).toEqual([])
+    const offenders: string[] = []
+    for (const loc of LOCALES) {
+      const dict = load(loc)
+      const sentences = (v: string): number =>
+        v.split(/(?<=[.!?。！？])\s+/).map((s) => s.trim()).filter(Boolean).length
+      // Strings that are allowed to run long because they state a consequence the
+      // operator must know before acting. Adding a key here is a decision, which
+      // is the point: it cannot happen by accident.
+      const WARNINGS = new Set([
+        'ip.exposedHint',
+        'firstRun.policy.why',
+        'settings.clipboardScopeWarn',
+        'settings.connectionMonitorSynNote',
+        'settings.lootRuleStopped',
+        'update.readyHint',
+        'update.method.downloadPageMac',
+        'plugins.consentBody',
+        'bookmarks.emptyReason',
+        'settings.integrityHint',
+        'settings.rotationHint'
+      ])
+      for (const [k, v] of Object.entries(dict)) {
+        if (!DESCRIPTIVE.test(k) || WARNINGS.has(k)) continue
+        if (sentences(v) > 3) offenders.push(`${loc}: ${k} (${sentences(v)} sentences)`)
+      }
+    }
+    expect(offenders).toEqual([])
   })
 })

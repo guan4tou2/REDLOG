@@ -99,3 +99,9 @@ T034 adds a gate, not a redesign. It does not judge whether a sentence is worth 
 - [x] T035 [US2] Mutation-test the copy gate: prove each of its five rules fails on an injected violation, widen the duplicate-key rule to every key, and fix the tooltip rule whose tag scanner never matched a plain `{t('key')}` body. Fix what the repaired rules then found.
 
 T035 makes the gate trustworthy. A rule that cannot fail is worse than no rule: it is a green check that means nothing.
+
+## Copy gate, both locales — T034 follow-up
+
+- [x] T036 [US2] Run the copy gate against zh-TW as well as en, and fix the two defects only the Chinese side showed: two artifact failures that named neither of two different problems, and a project-card label that read exactly like a violation counter.
+
+T036 closes the language gap in the gate. A duplicate sentence can be invisible in one language and obvious in another.
