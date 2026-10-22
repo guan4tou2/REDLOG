@@ -24,16 +24,20 @@ export interface CommandTagPattern {
   stamp: Record<string, string>
 }
 
-export function registerCommandTags(pluginId: string, patterns: CommandTagPattern[]): void {
+export function registerCommandTags(pluginId: string, patterns: CommandTagPattern[]): { accepted: number; rejected: Array<{ name: string; reason: string }> } {
   const compiled: CompiledTag[] = []
+  const rejected: Array<{ name: string; reason: string }> = []
   for (const p of patterns) {
     try {
       compiled.push({ pluginId, name: p.name, re: new RegExp(p.match, p.flags), stamp: p.stamp })
-    } catch {
-      // Invalid regex — skip; the plugin loader flags it separately.
+    } catch (err) {
+      // Invalid regex — skip it, and name it. The loader used to say only
+      // that it "flags it separately", which it did not (#348).
+      rejected.push({ name: p.name, reason: (err as Error).message })
     }
   }
   registry.set(pluginId, compiled)
+  return { accepted: compiled.length, rejected }
 }
 
 export function unregisterCommandTags(pluginId: string): void {

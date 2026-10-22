@@ -200,3 +200,44 @@ onto the shared component so the three surfaces cannot drift.
 - Typecheck, i18n assertion gate, generated settings-search index check and
   build passed. Converge: T029 complete as a bounded increment; #435 stays
   open.
+
+## T030: contribution results for every kind (2026-10-22)
+
+Scope: #348. Loot and redaction already reported accepted/rejected counts with
+each rejected rule named; target extractors, command tags, event types and
+capture entries registered and said nothing. A manifest that loaded was
+therefore presented as every rule in it working. The four kinds now report the
+same way, and the Plugins page renders the four new lines beside the two old
+ones.
+
+### Observable behaviour
+
+- A bad regex in `targetExtractors`, `commandTags` or `capture` is named with
+  its own error, not dropped in silence.
+- A target extractor with an unknown `strategy` (or neither `strategy` nor
+  `extract`) is rejected by name with the reason, rather than vanishing.
+- An event type with no `agentType`/`label`, and a capture entry with no
+  `id`/`hookFile`, are rejected by name.
+- The row still shows the accepted count, so a partially-working plugin is
+  distinguishable from a fully-working one and from a fully-broken one.
+- Nothing about the refusal of third-party tailers changed: they are still
+  rejected before consent with the ingest-API path forward.
+
+### Verification
+
+- **Unit tests: 110 passed in 9 files.** `test/plugin-contribution-report.test.tsx`
+  gained a mixed-validity case asserting accepted/rejected for all four kinds
+  and a page case asserting the four new result lines; `test/target-extractor.test.ts`
+  updated its three count assertions to the new return shape (one of them now
+  also pins the rejected name and reason).
+- Native source-build check with a synthetic user plugin carrying one good and
+  one broken loot rule, one good extractor and one unknown strategy, and a
+  broken command tag: the Plugins page showed "1 accepted, 1 rejected" for each
+  kind with the broken rule named, and the plugin stayed active — a broken rule
+  does not disable the rest of the pack.
+- typecheck, architecture, i18n assertion and Spec Kit gates and build passed.
+  The 16 shell/PTY files still fail on this machine against a clean HEAD, as
+  recorded earlier.
+- Converge: T030 complete as a bounded diagnostics increment; #348's
+  remaining items (supported external-producer path, explicit version contract)
+  stay open.

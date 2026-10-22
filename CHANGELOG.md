@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Plugin contribution results now cover every kind, not only loot and redaction.
+  Target extractors, command tags, event types and capture entries report how
+  many rules took effect and name each rejected one with its reason (bad regex,
+  unknown strategy, missing field). A manifest that loads is no longer presented
+  as every rule in it working; a broken rule does not disable the rest of the
+  plugin.
 - A capture source now says everything about itself in one place: whether its
   integration is installed on this computer, whether it is recording for this
   project, what it reads, and when it last delivered something. The

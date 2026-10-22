@@ -17,11 +17,20 @@ const registry = new Map<string, EventTypeDef>()
 export function registerEventTypes(
   pluginId: string,
   defs: Array<{ agentType: string; label: string; lane?: string; color?: string; icon?: string }>
-): void {
+): { accepted: number; rejected: Array<{ name: string; reason: string }> } {
+  let accepted = 0
+  const rejected: Array<{ name: string; reason: string }> = []
   for (const d of defs) {
-    if (!d.agentType || !d.label) continue
+    if (!d.agentType || !d.label) {
+      // A type with no name or no label cannot be rendered; say so rather than
+      // dropping it silently (#348).
+      rejected.push({ name: d.agentType || '(missing agentType)', reason: 'needs both `agentType` and `label`' })
+      continue
+    }
     registry.set(`${pluginId}:${d.agentType}`, { ...d, pluginId })
+    accepted++
   }
+  return { accepted, rejected }
 }
 
 export function unregisterEventTypes(pluginId: string): void {

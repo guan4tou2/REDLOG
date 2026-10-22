@@ -239,14 +239,24 @@ export function registerCapturePlugins(
   pluginId: string,
   dir: string,
   entries: Array<Omit<PluginManifest, 'requires'> & { requires?: string[] }>
-): void {
+): { accepted: number; rejected: Array<{ name: string; reason: string }> } {
+  let accepted = 0
+  const rejected: Array<{ name: string; reason: string }> = []
   for (const e of entries) {
+    // #348: a capture entry with no id or no hook file cannot be installed or
+    // run; it used to be registered as an empty row.
+    if (!e.id || !e.hookFile) {
+      rejected.push({ name: e.id || e.name || '(unnamed capture)', reason: 'needs both `id` and `hookFile`' })
+      continue
+    }
     // namespace the id so two plugins can't collide with each other or a built-in
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
     externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
     const retired = retiredCaptures.findIndex((m) => m.id === id)
     if (retired >= 0) retiredCaptures.splice(retired, 1)
+    accepted++
   }
+  return { accepted, rejected }
 }
 
 // Disabled captures, kept rather than dropped.

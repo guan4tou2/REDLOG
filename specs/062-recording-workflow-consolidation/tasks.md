@@ -63,3 +63,9 @@ T021–T023 are bounded diagnosed settings defects, verified in 103 targeted tes
 - [x] T029 [US5] Extend the same one-entry treatment to the external producers and the pack-management row: each external producer says when it last delivered, and a pack disabled in Plugins offers the direct route to plugin settings instead of describing the way there. Unify the last-delivered wording through a shared SourceLastSeen component so the AI rows, pack rows and external rows cannot drift. Verify with unit and Electron tests.
 
 T028–T029 are bounded settings increments for #435. They do not close #435 (plugin-management and external SourceLastSeen recovery details keep their own follow-ups) and do not replace T008–T013.
+
+## Contribution results — #348
+
+- [x] T030 [US5] Report what actually took effect for every contribution kind, not only loot and redaction: target extractors, command tags, event types and capture entries now return accepted/rejected counts with each rejected rule named and reasoned (bad regex, unknown strategy, missing field). The Plugins page renders them beside the existing loot/redaction/tailer lines. A manifest that loads is no longer presented as every rule working.
+
+T030 is a bounded diagnostics increment for #348. It does not add a third-party code host, a marketplace, LLM classification, or any new capture capability; unsupported user tailers stay refused before consent, and the sample tester is unchanged.

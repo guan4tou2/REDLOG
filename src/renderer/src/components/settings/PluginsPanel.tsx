@@ -24,6 +24,11 @@ interface PluginView {
     lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     redaction?: { accepted: number; rejected: Array<{ list: string; entry: string; reason: string }> }
     tailers?: { state: 'accepted' | 'rejected'; reason?: string }
+    /** #348: the kinds that used to register and say nothing. */
+    targetExtractors?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
   } | null
 }
 
@@ -33,9 +38,21 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
   const loot = p.report?.lootPatterns
   const tailer = p.report?.tailers
   const redaction = p.report?.redaction
+  const extractors = p.report?.targetExtractors
+  const commandTags = p.report?.commandTags
+  const eventTypes = p.report?.eventTypes
+  const capture = p.report?.capture
   const rejected = loot?.rejected ?? []
   const redactionRejected = redaction?.rejected ?? []
-  if (!p.apiAhead && !loot && !tailer && !redaction) return null
+  // #348: the four kinds that could fail quietly now report like the other
+  // two. A manifest that loads is not every rule in it working.
+  const otherGroups = [
+    { key: 'targetExtractors', label: 'plugins.results.targetExtractors', value: extractors },
+    { key: 'commandTags', label: 'plugins.results.commandTags', value: commandTags },
+    { key: 'eventTypes', label: 'plugins.results.eventTypes', value: eventTypes },
+    { key: 'capture', label: 'plugins.results.capture', value: capture }
+  ] as const
+  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture) return null
   return (
     <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
       {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
@@ -54,6 +71,16 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
       )}
       {redactionRejected.map((r) => (
         <p key={`${r.list}:${r.entry}`} className="text-red-400 pl-3">{r.list}: {r.entry} — {r.reason}</p>
+      ))}
+      {otherGroups.map(({ key, label, value }) => value && (
+        <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
+          <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
+            {t(label, { accepted: value.accepted, rejected: value.rejected.length })}
+          </p>
+          {value.rejected.map((r) => (
+            <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
+          ))}
+        </div>
       ))}
       {tailer?.state === 'rejected' && (
         <p className="text-red-400">{t('plugins.results.tailerRejected', { reason: tailer.reason ?? '' })}</p>

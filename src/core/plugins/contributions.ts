@@ -16,6 +16,14 @@ export interface ContributionReport {
   lootPatterns?: { accepted: number; rejected: RuleRejection[] }
   redaction?: { accepted: number; rejected: RedactionRuleRejection[] }
   tailers?: { state: 'accepted' | 'rejected'; reason?: string }
+  /** #348: the kinds that used to register and say nothing. A manifest that
+   *  loads is not every rule in it working, and these are the four that could
+   *  fail quietly — a bad regex, an unknown strategy, a capture with no hook
+   *  file. Each rejected entry is named so the operator can find it. */
+  targetExtractors?: { accepted: number; rejected: RuleRejection[] }
+  commandTags?: { accepted: number; rejected: RuleRejection[] }
+  eventTypes?: { accepted: number; rejected: RuleRejection[] }
+  capture?: { accepted: number; rejected: RuleRejection[] }
 }
 
 const reports = new Map<string, ContributionReport>()
@@ -60,11 +68,20 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     const r = registerRedactionRules(id, c.redaction)
     report.redaction = { accepted: r.accepted, rejected: r.rejected }
   }
-  if (c.commandTags?.length) registerCommandTags(id, c.commandTags)
-  if (c.targetExtractors?.length) registerTargetExtractors(id, c.targetExtractors, p.source)
-  if (c.eventTypes?.length) registerEventTypes(id, c.eventTypes)
+  if (c.commandTags?.length) {
+    const r = registerCommandTags(id, c.commandTags)
+    report.commandTags = r
+  }
+  if (c.targetExtractors?.length) {
+    const r = registerTargetExtractors(id, c.targetExtractors, p.source)
+    report.targetExtractors = r
+  }
+  if (c.eventTypes?.length) {
+    const r = registerEventTypes(id, c.eventTypes)
+    report.eventTypes = r
+  }
   if (c.capture?.length) {
-    registerCapturePlugins(
+    const r = registerCapturePlugins(
       id,
       p.dir,
       c.capture.map((cap) => ({
@@ -82,6 +99,7 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
         manualSteps: fillHookPath(cap.manualSteps, join(p.dir, cap.hookFile))
       }))
     )
+    report.capture = r
   }
 
   // v0.8.2: `tailers` contribution. Bundled plugins only — user-plugin

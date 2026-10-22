@@ -1695,5 +1695,9 @@
   "settings.agents.removeConfirm": "Remove",
   "settings.source.lastReceived": "Last received {{when}}",
   "settings.source.neverReceived": "Nothing received yet",
-  "settings.openPlugins": "Go to plugin settings"
+  "settings.openPlugins": "Go to plugin settings",
+  "plugins.results.targetExtractors": "Target extraction rules: {{accepted}} accepted, {{rejected}} rejected",
+  "plugins.results.commandTags": "Command tags: {{accepted}} accepted, {{rejected}} rejected",
+  "plugins.results.eventTypes": "Event types: {{accepted}} accepted, {{rejected}} rejected",
+  "plugins.results.capture": "Capture sources: {{accepted}} accepted, {{rejected}} rejected"
 }

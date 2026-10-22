@@ -1695,5 +1695,9 @@
   "settings.agents.removeConfirm": "移除",
   "settings.source.lastReceived": "最後收到 {{when}}",
   "settings.source.neverReceived": "尚未收到資料",
-  "settings.openPlugins": "前往外掛設定"
+  "settings.openPlugins": "前往外掛設定",
+  "plugins.results.targetExtractors": "目標擷取規則：{{accepted}} 條生效、{{rejected}} 條被拒絕",
+  "plugins.results.commandTags": "指令標籤：{{accepted}} 條生效、{{rejected}} 條被拒絕",
+  "plugins.results.eventTypes": "事件類型：{{accepted}} 條生效、{{rejected}} 條被拒絕",
+  "plugins.results.capture": "擷取來源：{{accepted}} 條生效、{{rejected}} 條被拒絕"
 }
