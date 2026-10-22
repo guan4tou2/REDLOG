@@ -75,3 +75,9 @@ T030 is a bounded diagnostics increment for #348. It does not add a third-party 
 - [x] T031 [US1] Parse the diagnostics script's own `✓/✗/!` output instead of a `[PASS] name: message` format it never emits, strip ANSI before matching, keep indented remediation lines with the check above them, and never turn an unrecognised line into a pass. Pin the parser and the panel with a captured real-output fixture.
 
 T031 is a bounded correctness fix for #433. It does not touch #327 (cold-start timeout) or change the script's output format.
+
+## Narrow window and status bar — #298 remainder
+
+- [x] T032 [US2] Close the remaining small-window defects on macOS: the transcript toolbar clipped its kind filters and order/copy buttons at 800×600, and the status bar's HUD toggle fell outside the bar at 800×600 @200%. Measure every view and the status bar against `documentElement.clientWidth` (the only space shared with `getBoundingClientRect`), at 1280×800 and 800×600 across 100/150/200% zoom.
+
+T032 is the Mac-verifiable remainder of #298. Windows/Linux DPI and the full-platform matrix (T008–T013) stay open.

@@ -281,3 +281,63 @@ nothing, and recorded every line as a passing `info` row — so
   the affected Electron spec still passes.
 - Not claimed: #327's cold-start timeout is a separate failure mode and was not
   changed. The script's output format was kept; only the parser moved.
+
+## T032: the rest of #298 on macOS (2026-10-22)
+
+Scope: #298's remaining small-window defects, verified on macOS. The settings
+half (narrow category column, Scope field accessibility, read states) already
+shipped; this closes what was left in the other views.
+
+### What was actually wrong
+
+- **Transcript toolbar.** A single non-wrapping row held the title, count,
+  completeness chip, filter input, six kind filters and three action buttons.
+  At 800×600 — even at 100% zoom — `Picked only`, `Newest first` and
+  `Copy as Markdown` ran off the right edge: 897px, 998px and 1122px in an
+  800px viewport. There was no scroller, so they were unreachable.
+- **Status bar.** At 800×600 @200% the bar is 400 layout pixels and the HUD
+  toggle sat at 405..421, inside the bar's own `overflow-hidden`. The IP-safety
+  and scope words were taking the room.
+
+### The measurement bug behind the first "all clear"
+
+The first version of this check compared `getBoundingClientRect().right`
+against `window.innerWidth`. Those are different spaces: the body carries
+`zoom: 0.9` and the shell applies its own `zoomFactor`, so innerWidth
+overstated the viewport by 11% at 100% and by 100% at 200%. Every overflow
+looked contained. A second attempt used the app root's rect as the edge, which
+is worse — the root grows to fit the overflow. The check now uses
+`documentElement.clientWidth`, the only viewport number in the same space as
+the rects, and it measures the status bar separately because the bar sits
+outside the view root and outside every view's scroll container.
+
+### Observable behaviour
+
+- The transcript toolbar wraps (`flex-wrap`) instead of clipping, and its
+  filter input is allowed to shrink (`min-w-0`).
+- Narrow, the status bar keeps the IP-safety and scope **dots** and moves their
+  words into `sr-only` spans: nothing is lost to a screen reader, nothing is
+  painted, and the HUD toggle stays inside the bar.
+- Nothing changes at 1280×800 or on a wide window; the words are still visible.
+
+### Verification
+
+- **Electron, 14 passed.** The new case runs every one of 11 views at
+  1280×800@100%, 800×600@100/150/200% and 1280×800@200%, asserting that no
+  control outside a horizontal scroller leaves the viewport and that no
+  status-bar button does either.
+- **Both fixes were RED first, with the same spec.** With the two component
+  changes stashed and the app rebuilt: `transcript: Picked only (0) @897 of
+  800, Newest first ↓ @998 of 800, Copy as Markdown @1122 of 800`. A direct
+  probe of the status bar on the old build showed `status-bar-overlay:
+  405..421` in a 400px bar. Re-applied: 14/14.
+- `test/renderer-smoke.test.tsx` gained a case pinning that the narrow bar
+  keeps its words in `sr-only` spans (readable) and paints none of them, and
+  that the HUD toggle survives.
+- **A note on screenshots.** `page.screenshot()` under an Electron
+  `zoomFactor` does not capture what the window shows — at 200% it produced an
+  image whose content was cut, while the DOM reported a correct layout and
+  `webContents.capturePage()` showed the same layout rendered correctly. Every
+  assertion here is DOM measurement, not a screenshot, for that reason.
+- typecheck, architecture, i18n assertion and Spec Kit gates and build passed.
+  Not claimed: Windows/Linux DPI, or the T008–T013 platform matrix.

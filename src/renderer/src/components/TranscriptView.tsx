@@ -617,7 +617,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-redlog-border/60 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 gap-y-1 px-4 py-2 border-b border-redlog-border/60 shrink-0">
         <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>
         <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
         {!loading && (!loadError || events.length > 0) && (
@@ -631,7 +631,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('transcript.filter')}
-          className="ml-2 flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
+          className="ml-2 min-w-0 flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
         />
         <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         <div className="flex gap-1">

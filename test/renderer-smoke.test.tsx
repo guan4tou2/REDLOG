@@ -431,6 +431,34 @@ describe('renderer views render without throwing', () => {
     }
   })
 
+  // #298: at 800×600 with the shell at 200% the bar is 400 layout pixels wide.
+  // The IP-safety and scope words pushed the HUD toggle past the right edge,
+  // where the bar's own `overflow-hidden` made it unclickable — a control that
+  // exists and cannot be reached. Narrow, those two keep their dots and move
+  // their words to the accessible name.
+  it('StatusBar narrow keeps the HUD toggle inside the bar and the words available to a screen reader', async () => {
+    const before = window.innerWidth
+    try {
+      Object.defineProperty(window, 'innerWidth', { value: 400, configurable: true })
+      renderView(<StatusBar />)
+      const bar = await screen.findByTestId('status-bar')
+      await waitFor(() => expect(bar.getAttribute('data-narrow')).toBe('true'))
+      // The words are still rendered — inside sr-only spans — so the bar keeps
+      // saying "IP safe" and "scope not configured" to anything reading it.
+      const srOnly = [...bar.querySelectorAll('.sr-only')].map((el) => (el.textContent ?? '').trim()).filter(Boolean)
+      expect(srOnly.length).toBeGreaterThan(0)
+      // …and they are not painted, so they take no width.
+      const painted = [...bar.querySelectorAll('span')].filter((el) => {
+        const r = el.getBoundingClientRect()
+        return r.width > 4 && /安全|範圍|SAFE|Scope|scope/.test(el.textContent ?? '')
+      })
+      expect(painted).toEqual([])
+      expect(screen.getByTestId('status-bar-overlay')).toBeTruthy()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: before, configurable: true })
+    }
+  })
+
   it('Settings search finds a field and opens the page that holds it', async () => {
     renderView(<Settings />)
     const box = await screen.findByPlaceholderText('Search settings…')

@@ -290,14 +290,20 @@ export default function StatusBar(): JSX.Element {
 
       <Sep />
 
-      <div className="flex items-center gap-1.5 shrink-0" title={narrow && ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : undefined}>
+      {/* Narrow: the dot and an accessible name, not the word. At 800×600 with
+          the shell at 200% the bar is 400px wide and the three word labels
+          pushed the HUD toggle past the right edge, where `overflow-hidden`
+          made it unreachable — a control that exists and cannot be clicked.
+          The words are still there for a screen reader, and in the title. */}
+      <div className="flex items-center gap-1.5 shrink-0" title={ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : safetyLabel}>
         <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
-        <span className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
+        <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : (safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80')}>
           {safetyLabel}
         </span>
         {!narrow && ipStatus?.externalIP && (
           <span className="text-redlog-text-dim tabular-nums">{ipStatus.externalIP}</span>
         )}
+        {narrow && <span className="sr-only">{ipStatus?.externalIP ?? ''}</span>}
       </div>
 
       <Sep />
@@ -306,22 +312,22 @@ export default function StatusBar(): JSX.Element {
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-red-400/80'}>{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
           </>
         ) : scopeUnknown ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span className="text-amber-400/80">{t('statusBar.scopeUnknown')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-amber-400/80'}>{t('statusBar.scopeUnknown')}</span>
           </>
         ) : scopeConfigured ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-emerald-400/80'}>{t('statusBar.scopeOk')}</span>
           </>
         ) : (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-            <span className="text-redlog-text-dim">{t('statusBar.scopeNotConfigured')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-redlog-text-dim'}>{t('statusBar.scopeNotConfigured')}</span>
           </>
         )}
       </div>

@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The transcript toolbar wraps instead of clipping its kind filters and its
+  order/copy buttons, which ran off the right edge at 800×600. Narrow, the
+  status bar keeps its IP-safety and scope dots and moves the words to
+  `sr-only`, so the HUD toggle no longer falls outside the bar at 200% zoom.
+  Nothing changes on a wide window.
 - WSL diagnostics now read the script's own `✓ / ✗ / !` output instead of a
   `[PASS] name: message` format it never printed. A failing check used to be
   recorded as a passing `info` row and shown green; `✗` is now a failure, `!` a
