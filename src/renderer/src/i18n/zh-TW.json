@@ -284,6 +284,7 @@
   "statusBar.scopeViolations": "越界 {{count}}",
   "statusBar.scopeOk": "範圍 OK",
   "statusBar.scopeNotConfigured": "範圍 未設定",
+  "statusBar.scopeOpen": "查看範圍設定",
   "statusBar.events": "{{count}} 事件",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "切換 HUD",

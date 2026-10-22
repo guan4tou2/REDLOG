@@ -5,6 +5,19 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The status-bar scope chip is now clickable, like its fault-counter
+  neighbours. 「範圍 未設定」was a `<div>` the operator could read but not act
+  on: no route from the warning to the lists that fix it. It now opens
+  設定 ▸ 範圍規則 — every state, same destination.
+- Redundancy audit: the first-run ordering switch `engagement.focus` was
+  removed from the config type by commit 7de4b9b6 together with its UI and
+  reads, but the field and its comment stayed behind unread. Deleted. The HUD
+  scale slider showed its value twice — a right-hand label and the highlighted
+  tick under the thumb — the right-hand label is gone; the tick and
+  `aria-valuetext` remain. Everything else checked and kept: no dead i18n keys
+  (dynamic prefixes count), every config leaf is read, the 8 allowlisted
+  exports carry recorded decisions, and the 36 English label collisions are
+  real per-context keys (zh-TW renders almost all of them differently).
 - The first-run entry button follows the shell actually picked. 「記我的 Zsh
   終端」named the detected shell, but the picker inside the flow can install a
   different one, and after choosing Bash the button still advertised Zsh — the

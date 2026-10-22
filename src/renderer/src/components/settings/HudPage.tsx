@@ -59,29 +59,26 @@ export default function HudPage({
             const nearest = stops.reduce((a, b) => Math.abs(cur - a.v) < Math.abs(cur - b.v) ? a : b)
             return (
               <div>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="hud-scale"
-                    type="range"
-                    min={stops[0].v}
-                    max={stops[stops.length - 1].v}
-                    step="0.05"
-                    value={cur}
-                    onChange={(e) => {
-                      const v = snap(parseFloat(e.target.value))
-                      setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
-                    }}
-                    className="accent-red-600 flex-1 h-8"
-                    list="hud-scale-stops"
-                    // The label above is a `<label>` with no `for`, so this
-                    // slider had no accessible name at all: a screen reader
-                    // announced "slider" and nothing else. The value text beside
-                    // it is not the name — it changes with the slider.
-                    aria-label={t('settings.overlayScale')}
-                    aria-valuetext={t(nearest.k)}
-                  />
-                  <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
-                </div>
+                <input
+                  id="hud-scale"
+                  type="range"
+                  min={stops[0].v}
+                  max={stops[stops.length - 1].v}
+                  step="0.05"
+                  value={cur}
+                  onChange={(e) => {
+                    const v = snap(parseFloat(e.target.value))
+                    setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
+                  }}
+                  className="accent-red-600 w-full h-8"
+                  list="hud-scale-stops"
+                  // The label above is a `<label>` with no `for`, so this
+                  // slider had no accessible name at all: a screen reader
+                  // announced "slider" and nothing else. The value text is
+                  // not the name — it changes with the slider.
+                  aria-label={t('settings.overlayScale')}
+                  aria-valuetext={t(nearest.k)}
+                />
                 <datalist id="hud-scale-stops">
                   {stops.map((s) => <option key={s.v} value={s.v} />)}
                 </datalist>

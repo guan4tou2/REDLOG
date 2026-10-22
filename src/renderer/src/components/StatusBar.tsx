@@ -308,7 +308,22 @@ export default function StatusBar(): JSX.Element {
 
       <Sep />
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Clickable like its fault-counter neighbours: an unfixed scope is a
+          setup debt the chip can only point at, and the scope states share one
+          destination — Settings ▸ 範圍規則, where the lists are edited.
+          The 越界 count belongs here because the clash already happened; the
+          tab it opens is where the allow/exclude lists live. */}
+      <button
+        type="button"
+        data-testid="status-bar-scope"
+        onClick={() => window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: settingsTarget('scope') }))}
+        title={t('statusBar.scopeOpen')}
+        aria-label={t('statusBar.scopeOpen')}
+        // min-w/min-h: at 800×600/150% the bar squeezes labels away and this
+        // chip shrinks to the dot alone — 18×10, below the 24×24 floor. Same
+        // floor as the HUD toggle beside it (e2e/ui-closeout hit-area check).
+        className="flex items-center gap-1.5 shrink-0 min-w-6 min-h-6 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim/40 transition-colors"
+      >
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
@@ -330,7 +345,7 @@ export default function StatusBar(): JSX.Element {
             <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-redlog-text-dim'}>{t('statusBar.scopeNotConfigured')}</span>
           </>
         )}
-      </div>
+      </button>
 
       {/* No loot count here. The Sidebar's 戰利品 item already carries it as a
        *  badge, next to the page it opens; a second copy on the status bar was

@@ -698,3 +698,37 @@ eleven views, the twelve settings pages, the titlebar and the status bar
   label can only ever match what actually installs. Pinned by a test in
   `test/first-run-record-terminal.test.tsx` (asserting both the stale and the
   updated label); `e2e/first-run.spec.ts` passes.
+
+## Redundancy audit: nothing dead except what was pointed out (2026-10-23)
+
+Four axes, mechanically checked against the running app and the sources:
+
+1. **Dead strings.** 139 en / 138 zh keys matched no exact `t('key')` call, but
+   every one resolves through a dynamic prefix (`t('marker.category.' + …)`).
+   Removing exact-match-only dead keys would have deleted live text — the
+   prefix check is what made the audit safe.
+2. **Dead config.** Every leaf of `RedLogConfig` has a main/core reader except
+   `engagement.focus` — removed from the UI and its readers in 7de4b9b6, but
+   the field and its comment survived with nothing following the answer.
+   Deleted the field. Everything else (from `clipboard.pollMs` to
+   `agentTailer.emitThinking`) is read.
+3. **Double editors.** No config leaf is edited from two places
+   (`engagement.id` dupes in BrowserPanel/GeneralPage are write-context
+   spread vs read-only display).
+4. **Identical renderings.** 36 English keys share a value, but zh-TW renders
+   35 of them differently — the keys are per-context by design, exactly why
+   EN-side value-sharing is not consolidation-worthy. The one zh-TW match
+   (「結果已達安全上限」) is two keys of one feature.
+
+### Fixed from the same walk
+
+- **「範圍 未設定」 becomes clickable.** The chip sat between
+  fault-counter buttons that navigate and it sat still: a warning with no
+  route to the lists that resolve it. It is now a button opening
+  `settingsTarget('scope')` in all four states, with a 24×24 hit-area floor
+  for the narrow bar (the first run of the hit-area check caught it at
+  18×10 @150% — the new control had reproduced the exact bug the floor
+  exists for).
+- **HUD scale slider:** the value appeared twice (right-hand label +
+  highlighted tick). The right-hand span is gone; tick labels and
+  `aria-valuetext` stay.

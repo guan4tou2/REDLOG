@@ -284,6 +284,7 @@
   "statusBar.scopeViolations": "SCOPE {{count}}",
   "statusBar.scopeOk": "SCOPE OK",
   "statusBar.scopeNotConfigured": "SCOPE —",
+  "statusBar.scopeOpen": "Open scope settings",
   "statusBar.events": "{{count}} events",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "Toggle HUD",
