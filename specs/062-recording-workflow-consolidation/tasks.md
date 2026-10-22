@@ -1,6 +1,6 @@
 # Tasks: Recording workflow consolidation
 
-Delivered implementation slices: US6 and US5 T014–T018; US5 native manual acceptance remains open in T019. Other stories remain explicit follow-up gates rather than being marked complete from an export test run. No extension hooks are configured.
+Delivered implementation slices: US6 and US5 T014–T019 (including Mac packaged-candidate native acceptance). Other platform/workflow gates remain open below. Other stories remain explicit follow-up gates rather than being marked complete from an export test run. No extension hooks are configured.
 
 ## Phase 1 — Setup
 - [x] T001 Record the bounded export plan and canonical contracts in specs/062-recording-workflow-consolidation/plan.md.
@@ -16,7 +16,7 @@ Independent test: format changes preserve complete store selection; only the lat
 - [x] T006 [US6] Run targeted tests, relevant gates, build and affected desktop journeys; record native UI and artifact checks in specs/062-recording-workflow-consolidation/verification.md.
 
 ## Subsequent slices — not completed by US6
-- [ ] T007 [US5] Plan and implement explicit per-tool optional AI installation against specs/062-recording-workflow-consolidation/spec.md and docs/domain/SPEC-capture-source-lifecycle.md; verify uninstalled tools are not read.
+- [x] T007 [US5] Plan and implement explicit per-tool optional AI installation against specs/062-recording-workflow-consolidation/spec.md and docs/domain/SPEC-capture-source-lifecycle.md; verify uninstalled tools are not read.
 - [ ] T008 [US1] Close remaining supported-platform install acceptance in specs/062-recording-workflow-consolidation/manual-acceptance.md.
 - [ ] T009 [US2] Complete settings save/failure/project-switch acceptance in specs/062-recording-workflow-consolidation/manual-acceptance.md.
 - [ ] T010 [US3] Complete interactive terminal and preservation failure acceptance in specs/062-recording-workflow-consolidation/manual-acceptance.md.
@@ -34,6 +34,6 @@ Dependencies: T001 → T002 → T003 RED → T004 → T005 → T006. T007 is ind
 - [x] T016 [US5] Enforce explicit project working directories and activation boundaries in src/main/services/tailer-host.ts and src/main/index.ts; test absent cwd, project switch, old history and late reads.
 - [x] T017 [US5] Replace the AI settings preset and global watch-path writer with installation, per-tool project activation and directory/error controls in src/renderer/src/components/settings/AgentsPanel.tsx and Settings.tsx.
 - [x] T018 [US5] Align source health, old bundled pack removal and docs/domain/SPEC-capture-source-lifecycle.md with the new decision; preserve existing evidence during disable/uninstall.
-- [ ] T019 [US5] Verify clean packaged install, per-tool install/enable/disable/uninstall and preservation in native UI and affected tests; record in specs/062-recording-workflow-consolidation/verification.md.
+- [x] T019 [US5] Verify a clean Mac packaged-candidate profile, per-tool install/enable/disable/uninstall and preservation in native UI and affected tests; record in specs/062-recording-workflow-consolidation/{verification,ai-mac-acceptance-20261022}.md. Cross-platform installer acceptance remains T008.
 
-Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 remains open until all six increments pass.
+Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 is complete with all six increments and the Mac native flow; T008–T013 remain separate platform/workflow gates.

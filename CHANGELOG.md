@@ -6,7 +6,7 @@ for full commit body + generated notes.
 ## Unreleased
 
 - AI capture integrations are now individually optional and uninstalled by
-  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Other
+  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Capture
   sources ▸ AI Agents, select project working directories, then explicitly
   enable recording. Empty paths do not authorize capture. Existing sessions
   begin at their observed connection boundary; history is not silently imported.

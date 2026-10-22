@@ -1,10 +1,10 @@
 # Implementation Plan: Recording workflow consolidation
 
-**Date**: 2026-10-21 | **Spec**: [spec.md](spec.md) | **Checkout**: main
+**Date**: 2026-10-21, updated 2026-10-22 | **Spec**: [spec.md](spec.md) | **Checkout**: main
 
 ## Delivery slices
 
-This plan implements US6 / FR-012–014 and related FR-016 first. US1–4 and US7 have an existing-code audit and bounded Mac acceptance in audit.md and mac-acceptance-20261021.md; that evidence is not a complete cross-platform verdict. US5 optional AI installation remains a separate subsequent slice. The overall specification stays Draft.
+This plan implements US6 / FR-012–014 and related FR-016 first. US1–4 and US7 have an existing-code audit and bounded Mac acceptance in audit.md and mac-acceptance-20261021.md; that evidence is not a complete cross-platform verdict. US5 optional AI installation is the subsequent implemented slice, with Mac native acceptance recorded in ai-mac-acceptance-20261022.md. The overall specification stays Draft.
 
 ## Summary and technical context
 
@@ -43,4 +43,4 @@ T015–T018 replace the former AI preset with `agent-capture-policy.ts`. The exi
 
 Host initialization and all auxiliary callbacks require the current enabled generation. Stop closes/snapshots the former project before merging identity. JSONL start-offset checkpoints preserve the observed connection boundary independently of copied evidence bytes; per-message sources ignore pre-activation files and initial auxiliary-part discovery. From-now behavior is disclosed in settings. Source-reported tool execution remains distinct from independently observed shell output.
 
-Constitution review: privacy/isolation and evidence provenance are explicit; install/query failure stays visible; current projection uses shared policy; changes to capture policy began with failing behavior tests. Real-file E2E caught and repaired discovery excluding hidden source roots/intermediate directories. A complete unit regression also exposed the delayed focus-trap issue; two failing modal tests pin the fix. No constitution exception was required. T019 still needs native manual UI after unlock; cross-platform install/update gates remain open in T008/T012.
+Constitution review: privacy/isolation and evidence provenance are explicit; install/query failure stays visible; current projection uses shared policy; changes to capture policy began with failing behavior tests. Real-file E2E caught and repaired discovery excluding hidden source roots/intermediate directories. A complete unit regression also exposed the delayed focus-trap issue; two failing modal tests pin the fix. No constitution exception was required. T019 Mac native manual UI passed after unlock; cross-platform installer/update gates remain open in T008/T012. See ai-mac-acceptance-20261022.md.

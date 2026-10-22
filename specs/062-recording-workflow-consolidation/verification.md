@@ -1,6 +1,6 @@
 # Verification: Recording workflow consolidation
 
-Overall status remains Draft. Existing bounded Mac acceptance and three prior fixes: see mac-acceptance-20261021.md and fix-verification.md. This record covers the US6 slice, not a claim that all stories passed.
+Overall status remains Draft. Existing bounded Mac acceptance and three prior fixes: see mac-acceptance-20261021.md and fix-verification.md. This record covers the US6 and US5 implementation slices, not a claim that all stories or platforms passed.
 
 ## RED
 - 8 個新行為案例先跑，全數失敗：舊介面沒有直接 dialog、格式／範圍獨立控制或 loading 取消；舊介面不會在開啟時解析選取。
@@ -83,6 +83,13 @@ Release impact: backend scaffolding only, no new operator workflow yet; CHANGELO
 
 ### Native manual acceptance / remaining gates
 
-The isolated candidate was launched with HOME `/private/tmp/redlog-ai-native-20261022/home` and a separate profile, containing only synthetic client/private transcript fixtures. The native control tool reported **Mac locked** before any UI action. An unlock request is pending; do not count the automated journey as manual install/directory-picker/keyboard acceptance. T019 and parent T007 remain unchecked until the remaining native step is run. No real project or private AI transcript was opened.
+The isolated candidate was launched with HOME `/private/tmp/redlog-ai-native-20261022/home` and a separate profile, containing only synthetic client/private transcript fixtures. The native control tool reported **Mac locked** before any UI action. That initial block was later resolved by the user unlocking the Mac; the native flow was then completed as recorded below. The automated journey alone was not counted as manual directory-picker/keyboard acceptance. No real project or private AI transcript was opened.
 
-Clarify/Checklist/Analyze: existing decisions resolve default installation, project permission and evidence retention; no new product direction needed. Converge: T015–T018 implemented and tested; T019 manual UI remains blocked by desktop lock. Overall Spec 062 stays Draft; T008–T013 retain their specific platform/workflow acceptance gates. Windows/Linux native installers and vendor-version capture matrices were not run on this Mac. No merge or release performed.
+Clarify/Checklist/Analyze: existing decisions resolve default installation, project permission and evidence retention; no new product direction needed. Converge at the initial locked checkpoint: T015–T018 implemented and tested; T019 was pending. This checkpoint is superseded by the native results below. Overall Spec 062 stays Draft; T008–T013 retain their specific platform/workflow acceptance gates. Windows/Linux native installers and vendor-version capture matrices were not run on this Mac. No merge or release performed.
+
+
+## US5 Mac native completion after unlock（2026-10-22）
+
+See [AI Mac native acceptance](ai-mac-acceptance-20261022.md). On the same c15f2186 packaged candidate, real native controls completed install → native folder picker → explicit enable → search of new prompt/tool input/output → keyboard disable → uninstall → reinstall without activation. The private-work, old-history, disabled and reinstalled-but-off content was absent from the database and sidecar. Existing sidecar SHA-256 stayed unchanged through disable/uninstall/reinstall. Normal quit stopped the isolated process (exit 0).
+
+No product-code changes were required. Updated navigation descriptions to the actual Capture sources / 擷取來源 menu. T019 and parent T007 now close for this implementation/Mac-candidate slice; remaining cross-platform installers and complete manual matrix remain T008–T013, and the overall spec remains Draft. The explicit candidate/native distinction avoids claiming a DMG install or other-platform validation that was not run. Documentation-only checks: Spec Kit gate and diff check; the existing 4082-pass regression and packaged results still describe the same candidate.

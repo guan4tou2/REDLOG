@@ -240,7 +240,7 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Install the desired integration in Settings ▸ Other sources ▸ AI Agents, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Install the desired integration in Settings ▸ Capture sources ▸ AI Agents, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 
