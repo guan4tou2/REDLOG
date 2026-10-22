@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The copy rule's layout half was measured and closed: nested cards, heading
+  plus repeating paragraph, icon buttons whose tooltip is their accessible name,
+  and hints opening with a state restatement were each scanned across the whole
+  renderer. Every candidate was legitimate, so no product change — the findings
+  are recorded in the gate and AGENTS.md so the ground is not re-dug and no
+  layout gate is added that the data does not support.
 - The copy gate now runs against both locales, and the Chinese side showed two
   defects the English side did not: two artifact failures that named neither
   of two different problems (a file over the 200 MB limit, and a full disk),

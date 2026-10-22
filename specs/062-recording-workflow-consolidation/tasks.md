@@ -105,3 +105,9 @@ T035 makes the gate trustworthy. A rule that cannot fail is worse than no rule: 
 - [x] T036 [US2] Run the copy gate against zh-TW as well as en, and fix the two defects only the Chinese side showed: two artifact failures that named neither of two different problems, and a project-card label that read exactly like a violation counter.
 
 T036 closes the language gap in the gate. A duplicate sentence can be invisible in one language and obvious in another.
+
+## Layout heuristics, measured and ruled out — T034 follow-up
+
+- [x] T037 [US2] Measure the layout patterns the copy rule names but cannot mechanically judge — nested card containers, a heading immediately followed by a paragraph repeating it, icon buttons whose tooltip is their accessible name, hints opening with a state restatement — and record the result in the gate so the ground is not re-dug.
+
+T037 closes the audit. Nothing was changed: every candidate was inspected and found legitimate. The deliverable is the record.

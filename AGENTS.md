@@ -31,10 +31,16 @@ holds the empty-state and settings conventions.
 fails on: the same explanation stored under two keys, a descriptive key nothing
 renders, a hint that only repeats its label, a tooltip that repeats the visible
 text beside it, and a helper line over three sentences without being on its
-allow-list of warnings. It cannot judge whether a sentence is *worth* saying —
-that is §2's four questions — so it only catches the shapes that are never
-right. If it fails, fix the copy; do not add to the allow-list unless the string
-states a consequence the operator must know before acting.
+allow-list of warnings. It runs against both locales. It cannot judge whether a
+sentence is *worth* saying — that is §2's four questions — so it only catches
+the shapes that are never right. If it fails, fix the copy; do not add to the
+allow-list unless the string states a consequence the operator must know before
+acting.
+
+The same file records which layout patterns were measured and ruled out (nested
+cards, heading-plus-repeating-paragraph, icon buttons whose tooltip is their
+label), so that ground is not re-dug. Do not add a layout gate without checking
+that list first: each candidate there was inspected and found legitimate.
 
 `請謹慎使用程式碼` also applies to implementation: make the smallest change that
 satisfies the behaviour. Do not add components, props, state or dependencies

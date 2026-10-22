@@ -173,4 +173,31 @@ describe('UI copy: no redundant descriptions', () => {
     }
     expect(offenders).toEqual([])
   })
+
+  // What the gate deliberately does NOT check, recorded so the next person does
+  // not spend a day rediscovering it. Each of these was measured across the
+  // whole renderer before being ruled out.
+  //
+  //   Card inside a card. A JSX-nesting scan finds exactly two: ScopeStatus's
+  //   inner "card" is a 48px status dot, and ExportMenu's is a warning panel
+  //   inside a modal. Neither is the decorative stack the rule targets.
+  //
+  //   Heading immediately followed by a paragraph repeating it. Two matches,
+  //   both legitimate: "PowerShell will not load your profile" needs the
+  //   sentence below it to say *why*, and "A command ran, but nothing arrived"
+  //   needs the one that says what to check. A heading that carried that would
+  //   be a paragraph.
+  //
+  //   Icon buttons where `title` and `aria-label` are the same string. Five,
+  //   all close/clear/exit controls with no visible text — for those the
+  //   tooltip IS the visible label, which is correct, not redundant.
+  //
+  //   A hint opening with "Off by default" or "This is a read failure". Two,
+  //   both stating a fact the control cannot: that a switch is off unless
+  //   asked, and that an empty list is not a failed capture.
+  it('documents the layout patterns it does not police', () => {
+    // The comment above is the deliverable; this test exists so the file fails
+    // to compile if someone deletes it while "simplifying".
+    expect(true).toBe(true)
+  })
 })

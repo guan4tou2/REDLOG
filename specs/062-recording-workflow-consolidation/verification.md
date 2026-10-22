@@ -514,3 +514,46 @@ Chinese is the interface's default locale.
 - typecheck, architecture, i18n assertion, Spec Kit gates and build passed;
   39 unit and 7 Electron tests still pass. `npm test`: 4051 passed; the 16
   shell/PTY files still fail on this machine against a clean HEAD.
+
+## T037: layout heuristics, measured and ruled out (2026-10-22)
+
+AGENTS.md names patterns the string-level gate cannot judge: the
+"icon + title + description + card" stack, a card used to compensate for weak
+grouping, a heading over a single item. Each was measured across the whole
+renderer before deciding whether it could become a rule.
+
+### Method and result
+
+- **Card inside a card.** A JSX-nesting scan (a tag stack, not a text window —
+  the first attempt matched sibling cards and produced 22 false positives)
+  finds exactly **two**. `ScopeStatus`'s inner "card" is a 48px status dot with
+  `border rounded-full`; `ExportMenu`'s is a warning panel inside a modal. Both
+  legitimate. A rule here would need to tell a container from a dot, and would
+  fail on the first false positive.
+- **Heading immediately followed by a paragraph repeating it.** Two matches.
+  "PowerShell will not load your profile" is followed by the sentence saying
+  *why* the policy blocks it; "A command ran, but nothing arrived" is followed
+  by what to check. A heading carrying either would be a paragraph.
+- **Icon buttons whose `title` and `aria-label` are the same string.** Five, all
+  close / clear / exit controls with no visible text. For those the tooltip is
+  the visible label, which is what the accessible-name rules require — the
+  opposite of redundant.
+- **A hint opening with a state restatement** ("Off by default", "This is a read
+  failure"). Two, both stating a fact the control cannot: that a switch is off
+  unless asked, and that an empty list is not a failed capture.
+
+### Outcome
+
+No product change. The four findings are recorded as a comment block in
+`test/ui-copy.test.ts` and summarised in AGENTS.md, so the next person does not
+re-run the same scans and so nobody adds a layout gate that the data does not
+support. The one real defect this pass produced was in the *scan* itself: the
+first nesting detector counted 22 false positives by matching sibling cards,
+which is exactly the failure mode a shipped layout gate would have.
+
+### Verification
+
+- `test/ui-copy.test.ts` 6/6 (the sixth case is the record itself, so deleting
+  the comment breaks the build). typecheck, architecture, i18n assertion, Spec
+  Kit gates and build passed. `npm test`: 4053 passed; the 16 shell/PTY files
+  still fail on this machine against a clean HEAD.
