@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The HUD click-through recovery shortcut also works inside RedLog's main and
+  HUD windows if the global shortcut is not delivered. It only turns
+  click-through off; repeated delivery never turns it back on.
+
 - AI capture integrations are now individually optional and uninstalled by
   default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Capture
   sources ▸ AI Agents, select project working directories, then explicitly

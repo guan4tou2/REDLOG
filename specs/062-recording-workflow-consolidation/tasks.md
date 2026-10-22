@@ -37,3 +37,9 @@ Dependencies: T001 → T002 → T003 RED → T004 → T005 → T006. T007 is ind
 - [x] T019 [US5] Verify a clean Mac packaged-candidate profile, per-tool install/enable/disable/uninstall and preservation in native UI and affected tests; record in specs/062-recording-workflow-consolidation/{verification,ai-mac-acceptance-20261022}.md. Cross-platform installer acceptance remains T008.
 
 Dependencies: T014 → T015 → T016 → T017/T018 → T019. T007 is complete with all six increments and the Mac native flow; T008–T013 remain separate platform/workflow gates.
+
+
+## Native acceptance follow-up
+- [x] T020 [US4] Close the observed HUD recovery gap: add failing window-event regressions, route the existing release-only shortcut in main/HUD windows, verify persistence/duplicate delivery and native candidate behavior. Keep OS-global delivery separate from the window fallback; no new HUD control or mode. See mac-workflow-acceptance-20261022.md; OS-global delivery remains unresolved under T011.
+
+T020 is a bounded defect found during T011 native acceptance, not a replacement for the remaining platform gates.

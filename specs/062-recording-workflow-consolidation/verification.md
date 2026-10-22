@@ -93,3 +93,13 @@ Clarify/Checklist/Analyze: existing decisions resolve default installation, proj
 See [AI Mac native acceptance](ai-mac-acceptance-20261022.md). On the same c15f2186 packaged candidate, real native controls completed install → native folder picker → explicit enable → search of new prompt/tool input/output → keyboard disable → uninstall → reinstall without activation. The private-work, old-history, disabled and reinstalled-but-off content was absent from the database and sidecar. Existing sidecar SHA-256 stayed unchanged through disable/uninstall/reinstall. Normal quit stopped the isolated process (exit 0).
 
 No product-code changes were required. Updated navigation descriptions to the actual Capture sources / 擷取來源 menu. T019 and parent T007 now close for this implementation/Mac-candidate slice; remaining cross-platform installers and complete manual matrix remain T008–T013, and the overall spec remains Draft. The explicit candidate/native distinction avoids claiming a DMG install or other-platform validation that was not run. Documentation-only checks: Spec Kit gate and diff check; the existing 4082-pass regression and packaged results still describe the same candidate.
+
+## US2 / US4 Mac acceptance and T020（2026-10-22）
+
+See [Mac settings/HUD acceptance](mac-workflow-acceptance-20261022.md). Native settings fault injection preserved the unsaved edit, showed failure, and saved after permissions were restored and Retry was clicked. Quick navigation persisted a change. HUD marker storage and focus return passed for the recorded case.
+
+Native testing exposed an unproven global pass-through recovery despite successful accelerator registration. T020 adds the same release-only chord to main/HUD native window input, tested RED → GREEN, with persistence and duplicate-delivery safety. Main-window native acceptance, seven HUD Electron regressions and one packaged-candidate input regression passed; 73 targeted unit/component tests passed. Typecheck, architecture, build, packaged resources and strict/deep signature checks passed. No new HUD control, mode or changed default.
+
+The user-supplied PID 10253 crash matches the sandboxed E2E launch before AppKit application registration completed. The unchanged build launched and passed outside the sandbox; no product workaround or weakened security was introduced for that environment failure.
+
+Converge: T020 complete as a bounded window-input repair. OS-global delivery while another app is foreground is still unresolved under T011; T009's complete matrix and T008/T010/T012/T013 stay open. Overall status remains Draft; neither a release nor full-platform acceptance is claimed.

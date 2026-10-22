@@ -90,7 +90,7 @@ import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
-  registerOverlayIpc, setOverlayPassThrough, stopOverlayMouseTracking,
+  registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut, stopOverlayMouseTracking,
   configureOverlayState, handleIpExposedChange, startOverlayMouseTracking,
   applyOverlayPassThrough, applyOverlayOpacity, isOverlayPassThrough
 } from './ipc/overlay'
@@ -1080,6 +1080,7 @@ function startProject(project: ProjectMeta): void {
 
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false })
+    bindOverlayReleaseShortcut(overlayWindow.webContents)
     // §8: remember where the operator put it, per display. `moved` fires
     // throughout a drag, so debounce to the end of it.
     let moveTimer: ReturnType<typeof setTimeout> | null = null
@@ -1268,6 +1269,7 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow(
     visibleWindowBounds(savedState?.bounds, screen.getAllDisplays().map((d) => d.workArea))
   )
+  bindOverlayReleaseShortcut(mainWindow.webContents)
   if (savedState?.isMaximized) mainWindow.maximize()
 
   setTerminalWindow(mainWindow)
