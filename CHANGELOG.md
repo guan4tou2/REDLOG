@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The copy gate is mutation-tested: each of its five rules is proven to fail on
+  an injected violation. Two of them did not, and are now fixed — the
+  duplicate-key rule had only compared descriptive keys, and the tooltip rule's
+  scanner never matched a plain `{t('key')}` body. The repaired rules found a
+  duplicated "open the timeline at this moment" string and a button whose
+  tooltip repeated its own label word for word.
 - The AGENTS.md copy rule is now a gate: `test/ui-copy.test.ts` fails on the
   same explanation stored under two keys, a descriptive key nothing renders, a
   hint that only repeats its label, a tooltip that repeats the visible text, and

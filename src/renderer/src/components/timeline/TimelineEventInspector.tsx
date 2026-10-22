@@ -137,12 +137,14 @@ export function TimelineEventInspector({
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* "What else was happening when this ran" is the commonest
               next question about an event, and there was no way to ask
-              it: the bar offered only windows ending now. */}
+              it: the bar offered only windows ending now.
+              No `title`: it repeated the button's own text word for word, so
+              hovering said nothing the label did not. The button names the
+              action; the comment above says why it exists. */}
           <button
             type="button"
             data-testid="detail-around-event"
             className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
-            title={t('filter.around')}
             onClick={onAround}
           >{t('filter.around')}</button>
           <button

@@ -579,7 +579,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 {detailEvent && onOpenInTimeline && (
                   <button
                     onClick={() => { const d = detailEvent.data; onOpenInTimeline(detailEvent.id, typeof d.timestamp === 'number' ? d.timestamp : Date.now()) }}
-                    title={t('httpHistory.openAtMoment')}
+                    title={t('common.openAtMoment')}
                     className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-1.5 py-0.5 rounded border border-redlog-border/60 hover:bg-redlog-elevated/40"
                   >↗ {t('httpHistory.openInTimeline')}</button>
                 )}

@@ -43,8 +43,18 @@ describe('UI copy: no redundant descriptions', () => {
   it('does not store the same explanation under two keys', () => {
     const en = load('en')
     const seen = new Map<string, string[]>()
+    // Every key, not only the descriptive ones. A mutation test showed the
+    // descriptive-only version passing a pair of identical explanations
+    // stored as `test.dupA` / `test.dupB`: the rule's name promised more than
+    // it checked. Duplicated prose is duplicated prose whatever the key is
+    // called, and the cost is the same — one copy gets edited, the other goes
+    // stale in a language nobody re-read.
     for (const [k, v] of Object.entries(en)) {
-      if (!DESCRIPTIVE.test(k) || v.length < 24) continue
+      // Very short values are labels ("Cancel", "Retry") and repeat on purpose.
+      if (v.length < 24) continue
+      // Interpolation makes two strings different sentences even when the
+      // template is identical; `{{name}}` in one and `{{port}}` in the other
+      // are not a duplicate, they are two parameters.
       const key = norm(v)
       seen.set(key, [...(seen.get(key) ?? []), k])
     }
@@ -101,13 +111,20 @@ describe('UI copy: no redundant descriptions', () => {
   it('does not give a control a tooltip that repeats its visible text', () => {
     const offenders: string[] = []
     for (const { file, text } of sources()) {
-      const element = /<([A-Za-z][\w.]*)\b((?:[^<>]|=>)*?)>/gs
-      for (const m of text.matchAll(element)) {
+      // A tag scan: the opening tag, attributes only, no nested angle brackets.
+      // The first version of this rule also accepted `=>` as an alternative to
+      // `[^<>]`, which let the attribute group swallow an arrow function and
+      // stop matching the tag it was attached to — and the rule silently
+      // checked nothing. A mutation test caught it; keep the scanner simple.
+      for (const m of text.matchAll(/<([A-Za-z][\w.]*)\b([^<>]*?)>/gs)) {
         const title = /title=\{t\('([^']+)'/.exec(m[2])
         if (!title) continue
         const end = text.indexOf('</', m.index! + m[0].length)
         const body = text.slice(m.index! + m[0].length, end === -1 ? undefined : end)
-        const visible = /\{t\('([^']+)'\s*[,}]/.exec(body)
+        // `t('key')` ends with `')`, so the character after the closing quote
+        // is `)`, not `,` or `}`. The first version demanded `[,}]` and so
+        // never matched a plain `{t('key')}` body at all.
+        const visible = /\{t\('([^']+)'\)/.exec(body)
         if (visible && visible[1] === title[1]) {
           offenders.push(`${repoRelative(ROOT, path.join(ROOT, file))}: ${title[1]}`)
         }

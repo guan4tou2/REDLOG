@@ -442,3 +442,36 @@ either — the clipboard and SYN-scan warnings are long and belong.
 - `npm test`: 4051 passed. The 16 shell/PTY files still fail on this machine
   against a clean HEAD, as recorded earlier.
 - AGENTS.md now names the test and says what to do when it fails.
+
+## T035: mutation-testing the copy gate (2026-10-22)
+
+A gate that cannot fail is worse than no gate: it is a green check that means
+nothing. Each of the five rules in `test/ui-copy.test.ts` was given a
+deliberate violation and the suite was run.
+
+### What the mutation test found
+
+- **Rule 1 did not fire on its own violation.** It compared only *descriptive*
+  keys, so a duplicated explanation stored as `test.dupA` / `test.dupB` passed
+  the rule named "does not store the same explanation under two keys". Widened
+  to every key, with a length floor so labels like "Cancel" may repeat on
+  purpose. It then found a real duplicate in the product: `castSearch.openAtMoment`
+  and `httpHistory.openAtMoment` were the same sentence in two places —
+  consolidated into `common.openAtMoment`.
+- **Rule 4 never fired, on anything.** Two bugs in the rule itself. The tag
+  scanner allowed `=>` as an alternative to `[^<>]`, which let the attribute
+  group swallow an arrow function and stop matching the tag it belonged to;
+  and the visible-text matcher required the character after the closing quote
+  to be `,` or `}`, while a plain `{t('key')}` ends with `)`. Both are fixed.
+  The repaired rule then found a real one: the timeline event inspector's
+  "around this event" button had `title` and label both reading
+  `filter.around`, so hovering said nothing the label did not.
+- Rules 2, 3 and 5 fired on their injected violations as claimed.
+
+### Verification
+
+- `test/ui-copy.test.ts` 5/5, with every rule now demonstrated to fail on an
+  injected violation.
+- typecheck, architecture, i18n assertion, Spec Kit gates and build passed;
+  19 Electron journeys still pass. `npm test`: 4052 passed; the 16 shell/PTY
+  files still fail on this machine against a clean HEAD.

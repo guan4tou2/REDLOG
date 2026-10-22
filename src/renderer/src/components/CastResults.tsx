@@ -66,8 +66,8 @@ function CastRow({ hit, onOpenAt }: { hit: CastHit; onOpenAt?: (tMs: number) => 
         {onOpenAt && (
           <button
             onClick={() => onOpenAt(hit.tMs)}
-            title={t('castSearch.openAtMoment')}
-            aria-label={t('castSearch.openAtMoment')}
+            title={t('common.openAtMoment')}
+            aria-label={t('common.openAtMoment')}
             className="shrink-0 text-redlog-text-dim hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded px-1"
           >↗</button>
         )}

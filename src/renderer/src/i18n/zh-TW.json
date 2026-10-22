@@ -1078,7 +1078,6 @@
   "transcript.copyMd": "複製為 Markdown",
   "castSearch.heading": "終端機錄影",
   "castSearch.showOutput": "顯示前後輸出",
-  "castSearch.openAtMoment": "在時間軸開啟這個時刻",
   "castSearch.reading": "讀取錄影中…",
   "castSearch.unreadable": "這段錄影讀不到——檔案可能已被保存期限清除或移動。",
   "castSearch.stillIndexing": "還有 {{pending}} 份錄影尚未讀取,索引完成前結果並不完整。",
@@ -1115,7 +1114,6 @@
   "httpHistory.filterAll": "全部",
   "httpHistory.filterPlaceholder": "篩選 URL／主機／類型…",
   "httpHistory.counts": "{{flows}} 筆請求",
-  "httpHistory.openAtMoment": "在時間軸開啟這個時刻",
   "httpHistory.empty": "尚未擷取到 HTTP 流量。",
   "httpHistory.noMatch": "沒有流量符合目前的篩選。",
   "httpHistory.detail": "詳情",
@@ -1696,5 +1694,6 @@
   "settings.wsl.status.pass": "通過",
   "settings.wsl.status.fail": "失敗",
   "settings.wsl.status.warn": "警告",
-  "settings.agents.notDetectedHint": "先啟動一次 AI 工具，它會建立這個目錄。"
+  "settings.agents.notDetectedHint": "先啟動一次 AI 工具，它會建立這個目錄。",
+  "common.openAtMoment": "在時間軸開啟這個時刻"
 }

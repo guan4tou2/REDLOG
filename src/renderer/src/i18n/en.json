@@ -1078,7 +1078,6 @@
   "transcript.copyMd": "Copy as Markdown",
   "castSearch.heading": "Terminal recordings",
   "castSearch.showOutput": "Show the surrounding output",
-  "castSearch.openAtMoment": "Open the timeline at this moment",
   "castSearch.reading": "Reading the recording…",
   "castSearch.unreadable": "That part of the recording could not be read — the file may have been pruned or moved.",
   "castSearch.stillIndexing": "{{pending}} recording(s) not read yet. Results are incomplete until indexing finishes.",
@@ -1115,7 +1114,6 @@
   "httpHistory.filterAll": "ALL",
   "httpHistory.filterPlaceholder": "Filter URL / host / type…",
   "httpHistory.counts": "{{flows}} requests",
-  "httpHistory.openAtMoment": "Open the timeline at this moment",
   "httpHistory.empty": "No HTTP traffic captured yet.",
   "httpHistory.noMatch": "No flows match the current filters.",
   "httpHistory.detail": "Detail",
@@ -1696,5 +1694,6 @@
   "settings.wsl.status.pass": "passed",
   "settings.wsl.status.fail": "failed",
   "settings.wsl.status.warn": "warning",
-  "settings.agents.notDetectedHint": "Start the AI tool once; it creates the folder."
+  "settings.agents.notDetectedHint": "Start the AI tool once; it creates the folder.",
+  "common.openAtMoment": "Open the timeline at this moment"
 }
