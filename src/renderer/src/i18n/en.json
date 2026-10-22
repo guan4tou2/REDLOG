@@ -1699,5 +1699,8 @@
   "plugins.results.targetExtractors": "Target extraction rules: {{accepted}} accepted, {{rejected}} rejected",
   "plugins.results.commandTags": "Command tags: {{accepted}} accepted, {{rejected}} rejected",
   "plugins.results.eventTypes": "Event types: {{accepted}} accepted, {{rejected}} rejected",
-  "plugins.results.capture": "Capture sources: {{accepted}} accepted, {{rejected}} rejected"
+  "plugins.results.capture": "Capture sources: {{accepted}} accepted, {{rejected}} rejected",
+  "settings.wsl.status.pass": "passed",
+  "settings.wsl.status.fail": "failed",
+  "settings.wsl.status.warn": "warning"
 }

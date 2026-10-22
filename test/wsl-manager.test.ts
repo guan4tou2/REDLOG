@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
 import { EventEmitter } from 'events'
 import * as cp from 'child_process'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 // A fake `wsl.exe`. Real enumeration costs ~2 s per call and needs WSL
 // installed, which would make this suite slow, machine-dependent, and — since
@@ -42,7 +44,7 @@ vi.mock('child_process', async (importOriginal) => {
   }
 })
 
-const { listWslDistros, getNetworkMode, checkHookStatus, runDiagnostics, invalidateWslCache } =
+const { listWslDistros, getNetworkMode, checkHookStatus, runDiagnostics, parseDiagnosticOutput, invalidateWslCache } =
   await import('../src/core/wsl-manager')
 
 // process.platform is non-writable; swap it in place and restore.
@@ -176,7 +178,7 @@ describe('WSL diagnostics reports what actually failed', () => {
     ;(cp.spawn as unknown as Mock).mockReturnValueOnce(child)
     try {
       const pending = runDiagnostics('kali')
-      child.stdout.emit('data', Buffer.from('[PASS] transport: API reached\n'))
+      child.stdout.emit('data', Buffer.from('  \x1b[32m✓\x1b[0m transport: API reached\n'))
       await vi.advanceTimersByTimeAsync(10_000)
       const result = await pending
       expect(result.checks).toEqual([
@@ -201,16 +203,24 @@ describe('WSL diagnostics reports what actually failed', () => {
     }
   })
 
-  it('keeps successful structured diagnostics unchanged', async () => {
-    const restore = pretendPlatform('win32')
-    ;(cp.spawn as unknown as Mock).mockImplementationOnce(() => fakeChild(Buffer.from('[PASS] hook: Installed\n[WARN] output: Metadata only\n')))
-    try {
-      expect((await runDiagnostics('Ubuntu')).checks).toEqual([
-        { name: 'hook', status: 'pass', message: 'Installed' },
-        { name: 'output', status: 'warn', message: 'Metadata only' }
-      ])
-    } finally {
-      restore()
-    }
+  // #433: the parser has to read what the script actually prints. The fixture
+  // is the script's own output, captured by running it against stub `cmd.exe`
+  // / `wslpath` / `curl` binaries; a synthetic `[PASS] name: message` format
+  // would pass here and fail in the product, which is how this shipped.
+  it('parses the diagnostics script’s real ✓/✗/! output, including a failure', () => {
+    const raw = readFileSync(join(__dirname, 'fixtures/wsl-diagnostics-output.txt'), 'utf8')
+    const checks = parseDiagnosticOutput(raw)
+    const failed = checks.filter((c) => c.status === 'fail')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]).toMatchObject({ name: 'Failed to send test event', message: 'connection reset' })
+    expect(checks.filter((c) => c.status === 'pass').length).toBeGreaterThanOrEqual(6)
+    expect(checks.find((c) => c.message.includes('mirrored mode recommended'))?.status).toBe('warn')
+    // No raw ANSI escape survives into the rendered text.
+    expect(checks.every((c) => !c.name.includes('\x1b') && !c.message.includes('\x1b'))).toBe(true)
+  })
+
+  it('never turns an unrecognised line into a pass', () => {
+    const checks = parseDiagnosticOutput('something the parser does not know\n')
+    expect(checks).toEqual([{ name: 'output', status: 'warn', message: 'something the parser does not know' }])
   })
 })

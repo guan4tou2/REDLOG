@@ -283,14 +283,18 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
           </div>
           <div className="space-y-1">
             {diagnostics.checks.map((check, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                <span className={`shrink-0 w-4 text-center ${
-                  check.status === 'pass' ? 'text-green-400'
-                    : check.status === 'fail' ? 'text-red-400'
-                    : 'text-amber-400'
-                }`}>
-                  {check.status === 'pass' ? '+' : check.status === 'fail' ? 'x' : '!'}
+              <div key={i} data-testid={`wsl-check-${check.status}`} className="flex items-start gap-2 text-xs">
+                <span
+                  aria-hidden
+                  className={`shrink-0 w-4 text-center ${
+                    check.status === 'pass' ? 'text-green-400'
+                      : check.status === 'fail' ? 'text-red-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {check.status === 'pass' ? '✓' : check.status === 'fail' ? '✗' : '!'}
                 </span>
+                <span className="sr-only">{t(`settings.wsl.status.${check.status}`)}</span>
                 <span className="text-redlog-text-dim">{check.name}:</span>
                 <span className="text-redlog-text">{check.message}</span>
               </div>

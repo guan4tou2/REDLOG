@@ -1699,5 +1699,8 @@
   "plugins.results.targetExtractors": "目標擷取規則：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.commandTags": "指令標籤：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.eventTypes": "事件類型：{{accepted}} 條生效、{{rejected}} 條被拒絕",
-  "plugins.results.capture": "擷取來源：{{accepted}} 條生效、{{rejected}} 條被拒絕"
+  "plugins.results.capture": "擷取來源：{{accepted}} 條生效、{{rejected}} 條被拒絕",
+  "settings.wsl.status.pass": "通過",
+  "settings.wsl.status.fail": "失敗",
+  "settings.wsl.status.warn": "警告"
 }

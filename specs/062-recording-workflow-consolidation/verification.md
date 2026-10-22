@@ -241,3 +241,43 @@ ones.
 - Converge: T030 complete as a bounded diagnostics increment; #348's
   remaining items (supported external-producer path, explicit version contract)
   stay open.
+
+## T031: WSL diagnostics read the script's real output (2026-10-22)
+
+Scope: #433. The diagnostics script prints coloured `✓ / ✗ / !` lines under
+`── section` headers. The parser expected `[PASS] name: message`, matched
+nothing, and recorded every line as a passing `info` row — so
+`✗ Failed to send test event: …` was displayed as a green `+`.
+
+### Observable behaviour
+
+- `✗` → `fail`, `!` → `warn`, `✓` → `pass`; ANSI is stripped before matching,
+  so no escape sequence reaches the panel.
+- Indented prose under a verdict (`→ Is RedLog running?`, `Fix: create …`) is
+  appended to the check it belongs to instead of becoming a second row.
+- Section headers name the check when the verdict line has no `name: message`
+  split.
+- An unrecognised line is `warn`, never `pass` — the catch-all that made a
+  failure look green is gone.
+- The panel shows `✓ / ✗ / !` (instead of `+ / x / !`) and carries an
+  `sr-only` status word, so the status is not colour-only.
+
+### Verification
+
+- **The test input is the script's real output.** `test/fixtures/wsl-diagnostics-output.txt`
+  was captured by running `hooks/wsl-redlog-test.sh` against stub `cmd.exe` /
+  `wslpath` / `wslinfo` / `ip` / `curl` binaries, reaching the failing POST
+  branch. The fixture keeps the ANSI escapes and indentation;
+  `test/fixtures/README.md` records how to regenerate it.
+- `test/wsl-manager.test.ts` (10 tests) now parses that fixture: exactly one
+  `fail` named "Failed to send test event" with "connection reset", at least
+  six passes, the NAT line as `warn`, and no surviving escape bytes. A second
+  case pins that an unknown line is `warn`.
+- `test/wsl-diagnostics-panel.test.tsx` (3 tests) renders the parsed fixture
+  through the panel after pressing Diagnose: a failure row exists with its
+  message and the accessible status word, pass/warn rows exist, and no raw
+  ANSI appears in the document.
+- typecheck, architecture, i18n assertion and Spec Kit gates and build passed;
+  the affected Electron spec still passes.
+- Not claimed: #327's cold-start timeout is a separate failure mode and was not
+  changed. The script's output format was kept; only the parser moved.

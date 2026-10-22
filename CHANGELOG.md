@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- WSL diagnostics now read the script's own `✓ / ✗ / !` output instead of a
+  `[PASS] name: message` format it never printed. A failing check used to be
+  recorded as a passing `info` row and shown green; `✗` is now a failure, `!` a
+  warning, ANSI is stripped, indented remediation stays with its check, and an
+  unrecognised line is a warning rather than a pass. The panel shows the status
+  word to screen readers, not colour alone.
 - Plugin contribution results now cover every kind, not only loot and redaction.
   Target extractors, command tags, event types and capture entries report how
   many rules took effect and name each rejected one with its reason (bad regex,

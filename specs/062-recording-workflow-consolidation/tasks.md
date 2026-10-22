@@ -69,3 +69,9 @@ T028–T029 are bounded settings increments for #435. They do not close #435 (pl
 - [x] T030 [US5] Report what actually took effect for every contribution kind, not only loot and redaction: target extractors, command tags, event types and capture entries now return accepted/rejected counts with each rejected rule named and reasoned (bad regex, unknown strategy, missing field). The Plugins page renders them beside the existing loot/redaction/tailer lines. A manifest that loads is no longer presented as every rule working.
 
 T030 is a bounded diagnostics increment for #348. It does not add a third-party code host, a marketplace, LLM classification, or any new capture capability; unsupported user tailers stay refused before consent, and the sample tester is unchanged.
+
+## WSL diagnostics parsing — #433
+
+- [x] T031 [US1] Parse the diagnostics script's own `✓/✗/!` output instead of a `[PASS] name: message` format it never emits, strip ANSI before matching, keep indented remediation lines with the check above them, and never turn an unrecognised line into a pass. Pin the parser and the panel with a captured real-output fixture.
+
+T031 is a bounded correctness fix for #433. It does not touch #327 (cold-start timeout) or change the script's output format.
