@@ -3,6 +3,7 @@ import { FieldGroup, type ConfigState } from './SettingsShared'
 import { Button } from '../Button'
 import { confirmGraded } from '../ConfirmDialog'
 import { SourceLastSeen } from './SourceLastSeen'
+import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 import type { OfficialAgentPlugin } from '../../../../core/plugins/official-agents'
 import type { AgentKind, AgentCaptureSourceConfig } from '../../../../core/agent-capture-policy'
@@ -134,23 +135,19 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, on
       {scopeChanged
         ? <p role="status" data-testid={`agent-scope-changed-${item.agentKind}`} className="text-xs text-amber-400">{t('settings.agents.scopeChanged')}</p>
         : active && paths.length > 0 && !projectRecording && <p role="status" className="text-xs text-amber-400">{t('settings.agents.notRecording')}</p>}
-      <label className="flex items-center gap-2 text-xs text-redlog-text">
-        <input
-          type="checkbox"
-          data-testid={`agent-enabled-${item.agentKind}`}
-          checked={value.enabled === true && authorized}
-          disabled={busy || !active || !paths.length}
-          onChange={e => update({
-            ...value,
-            enabled: e.target.checked,
-            installationId: item.installationId,
-            startedAt: e.target.checked ? Date.now() : value.startedAt,
-            scopeChangedAt: undefined
-          })}
-          className="accent-red-600"
-        />
-        {t(scopeChanged ? 'settings.agents.confirmScope' : 'settings.agents.enableProject')}
-      </label>
+      <CheckRow
+        inputTestId={`agent-enabled-${item.agentKind}`}
+        checked={value.enabled === true && authorized}
+        disabled={busy || !active || !paths.length}
+        onChange={(next) => update({
+          ...value,
+          enabled: next,
+          installationId: item.installationId,
+          startedAt: next ? Date.now() : value.startedAt,
+          scopeChangedAt: undefined
+        })}
+        label={t(scopeChanged ? 'settings.agents.confirmScope' : 'settings.agents.enableProject')}
+      />
     </>}
     {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
   </div>
@@ -191,7 +188,11 @@ export default function AgentsPanel({ t, config, setConfig, onOpenPlugins }: { t
     {error && <div role="alert" className="mb-3 text-xs text-red-400"><p>{error}</p><button type="button" onClick={() => void load()} className="underline">{t('common.retry')}</button></div>}
     {!items && !error && <p role="status" className="text-xs text-redlog-text-dim">{t('common.loading')}</p>}
     <div data-testid="agent-sources" className="space-y-3">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} onOpenPlugins={onOpenPlugins} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
-    <label className="flex items-center gap-2 mt-3 text-xs text-redlog-text"><input type="checkbox" checked={config.agentTailer?.emitThinking ?? false} onChange={e => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: e.target.checked } })} className="accent-red-600" />{t('settings.agents.emitThinking')}</label>
+    <CheckRow
+      checked={config.agentTailer?.emitThinking ?? false}
+      onChange={(next) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: next } })}
+      label={t('settings.agents.emitThinking')}
+    />
     <p className="text-xs text-redlog-text-faint mt-2">{t('settings.agents.selfExclusionHint')}</p>
   </FieldGroup>
 }

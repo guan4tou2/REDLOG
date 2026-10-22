@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
+import { CheckRow } from './CheckRow'
 import { isMemberSelected, OPT_IN_MEMBERS } from '../../../../core/capture-packs'
 
 // One optional capture pack (Spec 035): a single switch for the project, and
@@ -45,19 +46,15 @@ export function PackMember({
   return (
     <div className="mt-2">
       <p className="text-xs font-semibold text-redlog-text-dim">{title}</p>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={on}
-          onChange={(e) => setConfig({
-            ...config,
-            packMembers: { ...config.packMembers, [member]: e.target.checked }
-          })}
-          className="accent-red-600"
-          data-testid={`pack-member-${member}`}
-        />
-        <span className="text-xs text-redlog-text">{t('settings.packMemberRecord')}</span>
-      </label>
+      <CheckRow
+        checked={on}
+        onChange={(next) => setConfig({
+          ...config,
+          packMembers: { ...config.packMembers, [member]: next }
+        })}
+        inputTestId={`pack-member-${member}`}
+        label={t('settings.packMemberRecord')}
+      />
       {optIn && !on && (
         <p className="text-xs text-redlog-text-faint" data-testid={`pack-member-optin-${member}`}>{t('settings.packMemberOptIn')}</p>
       )}
@@ -126,16 +123,12 @@ export default function CapturePackGroup({
           )}
         </div>
       ) : (
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={on}
-            onChange={(e) => setConfig({ ...config, packs: { ...config.packs, [pack]: e.target.checked } })}
-            className="accent-red-600"
-            data-testid={`pack-switch-${pack}`}
-          />
-          <span className="text-xs text-redlog-text">{t('settings.packRecord')}</span>
-        </label>
+        <CheckRow
+          checked={on}
+          onChange={(next) => setConfig({ ...config, packs: { ...config.packs, [pack]: next } })}
+          inputTestId={`pack-switch-${pack}`}
+          label={t('settings.packRecord')}
+        />
       )}
       <p className="text-xs text-redlog-text-faint">{hint}</p>
       {on && available !== false && children}

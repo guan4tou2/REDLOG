@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { FieldGroup, isMacOS, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 
 export default function HudPage({
   config, setConfig, t
@@ -20,35 +21,23 @@ export default function HudPage({
   return (
     <>
       <FieldGroup title={t('settings.overlayGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            data-testid="settings-overlay-autoshow"
-            checked={config.overlay?.autoShow !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayAutoShow')}</span>
-        </label>
+        <CheckRow
+          inputTestId="settings-overlay-autoshow"
+          checked={config.overlay?.autoShow !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: on } })}
+          label={t('settings.overlayAutoShow')}
+        />
         <p className="text-xs text-redlog-text-faint mb-2">{t('settings.overlayAutoShowHint')}</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.overlay?.showMarkButton !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayShowMark')}</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer mt-2">
-          <input
-            type="checkbox"
-            checked={config.overlay?.flashOnExposed !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayFlashExposed')}</span>
-        </label>
+        <CheckRow
+          checked={config.overlay?.showMarkButton !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: on } })}
+          label={t('settings.overlayShowMark')}
+        />
+        <CheckRow
+          checked={config.overlay?.flashOnExposed !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: on } })}
+          label={t('settings.overlayFlashExposed')}
+        />
 
         <div className="mt-3">
           <label htmlFor="hud-scale" className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
@@ -82,7 +71,7 @@ export default function HudPage({
                       const v = snap(parseFloat(e.target.value))
                       setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
                     }}
-                    className="accent-red-600 flex-1"
+                    className="accent-red-600 flex-1 h-8"
                     list="hud-scale-stops"
                     // The label above is a `<label>` with no `for`, so this
                     // slider had no accessible name at all: a screen reader
@@ -110,25 +99,17 @@ export default function HudPage({
           })()}
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer mt-3">
-          <input
-            type="checkbox"
-            checked={config.overlay?.emphasizeExternalIp === true}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayEmphasizeIp')}</span>
-        </label>
+        <CheckRow
+          checked={config.overlay?.emphasizeExternalIp === true}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: on } })}
+          label={t('settings.overlayEmphasizeIp')}
+        />
 
-        <label className="flex items-center gap-2 cursor-pointer mt-3">
-          <input
-            type="checkbox"
-            checked={config.overlay?.passThrough === true}
-            onChange={(e) => setPassThrough(e.target.checked)}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayPassThrough')}</span>
-        </label>
+        <CheckRow
+          checked={config.overlay?.passThrough === true}
+          onChange={setPassThrough}
+          label={t('settings.overlayPassThrough')}
+        />
         <p className="text-xs text-redlog-text-faint">{t('settings.overlayPassThroughHint')}</p>
         {config.overlay?.passThrough === true && (
           <div className="mt-2 flex items-center gap-3 pl-6">
@@ -140,7 +121,7 @@ export default function HudPage({
               step="0.05"
               value={config.overlay?.passThroughOpacity ?? 0.4}
               onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
-              className="accent-red-600 w-40"
+              className="accent-red-600 w-40 h-8"
             />
             <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
           </div>
@@ -148,15 +129,11 @@ export default function HudPage({
 
         {isMacOS && (
           <>
-            <label className="flex items-center gap-2 cursor-pointer mt-2">
-              <input
-                type="checkbox"
-                checked={config.overlay?.showInDock !== false}
-                onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: e.target.checked } })}
-                className="accent-red-600"
-              />
-              <span className="text-xs text-redlog-text">{t('settings.overlayShowInDock')}</span>
-            </label>
+            <CheckRow
+              checked={config.overlay?.showInDock !== false}
+              onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: on } })}
+              label={t('settings.overlayShowInDock')}
+            />
             <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowInDockHint')}</p>
           </>
         )}

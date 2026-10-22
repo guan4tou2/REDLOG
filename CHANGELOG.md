@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Every interactive target now meets the 24x24 floor: 141 of 861 were under it.
+  The worst was Settings' checkbox row — the highest-frequency controls
+  (clipboard sampling, file watching, loot rules) were the smallest targets at
+  20px tall — which now use a shared CheckRow with a 32px row. Terminal tab
+  close/restart, the timeline's help/zoom controls and event-dot hit area, the
+  narrow status-bar HUD toggle and the HUD sliders were raised too. An Electron
+  assertion measures this across every view at five size/zoom combinations.
 - The copy rule's layout half was measured and closed: nested cards, heading
   plus repeating paragraph, icon buttons whose tooltip is their accessible name,
   and hints opening with a state restatement were each scanned across the whole

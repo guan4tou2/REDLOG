@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FieldGroup } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 import { Button } from '../Button'
 import { formatDateTime } from '../../lib/time'
 import type { UpdateStatus } from '../../../../main/services/update-status'
@@ -71,21 +72,16 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
           {t('update.checkedAt', { time: formatDateTime(status.checkedAt) })}
         </p>
       )}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          data-testid="update-auto-check"
-          checked={status.autoCheck}
-          onChange={(e) => {
-            // Shown at once, then main's answer replaces it: it owns the flag.
-            const on = e.target.checked
-            setStatus({ ...status, autoCheck: on })
-            void window.redlog.app.setAutoUpdateCheck(on).then(setStatus, () => window.redlog.app.updateStatus().then(setStatus))
-          }}
-          className="accent-red-600"
-        />
-        <span className="text-xs text-redlog-text">{t('update.autoCheck')}</span>
-      </label>
+      <CheckRow
+        inputTestId="update-auto-check"
+        checked={status.autoCheck}
+        label={t('update.autoCheck')}
+        onChange={(on) => {
+          // Shown at once, then main's answer replaces it: it owns the flag.
+          setStatus({ ...status, autoCheck: on })
+          void window.redlog.app.setAutoUpdateCheck(on).then(setStatus, () => window.redlog.app.updateStatus().then(setStatus))
+        }}
+      />
       <div className="flex flex-wrap gap-2">
         <Button level="secondary" disabled={busy} onClick={() => void window.redlog.app.checkForUpdates()} data-testid="update-check">
           {status.stage === 'checking' ? t('update.checking') : status.stage === 'failed' ? t('update.retry') : t('settings.checkUpdate')}
@@ -127,22 +123,17 @@ export default function AboutPage({ t }: {
       </FieldGroup>
       {debug && (
         <FieldGroup title={t('settings.debugLog')}>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              data-testid="debug-log-toggle"
-              checked={debug.enabled}
-              onChange={(e) => {
-                // Show the choice at once, then take main's word for it: it
-                // is the one that owns the flag file.
-                const on = e.target.checked
-                setDebug({ ...debug, enabled: on })
-                void window.redlog.debug.set(on).then(setDebug, () => window.redlog.debug.status().then(setDebug))
-              }}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text">{t('settings.debugLogToggle')}</span>
-          </label>
+          <CheckRow
+            inputTestId="debug-log-toggle"
+            checked={debug.enabled}
+            onChange={(on) => {
+              // Show the choice at once, then take main's word for it: it
+              // is the one that owns the flag file.
+              setDebug({ ...debug, enabled: on })
+              void window.redlog.debug.set(on).then(setDebug, () => window.redlog.debug.status().then(setDebug))
+            }}
+            label={t('settings.debugLogToggle')}
+          />
           <p className="text-xs text-redlog-text-faint">{t('settings.debugLogHint')}</p>
           <p className="text-xs text-redlog-text-faint font-mono break-all select-text cursor-text" data-testid="debug-log-path">{debug.path}</p>
           <div>

@@ -103,14 +103,14 @@ function AttachmentList({ rows, onToggle, busy, t }: {
             ...(a.status !== 'included' ? [t(`export.attachments.status.${a.status}`)] : [])
           ].join(' · ')
           return (
-            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2">
+            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2 min-h-8 py-1">
               <input
                 type="checkbox"
                 aria-label={a.id}
                 checked={a.status === 'included'}
                 disabled={busy || !selectable}
                 onChange={() => onToggle(a.id)}
-                className="mt-0.5 accent-red-600"
+                className="mt-0.5 w-4 h-4 shrink-0 accent-red-600"
               />
               <span className="flex-1 min-w-0">
                 <span className="block truncate font-mono text-redlog-text" title={a.id}>
@@ -153,15 +153,15 @@ function Toggle({ on, setOn, label, warn, disabled }: {
   on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean; disabled?: boolean
 }): JSX.Element {
   return (
-    <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
+    <label className="flex items-start gap-2 px-3 min-h-8 py-1.5 text-xs cursor-pointer">
       <input
         type="checkbox"
         checked={on}
         disabled={disabled}
         onChange={(e) => setOn(e.target.checked)}
-        className="mt-0.5 accent-red-600"
+        className="mt-0.5 w-4 h-4 shrink-0 accent-red-600"
       />
-      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
+      <span className={`min-w-0 flex-1 ${warn ? 'text-amber-500' : 'text-redlog-text-dim'}`}>{label}</span>
     </label>
   )
 }

@@ -356,11 +356,14 @@ export default function StatusBar(): JSX.Element {
         <button
           data-testid="status-bar-overlay"
           onClick={() => window.redlog.overlay.toggle()}
-          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          // Narrow, the label is gone and only the dot is left — which made
+          // this the smallest target in the bar (18x10 at 150% zoom). The box
+          // keeps a 24px floor either way; the dot stays 6px.
+          className={`flex items-center justify-center gap-1.5 min-w-6 min-h-6 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           title={t('statusBar.toggleOverlay')}
           aria-label={t('statusBar.toggleOverlay')}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
           {!narrow && <span>{t('statusBar.overlay')}</span>}
         </button>
       </div>

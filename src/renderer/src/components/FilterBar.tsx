@@ -32,7 +32,7 @@ export function FilterBar(): JSX.Element | null {
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls="filter-bar-panel"
-          className="flex items-center gap-1 text-redlog-text-dim hover:text-redlog-text transition-colors"
+          className="flex items-center gap-1 min-h-6 text-redlog-text-dim hover:text-redlog-text transition-colors"
           title={t('filter.title')}
         >
           <Filter size={12} strokeWidth={1.5} />

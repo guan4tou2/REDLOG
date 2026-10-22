@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FieldGroup, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 
 type LootRule = Awaited<ReturnType<Window['redlog']['loot']['rules']>>[number]
 
@@ -36,21 +37,19 @@ export default function LootRulesGroup({
       <p className="text-xs text-redlog-text-faint">{t('settings.lootHint')}</p>
       {failed && <p className="text-xs text-red-400" data-testid="loot-rules-failed">{t('settings.lootRulesFailed')}</p>}
       {rules?.map((r) => (
-        <label key={r.id} className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!disabled.has(r.id)}
-            onChange={(e) => toggle(r.id, e.target.checked)}
-            className="accent-red-600 mt-0.5"
-            data-testid={`loot-rule-${r.id}`}
-            // The rule id is an internal name (`ntlm_hash`, `private_key`).
-            // What it actually matches lived only in `title`, which a keyboard
-            // cannot reach and a screen reader does not read — so the one piece
-            // of text that explains the row was unavailable to exactly the
-            // people who needed it. It is the accessible name now.
-            aria-label={r.description ? `${r.type} — ${r.description}` : r.type}
-          />
-          <span className="text-xs text-redlog-text">
+        <CheckRow
+          key={r.id}
+          align="start"
+          checked={!disabled.has(r.id)}
+          onChange={(next) => toggle(r.id, next)}
+          inputTestId={`loot-rule-${r.id}`}
+          // The rule id is an internal name (`ntlm_hash`, `private_key`).
+          // What it actually matches lived only in `title`, which a keyboard
+          // cannot reach and a screen reader does not read — so the one piece
+          // of text that explains the row was unavailable to exactly the
+          // people who needed it. It is the accessible name now.
+          ariaLabel={r.description ? `${r.type} — ${r.description}` : r.type}
+          label={<>
             <span className="font-mono">{r.type}</span>
             <span className="text-redlog-text-faint">
               {' · '}{r.confidence}{' · '}{r.pluginId ?? t('settings.lootBuiltin')}
@@ -66,8 +65,8 @@ export default function LootRulesGroup({
                 {t('settings.lootRuleStopped')}
               </span>
             )}
-          </span>
-        </label>
+          </>}
+        />
       ))}
     </FieldGroup>
   )

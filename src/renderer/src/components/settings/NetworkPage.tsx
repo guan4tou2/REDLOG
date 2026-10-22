@@ -3,6 +3,7 @@ import { toast } from '../Toast'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 
 const DEFAULT_VPN_ADAPTERS = [
   { name: 'WireGuard', pattern: 'wireguard|^wg\\d', enabled: true },
@@ -56,15 +57,11 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
       <div className="space-y-1">
         {adapters.map((a, i) => (
           <div key={i} className="flex items-center gap-2">
-            <label className="flex items-center gap-2 flex-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={a.enabled}
-                onChange={() => toggle(i)}
-                className="accent-red-600"
-              />
-              <span className="text-xs text-redlog-text">{a.name}</span>
-            </label>
+            <CheckRow
+              checked={a.enabled}
+              onChange={() => toggle(i)}
+              label={a.name}
+            />
             <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[240px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
               <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">&times;</button>
@@ -150,23 +147,18 @@ export default function NetworkPage({
         {/* Every platform: off keeps the SSID off every surface (main drops it
             before the HUD sees it). Only macOS also needs Location Services. */}
         <div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.network.showWifiName ?? false}
-              onChange={(e) => {
-                const on = e.target.checked
-                setConfig({ ...config, network: { ...config.network, showWifiName: on } })
-                // Trigger the macOS Location Services prompt; once granted,
-                // the OS un-redacts the SSID for the next network poll.
-                if (on && isMacOS && navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
-                }
-              }}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
-          </label>
+          <CheckRow
+            checked={config.network.showWifiName ?? false}
+            onChange={(on) => {
+              setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+              // Trigger the macOS Location Services prompt; once granted,
+              // the OS un-redacts the SSID for the next network poll.
+              if (on && isMacOS && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+              }
+            }}
+            label={t('settings.showWifiName')}
+          />
           {isMacOS && <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>}
         </div>
         <Field

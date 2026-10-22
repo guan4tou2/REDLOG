@@ -319,7 +319,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <button
                   onClick={() => onNavigate('timeline')}
                   data-testid="first-run-later"
-                  className="text-redlog-text-dim hover:text-redlog-text underline"
+                  className="inline-flex items-center min-h-8 text-redlog-text-dim hover:text-redlog-text underline"
                 >
                   {t('firstRun.core.later')}
                 </button>
@@ -348,7 +348,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         <div className="w-full max-w-3xl space-y-2">
           <button type="button" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin}
             onClick={() => setShowBuiltin((v) => !v)}
-            className="text-xs text-redlog-text-dim underline hover:text-redlog-text">
+            className="inline-flex items-center min-h-8 text-xs text-redlog-text-dim underline hover:text-redlog-text">
             {t(showBuiltin ? 'firstRun.builtin.hide' : 'firstRun.builtin.show')}
           </button>
           {showBuiltin && (
@@ -364,7 +364,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           onClick={() => setShowSources((v) => !v)}
           data-testid="first-run-more-sources"
           aria-expanded={showSources}
-          className="flex items-center gap-1 text-xs text-redlog-text-dim hover:text-redlog-text"
+          className="flex items-center gap-1 min-h-8 text-xs text-redlog-text-dim hover:text-redlog-text"
         >
           <ChevronRight
             size={14}

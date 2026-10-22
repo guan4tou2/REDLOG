@@ -111,3 +111,9 @@ T036 closes the language gap in the gate. A duplicate sentence can be invisible 
 - [x] T037 [US2] Measure the layout patterns the copy rule names but cannot mechanically judge — nested card containers, a heading immediately followed by a paragraph repeating it, icon buttons whose tooltip is their accessible name, hints opening with a state restatement — and record the result in the gate so the ground is not re-dug.
 
 T037 closes the audit. Nothing was changed: every candidate was inspected and found legitimate. The deliverable is the record.
+
+## Hit areas and control geometry — UIUX audit
+
+- [x] T038 [US2] Raise every interactive target to the 24x24 floor the app's own §3 implies (32px, WCAG 2.5.8 at 24): a shared CheckRow for all 22 checkboxes (their label rows were 20px), the terminal tab close/restart buttons (16px), the timeline's event-dot hit area (20px), the timeline help/zoom controls (20px), the status bar's HUD toggle (18x10 when narrow), and the HUD sliders (22px). Pin it with an Electron assertion so it cannot regress.
+
+T038 changes geometry only. It does not touch the padding/gap/radius token consolidation, which is a separate and larger cleanup.

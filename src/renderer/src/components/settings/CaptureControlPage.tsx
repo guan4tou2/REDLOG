@@ -3,6 +3,7 @@ import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePack
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
 import { SourceLastSeen } from './SourceLastSeen'
+import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 
 /** Which health row speaks for a pack member. The health ids are the source
@@ -52,15 +53,11 @@ export default function CaptureControlPage({
           health={healthOf(MEMBER_HEALTH_ID.clipboard)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         >
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.clipboard?.storePreview === true}
-              onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: e.target.checked } })}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
-          </label>
+          <CheckRow
+            checked={config.clipboard?.storePreview === true}
+            onChange={(on) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: on } })}
+            label={t('settings.clipboardStorePreview')}
+          />
           <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
         </PackMember>
 
@@ -194,15 +191,12 @@ export default function CaptureControlPage({
         </div>
         <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
 
-        <label className="flex items-start gap-2 mt-3 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.screenshot?.captureOnCommand ?? false}
-            onChange={(e) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: e.target.checked } })}
-            className="mt-0.5 accent-redlog-accent"
-          />
-          <span className="text-redlog-text-dim">{t('settings.screenshot.onCommand')}</span>
-        </label>
+        <CheckRow
+          align="start"
+          checked={config.screenshot?.captureOnCommand ?? false}
+          onChange={(on) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: on } })}
+          label={t('settings.screenshot.onCommand')}
+        />
         <p className="text-xs text-redlog-text-faint mt-1">{t('settings.screenshot.onCommandHint')}</p>
       </FieldGroup>
 

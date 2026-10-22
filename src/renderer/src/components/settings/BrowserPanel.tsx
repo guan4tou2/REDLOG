@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-proxy-url'
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
 import { CaCommand, caTrustCommand, caUntrustCommand, thisOs } from '../HttpCaptureStep'
@@ -143,12 +144,11 @@ export default function BrowserPanel({
           {t('settings.httpCaptureExposedWarning', { host: listenHost })}
         </p>
       )}
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={httpCapture.routeTerminals === true}
-          onChange={(e) => setConfig({ ...config, httpCapture: { ...httpCapture, routeTerminals: e.target.checked } })}
-          className="accent-red-600" />
-        <span className="text-xs text-redlog-text-dim">{t('settings.routeTerminals')}</span>
-      </label>
+      <CheckRow
+        checked={httpCapture.routeTerminals === true}
+        onChange={(on) => setConfig({ ...config, httpCapture: { ...httpCapture, routeTerminals: on } })}
+        label={t('settings.routeTerminals')}
+      />
       <p className="text-xs text-redlog-text-faint">{t('settings.routeTerminalsHint')}</p>
       <div className="flex items-center gap-2 text-xs">
         <span className={proxyKnown && proxyStatus.state === 'running' ? 'text-emerald-400' : proxyRead.state.phase === 'failed' || proxyStatus.state === 'failed' || proxyStatus.state === 'unavailable' ? 'text-red-400' : 'text-redlog-text-faint'}>
@@ -223,24 +223,16 @@ export default function BrowserPanel({
         type="number"
       />
       <Field label={t('settings.browserStartUrl')} value={b.startUrl} onChange={(v) => patch({ startUrl: v })} />
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={b.isolateProfile}
-          onChange={(e) => patch({ isolateProfile: e.target.checked })}
-          className="accent-red-600"
-        />
-        <span className="text-xs text-redlog-text-dim">{t('settings.browserIsolate')}</span>
-      </label>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={b.ignoreCertErrors}
-          onChange={(e) => patch({ ignoreCertErrors: e.target.checked })}
-          className="accent-red-600"
-        />
-        <span className="text-xs text-redlog-text-dim">{t('settings.browserIgnoreCert')}</span>
-      </label>
+      <CheckRow
+        checked={b.isolateProfile}
+        onChange={(on) => patch({ isolateProfile: on })}
+        label={t('settings.browserIsolate')}
+      />
+      <CheckRow
+        checked={b.ignoreCertErrors}
+        onChange={(on) => patch({ ignoreCertErrors: on })}
+        label={t('settings.browserIgnoreCert')}
+      />
       <button
         onClick={async () => {
           const r = await window.redlog.browser.launch()

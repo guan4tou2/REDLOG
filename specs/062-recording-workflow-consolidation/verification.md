@@ -557,3 +557,58 @@ which is exactly the failure mode a shipped layout gate would have.
   the comment breaks the build). typecheck, architecture, i18n assertion, Spec
   Kit gates and build passed. `npm test`: 4053 passed; the 16 shell/PTY files
   still fail on this machine against a clean HEAD.
+
+## T038: hit areas (2026-10-22)
+
+Measured every interactive element across 11 views and 12 Settings pages
+(861 targets) and compared each against the 24x24 floor. Normalised by the
+body's `zoom: 0.9` first — measuring raw rects reports 25.2 / 30.6 / 36px for
+what is declared as 28 / 34 / 40px, which reads as a dozen inconsistent sizes
+that do not exist.
+
+### Before: 141 of 861 targets under 24x24 (16%)
+
+| Size | Count | What |
+|---|---|---|
+| 13x13 | 38 | checkbox inputs; their label rows were 858x**20** |
+| 16x16 | 1 | terminal tab close |
+| 20x20 | 5 | timeline help / zoom out / zoom in, tab restart |
+| 20px tall | 14 | bare text buttons: 稍後處理, 改用內建終端, 其他擷取來源, 篩選 |
+| 22px tall | 1 | HUD text-size slider |
+| 18x10 | 1 | status-bar HUD toggle, narrow (dot only) |
+
+The worst of it was the checkbox row: the highest-frequency control in
+Settings — clipboard sampling, file watching, loot rules — was also the
+smallest target in the app.
+
+### After: 0 of 855
+
+- **`CheckRow`** (`components/settings/CheckRow.tsx`): one checkbox row for the
+  whole app. The input stays 16px (the icon size §4 allows); the ROW gets
+  `min-h-8`, so the clickable area is the full 32px line. All 22 checkboxes in
+  Settings moved to it, plus ExportMenu, ConfirmDialog and EventMarker.
+- Terminal tab close/restart 16 → 24; shell picker 20 → 24.
+- Timeline help and zoom controls 20 → 24; the event-dot hit area's floor
+  20 → 24 (`Math.max(24, dot + 8)` — the visible dot keeps its own size, so a
+  small dot is still easy to click).
+- Status-bar HUD toggle gets `min-w-6 min-h-6`; narrow it is a dot with no
+  label, which had left it 18x10.
+- Bare text buttons get `min-h-8`.
+- HUD sliders get `h-8`; a range input's own box is the browser's track height.
+
+### Verification
+
+- **An Electron assertion now measures this**, in the same pass that checks
+  controls stay inside the window: every view at five size/zoom combinations,
+  a checkbox measured by its wrapping label, with 0.5px of tolerance because a
+  24px row lands on 23.999… after dividing out the body zoom. 14/14.
+- Two failures were found *by the new assertion*, not by the audit: the
+  narrow status-bar toggle (18x10) and the floating-point tolerance. Both were
+  real; both are fixed.
+- 53 unit tests across the affected Settings components still pass. typecheck,
+  architecture, i18n assertion and Spec Kit gates and build passed.
+  `npm test`: 4053 passed; the 16 shell/PTY files still fail on this machine
+  against a clean HEAD.
+- Not done: the padding/gap/radius token consolidation (26 padding values, 4
+  radii, `--pad`/`--gap` largely unused). That is a separate cleanup with no
+  behaviour change and a much wider diff.

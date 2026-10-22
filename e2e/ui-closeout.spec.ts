@@ -227,6 +227,39 @@ test.describe.serial('read failures and a small window (#298)', () => {
           .map((el) => `${el.dataset.testid ?? el.getAttribute('aria-label') ?? 'button'} @${Math.round(el.getBoundingClientRect().right)} of ${vw}`)
       })
       expect(barCut, 'status-bar controls cut by the window edge').toEqual([])
+
+      // Hit areas. The audit found 141 of 861 interactive elements under
+      // WCAG 2.5.8's 24x24 floor — including every checkbox in Settings, whose
+      // label row was 20px tall, and the terminal's tab-close button at 16px.
+      // They were the highest-frequency controls in the app, and the smallest.
+      //
+      // A checkbox is measured by its wrapping label: the input is 16px by
+      // design (§4 allows that icon size) and the row is what the operator
+      // clicks. Everything else is measured as itself.
+      const small = await page.evaluate(() => {
+        const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1
+        const visible = (el: Element): boolean => {
+          const r = el.getBoundingClientRect()
+          return r.width > 0 && r.height > 0
+        }
+        const out: string[] = []
+        for (const el of document.querySelectorAll('button, input, select, textarea, a[href], [role="button"]')) {
+          if (!visible(el)) continue
+          let box: Element = el
+          if (el instanceof HTMLInputElement && el.type === 'checkbox') box = el.closest('label') ?? el
+          const r = box.getBoundingClientRect()
+          const w = r.width / zoom
+          const h = r.height / zoom
+          // 0.5px of tolerance: a 24px row lands on 23.999… after the body's
+          // 0.9 zoom is divided back out, and a gate that fails on floating
+          // point is a gate someone turns off.
+          if (w >= 23.5 && h >= 23.5) continue
+          const name = (el.textContent || el.getAttribute('aria-label') || (el as HTMLElement).dataset.testid || el.tagName).trim().slice(0, 30)
+          out.push(`${name} — ${Math.round(w)}x${Math.round(h)}`)
+        }
+        return out
+      })
+      expect(small, 'hit areas under 24x24').toEqual([])
     })
   }
 
