@@ -675,3 +675,26 @@ spacing decisions, not a broken system.
 - typecheck, architecture, i18n assertion and Spec Kit gates and build passed.
   `npm test`: 4058 passed; the 16 shell/PTY files still fail on this machine
   against a clean HEAD.
+
+## Manual QA walk: every view, every button (2026-10-23)
+
+Walked the running app at 1440×1000, zh-TW, clicking every control in all
+eleven views, the twelve settings pages, the titlebar and the status bar
+(~260 clicks). Findings:
+
+- Zero renderer errors, zero unhandled page errors across all of it.
+- Every visible control has an accessible name (earlier "unnamed" inputs were
+  `<label for>` associations the first probe missed).
+- Main-view switches lag 7–35 ms; first entry into the terminal view takes
+  ~330 ms while the lazy xterm chunk loads, with no loading indicator —
+  recorded here rather than "fixed", because a spinner for a third of a
+  second would be its own noise.
+- The settings fixed footer (「修改會自動儲存」, 36 px) does not cover scrolled-up
+  content: the `p-pad` bottom padding clears it (last element bottom 920, footer
+  top 935).
+- One real defect: the first-run entry button kept saying 「記我的 Zsh 終端」
+  after Bash was chosen in the picker below it. `RecordTerminalFlow` now takes
+  `onSelectedLabel` and `FirstRunView` renders it on the entry button, so the
+  label can only ever match what actually installs. Pinned by a test in
+  `test/first-run-record-terminal.test.tsx` (asserting both the stale and the
+  updated label); `e2e/first-run.spec.ts` passes.

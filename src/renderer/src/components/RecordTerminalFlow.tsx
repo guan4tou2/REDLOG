@@ -71,7 +71,15 @@ function pickInitialAdapter(choices: AdapterChoice[], recommended: string | null
   return choices.find((c) => c.available)?.hookId ?? choices[0].hookId
 }
 
-export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget; onPrepare: () => void }): JSX.Element {
+export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
+  target: RecordTarget
+  onPrepare: () => void
+  /** Which shell the flow is actually driving. The entry button above names the
+   *  detected shell as the recommendation, but the picker inside can select a
+   *  different one and everything downstream follows *that* — replying up keeps
+   *  the button from advertising a shell the operator has just replaced. */
+  onSelectedLabel?: (label: string) => void
+}): JSX.Element {
   const { t } = useI18n()
   const [phase, setPhase] = useState<Phase>('not-installed')
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
@@ -119,6 +127,14 @@ export function RecordTerminalFlow({ target, onPrepare }: { target: RecordTarget
     ? target.shell
     : selectedChoice?.shell ?? shellNameForHook(selectedHook)
   const activeLabel = selectedChoice?.label ?? target.label
+
+  // Only while the flow is open for this target: each reply is the label the
+  // flow's own texts already use, so the button and the flow can never
+  // disagree about which install is running.
+  useEffect(() => {
+    if (target.kind === 'host' && detected) onSelectedLabel?.(activeLabel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target.kind, detected, selectedHook, choices, activeLabel])
 
   const run = async (override?: string | null): Promise<void> => {
     const mine = ++attempt.current

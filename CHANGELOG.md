@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The first-run entry button follows the shell actually picked. 「記我的 Zsh
+  終端」named the detected shell, but the picker inside the flow can install a
+  different one, and after choosing Bash the button still advertised Zsh — the
+  one text left contradicting what the flow was doing. The selection now
+  replies up and the label follows it.
 - Density now changes what it says it changes. `--pad`, `--gap` and
   `--section-gap` were declared and read by nothing, so switching to tight
   shrank only the sidebar rows while the comment in `density.ts` claimed the

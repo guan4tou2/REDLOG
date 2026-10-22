@@ -346,6 +346,22 @@ describe('first run: record my terminal', () => {
     expect(second).not.toBe(first)
   })
 
+  it('follows the picker: after a manual bash choice the entry button no longer says Zsh', async () => {
+    // The button's label names the detected shell, but the choice the flow
+    // honours is the one the picker holds. When those differ the stale label
+    // was the only text left claiming the button records Zsh — everything in
+    // the flow itself (install, prerequisites, expected event shell) had
+    // already moved to the selection. The selection now replies up so the two
+    // can never disagree.
+    install({ pre: preflight() })
+    draw()
+    fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
+    await screen.findByTestId('record-terminal-adapters')
+    expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
+    fireEvent.click(screen.getByTestId('record-terminal-adapter-shell-bash'))
+    await waitFor(() => expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Bash 終端'))
+  })
+
   it('stops listening once verified', async () => {
     install()
     draw()

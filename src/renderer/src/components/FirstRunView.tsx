@@ -76,6 +76,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
   const [wsl, setWsl] = useState<WslDistro | null>(null)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
+  // Which shell the host flow last resolved to. Starts null (= the detected
+  // shell preflight named) and follows the picker inside the flow; the entry
+  // button reads it so its label matches the install actually running below.
+  const [hostShellLabel, setHostShellLabel] = useState<string | null>(null)
   const [httpVerified, setHttpVerified] = useState(false)
   const [preparing, setPreparing] = useState(true)
   const preparationRequested = useRef(false)
@@ -287,7 +291,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                       onClick={() => setRecording(hostTarget)}
                       data-testid="first-run-record-terminal"
                     >
-                      {preflight?.shell ? t('firstRun.recordMyTerminal', { shell: hostTarget.label }) : t('firstRun.record.chooseTerminal')}
+                      {preflight?.shell ? t('firstRun.recordMyTerminal', { shell: hostShellLabel ?? hostTarget.label }) : t('firstRun.record.chooseTerminal')}
                     </Button>
                   )}
                   {wslTarget && (
@@ -296,7 +300,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                     </Button>
                   )}
                 </div>
-                {recording && <RecordTerminalFlow key={recording.label} target={recording} onPrepare={openPreparation} />}
+                {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={openPreparation}
+                  onSelectedLabel={recording.kind === 'host' ? setHostShellLabel : undefined} />}
               </div>
             )}
           </section>
