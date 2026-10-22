@@ -5,6 +5,17 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Manual walk of all 11 views and all 12 settings pages with seeded data,
+  judged page by page instead of by scan. Two restatements found and removed:
+  the event-log band header repeated the view title (攻擊時間軸 twice on one
+  screen — the header keeps only what it uniquely has: the hidden count and
+  the row count), and the screenshots banner repeated the title's count
+  (截圖 (2) / 已載入 2 張截圖 — the title's `2+` already marks a partial
+  list, so the banner carried nothing in either state). Everything else went
+  back: each settings hint states a consequence or the fix path, the
+  bookmarks empty state carries the bookmark-vs-marker distinction (which is
+  a chain-of-custody fact, not decoration), and the completeness chips on
+  HTTP/transcript/loot stay because only they say whether older data exists.
 - The status-bar scope chip is now clickable, like its fault-counter
   neighbours. 「範圍 未設定」was a `<div>` the operator could read but not act
   on: no route from the warning to the lists that fix it. It now opens

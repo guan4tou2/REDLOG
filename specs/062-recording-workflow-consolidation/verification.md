@@ -732,3 +732,37 @@ Four axes, mechanically checked against the running app and the sources:
 - **HUD scale slider:** the value appeared twice (right-hand label +
   highlighted tick). The right-hand span is gone; tick labels and
   `aria-valuetext` stay.
+
+## Manual page-by-page redundancy walk (2026-10-23)
+
+Per the operator's instruction the audit switched from mechanical scans to a
+manual inspection: the app was driven with seeded data (6 shell command pairs,
+6 HTTP flows, 2 screenshots, a file artifact, 14 loot events, 3 markers) at
+1440×1000 and every view, every detail state, and all 12 settings pages were
+read one by one from screenshots, with the code behind each suspicion checked.
+
+Findings, both visual and confirmed in source:
+
+1. **Event-log band header repeated the view title.** The screen said
+   攻擊時間軸 in the toolbar (Timeline.tsx) and again on every divider row of
+   the log band below (TimelineEventLog). The band header now carries only the
+   hidden-count toggle and the row count, right-aligned; the region is named
+   once by the view title.
+2. **Screenshots banner duplicated the title count.** 截圖 (2) with the banner
+   已載入 2 張截圖 says the same thing twice; with more available the title
+   already becomes 截圖 (2+), so the banner (removed together with its
+   `screenshots.loaded` key) carried no state the title lacked.
+
+Checked and explicitly kept, page by page: timeline filter panel (quick chips
+plus custom range are complementary), the attribution-blind warning (a lost
+join is not an empty result), transcript toolbar (every control is distinct:
+counts, completeness, picker, type chips, selected-only, ordering, export),
+HTTP chips (method/status/host), targets rows, loot cards, bookmarks empty
+state (the bookmark-vs-marker / not-in-evidence-chain distinction is a
+custody fact), dashboard cards, and all 12 settings pages whose hints state
+consequences or fix paths (VPN regex list, IP-poll warning, trust-store
+instructions, air-gap update copy).
+
+Verified: typecheck, verify:i18n (129 removed strings unasserted), build,
+e2e/ui-closeout 14 passed, timeline/screenshot unit tests 54 passed, full
+suite same 16 baseline PTY-file failures (4059 passed).

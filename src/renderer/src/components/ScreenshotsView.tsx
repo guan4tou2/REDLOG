@@ -167,9 +167,6 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             ))}
           </div>
         )}
-        <p className="text-redlog-text-dim text-xs mb-2">
-          {t('screenshots.loaded', { count: screenshots.length })}
-        </p>
         <div className="grid grid-cols-3 gap-2">
           {screenshots.map((s) => (
             <div

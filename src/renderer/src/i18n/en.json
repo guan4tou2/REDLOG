@@ -88,7 +88,6 @@
   "screenshots.captureNow": "Capture Now",
   "screenshots.empty": "Screenshots will appear here when captured",
   "screenshots.diff": "{{pct}}% diff",
-  "screenshots.loaded": "{{count}} screenshots loaded",
   "screenshots.loadMore": "Load more",
   "screenshots.loading": "Loading...",
   "screenshots.deleted": "(file deleted)",
