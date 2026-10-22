@@ -52,4 +52,24 @@ describe('LootRulesGroup', () => {
     render(<LootRulesGroup config={base} setConfig={() => {}} t={t} />)
     await waitFor(() => expect(screen.getByTestId('loot-rules-failed')).toBeTruthy())
   })
+
+  // UIUX audit: a rule's id is an internal name (`ntlm_hash`), and what it
+  // matches lived only in a `title`. A keyboard cannot reach a tooltip and a
+  // screen reader does not read one, so the only text explaining the row was
+  // unavailable to exactly the people who needed it.
+  it('renders what a rule matches as text, not only as a tooltip', async () => {
+    render(<LootRulesGroup config={base} setConfig={() => {}} t={t} />)
+    await waitFor(() => expect(screen.getByTestId('loot-rule-desc-aws_key')).toBeTruthy())
+    expect(screen.getByTestId('loot-rule-desc-aws_key').textContent).toBe('AWS access key id')
+    // A rule the plugin did not describe shows no empty line.
+    expect(screen.queryByTestId('loot-rule-desc-acme-pack:acme-v2')).toBeNull()
+  })
+
+  it('gives each rule switch an accessible name that includes what it matches', async () => {
+    render(<LootRulesGroup config={base} setConfig={() => {}} t={t} />)
+    const input = (await screen.findByTestId('loot-rule-aws_key')) as HTMLInputElement
+    expect(input.getAttribute('aria-label')).toBe('aws_key — AWS access key id')
+    // Without a description the type is still a usable name.
+    expect((screen.getByTestId('loot-rule-acme-pack:acme-v2') as HTMLInputElement).getAttribute('aria-label')).toBe('acme_session')
+  })
 })

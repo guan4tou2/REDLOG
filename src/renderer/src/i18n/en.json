@@ -360,7 +360,7 @@
   "settings.displayZoneHint": "Every event time in the app is printed in this zone, and a UTC time ends in Z. Exports stay ISO 8601 with the offset.",
   "settings.agents": "AI Agents",
   "settings.agents.detected": "Transcript folder found",
-  "settings.agents.notDetected": "No transcript folder yet; start the AI tool, then reopen this project",
+  "settings.agents.notDetected": "No transcript folder yet",
   "settings.agents.emitThinking": "Include thinking blocks",
   "settings.agents.selfExclusionHint": "A `.redlog-app-root` file in a repo opts it out of tailing — commit one to keep RedLog out of that repo.",
   "settings.loading": "Loading...",
@@ -1702,5 +1702,6 @@
   "plugins.results.capture": "Capture sources: {{accepted}} accepted, {{rejected}} rejected",
   "settings.wsl.status.pass": "passed",
   "settings.wsl.status.fail": "failed",
-  "settings.wsl.status.warn": "warning"
+  "settings.wsl.status.warn": "warning",
+  "settings.agents.notDetectedHint": "Start the AI tool once; it creates the folder."
 }

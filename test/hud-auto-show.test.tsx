@@ -32,4 +32,19 @@ describe('HUD auto-show setting', () => {
     draw({ autoShow: false })
     expect((screen.getByTestId('settings-overlay-autoshow') as HTMLInputElement).checked).toBe(false)
   })
+
+  // UIUX audit: the label above the slider was a `<label>` with no `for`, so
+  // the range input had no accessible name at all — a screen reader announced
+  // "slider" and nothing else. The value text beside it is not a name: it
+  // changes as the slider moves.
+  it('names the text-size slider, and reports the chosen step as its value', () => {
+    draw({})
+    const slider = screen.getByRole('slider') as HTMLInputElement
+    expect(slider.getAttribute('aria-label')).toBe('settings.overlayScale')
+    expect(slider.getAttribute('aria-valuetext')).toBeTruthy()
+    // The visible label is associated too, so a click on it focuses the slider.
+    const label = document.querySelector('label[for="hud-scale"]')
+    expect(label?.textContent).toBe('settings.overlayScale')
+    expect(slider.id).toBe('hud-scale')
+  })
 })

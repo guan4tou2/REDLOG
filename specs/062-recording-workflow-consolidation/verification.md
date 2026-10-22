@@ -341,3 +341,52 @@ outside the view root and outside every view's scroll container.
   assertion here is DOM measurement, not a screenshot, for that reason.
 - typecheck, architecture, i18n assertion and Spec Kit gates and build passed.
   Not claimed: Windows/Linux DPI, or the T008–T013 platform matrix.
+
+## T033: UIUX audit — copy and accessibility (2026-10-22)
+
+Method: launched the built app with a synthetic HOME, walked all 11 views and
+all 12 Settings pages at 1440×1000, and ran an accessible-name sweep over every
+visible interactive element (button, link, input, select, textarea,
+role=button, tabbable) on each screen.
+
+### What the sweep found
+
+- **One unnamed control in the whole app:** the HUD text-size slider. Its
+  visible label was a `<label>` with no `for`, so a screen reader announced
+  "slider" and nothing else. Fixed with `htmlFor`/`id` plus `aria-label` and
+  `aria-valuetext` (the step name, which changes as it moves and so cannot be
+  the name).
+- **Loot rules explained only by a tooltip.** The row showed an internal id
+  (`ntlm_hash`, `private_key`) and put what it matches in `title`. A keyboard
+  cannot reach a tooltip and a screen reader does not read one — the only text
+  explaining the row was unavailable to the people who need it. The description
+  is now visible text and part of each switch's accessible name.
+- **An uninstalled AI integration gave advice that cannot work.** With the
+  integration not installed and the transcript folder absent, the row said
+  "start the AI tool, then reopen this project" — following it records nothing,
+  and nothing on screen said why. The folder is a fact about the AI tool;
+  whether it can be read is a fact about the integration. The "start the tool"
+  step now appears only on a row that can actually read the folder.
+
+### What the audit deliberately kept
+
+Copy that carries a fact the control cannot: the clipboard scope warning, the
+SYN-scan blind spot, `0 = keep everything` on retention budgets, the unsigned
+build's manual-update instructions, the bookmark-is-not-evidence explanation,
+the chain-anchor description, and the plugin consent dialog. These are
+security, evidence or platform facts, not restatements.
+
+### Verification
+
+- `test/hud-auto-show.test.tsx` +1: the slider has a name, a value text and a
+  label associated by `for`.
+- `test/loot-rules-group.test.tsx` +2: descriptions render as text, and each
+  switch's accessible name includes them (with the bare type when a plugin
+  supplies none).
+- `test/agent-sources-panel.test.tsx` +2: the start-the-tool step is absent on
+  an uninstalled row and present on an installed one.
+- 19 Electron tests still pass (ui-closeout, capture-settings,
+  official-agent-capture). typecheck, architecture, i18n assertion, Spec Kit
+  gates and build passed.
+- The sweep is a point-in-time check, not a gate: it lives in this record, not
+  in CI. Converge: T033 complete.

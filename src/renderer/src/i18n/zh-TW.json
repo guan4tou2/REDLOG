@@ -360,7 +360,7 @@
   "settings.displayZoneHint": "App 裡所有事件時間都以此時區顯示，UTC 時間結尾標示 Z。匯出一律是含時差的 ISO 8601。",
   "settings.agents": "AI 代理",
   "settings.agents.detected": "已找到對話紀錄目錄",
-  "settings.agents.notDetected": "尚無對話紀錄目錄；先啟動 AI 工具，再重新開啟此專案",
+  "settings.agents.notDetected": "尚無對話紀錄目錄",
   "settings.agents.emitThinking": "包含 thinking blocks",
   "settings.agents.selfExclusionHint": "在 repo 放 `.redlog-app-root` 可排除 tailing；commit 它就能避免 RedLog 監聽該 repo。",
   "settings.loading": "載入中...",
@@ -1702,5 +1702,6 @@
   "plugins.results.capture": "擷取來源：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "settings.wsl.status.pass": "通過",
   "settings.wsl.status.fail": "失敗",
-  "settings.wsl.status.warn": "警告"
+  "settings.wsl.status.warn": "警告",
+  "settings.agents.notDetectedHint": "先啟動一次 AI 工具，它會建立這個目錄。"
 }

@@ -81,3 +81,9 @@ T031 is a bounded correctness fix for #433. It does not touch #327 (cold-start t
 - [x] T032 [US2] Close the remaining small-window defects on macOS: the transcript toolbar clipped its kind filters and order/copy buttons at 800×600, and the status bar's HUD toggle fell outside the bar at 800×600 @200%. Measure every view and the status bar against `documentElement.clientWidth` (the only space shared with `getBoundingClientRect`), at 1280×800 and 800×600 across 100/150/200% zoom.
 
 T032 is the Mac-verifiable remainder of #298. Windows/Linux DPI and the full-platform matrix (T008–T013) stay open.
+
+## UIUX audit — copy and accessibility
+
+- [x] T033 [US2] Audit every view and every Settings page in the running app for redundant copy, unnamed controls and misleading states. Fix what the audit found: a slider with no accessible name, loot rules whose only explanation was an unreachable tooltip, and an uninstalled AI integration telling the operator to start the AI tool as if that would record something.
+
+T033 is a bounded audit pass. It does not redesign layout or add features.

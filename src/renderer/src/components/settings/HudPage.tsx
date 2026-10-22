@@ -51,7 +51,7 @@ export default function HudPage({
         </label>
 
         <div className="mt-3">
-          <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
+          <label htmlFor="hud-scale" className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
           {(() => {
             const stops = [
               { v: 0.75, k: 'settings.overlayScale.xs' },
@@ -72,6 +72,7 @@ export default function HudPage({
               <div>
                 <div className="flex items-center gap-3">
                   <input
+                    id="hud-scale"
                     type="range"
                     min={stops[0].v}
                     max={stops[stops.length - 1].v}
@@ -83,6 +84,12 @@ export default function HudPage({
                     }}
                     className="accent-red-600 flex-1"
                     list="hud-scale-stops"
+                    // The label above is a `<label>` with no `for`, so this
+                    // slider had no accessible name at all: a screen reader
+                    // announced "slider" and nothing else. The value text beside
+                    // it is not the name — it changes with the slider.
+                    aria-label={t('settings.overlayScale')}
+                    aria-valuetext={t(nearest.k)}
                   />
                   <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
                 </div>

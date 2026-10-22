@@ -170,4 +170,30 @@ describe('AI optional installation settings', () => {
     await waitFor(() => expect(shown).toHaveLength(1))
     expect(remove).not.toHaveBeenCalled()
   })
+
+  // UIUX audit: with the integration not installed, the row still said "start
+  // the AI tool, then reopen this project" when the transcript folder was
+  // missing — advice that records nothing, with no way to tell why. The folder
+  // is a fact about the AI tool; whether it can be read is a fact about the
+  // integration, and only the installed row has anything to do with it.
+  it('does not tell an uninstalled integration to start the AI tool', async () => {
+    catalog.mockResolvedValue([uninstalled])
+    window.redlog.agents.sources = async () => [
+      { id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: false }
+    ]
+    render(<Harness />)
+    const card = await screen.findByTestId('agent-source-codex')
+    expect(card.textContent).toContain('settings.agents.notDetected')
+    expect(card.textContent).not.toContain('settings.agents.notDetectedHint')
+  })
+
+  it('offers the start-the-tool step once the integration is installed', async () => {
+    catalog.mockResolvedValue([installed])
+    window.redlog.agents.sources = async () => [
+      { id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: false }
+    ]
+    render(<Harness />)
+    const card = await screen.findByTestId('agent-source-codex')
+    expect(card.textContent).toContain('settings.agents.notDetectedHint')
+  })
 })

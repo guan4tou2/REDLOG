@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- UIUX audit fixes: the HUD text-size slider has an accessible name and reports
+  its step as its value (it had none); loot rules show what they match as text
+  instead of only in a tooltip a keyboard cannot reach; and an AI integration
+  that is not installed no longer tells the operator to "start the AI tool,
+  then reopen this project" — advice that records nothing. That step now
+  appears only on a row that can read the transcript folder.
 - The transcript toolbar wraps instead of clipping its kind filters and its
   order/copy buttons, which ran off the right edge at 800×600. Narrow, the
   status bar keeps its IP-safety and scope dots and moves the words to

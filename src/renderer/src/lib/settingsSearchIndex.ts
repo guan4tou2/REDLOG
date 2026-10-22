@@ -98,6 +98,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.agents.removeKeeps',
     'settings.agents.installCapture',
     'settings.agents.removeCapture',
+    'settings.agents.notDetectedHint',
     'settings.agents.pluginDisabled',
     'settings.openPlugins',
     'settings.agents.projectWork',

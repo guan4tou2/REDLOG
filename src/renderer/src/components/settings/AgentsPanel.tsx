@@ -100,7 +100,19 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, on
       {t(item.state === 'installed' ? 'settings.agents.installedHere' : 'settings.agents.notInstalled')}
       {item.state === 'installed' && <> · {t(projectRecording ? 'settings.agents.recordingForProject' : 'settings.agents.notRecordingForProject')}</>}
     </p>
-    {source && <p className="text-xs break-all text-redlog-text-faint">{t(source.detected ? 'settings.agents.detected' : 'settings.agents.notDetected')} · {source.root}</p>}
+    {/* Transcript folder. This line used to say "start the AI tool, then
+        reopen this project" whenever the folder was missing — including when
+        the integration was not installed at all, where following that advice
+        records nothing and there is no way to tell why. The folder is a fact
+        about the AI tool; whether it can be read is a fact about the
+        integration. Only the installed row has anything to do with it, and
+        only there is the advice actionable. */}
+    {source && (
+      <p className="text-xs break-all text-redlog-text-faint">
+        {t(source.detected ? 'settings.agents.detected' : 'settings.agents.notDetected')} · {source.root}
+        {!source.detected && item.state === 'installed' && <> — {t('settings.agents.notDetectedHint')}</>}
+      </p>
+    )}
     {/* What it last delivered. The health card says this for the whole
         capture; here it is the source's own row, so the operator does not have
         to leave the page to find out whether anything is arriving. */}
