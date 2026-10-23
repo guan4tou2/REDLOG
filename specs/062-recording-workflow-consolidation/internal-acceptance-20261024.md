@@ -116,3 +116,51 @@ These certify that preceding revision; final toast-repair workflows must be
 recorded separately. An attempted local download of the superseded Linux
 artifact stalled and was stopped; workflow success is not a local-file/hash
 verification of an installer that was not downloaded.
+
+
+## Installed follow-up and native layout completion
+
+The 95a0acb1 installed 24-case run was **21 passed, 1 failed, 2 not run**;
+it did not pass the strict gate. Unlike the earlier slower run, two JSON
+exports happened within the same second. The second overwrote the existing
+writable file, which a 0555 directory does not prevent. Four deterministic IPC
+regressions (JSON/NDJSON/HAR/Timeline) reproduced identical destination paths;
+exclusive file creation and suffixes now preserve the first artifact/manifest.
+The preceding candidate is marked failed, not handed out as accepted.
+
+95a0acb1 native installer workflows themselves passed:
+[Windows NSIS](https://github.com/guan4tou2/REDLOG/actions/runs/40006664337),
+[Linux DEB](https://github.com/guan4tou2/REDLOG/actions/runs/40006668304).
+They did not select the failing export-permission case and do not override it.
+
+After the user unlocked the desktop, native installed-app inspection completed
+on isolated HOME/profile with a newly created Layout-Narrow-20261024 project.
+A real enrolled Zsh canary changed terminal proof to verified while HTTPS
+remained unverified. At the OS quarter-screen size (1750×1096 capture pixels,
+roughly 875×548 points), setup stacked terminal → recent evidence → HTTPS;
+Start work stayed in the header. Page Down exposed all HTTPS setup controls,
+the timeout explanation and fallback sources without horizontal clipping.
+The OS Fill layout restored two columns, recent evidence beneath terminal and
+Start work at the top. Settings shell rows stacked with reachable actions;
+the plugin empty-state textarea fit its pane; export cancel/confirm stayed
+within the small window. Escape returned to settings. This supersedes only the
+earlier unreliable narrow capture, not the open global-shortcut/update gates.
+Native captures are local at /private/tmp/redlog-internal-20261024/:
+native-settings-narrow.png, native-setup-narrow-bottom.png, native-setup-wide.png.
+Some CUA screenshot/scroll attempts returned noWindowsAvailable; keyboard
+scrolling plus successful native screenshots established the observed states.
+
+Removed seven duplicate regex assertions from timeline-geometry-units;
+remaining width integration guards are timeline-track-wiring. Behavior remains
+covered by timeline-geometry, timeline-time-map and timeline-presentation.
+The former title-bar dropdown ancestry check now tests the current fixed
+export dialog's viewport bounds and unobstructed confirm hit target. Platform
+skip documentation matches the actual POSIX installer tests; no required
+producer, permissions, evidence-integrity or native-platform case was deleted.
+
+Collision/test cleanup verification: typecheck, specs, architecture, i18n and
+build passed. Full native-permission Vitest: **4,164 passed, 28 explicit skips**
+(116.16 seconds). Existing four source journey files: **37 passed** (57.6 seconds),
+including all-view 100–200% zoom controls, 800×600 scope, 1600/800 setup,
+plugin width and all six real export cases. The interrupted sandboxed unit
+attempt is not counted. Replacement installed candidate remains a separate gate.

@@ -1039,3 +1039,26 @@ Final push gates passed in order, including 4,167 unit cases / 28 explicit skips
 The dated internal record separates original/updated DMGs, native x64 CI
 revisions and final-package checks; no physical ENOSPC, Windows ACL, WSL,
 Gatekeeper, global HUD-key or actual update acceptance is inferred from this.
+
+## Test consolidation, native layout and export collisions / T062（2026-10-24）
+
+Removed seven duplicate source-expression checks; retained the three width
+integration checks under timeline-track-wiring and the behavior-owning suites.
+The export E2E now measures the current fixed dialog's bounds and unobstructed
+confirm target, replacing a stale dropdown clipping assumption. Updated test
+entrypoints/platform prerequisites without deleting producer/integrity cases.
+
+Native installed 95a0acb1 checks now cover small and wide partial setup, actual
+external Zsh proof, timeout content scrolling, shell settings, plugin empty
+state and small export actions. See the dated record for captured states and
+the distinction from unresolved HUD-global/update/platform gates.
+
+The installed write-refusal failure exposed same-second file overwrite.
+Four deterministic JSON/NDJSON/HAR/Timeline IPC cases failed before exclusive
+creation/suffixes and passed after, preserving both prior files and manifests.
+Full gates/build passed: **4,164 unit passed / 28 explicit skips**, then **37/37
+source UI journeys passed**, including all-view controls at 100–200% zoom,
+800×600, first-run 1600/800 geometry, settings and real export recovery.
+The first sandboxed unit attempt produced no completed result and was stopped;
+the normal-permission full run is the reported 116.16-second result.
+Replacement installed-package acceptance is recorded separately when complete.

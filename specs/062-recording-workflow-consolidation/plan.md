@@ -166,3 +166,20 @@ persistent toasts above the export dialog, intercepting its action button.
 Keep non-modal notifications below modal backdrops; preserve their queue,
 announcements, dismiss/reveal actions and persistence. No force clicks, reduced
 error duration, new controls, capture policy or export selection changes.
+
+### Test consolidation and collision safety — T062 (2026-10-24)
+
+Keep existing behavioral zoom/time-map tests and the presentation journey;
+remove their seven duplicate source regex checks and name the remaining three
+width wiring guards honestly. Replace the defunct export dropdown-ancestor
+check with dialog viewport and pointer hit-target measurements. Native small
+and wide windows supplement layout geometry; neither static strings nor CDP
+clicks alone prove usability.
+
+The installed EACCES case exposed same-second overwrite, not an unreliable
+permission expectation. Reuse one local exclusive-write function in the current
+export IPC module for JSON, NDJSON, HAR and slices. Retain the readable timestamp
+and add numeric suffixes on collision, preserving previous artifacts/manifests.
+Do not change ExportPlan selection, destination approval or source evidence.
+Four fixed-time IPC regressions fail before the fix. Re-run real installed
+recovery before accepting a replacement candidate.

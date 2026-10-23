@@ -72,11 +72,23 @@ A green local run is not full coverage. These are skipped by platform:
 |---|---|---|
 | `external-session.spec.ts` | POSIX | the PTY launcher is POSIX-only |
 | `managed-http-capture.spec.ts` | POSIX | its mitmdump stand-in is a `#!/bin/sh` script |
-| `packaged-session-smoke.spec.ts` | macOS **and** `REDLOG_PACKAGED_APP` set | needs a freshly built `.app`; CI is ubuntu, so this one only ever runs by hand |
-| `hud-overlay.spec.ts` (one case) | never | a filed clipping bug at HUD scale 1.5, skipped with its reason in the test |
+| `packaged-session-smoke.spec.ts`, `packaged-command-integrity.spec.ts` | POSIX, Zsh and `REDLOG_PACKAGED_APP` | actual installed package; Linux install CI and macOS acceptance exercise them |
+| `packaged-nc-upgrade.spec.ts` | Linux and `REDLOG_PACKAGED_APP` | traditional netcat and real PTY job control |
+| `packaged-dependency-install.spec.ts` | macOS, installed package and `REDLOG_PACKAGED_INSTALL_DEPS=1` | explicitly downloads and installs public dependencies |
+| `export-preview.spec.ts` (write-permission case) | POSIX | real directory permissions; Windows ACL acceptance is separate |
 
-On Windows, expect the first three to report as skipped. If you are changing
-anything they cover, run them on Linux or macOS before trusting the result.
+HUD geometry has no permanently skipped case. Platform skips are prerequisites,
+not successful acceptance; use the appropriate installed OS before trusting a
+change to these paths.
+
+## Layout verification
+
+Use `first-run` for partial setup at wide/narrow sizes, `ui-closeout` and
+`capture-settings-interaction` for settings, `export-preview` for dialog bounds,
+keyboard focus and unobstructed actions, and `hud-overlay` for the floating bar.
+Pure time-map/zoom tests own the math; source wiring checks do not prove layout.
+Also resize the native app and inspect wrapping, scrolling and primary actions:
+CDP clicks and jsdom cannot establish native hit testing or visual quality.
 
 ## CI
 

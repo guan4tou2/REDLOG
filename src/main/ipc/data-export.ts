@@ -35,16 +35,28 @@ import { scrubOperatorPii } from '../../core/operator-pii'
 import { exportableConfig } from '../../core/export-config'
 import { defaultExportDir, resolveExportDestination } from '../../core/export-destination'
 
+function writeExportFile(outDir: string, name: string, extension: string, content: string): string {
+  fs.mkdirSync(outDir, { recursive: true })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  for (let suffix = 1; ; suffix++) {
+    const filePath = path.join(outDir, `${name}-${timestamp}${suffix === 1 ? '' : `-${suffix}`}.${extension}`)
+    if (fs.existsSync(`${filePath}.manifest.json`)) continue
+    try {
+      // Never truncate a previous delivery, even when the directory is read-only.
+      fs.writeFileSync(filePath, content, { flag: 'wx' })
+      return filePath
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
+}
+
 function sliceExport(ctx: IpcContext, name: string, payload: unknown, scrubPii = false, outDir?: string): string | null {
   const project = ctx.getActiveProject()
   if (!project) return null
   outDir ??= defaultExportDir(getProjectPath(project))
-  fs.mkdirSync(outDir, { recursive: true })
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const filePath = path.join(outDir, `redlog-${name}-${ts}.json`)
   const content = JSON.stringify(payload, null, 2)
-  fs.writeFileSync(filePath, scrubPii ? scrubOperatorPii(content) : content)
-  return filePath
+  return writeExportFile(outDir, `redlog-${name}`, 'json', scrubPii ? scrubOperatorPii(content) : content)
 }
 
 function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: ExportPlanRegistry): ExportPlan {
@@ -247,19 +259,15 @@ export function registerDataExportIpc(
         const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: plan.snapshot }), planRedaction)
           .filter((event) => selectedIds.has(event.id))
         const outDir = destination.dir
-        fs.mkdirSync(outDir, { recursive: true })
-        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
         let content = JSON.stringify({ config: exportableConfig(config), events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
         if (plan.request.scrubPii) content = scrubOperatorPii(content)
-        fs.writeFileSync(artifactPath, content)
+        artifactPath = writeExportFile(outDir, 'redlog', 'json', content)
       } else if (plan.request.format === 'ndjson') {
         const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
         const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
         const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
         const outDir = destination.dir
-        fs.mkdirSync(outDir, { recursive: true })
-        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.ndjson`)
-        fs.writeFileSync(artifactPath, content)
+        artifactPath = writeExportFile(outDir, 'redlog', 'ndjson', content)
       } else if (plan.request.format === 'bundle') {
         const cfg = loadConfig(getProjectPath(project))
         const result = exportBundle(cfg.engagement.id, {
@@ -283,9 +291,7 @@ export function registerDataExportIpc(
           doNotExportIds: new Set()
         })
         const outDir = destination.dir
-        fs.mkdirSync(outDir, { recursive: true })
-        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.har`)
-        fs.writeFileSync(artifactPath, content)
+        artifactPath = writeExportFile(outDir, 'redlog', 'har', content)
       } else if (plan.request.format === 'timeline') {
         const subset = plan.request.subset
         const events = available
@@ -312,7 +318,7 @@ export function registerDataExportIpc(
           actualCounts: plan.counts,
           artifactPath: path.basename(artifactPath),
           completedAt: new Date().toISOString()
-        }, null, 2))
+        }, null, 2), { flag: 'wx' })
       }
       return { ok: true as const, planId: plan.id, fingerprint: plan.fingerprint, artifactPath, counts: plan.counts, warnings: [] }
     } catch (error) {

@@ -3,6 +3,11 @@
 Run this after the unit, typecheck and production-build gates. It verifies the
 artifact an operator installs, rather than the source checkout.
 
+The [2026-10-24 internal acceptance record](../specs/062-recording-workflow-consolidation/internal-acceptance-20261024.md)
+separates each candidate revision, failures, native layout checks and platform
+CI results. A green installer workflow does not override a failed supplementary
+export journey or certify Gatekeeper, WSL, physical disk-full or actual updates.
+
 | Platform | Package | Required smoke |
 | --- | --- | --- |
 | macOS arm64 | `.app`, DMG/ZIP | Launch with a clean HOME; confirm the API port/token are created with `0600`; confirm health says no project is open; create a project and install the zsh or bash adapter. |

@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Repeated JSON, NDJSON, HAR and Timeline exports in the same second now keep
+  separate files and manifests instead of overwriting earlier deliveries.
+  Removed seven redundant source-expression tests and updated layout checks
+  and platform prerequisites to match the current UI and installers.
+
 - Non-modal notifications no longer cover dialog actions in compact windows.
   Export failure/retry and missing approved-attachment recovery are exercised
   with real isolated filesystem failures; errors retain their existing lifetime.

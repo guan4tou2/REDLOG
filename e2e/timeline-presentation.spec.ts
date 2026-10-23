@@ -3,10 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
-// v0.11.6: AUDIT V7 (idle-gap compression) and V9 (keyboard/screen-reader
-// reachable event dots). V8 and V13 are geometry properties covered by
-// test/timeline-geometry-units.test.ts — they need a wide window and a dense
-// burst respectively, neither of which an E2E can stage cheaply.
+// Real idle-gap compression and keyboard access. Pure zoom/time-map behavior
+// lives in test/timeline-geometry.test.ts and test/timeline-time-map.test.ts.
 
 let app: ElectronApplication
 let page: Page
