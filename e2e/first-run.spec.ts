@@ -238,7 +238,7 @@ test.describe.serial('the first run', () => {
     expect(await page.locator('[data-testid="first-run-strip"]').count()).toBe(0)
   })
 
-  test('the dashboard capture button opens Settings ▸ capture sources, not the first-run guide, and loses no evidence', async () => {
+  test('the dashboard capture button opens terminal source settings and loses no evidence', async () => {
     // The guide is for the first connection. Looking at, changing or repairing a
     // source later goes to Settings, where each source lives.
     await post('shell', { subtype: 'command_start', command: 'setup-reopen-evidence' })
@@ -253,8 +253,8 @@ test.describe.serial('the first run', () => {
     await page.keyboard.press('Enter')
     // Below the sidebar breakpoint the page list is a <select>.
     const select = page.getByTestId('settings-page-select')
-    if (await select.count()) await expect(select).toHaveValue('captureControl')
-    else await expect(page.locator('[data-settings-page="captureControl"][aria-current="page"]')).toBeVisible()
+    if (await select.count()) await expect(select).toHaveValue('hooks')
+    else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toHaveCount(0)
     await openView(page, 'dashboard')
     await expect(page.getByTestId('first-run-strip')).toHaveCount(0)

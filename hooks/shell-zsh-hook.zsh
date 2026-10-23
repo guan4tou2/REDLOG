@@ -181,9 +181,12 @@ redlog() {
       ;;
     start)
       _redlog_state --action start >/dev/null
-      _redlog_send_event "capture_resumed" "redlog start" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
-      print -- "[redlog] recording in this terminal"
+      if _redlog_is_recording; then
+        _redlog_send_event "capture_resumed" "redlog start" \
+          "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+      fi
+      _redlog_state --action show --format human
+      print
       ;;
     mode)
       case "${1:-}" in
@@ -438,7 +441,11 @@ _redlog_warn_unreachable() {
   # The text of each command is still kept for replay (#315) — `_redlog_send_event`
   # spools it with nowhere to send it — but not what it printed, which only a
   # live relay can hold. Saying "unrecorded" would be the other way to mislead.
-  print -u2 -- "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not"
+  if [[ ! -s "$(_redlog_identity_file)" ]]; then
+    print -u2 -- "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved"
+  else
+    print -u2 -- "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not"
+  fi
 }
 
 _redlog_precmd() {
@@ -542,4 +549,4 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
 _redlog_install_pty_wrappers
-_redlog_announce_shell "commands and their output"
+_redlog_announce_shell

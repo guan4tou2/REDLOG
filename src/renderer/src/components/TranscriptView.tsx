@@ -631,7 +631,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('transcript.filter')}
-          className="ml-2 min-w-0 flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
+          className="min-w-[min(12rem,100%)] flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
         />
         <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         <div className="flex gap-1">

@@ -52,6 +52,11 @@ afterEach(() => {
 })
 
 describe('manifest validation', () => {
+  it('rejects unsupported capture platform names', () => {
+    expect(validateManifest({ id: 'pcap-test', name: 'test', version: '1.0.0', redlogApi: 1,
+      contributes: { capture: [{ platforms: ['macOS'] }] } }, tmp)).toMatchObject({ ok: false })
+  })
+
   it('rejects bad id, path traversal, unknown capability', () => {
     const dir = tmp
     expect(validateManifest({ id: 'Bad Id', name: 'x', version: '1.0.0', redlogApi: 1, contributes: {} }, dir).ok).toBe(false)

@@ -7,7 +7,7 @@ import path from 'node:path'
 // An rc that sources the hook twice (relative and absolute path to the same
 // file) must not announce twice, and a child shell must still load it.
 const have = (exe: string): boolean => spawnSync(exe, ['-c', 'exit 0'], { stdio: 'ignore' }).status === 0
-const banners = (s: string): number => (s.match(/shell hook active/g) ?? []).length
+const banners = (s: string): number => (s.match(/shell hook loaded/g) ?? []).length
 
 function run(exe: 'bash' | 'zsh', hook: string, body: string) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-dbl-'))

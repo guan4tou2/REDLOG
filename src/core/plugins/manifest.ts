@@ -96,6 +96,12 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
 
   const contributes = m.contributes as PluginContributes
+  for (const cap of contributes.capture ?? []) {
+    if (cap.platforms !== undefined && (!Array.isArray(cap.platforms) || cap.platforms.length === 0
+      || cap.platforms.some(p => !['darwin', 'linux', 'win32'].includes(p)))) {
+      return { ok: false, error: 'capture platforms must name darwin, linux or win32' }
+    }
+  }
   // Capabilities must be from the known set.
   let capabilities: Capability[] | undefined
   if (m.capabilities !== undefined) {

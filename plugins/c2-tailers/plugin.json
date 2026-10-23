@@ -25,6 +25,10 @@
             "label": "Point the tailer at your Sliver JSON log (adjust the path)",
             "command": "\"{hookFile}\" ~/.sliver/logs/sliver.json"
           }
+        ],
+        "platforms": [
+          "darwin",
+          "linux"
         ]
       },
       {
@@ -46,6 +50,10 @@
             "label": "Have your framework append RedLog-C2 JSONL to a file, then follow it",
             "command": "\"{hookFile}\" /path/to/c2-events.jsonl"
           }
+        ],
+        "platforms": [
+          "darwin",
+          "linux"
         ]
       }
     ]

@@ -86,7 +86,7 @@ function AttachmentList({ rows, onToggle, busy, t }: {
   return (
     <div data-testid="export-attachments" className="px-3 py-1 border-t border-redlog-border mt-1 text-xs">
       <p className="text-redlog-text-dim mb-1">{t('export.attachments.title')}</p>
-      <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>
+      {rows.some(a => a.kind === 'cast' && a.status === 'included') && <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>}
       <ul className="max-h-48 overflow-auto space-y-0.5">
         {rows.map((a) => {
           const selectable = a.status === 'included' || a.status === 'excluded-by-operator'
@@ -424,11 +424,11 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     {(
                       <div className="px-3 pb-2 mb-1 border-b border-redlog-border text-xs space-y-1">
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.format')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.format')}</span>
                           <span className="font-mono text-redlog-text">{resolvedPlan.request.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.subset')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.subset')}</span>
                           {/* The actual boundary, not just "bounded": an
                               operator checking a delivery needs the dates and
                               the target they are about to hand over. */}
@@ -452,7 +452,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           </span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.policy')}</span>
                           <span data-testid="export-preview-policy" className="text-right text-redlog-text">
                             {[
                               !resolvedPlan.request.maskOutOfScope
@@ -464,7 +464,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           </span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.scope')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.scope')}</span>
                           <span data-testid="export-preview-scope" className="text-right text-redlog-text">
                             {(resolvedPlan.scopeSnapshot?.targets ?? []).length === 0
                               ? t('export.preview.scopeNone')
@@ -515,12 +515,12 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         referenced, or some could not be attached. */}
                     {!resolvedPlan.capabilities.attachments ? (
                       <div data-testid="export-preview-no-attachments" className="flex justify-between text-xs px-3 py-0.5">
-                        <span className="text-redlog-text-dim">{t('export.preview.bodyRefs')}</span>
+                        <span className="text-redlog-text-dim">{t('export.preview.attachments')}</span>
                         <span className="text-redlog-text-faint">{t('export.preview.attachmentsUnsupported')}</span>
                       </div>
                     ) : (
                       <>
-                        <PreviewRow label={t('export.preview.bodyRefs')} value={resolvedPlan.counts.attachmentsIncluded} />
+                        <PreviewRow label={t('export.preview.attachments')} value={resolvedPlan.counts.attachmentsIncluded} />
                         <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
                         <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
                         <PreviewRow label={t('export.preview.attachmentsExcludedByOperator')} value={resolvedPlan.counts.attachmentsExcludedByOperator ?? 0} />

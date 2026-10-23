@@ -403,10 +403,10 @@ export default function App(): JSX.Element {
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {view === 'search' && <SearchPanel onOpenInTimeline={openInTimeline} />}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} /></Suspense>}
+            {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}
             {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>

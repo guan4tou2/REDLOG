@@ -2,6 +2,34 @@
 
 Overall status remains Draft. Existing bounded Mac acceptance and three prior fixes: see mac-acceptance-20261021.md and fix-verification.md. This record covers the US6 and US5 implementation slices, not a claim that all stories or platforms passed.
 
+## Native layout review / T040–T041（2026-10-23）
+
+See [manual-layout-20261023.md](manual-layout-20261023.md) for the page inventory, native window sizes, remaining recommendations and explicit coverage limits. Responsive source cards, expandable terminal policy details and a usable Transcript query width were implemented and manually checked in an isolated macOS source build. Related tests: 42 passed; typecheck, build, Spec Kit, architecture, i18n and diff checks passed. No packaged or cross-platform acceptance claim; T008–T013 remain open.
+
+## Layout follow-up / T042–T045（2026-10-23）
+
+The seven findings in manual-layout-20261023.md are implemented. Native Mac checks covered single-pane empty bookmark/create/cancel, scope→settings and HTTP→settings, HUD Increment and actual Right-key size changes, compact numbers, wide/narrow AI/VPN lists and reaching the last integrity anchor. Related tests: 9 files / 69 passed, then the HTTP file / 5 passed after adding its failure-state case (70 distinct cases total). Typecheck, final build, Spec Kit, architecture, i18n and diff checks passed. This does not close the untested populated/error/platform matrix or T008–T013.
+
+## Populated detail follow-up / T046（2026-10-23）
+
+Native Mac / ~875×548: 6 long bookmarks, 4 synthetic HTTP exchanges through the isolated API; bookmark detail/edit/cancel, request/response inline bodies, long headers and both dock positions. Fixed long bookmark wrapping, opaque sticky HTTP controls, and a preview-only paired renderer that hid recorded full bodies. One shared half renderer now handles both tabs. Optional Codex integration installed only in temporary HOME, directory selection remained opt-in, then integration removed without enabling recording. No real AI transcripts read.
+
+Two meaningful new HTTP cases first failed (2 failed / 8 passed); final focused 5 files / 40 passed includes paired full inline body, truncation, sidecar load and pair-query error/retry. Typecheck, final build, Spec Kit, architecture, i18n and diff checks passed. The desktop locked before the extra 2xx filter click; do not count it as native acceptance. Sidecar/error behavior is unit-verified only. See manual-layout-20261023.md for fixture and process-cleanup details. Cross-platform/install acceptance remains open.
+
+## HTTP journey completion / T047（2026-10-23）
+
+The previously lock-interrupted native 2xx check is now complete. It exposed All clearing only method while leaving status active; fixed local method/status/host reset and pressed state, retaining URL text and shared filters. New case RED: 1 failed / 5 passed; GREEN: two HTTP files / 17 passed. Native Mac confirmed 2xx→one 200 flow, All→four flows, next detail 500→404 and close→four-row list. Typecheck, build, Spec Kit, architecture, i18n and diff checks passed. Isolated App/proxy exited normally through GUI. This closes that specific lock gap, not T008–T013 or cross-platform acceptance.
+
+## Manual search/bookmark/export continuation / T048（2026-10-23）
+
+Native Mac at ~875×548 and ~1750×1100: no-match search→results; no-match bookmarks→six rows; bookmark next/close; bundle cast untick/recount, Space retoggle with focus preserved, Tab to Cancel, cancellation/reset; JSON capability display; export→scope settings; Escape restores trigger focus. No export file was created. Found three open copy defects: attachments mislabeled HTTP bodies, JSON receiving attachment-only instructions/warnings, and raw boolean filter summaries. They are recorded as T049, not fixed or passed; see manual-layout-20261023.md. No new product code or automated suite run in this slice. Prior code-check results remain historical, not proof of these new findings being resolved.
+
+## First-run and navigation review / T050（2026-10-23）
+
+Created a fresh synthetic project via native UI at ~1750×1100, then resized to ~875×548. External Zsh setup installed only into the isolated HOME; did not run its canary or touch the operator profile. Defer remained recoverable by returning to Dashboard before evidence arrived. Retention-field search successfully scrolled/highlighted its target; CA search exposed inapplicable WSL/status templates and an unresolvable `{{path}}` target. Native built-in printf displayed stdout/stderr. After terminal evidence arrived, Dashboard replaced onboarding and showed an all-good/listening HTTP verdict without the promised unverified HTTPS reminder; readonly DB inspection found no logged rows. Health setup navigated to existing settings, but landed on the advanced captureControl page. Windows-only tshark instructions were visibly offered on Mac. Full reproduction, minimal recommendations and source pointers are in manual-layout-20261023.md; T051–T054 are open, as is T049.
+
+No product-code edits, new UI automation, real HTTPS/CA verification or artifact export in this slice. Normal Quit/Stop action was followed by a native observation timeout; process session nevertheless exited 0. Restored Node SQLite runtime. This is a bounded manual review, not completion of T008–T013 or the overall Draft spec.
+
 ## RED
 - 8 個新行為案例先跑，全數失敗：舊介面沒有直接 dialog、格式／範圍獨立控制或 loading 取消；舊介面不會在開啟時解析選取。
 - 原生操作發現附件重算後焦點落到背景；在 export-attachment-list.test.tsx 加入焦點斷言先跑，1 failed。
@@ -766,3 +794,217 @@ instructions, air-gap update copy).
 Verified: typecheck, verify:i18n (129 removed strings unasserted), build,
 e2e/ui-closeout 14 passed, timeline/screenshot unit tests 54 passed, full
 suite same 16 baseline PTY-file failures (4059 passed).
+
+
+## Friction fixes / T051–T054（2026-10-23）
+
+Completed the six recorded first-run/navigation defects. Managed-proxy HTTPS
+proof survives page unmounts only within its live process generation and CA;
+Dashboard retains unverified state and core-to-settings links. Settings can
+reopen the existing verifier. External-first onboarding and browser-path
+selection remove competing instructions. CA search has an asynchronous stable
+target, excludes unresolved templates and Mac WSL results, and short Latin
+queries no longer match arbitrary substrings. Explicit capture-platform metadata
+passes from validated manifests through hook detection to foreign-source
+presentation; active producers remain visible.
+
+Native isolated Mac: new synthetic project, wide/narrow first-run selection,
+printf then Dashboard pending, health HTTP link and general setup route, CA
+search from another settings page with real scroll/highlight, opening the
+settings verifier, real loopback curl --cacert nonce proof, Dashboard verified
+client, stop/start then proof invalidation, foreign card disclosure without
+PowerShell actions. No system CA trust, AI activation or real-project capture.
+Normal GUI exit was confirmed by process exit 0; Node SQLite restored.
+
+RED: 3 failed / 55 passed for new behavior. GREEN: 12 files / 185 passed, then
+2 affected files / 54 passed after adding one verified-client case and removing
+the redundant command link for an HTTPS-only gap (186 distinct cases). Typecheck,
+build, Spec Kit, architecture, i18n and diff checks passed. The final one-line
+link condition was unit/build checked after the native walk, not separately
+relaunched. Screenshots and detailed limits: manual-layout-20261023.md. Overall
+Draft, T049 and cross-platform/install tasks remain open.
+
+
+## Export copy closeout / T049（2026-10-23）
+
+The three previously open copy defects are now fixed. Attachment totals use
+Attachments, not HTTP bodies. Scope/source-chain boundaries stay; per-file
+choice instructions remain on the actual list, and the cast warning only
+appears for included casts. Boolean filter values are localized enabled/disabled,
+false is retained and unset omitted, with no query or export-policy change.
+Narrow preview labels do not shrink into vertical text beside long selections.
+
+RED: three failures / 19 passed. GREEN: five files / 40 passed, including six
+ui-copy cases already counted in the prior slice. Typecheck, build and final
+gates passed. Native ~875×548 Mac checked current Timeline/JSON conditions and
+warnings, whole-project Bundle with two casts, untick to one without changing
+the 70-event count, and the final label geometry after reload. Canceled all
+previews; did not execute export. Normal GUI exit 0; restored Node SQLite.
+T049 is closed; earlier statements of it being open describe those earlier
+slices. Overall Draft and cross-platform/install/artifact acceptance stay open.
+
+## First-run responsive width / T055（2026-10-23）
+
+The user screenshot exposed a missed layout constraint: both the operational
+overview and its built-in terminal fallback still used max-w-3xl (48rem).
+Removed these caps. The two existing core setup blocks now use a container-
+responsive grid, retaining a single column when two readable columns do not fit.
+Shared status/footer content and the built-in fallback stay below the grid.
+No capture, verification, routing or export behavior changed.
+
+Native isolated Mac: new synthetic project, actual window resizing via native
+window controls, narrow single-column setup, wide side-by-side setup and wide
+expanded fallback. No horizontal clipping observed in these states. Saved the
+single-column and two-column screenshots locally; the expanded fallback was
+visually inspected before a later screenshot-saving attempt failed in the OS
+capture service. This is not a product crash or saved screenshot. Normal Quit
+and Stop/Exit confirmed process exit 0; restored Node SQLite runtime.
+
+Typecheck, production build and three related test files (62 passed) completed.
+No duplicate CSS-shape tests added for this reversible geometry change. Full
+Spec remains Draft; this does not close installer, external-shell or artifact
+acceptance. Details and local evidence: manual-layout-20261023.md.
+
+## Native export artifacts / T056–T057（2026-10-23）
+
+Source-build Mac, isolated existing synthetic project, native UI actions only
+for selection/confirmation/reveal. Search layout-check → JSON and NDJSON each
+delivered the same two event IDs with expected command_start/end, stdout,
+stderr and exit 0. Finder selected the just-created JSON and showed its content.
+Both manifests retained the query, counts and observed preview fingerprints.
+
+Whole-project Bundle, exclude one of two casts: the initial artifact correctly
+excluded the file but implicitly replaced operator identifiers in the other
+cast (3414 source bytes → 3421 delivered bytes), despite piiScrubbing:false.
+The new public IPC regression reproduced that defect (1 failed / 31 passed).
+Removed the obsolete scrubCast helper and its seven implementation-specific
+tests. Bundle now copies the approved prefix bytes with bounded memory; the
+regression also covers Unicode beyond a chunk and post-preview growth. Existing
+freeze, rewrite, truncation and exclusion cases remain. No capability or default
+privacy flag was added; bundles can contain operator identifiers as the UI says.
+
+After rebuilding, native export produced bundle-2026-10-23T09-53-57: 78 total
+events, one cast included, one excluded, fingerprint 1bcc2b114dbf matching the
+preview. Delivered cast is byte-identical to the 3414-byte source. Packaged
+verifier exit 0: chain intact/head matched, 70 signatures verified, 8 logged
+supporting rows, six evidence-file digests verified. The additional four events
+since the earlier 74-event bundle are project lifecycle records from restarting
+the candidate, not an unexplained widening of a frozen plan.
+
+HTTP 4xx → HAR: one POST/404 exchange, URL case=2 and expected inline request/
+response bodies, two selected events, fingerprint 56fc6188b0bd matched artifact
+manifest. These are existing synthetic flows, not live network-capture proof.
+The native preview exposed an empty HTTP text condition. A failing summary
+case (1 failed / 8 passed) preceded the display-only fix; the final rebuilt
+native preview retained status prefix 4 and omitted the blank control. Canceled
+this final preview; no additional artifact was claimed.
+
+GREEN: eight export-related files / 96 tests, then three affected summary/dialog/
+copy files / 26 tests (11 overlap, 111 distinct). Typecheck, build, Spec Kit,
+architecture, i18n and diff checks passed. Two native sessions quit normally
+(exit 0); Node SQLite restored. No new global shell/CA/plugin authorization or
+real-project changes. Details, artifact names and limits are in the manual
+layout report. Overall Draft and T008–T013 remain open; this bounded Mac check
+does not complete all M20–M25 scenarios or cross-platform installation.
+
+## Prompt diagnosis and truthful shell status / T058（2026-10-23）
+
+Isolated real Zsh PTYs reproduced first-custom-then-Powerlevel10k prompt changes
+with no RedLog, the previously installed hook and the current hook. Powerlevel10k
+alone stayed stable with/without the hook. This is a local dual-prompt conflict,
+not evidence that RedLog rewrites PROMPT. The authorized local correction removes
+only the competing precmd registration (with a backup and syntax check); no
+theme policy was added to the product.
+
+Product defects reproduced first: seven failing announcement/status/start cases,
+plus a failing no-project replay-warning case. Human status now shows missing
+project/operator identity explicitly; an enabled switch is not an acknowledged
+delivery. Start preserves the existing project-switch refusal, reports that
+actual state and does not emit capture_resumed for a terminal that stayed stopped.
+The enrollment JSON and TS/Python transition rules were not changed.
+
+GREEN: 12 files / 80 tests, including real PTY auto output, command exit statuses,
+stop/start, source-once, spool, transport, pager/failure behavior and TS/Python
+agreement. The first combined run was blocked by sandbox listener EPERM and was
+stopped; the same cases passed outside the sandbox. Typecheck, shell syntax,
+Spec Kit, architecture, i18n and diff checks passed. This is not Windows terminal
+acceptance or a full unit run.
+
+After backing up code, synchronized the existing local Zsh adapter/common/relay
+files; preserved custom classification, session helper, identity and evidence.
+Byte comparisons confirmed they match the tested sources. A fresh isolated PTY
+with the caller's Powerlevel10k configuration and these installed files retained
+Powerlevel10k across seven stages, with no custom prompt, and status/start both
+reported no project. It did not source the caller's full rc or manipulate an
+already-open terminal. Existing terminals need a new tab to load the new adapter.
+Local-only transcripts: /private/tmp/redlog-prompt-diagnosis/. No private shell
+configuration or transcript is added to the repository. Overall Draft remains.
+
+## Measured performance / T059（2026-10-23）
+
+Local synthetic measurements on Apple M2 Pro, 16 GiB, Node v26.12.1 and Python
+3.15. Ordinary Zsh no-output command overhead median fell 216 → 169 ms after
+deferring relay imports; one-line output 206 → 185 ms. Complete before/after
+PTY benchmark runs each passed three cases and required command_end delivery.
+An interleaved A/B check supported the import improvement. The separate
+shorter-poll experiment had no repeatable benefit and was reverted; drain
+windows and capture limits are unchanged.
+
+HTTP selection was sorting full body-bearing JSON. Ranking metadata first and
+then reading complete selected evidence reduced a 5,000-flow / ~40 MB fixture's
+first 500-flow query from 331.34 → 79.75 ms; independent after rerun 86.5 ms.
+4xx selection fell 311.20 → 81.90 ms (rerun 81.7 ms). The new public behavior
+case passed on the original query before optimization and preserves request/
+response choice, duplicate evidence, Unicode bodies and snapshot boundaries.
+The opt-in benchmark verifies complete returned rows/bodies; no shared-CI
+hardware promise was introduced. Existing 100k-event query budgets passed all
+nine cases. Settings lookup CPU 0.022–0.070 ms did not justify adding a cache;
+native settings navigation/rendering was not timed.
+
+GREEN: six HTTP/query/export files / 59 tests (includes two body-heavy benchmark
+cases); ten shell files / 80 tests, covering separated streams, exit codes,
+large output, late delivery, spool, debug logging, transparent degradation and
+PTY boundaries. Six traditional-netcat upgrade cases were skipped because the
+Mac host lacks Kali's nc v1.10; this is not new Kali/Windows acceptance.
+Typecheck, Spec Kit, architecture, i18n, production build and diff checks passed.
+No full unit, native rendering or packaged-install claim is made.
+
+Backed up the installed relay to
+~/.redlog/backups/relay-perf-20261023-183525, synchronized only that helper and
+verified byte equality with the tested source. No running user relay was killed
+and no profile, custom classification, session helper, identity or evidence was
+changed. HTTP optimization is in the source build; an already-running installed
+App is not silently upgraded. Full reproducible results and limitations:
+[performance-20261023.md](performance-20261023.md). Overall Draft and T008–T013
+remain open.
+
+## Push gate follow-up（2026-10-23）
+
+The first full unit run exposed five failures across four files: the defaults
+classifier test read the operator's real class overlay; two background-output
+search assertions omitted the now-visible unknown exit code; and two first-run
+assertions still required the removed quick-test helper paragraph. Use a
+temporary home for default classification and align the UI assertions with the
+external-terminal action/exit title. Retain classification agreement, overlay
+merge, blocker recovery, search de-duplication and command navigation checks.
+The affected four files then passed 27 focused cases. No operator policy or
+production behavior was changed to satisfy these assertions.
+
+Four source-build Electron suites covered capture-settings-interaction,
+first-run, http-history-view and export-preview. An old first-run assertion
+expected the other-source page instead of the terminal settings now used by the
+Dashboard. Corrected the expected settings target and reran the complete serial
+first-run suite, including its previously skipped final terminal re-entry case.
+All 24 distinct cases passed across the initial run and that rerun. This is
+automated isolated Mac workflow coverage, separate from the earlier manual
+layout checks; it is not packaged or cross-platform acceptance. SQLite was
+switched to Electron only for these suites and the final npm test pretest
+restores the Node runtime. Final full-gate results follow below.
+
+Final ordered push gates passed: typecheck → Spec Kit → architecture → i18n →
+npm test. Full unit result: 416 files / 4,167 tests passed; five files / 28
+cases skipped by existing platform/opt-in guards, including the new HTTP
+performance benchmark. Its opt-in timing run is recorded separately above.
+No retries were enabled in the final full run. Source build and diff checks
+also passed. This closes the bounded push validation, not the open installer
+and cross-platform acceptance matrix.

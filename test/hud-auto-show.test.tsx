@@ -47,4 +47,23 @@ describe('HUD auto-show setting', () => {
     expect(label?.textContent).toBe('settings.overlayScale')
     expect(slider.id).toBe('hud-scale')
   })
+  it('moves one size per slider step and keeps the saved scale values', () => {
+    const setConfig = draw({ scale: 1 })
+    const slider = screen.getByRole('slider') as HTMLInputElement
+    expect(slider.value).toBe('2')
+    expect(slider.step).toBe('1')
+    for (const [index, scale] of [0.75, 0.85, 1, 1.25, 1.5, 1.75].entries()) {
+      if (index === 2) continue // Already selected; a controlled input does not emit a change.
+      fireEvent.change(slider, { target: { value: String(index) } })
+      expect(setConfig).toHaveBeenLastCalledWith(expect.objectContaining({ overlay: expect.objectContaining({ scale }) }))
+    }
+  })
+
+  it('lets the named size buttons select a size without a pointer-only label', () => {
+    const setConfig = draw({ scale: 1 })
+    expect(screen.getByRole('button', { name: 'settings.overlayScale.normal' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'settings.overlayScale.large' }))
+    expect(setConfig).toHaveBeenCalledWith(expect.objectContaining({ overlay: expect.objectContaining({ scale: 1.25 }) }))
+  })
+
 })

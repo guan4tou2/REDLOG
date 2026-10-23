@@ -123,14 +123,14 @@ describe('first run on Windows', () => {
     // The built-in terminal still records, and saying so is the difference
     // between "my machine is broken" and "my own terminal is not hooked yet".
     expect(blocked.textContent).toContain('內建終端')
-    // And it does not tell the operator to just run a command and hope.
-    expect(screen.queryByTestId('first-run-commands-quick')).toBeNull()
+    // A known policy blocker takes precedence over the generic stuck state.
+    expect(screen.queryByTestId('first-run-stuck')).toBeNull()
   })
 
-  it('keeps the quick test when nothing blocks capture', async () => {
+  it('offers external terminal activation when nothing blocks capture', async () => {
     install(winPreflight({ powershell: { shell: 'pwsh', policy: 'RemoteSigned', blocksProfile: false } }))
     render(<I18nProvider><FirstRunView onNavigate={vi.fn()} renderCaptureCard={() => <div />} /></I18nProvider>)
-    expect(await screen.findByTestId('first-run-commands-quick')).toBeTruthy()
+    expect(await screen.findByTestId('first-run-record-terminal')).toHaveProperty('disabled', false)
     expect(screen.queryByTestId('first-run-blocked')).toBeNull()
   })
 })

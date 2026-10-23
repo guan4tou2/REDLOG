@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
-import { Ban } from 'lucide-react'
+import { Button } from './Button'
 import { formatTime, formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
@@ -74,7 +74,7 @@ interface ViolationRow {
   cleared: boolean
 }
 
-export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
+export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: () => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<ViolationRow[]>([])
   const [configured, setConfigured] = useState(false)
   const [chainLen, setChainLen] = useState(0)
@@ -188,13 +188,11 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
           </div>
         )}
         {!configured && (
-          <div className="flex flex-col items-center py-6 gap-2">
-            <div className="w-12 h-12 rounded-full bg-redlog-elevated border border-redlog-border flex items-center justify-center">
-              <Ban size={20} strokeWidth={1.5} aria-hidden className="text-redlog-text-faint" />
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-redlog-text-dim text-xs">
               {t('scope.hint', { page: t('settings.pageScope') })}
             </p>
+            {onOpenSettings && <Button level="quiet" onClick={onOpenSettings}>{t('browser.openSettings')}</Button>}
           </div>
         )}
       </div>

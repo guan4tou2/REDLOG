@@ -137,12 +137,13 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   // says the certificate is step two. A client that refused the certificate
   // makes the CA the current step, so it opens itself then (effect below).
   const [showCa, setShowCa] = useState(false)
+  const [browserPath, setBrowserPath] = useState<'own' | 'capture'>('own')
   const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
   const running = status.state === 'running'
   const verified = running && attempt.https !== null
   const certRefused = attempt.rejectedAt !== null
-  useEffect(() => { if (certRefused) setShowCa(true) }, [certRefused])
+  useEffect(() => { if (certRefused) { setShowCa(true); setBrowserPath('own') } }, [certRefused])
 
   // Reports arrive for as long as the card is up: HTTPS can verify after
   // HTTP, and a check from a terminal can land at any time.
@@ -271,6 +272,15 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
+          <div role="group" aria-label={t('firstRun.http.browserChoice')} className="flex flex-wrap gap-2">
+            <Button level="secondary" className="aria-pressed:border-redlog-accent aria-pressed:bg-redlog-accent/10" aria-pressed={browserPath === 'own'} onClick={() => setBrowserPath('own')}>
+              {t('firstRun.http.ownBrowser')}
+            </Button>
+            <Button level="secondary" className="aria-pressed:border-redlog-accent aria-pressed:bg-redlog-accent/10" aria-pressed={browserPath === 'capture'} onClick={() => setBrowserPath('capture')}>
+              {t('firstRun.http.captureBrowser')}
+            </Button>
+          </div>
+          {browserPath === 'own' && <div className="space-y-2">
           {/* The default route, as Burp does it, in the order the operator does
               it: a listener to point their own browser at (1), a CA to trust
               once (2), and a check (3). The browser RedLog launches is the
@@ -344,6 +354,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
               </div>
             </div>
           )}
+          </div>}
           <ul data-testid="first-run-http-checks" className="space-y-1">
             <VerifyRow
               label="HTTPS"
@@ -365,9 +376,9 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
+            {browserPath === 'capture' && <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
               {t('firstRun.http.verifyInBrowser')}
-            </Button>
+            </Button>}
             {(attempt.http || attempt.https || attempt.rejectedAt !== null || timedOut) && (
               <Button level="quiet" onClick={retry} data-testid="first-run-http-retry">{t('firstRun.http.newCheck')}</Button>
             )}

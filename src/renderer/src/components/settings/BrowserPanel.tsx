@@ -187,7 +187,7 @@ export default function BrowserPanel({
       )}
       {proxyStatus.caPath && (
         <>
-          <p className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+          <p data-settings-key="httpCapture.caReady" className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
             {proxyStatus.certReady
               ? t('httpCapture.caReady', { path: proxyStatus.caPath })
               : t('httpCapture.caMissing', { path: proxyStatus.caPath })}

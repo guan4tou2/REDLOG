@@ -95,8 +95,9 @@ function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
 // this panel only presents the HTTP record.
 // ---------------------------------------------------------------------------
 
-export function HttpHistoryPanel({ onOpenInTimeline }: {
+export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  onOpenSettings?: () => void
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
@@ -317,7 +318,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // this view cannot know under that condition, so it is not shown.
   const emptyExplained = (!!sharedFilter.agentType && sharedFilter.agentType !== HTTP_FLOW_AGENT_TYPE)
     || sharedFilter.tier === 'chained'
-  const emptyText = flows.length === 0 ? (emptyExplained ? null : t('httpHistory.empty')) : t('httpHistory.noMatch')
+  const emptyText = flows.length === 0 ? (emptyExplained || loadError ? null : t('httpHistory.empty')) : t('httpHistory.noMatch')
 
   const toggleSort = (col: typeof sortCol) => {
     if (sortCol === col) setSortAsc(!sortAsc)
@@ -362,8 +363,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
 
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
         <button
-          onClick={() => setMethodFilter(null)}
-          className={`text-xs font-mono px-1.5 py-0.5 rounded ${!methodFilter ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
+          onClick={() => { setMethodFilter(null); setStatusFilter(null); setHostFilter(null) }}
+          aria-pressed={!methodFilter && !statusFilter && !hostFilter}
+          className={`text-xs font-mono px-1.5 py-0.5 rounded ${!methodFilter && !statusFilter && !hostFilter ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
         >{t('httpHistory.filterAll')}</button>
         {methods.map(m => (
           <button
@@ -417,13 +419,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             <span aria-hidden className="animate-spin w-3 h-3 border-2 border-redlog-border border-t-transparent rounded-full" />
             {t('httpHistory.loadingMore')}
           </span>
-        ) : (
+        ) : !loadError ? (
           // At rest: complete, or — only past AUTO_LOAD_MAX_FLOWS — the capped
           // subset with a manual continue.
           <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>
             {t(hasMore ? 'httpHistory.recentSubset' : 'httpHistory.complete', { max: AUTO_LOAD_MAX_FLOWS })}
           </span>
-        )}
+        ) : null}
         {hasMore && !busy && (
           <button type="button" onClick={() => void loadFlows(true)} className="text-redlog-cyan underline">
             {t('httpHistory.loadMore')}
@@ -440,7 +442,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
         <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-auto">
           <table className="w-full text-xs font-mono">
-            <thead className="sticky top-0 bg-redlog-surface/95 z-10">
+            <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
                 <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-20" onClick={() => toggleSort('timestamp')}>
                   When{sortArrow('timestamp')}
@@ -514,8 +516,12 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             </tbody>
           </table>
           {filtered.length === 0 && emptyText && (
-            <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
+            <div className="flex flex-col items-center justify-center gap-3 py-6 text-redlog-text-faint text-sm">
               {emptyText}
+              {flows.length === 0 && !filterText && !methodFilter && !statusFilter && !hostFilter
+                && !sharedFilter.targetId && !sharedFilter.timeRange && !sharedFilter.inScopeOnly && onOpenSettings && (
+                <button type="button" onClick={onOpenSettings} className="min-h-8 text-redlog-text-dim underline hover:text-redlog-text">{t('browser.openSettings')}</button>
+              )}
             </div>
           )}
         </div>
@@ -553,7 +559,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 ? (layout === 'right' ? { width: 440 } : undefined)
                 : (layout === 'bottom' ? { height: detailPanel.px } : { width: detailPanel.px })}
             >
-              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-bg/50 sticky top-0 z-10">
+              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-surface sticky top-0 z-10">
                 <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
 
                 {/* ◀ ▶ step to the previous/next request without returning to the table. */}

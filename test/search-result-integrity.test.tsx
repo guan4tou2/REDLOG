@@ -71,6 +71,20 @@ describe('Search result integrity', () => {
     expect(screen.getByText('$ needle')).not.toBeNull()
   })
 
+  it('distinguishes a command start from its exit result without hiding either event', async () => {
+    const events = ['command_start', 'command_end'].map((subtype, index) => ({
+      id: `command-${index}`, timestamp: index + 1, engagementId: 'eng', sessionId: 's', operatorId: 'op',
+      agentType: 'shell', hostname: 'host', sourceIP: null, targetId: null,
+      data: { subtype, command: 'needle', exit_code: 7 }, hash: 'hash', prevHash: null, createdAt: 1
+    }))
+    const searchPage = vi.fn().mockResolvedValue({ items: events, hasMore: false, nextCursor: null })
+    installBridge(searchPage)
+    render(<SearchPanel />)
+    await searchFor(searchPage)
+    expect(await screen.findByText('$ needle')).toBeTruthy()
+    expect(screen.getByText('$ needle → exit 7')).toBeTruthy()
+  })
+
   it('retries the unchanged query after failure', async () => {
     const searchPage = vi.fn()
       .mockRejectedValueOnce(new Error('temporary'))

@@ -51,44 +51,39 @@ export default function HudPage({
               { v: 1.75, k: 'settings.overlayScale.xxl' }
             ]
             const cur = config.overlay?.scale ?? 1.0
-            const snap = (raw: number): number => {
-              let best = stops[0].v
-              for (const s of stops) { if (Math.abs(raw - s.v) < Math.abs(raw - best)) best = s.v }
-              return best
-            }
             const nearest = stops.reduce((a, b) => Math.abs(cur - a.v) < Math.abs(cur - b.v) ? a : b)
+            const index = stops.indexOf(nearest)
             return (
-              <div>
+              <div className="px-5">
                 <input
                   id="hud-scale"
                   type="range"
-                  min={stops[0].v}
-                  max={stops[stops.length - 1].v}
-                  step="0.05"
-                  value={cur}
+                  min={0}
+                  max={stops.length - 1}
+                  step={1}
+                  value={index}
                   onChange={(e) => {
-                    const v = snap(parseFloat(e.target.value))
+                    const v = stops[Number(e.target.value)].v
                     setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
                   }}
                   className="accent-red-600 w-full h-8"
                   list="hud-scale-stops"
-                  // The label above is a `<label>` with no `for`, so this
-                  // slider had no accessible name at all: a screen reader
-                  // announced "slider" and nothing else. The value text is
-                  // not the name — it changes with the slider.
                   aria-label={t('settings.overlayScale')}
                   aria-valuetext={t(nearest.k)}
                 />
                 <datalist id="hud-scale-stops">
-                  {stops.map((s) => <option key={s.v} value={s.v} />)}
+                  {stops.map((s, i) => <option key={s.v} value={i} />)}
                 </datalist>
-                <div className="flex justify-between px-0.5 mt-0.5">
-                  {stops.map((s) => (
-                    <span
+                <div className="relative mx-2 h-8 mt-0.5">
+                  {stops.map((s, i) => (
+                    <button
+                      type="button"
                       key={s.v}
-                      className={`text-xs cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
+                      aria-pressed={index === i}
+                      style={{ left: `${i / (stops.length - 1) * 100}%` }}
+                      className={`absolute -translate-x-1/2 whitespace-nowrap min-h-8 min-w-8 text-xs ${index === i ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
                       onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
-                    >{t(s.k)}</span>
+                    >{t(s.k)}</button>
                   ))}
                 </div>
               </div>

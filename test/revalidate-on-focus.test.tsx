@@ -114,7 +114,7 @@ describe('first run re-asks by itself', () => {
     focus()
 
     await waitFor(() => expect(screen.queryByTestId('first-run-blocked')).toBeNull())
-    expect(await screen.findByTestId('first-run-commands-quick')).toBeTruthy()
+    expect(await screen.findByTestId('first-run-record-terminal')).toHaveProperty('disabled', false)
   })
 
   it('has no re-check button on a blocker, because returning is the re-check', async () => {

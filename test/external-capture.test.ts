@@ -25,6 +25,7 @@ const ENTRIES = [
     description: 'needs tcpdump',
     agentType: 'scanner',
     emits: ['packet_flow'],
+    platforms: ['linux' as const],
     installMethod: 'manual' as const,
     hookFile: 'hooks/pcap.sh',
     manualSteps: [{ label: 'Capture', command: 'sudo hooks/pcap.sh eth0' }]
@@ -44,6 +45,7 @@ describe('a capture the operator runs themselves', () => {
     invalidateHooksCache()
     const hook = find('t-pcap.pcap-tcpdump')
     expect(hook).toBeTruthy()
+    expect(hook!.platforms).toEqual(['linux'])
     expect(hook!.disabled).toBe(false)
   })
 

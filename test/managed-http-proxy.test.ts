@@ -32,6 +32,32 @@ function createProxy(deps: ConstructorParameters<typeof ManagedHttpProxy>[0]): M
 }
 
 describe('managed HTTP proxy', () => {
+  it('retains HTTPS proof only for the live proxy generation and CA', async () => {
+    const child = new FakeChild()
+    let sha256 = 'CA1'
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true,
+      fingerprint: () => ({ sha1: 'CA', sha256 }), readinessTimeoutMs: 100 })
+    const started = proxy.start({ addonPath: '/addon.py', port: 6661, caPath: '/ca.pem' })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    const report = { scheme: 'https' as const, nonce: 'rv-test-proof', userAgent: 'curl/8', receivedAt: Date.now() }
+    proxy.noteVerification({ ...report, scheme: 'http' })
+    expect(proxy.status().httpsVerification).toBeUndefined()
+    proxy.noteVerification({ ...report, receivedAt: 0 })
+    proxy.noteVerification({ ...report, nonce: 'bad' })
+    proxy.noteVerification({ ...report, rejected: true })
+    expect(proxy.status().httpsVerification).toBeUndefined()
+    proxy.noteVerification(report)
+    expect(proxy.status().httpsVerification).toEqual(report)
+    sha256 = 'CA2'
+    expect(proxy.status().httpsVerification).toBeUndefined()
+    sha256 = 'CA1'
+    expect(proxy.status().httpsVerification).toBeUndefined()
+    proxy.noteVerification(report)
+    proxy.stop()
+    proxy.noteVerification(report)
+    expect(proxy.status().httpsVerification).toBeUndefined()
+  })
   it('builds a loopback-only regular proxy using the shipped addon', () => {
     expect(buildManagedProxyArgs('/app/hooks/mitmproxy-addon.py', 8080)).toEqual([
       '--listen-host', '127.0.0.1', '--listen-port', '8080',

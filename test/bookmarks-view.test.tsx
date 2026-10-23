@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { BookmarksView } from '../src/renderer/src/components/BookmarksView'
@@ -53,5 +53,17 @@ describe('the IP a bookmark shows', () => {
     expect(await screen.findByText('IP:')).toBeTruthy()
     expect(screen.getByText('203.0.113.7')).toBeTruthy()
     expect(screen.queryByTestId('bookmark-last-known-ip')).toBeNull()
+  })
+})
+
+describe('empty bookmarks', () => {
+  it('shows one empty state with the custody boundary and can open the form', async () => {
+    window.redlog.bookmarks.list = vi.fn(async () => [])
+    render(<I18nProvider><BookmarksView /></I18nProvider>)
+    const capture = await screen.findByRole('button', { name: 'Quick Capture' })
+    expect(screen.queryByText('Click + Capture to bookmark the current page')).toBeNull()
+    expect(screen.getByText(/not chained, not signed/)).toBeTruthy()
+    fireEvent.click(capture)
+    expect(await screen.findByRole('textbox', { name: /Title/i })).toBeTruthy()
   })
 })

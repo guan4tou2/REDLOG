@@ -62,4 +62,26 @@ describeDB('queryHttpFlowPage', () => {
     expect(page.flowCount).toBe(3)
     expect(page.items.every((event) => event.targetId?.startsWith('10.0.0.'))).toBe(true)
   })
+
+  it('selects by earliest request and latest response without dropping bodies or duplicate evidence', () => {
+    add('repeated', 100, 'target.test')
+    const db = getDB()
+    const body = '中文'.repeat(3000)
+    db.prepare('UPDATE events_logged SET data = ? WHERE id = ?').run(JSON.stringify({ subtype: 'http_request_start', flow_id: 'repeated', host: 'target.test', method: 'POST', url: 'https://target.test/original', request_body: body }), 'repeated-req')
+    const insert = db.prepare(`INSERT INTO events_logged
+      (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,source_ip,target_id,data,created_at)
+      VALUES (?,?,'e','s','op','scanner',?,'','','target.test',?,?)`)
+    insert.run('retry', 110, 'http_request_start', JSON.stringify({ flow_id: 'repeated', method: 'DELETE', host: 'other.test', url: 'https://other.test/retry' }), 110)
+    insert.run('latest-response', 120, 'http_response', JSON.stringify({ flow_id: 'repeated', status: 404, content_type: 'application/json', response_body: body }), 120)
+    const snapshot = { chainedMaxRowId: 0, loggedMaxRowId: (db.prepare('SELECT MAX(rowid) AS n FROM events_logged').get() as { n: number }).n, takenAt: 130 }
+    const filter = { limit: 1, http: { method: 'POST', host: 'TARGET.TEST', statusPrefix: '4', text: '/original' } }
+    const page = queryHttpFlowPage(filter)
+    expect(page.flowCount).toBe(1)
+    expect(page.items.map(event => event.id)).toEqual(['latest-response', 'retry', 'repeated-res', 'repeated-req'])
+    expect(page.items.find(event => event.id === 'repeated-req')?.data.request_body).toBe(body)
+    expect(page.items.find(event => event.id === 'latest-response')?.data.response_body).toBe(body)
+    insert.run('after-snapshot', 125, 'http_response', JSON.stringify({ flow_id: 'repeated', status: 500 }), 125)
+    expect(queryHttpFlowPage(filter).flowCount).toBe(0)
+    expect(queryHttpFlowPage({ ...filter, snapshot }).items.map(event => event.id)).toEqual(page.items.map(event => event.id))
+  })
 })

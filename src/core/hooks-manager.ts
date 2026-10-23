@@ -9,6 +9,7 @@ import { stopOpenTerminals } from './hook-removal'
 export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
 export interface PluginManifest {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string
@@ -88,6 +89,7 @@ export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
 }
 
 export interface PluginInfo {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string
@@ -631,6 +633,7 @@ export function detectHooks(): PluginInfo[] {
       description: plugin.description,
       agentType: plugin.agentType,
       emits: plugin.emits,
+      platforms: plugin.platforms,
       installed: checkInstalled(plugin),
       available,
       installMethod: plugin.installMethod,
@@ -663,6 +666,7 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       description: plugin.description,
       agentType: plugin.agentType,
       emits: plugin.emits,
+      platforms: plugin.platforms,
       installed: checkInstalled(plugin),
       available,
       installMethod: plugin.installMethod,

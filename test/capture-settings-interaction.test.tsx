@@ -150,6 +150,23 @@ describe('capture lifecycle actions', () => {
 })
 
 describe('external source facts and failed reads', () => {
+  it('keeps foreign setup aside without hiding a live producer', async () => {
+    Object.assign(window.redlog, { platform: 'darwin' })
+    const foreign = { ...external, id: 'pcap-capture.windows', name: 'Windows capture', platforms: ['win32'],
+      manualSteps: [{ label: 'Windows only', command: 'powershell windows.ps1' }] }
+    detect.mockResolvedValue([foreign])
+    health.mockResolvedValue({ sources: [{ id: foreign.id, state: 'off', running: false }] })
+    const { container } = render(<I18nProvider><ExternalCaptureGroup t={t} /></I18nProvider>)
+    await screen.findByText(foreign.name)
+    expect(container.querySelector('details')?.open).toBe(false)
+    expect(container.querySelector('details')?.textContent).toContain(foreign.name)
+    expect(container.textContent).not.toContain('powershell windows.ps1')
+    health.mockResolvedValue({ sources: [{ id: foreign.id, state: 'ready', running: true }] })
+    fireEvent.focus(window)
+    await screen.findByText('settings.externalFeeding')
+    expect(container.querySelector('details')).toBeNull()
+  })
+
   it.each([false, true])('shows a live producer even when disabled=%s', async disabled => {
     detect.mockResolvedValue([{ ...external, disabled }])
     health.mockResolvedValue({ sources: [{ id: external.id, state: 'ready', lastEventAt: 123, running: true }] })

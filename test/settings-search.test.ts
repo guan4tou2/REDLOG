@@ -15,6 +15,11 @@ const read = (f: string): string =>
   fs.readFileSync(path.join(__dirname, '..', 'src/renderer/src/components', f), 'utf8')
 
 describe('settings search', () => {
+  it('finds the CA setting without interpolation templates or foreign WSL states', () => {
+    const hits = searchSettings('CA', tr(zh), 30, 'darwin')
+    expect(hits.some(h => h.key === 'httpCapture.caReady' && h.text.includes('CA'))).toBe(true)
+    expect(hits.some(h => h.text.includes('{{') || /WSL|cargo|calendar|localhost/.test(h.text))).toBe(false)
+  })
   it('has an index entry for every key each page renders — regenerate with npm run gen:settings-search', () => {
     for (const page of Object.keys(PAGE_SOURCES)) {
       expect({ page, keys: SETTINGS_SEARCH_KEYS[page as keyof typeof SETTINGS_SEARCH_KEYS] })

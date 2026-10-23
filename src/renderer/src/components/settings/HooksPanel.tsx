@@ -37,15 +37,16 @@ function TerminalPolicyNote({ policy, t }: {
 }): JSX.Element | null {
   if (!policy) return null
   return (
-    <p className="text-xs text-redlog-text-dim mb-2 leading-relaxed">
-      {t('settings.terminalMode', { mode: t(`settings.terminalMode.${policy.mode}`) })}
-      {' · '}
-      {t('settings.terminalClassNative', { commands: policy.native.join(' ') })}
-      {' · '}
-      {t('settings.terminalClassPty', { commands: policy.pty.join(' ') })}
-      <br />
-      <span className="text-redlog-text-faint">{t('settings.terminalClassEditedFromShell')}</span>
-    </p>
+    <details className="text-xs text-redlog-text-dim mb-3 leading-relaxed">
+      <summary className="min-h-8 cursor-pointer content-center break-words">
+        {t('settings.terminalMode', { mode: t(`settings.terminalMode.${policy.mode}`) })}
+      </summary>
+      <ul className="mt-2 space-y-1 break-words">
+        <li>{t('settings.terminalClassNative', { commands: policy.native.join(' ') })}</li>
+        <li>{t('settings.terminalClassPty', { commands: policy.pty.join(' ') })}</li>
+      </ul>
+      <p className="mt-2 break-words text-redlog-text-faint">{t('settings.terminalClassEditedFromShell')}</p>
+    </details>
   )
 }
 
@@ -139,15 +140,15 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
       return (
         <div
           key={hook.id}
-          className={`rounded border ${
+          className={`flex min-w-0 flex-col rounded border ${
             hook.available ? 'border-redlog-border bg-redlog-surface/50'
               : isManual ? 'border-redlog-border bg-redlog-surface/30 opacity-75'
               : 'border-redlog-border bg-redlog-surface/20 opacity-50'
           }`}
         >
-          <div className="flex items-center justify-between p-3">
+          <div className="flex flex-1 flex-col gap-3 p-3">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                 {hook.installed && (
                   <span className="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
@@ -165,8 +166,9 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                   </span>
                 )}
               </div>
-              <p className="text-xs text-redlog-text-dim mt-0.5">{hookDescription(hook, t)}</p>
+              <p className="text-xs text-redlog-text-dim mt-0.5 break-words">{hookDescription(hook, t)}</p>
             </div>
+            <div className="mt-auto flex flex-wrap justify-end gap-2">
             {hook.available && hook.installMethod !== 'manual' && (
               // Enabling a hook is a secondary verb, not the one thing
               // the page exists for, and there are several of them in a
@@ -176,7 +178,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
               <button
                 disabled={hookLoading === hook.id}
                 onClick={() => handleToggle(hook)}
-                className={`px-3 py-1 text-xs rounded ml-3 shrink-0 transition-colors ${
+                className={`min-h-8 px-3 py-1 text-xs rounded shrink-0 transition-colors ${
                   hook.installed
                     ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
                     : 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover'
@@ -190,7 +192,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                 data-testid="hook-install-mitmproxy"
                 disabled={hookLoading === hook.id}
                 onClick={() => void installMitm(hook)}
-                className={`px-3 py-1 text-xs rounded ml-3 shrink-0 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors ${hookLoading === hook.id ? 'opacity-50' : ''}`}
+                className={`min-h-8 px-3 py-1 text-xs rounded shrink-0 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors ${hookLoading === hook.id ? 'opacity-50' : ''}`}
               >
                 {hookLoading === hook.id ? t('captureSetup.installing') : t('captureSetup.install')}
               </button>
@@ -198,13 +200,14 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
             {hasSteps && (
               <button
                 onClick={() => setExpanded(isOpen ? null : hook.id)}
-                className="px-3 py-1 text-xs rounded ml-3 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
+                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
               >
                 {isOpen
                   ? t('settings.hookHideSetup')
                   : hook.stepsAreOptional ? t('settings.hookOptionalSteps') : t('settings.hookShowSetup')}
               </button>
             )}
+            </div>
           </div>
           {isOpen && (
             <div className="border-t border-redlog-border px-3 py-2.5">
@@ -236,7 +239,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
         {hooks.length === 0 && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
-        <div className="space-y-2">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>
           {mainHooks.map((hook) => renderRow(hook))}
         </div>
         {otherHooks.length > 0 && (

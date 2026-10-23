@@ -610,6 +610,7 @@ interface ManagedProxyStatus {
   /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
   caFingerprint?: { sha1: string; sha256: string }
+  httpsVerification?: import('../../core/http-verify').HttpVerifyReport
 }
 
 interface OperatorInfo {

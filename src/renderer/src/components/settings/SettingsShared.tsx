@@ -67,6 +67,7 @@ export interface ManualStep {
 }
 
 export interface HookInfo {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string
@@ -139,7 +140,7 @@ export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text'
         // `cursor-not-allowed` on a read-only field was wrong twice over: it is
         // not disabled, and copying the value is the first thing anyone does
         // with it -- a bug report starts there.
-        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
+        className={`${type === 'number' ? 'w-32 max-w-full' : 'w-full'} bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
       />
       {error && <p id={errorId} role="alert" className="text-xs text-red-400 mt-1">{error}</p>}
     </div>

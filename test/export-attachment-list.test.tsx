@@ -44,6 +44,8 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     const cross = within(list).getByTestId('export-attachment-casts/term-1.cast')
     expect(cross.textContent).toContain('several targets: a.test, b.test')
     expect(list.textContent).toContain('never trimmed to scope')
+    expect(screen.getByText('Attachments')).toBeTruthy()
+    expect(screen.queryByText('HTTP bodies')).toBeNull()
     // A missing file cannot be chosen.
     expect((within(list).getByLabelText('screenshots/x.jpg') as HTMLInputElement).disabled).toBe(true)
 
@@ -61,4 +63,18 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     fireEvent.click(within(after).getByLabelText('casts/term-1.cast'))
     await waitFor(() => expect(resolve).toHaveBeenLastCalledWith(expect.objectContaining({ excludeAttachments: [] })))
   })
+})
+
+it('does not warn about recordings when only a screenshot will be carried', async () => {
+  const preview = plan([])
+  preview.attachments = [{ id: 'screenshots/one.jpg', kind: 'screenshot', bytes: 10, targets: ['a.test'], attribution: 'target', status: 'included' }]
+  preview.counts.attachmentsIncluded = 1
+  ;(window as unknown as { redlog: unknown }).redlog = { data: {
+    resolveExportPlan: vi.fn(async () => ({ ok: true, plan: preview })), executeExportPlan: vi.fn()
+  } }
+  render(<I18nProvider><ExportMenu totalCount={3} /></I18nProvider>)
+  fireEvent.click(screen.getByLabelText('Export'))
+  fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } })
+  const list = await screen.findByTestId('export-attachments')
+  expect(list.textContent).not.toContain('never trimmed to scope')
 })

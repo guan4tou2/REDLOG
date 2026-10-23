@@ -43,6 +43,11 @@ export default function ExternalCaptureGroup({ t }: {
     if (!health || !Array.isArray(health.sources)) throw new Error(t('settings.externalInvalidResponse'))
     return health
   }, hooks.length > 0)
+  // A live producer stays visible even if its manifest names another OS.
+  const foreign = hooks.filter(h => h.platforms
+    && !h.platforms.includes(window.redlog.platform as 'darwin' | 'linux' | 'win32')
+    && !healthRead.state.value?.sources.some(s => s.id === h.id && s.running))
+  const native = hooks.filter(h => !foreign.includes(h))
   const read = (): void => {
     hookRead.retry()
     healthRead.retry()
@@ -77,7 +82,8 @@ export default function ExternalCaptureGroup({ t }: {
         <Button level="quiet" disabled={reading} onClick={read}>{t('common.retry')}</Button>
       </div>}
       <div className="space-y-2">
-        {hooks.map((hook) => {
+        {[native, foreign].map((group, groupIndex) => {
+          const rows = group.map((hook) => {
           const l = healthRead.state.value?.sources.find((source) => source.id === hook.id)
           // `off` is not a fault. A producer nobody has started yet is the
           // normal state of a thing you start by hand, so it gets the quiet
@@ -133,14 +139,20 @@ export default function ExternalCaptureGroup({ t }: {
                 <p className="text-xs text-redlog-text-dim mt-1">{describe(hook)}</p>
               )}
               <div className="mt-2">
-                <SetupAndTeardown
+                {groupIndex === 0 && <SetupAndTeardown
                   setup={hook.manualSteps}
                   teardown={hook.removalSteps}
                   t={t}
-                />
+                />}
               </div>
             </div>
           )
+          })
+          return groupIndex === 0 ? <div key="native" className="space-y-2">{rows}</div>
+            : group.length > 0 ? <details key="foreign" className="space-y-2">
+              <summary className="min-h-8 cursor-pointer content-center text-xs text-redlog-text-dim">{t('settings.otherPlatforms')} ({group.length})</summary>
+              {rows}
+            </details> : null
         })}
       </div>
     </FieldGroup>

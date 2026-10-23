@@ -279,6 +279,28 @@ describe('export plan IPC contract', () => {
   // A live terminal keeps appending to its cast. Hashing the whole file made the
   // digest stale the moment the terminal printed, so the export was refused
   // ("source-unavailable") for as long as anything was running.
+  it('preserves approved cast bytes including operator identifiers when the format cannot scrub PII', () => {
+    const name = 'casts/identity.cast'
+    const cast = JSON.stringify({ version: 2, env: { HOME: os.homedir(), USER: os.userInfo().username } }) + '\n'
+      + JSON.stringify([0.1, 'o', `${os.homedir()} ${os.hostname()} ${os.userInfo().username} ${'中文'.repeat(20000)}\r\n`]) + '\n'
+    const source = addExportAttachment(dir, name, cast)
+    addEvent('events', 'identity-command', 1000, {
+      data: { terminalId: 'identity', io: { stream: 'cast', ref: source, off: 0, len: Buffer.byteLength(cast) } }
+    })
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', scrubPii: false } as never) as {
+      ok: true; plan: { id: string; capabilities: { piiScrubbing: boolean } }
+    }
+    expect(resolved.ok).toBe(true)
+    expect(resolved.plan.capabilities.piiScrubbing).toBe(false)
+    fs.appendFileSync(source, '[0.2,"o","after preview"]\n')
+    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as {
+      ok: true; artifactPath: string
+    }
+    expect(executed.ok).toBe(true)
+    expect(fs.readFileSync(path.join(executed.artifactPath, name))).toEqual(Buffer.from(cast))
+    expect(fs.readFileSync(source, 'utf8')).toContain('after preview')
+  })
+
   it('exports a cast that grew after the preview, with exactly the part that was previewed', () => {
     const castFile = path.join(dir, 'casts', 'live.cast')
     addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n[0.2,"o","tw')

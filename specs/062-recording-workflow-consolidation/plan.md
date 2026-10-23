@@ -44,3 +44,94 @@ T015–T018 replace the former AI preset with `agent-capture-policy.ts`. The exi
 Host initialization and all auxiliary callbacks require the current enabled generation. Stop closes/snapshots the former project before merging identity. JSONL start-offset checkpoints preserve the observed connection boundary independently of copied evidence bytes; per-message sources ignore pre-activation files and initial auxiliary-part discovery. From-now behavior is disclosed in settings. Source-reported tool execution remains distinct from independently observed shell output.
 
 Constitution review: privacy/isolation and evidence provenance are explicit; install/query failure stays visible; current projection uses shared policy; changes to capture policy began with failing behavior tests. Real-file E2E caught and repaired discovery excluding hidden source roots/intermediate directories. A complete unit regression also exposed the delayed focus-trap issue; two failing modal tests pin the fix. No constitution exception was required. T019 Mac native manual UI passed after unlock; cross-platform installer/update gates remain open in T008/T012. See ai-mac-acceptance-20261022.md.
+
+
+## Native friction follow-up — T051–T054 (2026-10-23)
+
+Keep the existing Electron/React surfaces. ManagedHttpProxy owns a volatile HTTPS
+nonce-report snapshot for its current process generation and CA fingerprint.
+The existing authenticated verification sink records it without creating an
+evidence event; stop, failed start, restart or a changed/missing CA invalidates it.
+Health continues to distinguish capture readiness from verification and names the
+verified client, rather than claiming every tool trusts the CA. Project close
+already stops the owned proxy, so no proof is carried to the next project.
+
+FirstRun keeps external-shell setup primary and one built-in fallback. The HTTP
+step presents own/capture-browser selection before its existing instructions;
+regular browser settings can reopen the same verifier. Core health labels link
+to their existing settings pages. No CA trust or proxy-system setting changes
+automatically, and no new capture mode is introduced.
+
+Settings search retains the generated text inventory but excludes unresolved
+templates and inapplicable WSL states. The CA hit uses a stable key target;
+static labels retain the existing text-location fallback. A MutationObserver
+waits for asynchronous status content and disconnects on resolution/navigation.
+Short Latin terms match tokens, avoiding CA matching cargo/calendar/localhost.
+
+Capture manifests may declare platforms (darwin/linux/win32; absent means all).
+The contribution registry and hook detection preserve that metadata, and the
+three bundled manual producer packs declare it explicitly. Settings groups
+foreign sources without execution steps; a live producer stays visible even
+when its platform metadata disagrees. This changes presentation, not ingest or
+permission policy. Existing focused runtime, privacy, copy and settings tests
+remain the regression boundary; native isolated Mac checks supplement them.
+
+
+### T049 export-copy closeout (2026-10-23)
+
+Use existing resolved attachment counts and list kinds. Label the count as all
+attachments; keep scope/source-chain facts for every applicable projection,
+while the existing cast-list warning covers included recordings only. Render
+boolean selection values as localized enabled/disabled and omit unset fields
+without mutating requests. Keep preview labels from shrinking beside long
+selection summaries. Resolver, snapshot, exclusions and execution stay unchanged.
+
+### Native artifact follow-up — T056–T057 (2026-10-23)
+
+Actual bundle inspection found unconditional operator-PII replacement in casts
+despite bundle's canonical piiScrubbing:false capability. Remove that implicit
+rewrite and obsolete scrubCast helper; copy only the approved prefix bytes,
+using bounded chunks for a growing recording. This keeps command io offsets and
+published capability semantics intact. Bundle still offers whole-file exclusion,
+not automatic recording sanitization; it can retain operator identifiers.
+No new format, policy flag, service or schema. The IPC regression uses real
+exported bytes, Unicode across chunk boundaries and post-preview appends.
+
+Selection summaries omit empty/unset control values while preserving false/0
+and active predicates. The request and frozen selection remain unchanged.
+Native source-build Mac artifacts supplement existing selection tests; installers,
+cross-platform HUD/update gates and the full scenario matrix remain separate.
+
+### Shell status and prompt follow-up — T058 (2026-10-23)
+
+The reported prompt alternation reproduces without RedLog when Powerlevel10k
+and a separate precmd PROMPT renderer are both registered. The caller authorized
+removing that competing registration locally; the product installer must not
+rewrite other users' themes. No prompt variable, hook order or renderer change
+is added to RedLog itself.
+
+Keep the existing enrollment JSON/state machine and command names. The Python
+human projection distinguishes `recording enabled` from missing identity and
+does not claim acknowledged delivery. Bash/Zsh start shows the resulting state;
+only an enabled result can emit a resume. Startup merely announces loading.
+The unreachable warning preserves offline spool semantics for identified work,
+but explicitly declines a preservation promise when no project identity exists.
+Focused shell/PTY regression and local installed-file checks cover the change;
+no new framework, flag, alias or capture policy is introduced.
+
+### Measured performance follow-up — T059 (2026-10-23)
+
+Measure the hot paths before changing them. Ordinary Zsh commands invoke the
+Python relay repeatedly, so defer HTTP/TLS, subprocess, pathlib and diagnostic
+imports until the operations that use them. Preserve output limits, drain
+timing, exit codes and enrollment/spool behavior. A shorter select wait did not
+improve the measured result and was removed.
+
+HTTP flow selection ranks only metadata, then retrieves complete evidence for
+the selected IDs as before. Keep earliest-request/latest-response selection,
+duplicates, snapshot boundaries and bodies intact. Add a public contract case
+and an opt-in real-SQLite body-heavy benchmark. No schema, index, cache or
+dependency is added. The existing 100k-event query budget and settings field
+lookup measurements did not justify broader changes. Timing methodology and
+limits are recorded in performance-20261023.md; this is not native rendering,
+installer or cross-platform performance acceptance.

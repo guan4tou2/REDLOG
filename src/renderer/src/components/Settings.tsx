@@ -39,17 +39,27 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const narrow = useNarrowViewport()
   // The setting a search result points at: after its page renders, the text is
   // scrolled into view and marked briefly.
-  const [findText, setFindText] = useState<string | null>(null)
+  const [findText, setFindText] = useState<{ key: string; text: string } | null>(null)
   const pane = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!findText || !pane.current) return
-    const els = Array.from(pane.current.querySelectorAll<HTMLElement>('h3, label, p, span, button'))
-    const el = els.find((e) => e.textContent?.includes(findText))
-    setFindText(null)
-    if (!el) return
-    el.scrollIntoView?.({ block: 'center' })
-    el.classList.add('ring-1', 'ring-redlog-accent', 'rounded')
-    setTimeout(() => el.classList.remove('ring-1', 'ring-redlog-accent', 'rounded'), 1600)
+    const root = pane.current
+    const locate = (): boolean => {
+      const els = Array.from(root.querySelectorAll<HTMLElement>('h3, label, p, span, button'))
+      const el = root.querySelector<HTMLElement>(`[data-settings-key="${findText.key}"]`)
+        ?? els.find((e) => e.textContent?.includes(findText.text))
+      if (!el) return false
+      el.scrollIntoView?.({ block: 'center' })
+      el.classList.add('ring-1', 'ring-redlog-accent', 'rounded')
+      setTimeout(() => el.classList.remove('ring-1', 'ring-redlog-accent', 'rounded'), 1600)
+      setFindText(null)
+      return true
+    }
+    if (locate()) return
+    // CA paths arrive after the page's status read, not during its first render.
+    const observer = new MutationObserver(() => { if (locate()) observer.disconnect() })
+    observer.observe(root, { childList: true, subtree: true })
+    return () => observer.disconnect()
   }, [findText, tab])
   // Three states, not one flag. The bar used to show only "saved", so a write
   // in flight and a write that had failed both looked like nothing had
@@ -229,7 +239,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
     .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
     .filter((g) => g.pages.length > 0)
   const pageLabel = new Map(groups.flatMap((g) => g.pages.map((pg) => [pg.id, pg.label] as const)))
-  const hits = searchSettings(pageQuery, t)
+  const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
 
   return (
     // Narrow, the 212px category column is a strip above the page instead of a
@@ -315,7 +325,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
               {hits.map((h) => (
                 <button
                   key={`${h.page}:${h.text}`}
-                  onClick={() => { setTab(h.page); setFindText(h.text) }}
+                  onClick={() => { setTab(h.page); setFindText({ key: h.key, text: h.text }) }}
                   className="w-full text-left pl-5 pr-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
                 >
                   <span className="block truncate" title={h.text}>{h.text}</span>
@@ -347,10 +357,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
 
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div ref={pane} className={`flex-1 overflow-y-auto p-pad space-y-4 ${tab === 'plugins' ? '' : 'max-w-[900px]'}`}>
+      <div ref={pane} className={`flex-1 overflow-y-auto p-pad space-y-4 ${tab === 'plugins' || tab === 'hooks' ? '' : 'max-w-[900px]'}`}>
         {tab === 'general' && <GeneralPage config={config} setConfig={setConfig} />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
-        {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
+        {tab === 'browser' && <BrowserPage onPrepare={() => setTab('hooks')} config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'scope' && <ScopePage config={config} setConfig={setConfig} t={t} />}
         {tab === 'hooks' && (
@@ -367,7 +377,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      <div className={`px-4 py-2 border-t border-redlog-border shrink-0 ${tab === 'plugins' ? '' : 'max-w-[900px]'}`}>
+      <div className={`px-4 py-2 border-t border-redlog-border shrink-0 ${tab === 'plugins' || tab === 'hooks' ? '' : 'max-w-[900px]'}`}>
         <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
       </div>
       </div>

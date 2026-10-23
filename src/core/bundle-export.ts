@@ -11,7 +11,6 @@ import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from '
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR } from './redact-export'
-import { operatorPiiReplacements } from './operator-pii'
 import { getDoNotExportIds } from './db/do-not-export'
 import { isAttachmentId, type ExportAttachment } from './export-attachments'
 
@@ -116,73 +115,17 @@ function copyPrefix(src: string, dst: string, limit: number): void {
   if (limit >= fs.statSync(src).size) { fs.copyFileSync(src, dst); return }
   const fd = fs.openSync(src, 'r')
   try {
-    const buf = Buffer.allocUnsafe(limit)
-    let got = 0
-    while (got < limit) { const n = fs.readSync(fd, buf, got, limit - got, got); if (n === 0) break; got += n }
-    fs.writeFileSync(dst, buf.subarray(0, got))
-  } finally { fs.closeSync(fd) }
-}
-
-/** `limit`: copy only this many leading bytes (a cast's frozen prefix). */
-export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024, limit = Infinity): void {
-  if (reps.length === 0) { copyPrefix(src, dst, limit); return }
-  const fd = fs.openSync(src, 'r')
-  try {
-    const stat = { size: Math.min(fs.fstatSync(fd).size, limit) }
-    if (stat.size === 0) { fs.writeFileSync(dst, ''); return }
-    const CHUNK = chunkSize
-    const buf = Buffer.alloc(Math.min(CHUNK, stat.size))
-    let headerLine = ''
-    let headerEnd = 0
-    let bytesRead = 0
-    while (bytesRead < stat.size) {
-      const n = fs.readSync(fd, buf, 0, Math.min(buf.length, stat.size - bytesRead), bytesRead)
-      if (n === 0) break
-      const nlIdx = buf.indexOf(0x0a, 0)
-      if (nlIdx >= 0 && nlIdx < n) {
-        headerLine += buf.subarray(0, nlIdx).toString('utf-8')
-        headerEnd = bytesRead + nlIdx + 1
-        break
-      }
-      headerLine += buf.subarray(0, n).toString('utf-8')
-      bytesRead += n
-    }
-    if (!headerEnd) { copyPrefix(src, dst, limit); return }
-    let header: Record<string, unknown>
-    try { header = JSON.parse(headerLine) } catch { copyPrefix(src, dst, limit); return }
-    if (header.env && typeof header.env === 'object') {
-      for (const k of Object.keys(header.env as Record<string, unknown>)) {
-        let v = String((header.env as Record<string, string>)[k])
-        for (const [re, rep] of reps) v = v.replace(re, rep)
-        ;(header.env as Record<string, string>)[k] = v
-      }
-    }
     const out = fs.openSync(dst, 'w')
     try {
-      const scrubbedHeader = Buffer.from(JSON.stringify(header) + '\n', 'utf-8')
-      fs.writeSync(out, scrubbedHeader)
-      let pos = headerEnd
-      let carry = ''
-      while (pos < stat.size) {
-        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, stat.size - pos), pos)
-        if (n === 0) break
-        const chunk = carry + buf.subarray(0, n).toString('utf-8')
-        const lines = chunk.split('\n')
-        carry = lines.pop()!
-        for (let line of lines) {
-          for (const [re, rep] of reps) line = line.replace(re, rep)
-          fs.writeSync(out, line + '\n', undefined, 'utf-8')
-        }
-        pos += n
-      }
-      if (carry) {
-        for (const [re, rep] of reps) carry = carry.replace(re, rep)
-        fs.writeSync(out, carry, undefined, 'utf-8')
+      const buf = Buffer.allocUnsafe(Math.min(limit, 64 * 1024))
+      let got = 0
+      while (got < limit) {
+        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, limit - got), got)
+        if (n === 0) throw new Error('Recording became shorter than its approved snapshot')
+        fs.writeFileSync(out, buf.subarray(0, n))
+        got += n
       }
     } finally { fs.closeSync(out) }
-  } catch (err) {
-    try { fs.unlinkSync(dst) } catch {}
-    throw err
   } finally { fs.closeSync(fd) }
 }
 
@@ -495,19 +438,19 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // Audit 2026-09-18 §2.3: casts span multiple commands/targets within a single
   // terminal session — automatic scope filtering would require byte-level
   // splitting, which the audit explicitly deems unsafe ("不承諾自動裁切即可安全").
-  // Casts are included as-is; the manifest documents this policy gap.
+  // Preserve the approved prefix byte-for-byte. Bundle does not support
+  // operator-PII scrubbing; a silent rewrite would invalidate io offsets.
   const srcCasts = path.join(projectDir, 'casts')
   const dstCasts = path.join(bundleDir, 'casts')
   let castsIncluded = 0
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
-    const piiReps = operatorPiiReplacements()
     for (const name of fs.readdirSync(srcCasts)) {
       if (excluded.has(`casts/${name}`)) continue
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
-        scrubCast(s, d, piiReps, undefined, opts.attachments?.find((a) => a.id === `casts/${name}`)?.frozenBytes)
+        copyPrefix(s, d, opts.attachments?.find((a) => a.id === `casts/${name}`)?.frozenBytes ?? Infinity)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++

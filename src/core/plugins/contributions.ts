@@ -90,6 +90,7 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
         description: cap.description,
         agentType: cap.agentType,
         emits: cap.emits,
+        platforms: cap.platforms,
         requires: cap.requires,
         hookFile: cap.hookFile,
         installMethod: cap.installMethod,

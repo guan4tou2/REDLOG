@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
 import { I18nProvider } from '../src/renderer/src/i18n'
+import en from '../src/renderer/src/i18n/en.json'
 import { subsetSummary } from '../src/renderer/src/lib/exportSubsetText'
 
 const t = (key: string, vars?: Record<string, string | number>): string => vars ? `${key}:${JSON.stringify(vars)}` : key
@@ -39,8 +40,23 @@ function install(): void {
 }
 
 describe('subsetSummary', () => {
+  it('names enabled and disabled conditions while omitting unset filters', () => {
+    const translate = (key: string): string => (en as Record<string, string>)[key] ?? key
+    const summary = subsetSummary({ kind: 'selection', projection: 'events', filter: { hidePersonal: true, inScopeOnly: false, since: undefined } }, translate)
+    expect(summary).toContain('Hide personal traffic: Enabled')
+    expect(summary).toContain('In scope only: Disabled')
+    expect(summary).not.toMatch(/true|false|undefined/)
+    expect(summary).not.toContain('From:')
+  })
+
   it('says a selection with no condition is every stored event, not "the current view"', () => {
     expect(subsetSummary({ kind: 'selection', projection: 'events', filter: {} }, t)).toBe('export.range.noFilter')
+  })
+  it('omits empty HTTP controls without hiding an active status filter', () => {
+    expect(subsetSummary({ kind: 'selection', projection: 'http', filter: {}, http: { statusPrefix: '4', text: '', host: undefined } }, t))
+      .toBe('export.condition.statusPrefix: 4')
+    expect(subsetSummary({ kind: 'selection', projection: 'http', filter: {}, http: { text: '' } }, t))
+      .toBe('export.range.noFilter')
   })
   it('lists the conditions, the whole project, and a time range', () => {
     expect(subsetSummary({ kind: 'selection', projection: 'events', filter: { targetId: 'a.test' } }, t)).toContain('a.test')

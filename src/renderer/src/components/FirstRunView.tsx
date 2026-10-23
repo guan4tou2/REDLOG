@@ -201,7 +201,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
 
       <div className="space-y-3">
         <div
-          className="w-full max-w-3xl border border-redlog-border rounded-lg p-3 space-y-3"
+          className="w-full border border-redlog-border rounded-lg p-3 space-y-3"
           data-testid="first-run-strip"
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
@@ -210,6 +210,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
             {t('firstRun.core.heading')}
           </SectionLabel>
 
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-3 [&>*]:min-w-0">
           <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
             <div className="flex items-baseline justify-between gap-2">
               <p className="font-semibold text-redlog-text">{t('firstRun.commands.title')}</p>
@@ -274,16 +275,13 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 <p className="text-redlog-text-dim">{t('firstRun.stuckWhy')}</p>
                 <Button level="secondary" onClick={() => setShowSources(true)}>{t('firstRun.stuckAction')}</Button>
               </div>
-            ) : (
-              <p data-testid="first-run-commands-quick" className="text-redlog-text-dim">{t('firstRun.commands.quickTest')}</p>
-            )}
+            ) : null}
 
             {/* Two command paths, neither a step toward the other: the
                 built-in terminal on the left, or the shell the operator
                 already works in. Either one's command verifies. */}
             {(hostTarget || wslTarget) && (
               <div className="space-y-1.5 pt-1">
-                <p className="text-redlog-text-faint">{t('firstRun.commands.ownTerminal')}</p>
                 <div className="flex flex-wrap gap-2">
                   {hostTarget && (
                     <Button
@@ -307,6 +305,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           </section>
 
           <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} paused={recordingOn === false} />
+          </div>
 
           <div data-testid="first-run-core-footer" className="text-xs space-y-1.5">
             {commands !== 'none' && (
@@ -350,7 +349,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
             </div>
           )}
         </div>
-        <div className="w-full max-w-3xl space-y-2">
+        <div className="w-full space-y-2">
           <button type="button" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin}
             onClick={() => setShowBuiltin((v) => !v)}
             className="inline-flex items-center min-h-8 text-xs text-redlog-text-dim underline hover:text-redlog-text">

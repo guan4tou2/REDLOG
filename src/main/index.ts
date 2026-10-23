@@ -973,7 +973,10 @@ function startProject(project: ProjectMeta): void {
     },
     // #220: capture checks go to the screen that asked for them, not to the
     // record.
-    httpVerifySink: (report) => send(mainWindow, 'httpCapture:verify', report)
+    httpVerifySink: (report) => {
+      managedHttpProxy.noteVerification(report)
+      send(mainWindow, 'httpCapture:verify', report)
+    }
   })
   onApiProjectOpen()
 

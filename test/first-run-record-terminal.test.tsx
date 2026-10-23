@@ -395,7 +395,8 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
     draw()
     await waitFor(() => expect(bridge.preflight).toHaveBeenCalled())
     expect(screen.queryByTestId('first-run-missing-deps')).toBeNull()
-    expect((await screen.findByTestId('first-run-commands-quick')).textContent).toContain('echo redlog-ok')
+    expect(await screen.findByTestId('first-run-record-terminal')).toBeTruthy()
+    expect(screen.queryByTestId('first-run-commands-quick')).toBeNull()
   })
 })
 
@@ -484,6 +485,8 @@ describe('first run: HTTP(S) card', () => {
     expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
 
     const nonce = await shownNonce()
+    fireEvent.click(screen.getByRole('button', { name: 'RedLog 擷取瀏覽器' }))
+    expect(screen.queryByTestId('first-run-http-own-browser')).toBeNull()
     fireEvent.click(screen.getByTestId('first-run-http-verify-browser'))
     await waitFor(() => expect(bridge.verifyInBrowser).toHaveBeenCalledWith(nonce))
   })

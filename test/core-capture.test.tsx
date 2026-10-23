@@ -5,7 +5,7 @@
 // operator leaves first-run the Dashboard keeps naming both — so HTTP(S) left
 // unset does not fold out of sight the moment a command starts recording.
 
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, cleanup, fireEvent, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
@@ -44,6 +44,19 @@ const mitm = (over: Record<string, unknown> = {}): Record<string, unknown> =>
   ({ id: 'mitmproxy', hookId: 'mitmproxy', installed: true, state: 'ready', lastEventAt: null, ...over })
 
 describe('the Dashboard keeps both core captures in view', () => {
+  it('keeps HTTPS unverified after commands arrive, with direct settings links', () => {
+    const nav = vi.fn()
+    const { container } = render(<I18nProvider><CaptureHealthCard capture={{
+      verdict: 'healthy', sources: [terminal, mitm()], checkedAt: Date.now(),
+      managedHttpProxy: { state: 'running', url: 'http://127.0.0.1:6661' }
+    } as any} onNavigate={nav} onRefresh={() => {}} /></I18nProvider>)
+    expect(container.querySelector('[data-testid="capture-core-http"]')?.textContent).toMatch(/not verified/i)
+    expect(container.textContent).not.toMatch(/All good/i)
+    fireEvent.click(within(container).getByRole('button', { name: 'HTTP(S) requests' }))
+    expect(nav).toHaveBeenCalledWith('settings/browser')
+    fireEvent.click(within(container).getByRole('button', { name: 'Commands' }))
+    expect(nav).toHaveBeenCalledWith('settings/hooks')
+  })
   beforeEach(() => {
     ;(window as unknown as { redlog: unknown }).redlog = {
       config: { get: async () => ({}), save: async () => true },
@@ -51,6 +64,13 @@ describe('the Dashboard keeps both core captures in view', () => {
     }
   })
   afterEach(() => cleanup())
+
+  it('shows the verified client rather than leaving a successful check pending', () => {
+    const el = draw([terminal, mitm()], { state: 'running', url: 'http://127.0.0.1:6661',
+      httpsVerification: { scheme: 'https', nonce: 'rv-test-proof', userAgent: 'curl/8', receivedAt: Date.now() } })
+    expect(el.querySelector('[data-testid="capture-https-verification"]')?.textContent).toContain('curl/8')
+    expect(el.textContent).not.toMatch(/HTTPS not verified/i)
+  })
 
   it('flags HTTP(S) as not started while commands are recording', () => {
     const el = draw([terminal, mitm()], { state: 'stopped', url: null })

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
 import HooksPanel from '../src/renderer/src/components/settings/HooksPanel'
 
 // Spec 052 T034. Settings has to be able to answer "what will my shell do",
@@ -57,6 +57,19 @@ describe('the hooks panel says what the shell will do', () => {
   it('shows the mode the operator actually set, not the installed default', async () => {
     draw(async () => ({ mode: 'auto', native: [], pty: [] }))
     await waitFor(() => expect(screen.getByText(/recording from the first prompt/)).toBeTruthy())
+  })
+
+  it('keeps the current mode visible while tool classifications are expandable', async () => {
+    draw(async () => ({ mode: 'manual', native: ['nc', 'vim'], pty: ['ssh'] }))
+    const mode = await screen.findByText(/not recording until redlog start/)
+    const summary = mode.closest('summary')
+    expect(summary).not.toBeNull()
+    const details = summary!.closest('details')!
+    expect(details.open).toBe(false)
+    fireEvent.click(summary!)
+    expect(details.open).toBe(true)
+    expect(details.textContent).toContain('left alone: nc vim')
+    expect(details.textContent).toContain('given a PTY: ssh')
   })
 
   it('leaves the note out rather than throwing when the bridge is older', async () => {

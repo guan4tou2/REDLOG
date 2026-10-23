@@ -210,11 +210,11 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
-          onSetup={() => onNavigate(settingsTarget('captureControl'))}
+          onSetup={() => onNavigate(settingsTarget('hooks'))}
         />
       )}
       {!capture && (
-        <Button level="secondary" data-testid="capture-open-setup" onClick={() => onNavigate(settingsTarget('captureControl'))}>
+        <Button level="secondary" data-testid="capture-open-setup" onClick={() => onNavigate(settingsTarget('hooks'))}>
           {t('capture.openSetup')}
         </Button>
       )}

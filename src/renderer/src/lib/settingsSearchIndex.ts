@@ -144,6 +144,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.retentionLoggedTier'
   ],
   browser: [
+    'firstRun.http.verifySettings',
     'settings.cdp',
     'settings.cdpHint',
     'settings.cdpConnected',

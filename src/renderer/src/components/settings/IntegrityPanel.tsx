@@ -128,7 +128,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
       {anchors.length === 0 ? (
         <p className="text-xs text-redlog-text-dim">{t('settings.integrityNoAnchors')}</p>
       ) : (
-        <div className="space-y-1 max-h-[240px] overflow-y-auto">
+        <div className="space-y-1">
           {anchors.map((a) => (
             <div key={a.id} className="p-2 rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-center gap-2 text-xs">

@@ -35,6 +35,19 @@ function openJson(): void {
 }
 
 describe('ExportMenu plan preview', () => {
+  it('keeps JSON chain/scope warnings without attachment instructions', async () => {
+    const selected = plan(2)
+    selected.request.subset = { kind: 'selection', projection: 'events', filter: {} }
+    install(async () => ({ ok: true, plan: selected }))
+    const { container } = render(<I18nProvider><ExportMenu totalCount={2} /></I18nProvider>)
+    openJson()
+    await screen.findByTestId('export-commands-note')
+    expect(screen.getByTestId('export-preview-no-attachments').textContent).toContain('Attachments')
+    expect(screen.getByTestId('export-projection-notice').textContent).toContain('not proof of the complete source chain')
+    expect(container.textContent).not.toMatch(/attachments are chosen individually|Entire recording attachments|HTTP bodies/)
+    expect(screen.getByTestId('export-commands-note').textContent).toContain('not filtered by web scope')
+  })
+
   afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
   // The evidence bundle cannot scrub operator PII, so the plan resolver

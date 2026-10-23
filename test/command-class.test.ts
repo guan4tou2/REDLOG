@@ -128,11 +128,12 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     // side receives it, and `python3 -c print(1)` is a bash syntax error
     // otherwise rather than a test case.
     const quote = (word: string) => `'${word.replace(/'/g, `'\\''`)}'`
-    const script = CASES.map((line) =>
+    // Defaults must not inherit the operator's ~/.redlog class overlay.
+    const script = ['H=$(mktemp -d -t redlog-defaults.XXXXXX)', 'trap \'rm -rf "$H"\' EXIT', ...CASES.map((line) =>
       `printf '%s\\t' ${quote(line)}\n` +
-      `python3 "${hookPath(target!, 'redlog-relay.py')}" classify -- ${line.split(' ').map(quote).join(' ')}\n` +
+      `python3 "${hookPath(target!, 'redlog-relay.py')}" classify --home "$H" -- ${line.split(' ').map(quote).join(' ')}\n` +
       `printf '\\n'`
-    ).join('\n')
+    )].join('\n')
     // 25 `python3` spawns across the WSL boundary, in a suite that runs files
     // in parallel. Alone this is seconds; under full-suite load it is a
     // minute, and the default budget turns that into a truncated stdout and a

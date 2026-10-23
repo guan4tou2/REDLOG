@@ -157,6 +157,7 @@ export interface CaptureHealth {
     error?: string
     caPath?: string
     certReady?: boolean
+    httpsVerification?: import('./http-verify').HttpVerifyReport
   }
 }
 

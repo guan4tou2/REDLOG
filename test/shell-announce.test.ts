@@ -6,11 +6,12 @@ const bash = spawnSync('bash', ['-c', 'exit 0'], { stdio: 'ignore' }).status ===
 
 ;(bash ? describe : describe.skip)('shell capture announcement', () => {
   it('advertises the terminal controls only for adapters that have them', () => {
-    const say = (shell: string): string => spawnSync('bash', ['-c', 'source "$1"; _REDLOG_ADAPTER_SHELL=$2; _redlog_announce_shell commands', 'redlog-banner', path.resolve('hooks/shell-common.sh'), shell], { encoding: 'utf8' }).stdout
+    const say = (shell: string): string => spawnSync('bash', ['-c', 'source "$1"; _REDLOG_ADAPTER_SHELL=$2; _redlog_announce_shell', 'redlog-banner', path.resolve('hooks/shell-common.sh'), shell], { encoding: 'utf8' }).stdout
     expect(say('bash')).toMatch(/redlog status/)
     expect(say('zsh')).toMatch(/redlog stop/)
     // An adapter without `redlog` must not point at a command that is not there.
     expect(say('sh')).not.toMatch(/redlog status|redlog stop/)
-    expect(say('sh')).toContain('commands will be recorded')
+    expect(say('sh')).toContain('shell hook loaded')
+    expect(say('sh')).not.toContain('will be recorded')
   })
 })

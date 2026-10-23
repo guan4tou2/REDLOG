@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 
@@ -71,4 +71,14 @@ describe('Scope & Evidence page', () => {
     await open()
     expect(screen.queryByText('All commands within scope')).not.toBeNull()
   })
+  it('opens scope settings from an unconfigured monitor', async () => {
+    installBridge({ rows: [], truncated: false }, 0)
+    window.redlog.scope.isConfigured = vi.fn(async () => false)
+    const onOpenSettings = vi.fn()
+    render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
+    expect(onOpenSettings).toHaveBeenCalledOnce()
+    expect(screen.queryByText('All commands within scope')).toBeNull()
+  })
+
 })

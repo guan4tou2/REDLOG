@@ -132,31 +132,74 @@ export function MetadataGrid({ entries }: { entries: Array<[string, unknown]> })
 export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
+  const isRequest = subtype === 'http_request_start'
+  const isResponse = subtype === 'http_response'
+  const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
+  const ownHalf = isRequest ? 'request' : 'response'
+  const [half, setHalf] = useState<'request' | 'response'>(ownHalf)
+  const [partner, setPartner] = useState<{ eventId: string; data: Record<string, unknown> } | null>(null)
+  const [pairedLoading, setPairedLoading] = useState(false)
+  const [pairedError, setPairedError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => { setHalf(ownHalf) }, [ownHalf, eventId])
+  useEffect(() => {
+    setPartner(null)
+    setPairedError(false)
+    setPairedLoading(false)
+    if (!flowId || (!isRequest && !isResponse)) return
+    let cancelled = false
+    setPairedLoading(true)
+    window.redlog.events.queryByFlowId(flowId).then(events => {
+      if (cancelled) return
+      const found = events.find(event => event.id !== eventId && (
+        isRequest ? event.data?.subtype === 'http_response' : event.data?.subtype === 'http_request_start'
+      ))
+      setPartner(found ? { eventId, data: found.data } : null)
+    }).catch(() => { if (!cancelled) setPairedError(true) })
+      .finally(() => { if (!cancelled) setPairedLoading(false) })
+    return () => { cancelled = true }
+  }, [flowId, eventId, isRequest, isResponse, attempt])
+
+  // Both tabs use the same body reader. A separate preview-only partner view
+  // hid captured inline/sidecar bodies, cookies and capture truncation.
+  const pairedData = partner?.eventId === eventId ? partner.data : null
+  const selected = half !== ownHalf && pairedData ? pairedData : data
+  return (
+    <div className="mt-2 space-y-1.5">
+      {pairedData && (
+        <div role="tablist" className="flex gap-1 border-b border-redlog-border/60 -mx-1 px-1">
+          {(['request', 'response'] as const).map(side => (
+            <button
+              key={side}
+              role="tab"
+              data-testid={`http-tab-${side}`}
+              aria-selected={half === side}
+              onClick={() => setHalf(side)}
+              className={`px-3 py-1.5 text-xs -mb-px border-b-2 transition-colors ${half === side ? 'border-redlog-cyan text-redlog-text' : 'border-transparent text-redlog-text-faint hover:text-redlog-text-dim'}`}
+            >{t(side === 'request' ? 'timeline.detail.tabRequest' : 'timeline.detail.tabResponse')}</button>
+          ))}
+        </div>
+      )}
+      <HttpHalf key={`${eventId}:${half}`} data={selected} />
+      {pairedLoading && <p role="status" className="text-xs text-redlog-text-dim">{t('http.loadingPaired')}</p>}
+      {pairedError && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
+        <span>{t('http.pairedFailed')}</span>
+        <button type="button" className="min-h-8 underline" onClick={() => setAttempt(value => value + 1)}>{t('common.retry')}</button>
+      </div>}
+    </div>
+  )
+}
+
+function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
   const isRequest = subtype === 'http_request_start'
   const isWs = subtype === 'ws_message'
   const isTcp = subtype === 'tcp_message'
   const tlsInfo = data.tls as Record<string, unknown> | undefined
   const timingInfo = data.timing as Record<string, number> | undefined
-
-  const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
-  const [pairedData, setPairedData] = useState<Record<string, unknown> | null>(null)
-  const [pairedLoading, setPairedLoading] = useState(false)
-
-  useEffect(() => {
-    if (!flowId || (!isRequest && !isResponse)) { setPairedData(null); return }
-    let cancelled = false
-    setPairedLoading(true)
-    window.redlog.events.queryByFlowId(flowId).then(evts => {
-      if (cancelled) return
-      const partner = evts.find(e => e.id !== eventId && (
-        isRequest ? e.data?.subtype === 'http_response' : e.data?.subtype === 'http_request_start'
-      ))
-      setPairedData(partner?.data ?? null)
-      setPairedLoading(false)
-    }).catch(() => { if (!cancelled) setPairedLoading(false) })
-    return () => { cancelled = true }
-  }, [flowId, eventId, isRequest, isResponse])
   const params = data.params as Record<string, unknown> | undefined
   const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
   const reqPreview = typeof data.request_body_preview === 'string' ? (data.request_body_preview as string) : ''
@@ -233,24 +276,6 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
 
   const bodyless = isResponse && !preview && !hasFullRespBody && contentLength !== null && contentLength > 0
   const binaryish = bodyless && !!contentType && !/json|html|text|xml|javascript/i.test(contentType)
-
-  // Request and Response are two tabs, not one column.
-  //
-  // Both halves were always here — the event's own, then its partner
-  // appended underneath. On a 440px pane that means the response body
-  // begins somewhere below a request that has its own params, headers and
-  // body, so comparing what went out with what came back is a scroll
-  // rather than a glance, and comparing them is the entire reason an
-  // operator opens an HTTP flow.
-  //
-  // Tabs only when there are genuinely two halves to choose between. A
-  // request whose response has not landed yet, a ws frame, a tcp message:
-  // one of anything renders as itself, because a tab strip with a single
-  // tab is a control that asks a question with one answer.
-  const ownHalf: 'request' | 'response' = isRequest ? 'request' : 'response'
-  const hasBothHalves = (isRequest || isResponse) && !!pairedData
-  const [half, setHalf] = useState<'request' | 'response'>(ownHalf)
-  useEffect(() => { setHalf(ownHalf) }, [ownHalf, eventId])
 
   const ownBlock = (
     <>
@@ -386,6 +411,7 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
             ['tls_version', data.tls_version],
           ] as [string, unknown][] : [
             ['method', data.method],
+            ['url', isRequest ? data.url : undefined],
             ['status', data.status],
             ['content_type', contentType || undefined],
             ['content_length', contentLength !== null ? formatBytes(contentLength) : undefined],
@@ -436,76 +462,5 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
     </>
   )
 
-  const pairedBlock = (
-    <>
-      {pairedLoading && (
-        <p className="text-xs text-redlog-text-dim font-mono px-2">{t('http.loadingPaired')}</p>
-      )}
-      {pairedData && (() => {
-        const pSub = String(pairedData.subtype ?? '')
-        const pHeaders = pairedData.request_headers ?? pairedData.response_headers
-        const pHeadersText = pHeaders
-          ? Array.isArray(pHeaders)
-            ? (pHeaders as string[][]).map(([n, v]) => `${n}: ${v}`).join('\n')
-            : safePretty(pHeaders)
-          : ''
-        const pPreview = typeof pairedData.request_body_preview === 'string'
-          ? pairedData.request_body_preview as string
-          : typeof pairedData.response_preview === 'string'
-            ? pairedData.response_preview as string
-            : ''
-        const pMeta: [string, unknown][] = pSub === 'http_request_start'
-          ? [['method', pairedData.method], ['url', pairedData.url], ['host', pairedData.host]]
-          : [['status', pairedData.status], ['content_type', pairedData.content_type], ['duration_ms', pairedData.duration_ms]]
-        return (
-          // No heading: the tab above already names this half, and a
-          // 「對應的回應」 label under a tab reading Response says it twice.
-          <div className="space-y-1.5">
-            <MetadataGrid entries={pMeta} />
-            {pHeadersText && (
-              <CollapsibleStream label={t('timeline.detail.httpHeaders')} content={pHeadersText} accent="zinc" />
-            )}
-            {pPreview.length > 0 && (
-              // Open. This half used to be an afterthought at the bottom of
-              // the column, where collapsed was right; it is now what the
-              // operator asked for by clicking the tab, and a tab that opens
-              // onto a closed section makes them click twice for one answer.
-              <CollapsibleStream
-                label={pSub === 'http_request_start' ? t('timeline.detail.httpRequestBody') : t('timeline.detail.httpResponseBody')}
-                content={pPreview}
-                accent={pSub === 'http_request_start' ? 'zinc' : 'emerald'}
-                startOpen
-              />
-            )}
-          </div>
-        )
-      })()}
-    </>
-  )
-
-  return (
-    <div className="mt-2 space-y-1.5">
-      {hasBothHalves && (
-        <div role="tablist" className="flex gap-1 border-b border-redlog-border/60 -mx-1 px-1">
-          {(['request', 'response'] as const).map((side) => (
-            <button
-              key={side}
-              role="tab"
-              data-testid={`http-tab-${side}`}
-              aria-selected={half === side}
-              onClick={() => setHalf(side)}
-              className={`px-3 py-1.5 text-xs -mb-px border-b-2 transition-colors ${
-                half === side
-                  ? 'border-redlog-cyan text-redlog-text'
-                  : 'border-transparent text-redlog-text-faint hover:text-redlog-text-dim'
-              }`}
-            >
-              {t(side === 'request' ? 'timeline.detail.tabRequest' : 'timeline.detail.tabResponse')}
-            </button>
-          ))}
-        </div>
-      )}
-      {!hasBothHalves || half === ownHalf ? ownBlock : pairedBlock}
-    </div>
-  )
+  return <div className="space-y-1.5">{ownBlock}</div>
 }

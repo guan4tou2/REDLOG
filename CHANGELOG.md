@@ -5,6 +5,59 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Reduce ordinary Zsh command overhead by deferring relay imports used only for
+  HTTP delivery, explicit execution and diagnostics. HTTP flow pages sort only
+  selection metadata before loading complete evidence, avoiding large inline
+  bodies in the ranking step. Capture limits, full bodies and export selection
+  semantics are unchanged. Local synthetic benchmarks are recorded in Spec 062.
+
+- Shell startup announces only that the hook loaded. Terminal status distinguishes
+  an enabled switch from missing project/operator identity; start reports its
+  resulting state and no longer emits a resume after a refused project switch.
+  With no project, the offline warning no longer promises spool replay.
+
+- Evidence bundles preserve the approved terminal-recording bytes, including
+  operator paths and identifiers, instead of silently applying partial PII
+  replacement while advertising no PII scrubbing. Whole-recording exclusion
+  and snapshot boundaries remain in effect. Empty HTTP fields no longer appear
+  as active conditions in export summaries.
+
+- First-run recording setup uses the available width: terminal and HTTP(S)
+  setup sit side by side when space permits and stack in narrow windows.
+  The expanded built-in terminal no longer inherits the old form-width cap.
+
+- Export previews label total attachments correctly, show recording warnings
+  only when casts are included, and keep JSON free of attachment-selection
+  instructions. Filter summaries use readable boolean states; narrow summary
+  labels stay readable beside long conditions. Export selection is unchanged.
+
+- Keep HTTPS verification distinct from a listening proxy across page changes;
+  retain only this process/CA's verified client and clear proof on restart.
+  Core health links open the matching settings, which can reopen HTTPS checks.
+  First-run prioritizes external shells and shows browser-path choices before
+  setup steps. CA search resolves its real field instead of interpolation
+  templates or foreign WSL states. Manual capture sources declare platforms;
+  foreign setup stays out of the main list while live producers remain visible.
+
+- HTTP history's All button clears method, status and host choices and reports
+  its selected state consistently. URL text and shared filters remain independent.
+
+- HTTP request/response tabs now share the full body reader, including inline
+  content, sidecars and truncation, instead of showing only the paired preview.
+  Failed paired reads offer retry. Long bookmark titles/actions and unbroken
+  notes wrap within the pane; sticky HTTP controls no longer show content through.
+
+- Complete the layout follow-up: a single bookmark empty state and full-width
+  creation form, page-scrolling integrity anchors, compact numeric settings,
+  responsive AI/VPN lists and HUD size stops that align and advance by keyboard.
+  Scope and empty HTTP views link to their settings; command search shows exit
+  results, and failed HTTP reads no longer claim a complete empty record.
+
+- Built-in capture settings use responsive source cards instead of capped,
+  stretched single-column rows. The current terminal recording mode stays
+  visible; tool classifications and CLI details expand on demand. Transcript
+  search keeps a usable width and wraps instead of shrinking to a few letters.
+
 - Manual walk of all 11 views and all 12 settings pages with seeded data,
   judged page by page instead of by scan. Two restatements found and removed:
   the event-log band header repeated the view title (攻擊時間軸 twice on one

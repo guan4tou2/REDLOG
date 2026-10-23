@@ -115,6 +115,7 @@ export interface EventTypeContribution {
 
 /** 🟢 A capture integration — mirrors hooks-manager's PluginManifest shape. */
 export interface CaptureContribution {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string

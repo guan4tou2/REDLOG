@@ -87,7 +87,7 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, on
     if (!ok) return
     await mutate(item.agentKind, 'uninstall')
   }
-  return <div data-testid={`agent-source-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className="rounded border border-redlog-border bg-redlog-surface p-3 space-y-2">
+  return <div data-testid={`agent-source-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className="rounded border border-redlog-border bg-redlog-surface p-3 space-y-2 min-w-0">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <strong className="text-sm text-redlog-text">{source?.label ?? item.name}</strong>
       {item.state === 'not-installed' ? <button type="button" data-testid={`agent-install-${item.agentKind}`} disabled={busy} onClick={() => void mutate(item.agentKind, 'install')} className="rounded bg-redlog-elevated px-3 py-1.5 text-xs text-redlog-text disabled:opacity-40">{t('settings.agents.installCapture')}</button>
@@ -187,7 +187,7 @@ export default function AgentsPanel({ t, config, setConfig, onOpenPlugins }: { t
     <p className="text-xs text-redlog-text-faint mb-3">{t('settings.agents.fromNow')}</p>
     {error && <div role="alert" className="mb-3 text-xs text-red-400"><p>{error}</p><button type="button" onClick={() => void load()} className="underline">{t('common.retry')}</button></div>}
     {!items && !error && <p role="status" className="text-xs text-redlog-text-dim">{t('common.loading')}</p>}
-    <div data-testid="agent-sources" className="space-y-3">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} onOpenPlugins={onOpenPlugins} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
+    <div data-testid="agent-sources" className="grid gap-3 items-start" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} onOpenPlugins={onOpenPlugins} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
     <CheckRow
       checked={config.agentTailer?.emitThinking ?? false}
       onChange={(next) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: next } })}

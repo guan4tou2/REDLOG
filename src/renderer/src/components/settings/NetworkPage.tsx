@@ -54,9 +54,9 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
     <div>
       <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.vpnAdapters')}</label>
       <p className="text-xs text-redlog-text-faint mb-2">{t('settings.vpnAdaptersHint')}</p>
-      <div className="space-y-1">
+      <div className="grid gap-x-4 gap-y-1" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 22rem), 1fr))' }}>
         {adapters.map((a, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="min-w-0 flex flex-wrap items-center gap-x-2">
             <CheckRow
               checked={a.enabled}
               onChange={() => toggle(i)}
@@ -71,19 +71,19 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
       </div>
       <div className="mt-3 pt-2 border-t border-redlog-border">
         <p className="text-xs text-redlog-text-dim mb-1">{t('settings.vpnAddCustom')}</p>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t('settings.vpnNamePlaceholder')}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
           />
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addCustom()}
             placeholder={t('settings.vpnPatternPlaceholder')}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />
           <IconButton label={t('common.addItem')} onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
         </div>
@@ -129,7 +129,7 @@ export default function NetworkPage({
       <FieldGroup title={t('settings.ownTraffic')}>
         <div>
           <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {(['auto', 'dns', 'http'] as const).map((m) => (
               <button
                 key={m}
