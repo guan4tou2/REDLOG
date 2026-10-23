@@ -1419,7 +1419,6 @@
   "settings.hookRunHint": "把這行打進 RedLog 的終端機但不執行 —— 你看過之後自己按 Enter。它會像其他指令一樣被記錄。",
   "httpCapture.caTrust": "在這台機器上信任它",
   "httpCapture.caUntrust": "交戰結束後移除這份信任",
-  "firstRun.core.heading": "核心擷取",
   "firstRun.core.pending": "○ 尚未驗證",
   "firstRun.core.verified": "✓ 已驗證",
   "firstRun.core.ready": "✓ 核心擷取已就緒",

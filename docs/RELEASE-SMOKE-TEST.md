@@ -30,8 +30,8 @@
 - [ ] 在隔離環境的 PATH／測試帳號模擬缺依賴，不移除主機的全域 Python／curl。
   按準備、取消、重試，確認等待時間、失敗原因與可執行的手動修復。
 - [ ] 離開設定、重新整理、關閉 App，確認只清理它啟動的安裝程序，無關程序仍存活。
-- [ ] 略過後從 Dashboard → Capture Health → Capture setup 重新進入；
-  即使已有事件或重啟過也能找到，未驗證項目仍保持未驗證。
+- [ ] 首次設定略過後，回儀表板仍可接續；已有事件後從擷取健康度直接進
+  對應的「指令與終端」或「瀏覽器與 HTTP 擷取」設定，未驗證保持未驗證。
 - [ ] 在 800×720 視窗用鍵盤完成操作，錯誤及修復按鈕不被裁切。
 
 ## 3. 指令與輸出
@@ -40,9 +40,9 @@
   提示符先出現不能當成 hook 已接上；不能靠人工等待掩蓋第一筆遺漏。
 - [ ] 安裝外部 shell hook 兩次只留一行；開新互動終端再做 canary。
   驗證結果要區分「指令有到」及「輸出有到」。
-- [ ] 用普通 Zsh 執行 echo、printf、多行、stderr、失敗指令、pipeline 和 redirect，
-  逐一對照終端、事件及輸出。Zsh 自動輸出有界；Bash／PowerShell 普通 hook
-  主要記指令／退出資訊，輸出改測內建終端或對應明確錄製方式。
+- [ ] 分別用普通 Bash、Zsh 執行 echo、printf、多行、stderr、失敗指令、pipeline
+  和 redirect，逐一對照終端、事件及輸出。一般指令自動輸出有界，native／互動
+  例外明示未擷取；PowerShell 另驗指令 hook 與 transcript 輸出整合。
 - [ ] `redlog-session` 長互動錄製、Ctrl-C、Ctrl-Z／fg、終端 resize 能恢復；
   區分 native nc 不擷取輸出與明確 PTY 錄製，不把刻意未錄當作完整輸出。
 - [ ] 100 道不同指令逐筆核對數量、stdout、stderr、退出碼及重複事件。

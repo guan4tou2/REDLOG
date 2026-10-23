@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- First-run work actions stay above source setup. Recent evidence sits with
+  terminal capture beside pending web setup, without the enclosing duplicate
+  card. Start work replaces the duplicate Later action once command proof
+  exists. Operator guides now describe Bash auto-output and current source
+  settings; installed-smoke checks follow the actual daily settings route.
+
 - Reduce ordinary Zsh command overhead by deferring relay imports used only for
   HTTP delivery, explicit execution and diagnostics. HTTP flow pages sort only
   selection metadata before loading complete evidence, avoiding large inline

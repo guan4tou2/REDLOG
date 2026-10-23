@@ -1008,3 +1008,18 @@ performance benchmark. Its opt-in timing run is recorded separately above.
 No retries were enabled in the final full run. Source build and diff checks
 also passed. This closes the bounded push validation, not the open installer
 and cross-platform acceptance matrix.
+
+## Internal candidate and partial-state layout / T060（2026-10-24）
+
+See [internal-acceptance-20261024.md](internal-acceptance-20261024.md) for the
+initial installed DMG's 17-case strict smoke, real source-build Zsh/native wide
+layout, 13 first-run journeys and 67 focused UI tests. The operator screenshot
+identified an imbalance beyond overflow: work actions below unequal source
+cards and recent evidence inside their enclosing card. Repositioned existing
+elements and removed the duplicate leave action; capture proof and data are
+unchanged. Narrow native capture became unreliable and is not marked passed.
+Windows/Linux initial runs exposed the same stale installed-smoke route
+assertion; their repaired revision still needs its own completed CI result.
+Updated operator documentation, keeping existing evidence and settings intact.
+Overall Draft and T008–T013 remain open; dated follow-up results supersede only
+the specific checks they actually execute.

@@ -135,3 +135,22 @@ dependency is added. The existing 100k-event query budget and settings field
 lookup measurements did not justify broader changes. Timing methodology and
 limits are recorded in performance-20261023.md; this is not native rendering,
 installer or cross-platform performance acceptance.
+
+### Partial setup and internal candidate follow-up — T060 (2026-10-24)
+
+The operator's screenshot shows that "no overflow" is insufficient: a verified
+short terminal card beside a long pending HTTPS form pushed work actions below
+both, inside a large enclosing card that also contained recent evidence. Move
+the existing action group to the header, group recent evidence below terminal
+capture and remove the redundant outer card/heading. When Start work is
+available it replaces the identical leave destination's Later control. Preserve
+both verification states, the pending-source warning, evidence rows and cap,
+explicit fallback, scope and HTTP policy. Do not add modes, installation steps
+or capture controls. Pin relative geometry in the existing first-run journey.
+
+Installed capture smoke must expect the same terminal-settings route as the
+daily Dashboard; its stale captureControl assertion is not a product failure.
+Update current setup/capture docs to match Bash auto-output and the actual
+external-terminal-first UI. Candidate hashes, installed versus source checks,
+CI revisions and remaining manual/platform limits belong in the dated internal
+acceptance record, not a blanket Verified status.

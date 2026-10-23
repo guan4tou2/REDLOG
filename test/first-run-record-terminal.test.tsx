@@ -219,6 +219,8 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
     expect(screen.getByTestId('first-run-commands-verified').textContent).toContain('已收到你自己終端的指令。')
     expect(screen.queryByTestId('first-run-external-pending')).toBeNull()
+    expect(screen.getByTestId('first-run-start-work')).toBeTruthy()
+    expect(screen.queryByTestId('first-run-later')).toBeNull()
   })
 
   it('does not count session bookkeeping or HTTP rows as a verified command', async () => {

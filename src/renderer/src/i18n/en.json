@@ -1419,7 +1419,6 @@
   "settings.hookRunHint": "Types it into RedLog's terminal without running it — read the line, then press Enter. It is recorded like any other command.",
   "httpCapture.caTrust": "Trust it on this machine",
   "httpCapture.caUntrust": "And remove that trust when the engagement ends",
-  "firstRun.core.heading": "Core capture",
   "firstRun.core.pending": "○ Not verified",
   "firstRun.core.verified": "✓ Verified",
   "firstRun.core.ready": "✓ Core capture is ready",

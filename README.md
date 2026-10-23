@@ -57,9 +57,10 @@ the matching line in `SHA256SUMS.txt`.
 
 ### Runtime requirements
 
-- **`python3` and `curl`** — the shell hook (for your own terminal and for
-  RedLog's built-in terminal) uses both to send events. Without them commands
-  still run, but nothing is recorded. Kali and macOS ship both.
+- **`python3` and `curl`** — Bash/Zsh command capture uses both. RedLog checks
+  the detected environment before installing the adapter; do not assume every
+  Mac already has Python. Without working capture dependencies, the terminal
+  can remain usable without producing command evidence.
 - **mitmproxy** *(optional, for HTTP(S) capture)* — `uv tool install mitmproxy`
   (or `pipx install mitmproxy`). On macOS and Linux RedLog reads your login
   shell's `PATH` at startup (plus `~/.local/bin` and Homebrew), so tools are
@@ -70,46 +71,43 @@ the matching line in `SHA256SUMS.txt`.
 
 The first engagement, in the order that proves capture works:
 
-1. **Create a project.** Name it after the engagement and paste the scope
-   (IPs, CIDRs, `*.domain` — one per line, or separated by commas or spaces)
-   and any excluded targets straight into the create card. Scope may stay
-   empty; RedLog still records, it just cannot tell in-scope from out-of-scope.
-   Tick *ignore this machine's own traffic* to keep your own IP out of
-   deliverables.
-2. **Verify the two core captures.** A new project opens on its first-run
-   screen: the built-in terminal, with **Commands** and **HTTP(S)** beside it,
-   each "not verified" until something actually arrives. Neither waits on the
-   other. Run a command in the built-in terminal (`echo redlog-ok`) and
-   Commands verifies; start HTTP capture and run its check (in the capture
-   browser, or the `curl` it shows) and HTTP and HTTPS verify separately. The
-   built-in terminal records its screen output as an asciinema `.cast`; its
-   commands reach the Timeline once python3 and curl are installed.
-3. **Connect your normal shell.** The Commands step also offers
-   **Record my Zsh / Bash / PowerShell terminal**: it
-   checks python3 and curl, adds one line to your shell's startup file, asks you
-   to open a **new** terminal and run the `echo redlog-ok-…` it shows, and
-   confirms only when that command arrives — shells that were already open are
-   not hooked. (Later: **Capture Health ▸ Install shell hook** does the same.) From then on every command you type
-   there is recorded — **in zsh, with its output**, and with nothing typed in
-   front of it. `redlog status` says whether this terminal is recording,
-   `redlog stop` stops it until you start it again, and `redlog class list`
-   shows what is deliberately left alone.
-4. **HTTP capture.** **Start HTTP capture** on the Dashboard or the
-   first-run screen (or Settings ▸ Browser & HTTP capture) runs a local
-   mitmproxy with RedLog's addon; the one-click proxied browser goes through
-   it. Other tools need to trust the mitmproxy CA for HTTPS — the card shows
-   the trust command and the one that removes it, both by the CA's
-   fingerprint. *Route new terminals through HTTP capture* (same page, off by
-   default) sets `HTTP_PROXY` / `HTTPS_PROXY` for built-in terminals opened
-   afterwards, so proxy-aware HTTP tools — curl, wget, Python `requests`, Node
-   HTTP clients — go through mitmproxy. nmap SYN scans, raw TCP, SMB, LDAP and
-   RDP do not use an HTTP proxy and are not captured this way.
+1. **Create a project.** Enter its name. Set web scope, exclusions and private
+   traffic in **Settings ▸ Scope rules** when needed. Empty scope does not stop
+   recording; export preview states that web traffic has not been scope-filtered.
+   Web scope does not filter command evidence.
+2. **Connect your normal shell.** On the Dashboard's first-run screen choose
+   **Record my Zsh / Bash / PowerShell terminal**. Confirm the detected shell
+   or select another supported shell, install its adapter, open a **new**
+   terminal and run the displayed canary. The screen verifies arriving evidence,
+   not merely the installation. Existing terminal tabs do not reload themselves.
+   Ordinary Bash and Zsh commands automatically record bounded stdout/stderr,
+   exit code, duration and working directory. Interactive/native exceptions
+   remain explicit; PowerShell uses its own output integration. The built-in
+   terminal is an expandable fallback, with `.cast` screen recording.
+3. **Connect web capture when needed.** **Settings ▸ Browser & HTTP capture**
+   prepares/starts RedLog's local mitmproxy. Choose your browser and follow the
+   proxy/CA steps, or use the isolated capture browser. Verify HTTPS with the
+   displayed nonce from the actual client you will use. A listening proxy or
+   a browser ignoring certificate errors does not prove CA trust in other
+   clients. HTTP is retained alongside HTTPS.
+4. **Check the record.** Find the canary and a real request, inspect their output
+   or bodies, then preview and export the intended selection. Reopen the project
+   to confirm it is saved. Daily repair goes directly to **Settings ▸ Commands
+   & terminal** or **Browser & HTTP capture**, including from Capture Health.
 
-Everything beyond that is optional and off by default: **capture packs** under
-**Settings ▸ Packs, screenshots & retention** add host monitors (processes, connections,
-files, clipboard), AI agent transcripts (Claude Code, Codex, OpenCode) and
-Windows terminal output. The full walkthrough, in Traditional Chinese, is the
-[operator guide](docs/USER-GUIDE.md).
+`redlog status` reports this terminal's identity and recording state;
+`redlog stop` stops this terminal and `redlog start` resumes when its identity
+allows it. `redlog class list` shows deliberate capture exceptions.
+
+*Route new terminals through HTTP capture* is off by default and applies to
+built-in terminals opened afterwards. Proxy-aware tools still need the right
+trust configuration; client support for proxy variables varies. Raw TCP, SMB,
+LDAP, RDP and nmap SYN scans do not become HTTP evidence through this switch.
+
+Optional host monitoring, Windows transcript output, clipboard and AI capture
+are configured under **Settings ▸ Other capture sources**. Clipboard has its
+own opt-in. AI integrations are individually uninstalled by default; install,
+select project working directories and explicitly enable the chosen integration.
 
 > **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for PowerShell hooks and WSL integration.
 
@@ -126,8 +124,8 @@ Windows terminal output. The full walkthrough, in Traditional Chinese, is the
 
 Penetration testers need a tamper-evident record of what they did during an engagement. RedLog runs in the background and records it into a per-project SQLite database, timestamped and hash-chained. What it records, and what it does not, is stated rather than implied:
 
-- **Commands** from any shell with the hook installed: the command, exit code, duration and working directory. In **zsh** the output comes too, automatically, with no prefix to remember. In bash it does not — use `redlog-run <cmd>`, the built-in terminal, or a `redlog-session` shell.
-- **What zsh deliberately leaves alone**, because capturing it would cost more than it is worth: `nc` and `ncat` keep local suspension, so the Ctrl-Z → `stty raw -echo` → `fg` upgrade still works; editors and pagers would record redraws and none of the file. `ssh`, `socat` and `pwncat-cs` get a real PTY recorder instead. Each such command is still recorded, marked `metadata-only` with the reason — never an empty `stdout` that reads as "this printed nothing". `redlog class list` shows the lists; `redlog class add|remove` changes them.
+- **Commands** from a connected shell: command, exit code, duration and working directory. Ordinary **Bash and Zsh** commands also record bounded output automatically. Native/interactive exceptions remain metadata-only; explicit `redlog-session` records a PTY session with merged streams. PowerShell output uses its transcript integration.
+- **Deliberate exceptions:** `nc`, `ncat`, editors and pagers retain native terminal behavior, with metadata instead of captured output. Zsh routes `ssh`, `socat` and `pwncat-cs` through a separate PTY recorder; Bash requires an explicit `redlog-session` for that class. PTY streams are merged and local suspension differs. `redlog class list` shows the effective rules, including operator overrides.
 - **HTTP(S)** that goes through RedLog's proxy — the capture browser, or a tool pointed at the proxy. Traffic that does not use the proxy (raw TCP, SMB, nmap SYN scans) is not recorded as HTTP.
 - **Optional sources**, off until you turn them on: process, connection and file monitoring; the clipboard (its own opt-in); AI agent transcripts; periodic screenshots.
 
@@ -250,8 +248,9 @@ source /path/to/redlog/hooks/shell-zsh-hook.zsh  # ~/.zshrc
 source /path/to/redlog/hooks/shell-bash-hook.sh  # ~/.bashrc
 ```
 
-The adapters record interactive command metadata: start/end timestamps, exit
-code, and duration. For explicit output recording on macOS/Linux, run
+The Bash/Zsh adapters record command metadata and automatically capture bounded
+output for ordinary commands. Interactive/native exceptions stay explicit.
+For an explicitly recorded PTY session on macOS/Linux, run
 `redlog-session` to enter a recorded shell, or `redlog-session -- ssh user@host`
 for one command. Python 3 is required. Output is bounded and searchable; see
 [external session recording](docs/external-session-recording.md) for pause,
