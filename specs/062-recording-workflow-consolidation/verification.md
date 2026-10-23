@@ -1023,3 +1023,19 @@ assertion; their repaired revision still needs its own completed CI result.
 Updated operator documentation, keeping existing evidence and settings intact.
 Overall Draft and T008–T013 remain open; dated follow-up results supersede only
 the specific checks they actually execute.
+
+## Export preservation and notification overlap / T061（2026-10-24）
+
+Real isolated export-directory EACCES preserved the open dialog, request and
+source IDs, then recovered through re-resolve and a manifest-matching export.
+Moving an approved artifact aside reproduced a separate normal-click timeout:
+persistent toast cards intercepted the modal's confirm action. Keep notifications
+below modal backdrops without clearing errors or forcing input. Source export
+journey then passed all six cases, including missing attachment/recovery and
+cross-project refusal. Existing export E2E can now target an installed app and
+asserts isPackaged in that mode. Permissions/files restored in finally.
+
+Final push gates passed in order, including 4,167 unit cases / 28 explicit skips.
+The dated internal record separates original/updated DMGs, native x64 CI
+revisions and final-package checks; no physical ENOSPC, Windows ACL, WSL,
+Gatekeeper, global HUD-key or actual update acceptance is inferred from this.

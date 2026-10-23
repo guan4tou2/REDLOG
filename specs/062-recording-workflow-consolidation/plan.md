@@ -154,3 +154,15 @@ Update current setup/capture docs to match Bash auto-output and the actual
 external-terminal-first UI. Candidate hashes, installed versus source checks,
 CI revisions and remaining manual/platform limits belong in the dated internal
 acceptance record, not a blanket Verified status.
+
+### Export preservation follow-up — T061 (2026-10-24)
+
+Use only disposable projects: temporarily make exports/ unwritable or move one
+approved attachment aside, then restore in finally. Keep the dialog and request
+after failure, resolve a new plan for retry, and verify delivered counts/digests
+plus retained source IDs. This is actual EACCES/missing-file behavior, not a
+physical disk-full or Windows ACL claim. The new normal-click scenario exposed
+persistent toasts above the export dialog, intercepting its action button.
+Keep non-modal notifications below modal backdrops; preserve their queue,
+announcements, dismiss/reveal actions and persistence. No force clicks, reduced
+error duration, new controls, capture policy or export selection changes.

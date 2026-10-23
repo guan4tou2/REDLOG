@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Non-modal notifications no longer cover dialog actions in compact windows.
+  Export failure/retry and missing approved-attachment recovery are exercised
+  with real isolated filesystem failures; errors retain their existing lifetime.
+
 - First-run work actions stay above source setup. Recent evidence sits with
   terminal capture beside pending web setup, without the enclosing duplicate
   card. Start work replaces the duplicate Later action once command proof

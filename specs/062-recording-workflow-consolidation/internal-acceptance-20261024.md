@@ -79,3 +79,40 @@ After the source layout change: typecheck, Spec Kit, architecture and i18n
 gates passed; full Vitest run **4,167 passed / 28 explicit skips**, no retries.
 The unchanged capture/storage behavior is covered by that run, not by treating
 the earlier DMG as if it already contained the new layout.
+
+## Latest layout candidate and real preservation failures
+
+d6b53d7e DMG was separately mounted/copied and verified. Its 18-case installed
+suite passed the strict report gate (no skipped/not-exercised cases), including
+the new layout geometry. DMG SHA-256:
+`06e117eca03cb483f45b410648c089fe56d508d011130975f689205193910f40`.
+This candidate is superseded by the toast repair below, not silently relabeled.
+
+The installed export journey now supports REDLOG_PACKAGED_APP and asserts
+app.isPackaged. Making only the disposable exports directory mode 0555 produced
+real EACCES; the dialog/format/range stayed, no artifact was created, restoring
+permissions and retrying delivered a matching manifest/count and retained every
+pre-failure source ID. Five cases passed on d6b53d7e.
+
+Adding the approved-attachment disappearance case exposed a real UI defect:
+queued success/error notifications (z=100) intercepted normal export clicks above
+the z=91 modal in the 800px window. The test failed at a normal click; no force
+or dismissal workaround was added. Move non-modal toasts below modal backdrops,
+keeping errors persistent and announced. Source-build rerun: **six passed**,
+including temporary attachment move/restore, error visibility, retained selection
+and source bytes, re-resolve and project-switch rejection. All permissions and
+attachments are restored in finally. This is not a simulated or physical ENOSPC,
+and the POSIX permission case explicitly excludes Windows ACL semantics.
+
+The final deliverable must be rebuilt after this repair and carry its own
+productCommit/hash/results; neither preceding DMG is the final package.
+
+Toast repair push gates: typecheck → Spec Kit → architecture → i18n → full
+Vitest all passed, **4,167 passed / 28 explicit skips**, no retries. The two
+d6b53d7e native x64 installer workflows completed successfully:
+[Windows NSIS 40005124823](https://github.com/guan4tou2/REDLOG/actions/runs/40005124823),
+[Linux DEB 40005128921](https://github.com/guan4tou2/REDLOG/actions/runs/40005128921).
+These certify that preceding revision; final toast-repair workflows must be
+recorded separately. An attempted local download of the superseded Linux
+artifact stalled and was stopped; workflow success is not a local-file/hash
+verification of an installer that was not downloaded.

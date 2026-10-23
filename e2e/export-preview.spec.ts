@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, readdirSync, renameSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject } from './helpers'
 
@@ -9,10 +9,11 @@ test.describe.serial('approved export plan', () => {
   let tmpHome: string
 
   test.beforeAll(async () => {
-    const launched = await launchWithTempHome()
+    const launched = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
     app = launched.app
     page = launched.page
     tmpHome = launched.tmpHome
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await openTestProject(page, 'e2e-export-plan')
   })
@@ -97,6 +98,77 @@ test.describe.serial('approved export plan', () => {
     expect(visible, 'focused attachment is covered by the action bar').toBe(true)
     await page.keyboard.press('Escape')
     await expect(page.getByLabel('Export', { exact: true })).toBeFocused()
+  })
+
+  test('keeps a failed write visible and retries the selection without losing source evidence', async () => {
+    test.skip(process.platform === 'win32', 'This case uses POSIX directory permissions; Windows ACL acceptance is separate')
+    const project = await page.evaluate(async () => {
+      const active = await window.redlog.project.active()
+      return (await window.redlog.project.list()).find(p => p.id === active?.id)!
+    })
+    const exports = join(project.path, 'exports')
+    mkdirSync(exports, { recursive: true })
+    const mode = statSync(exports).mode & 0o777
+    const filesBefore = readdirSync(exports).sort()
+    const evidenceBefore = await page.evaluate(async () => (await window.redlog.events.query({ limit: -1 })).map(e => e.id))
+    await page.getByLabel('Export', { exact: true }).click()
+    await page.getByLabel('Export format', { exact: true }).selectOption('json')
+    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByTestId('export-confirm')).toBeEnabled()
+    try {
+      chmodSync(exports, 0o555)
+      await page.getByTestId('export-confirm').click()
+      const error = page.getByTestId('export-run-error')
+      await expect(error).toContainText(/EACCES|permission denied/i)
+      await expect(page.getByTestId('export-dialog')).toBeVisible()
+      await expect(page.getByLabel('Export format', { exact: true })).toHaveValue('json')
+      await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
+      expect(readdirSync(exports).sort()).toEqual(filesBefore)
+      chmodSync(exports, mode)
+      await error.getByRole('button').click()
+      await expect(error).toHaveCount(0)
+      await expect(page.getByTestId('export-confirm')).toBeEnabled()
+      await page.getByTestId('export-confirm').click()
+      await expect(page.getByTestId('export-dialog')).toHaveCount(0)
+      const newFiles = readdirSync(exports).filter(f => !filesBefore.includes(f) && f.endsWith('.json') && !f.endsWith('.manifest.json'))
+      expect(newFiles).toHaveLength(1)
+      const delivered = JSON.parse(readFileSync(join(exports, newFiles[0]), 'utf8'))
+      const manifest = JSON.parse(readFileSync(join(exports, `${newFiles[0]}.manifest.json`), 'utf8'))
+      expect(delivered.exportPlan.fingerprint).toBe(manifest.exportPlan.fingerprint)
+      expect(delivered.events.length).toBe(manifest.actualCounts.included)
+      const evidenceAfter = await page.evaluate(async () => (await window.redlog.events.query({ limit: -1 })).map(e => e.id))
+      for (const id of evidenceBefore) expect(evidenceAfter).toContain(id)
+    } finally { chmodSync(exports, mode) }
+  })
+
+  test('refuses a missing approved attachment and keeps it selected after recovery', async () => {
+    const project = await page.evaluate(async () => {
+      const active = await window.redlog.project.active()
+      return (await window.redlog.project.list()).find(p => p.id === active?.id)!
+    })
+    const artifact = join(project.path, 'artifacts', 'focus.txt')
+    const held = artifact + '.held'
+    const original = readFileSync(artifact)
+    await page.getByLabel('Export', { exact: true }).click()
+    await page.getByLabel('Export format', { exact: true }).selectOption('bundle')
+    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    const checkbox = page.getByLabel('artifacts/focus.txt', { exact: true })
+    await checkbox.check()
+    await expect(page.getByTestId('export-confirm')).toBeEnabled()
+    try {
+      renameSync(artifact, held)
+      await page.getByTestId('export-confirm').click()
+      const error = page.getByTestId('export-run-error')
+      await expect(error).toContainText('source-unavailable')
+      await expect(page.getByTestId('export-dialog')).toBeVisible()
+      renameSync(held, artifact)
+      await error.getByRole('button').click()
+      await expect(error).toHaveCount(0)
+      await expect(checkbox).toBeChecked()
+      await expect(page.getByTestId('export-confirm')).toBeEnabled()
+      expect(readFileSync(artifact)).toEqual(original)
+      await page.keyboard.press('Escape')
+    } finally { if (existsSync(held)) renameSync(held, artifact) }
   })
 
   test('rejects an approved plan after the active project changes', async () => {
