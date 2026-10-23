@@ -1062,3 +1062,10 @@ source UI journeys passed**, including all-view controls at 100–200% zoom,
 The first sandboxed unit attempt produced no completed result and was stopped;
 the normal-permission full run is the reported 116.16-second result.
 Replacement installed-package acceptance is recorded separately when complete.
+
+
+Replacement product 69bd2213 was built as DMG, installed into an isolated folder
+and passed resource/signature checks plus **24/24 installed journeys** and the
+strict report gate. All six export cases now pass on the actual package. Exact
+hashes and supersession are in the dated record; native-platform/actual-update
+limits remain explicit. No additional application changes followed those runs.

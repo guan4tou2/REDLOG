@@ -164,3 +164,25 @@ build passed. Full native-permission Vitest: **4,164 passed, 28 explicit skips**
 including all-view 100–200% zoom controls, 800×600 scope, 1600/800 setup,
 plugin width and all six real export cases. The interrupted sandboxed unit
 attempt is not counted. Replacement installed candidate remains a separate gate.
+
+
+## Accepted macOS internal candidate — 69bd2213
+
+Built from product commit `69bd2213599ff6de0336d3364e13184ab919a344` after the collision repair. Mounted the
+DMG read-only, copied RedLog.app into an isolated install folder, detached the
+image, and verified its resource contract and deep/strict ad-hoc signature.
+Installed run: **24/24 passed** in 1.6 minutes; strict JSON gate passed with
+no skipped, flaky or not-exercised case. Includes all six export recovery
+cases, first-run layout, dependency cancellation, five PTY helper sessions,
+100 ordinary real Zsh commands (49,600ms journey time), export/verify/restart,
+and live-shell project isolation. The journey time is not per-command latency.
+
+- DMG SHA-256: `23963815c2957e5a45a911bb444a6469825cc03e023e4e9f5b76df513791159c`
+- Installed app.asar SHA-256: `41fbf787c13ce91fc8ca8c4c3caea102945ea6e28afa81a1890b53005a7b48c9`
+- Raw report: `/private/tmp/redlog-internal-20261024/69bd2213-smoke.json`
+- Local deliverable: `dist/internal-20261024-69bd2213/`
+
+This supersedes the failed 95a0acb1 Mac candidate. Prior Windows/Linux green
+runs remain evidence for 95a0acb1, not this later collision repair. This local
+Mac candidate is not a published release, Developer ID identity, notarization,
+Gatekeeper download acceptance or completion of T008–T013.

@@ -13,7 +13,7 @@ npm run e2e          # every e2e/*.spec.ts
 npm run e2e:ui       # Playwright UI mode, for one spec at a time
 ```
 
-**Use `npm run e2e`, not `npx playwright test`.** The `pree2e` script rebuilds
+**For source journeys, use `npm run e2e`.** The `pree2e` script rebuilds
 better-sqlite3 for Electron's ABI. `npx playwright test` goes straight to
 Playwright and skips it, and the mismatch does not announce itself as an ABI
 error: Electron dies mid-launch with `exitCode=3221225477` (0xC0000005) and the
@@ -28,6 +28,10 @@ npx playwright test e2e/<spec>.spec.ts --reporter=line
 Running `npm test` afterwards flips the module back to the Node ABI (its
 `pretest` rebuilds), which is fine — but then the next direct Playwright run
 needs the rebuild again.
+
+Installed-only runs use the package's own native modules. With
+`REDLOG_PACKAGED_APP` set, the documented direct Playwright command does not
+need to rebuild workspace SQLite unless another selected spec launches source.
 
 ## What it covers
 
@@ -101,9 +105,10 @@ gate fails — it is skipped, not queued.** A branch can therefore accumulate
 contract changes that e2e has never once checked. Before a large branch goes
 up, run it locally.
 
-## macOS gotcha
+## macOS launch environment
 
-The first time the built app runs on macOS it may prompt for Accessibility
-permission (global shortcuts, overlay windows). Grant it in System Settings, or
-the test can hang on `firstWindow()` waiting for a window that never appears.
-Subsequent runs are unaffected.
+Run Electron in a normal desktop environment. Under an agent's restricted
+sandbox, AppKit can abort before application code runs; see `AGENTS.md` for
+the launch permission requirement. A missing first window does not establish
+an Accessibility permission problem. Test real capture/privacy prompts
+separately; do not grant extra OS permissions to mask a pre-launch failure.
