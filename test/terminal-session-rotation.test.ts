@@ -142,7 +142,10 @@ describe('project recording rotation without killing the pane', () => {
     expect(detachTerminalRecordings()).toBe(10)
     closeDB(); resetCausesResolver(); current = 'B'; open('B')
     expect(resumeTerminalRecordings()).toBe(10)
-    expect(performance.now() - started).toBeLessThan(1000)
+    // A rotation that waited would wait for `sleep 99`. Five seconds still
+    // tells that apart, where one second failed on a loaded Windows runner
+    // (1205 ms) while the rotation itself did nothing wrong.
+    expect(performance.now() - started).toBeLessThan(5000)
     expect(listTerminals()).toHaveLength(10)
     expect(fake.panes.every(pane => pane.kill.mock.calls.length === 0)).toBe(true)
     expect(rows().filter(row => row.data.subtype === 'session_start').every(row => row.data.rotationPaneCount === 10)).toBe(true)
