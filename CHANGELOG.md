@@ -9,6 +9,7 @@ for full commit body + generated notes.
   same optional install, directory authorization, message/tool I/O, search,
   transcript, JSON delivery and removal journey. Fixed multiline text search:
   JSON newline escapes no longer turn the next word into a different token.
+  Collapsed tool calls now show their input rather than only an opening brace.
   Rebuilds only derived search indexes; evidence bytes and hashes stay intact.
 
 - Project identity, operator and profile handoff now live under Project & scope;

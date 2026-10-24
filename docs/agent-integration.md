@@ -1,57 +1,30 @@
 # RedLog AI Agent Integration
 
-RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to the REST API and shell helpers.
+RedLog records supported local AI transcripts separately from terminal commands.
+Start with Claude Code, then Codex; each capture integration is optional and
+requires project permission. No model API call is needed to record a transcript.
 
 ## Integration Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     AI Agent                            │
-│  (Claude Code / Codex / GPT / Cursor / OpenCode / custom) │
-└──────┬──────────────────────────┬──────────────────────┘
-       │                          │
-  ┌────▼────┐               ┌─────▼─────┐
-  │ Terminal │               │ HTTP API  │
-  │  Hooks   │               │ (REST)    │
-  │  (log)   │               │(universal)│
-  └────┬────┘               └─────┬─────┘
-       │                          │
-       └──────────┬───────────────┘
-                  │
-        ┌─────────▼─────────┐
-        │   RedLog Engine   │
-        │  (SQLite + Event  │
-        │   Bus + Timeline) │
-        └───────────────────┘
+```text
+Authorized AI transcript → per-tool adapter → RedLog
+Connected terminal      → shell adapter    → RedLog
+Explicit observations   → HTTP API         → RedLog
 ```
 
-**Passive hooks** record every command without the agent knowing (command metadata — see [what records output](#what-records-output)). **The API** lets the agent actively query scope, create markers, and search history.
+## How AI conversations are recorded
 
-## How agents capture: hooks log
+| Source | Records | Setup |
+|---|---|---|
+| Claude Code / Codex local transcript | Supported user messages, AI replies, tool inputs and tool results | Install that capture integration, choose project working directories, explicitly enable new conversations |
+| Connected interactive shell | Commands, exit codes, duration and available bounded output | Install the matching shell adapter and verify command/output delivery |
+| HTTP API | Explicit markers, observations and supported control actions | Configure the calling tool with the local authenticated API |
 
-The cleanest way to think about it:
-
-- **Hooks are the data plane — they record.** Passive, automatic, fire on every command. This is where *logging* happens.
-- **The API is the control plane — it operates and configures the app.** Create markers, check scope, anchor the chain, read the timeline. These are actions *on* RedLog, not a substitute for capturing what the agent did.
-
-**For logging, always prefer hooks; use the API only for what a hook cannot do.** The reason is completeness, not taste:
-
-- A hook fires whether or not the agent is thinking about it — a command *cannot* run without being recorded. For an audit log, that guarantee is the whole point.
-- API calls only record what the agent decides to call. An agent that forgets, is interrupted, or wasn't prompted will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make capture depend on the agent's memory.
-
-So the division of labour is:
-
-| Use **hooks** for (logging) | Use the **API** for (operating the app) |
-|---|---|
-| Every shell / Bash command — command, exit code, duration, cwd (automatic; output is automatic in zsh and bash, and in PowerShell comes via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
-| mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
-| File transfers detected from commands (automatic); screenshots and clipboard once turned on (periodic screenshots, Host monitors pack) | Loot scanning of pasted output (`redlog_loot_scan`) |
-| | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
-| | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
-
-If activity *can* be captured by a hook, let the hook capture it and do **not** also log it via the API — that just produces duplicates. The API is for control-plane actions and observations that never touched a shell.
-
-So: install **all applicable hooks first** for logging, then use the API for operating the app.
+A terminal hook does not capture the AI conversation and does not guarantee
+that non-interactive shells spawned by an AI tool load it. AI tool results are
+source-reported output, not independent proof from the terminal recorder.
+Do not rely on the AI remembering to submit API events as the primary record
+of its conversation.
 
 ## Set up capture — do this first
 
@@ -60,7 +33,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
 | **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Other capture sources ▸ AI Agents: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
-| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd — **not** stdout/stderr | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
+| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd; ordinary Bash/Zsh commands also have bounded output, with native/interactive exceptions | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane, **with output** (asciinema `.cast`) | Built in, always on | — |
@@ -70,7 +43,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 **Three things that trip people up:**
 
-1. **The shell hook records what ran, not what it printed.** Command, exit code, duration and cwd land on the timeline; stdout/stderr do not. See [What records output](#what-records-output).
+1. **Check output separately from command metadata.** Ordinary Bash/Zsh output is bounded; native exceptions and PowerShell need their applicable output source. See [What records output](#what-records-output).
 2. **AI capture needs installation AND project permission.** An empty working-directory list records nothing. Existing sessions start at the end observed on connection; history is not silently imported.
 3. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
 
@@ -100,25 +73,26 @@ These are on-disk source formats, not a guarantee of every vendor version, web/d
 
 ### What records output
 
-Only these sources record a command's stdout/stderr:
+These sources can record command output; a PTY stream does not imply separately captured stdout/stderr:
 
 | Source | Output recorded |
 |---|---|
-| RedLog's built-in terminal | Everything, as an asciinema `.cast` per pane (per-command and full-session replay) |
+| Ordinary Bash/Zsh commands in a connected shell | Bounded automatic output; native/interactive exceptions remain metadata-only |
+| RedLog's built-in terminal | PTY output, as an asciinema `.cast` per pane (per-command and full-session replay) |
 | `redlog-run <cmd>` in a hooked shell | Capped, separated stdout/stderr in that command's `command_end` |
 | `redlog-session` (macOS/Linux) | The full terminal session, bounded — see [external session recording](external-session-recording.md) |
 | **Windows terminal output** capture pack (off by default) | PowerShell sessions, via a `Start-Transcript` follower |
 
-The shell hook records command, exit code, duration and working directory in
-zsh, bash and PowerShell. **zsh also keeps the output of ordinary commands
-automatically**; bash and PowerShell record **command metadata only**, and on
-the timeline such a command shows *output not captured*. A zsh command left
-alone on purpose (`nc`, editors, pagers) is marked `metadata-only` with the
-reason.
+The shell adapter records command metadata for Bash, Zsh and PowerShell.
+Ordinary Bash/Zsh commands can also record bounded output automatically.
+PowerShell output uses its transcript integration; native exceptions such as
+`nc`, editors and pagers intentionally retain their terminal behavior. Verify
+the actual output source rather than treating an installed hook as proof.
 
-## 1. Terminal Hooks (Passive Capture)
+## 1. Passive Capture
 
-Terminal hooks intercept commands at the shell level. The agent doesn't need to be RedLog-aware — every command it runs is automatically logged with timestamps, exit codes, and duration.
+AI transcript capture and terminal capture are independent sources. Connect
+the ones the engagement uses; neither silently enables the other.
 
 ### 1a. Claude Code — Agent Transcript Tailer (primary)
 
@@ -143,7 +117,7 @@ The optional transcript integrations capture newly written supported messages an
 
 ### 1b. Shell Preexec Hook (Universal)
 
-Works with ANY agent that spawns a shell process. Hooks into zsh `preexec`/`precmd` or bash `DEBUG` trap.
+Connects interactive Bash/Zsh shells through their lifecycle hooks. An AI tool's non-interactive subprocess is not guaranteed to load a shell profile; use the AI transcript integration for source-reported tool calls/results.
 
 The installed integration uses a small adapter for each supported shell:
 `shell-bash-hook.sh` and `shell-zsh-hook.zsh` contain only lifecycle handling;
@@ -181,9 +155,7 @@ source /path/to/redlog/hooks/shell-bash-hook.sh
 2. `PROMPT_COMMAND` fires after each command
 3. Same event emission as zsh
 
-**Output coverage:** In bash the ordinary hook records command metadata only
-(zsh keeps ordinary output by itself). Prefix a
-command with `redlog-run` to stream stdout/stderr to the terminal while also
+**Output coverage:** Ordinary Bash/Zsh commands capture bounded output automatically, except the declared native/interactive classes. Use `redlog-run` explicitly when appropriate to stream stdout/stderr to the terminal while also
 including capped, separated output in the `command_end` event. Interactive TUI
 sessions should use RedLog's built-in terminal so the PTY is recorded.
 
@@ -373,7 +345,7 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 ## Recommended Setup
 
-For maximum coverage with minimal friction — **hooks first, API only for the gaps** (see [Capture priority](#how-agents-capture-hooks-log)):
+For maximum coverage with minimal friction — **connect the applicable passive sources, then add explicit observations** (see [Capture priority](#how-ai-conversations-are-recorded)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
 2. *(Optional)* **Install the desired AI capture integration**, add its project working directories and explicitly enable it.

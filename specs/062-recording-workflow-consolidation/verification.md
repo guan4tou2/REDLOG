@@ -1147,3 +1147,27 @@ This validates synthetic transcript formats through real product paths. It
 does not prove a live Claude terminal/IDE producer version, attachments/image
 bytes, hidden reasoning or desktop/web clients. T063's locked-desktop native
 recheck and T008–T013 are not closed by this AI work.
+
+
+Native installed d3387008 inspection (after the desktop became available) used
+a fresh AI-Claude-Native-20261024 project and isolated synthetic Claude JSONL.
+Installed Claude alone, used the actual folder picker, explicitly enabled,
+then appended prompt/reply/tool records after observing capture_started.
+Native tail-text search returned the result, transcript showed three exchanges
+and expansion showed complete input/output. Disabled/removed the integration;
+subsequent source data was absent and captured sidecar hash unchanged.
+Codex/OpenCode stayed uninstalled. No model ran. Native folder paste did not
+change its path; accessible setValue plus path read-back completed the same
+system picker, with no product bypass.
+
+The same installed app reproduced the source pane reset followed by field-search
+positioning: scroll to project footer → Plugins opens at top → search 操作員
+centers that section. This completes T063's locked-desktop remainder on a
+superseding candidate with unchanged Settings code. Screenshots:
+`ui-polish-native-scroll-fixed.png`, `ui-polish-native-field-jump-fixed.png`.
+
+Native Claude review exposed a separate summary defect: collapsed tool input
+showed only `{`. Its existing journey failed before a one-line formatting
+change, which keeps the full input intact on expansion. Final ordered gates
+and build passed again: **4,168 unit / 28 existing skips** (114.83s). Final
+source/installed and summary native results follow. T008–T013 remain open.

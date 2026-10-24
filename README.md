@@ -134,7 +134,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 **Key differentiators:**
 
 - **Zero-friction capture** — installs, starts recording, stays out of your way
-- **AI agent native** — shell hooks let Claude Code, Codex, and GPT log directly into your timeline
+- **Optional AI conversations** — Claude Code and Codex integrations record supported local messages and tool calls/results for explicitly authorized project directories; shell hooks record terminal commands separately
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
 - **Operator identity** — every event carries an operator id resolved from the API token
 - **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars, one-command `.ots` bundle export for third-party `ots verify` ([details](docs/audit-trail.md))
@@ -147,7 +147,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 - **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology; plain `ssh user@host` also fires a pivot so the timeline reflects "attention moved to a remote host" ([details](docs/event-schema.md#pivot-events))
 - **VPS deployment** — `hooks/vps-deploy.sh install user@vps && hooks/vps-deploy.sh tunnel user@vps` copies the shell hook to a remote box and opens a reverse-tunnel session, so every command run on the VPS lands in the local chain in real time
 - **Pause means pause** — while recording is paused RedLog writes nothing except its own audit trail (`system`) and explicit markers. The gate sits at the single DB write point, so every source is covered — the shell hook and the mitmproxy addon included — and no derived event (scope violation, loot, pivot) leaks the content either. The paused API answers `200 {recording:false, skipped}` so the hook doesn't spool and replay it later. Each `recording_paused` / `recording_resumed` row records whether the toggle came from the `ui` or the `api`
-- **Path exclusion** — the agent transcript tailer and the Codex / OpenCode hooks additionally skip any session whose cwd is in the operator's exclusion list, so daily/hobby coding stays off the audit chain by default. The shell preexec hook has no cwd gate: pause RedLog, or don't source it in shells you don't want recorded
+- **AI project boundaries** — transcript capture requires an installed integration, explicit project working directories and activation. Exclusions can narrow that permission; they cannot grant it. The shell hook has a separate recording control and does not inherit the AI directory scope
 - **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (exporters, monitors) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
@@ -232,11 +232,13 @@ Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/
 
 ## AI Agent Integration
 
-RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add the API only for what hooks can't do.** Hooks are passive so nothing can be forgotten; API calls are agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#how-agents-capture-hooks-log).
+Claude Code is the first conversation workflow, followed by Codex. Install the selected RedLog capture integration in **Settings ▸ Other capture sources ▸ AI Agents**, select its project working directories, then enable new conversations. Installation alone does not start capture or import history. Supported local transcripts supply user messages, AI replies and tool calls/results. This does not cover Claude desktop/web conversations or promise hidden reasoning and image attachments.
+
+Shell hooks record terminal commands separately; a shell hook alone does not capture the AI conversation. The API supplies explicit events when needed. See [Capture priority](docs/agent-integration.md#how-ai-conversations-are-recorded).
 
 ### Layer 1: Terminal Hooks (Automatic Capture) — start here
 
-Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
+Connect your interactive terminal to record its commands and supported output. Non-interactive shells spawned by AI tools may not load shell hooks; use the optional AI transcript integration for their conversation and source-reported tool results.
 
 > **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Install the desired integration in Settings ▸ Other capture sources ▸ AI Agents, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
@@ -525,7 +527,7 @@ Export your project config as a `.yaml` or `.json` profile:
 | Config | js-yaml |
 | i18n | Custom React context |
 | Build | electron-builder |
-| AI integration | HTTP API + shell hooks |
+| AI integration | Optional local transcripts + shell hooks + HTTP API |
 
 ## Development
 

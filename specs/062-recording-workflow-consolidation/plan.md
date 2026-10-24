@@ -240,3 +240,9 @@ The SQLite runtime probe reports 3.53.4; contentless-delete is supported since
 This is one search-index repair, not a new capture engine or a compatibility shim.
 Synthetic files exercise real watchers/IPC/UI; they cannot certify live terminal
 and IDE producer versions, hidden reasoning, image bytes or desktop/web clients.
+
+Native Claude review also found that collapsed pretty-printed tool input showed
+only its first line (`{`). Flatten formatting line breaks for the existing
+200-character summary; retain the full input/output on expansion. The shared
+Claude/Codex journey must read the command before expanding, and fail first
+against the previous UI. No new component, state or capture mode is needed.

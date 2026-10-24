@@ -859,7 +859,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 title={!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool') ? t('transcript.expand') : undefined}
               >
                 {!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool')
-                  ? b.input.split('\n')[0].slice(0, 200)
+                  ? (b.kind === 'agent-tool' ? b.input.replace(/\n\s*/g, ' ') : b.input.split('\n')[0]).slice(0, 200)
                   : b.input}
               </pre>
               {revealed && displayBody && (

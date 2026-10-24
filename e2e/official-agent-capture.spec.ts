@@ -119,6 +119,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     await expect(page.getByRole('option')).toHaveCount(1)
     await expect(page.getByRole('option')).toContainText('AI_OUTPUT_SENTINEL')
     await openView(page, 'transcript')
+    await expect(page.getByText(/AI_INPUT_SENTINEL/)).toBeVisible()
     const collapsed = page.locator('[data-testid="transcript-toggle"][data-expanded="false"]')
     await expect(collapsed.first()).toBeVisible()
     while (await collapsed.count()) await collapsed.first().click()
