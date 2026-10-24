@@ -241,3 +241,63 @@ The desktop locked before final native recheck of category reset and field
 search on 46f5437c; user unlock requested. Candidate is **automated-passed,
 final-native-pending**; T063 remains open. T008–T013, actual update, Gatekeeper
 download and native Windows/WSL/DPI acceptance remain open. No release/push.
+
+
+## Claude Code priority and final AI candidate — 8a8fc093
+
+The operator selected Claude Code terminal/IDE first, Codex next. No new AI
+settings surface was added: each existing integration remains uninstalled by
+default and requires project directory permission plus explicit activation.
+The former Codex-only journey is now shared, in Claude→Codex order.
+
+Two defects were reproduced before fixing: raw JSON newline escapes made
+second-line output unsearchable; collapsed pretty JSON displayed only `{`.
+The search fix indexes decoded keys/values in a contentless-delete FTS index,
+without a second evidence copy or source/hash changes. Only changed derived
+definitions rebuild; unchanged reopen does no data writes, and logged-tier
+retention removes matching terms. Three SQLite cases and the AI journeys
+failed first. Compacting formatting in the existing collapsed input summary
+preserves the expanded input/output and the existing 200-character bound.
+The shared journey also failed before that UI repair.
+
+- Final gates/build: **4,168 unit passed / 28 existing skips** (114.83s).
+- **12/12 source UI** (22.8s): Claude/Codex install/scope/activation, new prompt,
+  assistant reply, paired complete tool I/O, tail search, collapsed input,
+  transcript/full output, actual JSON bytes, reload dedup, stop/removal/reinstall
+  and project isolation; neighboring search, external PTY, HTTP bodies/export.
+- **9/9 installed**: both AI journeys, six export cases, packaged
+  record/export/verify/restart. Both strict JSON reports passed without skips.
+- Existing HTTP performance budget: 5,000 flows, 40MB inline bodies, 500 complete
+  flow warm-query medians 75.5ms all / 77.6ms 4xx on Apple M2 Pro, Node v26.12.1.
+  These are query times, not new capture-throughput guarantees.
+
+Native manual on d3387008: created AI-Claude-Native-20261024 under isolated
+HOME/profile; Claude alone installed, actual macOS folder picker selected
+client-ai-work, activation preceded source append. Search found the output's
+second line; transcript showed user/reply plus one paired tool exchange.
+Stopped and removed integration, then appended a disabled sentinel: it never
+entered events and saved sidecar bytes stayed unchanged. Codex/OpenCode stayed
+uninstalled. The native test used synthetic JSONL; no model/command actually ran.
+
+The native same-app check also finished T063: project-footer scroll → Plugins
+shows its heading/actions at top; searching 操作員 still centers its section.
+This supersedes the locked-desktop pending statement in the previous section.
+Native final 8a8fc093 reopened that preserved project without reinstalling AI: a
+collapsed tool card shows its command; expansion retains complete parameters
+and output. Quarter-window controls and all three exchanges were readable.
+Local screenshots: ai-claude-native-transcript.png,
+ai-claude-native-summary-fixed.png, ui-polish-native-scroll-fixed.png and
+ui-polish-native-field-jump-fixed.png in the same tmp root.
+
+Product commit: `8a8fc09306ffa5ac0249cee0b0c04dd65f08faa8`.
+DMG SHA-256: `b7af25bcc6b7ba090cb8cb83a0ce4295988734c4c73496ab4c45c10843028e79`.
+app.asar SHA-256: `0a9646b76c16ad09ab0eb5713fe78bfb4d681870135b5b2f4df03821b73c85a8`.
+Candidate: `dist/internal-20261024-8a8fc093/`; raw reports ai-final-source.json
+and 8a8fc093-smoke.json in tmp, copied into the candidate directory. DMG
+isolated installation, resources and deep/strict ad-hoc signature passed.
+
+Source formats are synthetic fixtures, not certification of all live CLI/IDE
+versions, image attachment preservation, hidden reasoning or desktop/web chat.
+Native Windows/Linux/WSL, Gatekeeper/notarization and actual updates remain
+separate gates. T063/T064 are complete, not T008–T013 or the whole Spec.
+Unrelated lockfile/traffic DB preserved; Node ABI restored. No push/release.

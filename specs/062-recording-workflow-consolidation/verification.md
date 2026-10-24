@@ -1171,3 +1171,23 @@ showed only `{`. Its existing journey failed before a one-line formatting
 change, which keeps the full input intact on expansion. Final ordered gates
 and build passed again: **4,168 unit / 28 existing skips** (114.83s). Final
 source/installed and summary native results follow. T008–T013 remain open.
+
+
+Final T064 product **8a8fc093** passed **12/12 source journeys** (22.8s) and
+**9/9 installed journeys**; strict reports contain no skipped/flaky cases.
+The latter includes both AI tools, all six export recovery cases and packaged
+record/export/verify/restart. DMG mounted read-only, installed in an isolated
+folder, detached, resource-checked and deep/strict ad-hoc signature verified.
+
+Native final installed 8a8fc093 reopened the retained Claude test project after
+uninstall: the collapsed tool card now shows `{ "command": "printf ..." }`,
+and expansion retains full input and both output lines. User/reply cards remain
+readable in the quarter-screen window. Saved `ai-claude-native-summary-fixed.png`.
+Claude capture remained uninstalled; later synthetic source content was absent,
+and the sidecar fingerprint remained unchanged. Normal quit stopped only this
+isolated app's services. Node SQLite was restored afterwards.
+
+T063's pending manual remainder is superseded by the successful d3387008
+Settings inspection above; T064's bounded AI contract/UX acceptance is complete.
+The entire feature stays Draft: T008–T013/platform/update gates are still open.
+Current candidate/hashes: `dist/internal-20261024-8a8fc093/`. No push/release.

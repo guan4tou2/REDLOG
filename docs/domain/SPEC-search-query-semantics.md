@@ -68,6 +68,10 @@ typed text
    matches stored event content, or an indexed HTTP body the event references.
    Event, HTTP body and recording search share this translation
    (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
+   Event indexes tokenize decoded JSON values and property names, not JSON
+   serialization escapes. A word after a newline or tab must be searchable as
+   that word, without an invented `n` or `t` prefix. Rebuilding this derived
+   index must not change event data, hashes or source files.
 5. **Nothing asked, nothing answered.** A query with neither text nor
    conditions — including a parsed `""` — returns an empty page, never an
    unfiltered read. A conditions-only query is valid.
