@@ -287,6 +287,8 @@ interface SessionState {
   turnsEmitted: number
   postCompact: boolean
   idleTimer: NodeJS.Timeout | null
+  retryTimer: NodeJS.Timeout | null
+  retryAttempt: number
   lastSnapshotBytes: number
   bytesAppendedSinceSnapshot: number
   driftAdvisoryFired: Set<string>
@@ -337,6 +339,17 @@ function restoreBoundary(): void {
 }
 
 const COALESCE_MS = 50
+const RETRY_BASE_MS = 1000
+const RETRY_LIMIT = 5
+
+/** A failed pass is read again on the next file event or restart. The last
+ *  turn of a session gets neither, so a few backed-off passes cover it; after
+ *  those it waits for the same two things, with the error in capture health. */
+function scheduleRetry(s: SessionState): void {
+  if (s.retryTimer || s.retryAttempt >= RETRY_LIMIT) return
+  s.retryTimer = setTimeout(() => { s.retryTimer = null; catchUpSession(s.agentKind, s.sessionId) }, RETRY_BASE_MS * 2 ** s.retryAttempt++)
+  s.retryTimer.unref?.()
+}
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
   const key = sessionKey(agentKind, sid)
@@ -594,7 +607,8 @@ interface EmitContext {
 function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   if (!t.uuid) return
   const s = ctx.session
-  if (s.redlogIdByUuid.has(t.uuid)) return
+  // A re-read parent still flushes: children whose write failed wait here.
+  if (s.redlogIdByUuid.has(t.uuid)) { flushWaiting(s, t.uuid, ctx); return }
 
   let parentUuid = t.parentUuid
   const parentPath = new Set<string>()
@@ -620,6 +634,8 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         emitTurn(ot, { ...ctx, _skipParentBuffer: true })
       }
       const queue = s.pendingByParentUuid.get(parentUuid) ?? []
+      // A failed pass is read again; its children are already waiting.
+      if (queue.some(q => q.turn.uuid === t.uuid)) return
       if (queue.length + pendingSize(s) < MAX_PENDING_CHILDREN) {
         queue.push({ turn: t, queuedAt: Date.now(), sidecarOffset: s.unitSidecarOffset })
         s.pendingByParentUuid.set(parentUuid, queue)
@@ -787,13 +803,20 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
           }
         }
       }
-      const waiting = s.pendingByParentUuid.get(t.uuid)
-      if (waiting) {
-        s.pendingByParentUuid.delete(t.uuid)
-        for (const q of waiting) emitTurn(q.turn, ctx)
-      }
+      flushWaiting(s, t.uuid, ctx)
     }
   } catch (e) { noteDbError('tailer-host', e); throw e }
+}
+
+/** Children leave the queue only once written. Their own lines are already
+ *  committed, so a child dropped on a failed write would never be read again. */
+function flushWaiting(s: SessionState, parentUuid: string, ctx: EmitContext): void {
+  const waiting = s.pendingByParentUuid.get(parentUuid)
+  if (!waiting) return
+  s.pendingByParentUuid.delete(parentUuid)
+  for (let i = 0; i < waiting.length; i++) {
+    try { emitTurn(waiting[i].turn, ctx) } catch (e) { s.pendingByParentUuid.set(parentUuid, waiting.slice(i)); throw e }
+  }
 }
 
 function sweepStalePending(s: SessionState): ParsedTurn[] {
@@ -945,8 +968,9 @@ function catchUpJsonl(s: SessionState): void {
     appendAndCommit(s, complete, s.sourceOffset + complete.length)
     s.linesSeen += complete.toString('utf8').split('\n').filter(line => line.trim()).length
     scheduleIdleSnapshot(s)
+    s.retryAttempt = 0
     if (sourceSize - s.sourceOffset > complete.length && limit === 10 * 1024 * 1024) setImmediate(() => catchUpJsonl(s))
-  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e) }
+  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
 function catchUpPerMessageDir(s: SessionState): void {
@@ -972,7 +996,8 @@ function catchUpPerMessageDir(s: SessionState): void {
     }
     if (!eventBus.paused && s.checkpointPaused) { s.checkpointPaused = false; checkpoint(s) }
     if (!eventBus.paused) scheduleIdleSnapshot(s)
-  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e) }
+    s.retryAttempt = 0
+  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
 // Synchronous resume boundary precedes any delayed watcher callback. Empty
@@ -1016,7 +1041,12 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
   }
   if (!raw) return
   const turns = Array.isArray(raw) ? raw : [raw]
+  // A failed unit is read again, so its count must not stick.
+  const toolCallsSeen = s.toolCallsSeen
+  try { processTurns(s, turns) } catch (e) { s.toolCallsSeen = toolCallsSeen; throw e }
+}
 
+function processTurns(s: SessionState, turns: ParsedTurn[]): void {
   for (const turn of turns) {
     if (s.adapter.knownIgnoredTypes.has(turn.type)) {
       if (turn.uuid) s.ignoredParents.set(turn.uuid, turn.parentUuid)
@@ -1024,7 +1054,7 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
     }
     // Schema-drift check: parseUnit returned a turn whose type isn't in the
     // adapter's whitelist. Fire the advisory once per session and skip.
-    if (turn.type === 'tool_use') s.toolCallsSeen++
+    if (turn.type === 'tool_use' && !(turn.uuid && s.redlogIdByUuid.has(turn.uuid))) s.toolCallsSeen++
     if (!s.adapter.knownIngestTypes.has(turn.type)) {
       if (!s.driftAdvisoryFired.has(turn.type)) {
         s.driftAdvisoryFired.add(turn.type)
@@ -1219,6 +1249,8 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     turnsEmitted: 0,
     postCompact: false,
     idleTimer: null,
+    retryTimer: null,
+    retryAttempt: 0,
     lastSnapshotBytes: 0,
     bytesAppendedSinceSnapshot: 0,
     driftAdvisoryFired: new Set(),
@@ -1246,9 +1278,12 @@ export function registerSession(agentKind: string, sourcePath: string): void {
       }
       s.resumedAt = cursor.resumedAt ?? 0; s.skipMissingParents = cursor.skipMissingParents === true; s.replayFrom = cursor.replayFrom
       if (cursor.savedBytes !== undefined) {
-        const actual = fs.existsSync(sidecarPath) ? fs.statSync(sidecarPath).size : 0
-        if (!Number.isSafeInteger(cursor.savedBytes) || cursor.savedBytes < 0 || actual < cursor.savedBytes) throw new Error('AI sidecar is shorter than its checkpoint')
-        if (actual > cursor.savedBytes) fs.truncateSync(sidecarPath, cursor.savedBytes)
+        // Retention removes whole sidecars and records it; reading resumes at
+        // the checkpoint. A sidecar that is present but short is refused.
+        const actual = fs.existsSync(sidecarPath) ? fs.statSync(sidecarPath).size : null
+        if (!Number.isSafeInteger(cursor.savedBytes) || cursor.savedBytes < 0 || (actual !== null && actual < cursor.savedBytes)) throw new Error('AI sidecar is shorter than its checkpoint')
+        if (actual === null) { cursor.savedBytes = 0; s.replayFrom = undefined }
+        if (actual !== null && actual > cursor.savedBytes) fs.truncateSync(sidecarPath, cursor.savedBytes)
       }
     } else checkpoint(s)
   } catch (e) { noteDbError('tailer-host', e); return }
@@ -1319,6 +1354,7 @@ function unregisterSession(key: string): void {
   const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
+  if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
   const ct = coalesceTimers.get(key)
   if (ct) { clearTimeout(ct); coalesceTimers.delete(key) }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove

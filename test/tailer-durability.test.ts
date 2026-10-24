@@ -9,7 +9,7 @@ import { eventBus } from '../src/core/event-bus'
 import { initDB, closeDB } from '../src/core/db/index'
 import { queryEvents } from '../src/core/db/events'
 import { createOperator, generateToken } from '../src/core/db/operators'
-import { registerAdapter, unregisterAdapter, configureHost, stopHost, registerSession, catchUpSession, listAgentSessions } from '../src/main/services/tailer-host'
+import { registerAdapter, unregisterAdapter, configureHost, stopHost, registerSession, catchUpSession, listAgentSessions, _sessionsForTest } from '../src/main/services/tailer-host'
 import type { TailerAdapter } from '../src/main/services/tailer-host'
 
 let dir: string, source: string
@@ -203,4 +203,79 @@ describe('AI capture durable progress and privacy boundaries', () => {
     expect(rows().map(e => e.data.transcript_uuid).sort()).toEqual(['completed', 'later-unit'])
   })
 
+})
+
+describe('a failed write without a restart', () => {
+  const child = (uuid: string, parentUuid: string | null) => JSON.stringify({ uuid, parentUuid, type: 'user', textContent: uuid }) + '\n'
+  const ids = () => rows().map(e => String(e.data.transcript_uuid)).sort()
+  const failOn = (uuid: string) => {
+    const real = ingestion.ingestEvent
+    return vi.spyOn(ingestion, 'ingestEvent').mockImplementation((kind, data, options) => {
+      if (data.transcript_uuid === uuid) throw new Error('injected DB write refusal')
+      return real(kind, data, options)
+    })
+  }
+  const session = () => [..._sessionsForTest().values()][0]
+
+  it('keeps a waiting child whose flush failed, for the next pass and for a restart', () => {
+    fs.writeFileSync(source, child('c', 'p')); start()
+    fs.appendFileSync(source, child('p', null))
+    const fail = failOn('c'); catchUp(); fail.mockRestore()
+    expect(ids()).toEqual(['p'])
+    restart(); catchUp()
+    expect(ids()).toEqual(['c', 'p'])
+  })
+
+  it('queues a waiting child once, however often a failed pass is read again', () => {
+    fs.writeFileSync(source, child('c', 'never') + child('x', null))
+    const fail = failOn('x'); start(); catchUp(); catchUp(); fail.mockRestore()
+    expect(session().pendingByParentUuid.get('never')).toHaveLength(1)
+  })
+
+  it('counts a tool call once when its unit is read again', () => {
+    registerAdapter({ ...adapter, knownIngestTypes: new Set(['tool_use']), subtypeFor: () => 'tool_call' })
+    configureHost(cfg)
+    fs.writeFileSync(source, JSON.stringify({ uuid: 't1', type: 'tool_use', toolName: 'Bash', toolInput: { command: 'id' } }) + '\n')
+    const fail = failOn('t1'); registerSession(adapter.agentKind, source); fail.mockRestore(); catchUp()
+    expect([session().toolCallsSeen, session().toolCallsEmitted]).toEqual([1, 1])
+  })
+
+  it('retries the last unit of a session by itself, with no further file event', async () => {
+    vi.useFakeTimers()
+    try {
+      fs.writeFileSync(source, line('last-words'))
+      const fail = failOn('last-words'); start(); fail.mockRestore()
+      expect(ids()).toEqual([])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(ids()).toEqual(['last-words'])
+    } finally { vi.useRealTimers() }
+  })
+
+  it('retries a per-message unit on the next pass, without the file changing', () => {
+    source = path.join(dir, 'session'); fs.mkdirSync(source)
+    fs.writeFileSync(path.join(source, 'a.json'), line('a')); fs.writeFileSync(path.join(source, 'b.json'), line('b'))
+    const fail = failOn('b'); start(true); fail.mockRestore()
+    expect(ids()).toEqual(['a'])
+    catchUpSession(adapter.agentKind, 'session')
+    expect(ids()).toEqual(['a', 'b'])
+  })
+})
+
+describe('a sidecar removed by retention', () => {
+  it('resumes from the checkpoint, neither stopping nor replaying', () => {
+    fs.writeFileSync(source, line('old')); start()
+    const sidecar = [..._sessionsForTest().values()][0].sidecarPath
+    stopHost(); fs.rmSync(sidecar)
+    fs.appendFileSync(source, line('new')); start(); catchUp()
+    expect(rows().map(e => e.data.transcript_uuid).sort()).toEqual(['new', 'old'])
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe(line('new'))
+  })
+
+  it('still refuses a sidecar that is present but shorter than its checkpoint', () => {
+    fs.writeFileSync(source, line('old')); start()
+    const sidecar = [..._sessionsForTest().values()][0].sidecarPath
+    stopHost(); fs.writeFileSync(sidecar, '')
+    fs.appendFileSync(source, line('new')); start(); catchUp()
+    expect(rows().map(e => e.data.transcript_uuid)).toEqual(['old'])
+  })
 })
