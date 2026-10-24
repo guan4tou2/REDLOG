@@ -186,3 +186,58 @@ This supersedes the failed 95a0acb1 Mac candidate. Prior Windows/Linux green
 runs remain evidence for 95a0acb1, not this later collision repair. This local
 Mac candidate is not a published release, Developer ID identity, notarization,
 Gatekeeper download acceptance or completion of T008–T013.
+
+
+## UI/CSS follow-up — 0f79e841 → 46f5437c
+
+Project/operator/profile fields moved intact from appearance to Project & scope,
+including their field-search routes. Ordinary compact actions reuse Button;
+labels can wrap and toggles expose pressed state. List/evidence settings use
+available width; dashboard placeholders match its vertical structure. Combined
+800×600, 140% UI scale and 200% Electron zoom reproduced controls beyond 500px
+in a 400px effective viewport. Header reflow and caption shrink now preserve
+all actions/uptime in 400px, in both locales.
+
+Native installed 0f79e841, isolated HOME/profile:
+
+- OS quarter-window (1750×1096 captured pixels, approximately 875×548 points)
+  at UI 140%: two header rows, reachable evidence actions, appearance controls
+  wrap, settings switch to their existing dropdown. Readonly engagement ID,
+  operator fields and profile action remain reachable by scrolling.
+- Field search for 操作員 leads to Project & scope and highlights the field.
+  Edited the test operator to Operator Layout Review, left/re-entered and read
+  it back, then restored Operator. Restored UI scale to 100% before quitting.
+- JSON export dialog keeps cancel/confirm visible at that small/large scale;
+  native Cancel returns to settings and restores opener focus. Actual execution
+  and recovery are covered separately by the six installed export cases.
+- OS Fill: plugin sample input uses available pane width, header returns to one
+  row. No claim of manual all-page/all-state coverage.
+
+Native captures: `/private/tmp/redlog-internal-20261024/ui-polish-native-appearance.png`,
+`ui-polish-native-project.png`, `ui-polish-native-export.png`. These are local
+test artifacts, not proof of Windows display-DPI behavior.
+
+Switching categories after scrolling through project fields revealed a further
+friction: plugins inherited that scroll offset and hid their heading/actions.
+The amended source journey failed first, then passed after a three-line tab
+scroll reset ahead of field-search positioning. Final product **46f5437c**:
+ordered gates + build passed, **4,165 unit passed / 28 skips** (108.96s),
+**52/52 source UI passed** (1.7m), **20/20 installed passed** (29.0s), both
+strict reports passed. The initial complete unit attempt had one unchanged
+attachment-focus failure; isolation and two later full runs passed. No retry
+or skip was added to hide it. Earlier incomplete fixtures were repaired.
+
+Mounted the final DMG read-only, copied to an isolated install and detached it.
+Resource gate and deep/strict ad-hoc signature passed.
+
+- Product: `46f5437c5a85836186cf828e86fab80caccbca6d` (see candidate.json for authoritative full SHA).
+- DMG SHA-256: `9909a387d811be437ea844eac1746e9a1b2e6a284f4a210cb7505a2f1f97de97`
+- app.asar SHA-256: `73a9084a960d5834a878362809cf92e14b4421b5c146366ac7036f1de00633be`
+- Deliverable: `dist/internal-20261024-46f5437c/`
+- Reports: `ui-polish-final-e2e.json`, `46f5437c-smoke.json` in the same tmp root,
+  with copies in the deliverable.
+
+The desktop locked before final native recheck of category reset and field
+search on 46f5437c; user unlock requested. Candidate is **automated-passed,
+final-native-pending**; T063 remains open. T008–T013, actual update, Gatekeeper
+download and native Windows/WSL/DPI acceptance remain open. No release/push.

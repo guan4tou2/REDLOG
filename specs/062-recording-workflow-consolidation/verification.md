@@ -1096,3 +1096,21 @@ long unbroken names, both locales, 1600/800 windows, combined 140% UI and
 transcript and six real export cases. This is automated source-build coverage;
 native manual and replacement installed-package results follow when completed.
 T063 remains open until those manual checks; T008–T013 remain open.
+
+
+Native installed 0f79e841 review confirmed 140% appearance controls, both
+window layouts, settings field-search → operator section, persisted operator
+edit/read-back, readonly engagement ID and reachable export footer/cancellation.
+It also exposed category changes inheriting the previous pane scroll position.
+The existing large-scale journey failed against that build (plugins scrollTop
+remained nonzero); resetting on tab changes before field-search positioning
+fixed it without new navigation state. Final revision **46f5437c** passed the
+ordered gates/build again: **4,165 unit passed / 28 skips**, **52/52 source UI**
+and **20/20 installed journeys**, both strict report gates green.
+
+DMG installation, resources and deep/strict ad-hoc signature passed. Candidate
+metadata/hashes are in `dist/internal-20261024-46f5437c/`; this supersedes neither
+platform acceptance nor actual update checks. Final native category-scroll and
+field-search recheck stopped at the locked desktop; the user was asked to
+unlock. **T063 remains unchecked** until that last native check. Node SQLite
+ABI was restored; unrelated lockfile and traffic DB were not included.
