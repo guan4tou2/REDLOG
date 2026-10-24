@@ -285,6 +285,9 @@ interface SessionState {
   /** Turns whose event write threw. Read around a unit to tell whether every
    *  turn in it landed, since emitTurn reports failure only to capture health. */
   writeFailures: number
+  /** The partial line held in pendingLineBuffer began while paused. Its rest
+   *  arrives after resume and must be dropped with it, not recorded. */
+  pauseTail: boolean
   /** Bounded retry for units that did not land: the watcher may never fire
    *  for that file again. */
   retry: { timer: ReturnType<typeof setTimeout>; attempt: number } | null
@@ -844,12 +847,29 @@ function catchUpJsonl(s: SessionState): void {
   // lost those turns (sidecar had advanced, restart would skip them).
   // Now: parse → insert → sidecar-append, so a crash before sidecar-append
   // simply re-reads the same bytes on restart.
+  const paused = eventBus.paused
   const text = s.pendingLineBuffer + bytes.toString('utf-8')
   const lastNl = text.lastIndexOf('\n')
-  const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
+  let complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  if (!eventBus.paused) {
+  // What RedLog keeps of these bytes. While paused it keeps none of them:
+  // newlines of the same length stand in, so the sidecar's size still marks
+  // how far the source has been read and resume does not re-read the pause,
+  // and a restart's line alignment finds a boundary at its end.
+  // A paused line still unfinished after resume is filler too, all of it.
+  let kept = paused || (s.pauseTail && lastNl === -1) ? Buffer.alloc(bytes.length, 0x0a) : bytes
+  if (!paused && s.pauseTail && lastNl !== -1) {
+    // The first complete line finishes one that began during the pause.
+    const cut = bytes.indexOf(0x0a) + 1
+    kept = Buffer.concat([Buffer.alloc(cut, 0x0a), bytes.subarray(cut)])
+    const firstNl = complete.indexOf('\n')
+    complete = firstNl === -1 ? '' : complete.slice(firstNl + 1)
+    s.pauseSkippedLines++
+    s.pauseTail = false
+  }
+
+  if (!paused) {
     if (s.pauseSkippedLines > 0) {
       try {
         const ev = ingestEvent('system', {
@@ -859,7 +879,7 @@ function catchUpJsonl(s: SessionState): void {
           skipped_lines: s.pauseSkippedLines,
           gap_started_at: s.pauseStartedAt,
           gap_ended_at: Date.now(),
-          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested. Raw data preserved in sidecar.`
+          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested or kept. The sidecar holds newline filler for those bytes.`
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
       } catch (e) { noteDbError('tailer-host', e) }
       s.pauseSkippedLines = 0
@@ -881,16 +901,17 @@ function catchUpJsonl(s: SessionState): void {
         if (s.pauseStartedAt === null) s.pauseStartedAt = now
       }
     }
+    if (s.pendingLineBuffer) s.pauseTail = true
   }
 
   // Sidecar append AFTER successful DB processing — the forensic raw copy
   // is still maintained, but the cursor (sidecar size) now reflects only
   // bytes whose events have been committed.
-  try { fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 }) } catch (e) {
+  try { fs.appendFileSync(s.sidecarPath, kept, { mode: 0o600 }) } catch (e) {
     noteDbError('tailer-host', e); return
   }
-  s.runningHash.update(bytes)
-  s.bytesAppendedSinceSnapshot += bytes.length
+  s.runningHash.update(kept)
+  s.bytesAppendedSinceSnapshot += kept.length
 
   // If there is more data beyond the chunk cap, schedule another tick.
   if (sourceSize - sidecarSize > toRead) {
@@ -1170,7 +1191,8 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     pauseSkippedLines: 0,
     pauseStartedAt: null,
     writeFailures: 0,
-    retry: null
+    retry: null,
+    pauseTail: false
   }
   // Align sidecar to the last complete-line boundary. Within a run,
   // pendingLineBuffer carries incomplete trailing text across catchUp calls.
