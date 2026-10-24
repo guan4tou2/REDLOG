@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- AI conversation acceptance now runs Claude Code first, then Codex through the
+  same optional install, directory authorization, message/tool I/O, search,
+  transcript, JSON delivery and removal journey. Fixed multiline text search:
+  JSON newline escapes no longer turn the next word into a different token.
+  Rebuilds only derived search indexes; evidence bytes and hashes stay intact.
+
 - Project identity, operator and profile handoff now live under Project & scope;
   appearance contains only display preferences, without adding settings pages.
   Source/evidence settings use their pane width. Ordinary actions share wrapping,

@@ -214,3 +214,29 @@ Native inspection also reproduced inherited scroll position when switching
 settings categories after reaching the project fields. Reset the content pane
 on category changes before applying a requested field-search jump; retain the
 regression in the same narrow/zoom journey, without adding navigation state.
+
+
+### Claude Code first, Codex next — T064 (2026-10-24)
+
+The operator selected Claude Code (terminal/IDE), not Claude desktop or web.
+Keep the existing optional install → project directory → explicit enable flow;
+no default installation, model calls or private transcript reads. Parameterize
+the existing Codex journey with a Claude JSONL fixture first, rather than
+maintaining duplicate workflows. Add assistant text, complete tool input/output,
+tail-text search, transcript rendering, JSON artifact read-back, reload dedup
+and project-switch isolation to its existing stop/removal checks.
+
+The initial Claude and Codex journeys both failed tail search even though
+output bytes were present. Raw JSON FTS tokenized escaped newline plus the next
+word as `nword`. Decode JSON values when building the derived index, keeping
+keys/values, nested input and literal Windows backslashes. Use contentless-delete
+FTS because queries read rowids and evidence already lives in event tables.
+Build only a changed derived definition atomically; normal reopen must not
+re-index, and logged retention must remove corresponding terms. Source data,
+hashes, source files and export policy remain unchanged.
+
+The SQLite runtime probe reports 3.53.4; contentless-delete is supported since
+3.43.0 ([official reference](https://www.sqlite.org/fts5.html#contentless_delete_tables)).
+This is one search-index repair, not a new capture engine or a compatibility shim.
+Synthetic files exercise real watchers/IPC/UI; they cannot certify live terminal
+and IDE producer versions, hidden reasoning, image bytes or desktop/web clients.

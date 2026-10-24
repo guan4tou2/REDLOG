@@ -348,61 +348,40 @@ export function initDB(projectDir: string): Database.Database {
   // they scan a set that is empty in practice. The agent session index stays
   // because `agent:thinking` IS logged and carries one.
 
-  // FTS5 full-text search indexes for events + events_logged.
-  // External-content tables: the index references the source rows directly
-  // (no data duplication). AFTER INSERT / AFTER DELETE triggers keep the
-  // index in sync. events is append-only so only INSERT is needed there;
-  // events_logged also has retention DELETE sweeps.
+  // Index decoded values, not JSON serialization: `\\nword` otherwise
+  // becomes the FTS token "nword". Only rowids are read from these contentless
+  // indexes; the original evidence remains in the event tables, once.
   {
-    const tbls = new Set(
-      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
-    )
-    const hadEventsFts = tbls.has('events_fts')
-
-    db.exec(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
-        data, target_id, agent_type,
-        content=events, content_rowid=rowid,
-        tokenize='unicode61 remove_diacritics 2',
-        prefix='2 3'
-      );
-      CREATE VIRTUAL TABLE IF NOT EXISTS events_logged_fts USING fts5(
-        data, target_id, agent_type,
-        content=events_logged, content_rowid=rowid,
-        tokenize='unicode61 remove_diacritics 2',
-        prefix='2 3'
-      );
-    `)
-
-    // Triggers: keep FTS in sync on write. DROP+CREATE so column lists
-    // stay current across upgrades (same pattern as assertEventsAppendOnly).
-    db.exec(`
-      DROP TRIGGER IF EXISTS events_fts_ai;
-      CREATE TRIGGER events_fts_ai AFTER INSERT ON events BEGIN
-        INSERT INTO events_fts(rowid, data, target_id, agent_type)
-        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
-      END;
-
-      DROP TRIGGER IF EXISTS events_logged_fts_ai;
-      CREATE TRIGGER events_logged_fts_ai AFTER INSERT ON events_logged BEGIN
-        INSERT INTO events_logged_fts(rowid, data, target_id, agent_type)
-        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
-      END;
-
-      DROP TRIGGER IF EXISTS events_logged_fts_ad;
-      CREATE TRIGGER events_logged_fts_ad AFTER DELETE ON events_logged BEGIN
-        INSERT INTO events_logged_fts(events_logged_fts, rowid, data, target_id, agent_type)
-        VALUES ('delete', old.rowid, old.data, old.target_id, old.agent_type);
-      END;
-    `)
-
-    // Build the external-content index when it is first created.
-    if (!hadEventsFts) {
-      if (hasRows(db, 'events'))
-        db.exec("INSERT INTO events_fts(events_fts) VALUES('rebuild')")
-      if (hasRows(db, 'events_logged'))
-        db.exec("INSERT INTO events_logged_fts(events_logged_fts) VALUES('rebuild')")
-    }
+    const decoded = (data: string): string => `(SELECT group_concat(
+      CASE WHEN typeof(key) = 'text' THEN key || ' ' ELSE '' END ||
+      CASE type WHEN 'true' THEN 'true' WHEN 'false' THEN 'false'
+        WHEN 'null' THEN 'null' ELSE COALESCE(CAST(atom AS TEXT), '') END, ' ')
+      FROM json_tree(${data}))`
+    db.transaction(() => {
+      for (const table of ['events', 'events_logged']) {
+        const fts = `${table}_fts`
+        const ftsSql = `CREATE VIRTUAL TABLE ${fts} USING fts5(
+          data, target_id, agent_type, content='', contentless_delete=1,
+          tokenize='unicode61 remove_diacritics 2', prefix='2 3')`
+        const insertSql = `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${table} BEGIN
+          INSERT INTO ${fts}(rowid, data, target_id, agent_type)
+          VALUES (new.rowid, ${decoded('new.data')}, new.target_id, new.agent_type);
+        END`
+        const definition = db!.prepare('SELECT sql FROM sqlite_master WHERE name = ?')
+        // A changed derived definition is rebuilt atomically. An ordinary
+        // reopen must not rescan a large project or touch its evidence.
+        const rebuild = (definition.get(fts) as { sql: string } | undefined)?.sql !== ftsSql
+          || (definition.get(`${fts}_ai`) as { sql: string } | undefined)?.sql !== insertSql
+        db!.exec(`DROP TRIGGER IF EXISTS ${fts}_ai; DROP TRIGGER IF EXISTS ${fts}_ad;`)
+        if (rebuild) db!.exec(`DROP TABLE IF EXISTS ${fts}; ${ftsSql};`)
+        db!.exec(insertSql)
+        if (table === 'events_logged') db!.exec(`CREATE TRIGGER ${fts}_ad AFTER DELETE ON ${table} BEGIN
+          DELETE FROM ${fts} WHERE rowid = old.rowid;
+        END;`)
+        if (rebuild && hasRows(db!, table)) db!.exec(`INSERT INTO ${fts}(rowid, data, target_id, agent_type)
+          SELECT e.rowid, ${decoded('e.data')}, e.target_id, e.agent_type FROM ${table} e`)
+      }
+    })()
   }
 
   // v0.6.88 P1-B: install append-only triggers on events table so

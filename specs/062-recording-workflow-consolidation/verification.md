@@ -1114,3 +1114,36 @@ platform acceptance nor actual update checks. Final native category-scroll and
 field-search recheck stopped at the locked desktop; the user was asked to
 unlock. **T063 remains unchecked** until that last native check. Node SQLite
 ABI was restored; unrelated lockfile and traffic DB were not included.
+
+
+## Claude Code first, Codex next / T064（2026-10-24）
+
+The user selected Claude Code terminal/IDE. The previous installed/source
+journey exercised Codex only. Parameterized that existing scenario with Claude
+first; added new user/assistant text, paired complete tool I/O, tail-term search,
+transcript expansion, actual JSON read-back, renderer reload deduplication and
+project-switch isolation. Only the folder picker is supplied a fixture path;
+files, watchers, installation, IPC, database and UI are real and isolated.
+No model API, paid tool or private conversation is used.
+
+Both initial scenarios failed searching a tool-output tail that was present in
+events. An actual bundled-SQLite probe distinguished the cause: a JSON newline
+indexed `nAI_OUTPUT_TAIL_SENTINEL`, so searching the original word returned zero.
+Three new SQLite cases failed before the fix. Decoding values/keys into a
+contentless-delete FTS index repairs this without a second evidence copy,
+source mutation, fallback LIKE scan or per-agent search path. The repair is
+transactional and only applies when a derived definition changes. Reopen does
+zero data writes; retention removes terms. Raw-index reconstruction tests
+preserve data/hash/prev_hash; both-tier integrity checks pass.
+
+Final ordered gates and build passed: **4,168 unit passed / 28 existing skips**
+(109.95s). Source AI/installation/search cases: **4/4 passed** (17.3s), including
+Claude and Codex. HTTP local budget (5,000 flows / 40MB inline bodies, Apple M2
+Pro, Node v26.12.1): 500 complete flows median **75.5ms all / 77.6ms 4xx**, both
+below the existing 200ms limit. These are warm query times, not capture latency.
+Neighboring workflow and installed-candidate results follow separately.
+
+This validates synthetic transcript formats through real product paths. It
+does not prove a live Claude terminal/IDE producer version, attachments/image
+bytes, hidden reasoning or desktop/web clients. T063's locked-desktop native
+recheck and T008–T013 are not closed by this AI work.
