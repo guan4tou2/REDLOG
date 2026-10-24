@@ -16,9 +16,13 @@ for (const shell of ['bash', 'zsh'] as const) {
     if (identity) fs.writeFileSync(path.join(dir, 'active-identity.json'), JSON.stringify(identity))
     try {
       const args = shell === 'zsh' ? ['-dfc'] : ['--noprofile', '--norc', '-c']
+      // The hook finds the home above `_REDLOG_DIR` by its last `/`. In use that
+      // directory comes from `$HOME`, which Git Bash spells with forward
+      // slashes; a native Windows path here has none and points one level off.
+      const posix = (p: string): string => p.split(path.sep).join('/')
       const result = spawnSync(shell, [...args, `source "$1"; ${body}`, 'redlog-status', hook], {
         encoding: 'utf8', timeout: 15_000,
-        env: { PATH: process.env.PATH ?? '', HOME: home, _REDLOG_DIR: dir }
+        env: { PATH: process.env.PATH ?? '', HOME: posix(home), _REDLOG_DIR: posix(dir) }
       })
       expect(result.error).toBeUndefined()
       expect(result.status, result.stderr).toBe(0)
