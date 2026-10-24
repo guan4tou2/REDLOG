@@ -688,10 +688,11 @@ function insertLoggedEvent(
       env.schemaVersion, env.tsSource, env.source
     )
   } catch (e) {
-    // Logged-tier writes should fail loud — there's no chain cache to
-    // invalidate, so callers just get null and can decide what to do.
+    // Thrown, like a chained insert. Returning null read as "deliberately not
+    // recorded" to callers, so a failed write of a thinking turn went
+    // unnoticed and the tailer advanced past it.
     console.error('[insertLoggedEvent] insert failed:', e)
-    return null
+    throw e
   }
   return event
 }

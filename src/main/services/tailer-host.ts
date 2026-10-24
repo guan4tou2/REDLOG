@@ -286,6 +286,26 @@ interface SessionState {
   pauseSkippedLines: number
   /** Timestamp when the first pause-skipped line was encountered. */
   pauseStartedAt: number | null
+  /** Turns whose event write threw. Read around a unit to tell whether every
+   *  turn in it landed, since emitTurn reports failure only to capture health. */
+  writeFailures: number
+  /** The partial line held in pendingLineBuffer began while paused. Its rest
+   *  arrives after resume and must be dropped with it, not recorded. */
+  pauseTail: boolean
+  /** Bounded retry for units that did not land: the watcher may never fire
+   *  for that file again. `attempt` counts timer-driven passes only, so a
+   *  burst of file events cannot use up the backoff in milliseconds. */
+  retry: { timer: ReturnType<typeof setTimeout>; attempt: number } | null
+  /** Set while the retry timer's own pass runs. */
+  retryFiring: boolean
+  /** This pass left something unwritten (bytes put back, a file unindexed). */
+  heldBack: boolean
+  /** Per-message files given up on unparsed in this pass, for the gap record. */
+  unparsedGivenUp: number
+  /** Turns whose write threw, by uuid, retried at the start of every pass
+   *  that is not paused. A child flushed when its parent lands, or a turn read
+   *  before a pause, has no bytes left to re-read; this is what still holds it. */
+  failedTurns: Map<string, ParsedTurn>
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
@@ -304,6 +324,10 @@ function sessionKey(agentKind: string, sessionId: string): string {
 }
 
 const COALESCE_MS = 50
+/** Retries for a unit whose events did not land (see scheduleUnitRetry). */
+const UNIT_RETRY_BASE_MS = 1000
+const UNIT_RETRY_LIMIT = 5
+const PAUSE_TAIL_SUFFIX = '.pause-tail'
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
   const key = sessionKey(agentKind, sid)
@@ -358,6 +382,8 @@ const hostControlSurface: HostControlSurface = {
       if (!s.adapter.knownIngestTypes.has(turn.type)) continue
       emitTurn(turn, { session: s })
     }
+    // A failed turn waits in failedTurns; nothing else would come back for it.
+    if (s.failedTurns.size > 0) scheduleUnitRetry(s)
   }
 }
 
@@ -566,6 +592,8 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         emitTurn(ot, { ...ctx, _skipParentBuffer: true })
       }
       const queue = s.pendingByParentUuid.get(t.parentUuid) ?? []
+      // A re-read after a failed pass meets the same child again.
+      if (queue.some((q) => q.turn.uuid === t.uuid)) return
       if (queue.length + pendingSize(s) < MAX_PENDING_CHILDREN) {
         queue.push({ turn: t, queuedAt: Date.now() })
         s.pendingByParentUuid.set(t.parentUuid, queue)
@@ -710,6 +738,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     })
     if (ev) {
       s.redlogIdByUuid.set(t.uuid, ev.id)
+      s.failedTurns.delete(t.uuid)
       s.turnsEmitted++
       if (subtype === 'tool_call') s.toolCallsEmitted++
       // v0.12.0: hand tool_call events to the alert subsystem so agent-
@@ -737,7 +766,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         for (const q of waiting) emitTurn(q.turn, ctx)
       }
     }
-  } catch (e) { noteDbError('tailer-host', e) }
+  } catch (e) { s.writeFailures++; s.failedTurns.set(t.uuid, t); noteDbError('tailer-host', e) }
 }
 
 function sweepStalePending(s: SessionState): ParsedTurn[] {
@@ -768,11 +797,46 @@ function pendingSize(s: SessionState): number {
 export function catchUpSession(agentKind: string, sessionId: string): void {
   const s = sessions.get(sessionKey(agentKind, sessionId))
   if (!s) return
+  // Turns that failed earlier go first. Paused, they wait: ingest refuses
+  // writes during a pause, and these were read while recording was on.
+  if (!eventBus.paused) for (const t of [...s.failedTurns.values()]) {
+    if (t.uuid && s.redlogIdByUuid.has(t.uuid)) { s.failedTurns.delete(t.uuid); continue }
+    emitTurn(t, { session: s })
+  }
+  s.heldBack = false
+  s.unparsedGivenUp = 0
   if (s.adapter.perMessageDir) {
     catchUpPerMessageDir(s)
   } else {
     catchUpJsonl(s)
   }
+  if (eventBus.paused) return
+  if (retriesSpent(s) && (s.failedTurns.size > 0 || s.unparsedGivenUp > 0)) recordGivenUp(s)
+  if (s.heldBack || s.failedTurns.size > 0) scheduleUnitRetry(s)
+  else if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
+}
+
+/** The retry timer's last pass is running. */
+function retriesSpent(s: SessionState): boolean {
+  return s.retryFiring && (s.retry?.attempt ?? 0) >= UNIT_RETRY_LIMIT
+}
+
+/** Say what the bounded retries could not write, where gaps are read, rather
+ *  than leave it implied by a quiet source. */
+function recordGivenUp(s: SessionState): void {
+  const failed = s.failedTurns.size
+  try {
+    ingestEvent('system', {
+      subtype: 'capture_gap',
+      reason: 'write_failed',
+      agent: s.agentKind,
+      session_id: s.sessionId,
+      failed_turns: failed,
+      unparsed_units: s.unparsedGivenUp,
+      description: `${failed} transcript turn(s) could not be written and ${s.unparsedGivenUp} unit(s) could not be read after ${UNIT_RETRY_LIMIT} retries; they are not in the record.`
+    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+  } catch (e) { noteDbError('tailer-host', e) }
+  s.failedTurns.clear()
 }
 
 function catchUpJsonl(s: SessionState): void {
@@ -799,6 +863,9 @@ function catchUpJsonl(s: SessionState): void {
     }
     try { fs.truncateSync(s.sidecarPath, 0) } catch { /* ignore */ }
     s.pendingLineBuffer = ''
+    // The held partial line is gone with the old content; a pause mark on it
+    // would drop the first line of the new one.
+    setPauseTail(s, false)
     s.redlogIdByUuid.clear()
     s.linesSeen = 0
     s.postCompact = true
@@ -850,12 +917,58 @@ function catchUpJsonl(s: SessionState): void {
   // lost those turns (sidecar had advanced, restart would skip them).
   // Now: parse → insert → sidecar-append, so a crash before sidecar-append
   // simply re-reads the same bytes on restart.
+  const paused = eventBus.paused
+  // To put back if a write fails: these bytes are then read again.
+  const before = {
+    pending: s.pendingLineBuffer, pauseTail: s.pauseTail, pauseSkipped: s.pauseSkippedLines,
+    // Counted again on the re-read; toolCallsSeen left doubled would raise a
+    // false tool-gap advisory against toolCallsEmitted.
+    linesSeen: s.linesSeen, toolCallsSeen: s.toolCallsSeen
+  }
   const text = s.pendingLineBuffer + bytes.toString('utf-8')
   const lastNl = text.lastIndexOf('\n')
-  const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
+  let complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  if (!eventBus.paused) {
+  // What RedLog keeps of these bytes. While paused it keeps none of them:
+  // newlines of the same length stand in, so the sidecar's size still marks
+  // how far the source has been read and resume does not re-read the pause,
+  // and a restart's line alignment finds a boundary at its end.
+  // A paused line still unfinished after resume is filler too, all of it.
+  let kept = paused || (s.pauseTail && lastNl === -1) ? Buffer.alloc(bytes.length, 0x0a) : bytes
+  if (!paused && s.pauseTail && lastNl !== -1) {
+    // The first complete line finishes one that began during the pause.
+    const cut = bytes.indexOf(0x0a) + 1
+    kept = Buffer.concat([Buffer.alloc(cut, 0x0a), bytes.subarray(cut)])
+    const firstNl = complete.indexOf('\n')
+    complete = firstNl === -1 ? '' : complete.slice(firstNl + 1)
+    s.pauseSkippedLines++
+    setPauseTail(s, false)
+  }
+
+  if (!paused) {
+    const failuresBefore = s.writeFailures
+    for (const raw of complete.split('\n')) {
+      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+      if (!line.trim()) continue
+      s.linesSeen++
+      // A malformed complete line stays malformed: skipped, as before.
+      if (processUnit(s, line, s.sourcePath) === 'unparsed') noteDbError('tailer-host', new Error('transcript line did not parse'))
+    }
+    // A turn that did not land keeps the sidecar where it was, so the same
+    // bytes are read again; turns that did land are skipped then by uuid.
+    // Advancing anyway lost the turn for good while the source looked fine.
+    // After the bounded retries the bytes are consumed, and the loss is
+    // recorded where the operator reads gaps rather than left implied.
+    if (s.writeFailures > failuresBefore && !retriesSpent(s)) {
+      s.pendingLineBuffer = before.pending
+      setPauseTail(s, before.pauseTail)
+      s.pauseSkippedLines = before.pauseSkipped
+      s.linesSeen = before.linesSeen
+      s.toolCallsSeen = before.toolCallsSeen
+      s.heldBack = true
+      return
+    }
     if (s.pauseSkippedLines > 0) {
       try {
         const ev = ingestEvent('system', {
@@ -865,17 +978,11 @@ function catchUpJsonl(s: SessionState): void {
           skipped_lines: s.pauseSkippedLines,
           gap_started_at: s.pauseStartedAt,
           gap_ended_at: Date.now(),
-          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested. Raw data preserved in sidecar.`
+          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested or kept. The sidecar holds newline filler for those bytes.`
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
       } catch (e) { noteDbError('tailer-host', e) }
       s.pauseSkippedLines = 0
       s.pauseStartedAt = null
-    }
-    for (const raw of complete.split('\n')) {
-      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-      if (!line.trim()) continue
-      s.linesSeen++
-      processUnit(s, line, s.sourcePath)
     }
     scheduleIdleSnapshot(s)
   } else {
@@ -887,16 +994,17 @@ function catchUpJsonl(s: SessionState): void {
         if (s.pauseStartedAt === null) s.pauseStartedAt = now
       }
     }
+    if (s.pendingLineBuffer) setPauseTail(s, true)
   }
 
   // Sidecar append AFTER successful DB processing — the forensic raw copy
   // is still maintained, but the cursor (sidecar size) now reflects only
   // bytes whose events have been committed.
-  try { fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 }) } catch (e) {
+  try { fs.appendFileSync(s.sidecarPath, kept, { mode: 0o600 }) } catch (e) {
     noteDbError('tailer-host', e); return
   }
-  s.runningHash.update(bytes)
-  s.bytesAppendedSinceSnapshot += bytes.length
+  s.runningHash.update(kept)
+  s.bytesAppendedSinceSnapshot += kept.length
 
   // If there is more data beyond the chunk cap, schedule another tick.
   if (sourceSize - sourceOffset > toRead) {
@@ -928,24 +1036,93 @@ function catchUpPerMessageDir(s: SessionState): void {
   }
   toProcess.sort((a, b) => a.mtime - b.mtime)
 
+  // A file goes into the index only once its events are written. Indexed
+  // first, a failed or interrupted write left the file marked done and it was
+  // never read again. A paused file is indexed unread, so resume does not
+  // record the pause.
+  // Once the retries are spent the file is indexed anyway, so one file the
+  // store or the parser keeps refusing does not keep the session retrying;
+  // catchUpSession records what was given up.
+  const exhausted = retriesSpent(s)
   for (const p of toProcess) {
     let raw: string
     try { raw = fs.readFileSync(p.full, 'utf-8') } catch { continue }
     s.linesSeen++
-    try { fs.appendFileSync(s.sidecarPath, p.name + '\n') } catch { /* ignore */ }
-    s.bytesAppendedSinceSnapshot += p.name.length + 1
-    // Audit 2026-09-18 P1: sidecar index advanced above; skip event
-    // processing when paused so no DB rows land during the pause window.
     if (eventBus.paused) {
-      s.redlogIdByUuid.set(p.name, '__paused__')
+      markIndexed(s, p.name, '__paused__')
       continue
     }
-    processUnit(s, raw, p.full)
+    const outcome = processUnit(s, raw, p.full)
+    if (outcome === 'ok') markIndexed(s, p.name, '__seen__')
+    else if (!exhausted) s.heldBack = true
+    else if (outcome === 'unparsed') { markIndexed(s, p.name, '__unparsed__'); s.unparsedGivenUp++ }
+    else markIndexed(s, p.name, '__failed__')
   }
   if (!eventBus.paused) scheduleIdleSnapshot(s)
 }
 
-function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {
+/** pauseTail outlives a restart in a marker beside the sidecar. Without it the
+ *  rest of a paused line, arriving after a restart, reads as an ordinary
+ *  fragment and its bytes are kept. */
+function setPauseTail(s: SessionState, on: boolean): void {
+  if (s.pauseTail === on) return
+  s.pauseTail = on
+  try {
+    if (on) fs.writeFileSync(s.sidecarPath + PAUSE_TAIL_SUFFIX, '', { mode: 0o600 })
+    else fs.rmSync(s.sidecarPath + PAUSE_TAIL_SUFFIX, { force: true })
+  } catch (e) { noteDbError('tailer-host', e) }
+}
+
+/** A marker only means something beside the sidecar it was written with. If
+ *  retention pruned that sidecar the source is read from the start, and the
+ *  marker would drop its first line. */
+function readPauseTail(adapter: TailerAdapter, sidecarPath: string): boolean {
+  const marker = sidecarPath + PAUSE_TAIL_SUFFIX
+  if (adapter.perMessageDir || !fs.existsSync(marker)) return false
+  let size = 0
+  try { size = fs.statSync(sidecarPath).size } catch { /* pruned */ }
+  if (size > 0) return true
+  try { fs.rmSync(marker, { force: true }) } catch { /* harmless: re-checked next time */ }
+  return false
+}
+
+function markIndexed(s: SessionState, name: string, sentinel: string): void {
+  try { fs.appendFileSync(s.sidecarPath, name + '\n') } catch { /* the in-memory mark still holds for this run */ }
+  s.bytesAppendedSinceSnapshot += name.length + 1
+  // Not over a real event id: an adapter whose turn uuid is the file name has
+  // already recorded it, and `_causes` lookups need the id, not a sentinel.
+  if (!s.redlogIdByUuid.has(name)) s.redlogIdByUuid.set(name, sentinel)
+}
+
+function scheduleUnitRetry(s: SessionState): void {
+  // A pass the watcher started leaves a pending retry's schedule alone.
+  if (s.retry && !s.retryFiring) return
+  const attempt = (s.retry?.attempt ?? 0) + 1
+  // Bounded: a store that stays broken is already in capture health, and the
+  // next change tries again from here.
+  if (attempt > UNIT_RETRY_LIMIT) { s.retry = null; return }
+  armUnitRetry(s, attempt)
+}
+
+function armUnitRetry(s: SessionState, attempt: number): void {
+  if (s.retry) clearTimeout(s.retry.timer)
+  const delay = UNIT_RETRY_BASE_MS * 2 ** (attempt - 1)
+  const timer = setTimeout(() => {
+    if (sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
+    // Paused, a pass would only consume: wait out the pause, attempt unspent.
+    if (eventBus.paused) { armUnitRetry(s, attempt); return }
+    s.retryFiring = true
+    try { catchUpSession(s.agentKind, s.sessionId) } finally { s.retryFiring = false }
+  }, delay)
+  s.retry = { timer, attempt }
+}
+
+/** Whether the unit fully landed. `unparsed`: the adapter could not read it (a
+ *  per-message file can be caught mid-write; a JSONL line can be malformed).
+ *  `failed`: a turn's write threw. */
+type UnitOutcome = 'ok' | 'unparsed' | 'failed'
+function processUnit(s: SessionState, rawContent: string, sourcePath: string): UnitOutcome {
+  const failuresBefore = s.writeFailures
   let raw: ParsedTurn | ParsedTurn[] | null
   try {
     raw = s.adapter.parseUnit(rawContent, sourcePath)
@@ -964,10 +1141,9 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
       } catch (err) { noteDbError('tailer-host', err) }
     }
-    noteDbError('tailer-host', e)
-    return
+    return 'unparsed'
   }
-  if (!raw) return
+  if (!raw) return 'ok'
   const turns = Array.isArray(raw) ? raw : [raw]
 
   for (const turn of turns) {
@@ -992,6 +1168,7 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
     }
     emitTurn(turn, { session: s })
   }
+  return s.writeFailures === failuresBefore ? 'ok' : 'failed'
 }
 
 function scheduleIdleSnapshot(s: SessionState): void {
@@ -1164,7 +1341,14 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     toolGapAdvisoryFired: false,
     runningHash: crypto.createHash('sha256'),
     pauseSkippedLines: 0,
-    pauseStartedAt: null
+    pauseStartedAt: null,
+    writeFailures: 0,
+    retry: null,
+    retryFiring: false,
+    heldBack: false,
+    unparsedGivenUp: 0,
+    failedTurns: new Map(),
+    pauseTail: readPauseTail(adapter, sidecarPath)
   }
   // Align sidecar to the last complete-line boundary. Within a run,
   // pendingLineBuffer carries incomplete trailing text across catchUp calls.
@@ -1250,6 +1434,7 @@ function unregisterSession(key: string): void {
   const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
+  if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
   const ct = coalesceTimers.get(key)
   if (ct) { clearTimeout(ct); coalesceTimers.delete(key) }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove
