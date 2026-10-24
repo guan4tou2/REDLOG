@@ -246,3 +246,17 @@ only its first line (`{`). Flatten formatting line breaks for the existing
 200-character summary; retain the full input/output on expansion. The shared
 Claude/Codex journey must read the command before expanding, and fail first
 against the previous UI. No new component, state or capture mode is needed.
+
+## Source placement implementation (T065–T067)
+
+Use the existing AgentsPanel and other-sources route. Official integrations are excluded from the generic plugin UI and mutation endpoint; source installation can explicitly recover a previously disabled integration, without changing project authorization. Manifest metadata identifies official packages; there is no static provider list in the renderer or host. Keep the existing machine-wide flag respected until explicit recovery.
+
+Extend AgentCaptureSourceConfig with optional sourceRoot; agentTranscriptRoot owns project/environment/default precedence and rejects invalid explicit roots at the activation gate. Configure every adapter root on project application to avoid carrying a previous project's override. Source discovery accepts the current config and uses the same resolver as runtime and health. Parser tests import optional package sources directly; runtime accepts validated installed module paths only. UI source-root changes reuse the work-directory authorization reset. No extra dependencies or filesystem migration.
+
+Clarify: user already selected optional local integrations, Claude then Codex, default-off recording, layout over prose. No unresolved question blocks these tasks. Checklist/analysis: installation and project permission remain separate; source path is not an authorized cwd; changing either resets activation; no historical import; original sources survive removal; no hidden global recovery switch. Existing source/IPC/real-file tests are extended before behavior changes.
+
+### User clarification: real optional packages
+
+On 2026-10-24 the user chose app-supplied offline packages, not registration-only installation. Provider code and source-location metadata live under optional-plugins/<provider>/; existing Vite tooling builds each independently into out/optional-ai. Packaging places that directory outside the auto-discovered plugins root. The manager discovers manifests, validates API/identity/path/checksum, copies only the chosen manifest/parser under the user plugin directory and returns a module path only for unchanged managed files. Host initialization loads only installed, active, explicitly authorized sources; stop/uninstall/project switch tears down watchers and drops module instances. Shared filesystem watching is supplied by the host so optional packages need no native dependency resolution outside the app. Generic third-party executable plugins remain refused. No marketplace, network download or arbitrary code grant is introduced.
+
+Acceptance additions: no parser in the main bundle; no installed parser before user installation; no module execution on listing/install; require-cache entry appears only after project activation and disappears after stop; changed code cannot be loaded; a fourth fixture package is discoverable without editing core. Existing source evidence survives uninstall.

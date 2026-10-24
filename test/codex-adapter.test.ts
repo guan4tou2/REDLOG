@@ -5,7 +5,7 @@ import * as path from 'path'
 import {
   parseCodexLine, readCodexCwd, codexAdapter,
   CODEX_INGEST_TYPES, CODEX_IGNORED_TYPES
-} from '../src/main/services/adapters/codex'
+} from '../optional-plugins/codex/adapter'
 
 let scratch: string
 beforeEach(() => { scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-')) })

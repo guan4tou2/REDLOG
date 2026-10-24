@@ -1,8 +1,12 @@
 import path from 'node:path'
 import type { OfficialAgentPlugin } from './plugins/official-agents'
 import type { LoadedPlugin } from './plugins/types'
-export type AgentKind = OfficialAgentPlugin['agentKind']
+export type AgentKind = string
 export interface AgentCaptureSourceConfig {
+  /** Transcript directory, independent of authorized working directories. */
+  sourceRoot?: string
+  excludedSessions?: string[]
+  sessionStarts?: Record<string, number>
   enabled?: boolean
   installationId?: string
   workPaths?: string[]
@@ -26,12 +30,22 @@ export function resolveAgentCapture(config: AgentCaptureConfig, catalog: readonl
     if (entry.state !== 'installed' || !plugins.some(p => p.manifest.id === entry.pluginId && p.status === 'active')) return []
     if (!entry.installationId || source?.installationId !== entry.installationId) return []
     if (source?.enabled !== true || !Number.isSafeInteger(source.startedAt) || source.startedAt! <= 0) return []
+    if (source.sourceRoot !== undefined && (typeof source.sourceRoot !== 'string' || !source.sourceRoot.trim() || !path.isAbsolute(source.sourceRoot))) return []
+    if (source.excludedSessions !== undefined && (!Array.isArray(source.excludedSessions) || source.excludedSessions.some(id => typeof id !== 'string' || !id || id.length > 300))) return []
+    if (source.sessionStarts !== undefined && (!source.sessionStarts || typeof source.sessionStarts !== 'object' || Array.isArray(source.sessionStarts) || Object.values(source.sessionStarts).some(at => !Number.isSafeInteger(at) || at <= 0))) return []
     const paths = source.workPaths
     if (!Array.isArray(paths) || !paths.length || paths.some(p => typeof p !== 'string' || !p.trim() || !path.isAbsolute(p))) return []
     return [{ agentKind: entry.agentKind, workPaths: [...new Set(paths)], startedAt: source.startedAt! }]
   })
 }
 
-export function agentTranscriptRoot(kind: AgentKind, home: string): string {
-  return kind === 'claude-code' ? path.join(home, '.claude', 'projects') : kind === 'codex' ? path.join(home, '.codex', 'sessions') : path.join(home, '.local', 'share', 'opencode', 'storage', 'message')
+export function agentTranscriptRoot(entry: Pick<OfficialAgentPlugin, 'source'>, home: string, source?: AgentCaptureSourceConfig, env: Record<string, string | undefined> = process.env): string {
+  if (source?.sourceRoot !== undefined) {
+    if (!source.sourceRoot.trim() || !path.isAbsolute(source.sourceRoot)) throw new Error('AI transcript directory must be absolute')
+    return source.sourceRoot
+  }
+  const location = entry.source
+  const vendorRoot = location.configEnv ? env[location.configEnv] : undefined
+  if (vendorRoot && path.isAbsolute(vendorRoot)) return path.join(vendorRoot, location.envSuffix ?? '')
+  return path.join(home, location.defaultPath)
 }

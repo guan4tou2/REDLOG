@@ -215,8 +215,9 @@ interface RedLogAPI {
     reveal: (kind: 'artifact' | 'screenshot', file: string) => Promise<boolean>
   }
   agents: {
+    sessions: () => Promise<Array<{ agentKind: string; sessionId: string; cwd?: string; recording: boolean }>>,
     /** The AI tools whose local session files RedLog can read, and whether each folder exists here. */
-    sources: () => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+    sources: (roots?: Record<string, string>) => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[] }>

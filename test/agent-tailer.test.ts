@@ -1,9 +1,11 @@
+import chokidar from 'chokidar'
+import { createAdapter as createOpenCodeAdapter } from '../optional-plugins/opencode/adapter'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { stopAgentTailer, configureAgentTailer, type AgentTailerConfig } from '../src/main/services/agent-tailer'
-import { parseTranscriptLine, readTranscriptCwd, claudeCodeAdapter } from '../src/main/services/adapters/claude-code'
+import { stopAgentTailer, type AgentTailerConfig } from '../src/main/services/agent-tailer'
+import { parseTranscriptLine, readTranscriptCwd, claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import {
   cwdPassesGate,
   isSelfExcludedCwd,
@@ -22,7 +24,7 @@ let scratch: string
 const OP = 'operator-1'
 let hostConfigured = false
 
-function registerSession(sourcePath: string, cfg: AgentTailerConfig): void {
+function registerSession(sourcePath: string, cfg: AgentTailerConfig & { claudeProjectsDir?: string }): void {
   if (cfg.claudeProjectsDir) claudeCodeAdapter.transcriptGlob = path.join(cfg.claudeProjectsDir, '**', '*.jsonl')
   registerAdapter(claudeCodeAdapter)
   if (!hostConfigured) {
@@ -427,10 +429,8 @@ describe('catchUpSession — end-to-end', () => {
     }))
     // Configure host with the storage override, then hand-register the
     // ses_e2e session (skips chokidar — deterministic for the test).
-    configureAgentTailer({
-      enabled: true, engagementId: 'e1', operatorId: OP,
-      opencodeStorageDir: storage
-    })
+    registerAdapter(createOpenCodeAdapter(path.join(storage, 'message'), { watch: chokidar.watch }))
+    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP })
     hostRegisterSession('opencode', path.join(storage, 'message', 'ses_e2e'))
 
     const rows = queryEvents({ agentType: 'agent', limit: 100 })
@@ -474,10 +474,8 @@ describe('catchUpSession — end-to-end', () => {
       state: { status: 'pending', input: { command: 'sleep 5' } }
     }))
     // Configure + register (uses the wrapped adapter's init to capture host).
-    configureAgentTailer({
-      enabled: true, engagementId: 'e1', operatorId: OP,
-      opencodeStorageDir: storage
-    })
+    registerAdapter(createOpenCodeAdapter(path.join(storage, 'message'), { watch: chokidar.watch }))
+    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP })
     hostRegisterSession('opencode', path.join(storage, 'message', 'ses_delta'))
 
     let rows = queryEvents({ agentType: 'agent', limit: 100 })
@@ -516,7 +514,7 @@ describe('catchUpSession — end-to-end', () => {
 
     rows = rows  // silence unused-var lint
     fs.rmSync(projCwd, { recursive: true, force: true })
-    const { _stopOpencodeSecondaryWatcherForTest } = await import('../src/main/services/adapters/opencode')
+    const { _stopOpencodeSecondaryWatcherForTest } = await import('../optional-plugins/opencode/adapter')
     _stopOpencodeSecondaryWatcherForTest()
   })
 

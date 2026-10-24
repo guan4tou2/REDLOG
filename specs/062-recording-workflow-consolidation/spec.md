@@ -159,3 +159,13 @@
 - 沿用 Constitution；相關既有規格為 050、051、052、056、057、059、060、061。AI 真正可選安裝比 050 個別開關更進一步，實作前須同步其契約，不能以本草案宣稱已完成。
 - 領域契約：`docs/domain/SPEC-capture-source-lifecycle.md`、`SPEC-export-event-selection.md`、`SPEC-scope-evaluation.md`、`SPEC-search-query-semantics.md`、`SPEC-target-identity.md`。從專案根目錄讀取；本機舊 checkout 缺少的文件以稽核基準 commit 為準。
 - 來源、程式核對、待合分支與限制見 [audit.md](audit.md)；完整人工驗收見 [manual-acceptance.md](manual-acceptance.md)。本規格不代表功能已通過驗收。
+
+## Source placement follow-up (2026-10-24)
+
+Official AI integrations have one actionable source entry: install/remove, choose allowed working directories, record new content, and recover a disabled integration without visiting generic plugin management. Third-party plugin controls remain machine-wide. Source installation never opts a project into capture. Source details use expandable controls; headings, buttons and state carry the ordinary workflow without repeated descriptions.
+
+Claude/Codex source directories resolve in order: an explicit absolute project source directory, the corresponding absolute vendor environment directory (CLAUDE_CONFIG_DIR/projects or CODEX_HOME/sessions), then the vendor default. Working-directory permission remains independent. Changing the source directory stops recording until explicit reauthorization; defaults and source changes cannot import old conversation content. Detection, health and runtime must name the same directory. Original vendor transcripts are never moved or deleted.
+
+Review all existing work/settings pages at representative desktop and narrow window sizes. This is a desktop Electron app: narrow-window coverage does not claim mobile application support. No marketplace, new AI workspace, project-data relocation or whole-app redesign is added.
+
+User clarification (2026-10-24): AI integrations are actual optional code packages supplied offline with the app. Uninstalled providers are neither registered nor executed; installation copies only that provider. Provider identity, default/source environment paths and parsing belong to its package, not a fixed core provider switch. Loading requires valid installed bytes and explicit project permission; removal stops/unloads it and preserves all captured evidence. This does not authorize executing arbitrary third-party parser code in-process.

@@ -29,8 +29,9 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import chokidar, { FSWatcher } from 'chokidar'
-import type { TailerAdapter, ParsedTurn, HostControlSurface } from '../tailer-host'
+import type { FSWatcher } from 'chokidar'
+let watch: typeof import('chokidar').watch
+import type { TailerAdapter, ParsedTurn, HostControlSurface } from '../../src/main/services/tailer-host'
 
 // Part types we care about. `step-start` / `step-finish` are boundary
 // markers OpenCode uses internally — they carry snapshot ids and token
@@ -313,7 +314,7 @@ function startSecondaryWatcher(host: HostControlSurface): void {
     // operator installs OpenCode later, a restart of the app picks up.
     return
   }
-  const watcher = chokidar.watch(partsRoot, {
+  const watcher = watch(partsRoot, {
     persistent: true,
     ignoreInitial: true,
     depth: 3,
@@ -322,7 +323,9 @@ function startSecondaryWatcher(host: HostControlSurface): void {
   const emitFromPartFile = (p: string): void => {
     if (!p.endsWith('.json')) return
     const messageId = path.basename(path.dirname(p))
-    if (!host.acceptsMessage('opencode', messageId)) return
+    let changedAt: number
+    try { changedAt = fs.statSync(p).mtimeMs } catch { return }
+    if (!host.acceptsMessage('opencode', messageId, changedAt)) return
     let raw: string
     try { raw = fs.readFileSync(p, 'utf-8') } catch { return }
     let part: OpencodePart
@@ -355,10 +358,7 @@ export const opencodeAdapter: TailerAdapter = {
   },
   parseUnit(rawContent: string, sourcePath?: string): ParsedTurn | ParsedTurn[] | null {
     if (!sourcePath) return null
-    // A stub that does not parse is usually one OpenCode has not finished
-    // writing. Thrown rather than returned empty: empty tells the host the
-    // file is handled, and it would never be read again.
-    try { JSON.parse(rawContent) } catch { throw new Error('OpenCode message file is not complete JSON yet') }
+    JSON.parse(rawContent) // A partial write is retryable, not a completed empty message.
     const arr = parseOpencodeMessage(rawContent, sourcePath)
     return arr.length ? arr : null
   },
@@ -382,4 +382,12 @@ export function overrideOpencodeStorageRoot(storageRoot: string): void {
 export function _stopOpencodeSecondaryWatcherForTest(): void {
   stopSecondaryWatcher()
   secondaryHost = null
+}
+
+/** The optional plugin contract. Loaded only after installation and project authorization. */
+export function createAdapter(root: string, services: { watch: typeof import('chokidar').watch }): TailerAdapter {
+  watch = services.watch
+  overrideOpencodeStorageRoot(path.dirname(root))
+  opencodeAdapter.transcriptRoot = root
+  return opencodeAdapter
 }

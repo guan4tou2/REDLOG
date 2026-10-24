@@ -26,9 +26,9 @@ let health: ReturnType<typeof vi.fn>
 let saved: unknown
 const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
 const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
-function Harness({ onOpenPlugins }: { onOpenPlugins?: () => void } = {}) {
+function Harness() {
   const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
-  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={onOpenPlugins} />
+  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} />
 }
 const healthSnapshot = (sources: unknown[]): unknown => ({
   verdict: 'healthy', hasRecorded: false, sources, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null
@@ -37,7 +37,7 @@ beforeEach(() => {
   saved = undefined; shown.length = 0; answer = true
   catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
   health = vi.fn(async () => healthSnapshot([]))
-  ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick }, capture: { health } }
+  ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sessions: async () => [], sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick }, capture: { health } }
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('AI optional installation settings', () => {
@@ -58,24 +58,32 @@ describe('AI optional installation settings', () => {
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, workPaths: ['/work/client'], installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
   })
-  it('offers a direct route to plugin settings without enabling or installing anything', async () => {
+  it('recovers a disabled integration here without authorizing the project', async () => {
     catalog.mockResolvedValue([installed])
     window.redlog.plugins.list = vi.fn().mockResolvedValue([{ id: 'official-ai-codex', status: 'disabled' }])
-    const onOpenPlugins = vi.fn()
-    render(<Harness onOpenPlugins={onOpenPlugins} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'settings.openPlugins' }))
-    expect(onOpenPlugins).toHaveBeenCalledTimes(1)
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-restore-codex'))
+    await waitFor(() => expect(install).toHaveBeenCalledWith('codex'))
     expect(saved).toBeUndefined()
-    expect(install).not.toHaveBeenCalled()
-    expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.queryByTestId('agent-enabled-codex')).toBeNull()
+  })
+  it('stops recording and clears the activation boundary when the transcript source changes', async () => {
+    catalog.mockResolvedValue([installed]); render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    pick.mockResolvedValueOnce('/custom/codex/sessions')
+    fireEvent.click(screen.getByTestId('agent-source-path-codex'))
+    await screen.findByTestId('agent-scope-changed-codex')
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { sourceRoot: '/custom/codex/sessions', enabled: false, startedAt: undefined, workPaths: ['/work/client'] } } } })
+    expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).checked).toBe(false)
   })
   it('makes a directory change visibly stop recording until the existing checkbox is explicitly enabled again', async () => {
     catalog.mockResolvedValue([installed])
     render(<Harness />)
     fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
-    await screen.findByText('settings.agents.notRecording')
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
-    expect(screen.queryByText('settings.agents.notRecording')).toBeNull()
     pick.mockResolvedValueOnce('/work/second-client')
     fireEvent.click(screen.getByTestId('agent-add-path-codex'))
     // The source WAS recording, so the row names what happened — the scope
@@ -108,7 +116,7 @@ describe('AI optional installation settings', () => {
     catalog.mockResolvedValue([installed])
     render(<Harness />)
     fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
-    await screen.findByText('settings.agents.notRecording')
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true } } } })
     pick.mockResolvedValueOnce('/work/second-client')
@@ -128,7 +136,7 @@ describe('AI optional installation settings', () => {
     catalog.mockResolvedValue([installed])
     render(<Harness />)
     fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
-    await screen.findByText('settings.agents.notRecording')
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
     expect(screen.queryByText('settings.agents.scopeChanged')).toBeNull()
     expect((saved as { agentTailer: { sources: { codex: { scopeChangedAt?: number } } } }).agentTailer.sources.codex.scopeChangedAt).toBeUndefined()
   })
@@ -183,17 +191,39 @@ describe('AI optional installation settings', () => {
     ]
     render(<Harness />)
     const card = await screen.findByTestId('agent-source-codex')
-    expect(card.textContent).toContain('settings.agents.notDetected')
-    expect(card.textContent).not.toContain('settings.agents.notDetectedHint')
+    expect(screen.queryByTestId('agent-details-codex')).toBeNull()
   })
 
-  it('offers the start-the-tool step once the integration is installed', async () => {
+  it('keeps a missing transcript directory visible in source settings', async () => {
     catalog.mockResolvedValue([installed])
     window.redlog.agents.sources = async () => [
       { id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: false }
     ]
     render(<Harness />)
     const card = await screen.findByTestId('agent-source-codex')
-    expect(card.textContent).toContain('settings.agents.notDetectedHint')
+    expect(card.textContent).toContain('settings.agents.notDetected')
   })
+})
+
+
+it('stops only the selected conversation and reauthorizes it from now', async () => {
+  catalog.mockResolvedValue([installed])
+  window.redlog.agents.sessions = vi.fn(async () => [{ agentKind: 'codex', sessionId: 'session-a', cwd: '/work/client', recording: true }])
+  render(<Harness />)
+  fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+  await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
+  fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+  fireEvent.click(await screen.findByTestId('agent-session-session-a'))
+  expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, excludedSessions: ['session-a'] } } } })
+  fireEvent.click(await screen.findByTestId('agent-session-session-a'))
+  expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, excludedSessions: [], sessionStarts: { 'session-a': expect.any(Number) } } } } })
+})
+
+it('offers an official package update here without granting project permission', async () => {
+  catalog.mockResolvedValue([{ ...installed, state: 'update-available' }])
+  render(<Harness />)
+  fireEvent.click(await screen.findByTestId('agent-update-codex'))
+  await waitFor(() => expect(install).toHaveBeenCalledWith('codex'))
+  expect(saved).toBeUndefined()
+  expect(screen.queryByTestId('agent-enabled-codex')).toBeNull()
 })

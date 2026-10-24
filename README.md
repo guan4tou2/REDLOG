@@ -232,7 +232,7 @@ Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/
 
 ## AI Agent Integration
 
-Claude Code is the first conversation workflow, followed by Codex. Install the selected RedLog capture integration in **Settings ▸ Other capture sources ▸ AI Agents**, select its project working directories, then enable new conversations. Installation alone does not start capture or import history. Supported local transcripts supply user messages, AI replies and tool calls/results. This does not cover Claude desktop/web conversations or promise hidden reasoning and image attachments.
+Claude Code is the first conversation workflow, followed by Codex. Install the selected RedLog capture integration in **Settings ▸ Other capture sources ▸ AI conversations**, select its project working directories, then enable new conversations. Installation alone does not start capture or import history. Supported local transcripts supply user messages, AI replies and tool calls/results. This does not cover Claude desktop/web conversations or promise hidden reasoning and image attachments.
 
 Shell hooks record terminal commands separately; a shell hook alone does not capture the AI conversation. The API supplies explicit events when needed. See [Capture priority](docs/agent-integration.md#how-ai-conversations-are-recorded).
 
@@ -240,7 +240,7 @@ Shell hooks record terminal commands separately; a shell hook alone does not cap
 
 Connect your interactive terminal to record its commands and supported output. Non-interactive shells spawned by AI tools may not load shell hooks; use the optional AI transcript integration for their conversation and source-reported tool results.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Install the desired integration in Settings ▸ Other capture sources ▸ AI Agents, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Parser packages ship as inert offline resources; only the chosen package is installed and loaded after project authorization. Install the desired integration in Settings ▸ Other capture sources ▸ AI conversations, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 
@@ -411,7 +411,7 @@ hooks/
   command-class.json         relayed / pty / native, one list for both readers
 plugins/                    bundled non-AI capture packs
 src/core/plugins/
-  official-agents.ts        optional AI capture catalog, installed only on request
+  official-agents.ts        validates and installs optional offline AI packages
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

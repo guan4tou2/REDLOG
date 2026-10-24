@@ -164,7 +164,9 @@ describe('external source facts and failed reads', () => {
     health.mockResolvedValue({ sources: [{ id: foreign.id, state: 'ready', running: true }] })
     fireEvent.focus(window)
     await screen.findByText('settings.externalFeeding')
-    expect(container.querySelector('details')).toBeNull()
+    expect(screen.queryByTestId('external-other-platforms')).toBeNull()
+    expect(container.textContent).toContain('powershell windows.ps1')
+    expect(container.querySelector('details')?.open).toBe(false)
   })
 
   it.each([false, true])('shows a live producer even when disabled=%s', async disabled => {

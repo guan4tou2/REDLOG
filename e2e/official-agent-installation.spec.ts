@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { launchWithTempHome, openTestProject } from './helpers'
 
 test('official AI installation is explicit, local and independent of project activation', async () => {
-  const { app, page, tmpHome } = await launchWithTempHome()
+  const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
     const catalog = await page.evaluate(() => window.redlog.plugins.officialAgents())
     expect(catalog.map(p => p.agentKind)).toEqual(['claude-code', 'codex', 'opencode'])

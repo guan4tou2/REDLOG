@@ -50,3 +50,7 @@
 
 
 T019 後續：Mac 解鎖後的實際點選、原生資料夾選擇器、鍵盤停用、重裝不自動啟用與保存 bytes 核對均通過，見 [Mac AI 驗收](ai-mac-acceptance-20261022.md)。這是 packaged candidate 驗收，未將其他平台或 DMG 安裝算成通過。
+
+## 2026-10-24 clarification — actual optional code packages
+
+The earlier T014–T019 receipt-only installer is superseded by T065. The user selected offline packages supplied with the app. Both metadata and parser are now in optional-plugins/<provider>/, independently built and copied only when installed. The host has no direct provider imports or fixed provider list; the package manager validates installed bytes before returning a module path. Activation loads that module; stop/removal unloads it. Installation/removal owns the manifest and parser, never original conversation files or project evidence. See source-placement-and-ui-review-20261024.md for current verification. Historical receipt-only acceptance above is not evidence for the new package loader.

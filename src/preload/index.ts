@@ -92,7 +92,8 @@ const api: RedLogAPI = {
     reveal: (kind: 'artifact' | 'screenshot', file: string) => ipcRenderer.invoke('artifacts:reveal', kind, file) as Promise<boolean>
   },
   agents: {
-    sources: () => ipcRenderer.invoke('agents:sources') as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+    sessions: () => ipcRenderer.invoke('agents:sessions') as Promise<Array<{ agentKind: string; sessionId: string; cwd?: string; recording: boolean }>>,
+    sources: (roots?: Record<string, string>) => ipcRenderer.invoke('agents:sources', roots) as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[] }>,

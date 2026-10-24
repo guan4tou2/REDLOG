@@ -177,7 +177,7 @@ test('external-source running and failed IPC reads remain distinct in settings',
   } finally { await app.close() }
 })
 
-test('other-source settings link to disabled plugins and require explicit AI scope activation', async () => {
+test('optional AI recovers in its source entry and requires explicit project authorization', async () => {
   const { app, page, tmpHome } = await launchWithTempHome()
   try {
     const first = join(tmpHome, 'client-work')
@@ -189,7 +189,14 @@ test('other-source settings link to disabled plugins and require explicit AI sco
       localStorage.setItem('redlog-locale', 'en')
       const result = await window.redlog.plugins.installOfficialAgent('codex')
       if (!result.ok) throw new Error(result.error)
-      await window.redlog.plugins.setEnabled('official-ai-codex', false)
+    })
+    await app.evaluate((_electron, home) => {
+      const fs = process.getBuiltinModule('fs')!
+      const path = process.getBuiltinModule('path')!
+      fs.writeFileSync(path.join(home, '.redlog', 'plugins', 'state.json'), JSON.stringify({ disabled: ['official-ai-codex'] }))
+    }, tmpHome)
+    await page.evaluate(async () => {
+      await window.redlog.plugins.reload()
     })
     await page.reload()
     await openView(page, 'settings')
@@ -198,13 +205,12 @@ test('other-source settings link to disabled plugins and require explicit AI sco
     await other.click()
     const before = await page.evaluate(() => window.redlog.config.get())
     const row = page.getByTestId('agent-source-codex')
-    await row.getByRole('button', { name: 'Go to plugin settings' }).click()
-    await expect(page.locator('[data-settings-page="plugins"]')).toHaveAttribute('aria-current', 'page')
-    expect((await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('disabled')
-    expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
-    // Explicitly enable the integration through the existing plugin control.
-    await page.getByRole('button', { name: 'Enable', exact: true }).click()
+    await row.getByTestId('agent-restore-codex').click()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
+    await expect(page.locator('[data-settings-page="captureControl"]')).toHaveAttribute('aria-current', 'page')
+    expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
+    await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+    await expect(page.getByText('Codex CLI', { exact: true })).toHaveCount(0)
     await other.click()
     const setPicker = async (path: string) => app.evaluate(({ ipcMain }, next) => {
       ipcMain.removeHandler('hookConfig:pickPath')
@@ -212,18 +218,16 @@ test('other-source settings link to disabled plugins and require explicit AI sco
     }, path)
     await setPicker(first)
     await row.getByTestId('agent-add-path-codex').click()
-    const hint = row.getByText('These working directories are not being recorded yet.', { exact: false })
-    await expect(hint).toBeVisible()
     const checkbox = row.getByTestId('agent-enabled-codex')
+    await expect(checkbox).toBeEnabled()
     await expect(checkbox).not.toBeChecked()
     await checkbox.check()
-    await expect(hint).toHaveCount(0)
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.codex?.enabled).toBe(true)
     await setPicker(second)
     await row.getByTestId('agent-add-path-codex').click()
     // The scope moved under a recording source: the row says so, and the one
     // control that resolves it is the same checkbox, relabelled.
-    const scopeChanged = row.getByText('Scope changed', { exact: false })
+    const scopeChanged = row.getByTestId('agent-scope-changed-codex')
     await expect(scopeChanged).toBeVisible()
     await expect(row.getByText('Confirm this range and record')).toBeVisible()
     await expect(checkbox).not.toBeChecked()

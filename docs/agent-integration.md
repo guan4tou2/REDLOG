@@ -32,7 +32,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
-| **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Other capture sources ▸ AI Agents: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
+| **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Other capture sources ▸ AI conversations: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd; ordinary Bash/Zsh commands also have bounded output, with native/interactive exceptions | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
@@ -51,7 +51,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 ### AI project working directories
 
-Each tool has an independent capture integration. In **Settings ▸ Other capture sources ▸ AI Agents**:
+Each tool has an independent capture integration. In **Settings ▸ Other capture sources ▸ AI conversations**:
 
 1. Install the capture integration for the desired tool. This does not install the AI tool or contact a model.
 2. Add the engagement's working directories with the folder picker.
@@ -69,7 +69,7 @@ Source locations supported by the current adapters:
 | Codex | `~/.codex/sessions/` JSONL |
 | OpenCode | `~/.local/share/opencode/storage/` message/part/session files |
 
-These are on-disk source formats, not a guarantee of every vendor version, web/desktop conversation or hidden reasoning. A missing transcript directory requires starting the AI tool and reopening the project. Agent tool results are source-reported evidence; they do not prove that an arbitrary command was independently observed by the shell recorder.
+These are on-disk source formats, not a guarantee of every vendor version, web/desktop conversation or hidden reasoning. Source settings can select a nonstandard transcript directory. Defaults honor absolute CLAUDE_CONFIG_DIR (projects/) and CODEX_HOME (sessions/); an explicit project source directory takes precedence. Changing it stops capture until the project is explicitly enabled again. The source directory is separate from allowed working directories. Agent tool results are source-reported evidence; they do not prove that an arbitrary command was independently observed by the shell recorder.
 
 ### What records output
 
@@ -98,7 +98,7 @@ the ones the engagement uses; neither silently enables the other.
 
 The optional transcript integrations capture newly written supported messages and tool calls/results from Claude Code, Codex and OpenCode. Only source-provided content is available; thinking blocks require a separate opt-in. They are not a substitute for shell output capture.
 
-**Setup:** Install a per-tool integration in Settings ▸ Other capture sources ▸ AI Agents, select allowed working directories, then explicitly enable it for the project. No shell wrapper is required.
+**Setup:** Install a per-tool integration in Settings ▸ Other capture sources ▸ AI conversations, select allowed working directories, then explicitly enable it for the project. No shell wrapper is required.
 
 **What it captures:**
 
@@ -111,7 +111,7 @@ The optional transcript integrations capture newly written supported messages an
 | `transcript_snapshot` | Cumulative SHA-256 of the sidecar file (emitted on 15 s idle or session close) |
 | `transcript_compacted` | Emitted when Claude Code `/compact` runs |
 
-**Sidecar files:** The tailer writes a copy of each session's events to `<projectDir>/agent-transcripts/<kind>-<session>-<activation>.jsonl`. A separate start-offset checkpoint plus the sidecar size locate the read offset; restarting the same activation does not re-import history.
+**Sidecar files:** The tailer writes a copy of each session's events to `<projectDir>/agent-transcripts/<kind>-<session>-<activation>.jsonl`. A separate durable source-offset checkpoint locates the read position independently of retained sidecar bytes; restarting the same activation does not re-import history.
 
 **Redaction:** `deepRedactStrings()` walks every string value; paths matching `.ssh/`, `.env`, `.aws/` suppress the output field entirely.
 
@@ -358,3 +358,18 @@ This gives you:
 - Agent-initiated markers and scope checks (API / shell functions)
 - Team-shared scope configuration (profiles)
 - Per-operator attribution + Bitcoin-backed integrity anchoring
+
+
+Pause omits new AI originals from both the event log and raw sidecar; resume
+skips bytes already present at that boundary. A metadata-only capture gap
+records the omission. In AI source settings, expand Conversations to stop one
+session or explicitly allow new content. Exclusions persist per project and
+provider; allowing again does not import the excluded period. Working-directory
+authorization does not classify prompts or hide a tool's reads outside that
+directory.
+
+After an app update, an intact older optional package offers Update integration
+in the source row; it cannot execute until updated. Unknown or modified files
+remain refused and available for inspection. Installing/updating never grants
+a new project authorization. The separate installation records live alongside
+the user plugin directories and are not captured evidence.

@@ -38,6 +38,84 @@ export default function CaptureControlPage({
           of this page. The same four sources are rows in the Dashboard's
           capture inventory, where they carry whether they are actually feeding
           the record — which is what an operator came here to find out. */}
+      {/* Optional AI integrations are installed per tool and authorized per project. */}
+      <AgentsPanel config={config} setConfig={setConfig} t={t} />
+
+
+      <FieldGroup title={t('settings.screenshotGroup')}>
+        <div className="flex items-center gap-2 flex-wrap">
+          {[
+            { v: 0, k: 'settings.screenshot.interval.off' },
+            { v: 30, k: 'settings.screenshot.interval.30s' },
+            { v: 60, k: 'settings.screenshot.interval.60s' },
+            { v: 300, k: 'settings.screenshot.interval.5m' }
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              aria-pressed={(config.screenshot?.intervalSec ?? 0) === opt.v}
+              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
+              className={`px-3 py-1 text-xs rounded ${
+                (config.screenshot?.intervalSec ?? 0) === opt.v
+                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+              }`}
+            >{t(opt.k)}</button>
+          ))}
+        </div>
+
+        {/* The screenshot source is a source like the others: when it last
+            delivered a frame is a fact about the record, not about the
+            switch. */}
+        <SourceLastSeen
+          source={healthOf('screenshot')}
+          active={(config.screenshot?.intervalSec ?? 0) > 0 || config.screenshot?.captureOnCommand === true}
+          t={t}
+        />
+
+        <CheckRow
+          align="start"
+          checked={config.screenshot?.captureOnCommand ?? false}
+          onChange={(on) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: on } })}
+          label={t('settings.screenshot.onCommand')}
+        />
+        <details>
+          <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.screenshot.options')}</summary>
+          <div className="space-y-2 pt-2">
+        <Field
+          label={t('settings.jpegQuality')}
+          value={String(config.screenshot?.quality ?? 85)}
+          onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+          type="number"
+        />
+
+        <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
+        <div className="flex items-center gap-2 flex-wrap">
+          {[
+            { v: 0, k: 'settings.screenshot.diff.off' },
+            { v: 5, k: 'settings.screenshot.diff.standard' },
+            { v: 12, k: 'settings.screenshot.diff.major' }
+          ].map((opt) => (
+            <button
+              key={opt.v}
+              aria-pressed={(config.screenshot?.diffThreshold ?? 5) === opt.v}
+              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
+              className={`px-3 py-1 text-xs rounded ${
+                (config.screenshot?.diffThreshold ?? 5) === opt.v
+                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+              }`}
+            >{t(opt.k)}</button>
+          ))}
+        </div>
+        <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
+
+
+
+
+          </div>
+        </details>
+      </FieldGroup>
+
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
@@ -107,8 +185,6 @@ export default function CaptureControlPage({
         />
       </CapturePackGroup>
 
-      {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins} />
 
       {/* A Windows capture on a Mac is not setup that is missing. Off Windows
           it waits in a collapsed group, and stays in the open if it was ever
@@ -135,70 +211,7 @@ export default function CaptureControlPage({
           what ships with RedLog is not a plugin. */}
       <ExternalCaptureGroup t={t} />
 
-      <FieldGroup title={t('settings.screenshotGroup')}>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.interval.off' },
-            { v: 30, k: 'settings.screenshot.interval.30s' },
-            { v: 60, k: 'settings.screenshot.interval.60s' },
-            { v: 300, k: 'settings.screenshot.interval.5m' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.intervalSec ?? 0) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
 
-        {/* The screenshot source is a source like the others: when it last
-            delivered a frame is a fact about the record, not about the
-            switch. */}
-        <SourceLastSeen
-          source={healthOf('screenshot')}
-          active={(config.screenshot?.intervalSec ?? 0) > 0 || config.screenshot?.captureOnCommand === true}
-          t={t}
-        />
-
-        <Field
-          label={t('settings.jpegQuality')}
-          value={String(config.screenshot?.quality ?? 85)}
-          onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
-          type="number"
-        />
-
-        <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.diff.off' },
-            { v: 5, k: 'settings.screenshot.diff.standard' },
-            { v: 12, k: 'settings.screenshot.diff.major' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.diffThreshold ?? 5) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
-
-        <CheckRow
-          align="start"
-          checked={config.screenshot?.captureOnCommand ?? false}
-          onChange={(on) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: on } })}
-          label={t('settings.screenshot.onCommand')}
-        />
-        <p className="text-xs text-redlog-text-faint mt-1">{t('settings.screenshot.onCommandHint')}</p>
-      </FieldGroup>
 
     </>
   )

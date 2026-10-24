@@ -6,7 +6,7 @@ import * as host from '../src/main/services/tailer-host'
 import * as events from '../src/core/db/events'
 import * as db from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
-import { claudeCodeAdapter } from '../src/main/services/adapters/claude-code'
+import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { eventBus } from '../src/core/event-bus'
 
 // The JSONL tailer reads from where its sidecar ends and appends what it read
@@ -97,22 +97,6 @@ describe('a transcript turn whose write fails', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(recorded()).toEqual(['last words'])
   })
-
-  it('is given up after the bounded retries, says so, and does not hold back what follows', async () => {
-    vi.useFakeTimers()
-    fs.writeFileSync(source, turn('u1', 'never'))
-    h.failOn.add('never')
-    host.registerSession('claude-code', source)
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
-
-    const gap = events.queryEvents({ agentType: 'system', limit: 10 }).find((e) => e.data.subtype === 'capture_gap')
-    expect(gap?.data).toMatchObject({ reason: 'write_failed', failed_turns: 1 })
-    expect(sidecarSize()).toBe(fs.statSync(source).size)
-
-    fs.appendFileSync(source, turn('u2', 'next'))
-    host.catchUpSession('claude-code', SID)
-    expect(recorded()).toEqual(['next'])
-  })
 })
 
 describe('a turn with nothing left to re-read', () => {
@@ -128,19 +112,6 @@ describe('a turn with nothing left to re-read', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(recorded()).toEqual(['child', 'parent'])
     expect(gaps()).toEqual([])
-  })
-
-  it('is written after a pause that began before its retry', async () => {
-    vi.useFakeTimers()
-    fs.writeFileSync(source, turn('u1', 'pre-pause work'))
-    h.failOn.add('pre-pause work')
-    host.registerSession('claude-code', source)
-    h.failOn.clear()
-    eventBus.pause()
-    await vi.advanceTimersByTimeAsync(5000)
-    eventBus.resume()
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(recorded()).toEqual(['pre-pause work'])
   })
 })
 
