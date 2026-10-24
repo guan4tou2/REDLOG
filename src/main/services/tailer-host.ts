@@ -282,6 +282,12 @@ interface SessionState {
   pauseSkippedLines: number
   /** Timestamp when the first pause-skipped line was encountered. */
   pauseStartedAt: number | null
+  /** Turns whose event write threw. Read around a unit to tell whether every
+   *  turn in it landed, since emitTurn reports failure only to capture health. */
+  writeFailures: number
+  /** Bounded retry for units that did not land: the watcher may never fire
+   *  for that file again. */
+  retry: { timer: ReturnType<typeof setTimeout>; attempt: number } | null
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
@@ -731,7 +737,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         for (const q of waiting) emitTurn(q.turn, ctx)
       }
     }
-  } catch (e) { noteDbError('tailer-host', e) }
+  } catch (e) { s.writeFailures++; noteDbError('tailer-host', e) }
 }
 
 function sweepStalePending(s: SessionState): ParsedTurn[] {
@@ -915,24 +921,54 @@ function catchUpPerMessageDir(s: SessionState): void {
   }
   toProcess.sort((a, b) => a.mtime - b.mtime)
 
+  // A file goes into the index only once its events are written. Indexed
+  // first, a failed or interrupted write left the file marked done and it was
+  // never read again. A paused file is indexed unread, so resume does not
+  // record the pause.
+  let failed = false
   for (const p of toProcess) {
     let raw: string
     try { raw = fs.readFileSync(p.full, 'utf-8') } catch { continue }
     s.linesSeen++
-    try { fs.appendFileSync(s.sidecarPath, p.name + '\n') } catch { /* ignore */ }
-    s.bytesAppendedSinceSnapshot += p.name.length + 1
-    // Audit 2026-09-18 P1: sidecar index advanced above; skip event
-    // processing when paused so no DB rows land during the pause window.
     if (eventBus.paused) {
-      s.redlogIdByUuid.set(p.name, '__paused__')
+      markIndexed(s, p.name, '__paused__')
       continue
     }
-    processUnit(s, raw, p.full)
+    if (processUnit(s, raw, p.full)) markIndexed(s, p.name, '__seen__')
+    else failed = true
   }
+  if (failed) scheduleUnitRetry(s)
+  else if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
   if (!eventBus.paused) scheduleIdleSnapshot(s)
 }
 
-function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {
+function markIndexed(s: SessionState, name: string, sentinel: string): void {
+  try { fs.appendFileSync(s.sidecarPath, name + '\n') } catch { /* the in-memory mark still holds for this run */ }
+  s.bytesAppendedSinceSnapshot += name.length + 1
+  // Not over a real event id: an adapter whose turn uuid is the file name has
+  // already recorded it, and `_causes` lookups need the id, not a sentinel.
+  if (!s.redlogIdByUuid.has(name)) s.redlogIdByUuid.set(name, sentinel)
+}
+
+const UNIT_RETRY_BASE_MS = 1000
+const UNIT_RETRY_LIMIT = 5
+
+function scheduleUnitRetry(s: SessionState): void {
+  const attempt = (s.retry?.attempt ?? 0) + 1
+  if (s.retry) clearTimeout(s.retry.timer)
+  // Bounded: a store that stays broken is already in capture health, and the
+  // next change in the directory tries again from here.
+  if (attempt > UNIT_RETRY_LIMIT) { s.retry = null; return }
+  const timer = setTimeout(() => {
+    if (sessions.get(sessionKey(s.agentKind, s.sessionId)) === s) catchUpSession(s.agentKind, s.sessionId)
+  }, UNIT_RETRY_BASE_MS * 2 ** (attempt - 1))
+  s.retry = { timer, attempt }
+}
+
+/** False when the unit did not fully land: the adapter could not parse it (a
+ *  per-message file can be read mid-write) or a turn's write failed. */
+function processUnit(s: SessionState, rawContent: string, sourcePath: string): boolean {
+  const failuresBefore = s.writeFailures
   let raw: ParsedTurn | ParsedTurn[] | null
   try {
     raw = s.adapter.parseUnit(rawContent, sourcePath)
@@ -952,9 +988,9 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
       } catch (err) { noteDbError('tailer-host', err) }
     }
     noteDbError('tailer-host', e)
-    return
+    return false
   }
-  if (!raw) return
+  if (!raw) return true
   const turns = Array.isArray(raw) ? raw : [raw]
 
   for (const turn of turns) {
@@ -979,6 +1015,7 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
     }
     emitTurn(turn, { session: s })
   }
+  return s.writeFailures === failuresBefore
 }
 
 function scheduleIdleSnapshot(s: SessionState): void {
@@ -1131,7 +1168,9 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     toolGapAdvisoryFired: false,
     runningHash: crypto.createHash('sha256'),
     pauseSkippedLines: 0,
-    pauseStartedAt: null
+    pauseStartedAt: null,
+    writeFailures: 0,
+    retry: null
   }
   // Align sidecar to the last complete-line boundary. Within a run,
   // pendingLineBuffer carries incomplete trailing text across catchUp calls.
@@ -1217,6 +1256,7 @@ function unregisterSession(key: string): void {
   const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
+  if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
   const ct = coalesceTimers.get(key)
   if (ct) { clearTimeout(ct); coalesceTimers.delete(key) }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove
