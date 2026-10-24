@@ -41,6 +41,9 @@ test.describe.serial('approved export plan', () => {
     await page.getByLabel('Export').click()
     const panel = page.getByTestId('export-dialog')
     await expect(panel).toBeVisible()
+    // The action bar renders once the preview has loaded, which under a full
+    // run's load comes after the panel itself.
+    await expect(panel.getByTestId('export-confirm')).toBeVisible()
     const fit = await panel.evaluate(el => {
       const rect = el.getBoundingClientRect()
       const confirm = el.querySelector('[data-testid="export-confirm"]')!
