@@ -293,14 +293,14 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                   // Clean up the dead pane's search-addon ref
                   paneSearchRefs.current.delete(tab.id)
                 }}
-                className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-emerald-500/70 hover:text-emerald-400 hover:bg-emerald-950/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
+                className="ml-0.5 w-6 h-6 rounded flex items-center justify-center text-emerald-500/70 hover:text-emerald-400 hover:bg-emerald-950/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
                 title={t('terminal.restart')}
                 aria-label={t('terminal.restart')}
               >↻</button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-              className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-redlog-elevated-hover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-opacity"
+              className="ml-0.5 w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-redlog-elevated-hover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-opacity"
               title={t('terminal.closeTitle')}
               aria-label={t('terminal.closeTitle')}
             >
@@ -328,7 +328,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               data-testid="terminal-shell-menu"
               aria-haspopup="menu"
               aria-expanded={shellMenuOpen}
-              className="w-5 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
+              className="w-6 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
               title={t('terminal.pickShell')}
               aria-label={t('terminal.pickShell')}
             >

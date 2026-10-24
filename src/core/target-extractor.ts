@@ -102,6 +102,11 @@ interface ExternalExtractor {
 }
 const externalPatterns: ExternalExtractor[] = []
 
+export interface ExtractorRegistration {
+  accepted: number
+  rejected: Array<{ name: string; reason: string }>
+}
+
 export function registerTargetExtractors(
   pluginId: string,
   extractors: Array<{
@@ -114,13 +119,16 @@ export function registerTargetExtractors(
     description?: string
   }>,
   source: 'bundled' | 'user' = 'user'
-): number {
+): ExtractorRegistration {
   let added = 0
+  const rejected: ExtractorRegistration['rejected'] = []
   extractors.forEach((e, i) => {
+    const extractorName = e.name && e.name.trim() ? e.name.trim() : `${e.cmd}#${i}`
     try {
-      const extractorName = e.name && e.name.trim() ? e.name.trim() : `${e.cmd}#${i}`
       // A strategy plugin gets the same mechanism the built-ins use; otherwise
-      // fall back to the single-capture-group regex. A row with neither is skipped.
+      // fall back to the single-capture-group regex. A row with neither is
+      // skipped — and named, because a manifest that loads is not a rule that
+      // works (#348).
       if (e.strategy && STRATEGIES[e.strategy]) {
         // `flags` applies to the cmd matcher for strategy rows (the strategy
         // owns its own value extraction) — e.g. the built-in RHOSTS row needs
@@ -130,10 +138,19 @@ export function registerTargetExtractors(
       } else if (e.extract) {
         externalPatterns.push({ cmd: new RegExp(e.cmd), extract: new RegExp(e.extract, e.flags), pluginId, extractorName, description: e.description, source })
         added++
+      } else {
+        rejected.push({
+          name: extractorName,
+          reason: e.strategy
+            ? `unknown strategy "${e.strategy}"; no target can be extracted`
+            : 'needs either `strategy` or `extract`'
+        })
       }
-    } catch { /* bad regex — skip */ }
+    } catch (err) {
+      rejected.push({ name: extractorName, reason: (err as Error).message })
+    }
   })
-  return added
+  return { accepted: added, rejected }
 }
 
 export function unregisterTargetExtractors(pluginId: string): void {

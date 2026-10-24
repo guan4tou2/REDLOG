@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
-import GeneralPage from '../src/renderer/src/components/settings/GeneralPage'
+import ProjectSettings from '../src/renderer/src/components/settings/ProjectSettings'
 import ScopePage from '../src/renderer/src/components/settings/ScopePage'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import type { ConfigState } from '../src/renderer/src/components/settings/SettingsShared'
@@ -27,7 +27,7 @@ describe('scope and project identity entry', () => {
       network: { whitelist: [], blacklist: [], checkInterval: 60 },
       scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
     } as ConfigState
-    render(<I18nProvider><GeneralPage config={config} setConfig={vi.fn()} /></I18nProvider>)
+    render(<I18nProvider><ProjectSettings config={config} setConfig={vi.fn()} /></I18nProvider>)
     const engagementId = screen.getAllByLabelText('ID')[0] as HTMLInputElement
     expect(engagementId.readOnly).toBe(true)
     expect(engagementId.value).toBe('immutable-id')
@@ -48,7 +48,7 @@ describe('scope and project identity entry', () => {
       network: { whitelist: [], blacklist: [], checkInterval: 60 },
       scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
     } as unknown as ConfigState
-    render(<I18nProvider><GeneralPage config={config} setConfig={vi.fn()} /></I18nProvider>)
+    render(<I18nProvider><ProjectSettings config={config} setConfig={vi.fn()} /></I18nProvider>)
     const name = await screen.findByDisplayValue('Old name')
     fireEvent.change(name, { target: { value: 'New name' } })
     fireEvent.blur(name)

@@ -220,7 +220,29 @@ test.describe.serial('the first run', () => {
     await expect(page.locator('[data-testid="first-run-commands-status"]')).toHaveText('✓ Verified')
     // A command does not make HTTP(S) any less unverified.
     await expect(page.locator('[data-testid="first-run-http-status"]')).toHaveText('○ Not verified')
-    await expect(page.locator('[data-testid="first-run-later"]')).toBeVisible()
+    await expect(page.getByTestId('first-run-start-work')).toBeVisible()
+    await expect(page.getByTestId('first-run-later')).toHaveCount(0)
+  })
+
+  test('keeps work actions above setup and recent evidence beside the pending web source', async () => {
+    for (const [width, height] of [[1600, 900], [800, 600]]) {
+      await resizeMainWindow(app, width, height)
+      const commands = page.getByTestId('first-run-commands')
+      const http = page.getByTestId('first-run-http')
+      const recent = page.getByTestId('first-run-recent')
+      const work = page.getByTestId('first-run-start-work')
+      const boxes = await Promise.all([commands, http, recent, work].map(locator => locator.boundingBox()))
+      expect(boxes.every(Boolean)).toBe(true)
+      const [c, h, r, w] = boxes.map(box => box!)
+      expect(w.y + w.height).toBeLessThanOrEqual(c.y + 1)
+      expect(r.y).toBeGreaterThanOrEqual(c.y + c.height)
+      expect(Math.abs(r.x - c.x)).toBeLessThanOrEqual(1)
+      expect(r.x + r.width).toBeLessThanOrEqual(c.x + c.width + 1)
+      if (width === 1600) expect(Math.abs(h.y - c.y)).toBeLessThanOrEqual(1)
+      else expect(h.y).toBeGreaterThanOrEqual(r.y + r.height)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    }
+    await resizeMainWindow(app, 1280, 800)
   })
 
   test('retains command proof after newer markers displace it from the recent display', async () => {
@@ -238,7 +260,7 @@ test.describe.serial('the first run', () => {
     expect(await page.locator('[data-testid="first-run-strip"]').count()).toBe(0)
   })
 
-  test('the dashboard capture button opens Settings ▸ capture sources, not the first-run guide, and loses no evidence', async () => {
+  test('the dashboard capture button opens terminal source settings and loses no evidence', async () => {
     // The guide is for the first connection. Looking at, changing or repairing a
     // source later goes to Settings, where each source lives.
     await post('shell', { subtype: 'command_start', command: 'setup-reopen-evidence' })
@@ -253,8 +275,8 @@ test.describe.serial('the first run', () => {
     await page.keyboard.press('Enter')
     // Below the sidebar breakpoint the page list is a <select>.
     const select = page.getByTestId('settings-page-select')
-    if (await select.count()) await expect(select).toHaveValue('captureControl')
-    else await expect(page.locator('[data-settings-page="captureControl"][aria-current="page"]')).toBeVisible()
+    if (await select.count()) await expect(select).toHaveValue('hooks')
+    else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toHaveCount(0)
     await openView(page, 'dashboard')
     await expect(page.getByTestId('first-run-strip')).toHaveCount(0)

@@ -150,6 +150,119 @@ test.describe.serial('read failures and a small window (#298)', () => {
     await page.waitForTimeout(400)
   }
 
+  // #298, the rest of the app. The per-page check below covers Settings; every
+  // other view has its own toolbar, and the transcript's was the one that
+  // actually clipped — its kind filters and the order/copy buttons ran off the
+  // right edge at 800×600 and 150%, with no way to scroll to them.
+  //
+  // "Cut" here means a control the operator must reach whose box leaves the
+  // viewport and which is NOT inside a horizontally scrollable region: the
+  // timeline canvas is deliberately wider than the window and scrolls, so its
+  // markers are reachable by scrolling and are not a defect.
+  const VIEWS = ['dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'bookmarks']
+  const VIEW_SIZES: Array<[number, number, number]> = [
+    [1280, 800, 1], [800, 600, 1], [800, 600, 1.5], [800, 600, 2], [1280, 800, 2]
+  ]
+  for (const [w, h, zoom] of VIEW_SIZES) {
+    test(`every view's controls stay inside the window at ${w}×${h}, zoom ${zoom * 100}%`, async () => {
+      await setViewport(w, h, zoom)
+      const cut: string[] = []
+      for (const view of VIEWS) {
+        const opened = await page.evaluate((v) => {
+          const b = document.querySelector(`[data-view-btn="${v}"]`) as HTMLElement | null
+          if (!b) return false
+          b.click()
+          return true
+        }, view)
+        if (!opened) continue
+        await page.waitForTimeout(250)
+        const found = await page.evaluate(() => {
+          // Layout pixels, consistently.
+          //
+          // Three coordinate spaces are in play and they disagree: the body
+          // carries `zoom: 0.9`, the shell sets its own zoomFactor, and
+          // innerWidth / getBoundingClientRect / scrollWidth each report in a
+          // different one. `documentElement.clientWidth` is the viewport in the
+          // SAME space as getBoundingClientRect, which is the only comparison
+          // that means anything. Using innerWidth understated the overflow by
+          // 11% at 100% and by 100% at 200%, and using the app root's own rect
+          // was worse: the root grows to fit the overflow, so everything inside
+          // it looked contained.
+          const vw = document.documentElement.clientWidth
+          const inHorizontalScroller = (el: Element): boolean => {
+            let p = el.parentElement
+            while (p) {
+              const ox = getComputedStyle(p).overflowX
+              if (ox === 'auto' || ox === 'scroll') return true
+              p = p.parentElement
+            }
+            return false
+          }
+          return [...document.querySelectorAll('button, input, select, textarea, [contenteditable]')]
+            .filter((el) => {
+              const r = el.getBoundingClientRect()
+              if (r.width === 0 || r.height === 0) return false
+              if (r.left >= -1 && r.right <= vw + 1) return false
+              return !inHorizontalScroller(el)
+            })
+            .map((el) => `${(el.textContent || el.getAttribute('placeholder') || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 24)} @${Math.round(el.getBoundingClientRect().right)} of ${vw}`)
+        })
+        if (found.length) cut.push(`${view}: ${found.join(', ')}`)
+      }
+      expect(cut, 'controls cut by the window edge').toEqual([])
+
+      // The status bar is outside the view root and outside every view's
+      // scroll container, so the loop above never measured it. At 800×600 with
+      // the shell at 200% its HUD toggle sat at 405..421 in a 400px bar and was
+      // swallowed by the bar's own `overflow-hidden`.
+      const barCut = await page.evaluate(() => {
+        const vw = document.documentElement.clientWidth
+        const bar = document.querySelector('[data-testid="status-bar"]')
+        if (!bar) return [`status bar missing`]
+        return [...bar.querySelectorAll('button')]
+          .filter((el) => {
+            const r = el.getBoundingClientRect()
+            return r.width > 0 && (r.left < -1 || r.right > vw + 1)
+          })
+          .map((el) => `${el.dataset.testid ?? el.getAttribute('aria-label') ?? 'button'} @${Math.round(el.getBoundingClientRect().right)} of ${vw}`)
+      })
+      expect(barCut, 'status-bar controls cut by the window edge').toEqual([])
+
+      // Hit areas. The audit found 141 of 861 interactive elements under
+      // WCAG 2.5.8's 24x24 floor — including every checkbox in Settings, whose
+      // label row was 20px tall, and the terminal's tab-close button at 16px.
+      // They were the highest-frequency controls in the app, and the smallest.
+      //
+      // A checkbox is measured by its wrapping label: the input is 16px by
+      // design (§4 allows that icon size) and the row is what the operator
+      // clicks. Everything else is measured as itself.
+      const small = await page.evaluate(() => {
+        const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1
+        const visible = (el: Element): boolean => {
+          const r = el.getBoundingClientRect()
+          return r.width > 0 && r.height > 0
+        }
+        const out: string[] = []
+        for (const el of document.querySelectorAll('button, input, select, textarea, a[href], [role="button"]')) {
+          if (!visible(el)) continue
+          let box: Element = el
+          if (el instanceof HTMLInputElement && el.type === 'checkbox') box = el.closest('label') ?? el
+          const r = box.getBoundingClientRect()
+          const w = r.width / zoom
+          const h = r.height / zoom
+          // 0.5px of tolerance: a 24px row lands on 23.999… after the body's
+          // 0.9 zoom is divided back out, and a gate that fails on floating
+          // point is a gate someone turns off.
+          if (w >= 23.5 && h >= 23.5) continue
+          const name = (el.textContent || el.getAttribute('aria-label') || (el as HTMLElement).dataset.testid || el.tagName).trim().slice(0, 30)
+          out.push(`${name} — ${Math.round(w)}x${Math.round(h)}`)
+        }
+        return out
+      })
+      expect(small, 'hit areas under 24x24').toEqual([])
+    })
+  }
+
   // The window sizes and zooms the issue names. "Reachable" means: scrolled
   // into view it is inside the window and nothing is drawn over its middle.
   const SIZES: Array<[number, number]> = [[1280, 800], [800, 600]]

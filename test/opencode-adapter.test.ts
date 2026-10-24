@@ -5,7 +5,7 @@ import * as path from 'path'
 import {
   parseOpencodeMessage, readOpenCodeCwd, opencodeAdapter,
   partToTurns
-} from '../src/main/services/adapters/opencode'
+} from '../optional-plugins/opencode/adapter'
 
 let scratch: string
 let storage: string

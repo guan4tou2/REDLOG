@@ -1,0 +1,25 @@
+
+[1m── WSL Environment[0m
+  [32m✓[0m Running inside WSL (Ubuntu)
+  [33m![0m Networking mode: nat — mirrored mode recommended
+      Fix: create %USERPROFILE%\.wslconfig with [wsl2] networkingMode=mirrored
+      then: wsl --shutdown (from Windows PowerShell)
+
+[1m── Token Path Resolution[0m
+  [32m✓[0m Windows USERPROFILE: C:\Users\tester
+  [32m✓[0m WSL path: /home/tester
+  [32m✓[0m Token file found: /home/tester/.redlog/api-token
+  [32m✓[0m Port file found: port=6661
+
+[1m── API Reachability[0m
+  [32m✓[0m 127.0.0.1:6661 reachable (mirrored networking)
+
+[1m── Event Round-Trip[0m
+  [31m✗[0m Failed to send test event: connection reset
+  [33m![0m Event count unchanged (10 → 10) — event may not have been persisted
+
+[1m── Summary[0m
+  Passed: 6  Failed: 1
+
+  [31m✗[0m Some checks failed — see above for remediation.
+

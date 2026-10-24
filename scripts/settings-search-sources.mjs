@@ -7,19 +7,22 @@ export const PAGE_SOURCES = {
     { file: 'settings/HooksPanel.tsx' },
     { file: 'settings/ManualStepList.tsx' },
     { file: 'WslPanel.tsx' },
-    { file: 'settings/AgentsPanel.tsx', after: 'export function HookWatchPathsPanel' }
   ],
   // Spec 049: the AI agents page folded into Capture sources — one writer for
-  // `packs.aiAgents`, so one place its strings are indexed from.
+  // per-tool project permissions, so one place its strings are indexed from.
   captureControl: [
     { file: 'settings/CaptureControlPage.tsx' },
-    { file: 'settings/AgentsPanel.tsx', before: 'export function HookWatchPathsPanel' },
-    { file: 'settings/ExternalCaptureGroup.tsx' }
+    { file: 'settings/AgentsPanel.tsx' },
+    { file: 'settings/ExternalCaptureGroup.tsx' },
+    // The last-delivered line every source row carries (T028). It is a
+    // separate file so the AI rows and the pack rows say it the same way,
+    // and it is listed here so its words are searchable too.
+    { file: 'settings/SourceLastSeen.tsx' }
   ],
   loot: [{ file: 'settings/LootRulesGroup.tsx' }],
   retention: [{ file: 'settings/RetentionPage.tsx' }],
   browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }],
-  scope: [{ file: 'settings/ScopePage.tsx' }],
+  scope: [{ file: 'settings/ScopePage.tsx' }, { file: 'settings/ProjectSettings.tsx' }],
   network: [{ file: 'settings/NetworkPage.tsx' }],
   integrity: [{ file: 'settings/IntegrityPanel.tsx' }],
   plugins: [{ file: 'settings/PluginsPanel.tsx' }],

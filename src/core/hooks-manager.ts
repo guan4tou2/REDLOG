@@ -9,6 +9,7 @@ import { stopOpenTerminals } from './hook-removal'
 export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
 export interface PluginManifest {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string
@@ -76,15 +77,6 @@ export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
         { label: 'Optional - remove the tool itself',
           command: 'uv tool uninstall mitmproxy' }
       ]
-    // Both ids: a producer contributed by a plugin is namespaced with its
-    // pack, and this one is contributed by pack-ai-agents. The bare id stays
-    // because an older install can still carry it.
-    case 'codex':
-    case 'pack-ai-agents.codex':
-      return [
-        { label: 'Stop launching the agent through the wrapper — run it the way you did before' },
-        { label: 'Nothing was written outside RedLog\'s own directory; the wrapper lives there' }
-      ]
     case 'shell-wsl':
       return [
         { label: 'Remove the RedLog line from the shell rc inside the distro',
@@ -97,6 +89,7 @@ export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
 }
 
 export interface PluginInfo {
+  platforms?: Array<'darwin' | 'linux' | 'win32'>
   id: string
   name: string
   description: string
@@ -162,11 +155,6 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
   },
-  // No `codex` here. The built-ins are the sources RedLog owns — the
-  // operator's own shell, RedLog's own proxy — and wrapping somebody else's
-  // agent is not one of them. The Codex wrapper is contributed by
-  // plugins/pack-ai-agents, which is where the rest of RedLog's Codex support
-  // already lives.
   {
     id: 'mitmproxy',
     name: 'mitmproxy',
@@ -253,14 +241,24 @@ export function registerCapturePlugins(
   pluginId: string,
   dir: string,
   entries: Array<Omit<PluginManifest, 'requires'> & { requires?: string[] }>
-): void {
+): { accepted: number; rejected: Array<{ name: string; reason: string }> } {
+  let accepted = 0
+  const rejected: Array<{ name: string; reason: string }> = []
   for (const e of entries) {
+    // #348: a capture entry with no id or no hook file cannot be installed or
+    // run; it used to be registered as an empty row.
+    if (!e.id || !e.hookFile) {
+      rejected.push({ name: e.id || e.name || '(unnamed capture)', reason: 'needs both `id` and `hookFile`' })
+      continue
+    }
     // namespace the id so two plugins can't collide with each other or a built-in
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
     externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
     const retired = retiredCaptures.findIndex((m) => m.id === id)
     if (retired >= 0) retiredCaptures.splice(retired, 1)
+    accepted++
   }
+  return { accepted, rejected }
 }
 
 // Disabled captures, kept rather than dropped.
@@ -585,31 +583,6 @@ function buildManualSteps(pluginId: string, hookFile: string, available: boolean
             : 'dig @127.0.0.1 -p 5353 example.com'
         }
       ]
-    // Namespaced too (see the uninstall switch above): these steps stay in
-    // code rather than in the pack's JSON because they branch on the platform,
-    // and a manifest's `manualSteps` are one fixed list.
-    case 'codex':
-    case 'pack-ai-agents.codex':
-      // codex-wrapper.sh is a bash script using POSIX-shell idioms (and the
-      // `SHELL=… cmd` inline-env prefix). Those don't run in cmd/PowerShell, so
-      // on Windows point at WSL/Git Bash with a note instead of a command that
-      // would just error when pasted.
-      if (process.platform === 'win32') {
-        return [
-          {
-            label: 'The Codex wrapper is a bash script — run it inside WSL or Git Bash (cmd/PowerShell cannot execute it). Inside that shell, use the same commands shown on macOS/Linux, adjusting the path for that environment.'
-          }
-        ]
-      }
-      return [
-        {
-          label: 'Point Codex CLI at the command wrapper',
-          command: `SHELL="${hookFile}" codex run "scan the target"`
-        },
-        {
-          label: 'For an interactive shell, install its Bash or Zsh hook from this page'
-        }
-      ]
     case 'shell-powershell':
       return [
         {
@@ -660,6 +633,7 @@ export function detectHooks(): PluginInfo[] {
       description: plugin.description,
       agentType: plugin.agentType,
       emits: plugin.emits,
+      platforms: plugin.platforms,
       installed: checkInstalled(plugin),
       available,
       installMethod: plugin.installMethod,
@@ -692,6 +666,7 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       description: plugin.description,
       agentType: plugin.agentType,
       emits: plugin.emits,
+      platforms: plugin.platforms,
       installed: checkInstalled(plugin),
       available,
       installMethod: plugin.installMethod,

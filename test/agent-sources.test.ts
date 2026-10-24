@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { describeAgentSources, configureAgentTailer } from '../src/main/services/agent-tailer'
+import { describeAgentSources } from '../src/main/services/agent-tailer'
 
 // The settings page says which AI tools RedLog can read and whether each one is
 // on this machine. It must only look at directories — never open a transcript.
@@ -24,12 +24,8 @@ describe('describeAgentSources', () => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-sources-'))
     const claude = path.join(scratch, 'claude-projects')
     fs.mkdirSync(claude)
-    configureAgentTailer({
-      claudeProjectsDir: claude,
-      codexSessionsDir: path.join(scratch, 'no-codex'),
-      opencodeStorageDir: path.join(scratch, 'no-opencode')
-    })
-    const byId = Object.fromEntries(describeAgentSources().map((s) => [s.id, s]))
+    const config = { agentTailer: { sources: { 'claude-code': { sourceRoot: claude }, codex: { sourceRoot: path.join(scratch, 'no-codex') }, opencode: { sourceRoot: path.join(scratch, 'no-opencode') } } } }
+    const byId = Object.fromEntries(describeAgentSources(config).map((s) => [s.id, s]))
     expect(byId['claude-code'].detected).toBe(true)
     expect(byId['claude-code'].root).toBe(claude)
     expect(byId.codex.detected).toBe(false)

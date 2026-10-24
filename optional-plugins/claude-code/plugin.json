@@ -1,0 +1,19 @@
+{
+  "id": "official-ai-claude-code",
+  "name": "Claude Code",
+  "version": "1.0.0",
+  "redlogApi": 1,
+  "kind": "pack",
+  "author": "RedLog",
+  "contributes": {},
+  "redlogAgent": {
+    "agentKind": "claude-code",
+    "order": 0,
+    "entry": "adapter.cjs",
+    "source": {
+      "defaultPath": ".claude/projects",
+      "configEnv": "CLAUDE_CONFIG_DIR",
+      "envSuffix": "projects"
+    }
+  }
+}

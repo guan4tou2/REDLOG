@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
@@ -111,18 +111,17 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
 
   return (
     <div className="flex h-full">
-      <div className="w-80 border-r border-redlog-border flex flex-col">
+      {(marks.length > 0 || !creating) && <div className={`${marks.length > 0 ? 'w-80 shrink-0 border-r border-redlog-border' : 'flex-1 min-w-0'} flex flex-col`}>
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
               {t('bookmarks.title', { count: marks.length })}
             </span>
-            <button
+            <Button size="compact" level="quiet"
               onClick={quickCapture}
-              className="px-2 py-1 text-xs bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"
             >
               {t('bookmarks.capture')}
-            </button>
+            </Button>
           </div>
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'
@@ -191,9 +190,9 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             )
           )}
         </div>
-      </div>
+      </div>}
 
-      <div className="flex-1 overflow-auto p-4">
+      {(marks.length > 0 || creating) && <div className="min-w-0 flex-1 overflow-auto p-pad">
         {creating && (
           <BookmarkForm
             browserTab={browserTab}
@@ -224,7 +223,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             <span className="text-xs text-redlog-muted">{t('bookmarks.placeholderSub')}</span>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -235,6 +234,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   onCancel: () => void
   initial?: Bookmark
 }): JSX.Element {
+  const formId = useId()
   const [title, setTitle] = useState(initial?.title ?? browserTab?.title ?? '')
   const [url, setUrl] = useState(initial?.url ?? browserTab?.url ?? '')
   const [note, setNote] = useState(initial?.note ?? '')
@@ -265,22 +265,22 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
       )}
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldTitle')}</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)}
+        <label htmlFor={`${formId}-title`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldTitle')}</label>
+        <input id={`${formId}-title`} value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('bookmarks.fieldTitlePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none" />
       </div>
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldUrl')}</label>
-        <input value={url} onChange={(e) => setUrl(e.target.value)}
+        <label htmlFor={`${formId}-url`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldUrl')}</label>
+        <input id={`${formId}-url`} value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none font-mono text-xs" />
       </div>
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4}
+        <label htmlFor={`${formId}-note`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
+        <textarea id={`${formId}-note`} value={note} onChange={(e) => setNote(e.target.value)} rows={4}
           placeholder={t('bookmarks.fieldNotePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text outline-none resize-y" />
       </div>
@@ -324,9 +324,9 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2 min-w-0">
+    <div className="min-w-0 space-y-4 max-w-2xl">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex flex-1 basis-64 items-start gap-2 min-w-0">
           {onStep && (
             <span className="flex items-center mt-0.5 shrink-0">
               <button
@@ -350,7 +350,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
             </span>
           )}
         <div className="min-w-0">
-          <h3 className="text-base font-semibold text-redlog-text">{mark.title}</h3>
+          <h3 className="text-base font-semibold text-redlog-text [overflow-wrap:anywhere]">{mark.title}</h3>
           {mark.url && (
             <button
               onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
@@ -365,12 +365,12 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
           </div>
         </div>
         </div>
-        <div className="flex gap-1 shrink-0">
+        <div className="flex flex-wrap gap-1">
           {onOpenInTimeline && (
-            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-redlog-elevated text-cyan-400 rounded hover:bg-redlog-elevated-hover">{t('loot.openInTimeline')}</button>
+            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('loot.openInTimeline')}</Button>
           )}
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('bookmarks.edit')}</button>
-          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('bookmarks.delete')}</button>
+          <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
+          <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>
           {onClose && (
             <button
               type="button"
@@ -386,22 +386,19 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
 
       {/* Pin toggle lives here (low-frequency action, out of the mark list). */}
       {onTogglePin && (
-        <button
+        <Button size="compact" level="quiet"
           onClick={onTogglePin}
-          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
-            isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-redlog-elevated text-redlog-text-dim hover:text-amber-400 hover:bg-redlog-elevated-hover'
-          }`}
           aria-pressed={!!isPinned}
         >
           <span>{isPinned ? '★' : '☆'}</span>
           <span>{isPinned ? t('bookmarks.unpin') : t('bookmarks.pin')}</span>
-        </button>
+        </Button>
       )}
 
       {mark.note && (
         <div>
           <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
-          <div className="mt-1 text-xs text-redlog-text whitespace-pre-wrap bg-redlog-surface rounded p-3 border border-redlog-border">{mark.note}</div>
+          <div className="mt-1 text-xs text-redlog-text whitespace-pre-wrap [overflow-wrap:anywhere] bg-redlog-surface rounded p-3 border border-redlog-border">{mark.note}</div>
         </div>
       )}
 
@@ -414,7 +411,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
                 <span className="text-redlog-text-dim">{t('bookmarks.browserUrl')}</span>{' '}
                 <button
                   onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
-                  className="text-redlog-cyan font-mono hover:text-redlog-text hover:underline transition-colors cursor-pointer"
+                  className="text-redlog-cyan font-mono break-all hover:text-redlog-text hover:underline transition-colors cursor-pointer"
                   title={t('bookmarks.openUrl')}
                 >
                   {mark.context.browserUrl} ↗

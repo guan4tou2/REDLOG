@@ -53,7 +53,14 @@ export function useFocusTrap(
     const first = initial?.current ?? tabbable(root)[0] ?? root
     // A frame late: the dialog may still be animating in, and focusing an
     // element mid-transition scrolls the page on some platforms.
-    const raf = requestAnimationFrame(() => first.focus())
+    let entered = root.contains(document.activeElement)
+    const markEntered = (): void => { entered = true }
+    root.addEventListener('focusin', markEntered)
+    const raf = requestAnimationFrame(() => {
+      // The operator may already have moved into a field while the opening
+      // frame was queued. Do not reset that interaction to the first button.
+      if (!entered && !root.contains(document.activeElement)) first.focus()
+    })
 
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Tab') return
@@ -83,6 +90,7 @@ export function useFocusTrap(
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       cancelAnimationFrame(raf)
+      root.removeEventListener('focusin', markEntered)
       document.removeEventListener('keydown', onKeyDown, true)
       // Restore only if nothing else has claimed focus in the meantime. Two
       // shapes count as "nothing else": focus is still inside the dialog, or

@@ -1,4 +1,5 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 import { useEffect, useState } from 'react'
 import { parseScopeInput } from '../../lib/scopeInput'
 import { testScopeSubject, type ScopeTestResult } from '../../lib/scopeTest'
@@ -86,15 +87,11 @@ export default function ScopePage({
   return (
     <>
       <FieldGroup title={t('settings.scopeEnforcement')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.scope.warnOnViolation !== false}
-            onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.warnOnViolation')}</span>
-        </label>
+        <CheckRow
+          checked={config.scope.warnOnViolation !== false}
+          onChange={(on) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: on } })}
+          label={t('settings.warnOnViolation')}
+        />
         <p className="text-xs text-redlog-text-faint mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
       </FieldGroup>
       <FieldGroup title={t('settings.inScopeTargets')}>

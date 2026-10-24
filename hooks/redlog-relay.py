@@ -37,19 +37,14 @@ relay's status instead would make every recorded failure a lie.
 Standard library only, and no third-party anything: this runs on the
 operator's machine, inside their shell, on every command.
 """
-import datetime
 import errno
 import json
 import os
 import re
 import select
 import shlex
-import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
-from pathlib import Path
 
 DEFAULT_MAX_BYTES = 102400  # 100 KB per stream, as redlog-run has always used
 
@@ -63,8 +58,8 @@ def _trace_target():
     explicit = os.environ.get("REDLOG_SESSION_TRACE")
     if explicit:
         return explicit
-    home = Path.home() / ".redlog"
-    return str(home / "debug.log") if (home / "debug-enabled").exists() else None
+    home = os.path.join(os.path.expanduser("~"), ".redlog")
+    return os.path.join(home, "debug.log") if os.path.exists(os.path.join(home, "debug-enabled")) else None
 
 
 _TRACE = _trace_target()
@@ -76,6 +71,7 @@ def trace(event, detail=""):
     issue. A write failure is ignored: tracing must not change the command."""
     if not _TRACE:
         return
+    import datetime
     try:
         try:
             if os.path.getsize(_TRACE) > _TRACE_MAX_BYTES:
@@ -187,6 +183,9 @@ class LateOutput:
 
     @staticmethod
     def _client(opts):
+        from pathlib import Path
+        import urllib.request
+
         try:
             directory = Path(terminal_home(opts)) / ".redlog"
             identity = json.loads((directory / "active-identity.json").read_text())
@@ -271,6 +270,9 @@ class LateOutput:
     def _send(self, payload):
         if not self.client:
             return "refused"
+        import urllib.error
+        import urllib.request
+
         request = urllib.request.Request(
             self.client["url"], json.dumps(payload).encode(),
             {"Content-Type": "application/json", "Authorization": "Bearer " + self.client["token"],
@@ -316,6 +318,8 @@ class LateOutput:
 
 
 def run(argv):
+    import subprocess
+
     opts, command = parse(argv)
     normalise(opts)
     if not command:
@@ -1019,7 +1023,11 @@ def human_state(state):
     if state is None:
         return "not enrolled · no state for this terminal"
     recording = state.get("recording") is True
-    head = "recording" if recording else "stopped"
+    head = "recording enabled" if recording else "stopped"
+    if recording and not state.get("engagementId"):
+        head = "not recording (no project; open a project and a new terminal)"
+    elif recording and not state.get("operatorId"):
+        head = "not recording (missing operator identity; open a project and a new terminal)"
     if not recording and state.get("stoppedReason"):
         head += " (%s)" % state["stoppedReason"]
     return "%s · mode %s · project %s · terminal %s" % (

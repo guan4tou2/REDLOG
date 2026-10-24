@@ -1,3 +1,4 @@
+import { Button } from './Button'
 // Pulled from the session's asciinema .cast on disk — not from the event
 // row. Rendering here keeps the chain event clean (command + exit + duration
 // only) while still letting the operator see what actually printed.
@@ -43,11 +44,10 @@ export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; 
   if (!expanded) {
     return (
       <div className="mt-1.5 flex items-center gap-2">
-        <button
+        <Button size="compact" level="quiet"
           onClick={load}
           disabled={loading}
-          className="text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
-        >{loading ? t('timeline.replay.loading') : t(btnLabel)}</button>
+        >{loading ? t('timeline.replay.loading') : t(btnLabel)}</Button>
         {/* Session replay lives in the drawer now; point the operator at it. */}
         {inDrawer && <span className="text-xs text-redlog-text-dim">▾ {t('timeline.replay.playingBelow')}</span>}
       </div>

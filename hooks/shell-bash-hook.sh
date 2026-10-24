@@ -102,9 +102,12 @@ redlog() {
       ;;
     start)
       _redlog_state --action start >/dev/null
-      _redlog_send_event "capture_resumed" "redlog start" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
-      echo "[redlog] recording in this terminal"
+      if _redlog_is_recording; then
+        _redlog_send_event "capture_resumed" "redlog start" \
+          "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+      fi
+      _redlog_state --action show --format human
+      echo
       ;;
     mode)
       case "${1:-}" in
@@ -444,4 +447,4 @@ unset _redlog_user_pc
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
-_redlog_announce_shell "commands and their output"
+_redlog_announce_shell

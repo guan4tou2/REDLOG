@@ -172,7 +172,9 @@ export function ToastContainer(): JSX.Element | null {
 
   return (
     <div
-      className="fixed bottom-12 right-4 z-[100] flex flex-col gap-2 pointer-events-none select-text max-w-[380px]"
+      // Non-modal notifications must not intercept controls inside a modal.
+      // Errors stay queued/announced and remain visible after the dialog closes.
+      className="fixed bottom-12 right-4 z-40 flex flex-col gap-2 pointer-events-none select-text max-w-[380px]"
       aria-live="polite"
       aria-atomic="false"
     >

@@ -12,8 +12,10 @@ is added to external sessions.
 
 Output is searchable in Search and Transcript, linked by terminalId and sequence.
 This is an output-event stream, not asciicast playback. For timed playback use
-RedLog's built-in terminal. Outside the recorded child, normal hooks still record command metadata. Inside
-it, metadata hooks are disabled to avoid duplicate or cross-project writes.
+RedLog's built-in terminal. Outside the recorded child, Bash/Zsh hooks record
+command metadata and bounded output for ordinary commands; native/interactive
+exceptions remain explicit. Inside it, those hooks are disabled to avoid duplicate
+or cross-project writes.
 `redlog-run` remains the separate, per-command stdout/stderr wrapper.
 
 Pause in RedLog suppresses received output; it is never spooled for later

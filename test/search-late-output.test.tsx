@@ -57,7 +57,7 @@ describe('Search hits in background output', () => {
     render(<SearchPanel onOpenInTimeline={open} />)
     await search(runQuery)
 
-    const rows = await screen.findAllByText('$ nmap -p- 10.0.0.7 &')
+    const rows = await screen.findAllByText('$ nmap -p- 10.0.0.7 & → exit ?')
     expect(rows).toHaveLength(1)
     fireEvent.click(rows[0])
     expect(open).toHaveBeenCalledWith('end-1', 1)
@@ -68,7 +68,7 @@ describe('Search hits in background output', () => {
     const runQuery = install([commandEnd, chunk('a', 1)], [commandEnd])
     render(<SearchPanel />)
     await search(runQuery)
-    expect(await screen.findAllByText('$ nmap -p- 10.0.0.7 &')).toHaveLength(1)
+    expect(await screen.findAllByText('$ nmap -p- 10.0.0.7 & → exit ?')).toHaveLength(1)
   })
 
   it('keeps a chunk whose command cannot be found', async () => {

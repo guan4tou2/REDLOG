@@ -22,10 +22,6 @@ export const CAPTURE_PACKS = {
     pluginId: 'pack-host-monitors',
     members: ['processMonitor', 'connectionMonitor', 'fileWatcher', 'clipboard']
   },
-  aiAgents: {
-    pluginId: 'pack-ai-agents',
-    members: ['claudeCode', 'codex', 'opencode']
-  },
   windowsOutput: {
     pluginId: 'pack-windows-output',
     members: ['powershellTranscript']
@@ -33,14 +29,6 @@ export const CAPTURE_PACKS = {
 } as const satisfies Record<string, CapturePack>
 
 export type CapturePackId = keyof typeof CAPTURE_PACKS
-
-/** The agent each AI-agents member switches, as the tailer adapter names it
- *  (`TailerAdapter.agentKind`, which lands in every event's `data.agent`). */
-export const AGENT_MEMBER_KIND = {
-  claudeCode: 'claude-code',
-  codex: 'codex',
-  opencode: 'opencode'
-} as const
 
 /** Whether a pack's plugin is installed and active. */
 export function isPackAvailable(id: CapturePackId, plugins: readonly LoadedPlugin[]): boolean {

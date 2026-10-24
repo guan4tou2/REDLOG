@@ -11,10 +11,10 @@ type Subset = NonNullable<ExportRequest['subset']>
 /** The conditions of a current-selection export, one phrase each. */
 export function selectionConditions(subset: Extract<Subset, { kind: 'selection' }>, t: T): string[] {
   return [
-    ...Object.entries(subset.filter).map(([key, value]) =>
-      `${t(`export.condition.${key}`)}: ${key === 'since' || key === 'before' ? formatDateTime(Number(value), { seconds: true }) : String(value)}`),
+    ...Object.entries(subset.filter).filter(([, value]) => value != null && value !== '').map(([key, value]) =>
+      `${t(`export.condition.${key}`)}: ${key === 'since' || key === 'before' ? formatDateTime(Number(value), { seconds: true }) : typeof value === 'boolean' ? t(value ? 'export.condition.enabled' : 'export.condition.disabled') : String(value)}`),
     ...(subset.query ? [`${t('export.condition.query')}: ${subset.query}`] : []),
-    ...Object.entries(subset.http ?? {}).map(([key, value]) => `${t(`export.condition.${key}`)}: ${value}`)
+    ...Object.entries(subset.http ?? {}).filter(([, value]) => value != null && value !== '').map(([key, value]) => `${t(`export.condition.${key}`)}: ${value}`)
   ]
 }
 

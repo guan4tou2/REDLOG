@@ -77,9 +77,11 @@ export function TimelineEventLog({
   const minHeight = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
     <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
-      <div className="shrink-0 px-4 py-1.5 border-b border-redlog-border/40 flex items-center justify-between">
-        <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
-        <span className="flex items-center gap-2">
+      <div className="shrink-0 px-4 py-1.5 border-b border-redlog-border/40 flex items-center justify-end gap-2">
+        {/* The view title already names this region (Timeline.tsx); the band
+            header carries only what it uniquely has: the hidden count and the
+            number of rows. */}
+        <>
           {/* The count is never not shown. A filter that hides without saying
               how much is a filter that loses evidence quietly — and the thing
               that mattered is sometimes a stack trace inside a 404 body that
@@ -96,7 +98,7 @@ export function TimelineEventLog({
             </button>
           )}
           <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
-        </span>
+        </>
       </div>
       {/* The header above is a fixed row; this takes the rest. It used to
           restate the vh literal in a calc(), which is why only the default

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { FieldGroup, isMacOS, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 
 export default function HudPage({
   config, setConfig, t
@@ -20,40 +21,26 @@ export default function HudPage({
   return (
     <>
       <FieldGroup title={t('settings.overlayGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            data-testid="settings-overlay-autoshow"
-            checked={config.overlay?.autoShow !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayAutoShow')}</span>
-        </label>
+        <CheckRow
+          inputTestId="settings-overlay-autoshow"
+          checked={config.overlay?.autoShow !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: on } })}
+          label={t('settings.overlayAutoShow')}
+        />
         <p className="text-xs text-redlog-text-faint mb-2">{t('settings.overlayAutoShowHint')}</p>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.overlay?.showMarkButton !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayShowMark')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowMarkHint')}</p>
-        <label className="flex items-center gap-2 cursor-pointer mt-2">
-          <input
-            type="checkbox"
-            checked={config.overlay?.flashOnExposed !== false}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayFlashExposed')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayFlashExposedHint')}</p>
+        <CheckRow
+          checked={config.overlay?.showMarkButton !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: on } })}
+          label={t('settings.overlayShowMark')}
+        />
+        <CheckRow
+          checked={config.overlay?.flashOnExposed !== false}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: on } })}
+          label={t('settings.overlayFlashExposed')}
+        />
 
         <div className="mt-3">
-          <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
+          <label htmlFor="hud-scale" className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
           {(() => {
             const stops = [
               { v: 0.75, k: 'settings.overlayScale.xs' },
@@ -64,68 +51,57 @@ export default function HudPage({
               { v: 1.75, k: 'settings.overlayScale.xxl' }
             ]
             const cur = config.overlay?.scale ?? 1.0
-            const snap = (raw: number): number => {
-              let best = stops[0].v
-              for (const s of stops) { if (Math.abs(raw - s.v) < Math.abs(raw - best)) best = s.v }
-              return best
-            }
             const nearest = stops.reduce((a, b) => Math.abs(cur - a.v) < Math.abs(cur - b.v) ? a : b)
+            const index = stops.indexOf(nearest)
             return (
-              <div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={stops[0].v}
-                    max={stops[stops.length - 1].v}
-                    step="0.05"
-                    value={cur}
-                    onChange={(e) => {
-                      const v = snap(parseFloat(e.target.value))
-                      setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
-                    }}
-                    className="accent-red-600 flex-1"
-                    list="hud-scale-stops"
-                  />
-                  <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
-                </div>
+              <div className="px-5">
+                <input
+                  id="hud-scale"
+                  type="range"
+                  min={0}
+                  max={stops.length - 1}
+                  step={1}
+                  value={index}
+                  onChange={(e) => {
+                    const v = stops[Number(e.target.value)].v
+                    setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
+                  }}
+                  className="accent-red-600 w-full h-8"
+                  list="hud-scale-stops"
+                  aria-label={t('settings.overlayScale')}
+                  aria-valuetext={t(nearest.k)}
+                />
                 <datalist id="hud-scale-stops">
-                  {stops.map((s) => <option key={s.v} value={s.v} />)}
+                  {stops.map((s, i) => <option key={s.v} value={i} />)}
                 </datalist>
-                <div className="flex justify-between px-0.5 mt-0.5">
-                  {stops.map((s) => (
-                    <span
+                <div className="relative mx-2 h-8 mt-0.5">
+                  {stops.map((s, i) => (
+                    <button
+                      type="button"
                       key={s.v}
-                      className={`text-xs cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
+                      aria-pressed={index === i}
+                      style={{ left: `${i / (stops.length - 1) * 100}%` }}
+                      className={`absolute -translate-x-1/2 whitespace-nowrap min-h-8 min-w-8 text-xs ${index === i ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
                       onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
-                    >{t(s.k)}</span>
+                    >{t(s.k)}</button>
                   ))}
                 </div>
               </div>
             )
           })()}
-          <p className="text-xs text-redlog-text-faint mt-1">{t('settings.overlayScaleHint')}</p>
         </div>
 
-        <label className="flex items-center gap-2 cursor-pointer mt-3">
-          <input
-            type="checkbox"
-            checked={config.overlay?.emphasizeExternalIp === true}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayEmphasizeIp')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayEmphasizeIpHint')}</p>
+        <CheckRow
+          checked={config.overlay?.emphasizeExternalIp === true}
+          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: on } })}
+          label={t('settings.overlayEmphasizeIp')}
+        />
 
-        <label className="flex items-center gap-2 cursor-pointer mt-3">
-          <input
-            type="checkbox"
-            checked={config.overlay?.passThrough === true}
-            onChange={(e) => setPassThrough(e.target.checked)}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.overlayPassThrough')}</span>
-        </label>
+        <CheckRow
+          checked={config.overlay?.passThrough === true}
+          onChange={setPassThrough}
+          label={t('settings.overlayPassThrough')}
+        />
         <p className="text-xs text-redlog-text-faint">{t('settings.overlayPassThroughHint')}</p>
         {config.overlay?.passThrough === true && (
           <div className="mt-2 flex items-center gap-3 pl-6">
@@ -137,7 +113,7 @@ export default function HudPage({
               step="0.05"
               value={config.overlay?.passThroughOpacity ?? 0.4}
               onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
-              className="accent-red-600 w-40"
+              className="accent-red-600 w-40 h-8"
             />
             <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
           </div>
@@ -145,15 +121,11 @@ export default function HudPage({
 
         {isMacOS && (
           <>
-            <label className="flex items-center gap-2 cursor-pointer mt-2">
-              <input
-                type="checkbox"
-                checked={config.overlay?.showInDock !== false}
-                onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: e.target.checked } })}
-                className="accent-red-600"
-              />
-              <span className="text-xs text-redlog-text">{t('settings.overlayShowInDock')}</span>
-            </label>
+            <CheckRow
+              checked={config.overlay?.showInDock !== false}
+              onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: on } })}
+              label={t('settings.overlayShowInDock')}
+            />
             <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowInDockHint')}</p>
           </>
         )}

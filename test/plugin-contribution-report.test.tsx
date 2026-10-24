@@ -18,8 +18,40 @@ const plugin = (id: string, contributes: Record<string, unknown>, over: Partial<
 describe('contribution report', () => {
   afterEach(() => { removeContributions('mix'); removeContributions('allbad'); removeContributions('ut'); cleanup() })
 
-  it('names each rejected loot rule and keeps the good ones working', () => {
-    const r = applyContributions(plugin('mix', { lootPatterns: [
+  // #348: the four kinds that could fail quietly now report like loot and
+  // redaction do. A manifest that loads is not every rule in it working.
+  it('reports accepted and rejected target extractors, command tags, event types and captures', () => {
+    const r = applyContributions(plugin('allkinds', {
+      targetExtractors: [
+        { cmd: '^okscan\\s', extract: '--host\\s+(\\S+)', name: 'okscan-target' },
+        { cmd: '[unterminated', extract: '.*', name: 'broken-cmd' },
+        { cmd: '^nope\\s', strategy: 'not-a-strategy', name: 'bad-strategy' }
+      ],
+      commandTags: [
+        { name: 'good-tag', match: '^nmap\\b', stamp: { phase: 'recon' } },
+        { name: 'bad-tag', match: '([', stamp: { phase: 'x' } }
+      ],
+      eventTypes: [
+        { agentType: 'good', label: 'Good' },
+        { agentType: '', label: 'No type' }
+      ],
+      capture: [
+        { id: 'good-cap', name: 'Good', description: 'd', agentType: 'scanner', hookFile: 'hooks/x.sh', installMethod: 'manual' },
+        { id: '', name: 'No id', description: 'd', agentType: 'scanner', hookFile: 'hooks/y.sh', installMethod: 'manual' }
+      ]
+    }))
+    expect(r.targetExtractors?.accepted).toBe(1)
+    expect(r.targetExtractors?.rejected.map((x) => x.name)).toEqual(['broken-cmd', 'bad-strategy'])
+    expect(r.commandTags).toMatchObject({ accepted: 1 })
+    expect(r.commandTags?.rejected[0].name).toBe('bad-tag')
+    expect(r.eventTypes?.accepted).toBe(1)
+    expect(r.eventTypes?.rejected[0].name).toBe('(missing agentType)')
+    expect(r.capture?.accepted).toBe(1)
+    expect(r.capture?.rejected[0].name).toBe('No id')
+    removeContributions('allkinds')
+  })
+
+  it('names each rejected loot rule and keeps the good ones working', () => {    const r = applyContributions(plugin('mix', { lootPatterns: [
       { type: 'ok', pattern: 'TKT-[0-9]+', name: 'ticket' },
       { type: 'bad', pattern: '([unclosed', name: 'broken' },
       { type: 'grp', pattern: 'a', name: 'neg-group', group: -1 }
@@ -72,6 +104,9 @@ describe('plugins page shows results', () => {
       status: 'active', capabilities: [], contributes: ['lootPatterns'], apiAhead: true,
       report: {
         lootPatterns: { accepted: 1, rejected: [{ name: 'broken', reason: 'Invalid regular expression' }] },
+        targetExtractors: { accepted: 2, rejected: [{ name: 'bad-cmd', reason: 'Invalid regular expression' }] },
+        commandTags: { accepted: 1, rejected: [] },
+        capture: { accepted: 1, rejected: [{ name: 'no-hook', reason: 'needs both `id` and `hookFile`' }] },
         tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' }
       }
     }
@@ -82,6 +117,11 @@ describe('plugins page shows results', () => {
     expect(box.textContent).toContain('broken: Invalid regular expression')
     expect(box.textContent).toContain('newer plugin API')
     expect(box.textContent).toContain('Tailer not running: Third-party tailers are not supported')
+    // #348: the kinds that used to register silently now say what took effect.
+    expect(screen.getByTestId('plugin-results-targetExtractors-p').textContent).toContain('2 accepted, 1 rejected')
+    expect(screen.getByTestId('plugin-results-targetExtractors-p').textContent).toContain('bad-cmd: Invalid regular expression')
+    expect(screen.getByTestId('plugin-results-commandTags-p').textContent).toContain('1 accepted, 0 rejected')
+    expect(screen.getByTestId('plugin-results-capture-p').textContent).toContain('needs both')
   })
 
   it('shows nothing extra for a plugin with no report', async () => {

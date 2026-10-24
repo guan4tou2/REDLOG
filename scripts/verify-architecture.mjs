@@ -40,7 +40,7 @@ function walk(dir, out = []) {
   return out
 }
 
-const srcFiles = walk(path.join(root, 'src'))
+const srcFiles = [...walk(path.join(root, 'src')), ...walk(path.join(root, 'optional-plugins'))]
 const testFiles = [...walk(path.join(root, 'test')), ...walk(path.join(root, 'e2e'))]
 
 const parsed = new Map()

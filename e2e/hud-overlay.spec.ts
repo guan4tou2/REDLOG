@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, launchWithTempHome } from './helpers'
 
 // HUD overlay geometry. The window sizes itself from `overlay:autosize`, which
 // the renderer fires on every layout-affecting render. Both halves of that
@@ -237,4 +237,32 @@ test.describe.serial('HUD size stability', () => {
     // clipped, which reads as "the HUD is broken" rather than "it is small".
     expect(b.height, 'collapsed HUD should still clear the height floor').toBeGreaterThanOrEqual(46)
   })
+})
+
+// Native-window delivery is independent of the OS global hotkey. Playwright's
+// CDP keyboard bypasses before-input-event, so send through Electron's native
+// input pipeline instead. Manual acceptance covers actual macOS key delivery.
+test('the release chord works in main and HUD windows without enabling it again', async () => {
+  const { app, page } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
+  try {
+    await openTestProject(page, 'hud-window-release')
+    await expect.poll(() => app.windows().some(w => w.url().includes('overlay'))).toBe(true)
+    const hud = app.windows().find(w => w.url().includes('overlay'))!
+    for (const target of [page, hud]) {
+      await page.evaluate(() => window.redlog.overlay.setPassThrough(true))
+      await expect.poll(() => page.evaluate(async () => (await window.redlog.config.get())?.overlay?.passThrough)).toBe(true)
+      const window = await app.browserWindow(target)
+      await window.evaluate(w => { w.setFocusable(true); w.show(); w.focus() })
+      await target.bringToFront()
+      const release = () => window.evaluate(w => {
+        const modifiers: ('shift' | 'meta' | 'control')[] = ['shift', process.platform === 'darwin' ? 'meta' : 'control']
+        w.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'P', modifiers })
+        w.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'P', modifiers })
+      })
+      await release()
+      await expect.poll(() => page.evaluate(async () => (await window.redlog.config.get())?.overlay?.passThrough)).toBe(false)
+      await release()
+      expect((await page.evaluate(() => window.redlog.config.get()))?.overlay?.passThrough).toBe(false)
+    }
+  } finally { await app.close() }
 })

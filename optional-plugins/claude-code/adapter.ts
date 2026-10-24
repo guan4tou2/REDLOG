@@ -8,7 +8,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import type { TailerAdapter, ParsedTurn } from '../tailer-host'
+import type { TailerAdapter, ParsedTurn } from '../../src/main/services/tailer-host'
 
 // ─── Claude-Code-specific constants ─────────────────────────────────────────
 
@@ -315,6 +315,7 @@ export const claudeCodeAdapter: TailerAdapter = {
   parseUnit(rawContent: string): ParsedTurn | ParsedTurn[] | null {
     try {
       const obj = JSON.parse(rawContent) as Record<string, unknown>
+      if (KNOWN_IGNORED_TYPES.has(String(obj.type)) && typeof obj.uuid === 'string') return { uuid: obj.uuid, parentUuid: typeof obj.parentUuid === 'string' ? obj.parentUuid : null, type: String(obj.type) }
       return parseTranscriptLine(obj)
     } catch { return null }
   },
@@ -325,6 +326,14 @@ export const claudeCodeAdapter: TailerAdapter = {
 
 /** Tests and cross-platform setups point the adapter at another root. */
 export function overrideClaudeProjectsDir(root: string): void {
+  claudeCodeAdapter.transcriptRoot = root
   ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
     path.join(root, '**', '*.jsonl')
+}
+
+/** The optional plugin contract. Loaded only after installation and project authorization. */
+export function createAdapter(root: string): TailerAdapter {
+  overrideClaudeProjectsDir(root)
+  claudeCodeAdapter.transcriptRoot = root
+  return claudeCodeAdapter
 }

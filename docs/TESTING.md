@@ -100,6 +100,20 @@ Remove a duplicate only after identifying its retained coverage owner. An
 obsolete requirement belongs in history, not a permanently skipped runnable
 test. UI snapshots and a window opening do not prove successful recording.
 
+The 2026-10-24 cleanup removed seven duplicate source-expression assertions
+from `timeline-geometry-units`: zoom behavior remains in `timeline-geometry`,
+gap detection/inversion in `timeline-time-map`, and viewport anchoring in the
+presentation E2E. The three remaining source integration guards are now named
+`timeline-track-wiring`; they are not visual acceptance. The obsolete dropdown
+clipping check in `export-preview` now measures the current dialog's viewport
+bounds and whether its action can actually receive a pointer click.
+
+For manual layout acceptance, cover wide and small desktop windows, both
+locales where wrapping differs, and empty/partial/error states. Inspect settings
+navigation and content separately, long paths/URLs, scrolling, keyboard focus
+and fixed action bars. Save exact app revision and screenshots with the dated
+acceptance record; do not treat old screenshots as a new pass.
+
 The former Part 1–6 option/audit matrix (including G-* references in historical
 tests/specs) is [archived](archive/TEST-MATRIX-2026-10-16.md). It is not the
 current procedure or an assertion that those historical gaps remain open.

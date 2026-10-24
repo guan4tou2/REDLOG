@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { Button } from './Button'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
@@ -94,6 +95,8 @@ interface Block {
 }
 
 const MAX_INLINE = 4096
+/** How close to the live end still counts as being at it. */
+const LIVE_EDGE_PX = 8
 
 const TRANSCRIPT_BUCKETS: Array<{ agentType: string; limit: number }> = [
   { agentType: 'agent', limit: 800 },
@@ -115,6 +118,22 @@ interface ToolSessionInfo {
 interface BucketPageState {
   nextCursor: string | null
   hasMore: boolean
+}
+
+interface EventPage extends BucketPageState {
+  items: Ev[]
+}
+
+/** Union by id, oldest first. Events are append-only, so a known id is never stale. */
+function mergeEvents(current: Ev[], incoming: Ev[]): Ev[] {
+  const byId = new Map(current.map((event) => [event.id, event]))
+  let added = false
+  for (const event of incoming) {
+    if (byId.has(event.id)) continue
+    byId.set(event.id, event)
+    added = true
+  }
+  return added ? [...byId.values()].sort((a, b) => a.timestamp - b.timestamp) : current
 }
 
 const fmtBytes = formatSize
@@ -352,6 +371,14 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [picking, setPicking] = useState<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const loadSeqRef = useRef(0)
+  // Where the operator is reading. Rows arriving above that point must not
+  // move it, and an operator parked at the live end should stay there.
+  const followRef = useRef(false)
+  const anchorRef = useRef<{ id: string; offset: number } | null>(null)
+  // Rows newer than any the reader has had on screen, counted while they are
+  // away from the live end. Older pages they asked for are not news.
+  const newestSeenRef = useRef<number | null>(null)
+  const [unseen, setUnseen] = useState(0)
 
   useEffect(() => {
     const id = setTimeout(() => setActiveQuery(query), 300)
@@ -371,6 +398,29 @@ export default function TranscriptView({ onOpenInTimeline }: {
     ? TRANSCRIPT_BUCKETS.filter((bucket) => bucket.agentType === sharedFilter.agentType)
     : TRANSCRIPT_BUCKETS, [sharedFilter.agentType])
 
+  // One page of one bucket: the newest when there is no cursor.
+  const fetchPage = useCallback(async (bucket: { agentType: string; limit: number }, cursor?: string | null): Promise<EventPage> => (
+    backendQuery
+      ? await window.redlog.events.runQuery({
+        parsed: backendQuery,
+        filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
+        limit: bucket.limit,
+        ...(cursor ? { cursor } : {})
+      })
+      : await window.redlog.events.queryPage({
+        ...toEventFilter(sharedFilter),
+        ...bucket,
+        // Background-output chunks belong to their command, not beside it.
+        excludeHousekeeping: true,
+        ...(cursor ? { cursor } : {})
+      })
+  ) as EventPage, [backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+
+  // Read by the async merges, which must see the rows of the moment they
+  // finish rather than the render that started them.
+  const eventsRef = useRef<Ev[]>(events)
+  eventsRef.current = events
+
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current
     setLoading(true)
@@ -378,26 +428,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
     setLoadError(null)
     setEvents([])
     setBucketPages({})
+    newestSeenRef.current = null
+    setUnseen(0)
     try {
       // Balanced per-type query so high-volume types (HTTP/scanner) don't
       // crowd out AI conversation and shell events.
-      const results = await Promise.all(
-        buckets.map(async (bucket) => ({
-          bucket,
-          page: backendQuery
-            ? await window.redlog.events.runQuery({
-              parsed: backendQuery,
-              filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
-              limit: bucket.limit
-            })
-            : await window.redlog.events.queryPage({
-              ...toEventFilter(sharedFilter),
-              ...bucket,
-              // Background-output chunks belong to their command, not beside it.
-              excludeHousekeeping: true,
-            })
-        }))
-      )
+      const results = await Promise.all(buckets.map(async (bucket) => ({ bucket, page: await fetchPage(bucket) })))
       if (seq !== loadSeqRef.current) return
       const seen = new Set<string>()
       const merged: Ev[] = []
@@ -419,7 +455,45 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  }, [buckets, fetchPage])
+
+  // A new batch re-reads the newest page of each bucket and merges it in.
+  // Clearing and reloading everything blanked the list, threw away the older
+  // pages the operator had loaded and lost their place — on every batch, which
+  // an active agent session produces several times a second. Batches that
+  // arrive while a refresh is in flight collapse into one more refresh.
+  const refreshingRef = useRef(false)
+  const refreshAgainRef = useRef(false)
+  const refreshHead = useCallback(async (): Promise<void> => {
+    if (refreshingRef.current) { refreshAgainRef.current = true; return }
+    refreshingRef.current = true
+    const seq = loadSeqRef.current
+    try {
+      const results = await Promise.all(buckets.map(async (bucket) => ({ bucket, page: await fetchPage(bucket) })))
+      if (seq !== loadSeqRef.current) return
+      const known = new Set(eventsRef.current.map((event) => event.id))
+      // More arrived than one page holds: the head no longer meets what is
+      // loaded, and merging would leave a hole that reads as nothing happening.
+      if (results.some(({ page }) => page.hasMore && !page.items.some((event) => known.has(event.id)))) {
+        void load()
+        return
+      }
+      const incoming = results.flatMap(({ page }) => page.items)
+      if (incoming.every((event) => known.has(event.id))) return
+      const completed = await completeToolPairs(mergeEvents(eventsRef.current, incoming))
+      if (seq !== loadSeqRef.current) return
+      setEvents((current) => mergeEvents(current, completed))
+    } catch {
+      // The rows on screen are still correct, only not the newest; the next
+      // batch tries again.
+    } finally {
+      refreshingRef.current = false
+      if (refreshAgainRef.current) {
+        refreshAgainRef.current = false
+        void refreshHead()
+      }
+    }
+  }, [buckets, fetchPage, load])
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return
@@ -431,26 +505,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
     try {
       const results = await Promise.all(pending.map(async (bucket) => ({
         bucket,
-        page: backendQuery
-          ? await window.redlog.events.runQuery({
-            parsed: backendQuery,
-            filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
-            limit: bucket.limit,
-            cursor: bucketPages[bucket.agentType].nextCursor
-          })
-          : await window.redlog.events.queryPage({
-            ...toEventFilter(sharedFilter),
-            ...bucket,
-            excludeHousekeeping: true,
-            cursor: bucketPages[bucket.agentType].nextCursor,
-          })
+        page: await fetchPage(bucket, bucketPages[bucket.agentType].nextCursor)
       })))
       if (seq !== loadSeqRef.current) return
-      const merged = new Map(events.map((event) => [event.id, event]))
-      for (const { page } of results) for (const event of page.items as Ev[]) merged.set(event.id, event)
-      const completed = await completeToolPairs([...merged.values()])
+      const completed = await completeToolPairs(mergeEvents(eventsRef.current, results.flatMap(({ page }) => page.items)))
       if (seq !== loadSeqRef.current) return
-      setEvents(completed.sort((a, b) => a.timestamp - b.timestamp))
+      setEvents((current) => mergeEvents(current, completed))
       setBucketPages((current) => {
         const next = { ...current }
         for (const { bucket, page } of results) {
@@ -463,7 +523,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  }, [bucketPages, buckets, fetchPage, loadingOlder])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -473,7 +533,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
       setNames(m)
     }).catch(() => {})
   }, [])
-  useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
+  useEffect(() => window.redlog.events.onNewBatch(() => { void refreshHead() }), [refreshHead])
 
   // What background commands printed after their prompt came back. It belongs
   // to the command's own block, so it is read per command rather than listed.
@@ -536,6 +596,63 @@ export default function TranscriptView({ onOpenInTimeline }: {
   // Render order only: the Markdown copy and everything else stay oldest first.
   const displayed = useMemo(() => (newestFirst ? [...shown].reverse() : shown), [shown, newestFirst])
 
+  const recordPosition = useCallback((): void => {
+    const body = bodyRef.current
+    if (!body) return
+    followRef.current = newestFirst
+      ? body.scrollTop <= LIVE_EDGE_PX
+      : body.scrollHeight - body.scrollTop - body.clientHeight <= LIVE_EDGE_PX
+    if (followRef.current) setUnseen(0)
+    anchorRef.current = null
+    for (const el of body.querySelectorAll<HTMLElement>('[data-block-id]')) {
+      if (el.offsetTop + el.offsetHeight > body.scrollTop) {
+        anchorRef.current = { id: el.dataset.blockId ?? '', offset: el.offsetTop - body.scrollTop }
+        break
+      }
+    }
+  }, [newestFirst])
+
+  // Before paint, put the reader back: at the live end if they were there,
+  // otherwise with the row they were reading at the same height. The body
+  // opts out of the browser's own scroll anchoring so only this moves it.
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    const anchor = anchorRef.current
+    const newest = shown.length > 0 ? shown[shown.length - 1].ts : null
+    const seen = newestSeenRef.current
+    if (seen !== null && !followRef.current) {
+      const fresh = shown.filter((b) => b.ts > seen).length
+      if (fresh > 0) setUnseen((n) => n + fresh)
+    }
+    if (newest !== null && (seen === null || newest > seen)) newestSeenRef.current = newest
+    if (body && followRef.current) {
+      body.scrollTop = newestFirst ? 0 : body.scrollHeight
+    } else if (body && anchor) {
+      for (const el of body.querySelectorAll<HTMLElement>('[data-block-id]')) {
+        if (el.dataset.blockId === anchor.id) { body.scrollTop = el.offsetTop - anchor.offset; break }
+      }
+    }
+    recordPosition()
+  }, [displayed, recordPosition])
+
+  const toLiveEnd = (): void => {
+    const body = bodyRef.current
+    if (body) body.scrollTop = newestFirst ? 0 : body.scrollHeight
+    recordPosition()
+  }
+  // Always rendered and zero-height, so the button appearing does not itself
+  // push the rows it is about down.
+  const unseenButton = (
+    <div className={`sticky ${newestFirst ? 'top-0' : 'bottom-0'} z-10 h-0 flex justify-center`}>
+      {unseen > 0 && (
+        <button type="button" data-testid="transcript-unseen" onClick={toLiveEnd}
+          className={`${newestFirst ? '' : '-translate-y-full'} h-fit rounded-full border border-redlog-cyan/40 bg-redlog-surface px-3 py-1 text-xs text-redlog-cyan shadow`}>
+          {t('transcript.unseen', { n: unseen })}
+        </button>
+      )}
+    </div>
+  )
+
   // Picking a step records a marker that cites it. The step's own events are
   // never edited, and the pick is append-only like any marker.
   const pickStep = useCallback(async (b: Block, category: PickCategory) => {
@@ -552,11 +669,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
       })
       if (!ev) throw new Error('no-active-project')
       toast(t('transcript.picked', { kind: t(`marker.category.${category}`) }), 'success')
-      void load()
+      void refreshHead()
     } catch (err) {
       toast(t('transcript.pickFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
     }
-  }, [load, t])
+  }, [refreshHead, t])
 
   const copyStep = useCallback(async (b: Block) => {
     if (await writeClipboard(blockToMarkdown(b, t))) toast(t('transcript.stepCopied'), 'success')
@@ -617,7 +734,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-redlog-border/60 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 gap-y-1 px-4 py-2 border-b border-redlog-border/60 shrink-0">
         <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>
         <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
         {!loading && (!loadError || events.length > 0) && (
@@ -631,7 +748,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('transcript.filter')}
-          className="ml-2 flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
+          className="min-w-[min(12rem,100%)] flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
         />
         <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         <div className="flex gap-1">
@@ -650,36 +767,31 @@ export default function TranscriptView({ onOpenInTimeline }: {
             </button>
           ))}
         </div>
-        <button
+        <Button size="compact" level="quiet"
           type="button"
           data-testid="transcript-picked-only"
           aria-pressed={pickedOnly}
           onClick={() => setPickedOnly((v) => !v)}
           title={t('transcript.pickedOnlyHint')}
-          className={`text-xs px-2 py-1 rounded border shrink-0 transition-colors ${
-            pickedOnly ? 'border-red-500/50 text-red-300 bg-red-500/10' : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
-          }`}
         >
           {t('transcript.pickedOnly', { n: picks.size ? new Set(blocks.filter((b) => b.events.some((e) => picks.has(e.id))).map((b) => b.id)).size : 0 })}
-        </button>
-        <button
+        </Button>
+        <Button size="compact" level="quiet"
           type="button"
           data-testid="transcript-order"
           onClick={toggleOrder}
           title={t('transcript.orderHint')}
-          className="text-xs px-2 py-1 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text shrink-0 transition-colors"
         >
           {newestFirst ? t('transcript.orderNewest') : t('transcript.orderOldest')}
-        </button>
-        <button
+        </Button>
+        <Button size="compact" level="quiet"
           onClick={() => void copyAsMarkdown()}
-          className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
         >
           {t('transcript.copyMd')}
-        </button>
+        </Button>
       </div>
 
-      <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
+      <div ref={bodyRef} onScroll={recordPosition} data-testid="transcript-body" className="relative flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] px-4 py-3 space-y-2">
         {/* Unparsable is its own state. It is not a failure — nothing was
             asked — and it is emphatically not an empty result, which would
             invite reading a typo as proof the evidence is absent. */}
@@ -727,6 +839,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             )
         )}
         {!newestFirst && olderBlock}
+        {newestFirst && unseenButton}
         {displayed.map((b) => {
           const revealed = expanded.has(b.id)
           const hasOutput = !!b.output || !!b.outputNote
@@ -755,7 +868,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             })
             : formatDateTime(b.ts, { seconds: true })
           return (
-            <div key={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
+            <div key={b.id} data-block-id={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
                 <span
@@ -863,7 +976,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 title={!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool') ? t('transcript.expand') : undefined}
               >
                 {!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool')
-                  ? b.input.split('\n')[0].slice(0, 200)
+                  ? (b.kind === 'agent-tool' ? b.input.replace(/\n\s*/g, ' ') : b.input.split('\n')[0]).slice(0, 200)
                   : b.input}
               </pre>
               {revealed && displayBody && (
@@ -895,6 +1008,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             </div>
           )
         })}
+        {!newestFirst && unseenButton}
         {newestFirst && olderBlock}
       </div>
     </div>

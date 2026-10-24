@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
@@ -1783,9 +1784,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                 )}
         </span>
         {hasMore && (
-          <button onClick={loadMore} className="ml-1 px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors">
+          <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >
             {t('timeline.loadMore')}
-          </button>
+          </Button>
         )}
 
         {/* v0.9.3 U2: keyboard-shortcut cheatsheet button. Every hotkey we
@@ -1795,9 +1796,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             makes the affordance visible; the modal itself lists everything. */}
         <button
           onClick={() => setShowHelp(true)}
-          className="ml-1 w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-          title={t('timeline.help.hint')}
-          aria-label={t('timeline.help.hint')}
+          className="ml-1 w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+          title={t('timeline.help.title')}
+          aria-label={t('timeline.help.title')}
         >?</button>
 
         {/* The detail pane's dock control moved into the pane's own header
@@ -1808,20 +1809,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.zoomOut')}
             aria-label={t('timeline.zoomOut')}
           >−</button>
           <button
             onClick={() => setZoom(1)}
             disabled={Math.abs(zoom - 1) < 0.01}
-            className="px-1.5 h-5 flex items-center justify-center text-xs text-redlog-text-faint hover:text-redlog-text bg-redlog-elevated/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-redlog-text-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="px-1.5 h-6 flex items-center justify-center text-xs text-redlog-text-faint hover:text-redlog-text bg-redlog-elevated/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-redlog-text-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.resetZoom')}
             aria-label={t('timeline.resetZoom')}
           >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.zoomIn')}
             aria-label={t('timeline.zoomIn')}
           >+</button>
@@ -1994,7 +1995,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           {loadError && rawEvents.length > 0 && (
             <div role="alert" data-testid="timeline-page-failed" className="text-red-300">
               {t('timeline.pageFailed')}{' '}
-              <button onClick={loadMore} className="underline hover:text-red-200">{t('common.retry')}</button>
+              <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >{t('common.retry')}</Button>
             </div>
           )}
           {liveError && (
@@ -2324,7 +2325,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                   const dot = single
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
-                  const hit = Math.max(20, dot + 8)
+                  // 24, not 20: the dot is a button, and 20px is under the
+                  // floor the rest of the app now holds. The visual dot keeps
+                  // its own size (`dot`); this is only the transparent hit
+                  // area around it, so a small dot is still easy to click.
+                  const hit = Math.max(24, dot + 8)
                   // v0.6.89.5: filter dimming. Focus-chain and filter query
                   // are mutually exclusive (enforced by the effects above), so
                   // at most one branch fires. A cluster is "active" (not

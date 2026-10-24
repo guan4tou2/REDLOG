@@ -25,6 +25,12 @@ exact commands you ran and what they printed. "Tests pass" is not a report;
 **A comment is not evidence of behaviour.** Read the code beside a comment
 before relying on what it says.
 
+**Copy is part of the change.** Add a visible label, hint or description only
+when it answers something the heading, control or layout cannot: an error, a
+destructive consequence, a security or data-flow fact, a platform limit, or a
+command to run. Do not restate the title or explain what an off switch does.
+`docs/UIUX-CONTROLS-AND-COPY.md` §2 is the test.
+
 **Hard limits — these are not yours to decide:**
 
 - Do **not** commit, push, merge, force anything, or open a PR. Leave changes in

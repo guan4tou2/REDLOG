@@ -155,15 +155,15 @@ function ConfirmDialogInner({ state, close, t }: {
         )}
 
         {level === 'irreversible' && (
-          <label className="mt-4 flex items-start gap-2 text-xs text-redlog-text cursor-pointer">
+          <label className="mt-4 flex items-start gap-2 min-h-8 py-1 text-xs text-redlog-text cursor-pointer">
             <input
               ref={ackBox}
               type="checkbox"
               checked={acked}
               onChange={(e) => setAcked(e.target.checked)}
-              className="mt-0.5 accent-redlog-danger"
+              className="mt-0.5 w-4 h-4 shrink-0 accent-redlog-danger"
             />
-            <span>{state.ackLabel ?? t('confirm.ackDefault')}</span>
+            <span className="min-w-0 flex-1">{state.ackLabel ?? t('confirm.ackDefault')}</span>
           </label>
         )}
 

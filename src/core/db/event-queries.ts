@@ -278,9 +278,17 @@ export function queryHttpFlowPage(opts: HttpFlowQueryOptions): HttpFlowPage {
   }
   if (cursor) { where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))'); params.push(cursor.startTs, cursor.startTs, cursor.flowId) }
   const boundary = opts.snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER
+  // Rank only selection metadata: carrying inline bodies through the window
+  // sort is expensive. The second query below still returns complete evidence.
   const heads = db.prepare(`
     WITH records AS (
-      SELECT *, rowid AS source_row, json_extract(data, '$.flow_id') AS flow_id
+      SELECT rowid AS source_row, timestamp, subtype, target_id,
+        json_extract(data, '$.flow_id') AS flow_id,
+        json_extract(data, '$.method') AS method,
+        json_extract(data, '$.url') AS url,
+        json_extract(data, '$.host') AS host,
+        json_extract(data, '$.status') AS status,
+        json_extract(data, '$.content_type') AS content_type
       FROM events_logged
       WHERE agent_type = 'scanner' AND subtype IN ('http_request_start','http_response')
         AND rowid <= ? AND json_type(data,'$.flow_id') = 'text' AND json_extract(data,'$.flow_id') <> ''
@@ -295,11 +303,11 @@ export function queryHttpFlowPage(opts: HttpFlowQueryOptions): HttpFlowPage {
       SELECT flow_id,
         COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN timestamp END), MIN(timestamp)) AS start_ts,
         COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN target_id END), MAX(target_id)) AS target_id,
-        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.method') END), MAX(json_extract(data,'$.method')), '') AS method,
-        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.url') END), MAX(json_extract(data,'$.url')), '') AS url,
-        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN json_extract(data,'$.host') END), MAX(json_extract(data,'$.host')), '') AS host,
-        MAX(CASE WHEN subtype='http_response' THEN json_extract(data,'$.status') END) AS status,
-        COALESCE(MAX(CASE WHEN subtype='http_response' THEN json_extract(data,'$.content_type') END), '') AS content_type
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN method END), MAX(method), '') AS method,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN url END), MAX(url), '') AS url,
+        COALESCE(MAX(CASE WHEN subtype='http_request_start' THEN host END), MAX(host), '') AS host,
+        MAX(CASE WHEN subtype='http_response' THEN status END) AS status,
+        COALESCE(MAX(CASE WHEN subtype='http_response' THEN content_type END), '') AS content_type
       FROM ranked WHERE rank = 1 GROUP BY flow_id
     ) SELECT flow_id, start_ts FROM flow_heads ${where.length ? 'WHERE '+where.join(' AND ') : ''}
     ORDER BY start_ts DESC, flow_id DESC LIMIT ?

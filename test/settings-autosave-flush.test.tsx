@@ -44,7 +44,7 @@ function installBridge(): void {
         return saveResult
       }
     },
-    project: { close: async () => { calls.push('close') } },
+    project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => { calls.push('close') } },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }) },
     plugins: { list: async () => [], eventTypes: async () => [] },
     operators: { list: async () => [] }
@@ -54,8 +54,8 @@ function installBridge(): void {
   })
 }
 
-// `scope` is a plain form over config: no plugin registry, no hook detection,
-// so its controls render from the config alone.
+// The scope page includes the existing project identity fields; the bridge
+// supplies the active project while these cases exercise config persistence.
 /** Any edit that makes Settings mark itself dirty. */
 const change = (el: HTMLInputElement): void => {
   if (el.type === 'checkbox') fireEvent.click(el)

@@ -16,6 +16,13 @@ feature is that there is nothing to type for the ordinary case.
 installed block in `.zshrc` therefore defines one name, which is also what
 makes uninstall verifiable (FR-016).
 
+Loading the hook announces only that it loaded, not that output was saved.
+Human status names an enabled recording switch as `recording enabled`; this is
+not a delivery acknowledgement. Missing project/operator identity is explicitly
+`not recording`, with a new-terminal recovery path because project binding is
+pinned. Start reports the resulting state, including a refusal after a project
+switch, and must not emit `capture_resumed` when the terminal stayed stopped.
+
 **Install / uninstall** are not shell commands. They are RedLog actions:
 
 - from the capture card's `terminal` row, which already says "your own terminal

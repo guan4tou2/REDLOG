@@ -29,11 +29,6 @@ export interface RedLogConfig {
   engagement: {
     id: string
     activeTarget?: string | null
-    /** Which capture the first-run screen leads with: a host engagement wires
-     *  a shell hook first, a web one wires the proxy first. `both` (the
-     *  default, and anything unset) keeps the order the screen has always had,
-     *  so nobody is made to answer before they have done anything. */
-    focus?: 'terminal' | 'web' | 'both'
   }
   operator: {
     id: string
@@ -198,7 +193,6 @@ export interface RedLogConfig {
    *  default. The members' own `enabled` keys were removed and are not read. */
   packs?: {
     hostMonitors?: boolean
-    aiAgents?: boolean
     windowsOutput?: boolean
   }
   /** Per-member opt-outs inside a pack that is on. A pack is a PRESET, not an
@@ -219,19 +213,13 @@ export interface RedLogConfig {
     connectionMonitor?: boolean
     fileWatcher?: boolean
     clipboard?: boolean
-    claudeCode?: boolean
-    codex?: boolean
-    opencode?: boolean
     powershellTranscript?: boolean
   }
-  /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
-   *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
-   *  per-turn `agent.*` events into the hash chain. Off by default because
-   *  discovery spans user-level agent transcript locations; the operator
-   *  explicitly enables it for an engagement. A `.redlog-app-root` marker
-   *  in the session's cwd still opts individual repos out. See
-   *  src/main/services/agent-tailer.ts. */
+  /** Optional AI capture. Every tool needs its own installed integration,
+   * explicit project directory permission and activation boundary. Empty
+   * sources never authorize transcript access. */
   agentTailer?: {
+    sources?: Partial<Record<import('./agent-capture-policy').AgentKind, import('./agent-capture-policy').AgentCaptureSourceConfig>>
     /** Off by default — thinking blocks are large and mostly meta. Turn on
      *  for engagements where the reasoning transcript is itself audit-
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
@@ -373,7 +361,6 @@ export const DEFAULT_CONFIG: RedLogConfig = {
   },
   packs: {
     hostMonitors: false,
-    aiAgents: false,
     windowsOutput: false
   },
   agentTailer: {
@@ -438,26 +425,11 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
  *  every later load in the process. */
 const defaults = (): RedLogConfig => structuredClone(DEFAULT_CONFIG)
 
-/** `packMembers.agentTailer` was one switch for three agents. It becomes the
- *  three per-agent keys with its value and is removed, not kept as a shim. This
- *  runs on read, in memory: saving writes the new keys, and the config-change
- *  diff compares two configs that both went through here, so the migration
- *  itself never produces a change event. An explicit per-agent key wins. */
-function migrateAgentMembers(parsed: Record<string, unknown> | null): void {
-  const members = parsed?.packMembers as Record<string, unknown> | undefined
-  if (!members || typeof members !== 'object' || !('agentTailer' in members)) return
-  const old = members.agentTailer
-  delete members.agentTailer
-  if (typeof old !== 'boolean') return
-  for (const key of ['claudeCode', 'codex', 'opencode']) if (!(key in members)) members[key] = old
-}
-
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
     const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
-    migrateAgentMembers(parsed)
     return deepMerge(defaults() as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return defaults()

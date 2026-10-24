@@ -13,21 +13,20 @@ describe('hook-config.json', () => {
   })
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 
-  // Settings edits watchPaths only; excludedPaths has no UI and keeps the
-  // tailer out of unrelated folders. Saving one list must not clear the other.
-  it('keeps excludedPaths when a save names only watchPaths', () => {
-    fs.writeFileSync(file, JSON.stringify({ excludedPaths: ['/home/op/private'], watchPaths: [] }))
-    saveHookConfig({ watchPaths: ['/work/engagement'] }, file)
-    expect(readHookConfig(file)).toEqual({ excludedPaths: ['/home/op/private'], watchPaths: ['/work/engagement'] })
+  // A no-op save must not erase local exclusions.
+  it('keeps excludedPaths when a save omits them', () => {
+    fs.writeFileSync(file, JSON.stringify({ excludedPaths: ['/home/op/private'] }))
+    saveHookConfig({}, file)
+    expect(readHookConfig(file)).toEqual({ excludedPaths: ['/home/op/private'] })
   })
 
   it('clears a list the save names as empty', () => {
-    fs.writeFileSync(file, JSON.stringify({ excludedPaths: ['/a'], watchPaths: ['/b'] }))
+    fs.writeFileSync(file, JSON.stringify({ excludedPaths: ['/a'] }))
     saveHookConfig({ excludedPaths: [] }, file)
-    expect(readHookConfig(file)).toEqual({ excludedPaths: [], watchPaths: ['/b'] })
+    expect(readHookConfig(file)).toEqual({ excludedPaths: [] })
   })
 
   it('reads a missing file as no gates', () => {
-    expect(readHookConfig(file)).toEqual({ excludedPaths: [], watchPaths: [] })
+    expect(readHookConfig(file)).toEqual({ excludedPaths: [] })
   })
 })

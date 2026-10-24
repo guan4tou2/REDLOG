@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
 import { toLocalInputValue, fromLocalInputValue, timeRangeError } from '../lib/timeRangeInput'
@@ -32,7 +33,7 @@ export function FilterBar(): JSX.Element | null {
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls="filter-bar-panel"
-          className="flex items-center gap-1 text-redlog-text-dim hover:text-redlog-text transition-colors"
+          className="flex items-center gap-1 min-h-6 text-redlog-text-dim hover:text-redlog-text transition-colors"
           title={t('filter.title')}
         >
           <Filter size={12} strokeWidth={1.5} />
@@ -122,10 +123,9 @@ export function FilterBar(): JSX.Element | null {
               className="w-full rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center gap-3"
             >
               <span className="flex-1">{t('filter.listsFailed')}</span>
-              <button
+              <Button size="compact" level="quiet"
                 onClick={retryLists}
-                className="px-2 py-0.5 rounded border border-amber-500/40 hover:bg-amber-500/20"
-              >{t('filter.listsRetry')}</button>
+              >{t('filter.listsRetry')}</Button>
             </div>
           )}
           {/* Target selector */}

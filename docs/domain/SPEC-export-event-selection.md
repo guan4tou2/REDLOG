@@ -167,6 +167,12 @@ are not frozen. The manifest records
 `excludedByOperator` plus, for each included cast, its targets and attribution.
 Source files are never modified.
 
+Bundle does not support operator-PII scrubbing. Included casts retain the exact
+approved snapshot prefix bytes, including their header, paths and identifiers;
+they are not implicitly rewritten. Later output is outside that frozen prefix.
+The operator excludes a recording if its whole approved prefix is unsuitable
+for delivery. This preserves the byte offsets referenced by command events.
+
 An unsupported requested protection is an explicit preview failure. It must not
 fall back to a legacy export or produce a success state.
 

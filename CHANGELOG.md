@@ -5,6 +5,231 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- AI conversation acceptance now runs Claude Code first, then Codex through the
+  same optional install, directory authorization, message/tool I/O, search,
+  transcript, JSON delivery and removal journey. Fixed multiline text search:
+  JSON newline escapes no longer turn the next word into a different token.
+  Collapsed tool calls now show their input rather than only an opening brace.
+  Rebuilds only derived search indexes; evidence bytes and hashes stay intact.
+
+- Project identity, operator and profile handoff now live under Project & scope;
+  appearance contains only display preferences, without adding settings pages.
+  Source/evidence settings use their pane width. Ordinary actions share wrapping,
+  density-aware buttons; narrow title bars reflow rather than losing actions.
+  Long recording-status labels shrink while uptime and HUD remain reachable.
+  Dashboard loading follows the current vertical layout.
+
+- Repeated JSON, NDJSON, HAR and Timeline exports in the same second now keep
+  separate files and manifests instead of overwriting earlier deliveries.
+  Removed seven redundant source-expression tests and updated layout checks
+  and platform prerequisites to match the current UI and installers.
+
+- Non-modal notifications no longer cover dialog actions in compact windows.
+  Export failure/retry and missing approved-attachment recovery are exercised
+  with real isolated filesystem failures; errors retain their existing lifetime.
+
+- First-run work actions stay above source setup. Recent evidence sits with
+  terminal capture beside pending web setup, without the enclosing duplicate
+  card. Start work replaces the duplicate Later action once command proof
+  exists. Operator guides now describe Bash auto-output and current source
+  settings; installed-smoke checks follow the actual daily settings route.
+
+- Reduce ordinary Zsh command overhead by deferring relay imports used only for
+  HTTP delivery, explicit execution and diagnostics. HTTP flow pages sort only
+  selection metadata before loading complete evidence, avoiding large inline
+  bodies in the ranking step. Capture limits, full bodies and export selection
+  semantics are unchanged. Local synthetic benchmarks are recorded in Spec 062.
+
+- Shell startup announces only that the hook loaded. Terminal status distinguishes
+  an enabled switch from missing project/operator identity; start reports its
+  resulting state and no longer emits a resume after a refused project switch.
+  With no project, the offline warning no longer promises spool replay.
+
+- Evidence bundles preserve the approved terminal-recording bytes, including
+  operator paths and identifiers, instead of silently applying partial PII
+  replacement while advertising no PII scrubbing. Whole-recording exclusion
+  and snapshot boundaries remain in effect. Empty HTTP fields no longer appear
+  as active conditions in export summaries.
+
+- First-run recording setup uses the available width: terminal and HTTP(S)
+  setup sit side by side when space permits and stack in narrow windows.
+  The expanded built-in terminal no longer inherits the old form-width cap.
+
+- Export previews label total attachments correctly, show recording warnings
+  only when casts are included, and keep JSON free of attachment-selection
+  instructions. Filter summaries use readable boolean states; narrow summary
+  labels stay readable beside long conditions. Export selection is unchanged.
+
+- Keep HTTPS verification distinct from a listening proxy across page changes;
+  retain only this process/CA's verified client and clear proof on restart.
+  Core health links open the matching settings, which can reopen HTTPS checks.
+  First-run prioritizes external shells and shows browser-path choices before
+  setup steps. CA search resolves its real field instead of interpolation
+  templates or foreign WSL states. Manual capture sources declare platforms;
+  foreign setup stays out of the main list while live producers remain visible.
+
+- HTTP history's All button clears method, status and host choices and reports
+  its selected state consistently. URL text and shared filters remain independent.
+
+- HTTP request/response tabs now share the full body reader, including inline
+  content, sidecars and truncation, instead of showing only the paired preview.
+  Failed paired reads offer retry. Long bookmark titles/actions and unbroken
+  notes wrap within the pane; sticky HTTP controls no longer show content through.
+
+- Complete the layout follow-up: a single bookmark empty state and full-width
+  creation form, page-scrolling integrity anchors, compact numeric settings,
+  responsive AI/VPN lists and HUD size stops that align and advance by keyboard.
+  Scope and empty HTTP views link to their settings; command search shows exit
+  results, and failed HTTP reads no longer claim a complete empty record.
+
+- Built-in capture settings use responsive source cards instead of capped,
+  stretched single-column rows. The current terminal recording mode stays
+  visible; tool classifications and CLI details expand on demand. Transcript
+  search keeps a usable width and wraps instead of shrinking to a few letters.
+
+- Manual walk of all 11 views and all 12 settings pages with seeded data,
+  judged page by page instead of by scan. Two restatements found and removed:
+  the event-log band header repeated the view title (攻擊時間軸 twice on one
+  screen — the header keeps only what it uniquely has: the hidden count and
+  the row count), and the screenshots banner repeated the title's count
+  (截圖 (2) / 已載入 2 張截圖 — the title's `2+` already marks a partial
+  list, so the banner carried nothing in either state). Everything else went
+  back: each settings hint states a consequence or the fix path, the
+  bookmarks empty state carries the bookmark-vs-marker distinction (which is
+  a chain-of-custody fact, not decoration), and the completeness chips on
+  HTTP/transcript/loot stay because only they say whether older data exists.
+- The status-bar scope chip is now clickable, like its fault-counter
+  neighbours. 「範圍 未設定」was a `<div>` the operator could read but not act
+  on: no route from the warning to the lists that fix it. It now opens
+  設定 ▸ 範圍規則 — every state, same destination.
+- Redundancy audit: the first-run ordering switch `engagement.focus` was
+  removed from the config type by commit 7de4b9b6 together with its UI and
+  reads, but the field and its comment stayed behind unread. Deleted. The HUD
+  scale slider showed its value twice — a right-hand label and the highlighted
+  tick under the thumb — the right-hand label is gone; the tick and
+  `aria-valuetext` remain. Everything else checked and kept: no dead i18n keys
+  (dynamic prefixes count), every config leaf is read, the 8 allowlisted
+  exports carry recorded decisions, and the 36 English label collisions are
+  real per-context keys (zh-TW renders almost all of them differently).
+- The first-run entry button follows the shell actually picked. 「記我的 Zsh
+  終端」named the detected shell, but the picker inside the flow can install a
+  different one, and after choosing Bash the button still advertised Zsh — the
+  one text left contradicting what the flow was doing. The selection now
+  replies up and the label follows it.
+- Density now changes what it says it changes. `--pad`, `--gap` and
+  `--section-gap` were declared and read by nothing, so switching to tight
+  shrank only the sidebar rows while the comment in `density.ts` claimed the
+  padding moved too. The three variables are bound to `p-pad` / `gap-gap` /
+  `space-y-section` and the nine page containers use them: comfortable is 16px
+  padding and a 12px block gap, tight is 10px and 8px. A test pins "declared but
+  never read", which is the failure this hid behind.
+- Every interactive target now meets the 24x24 floor: 141 of 861 were under it.
+  The worst was Settings' checkbox row — the highest-frequency controls
+  (clipboard sampling, file watching, loot rules) were the smallest targets at
+  20px tall — which now use a shared CheckRow with a 32px row. Terminal tab
+  close/restart, the timeline's help/zoom controls and event-dot hit area, the
+  narrow status-bar HUD toggle and the HUD sliders were raised too. An Electron
+  assertion measures this across every view at five size/zoom combinations.
+- The copy rule's layout half was measured and closed: nested cards, heading
+  plus repeating paragraph, icon buttons whose tooltip is their accessible name,
+  and hints opening with a state restatement were each scanned across the whole
+  renderer. Every candidate was legitimate, so no product change — the findings
+  are recorded in the gate and AGENTS.md so the ground is not re-dug and no
+  layout gate is added that the data does not support.
+- The copy gate now runs against both locales, and the Chinese side showed two
+  defects the English side did not: two artifact failures that named neither
+  of two different problems (a file over the 200 MB limit, and a full disk),
+  and a project-card label that read exactly like the violation counter on the
+  status bar. Both now say which.
+- The copy gate is mutation-tested: each of its five rules is proven to fail on
+  an injected violation. Two of them did not, and are now fixed — the
+  duplicate-key rule had only compared descriptive keys, and the tooltip rule's
+  scanner never matched a plain `{t('key')}` body. The repaired rules found a
+  duplicated "open the timeline at this moment" string and a button whose
+  tooltip repeated its own label word for word.
+- The AGENTS.md copy rule is now a gate: `test/ui-copy.test.ts` fails on the
+  same explanation stored under two keys, a descriptive key nothing renders, a
+  hint that only repeats its label, a tooltip that repeats the visible text, and
+  a helper line over three sentences that is not an allow-listed warning. It
+  found six dead `settings.hookWatchPaths.*` strings left behind when AI capture
+  moved to per-project authorisation, a bookmark hint that repeated the status
+  already on screen, and a duplicated keyboard-shortcut label — all removed.
+- UIUX audit fixes: the HUD text-size slider has an accessible name and reports
+  its step as its value (it had none); loot rules show what they match as text
+  instead of only in a tooltip a keyboard cannot reach; and an AI integration
+  that is not installed no longer tells the operator to "start the AI tool,
+  then reopen this project" — advice that records nothing. That step now
+  appears only on a row that can read the transcript folder.
+- The transcript toolbar wraps instead of clipping its kind filters and its
+  order/copy buttons, which ran off the right edge at 800×600. Narrow, the
+  status bar keeps its IP-safety and scope dots and moves the words to
+  `sr-only`, so the HUD toggle no longer falls outside the bar at 200% zoom.
+  Nothing changes on a wide window.
+- WSL diagnostics now read the script's own `✓ / ✗ / !` output instead of a
+  `[PASS] name: message` format it never printed. A failing check used to be
+  recorded as a passing `info` row and shown green; `✗` is now a failure, `!` a
+  warning, ANSI is stripped, indented remediation stays with its check, and an
+  unrecognised line is a warning rather than a pass. The panel shows the status
+  word to screen readers, not colour alone.
+- Plugin contribution results now cover every kind, not only loot and redaction.
+  Target extractors, command tags, event types and capture entries report how
+  many rules took effect and name each rejected one with its reason (bad regex,
+  unknown strategy, missing field). A manifest that loads is no longer presented
+  as every rule in it working; a broken rule does not disable the rest of the
+  plugin.
+- A capture source now says everything about itself in one place: whether its
+  integration is installed on this computer, whether it is recording for this
+  project, what it reads, and when it last delivered something. The
+  last-delivered line comes from the same capture-health snapshot the
+  dashboard's capture card reads, so the two screens cannot disagree.
+- Changing an AI source's working directories while it is recording now stops
+  recording on purpose and says so: the row states that the scope changed and
+  the project checkbox becomes the single action that confirms the new range.
+  A source that was never recording is not reported as a scope change.
+- Removing a local capture integration asks first and names the consequences:
+  every project on this computer stops recording that source, and the records
+  already captured are kept.
+- Optional sources are labeled Other capture sources. Inactive AI integrations
+  link directly to plugin settings; configured directories retain an explicit
+  not-enabled cue until project recording is selected. Navigation never enables
+  recording. Plugin settings use the available width instead of the shared
+  900px form limit, including at compact window sizes.
+- Repeated Enter/click cannot create duplicate projects while creation is
+  pending. Failed creation preserves the name and permits retry.
+
+- HTTP capture port edits now stay as drafts until Enter or blur validates
+  them. Invalid input stays visible and leaves the last valid setting in use;
+  managed browser proxy URLs follow only a valid committed port.
+- External capture settings now retain the producer's running state, distinguish
+  failed reads from stopped sources, and offer retry without hiding the source.
+- HTTP capture actions use Start/Starting/Stop/Retry consistently in setup and
+  Settings. Pending actions cannot be double-submitted; a rejected reply
+  triggers a status check rather than replaying the action.
+
+- The HUD click-through recovery shortcut also works inside RedLog's main and
+  HUD windows if the global shortcut is not delivered. It only turns
+  click-through off; repeated delivery never turns it back on.
+
+- AI capture integrations are now individually optional and uninstalled by
+  default. Install Claude Code, Codex or OpenCode capture in Settings ▸ Other capture
+  sources ▸ AI Agents, select project working directories, then explicitly
+  enable recording. Empty paths do not authorize capture. Existing sessions
+  begin at their observed connection boundary; history is not silently imported.
+  Disabling/uninstalling stops primary and auxiliary watchers and preserves
+  evidence. Reinstalling requires fresh project activation. The old bundled AI
+  preset, Codex shell wrapper and global watch-path API were removed.
+- Fixed transcript discovery ignoring its own hidden .codex/.claude root and
+  non-JSONL intermediate directories. Fixed a delayed modal-opening focus action
+  stealing focus from an attachment while its export preview was recalculated.
+
+- 匯出改為單一視窗，範圍、格式、目的地、政策與附件可在原地調整；換格式不再切成整個專案。保留真實 ExportPlan 預覽與錯誤重試，較早返回的預覽不會覆蓋新的選擇。
+
+- Small HTTP text bodies already stored on an event now open in full without a
+  second load action; capture truncation warnings remain visible. Bash setup
+  now describes its automatic ordinary-command output capture, and the export
+  scope option describes the requested masking policy rather than claiming
+  that masking has already happened.
+
 - Updating by hand (macOS and Linux) is described as what it is, per platform,
   instead of one generic line. Going to the download page no longer counts as an
   update: it no longer writes an "update pending" mark into the project or

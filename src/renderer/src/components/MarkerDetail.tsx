@@ -280,11 +280,10 @@ function ReplayAtTime({ atMs }: { atMs: number }): JSX.Element {
   }
   return (
     <div className="flex items-center gap-2">
-      <button
+      <Button size="compact" level="quiet"
         onClick={load}
         disabled={loading}
-        className="text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
-      >{loading ? t('marker.replayAtTime.loading') : t('marker.replayAtTime')}</button>
+      >{loading ? t('marker.replayAtTime.loading') : t('marker.replayAtTime')}</Button>
       {error && <span className="text-xs text-redlog-text-dim">{error}</span>}
     </div>
   )

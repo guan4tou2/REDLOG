@@ -8,6 +8,7 @@ import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { testSample } from '../../core/plugins/test-sample'
 import { getContributionReport } from '../../core/plugins/contributions'
+import { createOfficialAgentPluginManager } from '../../core/plugins/official-agents'
 import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins } from '../../core/plugins'
 import { invalidateHooksCache } from '../../core/capture-health'
 import { invalidateHooksCache as invalidateHooksDetectCache } from '../../core/hooks-manager'
@@ -17,7 +18,9 @@ import { eventBus } from '../../core/event-bus'
 // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we
 // don't need in the renderer; keep what the panel renders + acts on).
 function pluginView() {
+  const official = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list()
   return listPlugins().map((p) => ({
+    officialAgent: official.some(entry => entry.pluginId === p.manifest.id),
     id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
     description: p.manifest.description ?? '', author: p.manifest.author ?? '',
     source: p.source, tier: p.tier, status: p.status,
@@ -44,6 +47,32 @@ function auditPluginChange(ctx: IpcContext, changed: Record<string, { from: unkn
 
 export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('plugins:list', () => pluginView())
+  const officialAgents = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins'))
+  ipcMain.handle('plugins:officialAgents', () => officialAgents.list())
+  const mutateOfficialAgent = (operation: 'install' | 'uninstall', agentKind: unknown) => {
+    const before = officialAgents.list().find(entry => entry.agentKind === agentKind)
+    const result = officialAgents[operation](agentKind)
+    // Recovery is explicit, source-owned and does not authorize any project.
+    const disabled = result.ok && operation === 'install' && result.pluginId
+      ? listPlugins().find(p => p.manifest.id === result.pluginId)?.status === 'disabled' : false
+    if (disabled && result.pluginId) {
+      setPluginEnabled(result.pluginId, true)
+      invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()
+      auditPluginChange(ctx, { [`plugin.${result.pluginId}.enabled`]: { from: false, to: true } }, `AI capture integration restored: ${result.pluginId}`)
+    }
+    // A final-directory cleanup failure can follow a successful manifest
+    // removal. Refresh in that case too, while keeping the error visible.
+    if (result.changed && result.pluginId) {
+      reloadPlugins()
+      invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()
+      auditPluginChange(ctx, {
+        [`plugin.${result.pluginId}.installed`]: { from: before?.state === 'installed', to: operation === 'install' }
+      }, `Official AI capture integration ${operation === 'install' ? 'installed' : 'removed'}: ${result.pluginId}`)
+    }
+    return result
+  }
+  ipcMain.handle('plugins:installOfficialAgent', (_e, agentKind: unknown) => mutateOfficialAgent('install', agentKind))
+  ipcMain.handle('plugins:uninstallOfficialAgent', (_e, agentKind: unknown) => mutateOfficialAgent('uninstall', agentKind))
   // Dry run on pasted text: writes nothing, emits nothing.
   ipcMain.handle('plugins:testSample', (_e, text: unknown) => {
     const project = ctx.getActiveProject()
@@ -67,6 +96,7 @@ export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // a gap in it that nothing in the record explains. The flag is app-wide, so
   // the gap is not even confined to the project it was thrown in.
   ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => {
+    if (officialAgents.list().some(entry => entry.pluginId === id)) throw new Error('Manage official AI integrations in capture sources')
     const before = listPlugins().find((p) => p.manifest.id === id)
     setPluginEnabled(id, enabled)
     invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged()

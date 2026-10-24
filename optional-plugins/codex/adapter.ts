@@ -23,7 +23,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
-import type { TailerAdapter, ParsedTurn } from '../tailer-host'
+import type { TailerAdapter, ParsedTurn } from '../../src/main/services/tailer-host'
 
 // Payload types we ingest as per-turn events.
 export const CODEX_INGEST_TYPES = new Set([
@@ -259,6 +259,14 @@ export const codexAdapter: TailerAdapter = {
 /** Test-only: overridable transcript root. Mutates the adapter's glob
  *  so tests can point at a scratch dir. */
 export function overrideCodexTranscriptRoot(root: string): void {
+  codexAdapter.transcriptRoot = root
   ;(codexAdapter as { transcriptGlob: string }).transcriptGlob =
     path.join(root, '**', 'rollout-*.jsonl')
+}
+
+/** The optional plugin contract. Loaded only after installation and project authorization. */
+export function createAdapter(root: string): TailerAdapter {
+  overrideCodexTranscriptRoot(root)
+  codexAdapter.transcriptRoot = root
+  return codexAdapter
 }

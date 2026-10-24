@@ -7,7 +7,7 @@ import { isMemberSelected } from '../src/core/capture-packs'
 // inside a pack that is on. A regression guard, not a feature.
 describe('advanced capture sources default to off', () => {
   it('has every capture pack off', () => {
-    expect(DEFAULT_CONFIG.packs).toEqual({ hostMonitors: false, aiAgents: false, windowsOutput: false })
+    expect(DEFAULT_CONFIG.packs).toEqual({ hostMonitors: false, windowsOutput: false })
   })
 
   it('never collects the clipboard because a pack was turned on', () => {

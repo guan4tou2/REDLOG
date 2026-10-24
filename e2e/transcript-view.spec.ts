@@ -75,3 +75,66 @@ test('folds request/response pairs into single exchanges', async () => {
   expect(txt, 'uncaptured output must say so').toMatch(/output not captured/)
   await app.close()
 })
+
+// A batch arriving while the transcript is open used to clear it and reload
+// from the first page: it blanked, and the reader lost their place. Measured
+// in the real layout, because the unit test can only give rows fake heights.
+test('takes new rows without blanking or moving the row being read', async () => {
+  test.setTimeout(180_000)
+  const tmpHome = makeTempHome('redlog-tr-live-')
+  const app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
+    env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
+  try {
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'trl')
+    await page.waitForTimeout(1500)
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+    const say = (text: string) => fetch(`${base}/api/events`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agent_type: 'agent', data: { subtype: 'assistant_message', agent: 'claude-code', session_id: 's1', full: text } }) })
+
+    for (let i = 0; i < 40; i++) await say(`seed message ${i}`)
+    await resizeMainWindow(app, 1500, 1000)
+    await openView(page, 'transcript')
+    const rows = page.locator('[data-block-id]')
+    await expect(rows).toHaveCount(40)
+
+    // Read from the middle; note which row is at the top and where.
+    const before = await page.evaluate(() => {
+      const body = document.querySelector('[data-testid="transcript-body"]') as HTMLElement
+      body.scrollTop = 600
+      body.dispatchEvent(new Event('scroll'))
+      const el = [...body.querySelectorAll<HTMLElement>('[data-block-id]')].find((r) => r.offsetTop + r.offsetHeight > body.scrollTop)!
+      // Count every frame with no rows, from here until the end of the test.
+      ;(window as unknown as { __blank: number }).__blank = 0
+      new MutationObserver(() => {
+        if (body.querySelectorAll('[data-block-id]').length === 0) (window as unknown as { __blank: number }).__blank++
+      }).observe(body, { childList: true, subtree: true })
+      return { id: el.dataset.blockId!, offset: el.offsetTop - body.scrollTop }
+    })
+
+    for (let i = 0; i < 3; i++) await say(`live message ${i}`)
+    await expect(rows).toHaveCount(43)
+    await expect(page.getByTestId('transcript-unseen')).toContainText('3 new')
+
+    const after = await page.evaluate((id) => {
+      const body = document.querySelector('[data-testid="transcript-body"]') as HTMLElement
+      const el = [...body.querySelectorAll<HTMLElement>('[data-block-id]')].find((r) => r.dataset.blockId === id)!
+      return { offset: el.offsetTop - body.scrollTop, blank: (window as unknown as { __blank: number }).__blank }
+    }, before.id)
+    expect(after.blank, 'the list must never empty while it refreshes').toBe(0)
+    expect(Math.abs(after.offset - before.offset), 'the row being read stays where it was').toBeLessThanOrEqual(1)
+
+    await page.getByTestId('transcript-unseen').click()
+    await expect(page.getByTestId('transcript-unseen')).toHaveCount(0)
+    expect(await page.evaluate(() => (document.querySelector('[data-testid="transcript-body"]') as HTMLElement).scrollTop)).toBe(0)
+  } catch (e) {
+    console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+    throw e
+  } finally {
+    await app.close()
+  }
+})

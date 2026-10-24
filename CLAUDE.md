@@ -1,5 +1,8 @@
 # Working in this repository
 
+UI copy rules and the Electron sandbox note live in `AGENTS.md` and apply to
+every agent, including Claude Code.
+
 ## Before you push
 
 Run all five, in this order. `npm test` passing is not the bar — CI runs three

@@ -14,7 +14,7 @@
 //
 // **What lives here:**
 // - chokidar dir-watch on each adapter's `transcriptGlob`
-// - Sidecar file management under `<projectDir>/agent-transcripts/`
+// - Sidecar, durable source checkpoints and privacy boundaries per project
 // - Redaction on the way IN to the events table (via secret-redaction.ts)
 // - `_causes` resolution — per-session `Map<transcriptUuid, redlogEventId>`
 //   seeded at session-register time from the DB (v0.7.4 F2)
@@ -51,7 +51,7 @@ import { ingestEvent } from '../../core/ingest'
 import { extractTargetWithProvenance } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
-import { noteDbError } from '../../core/capture-health'
+import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { isInsideDir } from '../../core/paths'
 
@@ -143,6 +143,7 @@ export interface ParsedTurn {
  *  react to `add` events on files the host already watches, and use this
  *  surface only for supplemental streams. */
 export interface HostControlSurface {
+  acceptsMessage(agentKind: string, messageId: string, changedAt?: number): boolean
   emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void
 }
 
@@ -156,6 +157,8 @@ export interface TailerAdapter {
   /** Chokidar-watched pattern rooted at the adapter's home dir. May start
    *  with `~/` (host expands). Recursive globs (`**`) are honored. */
   transcriptGlob: string
+  /** Literal built-in source root; never interpret directory names as globs. */
+  transcriptRoot?: string
   /** True = each matching FILE is one unit (OpenCode's
    *  `~/.local/share/opencode/storage/message/*.json` layout).
    *  False (default) = each matching file is a JSONL stream, one unit per
@@ -203,13 +206,13 @@ export interface TailerAdapter {
    *  'tool_call', 'tool_result', 'compact_summary', 'thinking'. */
   subtypeFor(t: ParsedTurn): string
   /** v0.8.3: optional lifecycle hook, called once when the adapter is
-   *  registered (i.e. when `registerAdapter(adapter)` is called or a
-   *  restart replays through it). Receives a control surface the adapter
+   *  activated for an enabled source (never merely registered). Receives a control surface the adapter
    *  can use to emit supplemental turns from sources the host does not
    *  natively watch. Idempotent — the host guards against duplicate init
-   *  calls on repeated registerAdapter. Adapter is responsible for tearing
-   *  down its own watchers on process exit. */
+   *  calls on repeated registerAdapter. The host calls stop on disable/project switch so the adapter
+   *  can tear down its auxiliary watchers. */
   init?(host: HostControlSurface): void
+  stop?(): void
 }
 
 /** Host-level configuration shared across all registered adapters. */
@@ -239,6 +242,10 @@ export interface TailerHostConfig {
   /** Whitelist mode. When non-empty, ONLY sessions whose cwd matches one
    *  of these prefixes are tailed — everything else is dropped. */
   watchPaths?: string[]
+  watchPathsByAgent?: Record<string, string[]>
+  activationStarts?: Record<string, number>
+  excludedSessionsByAgent?: Record<string, string[]>
+  sessionStartsByAgent?: Record<string, Record<string, number>>
   /** v0.12.0: called after every `agent.tool_call` event insert with the
    *  extracted target host (if any). Feeds the alert subsystem's Scope
    *  policy so agent-driven scope violations register the same way shell
@@ -259,16 +266,29 @@ interface SessionState {
   agentKind: string
   adapter: TailerAdapter
   sourcePath: string
+  sourceBaseOffset: number
+  sourceOffset: number
+  discardPartial: boolean
+  checkpointPaused: boolean
+  pauseSkippedBytes: number
+  resumedAt: number
+  unitSidecarOffset: number
+  replayFrom?: number
+  completedFiles: Map<string, string>
+  skipMissingParents: boolean
+  ignoredParents: Map<string, string | null>
   sidecarPath: string
   transcriptCwd: string
   pendingLineBuffer: string
   redlogIdByUuid: Map<string, string>
   toolCommandByUseId: Map<string, string>
-  pendingByParentUuid: Map<string, Array<{ turn: ParsedTurn; queuedAt: number }>>
+  pendingByParentUuid: Map<string, Array<{ turn: ParsedTurn; queuedAt: number; sidecarOffset: number }>>
   linesSeen: number
   turnsEmitted: number
   postCompact: boolean
   idleTimer: NodeJS.Timeout | null
+  retryTimer: NodeJS.Timeout | null
+  retryAttempt: number
   lastSnapshotBytes: number
   bytesAppendedSinceSnapshot: number
   driftAdvisoryFired: Set<string>
@@ -282,29 +302,10 @@ interface SessionState {
   pauseSkippedLines: number
   /** Timestamp when the first pause-skipped line was encountered. */
   pauseStartedAt: number | null
-  /** Turns whose event write threw. Read around a unit to tell whether every
-   *  turn in it landed, since emitTurn reports failure only to capture health. */
-  writeFailures: number
-  /** The partial line held in pendingLineBuffer began while paused. Its rest
-   *  arrives after resume and must be dropped with it, not recorded. */
-  pauseTail: boolean
-  /** Bounded retry for units that did not land: the watcher may never fire
-   *  for that file again. `attempt` counts timer-driven passes only, so a
-   *  burst of file events cannot use up the backoff in milliseconds. */
-  retry: { timer: ReturnType<typeof setTimeout>; attempt: number } | null
-  /** Set while the retry timer's own pass runs. */
-  retryFiring: boolean
-  /** This pass left something unwritten (bytes put back, a file unindexed). */
-  heldBack: boolean
-  /** Per-message files given up on unparsed in this pass, for the gap record. */
-  unparsedGivenUp: number
-  /** Turns whose write threw, by uuid, retried at the start of every pass
-   *  that is not paused. A child flushed when its parent lands, or a turn read
-   *  before a pause, has no bytes left to re-read; this is what still holds it. */
-  failedTurns: Map<string, ParsedTurn>
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
+let hostGeneration = 0
 let cfg: TailerHostConfig = { enabled: false, engagementId: '', operatorId: '' }
 const watchersByAgent = new Map<string, FSWatcher>()
 // P2-5: write coalescing — rapid chokidar `change` events for the same
@@ -318,11 +319,37 @@ function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
 }
 
+let resumeBoundary = 0
+function boundaryPath(): string { return path.join(getProjectDir(), 'agent-transcripts', '.recording-boundary.json') }
+function saveBoundary(paused: boolean): void {
+  const file = boundaryPath(), at = Date.now(), tmp = file + '.tmp'
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  try { fs.writeFileSync(tmp, JSON.stringify({ paused, at }), { mode: 0o600 }); fs.renameSync(tmp, file) }
+  catch (e) { try { fs.unlinkSync(tmp) } catch { /* staging metadata only */ }; throw e }
+  resumeBoundary = at
+}
+function restoreBoundary(): void {
+  resumeBoundary = 0
+  const file = boundaryPath()
+  if (!fs.existsSync(file)) return
+  const value = JSON.parse(fs.readFileSync(file, 'utf8'))
+  if (!Number.isSafeInteger(value.at) || value.at <= 0 || typeof value.paused !== 'boolean') throw new Error('Invalid AI recording boundary')
+  resumeBoundary = value.at
+  if (value.paused && !eventBus.paused) saveBoundary(false)
+}
+
 const COALESCE_MS = 50
-/** Retries for a unit whose events did not land (see scheduleUnitRetry). */
-const UNIT_RETRY_BASE_MS = 1000
-const UNIT_RETRY_LIMIT = 5
-const PAUSE_TAIL_SUFFIX = '.pause-tail'
+const RETRY_BASE_MS = 1000
+const RETRY_LIMIT = 5
+
+/** A failed pass is read again on the next file event or restart. The last
+ *  turn of a session gets neither, so a few backed-off passes cover it; after
+ *  those it waits for the same two things, with the error in capture health. */
+function scheduleRetry(s: SessionState): void {
+  if (s.retryTimer || s.retryAttempt >= RETRY_LIMIT) return
+  s.retryTimer = setTimeout(() => { s.retryTimer = null; catchUpSession(s.agentKind, s.sessionId) }, RETRY_BASE_MS * 2 ** s.retryAttempt++)
+  s.retryTimer.unref?.()
+}
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
   const key = sessionKey(agentKind, sid)
@@ -355,15 +382,34 @@ export function getRegisteredSessions(): string[] {
   return [...sessionRegistry]
 }
 
+export interface AgentSessionInfo { agentKind: string; sessionId: string; cwd?: string; recording: boolean }
+export function listAgentSessions(): AgentSessionInfo[] {
+  const result = [...sessions.values()].map(s => ({ agentKind: s.agentKind, sessionId: s.sessionId, cwd: s.transcriptCwd, recording: cfg.enabled && !eventBus.paused })) as AgentSessionInfo[]
+  for (const [agentKind, ids] of Object.entries(cfg.excludedSessionsByAgent ?? {})) for (const sessionId of ids) {
+    if (!result.some(s => s.agentKind === agentKind && s.sessionId === sessionId)) result.push({ agentKind, sessionId, recording: false })
+  }
+  return result
+}
+function sessionAllowed(kind: string, id: string): boolean {
+  return isSessionRegistered(id) && !cfg.excludedSessionsByAgent?.[kind]?.includes(id)
+}
+function activationFor(kind: string, id: string): number | undefined {
+  return Math.max(cfg.sessionStartsByAgent?.[kind]?.[id] ?? 0, cfg.activationStarts?.[kind] ?? 0) || undefined
+}
+
 // ─── Adapter registry ───────────────────────────────────────────────────────
 
 const initializedAdapters = new Set<string>()
 
 const hostControlSurface: HostControlSurface = {
+  acceptsMessage(agentKind, messageId, changedAt) {
+    if (eventBus.paused || !cfg.enabled || !agentEnabled(agentKind) || !/^[a-zA-Z0-9_-]+$/.test(messageId)) return false
+    return [...sessions.values()].some(s => s.agentKind === agentKind && sessionAllowed(agentKind, s.sessionId) && s.adapter.perMessageDir && s.redlogIdByUuid.get(messageId + '.json') !== '__paused__' && (changedAt === undefined || changedAt >= s.resumedAt + 1) && fs.existsSync(path.join(s.sourcePath, messageId + '.json')))
+  },
   emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void {
     if (eventBus.paused) return
     const s = sessions.get(sessionKey(agentKind, sessionId))
-    if (!s) {
+    if (!s || !sessionAllowed(agentKind, sessionId)) {
       // No live session — the msg stub for this sessionId hasn't been
       // observed yet. Drop silently; the adapter is expected to retry (or
       // the primary watcher will pick up the session soon).
@@ -371,10 +417,8 @@ const hostControlSurface: HostControlSurface = {
     }
     for (const turn of turns) {
       if (!s.adapter.knownIngestTypes.has(turn.type)) continue
-      emitTurn(turn, { session: s })
+      try { emitTurn(turn, { session: s }) } catch (e) { noteDbError('tailer-host', e) }
     }
-    // A failed turn waits in failedTurns; nothing else would come back for it.
-    if (s.failedTurns.size > 0) scheduleUnitRetry(s)
   }
 }
 
@@ -384,13 +428,6 @@ function agentEnabled(agentKind: string): boolean {
 
 export function registerAdapter(adapter: TailerAdapter): void {
   registeredAdapters.set(adapter.agentKind, adapter)
-  // v0.8.3: one-shot init hook. Guarded so a repeated registerAdapter
-  // (e.g. same adapter re-registered after unregisterAdapter for whatever
-  // reason) doesn't wire duplicate watchers.
-  if (adapter.init && !initializedAdapters.has(adapter.agentKind)) {
-    initializedAdapters.add(adapter.agentKind)
-    try { adapter.init(hostControlSurface) } catch (e) { noteDbError('tailer-host', e) }
-  }
   // If already running, start a watcher for this adapter immediately so
   // late registrations (e.g. plugin loaded after project open) don't miss
   // active sessions. Idempotent — `restart` also handles this.
@@ -402,6 +439,7 @@ export function unregisterAdapter(agentKind: string): void {
   if (w) { void w.close(); watchersByAgent.delete(agentKind) }
   // Also close any sessions that belong to this adapter.
   for (const [key, s] of sessions) if (s.agentKind === agentKind) unregisterSession(key)
+  if (initializedAdapters.has(agentKind)) registeredAdapters.get(agentKind)?.stop?.()
   registeredAdapters.delete(agentKind)
   initializedAdapters.delete(agentKind)
 }
@@ -432,7 +470,10 @@ export function isSelfExcludedCwd(cwd: string, marker: string): boolean {
 }
 
 export function cwdPassesGate(cwd: string, excludedPaths?: string[], watchPaths?: string[]): boolean {
-  const normalize = (p: string): string => path.resolve(expandTilde(p)).replace(/[\\/]$/, '')
+  const normalize = (p: string): string => {
+    const resolved = path.resolve(expandTilde(p))
+    try { return fs.realpathSync(resolved).replace(/[\\/]$/, '') } catch { return resolved.replace(/[\\/]$/, '') }
+  }
   const cwdNorm = normalize(cwd)
   if (excludedPaths && excludedPaths.length) {
     for (const raw of excludedPaths) {
@@ -566,15 +607,22 @@ interface EmitContext {
 function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   if (!t.uuid) return
   const s = ctx.session
-  if (s.redlogIdByUuid.has(t.uuid)) return
+  // A re-read parent still flushes: children whose write failed wait here.
+  if (s.redlogIdByUuid.has(t.uuid)) { flushWaiting(s, t.uuid, ctx); return }
 
+  let parentUuid = t.parentUuid
+  const parentPath = new Set<string>()
+  while (parentUuid && s.ignoredParents.has(parentUuid)) {
+    if (parentPath.has(parentUuid)) { parentUuid = null; break }
+    parentPath.add(parentUuid); parentUuid = s.ignoredParents.get(parentUuid) ?? null
+  }
   // v0.7.5 G2: pending-parent buffer. Adapter guarantees ordering only
   // within a JSONL file; Claude Code has been observed writing children
   // before parents in ~0.09% of turns. Buffer them; flush recursively
   // when the parent lands.
   let causesArr: string[] | undefined
-  if (t.parentUuid && !ctx._skipParentBuffer) {
-    const parentRid = s.redlogIdByUuid.get(t.parentUuid)
+  if (parentUuid && !ctx._skipParentBuffer && (!s.skipMissingParents || s.redlogIdByUuid.has(parentUuid))) {
+    const parentRid = s.redlogIdByUuid.get(parentUuid)
     if (parentRid) {
       causesArr = [parentRid]
     } else {
@@ -585,12 +633,12 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         if (!ot.uuid || s.redlogIdByUuid.has(ot.uuid)) continue
         emitTurn(ot, { ...ctx, _skipParentBuffer: true })
       }
-      const queue = s.pendingByParentUuid.get(t.parentUuid) ?? []
-      // A re-read after a failed pass meets the same child again.
-      if (queue.some((q) => q.turn.uuid === t.uuid)) return
+      const queue = s.pendingByParentUuid.get(parentUuid) ?? []
+      // A failed pass is read again; its children are already waiting.
+      if (queue.some(q => q.turn.uuid === t.uuid)) return
       if (queue.length + pendingSize(s) < MAX_PENDING_CHILDREN) {
-        queue.push({ turn: t, queuedAt: Date.now() })
-        s.pendingByParentUuid.set(t.parentUuid, queue)
+        queue.push({ turn: t, queuedAt: Date.now(), sidecarOffset: s.unitSidecarOffset })
+        s.pendingByParentUuid.set(parentUuid, queue)
         return
       }
       if (!s.parentMissingAdvisoryFired) {
@@ -600,7 +648,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
             subtype: 'transcript_parent_missing',
             session_id: s.sessionId,
             agent: s.agentKind,
-            parent_uuid: t.parentUuid,
+            parent_uuid: parentUuid,
             child_uuid: t.uuid,
             child_type: t.type,
             pending_full: true,
@@ -623,6 +671,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     agent: s.agentKind,
     session_id: s.sessionId,
     transcript_uuid: t.uuid,
+    ...(t.parentUuid ? { transcript_parent_uuid: t.parentUuid } : {}),
     ...(t.model ? { model: t.model } : {}),
     ...(t.version ? { agent_version: t.version } : {}),
     ...(t.gitBranch ? { git_branch: t.gitBranch } : {}),
@@ -730,9 +779,9 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       engagementId: cfg.engagementId,
       operatorId: cfg.operatorId
     })
+    if (!ev) throw new Error('AI event was not saved')
     if (ev) {
       s.redlogIdByUuid.set(t.uuid, ev.id)
-      s.failedTurns.delete(t.uuid)
       s.turnsEmitted++
       if (subtype === 'tool_call') s.toolCallsEmitted++
       // v0.12.0: hand tool_call events to the alert subsystem so agent-
@@ -754,13 +803,20 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
           }
         }
       }
-      const waiting = s.pendingByParentUuid.get(t.uuid)
-      if (waiting) {
-        s.pendingByParentUuid.delete(t.uuid)
-        for (const q of waiting) emitTurn(q.turn, ctx)
-      }
+      flushWaiting(s, t.uuid, ctx)
     }
-  } catch (e) { s.writeFailures++; s.failedTurns.set(t.uuid, t); noteDbError('tailer-host', e) }
+  } catch (e) { noteDbError('tailer-host', e); throw e }
+}
+
+/** Children leave the queue only once written. Their own lines are already
+ *  committed, so a child dropped on a failed write would never be read again. */
+function flushWaiting(s: SessionState, parentUuid: string, ctx: EmitContext): void {
+  const waiting = s.pendingByParentUuid.get(parentUuid)
+  if (!waiting) return
+  s.pendingByParentUuid.delete(parentUuid)
+  for (let i = 0; i < waiting.length; i++) {
+    try { emitTurn(waiting[i].turn, ctx) } catch (e) { s.pendingByParentUuid.set(parentUuid, waiting.slice(i)); throw e }
+  }
 }
 
 function sweepStalePending(s: SessionState): ParsedTurn[] {
@@ -785,331 +841,183 @@ function pendingSize(s: SessionState): number {
 
 // ─── Ingest loop ────────────────────────────────────────────────────────────
 
-/** Catch a session up from `sidecarSize` to the current source size.
+/** Catch a session up from its committed source offset to the current size.
  *  Handles both per-line (JSONL) and per-message (file-per-unit) adapters
  *  based on `adapter.perMessageDir`. Public for testability. */
 export function catchUpSession(agentKind: string, sessionId: string): void {
   const s = sessions.get(sessionKey(agentKind, sessionId))
-  if (!s) return
-  // Turns that failed earlier go first. Paused, they wait: ingest refuses
-  // writes during a pause, and these were read while recording was on.
-  if (!eventBus.paused) for (const t of [...s.failedTurns.values()]) {
-    if (t.uuid && s.redlogIdByUuid.has(t.uuid)) { s.failedTurns.delete(t.uuid); continue }
-    emitTurn(t, { session: s })
-  }
-  s.heldBack = false
-  s.unparsedGivenUp = 0
+  if (!s || !sessionAllowed(agentKind, sessionId)) return
   if (s.adapter.perMessageDir) {
     catchUpPerMessageDir(s)
   } else {
     catchUpJsonl(s)
   }
-  if (eventBus.paused) return
-  if (retriesSpent(s) && (s.failedTurns.size > 0 || s.unparsedGivenUp > 0)) recordGivenUp(s)
-  if (s.heldBack || s.failedTurns.size > 0) scheduleUnitRetry(s)
-  else if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
 }
 
-/** The retry timer's last pass is running. */
-function retriesSpent(s: SessionState): boolean {
-  return s.retryFiring && (s.retry?.attempt ?? 0) >= UNIT_RETRY_LIMIT
-}
-
-/** Say what the bounded retries could not write, where gaps are read, rather
- *  than leave it implied by a quiet source. */
-function recordGivenUp(s: SessionState): void {
-  const failed = s.failedTurns.size
+function checkpoint(s: SessionState, offset = s.sourceOffset, savedBytes?: number): void {
+  const bytes = savedBytes ?? (fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0)
+  const file = s.sidecarPath + '.offset.json'
+  const tmp = file + '.tmp'
   try {
-    ingestEvent('system', {
-      subtype: 'capture_gap',
-      reason: 'write_failed',
-      agent: s.agentKind,
-      session_id: s.sessionId,
-      failed_turns: failed,
-      unparsed_units: s.unparsedGivenUp,
-      description: `${failed} transcript turn(s) could not be written and ${s.unparsedGivenUp} unit(s) could not be read after ${UNIT_RETRY_LIMIT} retries; they are not in the record.`
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-  } catch (e) { noteDbError('tailer-host', e) }
-  s.failedTurns.clear()
+    fs.writeFileSync(tmp, JSON.stringify({ source: s.sourcePath, startedAt: activationFor(s.agentKind, s.sessionId), base: s.sourceBaseOffset,
+      offset, savedBytes: bytes, discardPartial: s.discardPartial, paused: s.checkpointPaused,
+      skippedBytes: s.pauseSkippedBytes, gapStartedAt: s.pauseStartedAt, resumedAt: s.resumedAt, skipMissingParents: s.skipMissingParents,
+      ignoredParents: Object.fromEntries(s.ignoredParents),
+      replayFrom: s.adapter.perMessageDir || !s.pendingByParentUuid.size ? undefined : Math.min(...[...s.pendingByParentUuid.values()].flat().map(q => q.sidecarOffset)) }), { mode: 0o600 })
+    fs.renameSync(tmp, file)
+  } catch (e) { try { fs.unlinkSync(tmp) } catch { /* only our staging file */ }; throw e }
+}
+
+/** Boundaries are metadata only: never append paused source bytes to evidence. */
+function discardJsonl(s: SessionState): void {
+  const size = fs.statSync(s.sourcePath).size
+  if (size !== s.sourceOffset) {
+    s.pauseSkippedBytes += Math.max(0, size - s.sourceOffset)
+    s.pauseStartedAt ??= Date.now()
+    s.discardPartial = false
+    if (size > 0) {
+      const fd = fs.openSync(s.sourcePath, 'r')
+      try { const tail = Buffer.alloc(1); fs.readSync(fd, tail, 0, 1, size - 1); s.discardPartial = tail[0] !== 10 }
+      finally { fs.closeSync(fd) }
+    }
+  }
+  s.pendingLineBuffer = ''
+  s.pendingByParentUuid.clear()
+  s.skipMissingParents = true
+  s.toolCommandByUseId.clear()
+  s.ignoredParents.clear()
+  checkpoint(s, size)
+  s.sourceOffset = size
+}
+
+function reportGap(s: SessionState): void {
+  if (!s.pauseSkippedBytes && !s.pauseSkippedLines) return
+  const ev = ingestEvent('system', { subtype: 'capture_gap', agent: s.agentKind, session_id: s.sessionId,
+    skipped_bytes: s.pauseSkippedBytes, skipped_units: s.pauseSkippedLines,
+    gap_started_at: s.pauseStartedAt, gap_ended_at: Date.now(),
+    description: 'Recording paused: source content omitted from events and sidecar.'
+  }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+  if (!ev) throw new Error('AI capture gap was not saved')
+  s.pauseSkippedBytes = 0; s.pauseSkippedLines = 0; s.pauseStartedAt = null
+}
+
+function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): void {
+  const before = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
+  try {
+    fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 })
+    checkpoint(s, offset, before + bytes.length)
+  } catch (e) {
+    // A short write or a failed checkpoint cannot leave an advanced raw cursor.
+    if (fs.existsSync(s.sidecarPath)) fs.truncateSync(s.sidecarPath, before)
+    throw e
+  }
+  s.sourceOffset = offset
+  s.runningHash.update(bytes)
+  s.bytesAppendedSinceSnapshot += bytes.length
+  clearCaptureError(`agent-${s.agentKind}`)
 }
 
 function catchUpJsonl(s: SessionState): void {
-  let sourceSize: number
-  try { sourceSize = fs.statSync(s.sourcePath).size } catch { return }
-  let sidecarSize = 0
-  try { sidecarSize = fs.statSync(s.sidecarPath).size } catch { /* new */ }
-
-  const shouldReset = s.adapter.detectReset
-    ? s.adapter.detectReset(sidecarSize, sourceSize)
-    : (sourceSize < sidecarSize)
-
-  if (shouldReset) {
-    const oldHash = fileSha256(s.sidecarPath)
-    // Audit 2026-09-18 P1: archive the sidecar before truncating so the raw
-    // pre-compact transcript is preserved for forensic review.
-    if (sidecarSize > 0) {
-      const archivePath = s.sidecarPath + `.${Date.now()}.bak`
-      try {
-        fs.copyFileSync(s.sidecarPath, archivePath)
-        fs.chmodSync(archivePath, 0o600)
-      } catch { /* best-effort */ }
-    }
-    try { fs.truncateSync(s.sidecarPath, 0) } catch { /* ignore */ }
-    s.pendingLineBuffer = ''
-    // The held partial line is gone with the old content; a pause mark on it
-    // would drop the first line of the new one.
-    setPauseTail(s, false)
-    s.redlogIdByUuid.clear()
-    s.linesSeen = 0
-    s.postCompact = true
-    s.lastSnapshotBytes = 0
-    s.bytesAppendedSinceSnapshot = 0
-    s.runningHash = crypto.createHash('sha256')
-    try {
-      const ev = ingestEvent('agent', {
-        subtype: 'transcript_compacted',
-        session_id: s.sessionId,
-        agent: s.agentKind,
-        old_sidecar_bytes: sidecarSize,
-        old_sidecar_sha256: oldHash,
-        new_source_bytes: sourceSize,
-        description: 'Source transcript shrunk (likely /compact, /clear, or adapter-specific reset). Sidecar reset; subsequent per-turn events are tagged post_compact=true.'
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    } catch (e) { noteDbError('tailer-host', e) }
-    sidecarSize = 0
-  }
-
-  if (sourceSize <= sidecarSize) return
-
-  // P0 fix: read delta in bounded chunks to avoid OOM on large transcripts.
-  const MAX_CHUNK = 10 * 1024 * 1024 // 10 MB per tick
-  const toRead = Math.min(sourceSize - sidecarSize, MAX_CHUNK)
-  let bytes: Buffer
+  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
   try {
-    const handle = fs.openSync(s.sourcePath, 'r')
-    try {
-      bytes = Buffer.alloc(toRead)
-      let readTotal = 0
-      while (readTotal < toRead) {
-        const n = fs.readSync(handle, bytes, readTotal, toRead - readTotal, sidecarSize + readTotal)
-        if (n === 0) break
-        readTotal += n
-      }
-      bytes = bytes.slice(0, readTotal)
-    } finally { try { fs.closeSync(handle) } catch { /* ignore */ } }
-  } catch (e) { noteDbError('tailer-host', e); return }
-
-  // P0 fix (sidecar-cursor decoupling): parse lines and insert DB events
-  // BEFORE advancing the sidecar. Previously sidecar was written first,
-  // which meant a crash between sidecar-append and DB-insert permanently
-  // lost those turns (sidecar had advanced, restart would skip them).
-  // Now: parse → insert → sidecar-append, so a crash before sidecar-append
-  // simply re-reads the same bytes on restart.
-  const paused = eventBus.paused
-  // To put back if a write fails: these bytes are then read again.
-  const before = {
-    pending: s.pendingLineBuffer, pauseTail: s.pauseTail, pauseSkipped: s.pauseSkippedLines,
-    // Counted again on the re-read; toolCallsSeen left doubled would raise a
-    // false tool-gap advisory against toolCallsEmitted.
-    linesSeen: s.linesSeen, toolCallsSeen: s.toolCallsSeen
-  }
-  const text = s.pendingLineBuffer + bytes.toString('utf-8')
-  const lastNl = text.lastIndexOf('\n')
-  let complete = lastNl === -1 ? '' : text.slice(0, lastNl)
-  s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
-
-  // What RedLog keeps of these bytes. While paused it keeps none of them:
-  // newlines of the same length stand in, so the sidecar's size still marks
-  // how far the source has been read and resume does not re-read the pause,
-  // and a restart's line alignment finds a boundary at its end.
-  // A paused line still unfinished after resume is filler too, all of it.
-  let kept = paused || (s.pauseTail && lastNl === -1) ? Buffer.alloc(bytes.length, 0x0a) : bytes
-  if (!paused && s.pauseTail && lastNl !== -1) {
-    // The first complete line finishes one that began during the pause.
-    const cut = bytes.indexOf(0x0a) + 1
-    kept = Buffer.concat([Buffer.alloc(cut, 0x0a), bytes.subarray(cut)])
-    const firstNl = complete.indexOf('\n')
-    complete = firstNl === -1 ? '' : complete.slice(firstNl + 1)
-    s.pauseSkippedLines++
-    setPauseTail(s, false)
-  }
-
-  if (!paused) {
-    const failuresBefore = s.writeFailures
-    for (const raw of complete.split('\n')) {
-      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-      if (!line.trim()) continue
-      s.linesSeen++
-      // A malformed complete line stays malformed: skipped, as before.
-      if (processUnit(s, line, s.sourcePath) === 'unparsed') noteDbError('tailer-host', new Error('transcript line did not parse'))
+    if (eventBus.paused || s.checkpointPaused) {
+      // Also recover a shutdown/crash during a persisted pause without replay.
+      discardJsonl(s)
+      if (eventBus.paused) return
+      s.checkpointPaused = false; checkpoint(s)
     }
-    // A turn that did not land keeps the sidecar where it was, so the same
-    // bytes are read again; turns that did land are skipped then by uuid.
-    // Advancing anyway lost the turn for good while the source looked fine.
-    // After the bounded retries the bytes are consumed, and the loss is
-    // recorded where the operator reads gaps rather than left implied.
-    if (s.writeFailures > failuresBefore && !retriesSpent(s)) {
-      s.pendingLineBuffer = before.pending
-      setPauseTail(s, before.pauseTail)
-      s.pauseSkippedLines = before.pauseSkipped
-      s.linesSeen = before.linesSeen
-      s.toolCallsSeen = before.toolCallsSeen
-      s.heldBack = true
+    const sourceSize = fs.statSync(s.sourcePath).size
+    if (s.adapter.detectReset?.(s.sourceOffset, sourceSize) ?? (sourceSize < s.sourceOffset)) {
+      const size = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
+      // Keep prior evidence append-only; a reset never truncates recorded bytes.
+      const ev = ingestEvent('agent', { subtype: 'transcript_compacted', agent: s.agentKind, session_id: s.sessionId,
+        old_sidecar_bytes: size, old_sidecar_sha256: fileSha256(s.sidecarPath), new_source_bytes: sourceSize
+      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      if (!ev) throw new Error('AI reset was not saved')
+      s.discardPartial = false; checkpoint(s, 0); s.sourceOffset = 0
+      s.pendingByParentUuid.clear(); s.pendingLineBuffer = ''; s.postCompact = true
+      s.ignoredParents.clear(); s.toolCommandByUseId.clear(); s.skipMissingParents = true
+    }
+    if (sourceSize <= s.sourceOffset) return
+    const limit = Math.min(sourceSize - s.sourceOffset, 10 * 1024 * 1024)
+    const fd = fs.openSync(s.sourcePath, 'r')
+    let bytes: Buffer
+    try { bytes = Buffer.alloc(limit); const read = fs.readSync(fd, bytes, 0, limit, s.sourceOffset); bytes = bytes.subarray(0, read) }
+    finally { fs.closeSync(fd) }
+    if (s.discardPartial) {
+      const end = bytes.indexOf(10)
+      const skip = end < 0 ? bytes.length : end + 1
+      const previous = s.discardPartial
+      s.discardPartial = end < 0
+      try { checkpoint(s, s.sourceOffset + skip) } catch (e) { s.discardPartial = previous; throw e }
+      s.sourceOffset += skip; bytes = bytes.subarray(skip)
+    }
+    const lastNl = bytes.lastIndexOf(10)
+    if (lastNl < 0) {
+      if (bytes.length === 10 * 1024 * 1024) throw new Error('AI transcript unit exceeds the 10 MB read limit')
       return
     }
-    if (s.pauseSkippedLines > 0) {
-      try {
-        const ev = ingestEvent('system', {
-          subtype: 'capture_gap',
-          agent: s.agentKind,
-          session_id: s.sessionId,
-          skipped_lines: s.pauseSkippedLines,
-          gap_started_at: s.pauseStartedAt,
-          gap_ended_at: Date.now(),
-          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested or kept. The sidecar holds newline filler for those bytes.`
-        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      } catch (e) { noteDbError('tailer-host', e) }
-      s.pauseSkippedLines = 0
-      s.pauseStartedAt = null
+    const complete = bytes.subarray(0, lastNl + 1)
+    reportGap(s)
+    // Preserve partial UTF-8 bytes at the source; decode only complete lines.
+    s.unitSidecarOffset = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
+    for (const line of complete.toString('utf8').split('\n')) {
+      if (line.trim()) processUnit(s, line.replace(/\r$/, ''), s.sourcePath)
+      s.unitSidecarOffset += Buffer.byteLength(line + '\n')
     }
+    appendAndCommit(s, complete, s.sourceOffset + complete.length)
+    s.linesSeen += complete.toString('utf8').split('\n').filter(line => line.trim()).length
     scheduleIdleSnapshot(s)
-  } else {
-    const now = Date.now()
-    for (const raw of complete.split('\n')) {
-      if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) {
-        s.linesSeen++
-        s.pauseSkippedLines++
-        if (s.pauseStartedAt === null) s.pauseStartedAt = now
-      }
-    }
-    if (s.pendingLineBuffer) setPauseTail(s, true)
-  }
-
-  // Sidecar append AFTER successful DB processing — the forensic raw copy
-  // is still maintained, but the cursor (sidecar size) now reflects only
-  // bytes whose events have been committed.
-  try { fs.appendFileSync(s.sidecarPath, kept, { mode: 0o600 }) } catch (e) {
-    noteDbError('tailer-host', e); return
-  }
-  s.runningHash.update(kept)
-  s.bytesAppendedSinceSnapshot += kept.length
-
-  // If there is more data beyond the chunk cap, schedule another tick.
-  if (sourceSize - sidecarSize > toRead) {
-    setImmediate(() => catchUpJsonl(s))
-  }
+    s.retryAttempt = 0
+    if (sourceSize - s.sourceOffset > complete.length && limit === 10 * 1024 * 1024) setImmediate(() => catchUpJsonl(s))
+  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
-/** Per-message directory scan: each new file in the watched dir is one
- *  unit. Sidecar stores an index of processed filenames (line-per-name)
- *  so restart-safe by construction. */
 function catchUpPerMessageDir(s: SessionState): void {
-  // The "source path" for a per-message adapter is a DIRECTORY. List its
-  // contents, filter to files we haven't seen, sort by mtime, and process.
-  let entries: string[] = []
-  try { entries = fs.readdirSync(s.sourcePath) } catch { return }
-  // Sidecar for a per-message adapter is an append-only newline-delimited
-  // index of processed filenames. Reload it into memory at register-time
-  // (see registerSession); check membership by looking at
-  // `s.redlogIdByUuid.has(filename)` where the "uuid" IS the filename.
-  const toProcess: Array<{ name: string; full: string; mtime: number }> = []
-  for (const name of entries) {
-    if (s.redlogIdByUuid.has(name)) continue
-    const full = path.join(s.sourcePath, name)
-    let stat: fs.Stats
-    try { stat = fs.statSync(full) } catch { continue }
-    if (!stat.isFile()) continue
-    toProcess.push({ name, full, mtime: stat.mtimeMs })
-  }
-  toProcess.sort((a, b) => a.mtime - b.mtime)
-
-  // A file goes into the index only once its events are written. Indexed
-  // first, a failed or interrupted write left the file marked done and it was
-  // never read again. A paused file is indexed unread, so resume does not
-  // record the pause.
-  // Once the retries are spent the file is indexed anyway, so one file the
-  // store or the parser keeps refusing does not keep the session retrying;
-  // catchUpSession records what was given up.
-  const exhausted = retriesSpent(s)
-  for (const p of toProcess) {
-    let raw: string
-    try { raw = fs.readFileSync(p.full, 'utf-8') } catch { continue }
-    s.linesSeen++
-    if (eventBus.paused) {
-      markIndexed(s, p.name, '__paused__')
-      continue
-    }
-    const outcome = processUnit(s, raw, p.full)
-    if (outcome === 'ok') markIndexed(s, p.name, '__seen__')
-    else if (!exhausted) s.heldBack = true
-    else if (outcome === 'unparsed') { markIndexed(s, p.name, '__unparsed__'); s.unparsedGivenUp++ }
-    else markIndexed(s, p.name, '__failed__')
-  }
-  if (!eventBus.paused) scheduleIdleSnapshot(s)
-}
-
-/** pauseTail outlives a restart in a marker beside the sidecar. Without it the
- *  rest of a paused line, arriving after a restart, reads as an ordinary
- *  fragment and its bytes are kept. */
-function setPauseTail(s: SessionState, on: boolean): void {
-  if (s.pauseTail === on) return
-  s.pauseTail = on
+  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
   try {
-    if (on) fs.writeFileSync(s.sidecarPath + PAUSE_TAIL_SUFFIX, '', { mode: 0o600 })
-    else fs.rmSync(s.sidecarPath + PAUSE_TAIL_SUFFIX, { force: true })
-  } catch (e) { noteDbError('tailer-host', e) }
+    const units = fs.readdirSync(s.sourcePath).filter(name => name.endsWith('.json')).map(name => ({ name, full: path.join(s.sourcePath, name) }))
+      .map(p => ({ ...p, stat: fs.statSync(p.full) })).filter(p => p.stat.isFile() && p.stat.mtimeMs >= (activationFor(s.agentKind, s.sessionId) ?? 0))
+      .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs || a.name.localeCompare(b.name))
+    for (const p of units) {
+      if (s.redlogIdByUuid.get(p.name) === '__paused__') continue
+      if (eventBus.paused || s.checkpointPaused || (resumeBoundary > 0 && p.stat.mtimeMs < resumeBoundary + 1)) {
+        // Names only, no message/part content. Persist exclusions across restart.
+        appendAndCommit(s, Buffer.from('!pause:' + p.name + '\n'), s.sourceOffset)
+        s.redlogIdByUuid.set(p.name, '__paused__'); s.pauseSkippedLines++; s.pauseStartedAt ??= Date.now()
+        continue
+      }
+      const fingerprint = `${p.stat.mtimeMs}:${p.stat.size}`
+      if (s.completedFiles.get(p.name) === fingerprint) continue
+      reportGap(s)
+      processUnit(s, fs.readFileSync(p.full, 'utf8'), p.full)
+      if (!s.redlogIdByUuid.has(p.name)) appendAndCommit(s, Buffer.from(p.name + '\n'), s.sourceOffset)
+      s.redlogIdByUuid.set(p.name, '__seen__'); s.completedFiles.set(p.name, fingerprint); s.linesSeen++
+    }
+    if (!eventBus.paused && s.checkpointPaused) { s.checkpointPaused = false; checkpoint(s) }
+    if (!eventBus.paused) scheduleIdleSnapshot(s)
+    s.retryAttempt = 0
+  } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
-/** A marker only means something beside the sidecar it was written with. If
- *  retention pruned that sidecar the source is read from the start, and the
- *  marker would drop its first line. */
-function readPauseTail(adapter: TailerAdapter, sidecarPath: string): boolean {
-  const marker = sidecarPath + PAUSE_TAIL_SUFFIX
-  if (adapter.perMessageDir || !fs.existsSync(marker)) return false
-  let size = 0
-  try { size = fs.statSync(sidecarPath).size } catch { /* pruned */ }
-  if (size > 0) return true
-  try { fs.rmSync(marker, { force: true }) } catch { /* harmless: re-checked next time */ }
-  return false
+// Synchronous resume boundary precedes any delayed watcher callback. Empty
+// sessions/new files are registered by normal discovery and use the same gate.
+const onRecording = (recording: boolean): void => {
+  if (!cfg.enabled) return
+  try { saveBoundary(!recording) } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e); cfg.enabled = false; return }
+  for (const s of sessions.values()) {
+    try {
+      s.checkpointPaused = true
+      if (s.adapter.perMessageDir) catchUpPerMessageDir(s)
+      else discardJsonl(s)
+      s.resumedAt = Date.now(); s.skipMissingParents = true
+      if (recording) { s.checkpointPaused = false; checkpoint(s) }
+    } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e) }
+  }
 }
+eventBus.on('recording', onRecording)
 
-function markIndexed(s: SessionState, name: string, sentinel: string): void {
-  try { fs.appendFileSync(s.sidecarPath, name + '\n') } catch { /* the in-memory mark still holds for this run */ }
-  s.bytesAppendedSinceSnapshot += name.length + 1
-  // Not over a real event id: an adapter whose turn uuid is the file name has
-  // already recorded it, and `_causes` lookups need the id, not a sentinel.
-  if (!s.redlogIdByUuid.has(name)) s.redlogIdByUuid.set(name, sentinel)
-}
-
-function scheduleUnitRetry(s: SessionState): void {
-  // A pass the watcher started leaves a pending retry's schedule alone.
-  if (s.retry && !s.retryFiring) return
-  const attempt = (s.retry?.attempt ?? 0) + 1
-  // Bounded: a store that stays broken is already in capture health, and the
-  // next change tries again from here.
-  if (attempt > UNIT_RETRY_LIMIT) { s.retry = null; return }
-  armUnitRetry(s, attempt)
-}
-
-function armUnitRetry(s: SessionState, attempt: number): void {
-  if (s.retry) clearTimeout(s.retry.timer)
-  const delay = UNIT_RETRY_BASE_MS * 2 ** (attempt - 1)
-  const timer = setTimeout(() => {
-    if (sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
-    // Paused, a pass would only consume: wait out the pause, attempt unspent.
-    if (eventBus.paused) { armUnitRetry(s, attempt); return }
-    s.retryFiring = true
-    try { catchUpSession(s.agentKind, s.sessionId) } finally { s.retryFiring = false }
-  }, delay)
-  s.retry = { timer, attempt }
-}
-
-/** Whether the unit fully landed. `unparsed`: the adapter could not read it (a
- *  per-message file can be caught mid-write; a JSONL line can be malformed).
- *  `failed`: a turn's write threw. */
-type UnitOutcome = 'ok' | 'unparsed' | 'failed'
-function processUnit(s: SessionState, rawContent: string, sourcePath: string): UnitOutcome {
-  const failuresBefore = s.writeFailures
+function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {
   let raw: ParsedTurn | ParsedTurn[] | null
   try {
     raw = s.adapter.parseUnit(rawContent, sourcePath)
@@ -1128,15 +1036,25 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): U
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
       } catch (err) { noteDbError('tailer-host', err) }
     }
-    return 'unparsed'
+    noteCaptureError(`agent-${s.agentKind}`, e)
+    throw e
   }
-  if (!raw) return 'ok'
+  if (!raw) return
   const turns = Array.isArray(raw) ? raw : [raw]
+  // A failed unit is read again, so its count must not stick.
+  const toolCallsSeen = s.toolCallsSeen
+  try { processTurns(s, turns) } catch (e) { s.toolCallsSeen = toolCallsSeen; throw e }
+}
 
+function processTurns(s: SessionState, turns: ParsedTurn[]): void {
   for (const turn of turns) {
+    if (s.adapter.knownIgnoredTypes.has(turn.type)) {
+      if (turn.uuid) s.ignoredParents.set(turn.uuid, turn.parentUuid)
+      continue
+    }
     // Schema-drift check: parseUnit returned a turn whose type isn't in the
     // adapter's whitelist. Fire the advisory once per session and skip.
-    if (turn.type === 'tool_use') s.toolCallsSeen++
+    if (turn.type === 'tool_use' && !(turn.uuid && s.redlogIdByUuid.has(turn.uuid))) s.toolCallsSeen++
     if (!s.adapter.knownIngestTypes.has(turn.type)) {
       if (!s.driftAdvisoryFired.has(turn.type)) {
         s.driftAdvisoryFired.add(turn.type)
@@ -1155,7 +1073,6 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): U
     }
     emitTurn(turn, { session: s })
   }
-  return s.writeFailures === failuresBefore ? 'ok' : 'failed'
 }
 
 function scheduleIdleSnapshot(s: SessionState): void {
@@ -1233,7 +1150,7 @@ function buildSeedIndex(): Map<string, Map<string, string>> {
   // of json_extract full-table scan. Falls back to json_extract for DBs
   // that haven't migrated yet.
   const rows = getDB().prepare(
-    `SELECT id, session_id AS sid,
+    `SELECT id, json_extract(data, '$.session_id') AS sid,
             json_extract(data, '$.agent') AS agent,
             transcript_uuid AS uuid
        FROM events
@@ -1264,31 +1181,64 @@ function takeSeedSlice(sessionId: string, agentKind: string): Map<string, string
 
 export function registerSession(agentKind: string, sourcePath: string): void {
   const adapter = registeredAdapters.get(agentKind)
-  if (!adapter) return
+  if (!adapter || !cfg.enabled) return
   if (!agentEnabled(agentKind)) return
+  const allowedPaths = cfg.watchPathsByAgent ? cfg.watchPathsByAgent[agentKind] : cfg.watchPaths
+  if (cfg.watchPathsByAgent && !allowedPaths?.length) return
   const sessionId = adapter.perMessageDir
     ? path.basename(sourcePath)                                // dir name = session id
     : path.basename(sourcePath, path.extname(sourcePath))      // strip .jsonl
   const key = sessionKey(agentKind, sessionId)
   if (sessions.has(key)) return
+  if (!sessionAllowed(agentKind, sessionId)) return
   const cwd = adapter.resolveCwd(sourcePath)
   if (!cwd) return
   if (isSelfExcludedCwd(cwd, cfg.selfExclusionMarker ?? '.redlog-app-root')) return
-  if (!cwdPassesGate(cwd, cfg.excludedPaths, cfg.watchPaths)) return
-  if (!isSessionRegistered(sessionId)) return
+  if (!cwdPassesGate(cwd, cfg.excludedPaths, allowedPaths)) return
+  if (!sessionAllowed(agentKind, sessionId)) return
 
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return }
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
   try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
-  const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}.jsonl`)
+  const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}${activationFor(agentKind, sessionId) ? `-${activationFor(agentKind, sessionId)}` : ''}.jsonl`)
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 
+  let sourceBaseOffset = 0
+  const startedAt = activationFor(agentKind, sessionId)
+  // File timestamps have fractional milliseconds; ambiguous same-ms bytes
+  // belong to the omitted side of a privacy boundary.
+  const captureFrom = Math.max(startedAt ?? 0, resumeBoundary)
+  if (captureFrom && !adapter.perMessageDir) {
+    const cursorPath = sidecarPath + '.offset.json'
+    try {
+      if (fs.existsSync(cursorPath)) {
+        const cursor = JSON.parse(fs.readFileSync(cursorPath, 'utf8'))
+        if (cursor.source !== sourcePath || cursor.startedAt !== startedAt || !Number.isSafeInteger(cursor.base) || cursor.base < 0) throw new Error('Invalid AI capture start cursor')
+        sourceBaseOffset = cursor.base
+      } else {
+        const source = fs.statSync(sourcePath)
+        sourceBaseOffset = source.birthtimeMs < captureFrom + 1 ? source.size : 0
+        fs.writeFileSync(cursorPath, JSON.stringify({ source: sourcePath, startedAt, base: sourceBaseOffset }), { flag: 'wx', mode: 0o600 })
+        ingestEvent('agent', { subtype: 'transcript_capture_started', agent: agentKind, session_id: sessionId, skipped_source_bytes: sourceBaseOffset, activation_requested_at: startedAt, sidecar_file: path.basename(sidecarPath) }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }
+    } catch (e) { noteDbError('tailer-host', e); return }
+  }
   const s: SessionState = {
     sessionId,
     agentKind,
     adapter,
     sourcePath,
+    sourceBaseOffset,
+    sourceOffset: sourceBaseOffset,
+    discardPartial: false,
+    checkpointPaused: eventBus.paused,
+    pauseSkippedBytes: 0,
+    resumedAt: 0,
+    unitSidecarOffset: 0,
+    completedFiles: new Map(),
+    skipMissingParents: false,
+    ignoredParents: new Map(),
     sidecarPath,
     transcriptCwd: cwd,
     pendingLineBuffer: '',
@@ -1299,6 +1249,8 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     turnsEmitted: 0,
     postCompact: false,
     idleTimer: null,
+    retryTimer: null,
+    retryAttempt: 0,
     lastSnapshotBytes: 0,
     bytesAppendedSinceSnapshot: 0,
     driftAdvisoryFired: new Set(),
@@ -1308,44 +1260,33 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     toolGapAdvisoryFired: false,
     runningHash: crypto.createHash('sha256'),
     pauseSkippedLines: 0,
-    pauseStartedAt: null,
-    writeFailures: 0,
-    retry: null,
-    retryFiring: false,
-    heldBack: false,
-    unparsedGivenUp: 0,
-    failedTurns: new Map(),
-    pauseTail: readPauseTail(adapter, sidecarPath)
+    pauseStartedAt: null
   }
-  // Align sidecar to the last complete-line boundary. Within a run,
-  // pendingLineBuffer carries incomplete trailing text across catchUp calls.
-  // On restart pendingLineBuffer is lost; any bytes past the last '\n' in
-  // the sidecar would never be re-read from the source. Truncate so those
-  // bytes are re-read and combined with new data on the next catchUp.
-  if (!adapter.perMessageDir) {
-    const TAIL_SCAN = 64 * 1024
-    try {
-      const fd = fs.openSync(sidecarPath, 'r')
-      try {
-        const st = fs.fstatSync(fd)
-        if (st.size > 0) {
-          const readSize = Math.min(st.size, TAIL_SCAN)
-          const buf = Buffer.alloc(readSize)
-          fs.readSync(fd, buf, 0, readSize, st.size - readSize)
-          let lastNl = -1
-          for (let i = buf.length - 1; i >= 0; i--) {
-            if (buf[i] === 0x0A) { lastNl = i; break }
-          }
-          if (lastNl >= 0) {
-            const alignedSize = st.size - readSize + lastNl + 1
-            if (alignedSize < st.size) {
-              fs.ftruncateSync(fd, alignedSize)
-            }
-          }
-        }
-      } finally { fs.closeSync(fd) }
-    } catch { /* new sidecar or read error */ }
-  }
+  try {
+    const cursorPath = sidecarPath + '.offset.json'
+    if (fs.existsSync(cursorPath)) {
+      const cursor = JSON.parse(fs.readFileSync(cursorPath, 'utf8'))
+      if (cursor.source !== sourcePath || !Number.isSafeInteger(cursor.base) || !Number.isSafeInteger(cursor.offset ?? cursor.base)
+        || (cursor.offset ?? cursor.base) < 0) throw new Error('Invalid AI source checkpoint')
+      s.sourceOffset = cursor.offset ?? cursor.base
+      s.discardPartial = cursor.discardPartial === true
+      s.checkpointPaused = cursor.paused === true || eventBus.paused
+      s.pauseSkippedBytes = cursor.skippedBytes ?? 0; s.pauseStartedAt = cursor.gapStartedAt ?? null
+      if (cursor.ignoredParents) {
+        if (typeof cursor.ignoredParents !== 'object' || Array.isArray(cursor.ignoredParents) || Object.values(cursor.ignoredParents).some(id => id !== null && typeof id !== 'string')) throw new Error('Invalid AI parent metadata')
+        s.ignoredParents = new Map(Object.entries(cursor.ignoredParents))
+      }
+      s.resumedAt = cursor.resumedAt ?? 0; s.skipMissingParents = cursor.skipMissingParents === true; s.replayFrom = cursor.replayFrom
+      if (cursor.savedBytes !== undefined) {
+        // Retention removes whole sidecars and records it; reading resumes at
+        // the checkpoint. A sidecar that is present but short is refused.
+        const actual = fs.existsSync(sidecarPath) ? fs.statSync(sidecarPath).size : null
+        if (!Number.isSafeInteger(cursor.savedBytes) || cursor.savedBytes < 0 || (actual !== null && actual < cursor.savedBytes)) throw new Error('AI sidecar is shorter than its checkpoint')
+        if (actual === null) { cursor.savedBytes = 0; s.replayFrom = undefined }
+        if (actual !== null && actual > cursor.savedBytes) fs.truncateSync(sidecarPath, cursor.savedBytes)
+      }
+    } else checkpoint(s)
+  } catch (e) { noteDbError('tailer-host', e); return }
   // Seed running hash from existing sidecar so incremental updates produce
   // the same digest as a full-file read would.
   try {
@@ -1387,6 +1328,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
       const idx = fs.readFileSync(sidecarPath, 'utf-8')
       for (const raw of idx.split('\n')) {
         const name = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+        if (name.startsWith('!pause:')) { s.redlogIdByUuid.set(name.slice(7), '__paused__'); continue }
         if (name && !s.redlogIdByUuid.has(name)) {
           s.redlogIdByUuid.set(name, '__seen__')  // sentinel, not a real id
         }
@@ -1394,6 +1336,17 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     } catch { /* new sidecar, no index yet */ }
   }
 
+  if (!eventBus.paused && !s.checkpointPaused && s.replayFrom !== undefined && !adapter.perMessageDir) {
+    try {
+      const bytes = fs.readFileSync(sidecarPath)
+      if (!Number.isSafeInteger(s.replayFrom) || s.replayFrom < 0 || s.replayFrom > bytes.length) throw new Error('Invalid AI pending replay boundary')
+      s.unitSidecarOffset = s.replayFrom
+      for (const line of bytes.subarray(s.replayFrom).toString('utf8').split('\n')) {
+        if (line.trim()) processUnit(s, line, sourcePath)
+        s.unitSidecarOffset += Buffer.byteLength(line + '\n')
+      }
+    } catch (e) { noteDbError('tailer-host', e); sessions.delete(key); return }
+  }
   catchUpSession(agentKind, sessionId)
 }
 
@@ -1401,7 +1354,7 @@ function unregisterSession(key: string): void {
   const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
-  if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
+  if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
   const ct = coalesceTimers.get(key)
   if (ct) { clearTimeout(ct); coalesceTimers.delete(key) }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove
@@ -1425,11 +1378,18 @@ function unregisterSession(key: string): void {
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 export function configureHost(next: Partial<TailerHostConfig>): void {
+  stopHost()
   cfg = { ...cfg, ...next }
+  if (cfg.enabled) {
+    try { restoreBoundary() } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e); cfg.enabled = false; return }
+  }
   restartAll()
 }
 
 export function stopHost(): void {
+  ++hostGeneration
+  for (const kind of initializedAdapters) registeredAdapters.get(kind)?.stop?.()
+  initializedAdapters.clear()
   for (const [, w] of watchersByAgent) void w.close()
   watchersByAgent.clear()
   for (const [, t] of coalesceTimers) clearTimeout(t)
@@ -1445,7 +1405,6 @@ export function stopHost(): void {
 }
 
 function restartAll(): void {
-  stopHost()
   if (!cfg.enabled || !cfg.engagementId || !cfg.operatorId) {
     return
   }
@@ -1455,24 +1414,46 @@ function restartAll(): void {
 function restartAdapter(adapter: TailerAdapter): void {
   const w = watchersByAgent.get(adapter.agentKind)
   if (w) void w.close()
-  if (!agentEnabled(adapter.agentKind)) { watchersByAgent.delete(adapter.agentKind); return }
-  const root = expandTilde(adapter.transcriptGlob.split('*')[0] || adapter.transcriptGlob)
+  if (!cfg.enabled || !agentEnabled(adapter.agentKind) || (cfg.watchPathsByAgent && !cfg.watchPathsByAgent[adapter.agentKind]?.length)) { watchersByAgent.delete(adapter.agentKind); return }
+  const generation = hostGeneration
+  const current = (): boolean => generation === hostGeneration && cfg.enabled && agentEnabled(adapter.agentKind)
+  const root = adapter.transcriptRoot ?? expandTilde(adapter.transcriptGlob.split('*')[0] || adapter.transcriptGlob)
   const watchDir = adapter.perMessageDir
     ? root  // per-message: watch parent dir, each subdir/file is a session
     : root  // per-line: same — chokidar filters within
-  if (!fs.existsSync(watchDir)) return
+  if (adapter.init && !initializedAdapters.has(adapter.agentKind)) {
+    initializedAdapters.add(adapter.agentKind)
+    adapter.init({ acceptsMessage: (kind, msg, changedAt) => current() && hostControlSurface.acceptsMessage(kind, msg, changedAt), emitTurns: (kind, sid, turns) => { if (current()) hostControlSurface.emitTurns(kind, sid, turns) } })
+  }
   const isJsonl = !adapter.perMessageDir
-  const watchDirCanon = path.resolve(watchDir)
-  const watcher = chokidar.watch(watchDir, {
-    ignored: isJsonl
-      ? /(^|[/\\])\.|node_modules|(?<!\.jsonl)$/
-      : /(^|[/\\])\.|node_modules/,
+  let existing = path.resolve(watchDir)
+  while (!fs.existsSync(existing) && path.dirname(existing) !== existing) existing = path.dirname(existing)
+  const missing = path.relative(existing, path.resolve(watchDir))
+  const watchTarget = fs.realpathSync(existing)
+  const watchDirCanon = path.join(watchTarget, missing)
+  const watcher = chokidar.watch(missing ? watchTarget : watchDirCanon, {
+    disableGlobbing: true,
+    // Ignore nested hidden paths, not the explicitly authorized transcript
+    // root (.codex/.claude). Directories must remain traversable: filtering
+    // every non-jsonl path here also filtered all intermediate directories.
+    ignored: (p: string, stat?: fs.Stats): boolean => {
+      const candidate = path.resolve(p)
+      const relative = path.relative(watchDirCanon, candidate)
+      // Chokidar checks missing roots through their existing ancestors. Keep
+      // those directories traversable without admitting sibling files/trees.
+      if (relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative)) {
+        return !(watchDirCanon.startsWith(candidate + path.sep) && (!stat || stat.isDirectory()))
+      }
+      if (relative.split(path.sep).some(part => part.startsWith('.') || part === 'node_modules')) return true
+      return !!(isJsonl && stat?.isFile() && !p.endsWith('.jsonl'))
+    },
     persistent: true,
     ignoreInitial: false,
-    depth: 6,
+    depth: 6 + (missing ? missing.split(path.sep).length : 0),
     awaitWriteFinish: false
   })
   watcher.on('add', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (p.endsWith('.jsonl')) {
         registerSession(adapter.agentKind, p)
@@ -1489,6 +1470,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     else registerSession(adapter.agentKind, sessionDir)
   })
   watcher.on('addDir', (p) => {
+    if (!current()) return
     // v0.8.0.1: per-message layout. Only register directories that are
     // DIRECT children of the watched root — those correspond to session
     // ids (e.g. `~/.../storage/message/ses_abc`). Anything nested or the
@@ -1498,6 +1480,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     registerSession(adapter.agentKind, p)
   })
   watcher.on('change', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
@@ -1515,6 +1498,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
   })
   watcher.on('unlink', (p) => {
+    if (!current()) return
     if (isJsonl) {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
@@ -1523,6 +1507,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     // Per-message: individual msg-file deletion doesn't close a session.
   })
   watcher.on('unlinkDir', (p) => {
+    if (!current()) return
     if (isJsonl) return
     if (path.dirname(path.resolve(p)) !== watchDirCanon) return
     const sid = path.basename(p)

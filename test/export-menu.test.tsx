@@ -31,11 +31,24 @@ function install(resolveExportPlan: (request: ExportRequest) => Promise<ExportPl
 
 function openJson(): void {
   fireEvent.click(screen.getByLabelText('Export'))
-  fireEvent.click(screen.getByText('Everything'))
+  fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'all' } })
 }
 
 describe('ExportMenu plan preview', () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+  it('keeps JSON chain/scope warnings without attachment instructions', async () => {
+    const selected = plan(2)
+    selected.request.subset = { kind: 'selection', projection: 'events', filter: {} }
+    install(async () => ({ ok: true, plan: selected }))
+    const { container } = render(<I18nProvider><ExportMenu totalCount={2} /></I18nProvider>)
+    openJson()
+    await screen.findByTestId('export-commands-note')
+    expect(screen.getByTestId('export-preview-no-attachments').textContent).toContain('Attachments')
+    expect(screen.getByTestId('export-projection-notice').textContent).toContain('not proof of the complete source chain')
+    expect(container.textContent).not.toMatch(/attachments are chosen individually|Entire recording attachments|HTTP bodies/)
+    expect(screen.getByTestId('export-commands-note').textContent).toContain('not filtered by web scope')
+  })
+
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
   // The evidence bundle cannot scrub operator PII, so the plan resolver
   // refuses the pair (unsupported-policy). The menu must not offer it as if it
@@ -44,11 +57,11 @@ describe('ExportMenu plan preview', () => {
     install(vi.fn())
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
-    const bundle = (): HTMLButtonElement | null => screen.getByText('Evidence bundle (with verifier)').closest('button')
+    const bundle = (): HTMLOptionElement => screen.getByRole('option', { name: 'Evidence bundle (with verifier)' }) as HTMLOptionElement
     expect(bundle()?.disabled).toBe(false)
     fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
     expect(bundle()?.disabled).toBe(true)
-    expect(screen.getByText('Everything').closest('button')?.disabled).toBe(false)
+    expect((screen.getByLabelText('Export range') as HTMLSelectElement).disabled).toBe(false)
   })
 
   it('keeps confirmation disabled for an empty approved selection', async () => {
@@ -56,8 +69,8 @@ describe('ExportMenu plan preview', () => {
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     openJson()
     await screen.findByText('Plan fingerprint')
-    const confirm = screen.getAllByText('Export').find((node) => node.closest('button')?.classList.contains('bg-red-600'))
-    expect(confirm?.closest('button')?.disabled).toBe(true)
+    const confirm = screen.getByTestId('export-confirm') as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
   })
 
   it('exposes loading and approved policy/selection details', async () => {
@@ -102,7 +115,7 @@ describe('ExportMenu plan preview', () => {
 // UI/UX audit F12: the preview is a dialog, a failed run keeps it, and a
 // finished export can be shown in its folder.
 describe('ExportMenu as a dialog', () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
   it('opens the preview as a modal dialog', async () => {
     install(async () => ({ ok: true, plan: plan(2) }))
@@ -126,7 +139,7 @@ describe('ExportMenu as a dialog', () => {
     // Confirming again would reuse a spent plan; the way on is to recalculate.
     expect((screen.getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByText('Recalculate and try again'))
-    await waitFor(() => expect(resolve).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(resolve).toHaveBeenCalledTimes(3))
     await waitFor(() => expect(screen.queryByTestId('export-run-error')).toBeNull())
   })
 
@@ -172,15 +185,15 @@ describe('ExportMenu as a dialog', () => {
 // that renders part of itself and stops. `Option` and `PreviewRow` were
 // written that way and `Toggle` was added beside them.
 describe('the menu renders all of itself', () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
   it('shows both choices and every format, not just the first row', () => {
     install(vi.fn())
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
     expect(screen.getByLabelText(/scrub operator pii/i)).toBeTruthy()
-    expect(screen.getByLabelText(/masked \(recommended\)/i)).toBeTruthy()
-    expect(screen.getByText('Everything')).toBeTruthy()
+    expect(screen.getByLabelText(/mask out-of-scope content using web scope/i)).toBeTruthy()
+    expect(screen.getByLabelText('Export range')).toBeTruthy()
     expect(screen.getByText('Evidence bundle (with verifier)')).toBeTruthy()
   })
 
@@ -191,9 +204,9 @@ describe('the menu renders all of itself', () => {
     install(vi.fn())
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
-    const mask = screen.getByLabelText(/masked \(recommended\)/i) as HTMLInputElement
+    const mask = screen.getByLabelText(/mask out-of-scope content using web scope/i) as HTMLInputElement
     expect(mask.checked).toBe(true)
     fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
-    expect((screen.getByLabelText(/masked \(recommended\)/i) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByLabelText(/mask out-of-scope content using web scope/i) as HTMLInputElement).checked).toBe(true)
   })
 })

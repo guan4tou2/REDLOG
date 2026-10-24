@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { claudeCodeAdapter } from '../src/main/services/adapters/claude-code'
+import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
 import { eventBus } from '../src/core/event-bus'
 import { initDB, closeDB } from '../src/core/db/index'
@@ -13,7 +13,7 @@ import { createOperator, generateToken } from '../src/core/db/operators'
 // writing events during a pause but went on appending the transcript's raw
 // bytes to its own sidecar, so the private conversation was kept on disk all
 // the same. It now keeps none of those bytes, and resume must not read them
-// back in either: the sidecar's size is also where the next read starts.
+// back in either.
 
 const OP = 'operator-1'
 const SID = 'aaaaaaaa-bbbb-cccc-dddd-00000000p0se'
@@ -65,10 +65,8 @@ describe('an AI transcript read while recording is paused', () => {
 
     expect(recorded()).toEqual(['after the pause', 'before the pause'])
     expect(sidecar()).not.toContain('PRIVATE-CONVERSATION')
-    // The sidecar still marks how far the source was read.
-    expect(fs.statSync(_sessionsForTest().get(`claude-code:${SID}`)!.sidecarPath).size).toBe(fs.statSync(source).size)
     const gap = queryEvents({ agentType: 'system', limit: 10 }).find((e) => e.data.subtype === 'capture_gap')
-    expect(gap?.data.skipped_lines).toBe(1)
+    expect(gap?.data.skipped_bytes).toBe(Buffer.byteLength(turn('u2', 'PRIVATE-CONVERSATION')))
   })
 
   it('drops a line that began during the pause and finished after it', () => {
@@ -177,5 +175,27 @@ describe('a CRLF transcript', () => {
     catchUpSession('claude-code', SID)
     expect(recorded()).toEqual(['after', 'before'])
     expect(sidecar()).not.toContain('PRIVATE')
+  })
+})
+
+describe('a transcript started before AI capture was turned on', () => {
+  // Capture reads from the activation point, so the sidecar holds only what
+  // came after it and the read position is that base plus the sidecar's size.
+  it('keeps nothing of a pause read after the base, and resumes from the right place', () => {
+    fs.writeFileSync(source, turn('old', 'before activation'))
+    const startedAt = Date.now() + 1000
+    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000, activationStarts: { 'claude-code': startedAt } })
+    registerSession('claude-code', source)
+
+    eventBus.pause()
+    fs.appendFileSync(source, turn('u2', 'PRIVATE-CONVERSATION'))
+    catchUpSession('claude-code', SID)
+    eventBus.resume()
+    fs.appendFileSync(source, turn('u3', 'after the pause'))
+    catchUpSession('claude-code', SID)
+
+    expect(recorded()).toEqual(['after the pause'])
+    expect(sidecar()).not.toContain('PRIVATE-CONVERSATION')
+    expect(sidecar()).not.toContain('before activation')
   })
 })

@@ -65,6 +65,8 @@ export async function launchWithTempHome(executablePath?: string): Promise<{
       NODE_ENV: 'test',
       HOME: tmpHome,
       USERPROFILE: tmpHome,
+      CLAUDE_CONFIG_DIR: join(tmpHome, '.claude'),
+      CODEX_HOME: join(tmpHome, '.codex'),
       // Enables dev-only IPC endpoints used by E2E specs. The main process
       // refuses those endpoints when this flag is unset.
       REDLOG_E2E: '1'
@@ -144,8 +146,16 @@ export async function openCaptureProof(page: Page): Promise<void> {
  * category by its stable id instead, the same way `openView` reaches a view.
  */
 export async function openSettingsPage(page: Page, id: string): Promise<void> {
-  await page.click(`[data-settings-page="${id}"]`)
-  await page.waitForSelector(`[data-settings-page="${id}"][aria-current="page"]`, { timeout: 10_000 })
+  const select = page.getByTestId('settings-page-select')
+  const item = page.locator(`[data-settings-page="${id}"]`)
+  await expect.poll(async () => await select.isVisible() || await item.isVisible()).toBe(true)
+  if (await select.isVisible()) {
+    await select.selectOption(id)
+    await expect(select).toHaveValue(id)
+    return
+  }
+  await item.click()
+  await expect(item).toHaveAttribute('aria-current', 'page')
 }
 
 /**

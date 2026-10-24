@@ -1,4 +1,4 @@
-import type { IpcMain } from 'electron'
+import type { IpcMain, WebContents } from 'electron'
 import { screen } from 'electron'
 import type { IpcContext } from './types'
 import { saveOverlayPosition } from '../services/overlay-position'
@@ -78,6 +78,19 @@ export function setOverlayPassThrough(on: boolean): void {
     saveConfig(dir, { ...cfg, overlay: { ...cfg.overlay, passThrough: on } })
   }
   if (_ctx) _ctx.send(_ctx.getMainWindow(), 'overlay:passThroughChanged', on)
+}
+
+/** The same recovery chord must also work inside RedLog's own windows when
+ * macOS does not deliver the registered global accelerator. Release only:
+ * duplicate delivery by the global handler cannot turn pass-through back on. */
+export function bindOverlayReleaseShortcut(contents: WebContents): void {
+  contents.on('before-input-event', (event, input) => {
+    const isMac = process.platform === 'darwin'
+    if (input.type !== 'keyDown' || !input.shift || input.alt ||
+      input.meta !== isMac || input.control === isMac || input.key.toLowerCase() !== 'p') return
+    event.preventDefault()
+    setOverlayPassThrough(false)
+  })
 }
 
 export function startOverlayMouseTracking(): void {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
 import HooksPanel from '../src/renderer/src/components/settings/HooksPanel'
 
 // Spec 052 T034. Settings has to be able to answer "what will my shell do",
@@ -18,7 +18,6 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
     (acc, [k, v]) => acc.replace(`{{${k}}}`, String(v)),
     ({
       'settings.hooksBuiltin': 'Built-in',
-      'settings.hooksHint': 'hint',
       'settings.terminalMode': 'New terminals: {{mode}}',
       'settings.terminalMode.auto': 'recording from the first prompt',
       'settings.terminalMode.manual': 'not recording until redlog start',
@@ -60,13 +59,26 @@ describe('the hooks panel says what the shell will do', () => {
     await waitFor(() => expect(screen.getByText(/recording from the first prompt/)).toBeTruthy())
   })
 
+  it('keeps the current mode visible while tool classifications are expandable', async () => {
+    draw(async () => ({ mode: 'manual', native: ['nc', 'vim'], pty: ['ssh'] }))
+    const mode = await screen.findByText(/not recording until redlog start/)
+    const summary = mode.closest('summary')
+    expect(summary).not.toBeNull()
+    const details = summary!.closest('details')!
+    expect(details.open).toBe(false)
+    fireEvent.click(summary!)
+    expect(details.open).toBe(true)
+    expect(details.textContent).toContain('left alone: nc vim')
+    expect(details.textContent).toContain('given a PTY: ssh')
+  })
+
   it('leaves the note out rather than throwing when the bridge is older', async () => {
     // A renderer can outlive its preload — the running window's bridge may
     // predate this method, and it needs a full reload rather than HMR. The
     // panel is still useful without the note.
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     draw(undefined)
-    await waitFor(() => expect(screen.getByText('hint')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Built-in')).toBeTruthy())
     expect(document.body.textContent).not.toMatch(/New terminals/)
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()

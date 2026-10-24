@@ -61,6 +61,7 @@ describe('export destination IPC', () => {
     registerDataExportIpc(ipcMain as never, ctx, { planRegistry: new ExportPlanRegistry() })
   })
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
     fs.rmSync(out, { recursive: true, force: true })
@@ -99,6 +100,24 @@ describe('export destination IPC', () => {
       expect(executed.ok, executed.error).toBe(true)
       expect(path.dirname(executed.artifactPath)).toBe(path.resolve(out))
     }
+  })
+
+  it.each(['json', 'ndjson', 'har', 'timeline'])('preserves both %s exports made in the same second', async (format) => {
+    vi.spyOn(Date.prototype, 'toISOString').mockReturnValue('2026-10-24T00:00:00.000Z')
+    const execute = async () => {
+      const result = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan(format) } as never) as { ok: boolean; artifactPath: string }
+      expect(result.ok).toBe(true)
+      return result.artifactPath
+    }
+    const first = await execute()
+    const original = fs.readFileSync(first)
+    const firstManifest = fs.readFileSync(`${first}.manifest.json`)
+    const second = await execute()
+    expect(second).not.toBe(first)
+    expect(fs.readFileSync(first)).toEqual(original)
+    expect(fs.readFileSync(`${first}.manifest.json`)).toEqual(firstManifest)
+    expect(fs.existsSync(second)).toBe(true)
+    expect(JSON.parse(fs.readFileSync(`${second}.manifest.json`, 'utf8')).artifactPath).toBe(path.basename(second))
   })
 
   it('refuses a folder the dialog never returned, and does not spend the plan', async () => {

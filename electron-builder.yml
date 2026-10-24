@@ -5,12 +5,16 @@ directories:
   output: dist
 files:
   - out/**/*
+  - "!out/optional-ai/**/*"
   - resources/**/*
 # Ship the hook scripts alongside the app so the packaged build can point at
 # them when it installs a hook. (The stdio MCP bridge that used to ride along
 # here was removed in 2026-08 — `mcp/` no longer exists and every build was
 # printing "file source doesn't exist" for it.)
 extraResources:
+  # Optional AI packages are inert here; install copies only the selected package.
+  - from: out/optional-ai
+    to: optional-ai
   - from: hooks
     to: hooks
   # Bundled plugin packs (loader.ts bundledRoot() reads <resources>/plugins).

@@ -1,0 +1,17 @@
+{
+  "id": "official-ai-opencode",
+  "name": "OpenCode",
+  "version": "1.0.0",
+  "redlogApi": 1,
+  "kind": "pack",
+  "author": "RedLog",
+  "contributes": {},
+  "redlogAgent": {
+    "agentKind": "opencode",
+    "order": 2,
+    "entry": "adapter.cjs",
+    "source": {
+      "defaultPath": ".local/share/opencode/storage/message"
+    }
+  }
+}

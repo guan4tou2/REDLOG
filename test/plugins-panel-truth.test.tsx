@@ -21,7 +21,7 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 
 type Status = 'active' | 'disabled'
 const view = (id: string, status: Status = 'active') => ({
-  id, name: `Plugin ${id}`, version: '1.0.0', description: '', author: 'x', source: 'user' as const,
+  officialAgent: id.startsWith('official-ai-'), id, name: `Plugin ${id}`, version: '1.0.0', description: '', author: 'x', source: 'user' as const,
   tier: 'declarative' as const, status, capabilities: [], contributes: []
 })
 
@@ -182,4 +182,14 @@ describe('the plugins page shows what main has done', () => {
       expect(JSON.stringify(toasts.plain[0].opts)).not.toContain('manifest may have changed')
     })
   })
+})
+
+// Official integrations have their installation and project controls on the source page.
+it('does not expose a second official AI switch alongside third-party plugins', async () => {
+  api.list.mockResolvedValue([view('official-ai-claude-code'), view('official-ai-codex', 'disabled'), view('third-party')])
+  draw()
+  await screen.findByText('Plugin third-party')
+  expect(screen.queryByText('Plugin official-ai-codex')).toBeNull()
+  expect(screen.queryByText('Plugin official-ai-claude-code')).toBeNull()
+  cleanup()
 })

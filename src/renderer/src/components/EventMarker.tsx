@@ -196,14 +196,14 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame }: EventMa
 
         <p className="text-xs text-redlog-text-faint">{t('marker.immutableHint')}</p>
 
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-redlog-text-dim">
+        <label className="flex items-center gap-2 min-h-8 py-1 cursor-pointer text-xs text-redlog-text-dim">
           <input
             type="checkbox"
             checked={withScreenshot}
             onChange={(e) => setWithScreenshot(e.target.checked)}
-            className="accent-red-600"
+            className="w-4 h-4 shrink-0 accent-red-600"
           />
-          <span>{t('marker.withScreenshot')}</span>
+          <span className="min-w-0 flex-1">{t('marker.withScreenshot')}</span>
         </label>
 
         <div className="flex gap-2 justify-end">

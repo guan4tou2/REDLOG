@@ -3,6 +3,7 @@ import { toast } from '../Toast'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
+import { CheckRow } from './CheckRow'
 
 const DEFAULT_VPN_ADAPTERS = [
   { name: 'WireGuard', pattern: 'wireguard|^wg\\d', enabled: true },
@@ -53,18 +54,14 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
     <div>
       <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.vpnAdapters')}</label>
       <p className="text-xs text-redlog-text-faint mb-2">{t('settings.vpnAdaptersHint')}</p>
-      <div className="space-y-1">
+      <div className="grid gap-x-4 gap-y-1" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 22rem), 1fr))' }}>
         {adapters.map((a, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <label className="flex items-center gap-2 flex-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={a.enabled}
-                onChange={() => toggle(i)}
-                className="accent-red-600"
-              />
-              <span className="text-xs text-redlog-text">{a.name}</span>
-            </label>
+          <div key={i} className="min-w-0 flex flex-wrap items-center gap-x-2">
+            <CheckRow
+              checked={a.enabled}
+              onChange={() => toggle(i)}
+              label={a.name}
+            />
             <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[240px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
               <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">&times;</button>
@@ -74,19 +71,19 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
       </div>
       <div className="mt-3 pt-2 border-t border-redlog-border">
         <p className="text-xs text-redlog-text-dim mb-1">{t('settings.vpnAddCustom')}</p>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t('settings.vpnNamePlaceholder')}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
           />
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addCustom()}
             placeholder={t('settings.vpnPatternPlaceholder')}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />
           <IconButton label={t('common.addItem')} onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
         </div>
@@ -132,7 +129,7 @@ export default function NetworkPage({
       <FieldGroup title={t('settings.ownTraffic')}>
         <div>
           <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {(['auto', 'dns', 'http'] as const).map((m) => (
               <button
                 key={m}
@@ -150,23 +147,18 @@ export default function NetworkPage({
         {/* Every platform: off keeps the SSID off every surface (main drops it
             before the HUD sees it). Only macOS also needs Location Services. */}
         <div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.network.showWifiName ?? false}
-              onChange={(e) => {
-                const on = e.target.checked
-                setConfig({ ...config, network: { ...config.network, showWifiName: on } })
-                // Trigger the macOS Location Services prompt; once granted,
-                // the OS un-redacts the SSID for the next network poll.
-                if (on && isMacOS && navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
-                }
-              }}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
-          </label>
+          <CheckRow
+            checked={config.network.showWifiName ?? false}
+            onChange={(on) => {
+              setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+              // Trigger the macOS Location Services prompt; once granted,
+              // the OS un-redacts the SSID for the next network poll.
+              if (on && isMacOS && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+              }
+            }}
+            label={t('settings.showWifiName')}
+          />
           {isMacOS && <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>}
         </div>
         <Field

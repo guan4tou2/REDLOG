@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
+import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
-import { Download, ChevronDown, ChevronLeft } from 'lucide-react'
+import { Download, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { toast } from './Toast'
@@ -49,6 +49,14 @@ function ScopeNotes({ scopeSet, onSetScope, t }: {
   )
 }
 
+interface ExportDraft {
+  format: ExportFormat
+  range: 'current' | 'all'
+  scrubPii: boolean
+  maskScope: boolean
+  excludeAttachments: string[]
+}
+
 interface PendingExport {
   label: string
   request: ExportRequest
@@ -78,7 +86,7 @@ function AttachmentList({ rows, onToggle, busy, t }: {
   return (
     <div data-testid="export-attachments" className="px-3 py-1 border-t border-redlog-border mt-1 text-xs">
       <p className="text-redlog-text-dim mb-1">{t('export.attachments.title')}</p>
-      <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>
+      {rows.some(a => a.kind === 'cast' && a.status === 'included') && <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>}
       <ul className="max-h-48 overflow-auto space-y-0.5">
         {rows.map((a) => {
           const selectable = a.status === 'included' || a.status === 'excluded-by-operator'
@@ -95,14 +103,14 @@ function AttachmentList({ rows, onToggle, busy, t }: {
             ...(a.status !== 'included' ? [t(`export.attachments.status.${a.status}`)] : [])
           ].join(' · ')
           return (
-            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2">
+            <li key={a.id} data-testid={`export-attachment-${a.id}`} data-status={a.status} className="flex items-start gap-2 min-h-8 py-1">
               <input
                 type="checkbox"
                 aria-label={a.id}
                 checked={a.status === 'included'}
                 disabled={busy || !selectable}
                 onChange={() => onToggle(a.id)}
-                className="mt-0.5 accent-red-600"
+                className="mt-0.5 w-4 h-4 shrink-0 accent-red-600"
               />
               <span className="flex-1 min-w-0">
                 <span className="block truncate font-mono text-redlog-text" title={a.id}>
@@ -123,30 +131,7 @@ function AttachmentList({ rows, onToggle, busy, t }: {
   )
 }
 
-// These three are declared HERE, not inside ExportMenu.
-//
-// A component defined in another component's body is a new type on every
-// render, so React unmounts and remounts its whole subtree each time: focus
-// and state are lost on the keystroke that caused the render, and Fast Refresh
-// cannot reconcile the old tree with the new one — which shows up as a panel
-// that renders part of itself and stops. `Option` and `PreviewRow` had been
-// that way; `Toggle` was added that way beside them.
-
-function Option({ label, onPick, disabled: off, busy, hint }: {
-  label: string; onPick: () => void; disabled?: boolean; busy?: boolean; hint?: string
-}): JSX.Element {
-  return (
-    <button
-      onClick={onPick}
-      disabled={busy || off}
-      className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      <span className="block text-xs text-redlog-text">{label}</span>
-      {hint && <span className="block text-xs text-redlog-text-faint">{hint}</span>}
-    </button>
-  )
-}
-
+// Keep helpers at module scope so editing a policy does not remount controls.
 function PreviewRow({ label, value, warn }: {
   label: string; value: number; warn?: boolean
 }): JSX.Element | null {
@@ -164,18 +149,19 @@ function PreviewRow({ label, value, warn }: {
  *  comes out" every time — and it translated badly: its tooltip promised
  *  masked metadata, scrubbed PII and excluded infrastructure while the flag
  *  set exactly one of the three. */
-function Toggle({ on, setOn, label, warn }: {
-  on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean
+function Toggle({ on, setOn, label, warn, disabled }: {
+  on: boolean; setOn: (v: boolean) => void; label: string; warn?: boolean; disabled?: boolean
 }): JSX.Element {
   return (
-    <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
+    <label className="flex items-start gap-2 px-3 min-h-8 py-1.5 text-xs cursor-pointer">
       <input
         type="checkbox"
         checked={on}
+        disabled={disabled}
         onChange={(e) => setOn(e.target.checked)}
-        className="mt-0.5 accent-red-600"
+        className="mt-0.5 w-4 h-4 shrink-0 accent-red-600"
       />
-      <span className={warn ? 'text-amber-500' : 'text-redlog-text-dim'}>{label}</span>
+      <span className={`min-w-0 flex-1 ${warn ? 'text-amber-500' : 'text-redlog-text-dim'}`}>{label}</span>
     </label>
   )
 }
@@ -192,28 +178,21 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const viewExport = useViewExport()
   const { filter } = useSharedFilter()
   const currentSubset: ExportSubset = viewExport?.request.subset ?? { kind: 'selection', projection: 'events', filter: toEventFilter(filter) }
-  // The last format picked, kept for next time. Only the three the dropdown
-  // offers are believed: anything else in storage is ignored, and storage that
-  // cannot be read just means the default.
-  const [currentFormat, setCurrentFormatState] = useState<ExportFormat>(() => {
+  const [draft, setDraft] = useState<ExportDraft>(() => {
+    let format: ExportFormat = 'json'
     try {
       const saved = localStorage.getItem(FORMAT_KEY)
-      return saved === 'ndjson' || saved === 'bundle' ? saved : 'json'
-    } catch { return 'json' }
+      if (saved === 'ndjson' || saved === 'bundle') format = saved
+    } catch { /* remembering a format is optional */ }
+    return { format, range: 'current' as 'current' | 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[] }
   })
-  const setCurrentFormat = (format: ExportFormat): void => {
-    setCurrentFormatState(format)
-    try { localStorage.setItem(FORMAT_KEY, format) } catch { /* a convenience only */ }
-  }
-  // Where the file goes: the project's exports folder unless the operator
-  // picked another with the system dialog (that pick is the only thing main
-  // accepts as a destination).
+  // Freeze the declarative selection, never the currently loaded row ids.
+  // Live view changes behind the dialog must not change what is reviewed.
+  const selection = useRef<{ subset: ExportSubset; request?: ExportRequest; disabledReason?: string } | null>(null)
   const [destDir, setDestDir] = useState<string | null>(null)
   const [defaultDir, setDefaultDir] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [scrubPii, setScrubPii] = useState(false)
-  const [maskScope, setMaskScope] = useState(true)
   const [pending, setPending] = useState<PendingExport | null>(null)
   const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -222,20 +201,9 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   // on failure threw away exactly what the operator had just reviewed.
   const [runError, setRunError] = useState<string | null>(null)
   const previewSequence = useRef(0)
+  const attachmentFocus = useRef<string | null>(null)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !busy) {
-        if (pending) { ++previewSequence.current; setPending(null); setResolvedPlan(null); setRunError(null) }
-        else setOpen(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, pending, busy])
 
   const loadPreview = useCallback(async (p: PendingExport) => {
     const sequence = ++previewSequence.current
@@ -260,19 +228,72 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     } finally {
       if (sequence === previewSequence.current) setPreviewLoading(false)
     }
-  }, [t])
+  }, [])
 
-  // Leaving an attachment in or out is a different export: the plan is
-  // resolved again, so what is confirmed is what was previewed.
-  const toggleAttachment = (id: string): void => {
-    if (!pending || !resolvedPlan) return
-    const current = new Set(resolvedPlan.request.excludeAttachments ?? [])
-    if (current.has(id)) current.delete(id)
-    else current.add(id)
-    void loadPreview({ ...pending, request: { ...pending.request, excludeAttachments: [...current] } })
+  const requestFor = (next: typeof draft): ExportRequest => ({
+    ...selection.current?.request,
+    format: next.format,
+    subset: next.range === 'all' ? { kind: 'all' } : selection.current!.subset,
+    scrubPii: next.scrubPii,
+    maskOutOfScope: capabilitiesFor(next.format).scopeMasking && next.maskScope,
+    excludeAttachments: next.excludeAttachments
+  })
+
+  const updateDraft = (next: typeof draft): void => {
+    setDraft(next)
+    const p = { label: t(next.range === 'all' ? 'export.all' : 'export.current'), request: requestFor(next) }
+    if (next.range === 'current' && selection.current?.disabledReason) {
+      ++previewSequence.current
+      setPending(p)
+      setResolvedPlan(null)
+      setPreviewLoading(false)
+      setRunError(null)
+      setPreviewError(selection.current.disabledReason)
+      return
+    }
+    void loadPreview(p)
   }
 
+  const openDialog = (): void => {
+    selection.current = JSON.parse(JSON.stringify({ subset: currentSubset, request: viewExport?.request, disabledReason: viewExport?.disabledReason }))
+    const format = viewExport?.request.format === 'har' || viewExport?.request.format === 'timeline'
+      ? viewExport.request.format : draft.format === 'har' || draft.format === 'timeline' ? 'json' : draft.format
+    setDestDir(null)
+    setOpen(true)
+    updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], scrubPii: false })
+  }
+
+  const changeFormat = (format: ExportFormat): void => {
+    if (draft.scrubPii && !capabilitiesFor(format).piiScrubbing) return
+    if (format === 'json' || format === 'ndjson' || format === 'bundle') {
+      try { localStorage.setItem(FORMAT_KEY, format) } catch { /* convenience only */ }
+    }
+    updateDraft({ ...draft, format })
+  }
+
+  const toggleAttachment = (id: string): void => {
+    attachmentFocus.current = id
+    const excluded = new Set(draft.excludeAttachments)
+    if (excluded.has(id)) excluded.delete(id)
+    else excluded.add(id)
+    updateDraft({ ...draft, excludeAttachments: [...excluded] })
+  }
+
+  useEffect(() => {
+    if (!resolvedPlan || !attachmentFocus.current) return
+    const id = attachmentFocus.current
+    attachmentFocus.current = null
+    // Re-resolving replaces the attachment list. Restore its checkbox only
+    // when focus fell to the body; never steal it from another draft control.
+    if (document.activeElement === document.body) {
+      const input = [...(panel.current?.querySelectorAll<HTMLInputElement>('input') ?? [])]
+        .find(el => el.getAttribute('aria-label') === id)
+      input?.focus()
+    }
+  }, [resolvedPlan])
+
   const closeAll = (): void => {
+    attachmentFocus.current = null
     ++previewSequence.current
     setPending(null)
     setResolvedPlan(null)
@@ -280,6 +301,16 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     setRunError(null)
     setOpen(false)
   }
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !busy) { e.preventDefault(); closeAll() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, busy])
+  useEffect(() => () => { ++previewSequence.current }, [])
 
   const confirmExport = async (): Promise<void> => {
     if (!pending) return
@@ -314,7 +345,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
 
   const changeDestination = async (): Promise<void> => {
     const dir = await window.redlog.data.pickExportDir().catch(() => null)
-    if (dir) { setDestDir(dir); setRunError(null) }
+    if (dir) setDestDir(dir)
   }
 
   const retryRun = async (): Promise<void> => {
@@ -324,12 +355,10 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     await loadPreview(pending)
   }
 
-  const empty = totalCount === 0
-
-  // A format that cannot scrub is refused by the plan resolver, so it is not
-  // offered while scrubbing is on.
-  const cannotShare = (format: ExportFormat): boolean => scrubPii && !capabilitiesFor(format).piiScrubbing
-  const shareHint = (format: ExportFormat): string | undefined => cannotShare(format) ? t('export.cannotScrub') : undefined
+  const formats: ExportFormat[] = ['json', 'ndjson', 'bundle']
+  const viewFormat = selection.current?.request?.format
+  if (viewFormat === 'har' || viewFormat === 'timeline') formats.push(viewFormat)
+  const capability = capabilitiesFor(draft.format)
 
   return (
     <div className="relative">
@@ -337,64 +366,69 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
           name is already the button's aria-label, and the strip has to keep
           room for the project's own name and the Mark button. */}
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (open) closeAll(); else openDialog() }}
+        disabled={busy}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-label={t('export.title')}
         title={narrow ? t('export.title') : undefined}
         className={`${narrow ? TITLEBAR_ICON : TITLEBAR_CONTROL} border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-accent/40`}
       >
         <Download size={13} strokeWidth={1.5} aria-hidden />
         {!narrow && t('export.title')}
-        {!narrow && <ChevronDown size={12} strokeWidth={1.5} aria-hidden />}
       </button>
 
       {open && (
         <>
-          {/* The format picker is a menu under the button. The preview is a
-              decision with a dozen facts and a file list in it, so it is a
-              dialog of its own rather than a 280px popover (UI/UX audit F12). */}
-          <div
-            className={`fixed inset-0 z-[90] ${pending ? 'bg-black/60' : ''}`}
-            onClick={() => { if (!busy) closeAll() }}
-          />
+          <div className="fixed inset-0 z-[90] bg-black/60" onClick={() => { if (!busy) closeAll() }} />
           <div
             ref={panel}
-            role={pending ? 'dialog' : 'menu'}
-            aria-modal={pending ? true : undefined}
-            aria-label={pending ? `${t('export.title')} · ${pending.label}` : t('export.title')}
-            data-testid={pending ? 'export-dialog' : 'export-menu'}
-            className={pending
-              // whitespace-normal: the toolbar above sets nowrap and the
-              // dialog inherits it through the DOM despite being `fixed`. The
-              // preview is prose — the projection notice and the condition
-              // list — and without this it runs past 560px instead of wrapping.
-              ? 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] overflow-y-auto whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl py-1'
-              : 'absolute right-0 top-7 z-[91] w-[280px] bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl overflow-hidden py-1'}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('export.title')}
+            data-testid="export-dialog"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl"
           >
-            {pending ? (
-              /* ── Preview panel ── */
-              <div aria-busy={previewLoading} aria-live="polite">
-                <button
-                  onClick={() => { ++previewSequence.current; setPending(null); setResolvedPlan(null) }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text w-full"
-                >
-                  <ChevronLeft size={12} />
-                  {pending.label}
-                </button>
-                <div className="border-t border-redlog-border" />
+            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-redlog-border">
+              <h2 className="text-sm text-redlog-text">{t('export.title')}</h2>
+              <button type="button" onClick={closeAll} disabled={busy} aria-label={t('common.close')} className="p-1 text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"><X size={16} /></button>
+            </div>
+            <div className="min-h-0 overflow-y-auto">
+            <div className="px-3 pt-3 pb-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <label className="min-w-0 text-redlog-text-dim">
+                {t('export.rangeLabel')}
+                <select aria-label={t('export.rangeLabel')} value={draft.range} disabled={busy} onChange={e => updateDraft({ ...draft, range: e.target.value as 'current' | 'all' })} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
+                  <option value="current">{t('export.current')}</option>
+                  <option value="all">{t('export.range.all')}</option>
+                </select>
+              </label>
+              <label className="min-w-0 text-redlog-text-dim">
+                {t('export.currentFormat')}
+                <select aria-label={t('export.currentFormat')} value={draft.format} disabled={busy} onChange={e => changeFormat(e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
+                  {formats.map(format => <option key={format} value={format} disabled={draft.scrubPii && !capabilitiesFor(format).piiScrubbing}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
+                </select>
+              </label>
+            </div>
+            <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{draft.range === 'current' ? t('export.range.current', { summary: subsetSummary(selection.current!.subset, t) }) : t('export.range.allHint')}</p>
+            <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t(`export.formatHelp.${draft.format}`)}</p>
+            {totalCount === 0 && <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t('export.empty')}</p>}
+            <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy || !capability.piiScrubbing} />
+            {!capability.piiScrubbing && <p className="px-3 text-xs text-redlog-text-faint">{t('export.cannotScrub')}</p>}
+            <Toggle on={capability.scopeMasking && draft.maskScope} setOn={maskScope => updateDraft({ ...draft, maskScope })} label={draft.maskScope ? t('export.maskScope') : t('export.maskScopeOff')} warn={!draft.maskScope} disabled={busy || !capability.scopeMasking} />
+            {!capability.scopeMasking && <p className="px-3 text-xs text-redlog-text-faint">{t('export.cannotMask')}</p>}
+            <div className="border-t border-redlog-border mt-2 pt-2" aria-busy={previewLoading}>
                 {previewLoading ? (
-                  <p className="px-3 py-3 text-xs text-redlog-text-faint text-center">{t('export.preview.loading')}</p>
+                  <p role="status" className="px-3 py-3 text-xs text-redlog-text-faint text-center">{t('export.preview.loading')}</p>
                 ) : resolvedPlan ? (
                   <div className="py-1">
                     {(
                       <div className="px-3 pb-2 mb-1 border-b border-redlog-border text-xs space-y-1">
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.format')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.format')}</span>
                           <span className="font-mono text-redlog-text">{resolvedPlan.request.format.toUpperCase()}</span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.subset')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.subset')}</span>
                           {/* The actual boundary, not just "bounded": an
                               operator checking a delivery needs the dates and
                               the target they are about to hand over. */}
@@ -418,7 +452,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           </span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.policy')}</span>
                           <span data-testid="export-preview-policy" className="text-right text-redlog-text">
                             {[
                               !resolvedPlan.request.maskOutOfScope
@@ -430,7 +464,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                           </span>
                         </div>
                         <div className="flex justify-between gap-3">
-                          <span className="text-redlog-text-dim">{t('export.preview.scope')}</span>
+                          <span className="text-redlog-text-dim shrink-0">{t('export.preview.scope')}</span>
                           <span data-testid="export-preview-scope" className="text-right text-redlog-text">
                             {(resolvedPlan.scopeSnapshot?.targets ?? []).length === 0
                               ? t('export.preview.scopeNone')
@@ -466,7 +500,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         was hardcoded 0 - both are gone rather than guessed. */}
                     <ScopeNotes
                       scopeSet={planScopeSet(resolvedPlan)}
-                      onSetScope={onOpenScopeSettings ? () => { setPending(null); setResolvedPlan(null); setRunError(null); setOpen(false); onOpenScopeSettings() } : undefined}
+                      onSetScope={onOpenScopeSettings && !busy ? () => { closeAll(); onOpenScopeSettings() } : undefined}
                       t={t}
                     />
                     {resolvedPlan.request.subset.kind !== 'all' && <p data-testid="export-projection-notice" className="px-3 py-2 text-xs text-amber-400">{t('export.projectionNotice')}</p>}
@@ -481,12 +515,12 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         referenced, or some could not be attached. */}
                     {!resolvedPlan.capabilities.attachments ? (
                       <div data-testid="export-preview-no-attachments" className="flex justify-between text-xs px-3 py-0.5">
-                        <span className="text-redlog-text-dim">{t('export.preview.bodyRefs')}</span>
+                        <span className="text-redlog-text-dim">{t('export.preview.attachments')}</span>
                         <span className="text-redlog-text-faint">{t('export.preview.attachmentsUnsupported')}</span>
                       </div>
                     ) : (
                       <>
-                        <PreviewRow label={t('export.preview.bodyRefs')} value={resolvedPlan.counts.attachmentsIncluded} />
+                        <PreviewRow label={t('export.preview.attachments')} value={resolvedPlan.counts.attachmentsIncluded} />
                         <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
                         <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
                         <PreviewRow label={t('export.preview.attachmentsExcludedByOperator')} value={resolvedPlan.counts.attachmentsExcludedByOperator ?? 0} />
@@ -512,113 +546,21 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         </button>
                       </div>
                     )}
-                    <div className="px-3 pt-2 pb-1 flex gap-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => { setPending(null); setResolvedPlan(null); setRunError(null) }}
-                        disabled={busy}
-                        className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"
-                      >
-                        {t('common.cancel')}
-                      </button>
-                      <button
-                        data-testid="export-confirm"
-                        onClick={() => void confirmExport()}
-                        disabled={busy || !!runError || resolvedPlan.counts.included === 0}
-                        aria-busy={busy}
-                        className="px-4 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {busy ? t('export.running') : t('export.preview.confirm')}
-                      </button>
-                    </div>
                   </div>
                 ) : previewError ? (
                   <div data-testid="export-preview-error" role="alert" className="px-3 py-2 text-xs text-red-400">
-                    <div>{t('export.failed', { label: pending.label })}: {previewError}</div>
-                    <button type="button" onClick={() => void loadPreview(pending)} className="mt-2 text-red-300 underline hover:text-red-200">
+                    <div>{t('export.failed', { label: pending?.label ?? t('export.title') })}: {previewError}</div>
+                    <button type="button" onClick={() => { if (pending) updateDraft(draft) }} className="mt-2 text-red-300 underline hover:text-red-200">
                       {t('common.retry')}
                     </button>
                   </div>
-                ) : (
-                  <div className="px-3 py-2">
-                    <button
-                      onClick={() => void confirmExport()}
-                      disabled
-                      className="w-full px-3 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {busy ? '…' : t('export.preview.confirm')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* ── Format picker ── */
-              <>
-                <Toggle on={scrubPii} setOn={setScrubPii} label={t('export.scrubPii')} />
-                <Toggle
-                  on={maskScope}
-                  setOn={setMaskScope}
-                  label={maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
-                  warn={!maskScope}
-                />
-                <div className="border-t border-redlog-border my-1" />
-                {/* What "current" means, before anything is chosen: the
-                    filter in force now, or that there is none. */}
-                <p data-testid="export-range-current" className="px-3 py-1 text-xs text-redlog-text-dim break-words">
-                  {t('export.range.current', { summary: subsetSummary(currentSubset, t) })}
-                </p>
-                {empty && (
-                  <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
-                )}
-                {viewExport && viewExport.request.format !== 'json' && (
-                  <Option
-                    busy={busy}
-                    label={viewExport.label}
-                    disabled={empty || !!viewExport.disabledReason || cannotShare(viewExport.request.format)}
-                    hint={viewExport.disabledReason ?? shareHint(viewExport.request.format)}
-                    onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, scrubPii, maskOutOfScope: maskScope } })}
-                  />
-                )}
-                <div className="border-t border-redlog-border px-3 py-2">
-                  <label className="block text-xs text-redlog-text" htmlFor="selection-format">{t('export.currentFormat')}</label>
-                  <select id="selection-format" className="w-full bg-redlog-surface text-redlog-text text-xs py-1" value={currentFormat} onChange={e => setCurrentFormat(e.target.value as ExportFormat)}>
-                    <option value="json">JSON</option><option value="ndjson">NDJSON</option><option value="bundle">Bundle</option>
-                  </select>
-                </div>
-                <Option label={t('export.current')} disabled={!!viewExport?.disabledReason || cannotShare(currentFormat)}
-                  hint={viewExport?.disabledReason ?? shareHint(currentFormat) ?? t('export.presentationNotice')}
-                  onPick={() => void loadPreview({ label: t('export.current'), request: { format: currentFormat, subset: currentSubset, scrubPii, maskOutOfScope: maskScope } })} />
-                <Option
-                  busy={busy}
-                  label={t('export.all')}
-                  hint={t('export.range.allHint')}
-                  disabled={empty}
-                  onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', scrubPii, maskOutOfScope: maskScope } })}
-                />
-                <Option
-                  busy={busy}
-                  label={t('export.ndjson')}
-                  disabled={empty}
-                  onPick={() => void loadPreview({
-                    label: t('export.ndjson'),
-                    request: { format: 'ndjson', scrubPii, maskOutOfScope: maskScope }
-                  })}
-                />
-
-                <div className="border-t border-redlog-border my-1" />
-                {/* ── Evidence bundle (separate — different semantics) ── */}
-                <Option
-                  busy={busy}
-                  label={t('export.bundle')}
-                  disabled={empty || cannotShare('bundle')}
-                  hint={shareHint('bundle')}
-                  onPick={() => void loadPreview({
-                    label: t('export.bundle'),
-                    request: { format: 'bundle', scrubPii, maskOutOfScope: maskScope }
-                  })}
-                />
-              </>
-            )}
+                ) : null}
+            </div>
+            </div>
+            <div className="shrink-0 bg-redlog-surface border-t border-redlog-border px-3 py-2 flex gap-2 justify-end">
+              <Button size="compact" level="quiet" type="button" onClick={closeAll} disabled={busy}>{t('common.cancel')}</Button>
+              {resolvedPlan && !previewLoading && <Button size="compact" level="primary" data-testid="export-confirm" onClick={() => void confirmExport()} disabled={busy || !!runError || resolvedPlan.counts.included === 0} aria-busy={busy}>{busy ? t('export.running') : t('export.preview.confirm')}</Button>}
+            </div>
           </div>
         </>
       )}

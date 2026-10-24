@@ -337,6 +337,66 @@ export async function uninstallHook(
 }
 
 /**
+ * Parse the diagnostics script's own output into checks.
+ *
+ * The script prints coloured `✓ / ✗ / !` lines under `── section` headers —
+ * not the `[PASS] name: message` shape this parser used to expect. Nothing
+ * matched, so every line fell through to a catch-all that recorded it as a
+ * passing `info` row: a `✗ Failed to send test event` line was shown green.
+ * The parser now reads the format the script actually writes (#433).
+ *
+ * Exported so a test can feed it the script's real output instead of a
+ * synthetic format the script never emits.
+ */
+export function parseDiagnosticOutput(raw: string): WslDiagnosticResult['checks'] {
+  const checks: WslDiagnosticResult['checks'] = []
+  let section = 'diagnostics'
+  let last: WslDiagnosticResult['checks'][number] | null = null
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.replace(/\x1b\[[0-9;]*m/g, '')
+    if (!line.trim()) continue
+
+    // Section header, e.g. `── Token Path Resolution`.
+    const header = line.match(/^\s*──\s*(.+?)\s*$/)
+    if (header) { section = header[1]; last = null; continue }
+
+    // The script's own verdict line closes the run; it is a restatement of the
+    // counts, not a check.
+    if (/^\s*[✓✗!]\s+(WSL → RedLog integration is working\.|Some checks failed)/.test(line)) {
+      last = null
+      continue
+    }
+    // `Passed: 6  Failed: 1` — the summary, not a check.
+    if (/^\s*Passed:\s*\d+\s+Failed:\s*\d+\s*$/.test(line)) { last = null; continue }
+
+    const mark = line.match(/^\s*([✓✗!])\s+(.+?)\s*$/)
+    if (mark) {
+      const status = mark[1] === '✓' ? 'pass' : mark[1] === '✗' ? 'fail' : 'warn'
+      const body = mark[2]
+      // `Token file found: /path` reads better split into name + detail; a
+      // message with no `: ` keeps the section as its name.
+      const split = body.match(/^(.{1,80}?):\s+(.+)$/)
+      last = { name: split ? split[1] : section, status, message: split ? split[2] : body }
+      checks.push(last)
+      continue
+    }
+
+    // Deeper-indented prose is remediation for the check above it
+    // (`      → Is RedLog running?`), not a check of its own.
+    if (last && /^\s{4,}\S/.test(rawLine)) {
+      last.message = `${last.message} ${line.trim()}`
+      continue
+    }
+
+    // Anything else is output this parser does not understand. It used to be
+    // recorded as a PASS, which is how a failure line could be shown green;
+    // unknown is a warning, never a success.
+    checks.push({ name: 'output', status: 'warn', message: line.trim() })
+  }
+  return checks
+}
+
+/**
  * Run diagnostics on a WSL distro using the wsl-redlog-test.sh script.
  * Parses the output into structured checks.
  */
@@ -365,21 +425,9 @@ export async function runDiagnostics(distro: string): Promise<WslDiagnosticResul
       }
     }
 
-    // Parse output lines — expected format: [PASS|FAIL|WARN] check_name: message
-    const checks: WslDiagnosticResult['checks'] = []
-    for (const line of stdout.split(/\r?\n/)) {
-      const m = line.match(/^\[(PASS|FAIL|WARN)\]\s*(.+?):\s*(.*)/)
-      if (m) {
-        checks.push({
-          name: m[2].trim(),
-          status: m[1].toLowerCase() as 'pass' | 'fail' | 'warn',
-          message: m[3].trim()
-        })
-      } else if (line.trim()) {
-        // Non-structured output — include as info
-        checks.push({ name: 'info', status: 'pass', message: line.trim() })
-      }
-    }
+    // Parse the script's own output — see parseDiagnosticOutput for the format
+    // and why this is not `[PASS] name: message`.
+    const checks: WslDiagnosticResult['checks'] = parseDiagnosticOutput(stdout)
 
     if (result.timedOut) {
       checks.push({

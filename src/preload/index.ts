@@ -92,11 +92,12 @@ const api: RedLogAPI = {
     reveal: (kind: 'artifact' | 'screenshot', file: string) => ipcRenderer.invoke('artifacts:reveal', kind, file) as Promise<boolean>
   },
   agents: {
-    sources: () => ipcRenderer.invoke('agents:sources') as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+    sessions: () => ipcRenderer.invoke('agents:sessions') as Promise<Array<{ agentKind: string; sessionId: string; cwd?: string; recording: boolean }>>,
+    sources: (roots?: Record<string, string>) => ipcRenderer.invoke('agents:sources', roots) as Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   },
   hookConfig: {
-    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
-    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
+    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[] }>,
+    save: (cfg: { excludedPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   events: {
@@ -265,6 +266,9 @@ const api: RedLogAPI = {
     cancelInstall: (id: string) => ipcRenderer.invoke('runtime:cancelInstall', id)
   },
   plugins: {
+    officialAgents: () => ipcRenderer.invoke('plugins:officialAgents') as Promise<import('../core/plugins/official-agents').OfficialAgentPlugin[]>,
+    installOfficialAgent: (agentKind: string) => ipcRenderer.invoke('plugins:installOfficialAgent', agentKind) as Promise<import('../core/plugins/official-agents').OfficialAgentMutation>,
+    uninstallOfficialAgent: (agentKind: string) => ipcRenderer.invoke('plugins:uninstallOfficialAgent', agentKind) as Promise<import('../core/plugins/official-agents').OfficialAgentMutation>,
     list: () => ipcRenderer.invoke('plugins:list'),
     eventTypes: () => ipcRenderer.invoke('plugins:eventTypes'),
     reload: () => ipcRenderer.invoke('plugins:reload'),

@@ -267,19 +267,19 @@ export default function StatusBar(): JSX.Element {
             data-recording={recording ? 'on' : 'off'}
             data-capture={captureVerdict ?? 'unknown'}
             onClick={handleToggleRecording}
-            className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${narrow ? 'flex-1 overflow-hidden' : ''}`}
             title={tooltip}
             aria-label={tooltip}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-            <span className={labelColor}>{
+            <span className={`${labelColor} ${narrow ? 'min-w-0 truncate' : ''}`} title={tooltip}>{
               !recording
                 ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
             <span
-              className="text-redlog-text-dim tabular-nums"
+              className="text-redlog-text-dim tabular-nums shrink-0"
               title={since ? t('statusBar.uptimeSince', { date: formatDateTime(since) }) : undefined}
               aria-label={since ? `${uptimeStr} — ${t('statusBar.uptimeSince', { date: formatDateTime(since) })}` : undefined}
               data-testid="statusbar-uptime"
@@ -290,41 +290,62 @@ export default function StatusBar(): JSX.Element {
 
       <Sep />
 
-      <div className="flex items-center gap-1.5 shrink-0" title={narrow && ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : undefined}>
+      {/* Narrow: the dot and an accessible name, not the word. At 800×600 with
+          the shell at 200% the bar is 400px wide and the three word labels
+          pushed the HUD toggle past the right edge, where `overflow-hidden`
+          made it unreachable — a control that exists and cannot be clicked.
+          The words are still there for a screen reader, and in the title. */}
+      <div className="flex items-center gap-1.5 shrink-0" title={ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : safetyLabel}>
         <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
-        <span className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
+        <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : (safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80')}>
           {safetyLabel}
         </span>
         {!narrow && ipStatus?.externalIP && (
           <span className="text-redlog-text-dim tabular-nums">{ipStatus.externalIP}</span>
         )}
+        {narrow && <span className="sr-only">{ipStatus?.externalIP ?? ''}</span>}
       </div>
 
       <Sep />
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Clickable like its fault-counter neighbours: an unfixed scope is a
+          setup debt the chip can only point at, and the scope states share one
+          destination — Settings ▸ 範圍規則, where the lists are edited.
+          The 越界 count belongs here because the clash already happened; the
+          tab it opens is where the allow/exclude lists live. */}
+      <button
+        type="button"
+        data-testid="status-bar-scope"
+        onClick={() => window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: settingsTarget('scope') }))}
+        title={t('statusBar.scopeOpen')}
+        aria-label={t('statusBar.scopeOpen')}
+        // min-w/min-h: at 800×600/150% the bar squeezes labels away and this
+        // chip shrinks to the dot alone — 18×10, below the 24×24 floor. Same
+        // floor as the HUD toggle beside it (e2e/ui-closeout hit-area check).
+        className="flex items-center gap-1.5 shrink-0 min-w-6 min-h-6 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim/40 transition-colors"
+      >
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-red-400/80'}>{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
           </>
         ) : scopeUnknown ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span className="text-amber-400/80">{t('statusBar.scopeUnknown')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-amber-400/80'}>{t('statusBar.scopeUnknown')}</span>
           </>
         ) : scopeConfigured ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-emerald-400/80'}>{t('statusBar.scopeOk')}</span>
           </>
         ) : (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-            <span className="text-redlog-text-dim">{t('statusBar.scopeNotConfigured')}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-redlog-text-dim'}>{t('statusBar.scopeNotConfigured')}</span>
           </>
         )}
-      </div>
+      </button>
 
       {/* No loot count here. The Sidebar's 戰利品 item already carries it as a
        *  badge, next to the page it opens; a second copy on the status bar was
@@ -350,11 +371,14 @@ export default function StatusBar(): JSX.Element {
         <button
           data-testid="status-bar-overlay"
           onClick={() => window.redlog.overlay.toggle()}
-          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          // Narrow, the label is gone and only the dot is left — which made
+          // this the smallest target in the bar (18x10 at 150% zoom). The box
+          // keeps a 24px floor either way; the dot stays 6px.
+          className={`flex items-center justify-center gap-1.5 min-w-6 min-h-6 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           title={t('statusBar.toggleOverlay')}
           aria-label={t('statusBar.toggleOverlay')}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
           {!narrow && <span>{t('statusBar.overlay')}</span>}
         </button>
       </div>

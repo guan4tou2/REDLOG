@@ -57,6 +57,12 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
         .toBeGreaterThan(0)
       expect(warnings, 'the warning repeats on every prompt').toBe(1)
     })
+
+    it('does not promise spool replay without a project identity', () => {
+      expect(run.transcript).toContain('no project')
+      expect(run.transcript).toContain('not being saved')
+      expect(run.transcript).not.toContain('text is kept for replay')
+    })
   })
 
   // T038, FR-029. The relay holds the shell's descriptors for the duration of

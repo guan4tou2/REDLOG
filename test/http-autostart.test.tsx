@@ -82,18 +82,20 @@ describe('the HTTP card after the start button', () => {
     expect(screen.queryByText('開始 HTTP 擷取')).toBeNull()
   })
 
-  it('offers a restart, not a start, when the proxy is not up', async () => {
+  it('offers Start when stopped, matching the settings control', async () => {
     const { start } = mount(proxy({ state: 'stopped' }))
     const restart = await screen.findByTestId('first-run-http-restart')
-    expect(restart.textContent).toBe('重新啟動 HTTP 擷取')
+    expect(restart.textContent).toBe('啟動 HTTP 擷取')
     expect(screen.queryByText('開始 HTTP 擷取')).toBeNull()
     restart.click()
     await waitFor(() => expect(start).toHaveBeenCalled())
   })
 
-  it('offers restart after installing the dependency even if proxy status is still unavailable', async () => {
+  it('offers Retry after installing the dependency if proxy status is still unavailable', async () => {
     const { start } = mount(proxy({ state: 'unavailable', error: 'mitmdump was missing at project open' }))
-    ;(await screen.findByTestId('first-run-http-restart')).click()
+    const retry = await screen.findByTestId('first-run-http-restart')
+    expect(retry.textContent).toBe('重試')
+    retry.click()
     await waitFor(() => expect(start).toHaveBeenCalledOnce())
     expect(screen.queryByTestId('first-run-http-prepare')).toBeNull()
   })

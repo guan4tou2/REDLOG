@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
 import { I18nProvider } from '../src/renderer/src/i18n'
+import en from '../src/renderer/src/i18n/en.json'
 import { subsetSummary } from '../src/renderer/src/lib/exportSubsetText'
 
 const t = (key: string, vars?: Record<string, string | number>): string => vars ? `${key}:${JSON.stringify(vars)}` : key
@@ -39,8 +40,23 @@ function install(): void {
 }
 
 describe('subsetSummary', () => {
+  it('names enabled and disabled conditions while omitting unset filters', () => {
+    const translate = (key: string): string => (en as Record<string, string>)[key] ?? key
+    const summary = subsetSummary({ kind: 'selection', projection: 'events', filter: { hidePersonal: true, inScopeOnly: false, since: undefined } }, translate)
+    expect(summary).toContain('Hide personal traffic: Enabled')
+    expect(summary).toContain('In scope only: Disabled')
+    expect(summary).not.toMatch(/true|false|undefined/)
+    expect(summary).not.toContain('From:')
+  })
+
   it('says a selection with no condition is every stored event, not "the current view"', () => {
     expect(subsetSummary({ kind: 'selection', projection: 'events', filter: {} }, t)).toBe('export.range.noFilter')
+  })
+  it('omits empty HTTP controls without hiding an active status filter', () => {
+    expect(subsetSummary({ kind: 'selection', projection: 'http', filter: {}, http: { statusPrefix: '4', text: '', host: undefined } }, t))
+      .toBe('export.condition.statusPrefix: 4')
+    expect(subsetSummary({ kind: 'selection', projection: 'http', filter: {}, http: { text: '' } }, t))
+      .toBe('export.range.noFilter')
   })
   it('lists the conditions, the whole project, and a time range', () => {
     expect(subsetSummary({ kind: 'selection', projection: 'events', filter: { targetId: 'a.test' } }, t)).toContain('a.test')
@@ -61,25 +77,25 @@ describe('Export menu: range, remembered format, destination', () => {
     // The default view already hides personal traffic, and the line says so rather
     // than calling it "no filter".
     expect(screen.getByTestId('export-range-current').textContent).toMatch(/Current view covers: .*Hide personal traffic/)
-    expect(screen.getByText('The whole project; the current filter is not applied')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'all' } })
+    expect(screen.getByTestId('export-range-current').textContent).toBe('The whole project; the current filter is not applied')
   })
 
   it('remembers the format picked in the dropdown', () => {
     draw(); open()
-    fireEvent.change(screen.getByLabelText('Selection export format'), { target: { value: 'ndjson' } })
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'ndjson' } })
     cleanup(); draw(); open()
-    expect((screen.getByLabelText('Selection export format') as HTMLSelectElement).value).toBe('ndjson')
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('ndjson')
   })
 
   it('ignores a stored format it does not offer', () => {
     localStorage.setItem('redlog.export.format', 'har')
     draw(); open()
-    expect((screen.getByLabelText('Selection export format') as HTMLSelectElement).value).toBe('json')
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('json')
   })
 
   it('shows where the file will go, and sends a changed folder with the confirm', async () => {
     draw(); open()
-    fireEvent.click(screen.getByText('Everything'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/proj/exports'))
     fireEvent.click(screen.getByTestId('export-change-destination'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/Volumes/evidence'))
@@ -90,7 +106,6 @@ describe('Export menu: range, remembered format, destination', () => {
   it('sends no folder when the operator did not change it, and a cancelled picker changes nothing', async () => {
     pick.mockResolvedValueOnce(null)
     draw(); open()
-    fireEvent.click(screen.getByText('Everything'))
     await waitFor(() => expect(screen.getByTestId('export-destination').textContent).toBe('/proj/exports'))
     fireEvent.click(screen.getByTestId('export-change-destination'))
     await waitFor(() => expect(pick).toHaveBeenCalled())

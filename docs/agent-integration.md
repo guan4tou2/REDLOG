@@ -1,57 +1,30 @@
 # RedLog AI Agent Integration
 
-RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to the REST API and shell helpers.
+RedLog records supported local AI transcripts separately from terminal commands.
+Start with Claude Code, then Codex; each capture integration is optional and
+requires project permission. No model API call is needed to record a transcript.
 
 ## Integration Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     AI Agent                            │
-│  (Claude Code / Codex / GPT / Cursor / OpenCode / custom) │
-└──────┬──────────────────────────┬──────────────────────┘
-       │                          │
-  ┌────▼────┐               ┌─────▼─────┐
-  │ Terminal │               │ HTTP API  │
-  │  Hooks   │               │ (REST)    │
-  │  (log)   │               │(universal)│
-  └────┬────┘               └─────┬─────┘
-       │                          │
-       └──────────┬───────────────┘
-                  │
-        ┌─────────▼─────────┐
-        │   RedLog Engine   │
-        │  (SQLite + Event  │
-        │   Bus + Timeline) │
-        └───────────────────┘
+```text
+Authorized AI transcript → per-tool adapter → RedLog
+Connected terminal      → shell adapter    → RedLog
+Explicit observations   → HTTP API         → RedLog
 ```
 
-**Passive hooks** record every command without the agent knowing (command metadata — see [what records output](#what-records-output)). **The API** lets the agent actively query scope, create markers, and search history.
+## How AI conversations are recorded
 
-## How agents capture: hooks log
+| Source | Records | Setup |
+|---|---|---|
+| Claude Code / Codex local transcript | Supported user messages, AI replies, tool inputs and tool results | Install that capture integration, choose project working directories, explicitly enable new conversations |
+| Connected interactive shell | Commands, exit codes, duration and available bounded output | Install the matching shell adapter and verify command/output delivery |
+| HTTP API | Explicit markers, observations and supported control actions | Configure the calling tool with the local authenticated API |
 
-The cleanest way to think about it:
-
-- **Hooks are the data plane — they record.** Passive, automatic, fire on every command. This is where *logging* happens.
-- **The API is the control plane — it operates and configures the app.** Create markers, check scope, anchor the chain, read the timeline. These are actions *on* RedLog, not a substitute for capturing what the agent did.
-
-**For logging, always prefer hooks; use the API only for what a hook cannot do.** The reason is completeness, not taste:
-
-- A hook fires whether or not the agent is thinking about it — a command *cannot* run without being recorded. For an audit log, that guarantee is the whole point.
-- API calls only record what the agent decides to call. An agent that forgets, is interrupted, or wasn't prompted will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make capture depend on the agent's memory.
-
-So the division of labour is:
-
-| Use **hooks** for (logging) | Use the **API** for (operating the app) |
-|---|---|
-| Every shell / Bash command — command, exit code, duration, cwd (automatic; output is automatic in zsh and bash, and in PowerShell comes via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
-| mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
-| File transfers detected from commands (automatic); screenshots and clipboard once turned on (periodic screenshots, Host monitors pack) | Loot scanning of pasted output (`redlog_loot_scan`) |
-| | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
-| | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
-
-If activity *can* be captured by a hook, let the hook capture it and do **not** also log it via the API — that just produces duplicates. The API is for control-plane actions and observations that never touched a shell.
-
-So: install **all applicable hooks first** for logging, then use the API for operating the app.
+A terminal hook does not capture the AI conversation and does not guarantee
+that non-interactive shells spawned by an AI tool load it. AI tool results are
+source-reported output, not independent proof from the terminal recorder.
+Do not rely on the AI remembering to submit API events as the primary record
+of its conversation.
 
 ## Set up capture — do this first
 
@@ -59,8 +32,8 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
-| **Agent transcript tailer** *(optional)* | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Off by default. Turn on the **AI agents** capture pack in **Settings ▸ Packs, screenshots & retention**; it then watches `~/.claude/projects/` JSONL files. Filter with watch paths in **Settings ▸ AI agent monitoring** (whitelist). | Yes |
-| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd — **not** stdout/stderr | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
+| **Agent transcript tailer** *(optional)* | New supported Claude Code, Codex or OpenCode transcript content: user/assistant messages and tool calls/results. Thinking is optional and only when present in the source. | Settings ▸ Other capture sources ▸ AI conversations: install one integration, add allowed working directories, then enable it for this project. Each tool is uninstalled by default. | Yes |
+| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd; ordinary Bash/Zsh commands also have bounded output, with native/interactive exceptions | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane, **with output** (asciinema `.cast`) | Built in, always on | — |
@@ -70,67 +43,62 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 **Three things that trip people up:**
 
-1. **The shell hook records what ran, not what it printed.** Command, exit code, duration and cwd land on the timeline; stdout/stderr do not. See [What records output](#what-records-output).
-2. **Agent capture is opt-in, and needs watch paths once on.** The AI agents pack is off by default. When you turn it on, the tailer ingests ALL Claude Code sessions into the current project unless you set watch paths in **Settings ▸ AI agent monitoring** to your engagement's working directory. See [Watch Paths](#watch-paths-whitelist) below.
+1. **Check output separately from command metadata.** Ordinary Bash/Zsh output is bounded; native exceptions and PowerShell need their applicable output source. See [What records output](#what-records-output).
+2. **AI capture needs installation AND project permission.** An empty working-directory list records nothing. Existing sessions start at the end observed on connection; history is not silently imported.
 3. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
 
 **Verify capture is live:** run a command in your terminal, then check the Dashboard's Capture Health card (or `redlog-cli status` → `capture`) — the shell hook source should flip to *active*.
 
-### Watch Paths (whitelist)
+### AI project working directories
 
-Once the AI agents pack is on, the agent transcript tailer ingests ALL Claude Code sessions into the current project. On a machine with hundreds of sessions this creates thousands of irrelevant events. Use **watch paths** to scope capture to your engagement directory.
+Each tool has an independent capture integration. In **Settings ▸ Other capture sources ▸ AI conversations**:
 
-**Config file:** `~/.redlog/hook-config.json` (global, applies to all projects)
+1. Install the capture integration for the desired tool. This does not install the AI tool or contact a model.
+2. Add the engagement's working directories with the folder picker.
+3. Explicitly enable recording for this project. Adding/removing directories disables capture until enabled again.
 
-```json
-{
-  "excludedPaths": [],
-  "watchPaths": [
-    "C:\\Users\\user\\Desktop\\engagement-2026"
-  ]
-}
-```
+Session metadata is inspected first to determine cwd. Only sessions whose source supplies an allowed cwd are read for capture. Missing cwd, other working directories and uninstalled/disabled sources are refused. A `.redlog-app-root` marker and shared `excludedPaths` remain exclusions; they never grant access. There is no global watch-path API that can grant AI capture permission.
 
-| Field | Type | Default | Behavior |
-|-------|------|---------|----------|
-| `watchPaths` | `string[]` | `[]` | **Whitelist.** When non-empty, only sessions whose cwd matches a listed prefix are tailed. Everything else is dropped. When empty, all discovered sessions pass. |
-| `excludedPaths` | `string[]` | `[]` | **Blacklist.** Sessions whose cwd matches are skipped. Checked before `watchPaths`. |
+Enabling begins a new capture boundary. Existing JSONL sessions start at their end when connected; subsequent bytes are preserved in the project sidecar. Files created after activation can be read from their start. Disabling stops primary and auxiliary watchers. Uninstalling removes only managed integration files and preserves recorded evidence. Reinstalling requires explicit project activation again; saved permissions are bound to the former installation.
 
-**Path matching:** Paths are resolved to absolute with tilde expansion. A session passes if its cwd equals a listed path or starts with it followed by a path separator. Both `/` and `\` are normalized.
+Source locations supported by the current adapters:
 
-**Additional self-exclusion:** A `.redlog-app-root` marker file in any ancestor directory causes the tailer to skip that session (RedLog's own repo uses this to prevent capturing its own dev sessions).
+| Tool | Source |
+|---|---|
+| Claude Code | `~/.claude/projects/` JSONL |
+| Codex | `~/.codex/sessions/` JSONL |
+| OpenCode | `~/.local/share/opencode/storage/` message/part/session files |
 
-**Settings UI:** **Settings ▸ AI agent monitoring** — add/remove watch paths with a folder picker. Changes take effect immediately (the tailer is live-reconfigured).
-
-**Recommendation:** If you use the AI agents pack, set `watchPaths` at the start of every engagement to your engagement directory. This prevents noise from personal or unrelated Claude Code sessions.
+These are on-disk source formats, not a guarantee of every vendor version, web/desktop conversation or hidden reasoning. Source settings can select a nonstandard transcript directory. Defaults honor absolute CLAUDE_CONFIG_DIR (projects/) and CODEX_HOME (sessions/); an explicit project source directory takes precedence. Changing it stops capture until the project is explicitly enabled again. The source directory is separate from allowed working directories. Agent tool results are source-reported evidence; they do not prove that an arbitrary command was independently observed by the shell recorder.
 
 ### What records output
 
-Only these sources record a command's stdout/stderr:
+These sources can record command output; a PTY stream does not imply separately captured stdout/stderr:
 
 | Source | Output recorded |
 |---|---|
-| RedLog's built-in terminal | Everything, as an asciinema `.cast` per pane (per-command and full-session replay) |
+| Ordinary Bash/Zsh commands in a connected shell | Bounded automatic output; native/interactive exceptions remain metadata-only |
+| RedLog's built-in terminal | PTY output, as an asciinema `.cast` per pane (per-command and full-session replay) |
 | `redlog-run <cmd>` in a hooked shell | Capped, separated stdout/stderr in that command's `command_end` |
 | `redlog-session` (macOS/Linux) | The full terminal session, bounded — see [external session recording](external-session-recording.md) |
 | **Windows terminal output** capture pack (off by default) | PowerShell sessions, via a `Start-Transcript` follower |
 
-The shell hook records command, exit code, duration and working directory in
-zsh, bash and PowerShell. **zsh also keeps the output of ordinary commands
-automatically**; bash and PowerShell record **command metadata only**, and on
-the timeline such a command shows *output not captured*. A zsh command left
-alone on purpose (`nc`, editors, pagers) is marked `metadata-only` with the
-reason.
+The shell adapter records command metadata for Bash, Zsh and PowerShell.
+Ordinary Bash/Zsh commands can also record bounded output automatically.
+PowerShell output uses its transcript integration; native exceptions such as
+`nc`, editors and pagers intentionally retain their terminal behavior. Verify
+the actual output source rather than treating an installed hook as proof.
 
-## 1. Terminal Hooks (Passive Capture)
+## 1. Passive Capture
 
-Terminal hooks intercept commands at the shell level. The agent doesn't need to be RedLog-aware — every command it runs is automatically logged with timestamps, exit codes, and duration.
+AI transcript capture and terminal capture are independent sources. Connect
+the ones the engagement uses; neither silently enables the other.
 
 ### 1a. Claude Code — Agent Transcript Tailer (primary)
 
-The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures the **full** Claude Code session: every tool call (Bash, Read, Write, Edit, Grep, Task, MCP, etc.), user messages, assistant responses, and thinking blocks. It also covers Codex (`~/.codex/sessions/`) and OpenCode (`storage/message/`).
+The optional transcript integrations capture newly written supported messages and tool calls/results from Claude Code, Codex and OpenCode. Only source-provided content is available; thinking blocks require a separate opt-in. They are not a substitute for shell output capture.
 
-**Setup:** Turn on the **AI agents** capture pack (Settings ▸ Packs, screenshots & retention) for the project — it is off by default. No hook wiring needed.
+**Setup:** Install a per-tool integration in Settings ▸ Other capture sources ▸ AI conversations, select allowed working directories, then explicitly enable it for the project. No shell wrapper is required.
 
 **What it captures:**
 
@@ -143,13 +111,13 @@ The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures
 | `transcript_snapshot` | Cumulative SHA-256 of the sidecar file (emitted on 15 s idle or session close) |
 | `transcript_compacted` | Emitted when Claude Code `/compact` runs |
 
-**Sidecar files:** The tailer writes a copy of each session's events to `<projectDir>/agent-transcripts/<kind>-<session>.jsonl`. The sidecar size is the read offset, so crash recovery is idempotent.
+**Sidecar files:** The tailer writes a copy of each session's events to `<projectDir>/agent-transcripts/<kind>-<session>-<activation>.jsonl`. A separate durable source-offset checkpoint locates the read position independently of retained sidecar bytes; restarting the same activation does not re-import history.
 
 **Redaction:** `deepRedactStrings()` walks every string value; paths matching `.ssh/`, `.env`, `.aws/` suppress the output field entirely.
 
 ### 1b. Shell Preexec Hook (Universal)
 
-Works with ANY agent that spawns a shell process. Hooks into zsh `preexec`/`precmd` or bash `DEBUG` trap.
+Connects interactive Bash/Zsh shells through their lifecycle hooks. An AI tool's non-interactive subprocess is not guaranteed to load a shell profile; use the AI transcript integration for source-reported tool calls/results.
 
 The installed integration uses a small adapter for each supported shell:
 `shell-bash-hook.sh` and `shell-zsh-hook.zsh` contain only lifecycle handling;
@@ -187,36 +155,13 @@ source /path/to/redlog/hooks/shell-bash-hook.sh
 2. `PROMPT_COMMAND` fires after each command
 3. Same event emission as zsh
 
-**Output coverage:** In bash the ordinary hook records command metadata only
-(zsh keeps ordinary output by itself). Prefix a
-command with `redlog-run` to stream stdout/stderr to the terminal while also
+**Output coverage:** Ordinary Bash/Zsh commands capture bounded output automatically, except the declared native/interactive classes. Use `redlog-run` explicitly when appropriate to stream stdout/stderr to the terminal while also
 including capped, separated output in the `command_end` event. Interactive TUI
 sessions should use RedLog's built-in terminal so the PTY is recorded.
 
 **Performance:** Event delivery has short connection and request deadlines. If
 RedLog is unavailable, metadata is spooled locally; `redlog-run` still executes
 the wrapped command normally.
-
-### 1c. Codex/GPT Wrapper
-
-For agents where you can't modify their hook system but can control the shell they launch.
-
-**Usage:**
-
-```bash
-# Option 1: Set as the agent's shell
-SHELL=/path/to/redlog/plugins/pack-ai-agents/hooks/codex-wrapper.sh codex run "scan the target"
-
-# Option 2: Wrap a specific command
-./plugins/pack-ai-agents/hooks/codex-wrapper.sh nmap -sV target.com
-
-```
-
-**How it works:**
-
-- If called with arguments: wraps that single command with start/end events
-- If called without arguments: exits with instructions to install the matching shell adapter
-- Sets `REDLOG_SHELL_WRAPPED=1` env var so tools can detect the wrapper
 
 ## 2. HTTP API
 
@@ -259,7 +204,7 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/bookmarks` | yes | Create bookmark |
 | POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
-| POST | `/api/session/register` | yes | Opt a session into capture (`{ session_id, cwd? }`); once any session registers, only registered sessions are tailed |
+| POST | `/api/session/register` | yes | Register session IDs for the enabled capture (`{ session_id, cwd? }`); does not install, enable or broaden project working-directory permission |
 | GET | `/api/session/registered` | yes | List registered session ids |
 | GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
 | POST | `/api/terminal/replay` | yes | Replay terminal command output from `.cast` file |
@@ -400,10 +345,10 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 ## Recommended Setup
 
-For maximum coverage with minimal friction — **hooks first, API only for the gaps** (see [Capture priority](#how-agents-capture-hooks-log)):
+For maximum coverage with minimal friction — **connect the applicable passive sources, then add explicit observations** (see [Capture priority](#how-ai-conversations-are-recorded)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
-2. *(Optional)* **Turn on the AI agents capture pack** and set the engagement watch path.
+2. *(Optional)* **Install the desired AI capture integration**, add its project working directories and explicitly enable it.
 3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
 4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use the API for what hooks can't do (markers, scope checks, anchoring).
 5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.
@@ -413,3 +358,18 @@ This gives you:
 - Agent-initiated markers and scope checks (API / shell functions)
 - Team-shared scope configuration (profiles)
 - Per-operator attribution + Bitcoin-backed integrity anchoring
+
+
+Pause omits new AI originals from both the event log and raw sidecar; resume
+skips bytes already present at that boundary. A metadata-only capture gap
+records the omission. In AI source settings, expand Conversations to stop one
+session or explicitly allow new content. Exclusions persist per project and
+provider; allowing again does not import the excluded period. Working-directory
+authorization does not classify prompts or hide a tool's reads outside that
+directory.
+
+After an app update, an intact older optional package offers Update integration
+in the source row; it cannot execute until updated. Unknown or modified files
+remain refused and available for inspection. Installing/updating never grants
+a new project authorization. The separate installation records live alongside
+the user plugin directories and are not captured evidence.

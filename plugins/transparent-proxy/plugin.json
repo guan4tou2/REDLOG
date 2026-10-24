@@ -30,6 +30,10 @@
             "label": "Stop and remove the redirect rules (also happens on Ctrl-C)",
             "command": "sudo \"{hookFile}\" down 8080"
           }
+        ],
+        "platforms": [
+          "darwin",
+          "linux"
         ]
       }
     ]

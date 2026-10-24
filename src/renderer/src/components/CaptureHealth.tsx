@@ -6,6 +6,7 @@ import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
+import { clientLabel } from '../../../core/http-verify'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime, formatDateTime } from '../lib/time'
@@ -56,7 +57,7 @@ function proxyListenAddress(proxy: { state: string; url?: string | null } | unde
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, age, t }: {
+function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, verification, onNavigate, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
   /** host:port the managed proxy is listening on, or null when it is not up (#254). */
@@ -64,6 +65,8 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   source: CaptureSourceInfo | undefined
   sources: CaptureSourceInfo[]
   proxyError: string | undefined
+  verification: ManagedProxyStatus['httpsVerification']
+  onNavigate: (target: string) => void
   /** "8m ago" for a timestamp, or an empty string for a source that has never
    *  recorded. Freshness is reported here as data, in its own column — it is
    *  what the removed `idle` state was a bad way of saying. */
@@ -98,7 +101,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
           : { mark: '!', cls: 'text-amber-500' }
   const cmdMark = mark(cmd === 'ready' ? 'done' : cmd === 'error' ? 'failed' : 'missing')
   const httpMark = mark(
-    http === 'ready' ? 'done'
+    http === 'ready' ? (verification ? 'done' : 'partial')
       : http === 'starting' ? 'partial'
         : http === 'failed' ? 'failed' : 'missing'
   )
@@ -108,7 +111,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
       <ul className="space-y-1 text-xs">
         <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
-          <span className="flex-1 text-redlog-text">{t('capture.group.commands')}</span>
+          <button onClick={() => onNavigate(settingsTarget('hooks'))} className="flex-1 min-h-8 text-left text-redlog-text hover:underline">{t('capture.group.commands')}</button>
           {/* The word only when the light is not green. A green dot beside
               "記錄中" says one thing twice and asks the reader to check that
               the two agree; what the word is FOR is the cases a coloured dot
@@ -123,7 +126,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
         <li data-testid="capture-core-http" data-state={http} className="flex items-start gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
           <span className="flex-1 min-w-0 text-redlog-text">
-            {t('capture.group.http')}
+            <button onClick={() => onNavigate(settingsTarget('browser'))} className="min-h-8 text-left hover:underline">{t('capture.group.http')}</button>
             {/* What it buys, because "mitmproxy" alone does not say — and only
                 while HTTP capture is not running. Once it is, the line above is
                 the whole story. */}
@@ -137,6 +140,9 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
                 {t('capture.http.listening', { address: listenAddress })}
               </span>
             )}
+            {http === 'ready' && <span data-testid="capture-https-verification" className={`block text-xs ${verification ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+              {verification ? t('firstRun.http.verifiedVia', { client: clientLabel(verification.userAgent) }) : t('capture.httpsUnverified')}
+            </span>}
             {proxyError &&<span className="block text-red-400">{proxyError}</span>}
             {source?.lastError && (
               <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
@@ -349,7 +355,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
   const readiness = computeCaptureReadiness({ ...capture, sources })
   // One of the two core captures is named above and is not able to record.
   // The summary line below the rows must not then say everything is fine.
-  const coreGap = http !== 'ready' || sources.find((s) => s.id === 'terminal')?.state !== 'ready'
+  const coreGap = http !== 'ready' || !capture.managedHttpProxy?.httpsVerification || sources.find((s) => s.id === 'terminal')?.state !== 'ready'
   // The core line always carries HTTP(S), so a mitmproxy row beneath it would
   // say the same thing twice. A rogue one stays: the core line has no word for
   // "switched off and still writing".
@@ -418,6 +424,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
         <CoreCaptureLine
           readiness={readiness}
           http={http}
+          verification={capture.managedHttpProxy?.httpsVerification}
+          onNavigate={onNavigate}
           listenAddress={proxyListenAddress(capture.managedHttpProxy)}
           source={mitmSource}
           sources={sources}
@@ -425,16 +433,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
           age={(ts) => (ts === null ? '' : fmtAge(ts, nowTick))}
           t={t}
         />
-        {(cta || coreGap) && (
+        {cta && (
           <div className="flex items-center gap-3 mb-3">
             {cta && (
-              <button
+              <Button size="compact" level="quiet"
                 disabled={busy !== null}
                 onClick={cta.run}
-                className="text-xs font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
               >
                 {cta.label}
-              </button>
+              </Button>
             )}
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}
@@ -541,7 +548,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
                       their upstream does (mitmproxy in DNS mode, the launched
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
-                  {!s.configPath && !s.hookId && (
+                  {!s.configPath && !s.hookId && s.id.startsWith('agent-') && (
+                    <button onClick={() => onNavigate(settingsTarget('captureControl'))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
+                  )}
+                  {!s.configPath && !s.hookId && !s.id.startsWith('agent-') && (
                     <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
                   )}
                 </span>

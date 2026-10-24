@@ -26,13 +26,13 @@ afterEach(() => {
 describe('the display zone on each surface', () => {
   it('is chosen in Settings ▸ General, Local or UTC', async () => {
     const { default: GeneralPage } = await import('../src/renderer/src/components/settings/GeneralPage')
-    const config = { engagement: { id: 'e1', name: 'Eng' }, operator: { id: 'op-1', name: 'Op' } }
-    render(
+        render(
       <I18nProvider>
-        <GeneralPage config={config as never} setConfig={() => {}} />
+        <GeneralPage />
       </I18nProvider>
     )
     const local = screen.getByRole('button', { name: 'Local' })
+    expect(screen.queryAllByLabelText('ID')).toHaveLength(0)
     const utc = screen.getByRole('button', { name: 'UTC' })
     expect(local.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(utc)

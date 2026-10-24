@@ -35,6 +35,10 @@
             "label": "Or keep RAW packets (rotating .pcap on your disk; only the sha256 goes on the chain)",
             "command": "sudo \"{hookFile}\" --pcap-out ~/redlog-pcap eth0"
           }
+        ],
+        "platforms": [
+          "darwin",
+          "linux"
         ]
       },
       {
@@ -61,6 +65,9 @@
             "label": "Capture (elevated — npcap needs Administrator; adjust the interface name)",
             "command": "powershell -ExecutionPolicy Bypass -File \"{hookFile}\" -Interface \"Ethernet\""
           }
+        ],
+        "platforms": [
+          "win32"
         ]
       }
     ]

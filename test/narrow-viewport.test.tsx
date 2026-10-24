@@ -52,7 +52,7 @@ beforeEach(() => {
     scope: { getViolationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
     config: { get: async () => structuredClone(CONFIG), save: async () => true },
     targetContext: { get: vi.fn(async () => null), onChange: () => () => {}, set: vi.fn() },
-    project: { close: async () => {} },
+    project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => {} },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }) },
     plugins: { list: async () => [], eventTypes: async () => [] },
     operators: { list: async () => [] }

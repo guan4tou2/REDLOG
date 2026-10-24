@@ -176,7 +176,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
     // HTTP is reachable without a shell event having landed first.
-    expect(await screen.findByText('重新啟動 HTTP 擷取')).toBeTruthy()
+    expect(await screen.findByText('啟動 HTTP 擷取')).toBeTruthy()
     // The connect-your-terminal path is offered from the start too.
     expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
     // No engagement-type choice, and HTTP cannot be waved away as optional.
@@ -191,7 +191,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
     const missing = await screen.findByTestId('first-run-missing-deps')
     expect(screen.getByTestId('first-run-commands').contains(missing)).toBe(true)
-    fireEvent.click(await screen.findByText('重新啟動 HTTP 擷取'))
+    fireEvent.click(await screen.findByText('啟動 HTTP 擷取'))
     await waitFor(() => expect(bridge.proxyStart).toHaveBeenCalled())
   })
 
@@ -219,6 +219,8 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
     expect(screen.getByTestId('first-run-commands-verified').textContent).toContain('已收到你自己終端的指令。')
     expect(screen.queryByTestId('first-run-external-pending')).toBeNull()
+    expect(screen.getByTestId('first-run-start-work')).toBeTruthy()
+    expect(screen.queryByTestId('first-run-later')).toBeNull()
   })
 
   it('does not count session bookkeeping or HTTP rows as a verified command', async () => {
@@ -346,6 +348,22 @@ describe('first run: record my terminal', () => {
     expect(second).not.toBe(first)
   })
 
+  it('follows the picker: after a manual bash choice the entry button no longer says Zsh', async () => {
+    // The button's label names the detected shell, but the choice the flow
+    // honours is the one the picker holds. When those differ the stale label
+    // was the only text left claiming the button records Zsh — everything in
+    // the flow itself (install, prerequisites, expected event shell) had
+    // already moved to the selection. The selection now replies up so the two
+    // can never disagree.
+    install({ pre: preflight() })
+    draw()
+    fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
+    await screen.findByTestId('record-terminal-adapters')
+    expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
+    fireEvent.click(screen.getByTestId('record-terminal-adapter-shell-bash'))
+    await waitFor(() => expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Bash 終端'))
+  })
+
   it('stops listening once verified', async () => {
     install()
     draw()
@@ -379,7 +397,8 @@ describe('first run: built-in terminal stuck message comes from preflight', () =
     draw()
     await waitFor(() => expect(bridge.preflight).toHaveBeenCalled())
     expect(screen.queryByTestId('first-run-missing-deps')).toBeNull()
-    expect((await screen.findByTestId('first-run-commands-quick')).textContent).toContain('echo redlog-ok')
+    expect(await screen.findByTestId('first-run-record-terminal')).toBeTruthy()
+    expect(screen.queryByTestId('first-run-commands-quick')).toBeNull()
   })
 })
 
@@ -468,6 +487,8 @@ describe('first run: HTTP(S) card', () => {
     expect(card.textContent).not.toContain('mitmproxy-ca-cert.pem')
 
     const nonce = await shownNonce()
+    fireEvent.click(screen.getByRole('button', { name: 'RedLog 擷取瀏覽器' }))
+    expect(screen.queryByTestId('first-run-http-own-browser')).toBeNull()
     fireEvent.click(screen.getByTestId('first-run-http-verify-browser'))
     await waitFor(() => expect(bridge.verifyInBrowser).toHaveBeenCalledWith(nonce))
   })
@@ -480,12 +501,11 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     draw()
     // 5 s, not the default 1 s: on a loaded runner the rejected start took
     // just over a second to show, failing main and a PR within minutes.
-    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }, { timeout: 5000 }))
+    fireEvent.click(await screen.findByRole('button', { name: '啟動 HTTP 擷取' }, { timeout: 5000 }))
     const card = await screen.findByTestId('first-run-http', undefined, { timeout: 5000 })
     await waitFor(() => expect(card.textContent).toContain('port 8080 in use'), { timeout: 5000 })
-    // One label for one button: the failure is stated above it, so the control
-    // does not have to say "again" in one state and "start" in another.
-    expect(screen.getByTestId('first-run-http-restart')).not.toBeNull()
+    // The failed attempt now offers Retry, matching the settings control.
+    expect(screen.getByTestId('first-run-http-restart').textContent).toBe('重試')
   })
 
   // The card also polls the proxy's status every 3 s. The poll's answer knows
@@ -497,7 +517,7 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     install()
     bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
     draw()
-    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }, { timeout: 5000 }))
+    fireEvent.click(await screen.findByRole('button', { name: '啟動 HTTP 擷取' }, { timeout: 5000 }))
     const card = await screen.findByTestId('first-run-http')
     await waitFor(() => expect(card.textContent).toContain('port 8080 in use'))
     const polls = bridge.proxyStatus.mock.calls.length
@@ -707,7 +727,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ rows: [], proxy: { state: 'stopped', url: null } })
     draw()
-    await screen.findByText('重新啟動 HTTP 擷取')
+    await screen.findByText('啟動 HTTP 擷取')
     bridge.proxyStatus.mockResolvedValue(RUNNING)
     await act(async () => { await vi.advanceTimersByTimeAsync(3_500) })
     await screen.findByText('127.0.0.1:8080')
@@ -721,7 +741,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await screen.findByTestId('first-run-http')
     await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
     expect(verifyListeners.length).toBe(0)
-    fireEvent.click(screen.getByText('重新啟動 HTTP 擷取'))
+    fireEvent.click(screen.getByText('啟動 HTTP 擷取'))
     await waitFor(() => expect(verifyListeners.length).toBeGreaterThanOrEqual(1))
   })
 

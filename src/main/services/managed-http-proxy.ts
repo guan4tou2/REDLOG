@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { X509Certificate, randomBytes } from 'node:crypto'
 import http from 'node:http'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
-import { VERIFY_HOST } from '../../core/http-verify'
+import { VERIFY_HOST, isVerifyNonce, type HttpVerifyReport } from '../../core/http-verify'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
 
@@ -18,6 +18,7 @@ export interface ManagedProxyStatus {
   /** The CA's own fingerprints, so trust can be removed by identity rather
    *  than by the name "mitmproxy", which other tools' CAs share (#220). */
   caFingerprint?: CaFingerprint
+  httpsVerification?: HttpVerifyReport
 }
 
 export interface CaFingerprint {
@@ -96,6 +97,8 @@ export class ManagedHttpProxy {
   private cancelStart: (() => void) | null = null
   private generation = 0
   private listeners = new Set<StatusListener>()
+  private proof: { report: HttpVerifyReport; ca: string } | null = null
+  private startedAt = 0
   private caPath: string | null = null
   private readonly deps: Dependencies
 
@@ -107,12 +110,22 @@ export class ManagedHttpProxy {
     if (!this.caPath) return { ...this.snapshot }
     const certReady = this.deps.exists(this.caPath)
     const caFingerprint = certReady ? this.deps.fingerprint(this.caPath) : null
+    if (this.proof && this.proof.ca !== caFingerprint?.sha256) this.proof = null
     return {
       ...this.snapshot,
+      ...(this.snapshot.state === 'running' && this.proof ? { httpsVerification: this.proof.report } : {}),
       caPath: this.caPath,
       certReady,
       ...(caFingerprint ? { caFingerprint } : {})
     }
+  }
+
+  /** A nonce check is proof for this process and CA, never a claim about all clients. */
+  noteVerification(report: HttpVerifyReport): void {
+    const current = this.status()
+    if (current.state !== 'running' || report.scheme !== 'https' || report.rejected
+      || !isVerifyNonce(report.nonce) || report.receivedAt < this.startedAt || !current.caFingerprint) return
+    this.proof = { report: { ...report }, ca: current.caFingerprint.sha256 }
   }
 
   onStatusChange(listener: StatusListener): () => void {
@@ -145,6 +158,8 @@ export class ManagedHttpProxy {
 
   private update(next: ManagedProxyStatus): void {
     const previous = this.status()
+    if (next.state !== 'running') this.proof = null
+    if (next.state === 'starting') this.startedAt = Date.now()
     this.snapshot = next
     const current = this.status()
     for (const listener of this.listeners) listener(current, previous)

@@ -138,16 +138,21 @@ describe('extractTargetWithProvenance host extraction', () => {
       const n = registerTargetExtractors('unit-x', [
         { cmd: '^nmap\\s', extract: 'plugin-target-([a-z0-9]+)' }
       ])
-      expect(n).toBe(1)
+      expect(n.accepted).toBe(1)
+      expect(n.rejected).toEqual([])
       expect(extractedHost('nmap plugin-target-alpha01 10.0.0.9')).toBe('alpha01')
     })
 
-    it('bad regex is silently skipped, the count reflects only what compiled', () => {
+    it('bad regex is skipped and named, the count reflects only what compiled', () => {
       const n = registerTargetExtractors('unit-bad', [
         { cmd: '[unterminated', extract: '.*' },
         { cmd: '^unit-good\\s', extract: '(\\S+)$' }
       ])
-      expect(n).toBe(1)
+      expect(n.accepted).toBe(1)
+      // #348: a rule that did not compile is named, not dropped in silence.
+      expect(n.rejected).toHaveLength(1)
+      expect(n.rejected[0].name).toBe('[unterminated#0')
+      expect(n.rejected[0].reason).toMatch(/regular expression/)
       expect(extractedHost('unit-good end-token')).toBe('end-token')
     })
 
@@ -253,8 +258,9 @@ describe('E1: plugins can use a named strategy, not just a regex', () => {
     registerTargetExtractors('p1', [{ cmd: '^zap\\s', extract: '--target (\\S+)' }])
     expect(extractTargetWithProvenance('zap --target app.example.com').host).toBe('app.example.com')
   })
-  it('an unknown strategy is skipped, not crashed', () => {
+  it('an unknown strategy is rejected by name, not crashed', () => {
     const n = registerTargetExtractors('p1', [{ cmd: '^x\\s', strategy: 'nope' }])
-    expect(n).toBe(0)
+    expect(n.accepted).toBe(0)
+    expect(n.rejected[0].reason).toContain('unknown strategy')
   })
 })

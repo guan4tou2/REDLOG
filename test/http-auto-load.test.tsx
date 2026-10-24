@@ -6,7 +6,7 @@
 // AUTO_LOAD_MAX_FLOWS — past it the panel rests rather than pulling an unbounded
 // record into the renderer.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const sharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
 
@@ -35,7 +35,7 @@ function flowPage(start: number, count: number, hasMore: boolean): Page {
 
 function installBridge(pages: Page[]): ReturnType<typeof vi.fn> {
   let call = 0
-  const queryHttpFlowPage = vi.fn(async () => pages[Math.min(call++, pages.length - 1)])
+  const queryHttpFlowPage = vi.fn(async (_options?: { http: { statusPrefix?: string } }) => pages[Math.min(call++, pages.length - 1)])
   ;(window as unknown as { redlog: unknown }).redlog = {
     events: { queryHttpFlowPage, getById: vi.fn(async () => []), onNewBatch: () => () => {} }
   }
@@ -45,6 +45,51 @@ function installBridge(pages: Page[]): ReturnType<typeof vi.fn> {
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('HTTP History auto-load', () => {
+  it('links a genuinely empty record to capture settings', async () => {
+    installBridge([flowPage(0, 0, false)])
+    const onOpenSettings = vi.fn()
+    const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+    render(<HttpHistoryPanel onOpenSettings={onOpenSettings} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'browser.openSettings' }))
+    expect(onOpenSettings).toHaveBeenCalledOnce()
+  })
+
+  it('does not suggest setup for an empty target selection', async () => {
+    sharedFilter.targetId = 'target.test' as never
+    try {
+      installBridge([flowPage(0, 0, false)])
+      const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+      render(<HttpHistoryPanel onOpenSettings={vi.fn()} />)
+      await screen.findByText('httpHistory.empty')
+      expect(screen.queryByRole('button', { name: 'browser.openSettings' })).toBeNull()
+    } finally { sharedFilter.targetId = null }
+  })
+
+  it('does not present a failed query as an empty complete record or a setup problem', async () => {
+    const query = installBridge([flowPage(0, 0, false)])
+    query.mockRejectedValue(new Error('database unavailable'))
+    const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+    render(<HttpHistoryPanel onOpenSettings={vi.fn()} />)
+    await screen.findByTestId('http-load-error')
+    expect(screen.queryByText('httpHistory.empty')).toBeNull()
+    expect(screen.queryByText('httpHistory.complete')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'browser.openSettings' })).toBeNull()
+  })
+
+  it('clears the local status filter when All is chosen', async () => {
+    const query = installBridge([flowPage(0, 1, false)])
+    const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+    render(<HttpHistoryPanel />)
+    fireEvent.click(await screen.findByRole('button', { name: '2xx' }))
+    await waitFor(() => expect(query.mock.lastCall?.[0]?.http.statusPrefix).toBe('2'))
+    expect(screen.getByRole('button', { name: 'httpHistory.filterAll' }).getAttribute('aria-pressed')).toBe('false')
+    const before = query.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'httpHistory.filterAll' }))
+    await waitFor(() => expect(query.mock.calls.length).toBeGreaterThan(before))
+    expect(query.mock.lastCall?.[0]?.http.statusPrefix).toBeUndefined()
+    expect(screen.getByRole('button', { name: 'httpHistory.filterAll' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('follows the cursor across pages to completion with no click', async () => {
     const query = installBridge([
       flowPage(0, 3, true),

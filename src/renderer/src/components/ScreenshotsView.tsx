@@ -116,7 +116,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   }
 
   return (
-    <div className="p-4 overflow-auto h-full">
+    <div className="p-pad overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
         <SectionLabel className="text-base">
           {t('screenshots.title', { count: hasMore ? `${screenshots.length}+` : screenshots.length })}
@@ -167,9 +167,6 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             ))}
           </div>
         )}
-        <p className="text-redlog-text-dim text-xs mb-2">
-          {t('screenshots.loaded', { count: screenshots.length })}
-        </p>
         <div className="grid grid-cols-3 gap-2">
           {screenshots.map((s) => (
             <div

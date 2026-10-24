@@ -215,12 +215,13 @@ interface RedLogAPI {
     reveal: (kind: 'artifact' | 'screenshot', file: string) => Promise<boolean>
   }
   agents: {
+    sessions: () => Promise<Array<{ agentKind: string; sessionId: string; cwd?: string; recording: boolean }>>,
     /** The AI tools whose local session files RedLog can read, and whether each folder exists here. */
-    sources: () => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
+    sources: (roots?: Record<string, string>) => Promise<Array<{ id: string; label: string; root: string; detected: boolean }>>
   }
   hookConfig: {
-    get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
-    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
+    get: () => Promise<{ excludedPaths: string[] }>
+    save: (cfg: { excludedPaths?: string[] }) => Promise<boolean>
     /** `title`: the picker's title, already translated */
     pickPath: (title?: string) => Promise<string | null>
   }
@@ -464,6 +465,10 @@ interface RedLogAPI {
     cancelInstall: (id: RuntimePreflight['checks'][number]['id']) => Promise<boolean>
   }
   plugins: {
+    /** Catalog only: installing an integration does not enable AI capture. */
+    officialAgents: () => Promise<import('../../core/plugins/official-agents').OfficialAgentPlugin[]>
+    installOfficialAgent: (agentKind: string) => Promise<import('../../core/plugins/official-agents').OfficialAgentMutation>
+    uninstallOfficialAgent: (agentKind: string) => Promise<import('../../core/plugins/official-agents').OfficialAgentMutation>
     list: () => Promise<unknown[]>
     eventTypes: () => Promise<PluginEventType[]>
     reload: () => Promise<unknown>
@@ -606,6 +611,7 @@ interface ManagedProxyStatus {
   /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
   caFingerprint?: { sha1: string; sha256: string }
+  httpsVerification?: import('../../core/http-verify').HttpVerifyReport
 }
 
 interface OperatorInfo {

@@ -7,6 +7,7 @@ import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 
 interface PluginView {
+  officialAgent?: boolean
   id: string
   name: string
   version: string
@@ -24,6 +25,11 @@ interface PluginView {
     lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     redaction?: { accepted: number; rejected: Array<{ list: string; entry: string; reason: string }> }
     tailers?: { state: 'accepted' | 'rejected'; reason?: string }
+    /** #348: the kinds that used to register and say nothing. */
+    targetExtractors?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
   } | null
 }
 
@@ -33,9 +39,21 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
   const loot = p.report?.lootPatterns
   const tailer = p.report?.tailers
   const redaction = p.report?.redaction
+  const extractors = p.report?.targetExtractors
+  const commandTags = p.report?.commandTags
+  const eventTypes = p.report?.eventTypes
+  const capture = p.report?.capture
   const rejected = loot?.rejected ?? []
   const redactionRejected = redaction?.rejected ?? []
-  if (!p.apiAhead && !loot && !tailer && !redaction) return null
+  // #348: the four kinds that could fail quietly now report like the other
+  // two. A manifest that loads is not every rule in it working.
+  const otherGroups = [
+    { key: 'targetExtractors', label: 'plugins.results.targetExtractors', value: extractors },
+    { key: 'commandTags', label: 'plugins.results.commandTags', value: commandTags },
+    { key: 'eventTypes', label: 'plugins.results.eventTypes', value: eventTypes },
+    { key: 'capture', label: 'plugins.results.capture', value: capture }
+  ] as const
+  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture) return null
   return (
     <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
       {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
@@ -54,6 +72,16 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
       )}
       {redactionRejected.map((r) => (
         <p key={`${r.list}:${r.entry}`} className="text-red-400 pl-3">{r.list}: {r.entry} — {r.reason}</p>
+      ))}
+      {otherGroups.map(({ key, label, value }) => value && (
+        <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
+          <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
+            {t(label, { accepted: value.accepted, rejected: value.rejected.length })}
+          </p>
+          {value.rejected.map((r) => (
+            <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
+          ))}
+        </div>
       ))}
       {tailer?.state === 'rejected' && (
         <p className="text-red-400">{t('plugins.results.tailerRejected', { reason: tailer.reason ?? '' })}</p>
@@ -107,8 +135,8 @@ const OWNED_ELSEWHERE = new Set<string>([
 // existed would sit disabled forever, with 擷取 pack reporting it unavailable
 // and the only control that could bring it back hidden from the operator. A
 // row that is off is always shown, because that is the row someone needs.
-const isHidden = (p: { id: string; status: string }): boolean =>
-  OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
+const isHidden = (p: { id: string; status: string; officialAgent?: boolean }): boolean =>
+  p.officialAgent === true || (OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled')
 
 // The manifests describe these packs to whoever maintains them: spec
 // numbers, doc paths, the identifiers the code uses, and the reason the
@@ -237,8 +265,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
 
   return (
     <FieldGroup title={t('settings.plugins')}>
-      <div className="flex items-center justify-between mb-2 gap-2">
-        <p className="text-xs text-redlog-text-faint flex-1 pr-3">{t('plugins.hint')}</p>
+      <div className="flex items-center justify-end mb-2 gap-2">
         <button onClick={() => api.openFolder()}
           className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0"
           title={t('plugins.openFolderHint')}>
@@ -249,7 +276,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         </Button>
       </div>
 
-      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote')}</p>
+      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
 
       {loading && plugins.length === 0 && !loadError && (
         <p role="status" className="text-xs text-redlog-text-faint py-3">{t('plugins.loading')}</p>

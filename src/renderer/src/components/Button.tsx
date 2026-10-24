@@ -29,7 +29,7 @@ export type ButtonLevel = 'primary' | 'secondary' | 'quiet' | 'danger'
 // what looked like an edge was the hover fill. Every level now has a 1px box
 // and chooses what colour it is.
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 h-[34px] px-4 rounded-lg text-sm font-medium border ' +
+  'inline-flex min-w-0 max-w-full items-center justify-center gap-1.5 rounded-lg font-medium border whitespace-normal [overflow-wrap:anywhere] ' +
   'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ' +
   'focus-visible:ring-offset-redlog-bg disabled:opacity-40 disabled:cursor-not-allowed'
 
@@ -41,7 +41,7 @@ const LEVEL: Record<ButtonLevel, string> = {
   // Bordered, not bare. "Quiet" is about weight, not about whether the
   // operator can see where the control is: an unframed label gives no hit
   // area and no edge, so its target has to be guessed.
-  quiet: 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated focus-visible:ring-redlog-text-dim/40',
+  quiet: 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated aria-pressed:bg-redlog-elevated aria-pressed:text-redlog-text aria-pressed:border-redlog-text-dim focus-visible:ring-redlog-text-dim/40',
   // The only other fill in the system.
   danger: 'border-transparent bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
 }
@@ -61,16 +61,17 @@ export const TITLEBAR_ICON = TITLEBAR_CONTROL.replace('px-2.5', 'w-7 px-0')
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   level?: ButtonLevel
+  size?: 'normal' | 'compact'
   children: ReactNode
 }
 
 // forwardRef because a dialog focuses its confirm button, and a component that
 // cannot be focused programmatically is one the shared geometry cannot reach.
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { level = 'secondary', className = '', children, ...rest }, ref
+  { level = 'secondary', size = 'normal', className = '', children, ...rest }, ref
 ) {
   return (
-    <button ref={ref} className={`${BASE} ${LEVEL[level]} ${className}`} {...rest}>
+    <button ref={ref} className={`${BASE} ${size === 'compact' ? 'min-h-7 px-2 py-0.5 text-xs' : 'min-h-[var(--control-h)] px-4 py-0.5 text-sm'} ${LEVEL[level]} ${className}`} {...rest}>
       {children}
     </button>
   )

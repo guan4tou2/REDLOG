@@ -13,7 +13,7 @@ npm run e2e          # every e2e/*.spec.ts
 npm run e2e:ui       # Playwright UI mode, for one spec at a time
 ```
 
-**Use `npm run e2e`, not `npx playwright test`.** The `pree2e` script rebuilds
+**For source journeys, use `npm run e2e`.** The `pree2e` script rebuilds
 better-sqlite3 for Electron's ABI. `npx playwright test` goes straight to
 Playwright and skips it, and the mismatch does not announce itself as an ABI
 error: Electron dies mid-launch with `exitCode=3221225477` (0xC0000005) and the
@@ -28,6 +28,10 @@ npx playwright test e2e/<spec>.spec.ts --reporter=line
 Running `npm test` afterwards flips the module back to the Node ABI (its
 `pretest` rebuilds), which is fine — but then the next direct Playwright run
 needs the rebuild again.
+
+Installed-only runs use the package's own native modules. With
+`REDLOG_PACKAGED_APP` set, the documented direct Playwright command does not
+need to rebuild workspace SQLite unless another selected spec launches source.
 
 ## What it covers
 
@@ -72,11 +76,23 @@ A green local run is not full coverage. These are skipped by platform:
 |---|---|---|
 | `external-session.spec.ts` | POSIX | the PTY launcher is POSIX-only |
 | `managed-http-capture.spec.ts` | POSIX | its mitmdump stand-in is a `#!/bin/sh` script |
-| `packaged-session-smoke.spec.ts` | macOS **and** `REDLOG_PACKAGED_APP` set | needs a freshly built `.app`; CI is ubuntu, so this one only ever runs by hand |
-| `hud-overlay.spec.ts` (one case) | never | a filed clipping bug at HUD scale 1.5, skipped with its reason in the test |
+| `packaged-session-smoke.spec.ts`, `packaged-command-integrity.spec.ts` | POSIX, Zsh and `REDLOG_PACKAGED_APP` | actual installed package; Linux install CI and macOS acceptance exercise them |
+| `packaged-nc-upgrade.spec.ts` | Linux and `REDLOG_PACKAGED_APP` | traditional netcat and real PTY job control |
+| `packaged-dependency-install.spec.ts` | macOS, installed package and `REDLOG_PACKAGED_INSTALL_DEPS=1` | explicitly downloads and installs public dependencies |
+| `export-preview.spec.ts` (write-permission case) | POSIX | real directory permissions; Windows ACL acceptance is separate |
 
-On Windows, expect the first three to report as skipped. If you are changing
-anything they cover, run them on Linux or macOS before trusting the result.
+HUD geometry has no permanently skipped case. Platform skips are prerequisites,
+not successful acceptance; use the appropriate installed OS before trusting a
+change to these paths.
+
+## Layout verification
+
+Use `first-run` for partial setup at wide/narrow sizes, `ui-closeout` and
+`capture-settings-interaction` for settings, `export-preview` for dialog bounds,
+keyboard focus and unobstructed actions, and `hud-overlay` for the floating bar.
+Pure time-map/zoom tests own the math; source wiring checks do not prove layout.
+Also resize the native app and inspect wrapping, scrolling and primary actions:
+CDP clicks and jsdom cannot establish native hit testing or visual quality.
 
 ## CI
 
@@ -89,9 +105,10 @@ gate fails — it is skipped, not queued.** A branch can therefore accumulate
 contract changes that e2e has never once checked. Before a large branch goes
 up, run it locally.
 
-## macOS gotcha
+## macOS launch environment
 
-The first time the built app runs on macOS it may prompt for Accessibility
-permission (global shortcuts, overlay windows). Grant it in System Settings, or
-the test can hang on `firstWindow()` waiting for a window that never appears.
-Subsequent runs are unaffected.
+Run Electron in a normal desktop environment. Under an agent's restricted
+sandbox, AppKit can abort before application code runs; see `AGENTS.md` for
+the launch permission requirement. A missing first window does not establish
+an Accessibility permission problem. Test real capture/privacy prompts
+separately; do not grant extra OS permissions to mask a pre-launch failure.

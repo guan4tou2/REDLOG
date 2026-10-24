@@ -25,7 +25,6 @@
 // and a missing shell dependency blocks only the Commands step.
 
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react'
-import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
@@ -76,6 +75,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
   const [wsl, setWsl] = useState<WslDistro | null>(null)
   const [recording, setRecording] = useState<RecordTarget | null>(null)
+  // Which shell the host flow last resolved to. Starts null (= the detected
+  // shell preflight named) and follows the picker inside the flow; the entry
+  // button reads it so its label matches the install actually running below.
+  const [hostShellLabel, setHostShellLabel] = useState<string | null>(null)
   const [httpVerified, setHttpVerified] = useState(false)
   const [preparing, setPreparing] = useState(true)
   const preparationRequested = useRef(false)
@@ -178,7 +181,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     : null
 
   if (preparing) return (
-    <div className="h-full overflow-auto p-4 space-y-4">
+    <div className="h-full overflow-auto p-pad space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
@@ -189,167 +192,163 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   )
 
   return (
-    <div className="h-full flex flex-col p-4 gap-3 overflow-auto">
-      <div>
-        <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-        <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('captureSetup.prove')}</p>
+    <div className="h-full flex flex-col p-pad gap-gap overflow-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
+          <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+        </div>
+        <div data-testid="first-run-core-footer" className="flex flex-col items-start gap-1.5 text-xs sm:items-end sm:max-w-sm">
+          {commands !== 'none' && (
+            <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-start-work">
+              {t('firstRun.core.start')}
+            </Button>
+          )}
+          {ready ? (
+            <>
+              <p data-testid="first-run-core-ready" className="text-emerald-500 font-medium">{t('firstRun.core.ready')}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-redlog-text-faint">{t('firstRun.core.laterWhy')}</p>
+              {commands === 'none' && <button
+                onClick={() => onNavigate('timeline')}
+                data-testid="first-run-later"
+                className="inline-flex items-center min-h-8 text-redlog-text-dim hover:text-redlog-text underline"
+              >
+                {t('firstRun.core.later')}
+              </button>}
+            </>
+          )}
+        </div>
+
       </div>
 
       <div className="space-y-3">
         <div
-          className="w-full max-w-3xl border border-redlog-border rounded-lg p-3 space-y-3"
+          className="w-full space-y-3"
           data-testid="first-run-strip"
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
         >
-          <SectionLabel>
-            {t('firstRun.core.heading')}
-          </SectionLabel>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-3 [&>*]:min-w-0">
+            <div className="min-w-0 space-y-4">
+              <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-semibold text-redlog-text">{t('firstRun.commands.title')}</p>
+                  <span
+                    data-testid="first-run-commands-status"
+                    className={commands !== 'none' ? 'text-emerald-500' : 'text-redlog-text-faint'}
+                  >
+                    {commands !== 'none' ? t('firstRun.core.verified') : t('firstRun.core.pending')}
+                  </span>
+                </div>
 
-          <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="font-semibold text-redlog-text">{t('firstRun.commands.title')}</p>
-              <span
-                data-testid="first-run-commands-status"
-                className={commands !== 'none' ? 'text-emerald-500' : 'text-redlog-text-faint'}
-              >
-                {commands !== 'none' ? t('firstRun.core.verified') : t('firstRun.core.pending')}
-              </span>
-            </div>
+                {rowsFailed ? (
+                  // Read failure, not silence. Saying "nothing recorded" here would
+                  // send the operator hunting a capture problem that does not exist.
+                  <div data-testid="first-run-read-failed" role="status" className="space-y-2">
+                    <p className="font-semibold text-redlog-text">{t('firstRun.readFailedTitle')}</p>
+                    <p className="text-redlog-text-dim">{t('firstRun.readFailedWhy')}</p>
+                    <Button level="secondary" onClick={loadRows}>{t('firstRun.recheck')}</Button>
+                  </div>
+                ) : commands !== 'none' ? (
+                  <div data-testid="first-run-commands-verified" className="space-y-1">
+                    <p className="text-redlog-text">
+                      {commands === 'external' ? t('firstRun.commands.verifiedExternal') : t('firstRun.commands.verifiedBuiltin')}
+                    </p>
+                    {recordingOn === false && (
+                      <p data-testid="first-run-commands-paused" role="status" className="text-amber-400">
+                        {t('firstRun.commands.pausedNow')}
+                      </p>
+                    )}
+                    {/* Command capture works; the operator's own terminal being
+                        unconnected is a separate fact, so it is said separately
+                        rather than holding the checkmark back. */}
+                    {commands === 'builtin' && (
+                      <p data-testid="first-run-external-pending" className="text-redlog-text-faint">
+                        {hostTarget
+                          ? t('firstRun.commands.externalPending', { shell: hostTarget.label })
+                          : t('firstRun.commands.externalPendingGeneric')}
+                      </p>
+                    )}
+                  </div>
+                ) : preflightFailed ? (
+                  <div data-testid="first-run-preflight-failed" role="status" className="space-y-2">
+                    <p className="font-semibold text-redlog-text">{t('firstRun.preflightFailedTitle')}</p>
+                    <p className="text-redlog-text-dim">{t('firstRun.preflightFailedWhy')}</p>
+                    <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+                  </div>
+                ) : blockers.length > 0 ? (
+                  <div data-testid="first-run-blocked" className="space-y-2">
+                    {policyBlocker ? (
+                      <ExecutionPolicyBlocker blocker={policyBlocker} />
+                    ) : (
+                      <div data-testid="first-run-missing-deps" className="space-y-2">
+                        <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
+                        <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
+                        <Button level="secondary" onClick={openPreparation}>{t('captureSetup.openPreparation')}</Button>
+                      </div>
+                    )}
+                  </div>
+                ) : stuck ? (
+                  <div data-testid="first-run-stuck" role="status" className="space-y-2">
+                    <p className="font-semibold text-redlog-text">{t('firstRun.stuckTitle')}</p>
+                    <p className="text-redlog-text-dim">{t('firstRun.stuckWhy')}</p>
+                    <Button level="secondary" onClick={() => setShowSources(true)}>{t('firstRun.stuckAction')}</Button>
+                  </div>
+                ) : null}
 
-            {rowsFailed ? (
-              // Read failure, not silence. Saying "nothing recorded" here would
-              // send the operator hunting a capture problem that does not exist.
-              <div data-testid="first-run-read-failed" role="status" className="space-y-2">
-                <p className="font-semibold text-redlog-text">{t('firstRun.readFailedTitle')}</p>
-                <p className="text-redlog-text-dim">{t('firstRun.readFailedWhy')}</p>
-                <Button level="secondary" onClick={loadRows}>{t('firstRun.recheck')}</Button>
-              </div>
-            ) : commands !== 'none' ? (
-              <div data-testid="first-run-commands-verified" className="space-y-1">
-                <p className="text-redlog-text">
-                  {commands === 'external' ? t('firstRun.commands.verifiedExternal') : t('firstRun.commands.verifiedBuiltin')}
-                </p>
-                {recordingOn === false && (
-                  <p data-testid="first-run-commands-paused" role="status" className="text-amber-400">
-                    {t('firstRun.commands.pausedNow')}
-                  </p>
-                )}
-                {/* Command capture works; the operator's own terminal being
-                    unconnected is a separate fact, so it is said separately
-                    rather than holding the checkmark back. */}
-                {commands === 'builtin' && (
-                  <p data-testid="first-run-external-pending" className="text-redlog-text-faint">
-                    {hostTarget
-                      ? t('firstRun.commands.externalPending', { shell: hostTarget.label })
-                      : t('firstRun.commands.externalPendingGeneric')}
-                  </p>
-                )}
-              </div>
-            ) : preflightFailed ? (
-              <div data-testid="first-run-preflight-failed" role="status" className="space-y-2">
-                <p className="font-semibold text-redlog-text">{t('firstRun.preflightFailedTitle')}</p>
-                <p className="text-redlog-text-dim">{t('firstRun.preflightFailedWhy')}</p>
-                <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
-              </div>
-            ) : blockers.length > 0 ? (
-              <div data-testid="first-run-blocked" className="space-y-2">
-                {policyBlocker ? (
-                  <ExecutionPolicyBlocker blocker={policyBlocker} />
-                ) : (
-                  <div data-testid="first-run-missing-deps" className="space-y-2">
-                    <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
-                    <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
-                    <Button level="secondary" onClick={openPreparation}>{t('captureSetup.openPreparation')}</Button>
+                {/* Connect the operator's shell; the built-in fallback below is
+                    independent and can also provide command proof. */}
+                {(hostTarget || wslTarget) && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex flex-wrap gap-2">
+                      {hostTarget && (
+                        <Button
+                          level={commands === 'none' ? 'primary' : 'secondary'}
+                          onClick={() => setRecording(hostTarget)}
+                          data-testid="first-run-record-terminal"
+                        >
+                          {preflight?.shell ? t('firstRun.recordMyTerminal', { shell: hostShellLabel ?? hostTarget.label }) : t('firstRun.record.chooseTerminal')}
+                        </Button>
+                      )}
+                      {wslTarget && (
+                        <Button level="secondary" onClick={() => setRecording(wslTarget)} data-testid="first-run-record-wsl">
+                          {t('firstRun.recordMyWsl', { distro: wsl?.name ?? '' })}
+                        </Button>
+                      )}
+                    </div>
+                    {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={openPreparation}
+                      onSelectedLabel={recording.kind === 'host' ? setHostShellLabel : undefined} />}
                   </div>
                 )}
-              </div>
-            ) : stuck ? (
-              <div data-testid="first-run-stuck" role="status" className="space-y-2">
-                <p className="font-semibold text-redlog-text">{t('firstRun.stuckTitle')}</p>
-                <p className="text-redlog-text-dim">{t('firstRun.stuckWhy')}</p>
-                <Button level="secondary" onClick={() => setShowSources(true)}>{t('firstRun.stuckAction')}</Button>
-              </div>
-            ) : (
-              <p data-testid="first-run-commands-quick" className="text-redlog-text-dim">{t('firstRun.commands.quickTest')}</p>
-            )}
-
-            {/* Two command paths, neither a step toward the other: the
-                built-in terminal on the left, or the shell the operator
-                already works in. Either one's command verifies. */}
-            {(hostTarget || wslTarget) && (
-              <div className="space-y-1.5 pt-1">
-                <p className="text-redlog-text-faint">{t('firstRun.commands.ownTerminal')}</p>
-                <div className="flex flex-wrap gap-2">
-                  {hostTarget && (
-                    <Button
-                      level={commands === 'none' ? 'primary' : 'secondary'}
-                      onClick={() => setRecording(hostTarget)}
-                      data-testid="first-run-record-terminal"
-                    >
-                      {preflight?.shell ? t('firstRun.recordMyTerminal', { shell: hostTarget.label }) : t('firstRun.record.chooseTerminal')}
-                    </Button>
-                  )}
-                  {wslTarget && (
-                    <Button level="secondary" onClick={() => setRecording(wslTarget)} data-testid="first-run-record-wsl">
-                      {t('firstRun.recordMyWsl', { distro: wsl?.name ?? '' })}
-                    </Button>
-                  )}
+              </section>
+              {rows.length > 0 && (
+                <div data-testid="first-run-recent">
+                  <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
+                    {t('firstRun.recording')}
+                  </p>
+                  <ul className="space-y-1">
+                    {rows.slice(0, 8).map((e) => (
+                      <li key={e.id} className="flex items-baseline gap-2 text-xs">
+                        <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
+                          {formatTime(e.timestamp, { seconds: true })}
+                        </span>
+                        <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                {recording && <RecordTerminalFlow key={recording.label} target={recording} onPrepare={openPreparation} />}
-              </div>
-            )}
-          </section>
-
-          <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} paused={recordingOn === false} />
-
-          <div data-testid="first-run-core-footer" className="text-xs space-y-1.5">
-            {commands !== 'none' && (
-              <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-start-work">
-                {t('firstRun.core.start')}
-              </Button>
-            )}
-            {ready ? (
-              <>
-                <p data-testid="first-run-core-ready" className="text-emerald-500 font-medium">{t('firstRun.core.ready')}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-redlog-text-faint">{t('firstRun.core.laterWhy')}</p>
-                <button
-                  onClick={() => onNavigate('timeline')}
-                  data-testid="first-run-later"
-                  className="text-redlog-text-dim hover:text-redlog-text underline"
-                >
-                  {t('firstRun.core.later')}
-                </button>
-              </>
-            )}
-          </div>
-
-          {rows.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
-                {t('firstRun.recording')}
-              </p>
-              <ul className="space-y-1">
-                {rows.slice(0, 8).map((e) => (
-                  <li key={e.id} className="flex items-baseline gap-2 text-xs">
-                    <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
-                      {formatTime(e.timestamp, { seconds: true })}
-                    </span>
-                    <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
-                  </li>
-                ))}
-              </ul>
+              )}
             </div>
-          )}
+            <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} paused={recordingOn === false} />
+          </div>
         </div>
-        <div className="w-full max-w-3xl space-y-2">
+        <div className="w-full space-y-2">
           <button type="button" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin}
             onClick={() => setShowBuiltin((v) => !v)}
-            className="text-xs text-redlog-text-dim underline hover:text-redlog-text">
+            className="inline-flex items-center min-h-8 text-xs text-redlog-text-dim underline hover:text-redlog-text">
             {t(showBuiltin ? 'firstRun.builtin.hide' : 'firstRun.builtin.show')}
           </button>
           {showBuiltin && (
@@ -365,7 +364,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           onClick={() => setShowSources((v) => !v)}
           data-testid="first-run-more-sources"
           aria-expanded={showSources}
-          className="flex items-center gap-1 text-xs text-redlog-text-dim hover:text-redlog-text"
+          className="flex items-center gap-1 min-h-8 text-xs text-redlog-text-dim hover:text-redlog-text"
         >
           <ChevronRight
             size={14}

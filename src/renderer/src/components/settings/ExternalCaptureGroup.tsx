@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
 import { FieldGroup, type HookInfo } from './SettingsShared'
+import { Button } from '../Button'
 import { SetupAndTeardown } from './ManualStepList'
+import { SourceLastSeen } from './SourceLastSeen'
 import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
+import { useReadState } from '../../lib/readState'
 
 // Capture RedLog cannot start.
 //
@@ -27,25 +29,29 @@ import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
  *  RedLog's own hooks do not. That dot is the whole test. */
 const isExternal = (h: HookInfo): boolean => h.id.includes('.')
 
-type Live = { state?: string; lastEventAt?: number | null; running?: boolean }
-
 export default function ExternalCaptureGroup({ t }: {
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element | null {
-  const [hooks, setHooks] = useState<HookInfo[]>([])
-  const [live, setLive] = useState<Record<string, Live>>({})
-
+  const hookRead = useReadState(async () => {
+    const hooks = await window.redlog.hooks.detect()
+    if (!Array.isArray(hooks)) throw new Error(t('settings.externalInvalidResponse'))
+    return hooks.filter(isExternal)
+  })
+  const hooks = hookRead.state.value ?? []
+  const healthRead = useReadState(async () => {
+    const health = await window.redlog.capture.health()
+    if (!health || !Array.isArray(health.sources)) throw new Error(t('settings.externalInvalidResponse'))
+    return health
+  }, hooks.length > 0)
+  // A live producer stays visible even if its manifest names another OS.
+  const foreign = hooks.filter(h => h.platforms
+    && !h.platforms.includes(window.redlog.platform as 'darwin' | 'linux' | 'win32')
+    && !healthRead.state.value?.sources.some(s => s.id === h.id && s.running))
+  const native = hooks.filter(h => !foreign.includes(h))
   const read = (): void => {
-    void (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } })
-      .hooks.detect().then((all) => setHooks(all.filter(isExternal))).catch(() => {})
-    void window.redlog.capture.health().then((h) => {
-      if (!h) return
-      const next: Record<string, Live> = {}
-      for (const s of h.sources) next[s.id] = { state: s.state, lastEventAt: s.lastEventAt }
-      setLive(next)
-    }).catch(() => {})
+    hookRead.retry()
+    healthRead.retry()
   }
-  useEffect(read, [])
   // The operator leaves, runs the sudo line in a terminal, and comes back.
   // That return is the moment the answer changes, and the moment they look.
   useRevalidateOnFocus(read)
@@ -57,7 +63,11 @@ export default function ExternalCaptureGroup({ t }: {
     return line === key ? '' : line
   }
 
-  if (hooks.length === 0) return null
+  if (hookRead.state.phase === 'loaded' && hooks.length === 0) return null
+  const fresh = hookRead.state.phase === 'loaded' && healthRead.state.phase === 'loaded'
+  const errors = [hookRead.state, ...(hooks.length ? [healthRead.state] : [])]
+    .filter((state) => state.phase === 'failed')
+  const reading = hookRead.state.phase === 'loading' || (hooks.length > 0 && healthRead.state.phase === 'loading')
 
   return (
     <FieldGroup title={t('settings.externalCapture')}>
@@ -65,9 +75,16 @@ export default function ExternalCaptureGroup({ t }: {
           this page is this project; this one block is the machine, and saying
           so once in words beats teaching a chip that means "scope". */}
       <p className="text-xs text-redlog-text-faint">{t('settings.externalCaptureHint')}</p>
+      {reading && <p role="status" className="text-xs text-redlog-text-faint">{t('common.loading')}</p>}
+      {errors.length > 0 && <div role="alert" className="text-xs text-red-400 space-y-1">
+        <p>{t('settings.externalReadFailed')}</p>
+        {errors.map((state, index) => <p key={index} className="break-words">{state.error}</p>)}
+        <Button level="quiet" disabled={reading} onClick={read}>{t('common.retry')}</Button>
+      </div>}
       <div className="space-y-2">
-        {hooks.map((hook) => {
-          const l = live[hook.id] ?? {}
+        {[native, foreign].map((group, groupIndex) => {
+          const rows = group.map((hook) => {
+          const l = healthRead.state.value?.sources.find((source) => source.id === hook.id)
           // `off` is not a fault. A producer nobody has started yet is the
           // normal state of a thing you start by hand, so it gets the quiet
           // treatment and only a producer that is RUNNING earns a colour.
@@ -75,14 +92,14 @@ export default function ExternalCaptureGroup({ t }: {
           // Running is its own heartbeat, not a guess from recent events: a
           // producer announces itself every 15 seconds, which is the only way
           // to tell "it died" from "nothing happened to capture".
-          const feeding = l.running === true
-          const known = l.state === 'ready'
+          const feeding = fresh && l?.running === true
+          const known = l?.state === 'ready'
           // The dangerous pair first: switched off and still receiving. The
           // producer runs outside RedLog, so switching it off never stopped
           // it -- it only stopped RedLog saying so. Naming that state is the
           // whole reason a disabled row is still drawn.
           const stoppedButFeeding = hook.disabled && feeding
-          const stateLabel = stoppedButFeeding
+          const stateLabel = !fresh || !l ? t('settings.externalUnknown') : stoppedButFeeding
             ? t('settings.externalDisabledFeeding')
             : hook.disabled ? t('settings.externalDisabled')
               : !hook.available
@@ -95,31 +112,36 @@ export default function ExternalCaptureGroup({ t }: {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                 <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  stoppedButFeeding ? 'bg-redlog-danger/12 text-redlog-danger'
+                  !fresh || !l ? 'bg-redlog-elevated text-redlog-text-dim'
+                    : stoppedButFeeding ? 'bg-redlog-danger/12 text-redlog-danger'
                     : hook.disabled ? 'bg-redlog-elevated text-redlog-text-dim'
                       : feeding ? 'bg-redlog-safe/12 text-redlog-safe'
                         : !hook.available ? 'bg-redlog-warn/12 text-redlog-warn'
                           : 'bg-redlog-elevated text-redlog-text-dim'
                 }`}>{stateLabel}</span>
               </div>
-              {/* The manifest's own prose is written for whoever maintains
-                  the pack, in English. The translated line says what this
-                  puts in the record, which is also what makes the source
-                  findable: searching 封包 or tcpdump used to return nothing
-                  at all, because a key built at runtime is invisible to the
-                  index generator. */}
-              {describe(hook) && (
-                <p className="text-xs text-redlog-text-dim mt-1">{describe(hook)}</p>
-              )}
-              <div className="mt-2">
-                <SetupAndTeardown
-                  setup={hook.manualSteps}
-                  teardown={hook.removalSteps}
-                  t={t}
-                />
-              </div>
+              {!fresh && l && <p className="text-xs text-redlog-text-faint mt-1">
+                {t('settings.externalLastKnown', { state: t(l.running ? 'settings.externalFeeding' : l.state === 'ready' ? 'settings.externalIdle' : 'settings.externalNotRunning') })}
+              </p>}
+              {/* When this producer last delivered. The chip says whether it is
+                  running now; this says when something actually arrived —
+                  the difference between "up" and "feeding", which is the
+                  question an operator actually has about a producer they
+                  started by hand. */}
+              {l && <SourceLastSeen source={l} active={feeding} t={t} />}
+              <details className="mt-2">
+                <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.externalSetup')}</summary>
+                {describe(hook) && <p className="text-xs text-redlog-text-dim my-2">{describe(hook)}</p>}
+                {groupIndex === 0 && <SetupAndTeardown setup={hook.manualSteps} teardown={hook.removalSteps} t={t} />}
+              </details>
             </div>
           )
+          })
+          return groupIndex === 0 ? <div key="native" className="space-y-2">{rows}</div>
+            : group.length > 0 ? <details data-testid="external-other-platforms" key="foreign" className="space-y-2">
+              <summary className="min-h-8 cursor-pointer content-center text-xs text-redlog-text-dim">{t('settings.otherPlatforms')} ({group.length})</summary>
+              {rows}
+            </details> : null
         })}
       </div>
     </FieldGroup>

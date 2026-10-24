@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 
@@ -10,7 +11,7 @@ const roots = [
   'dist/linux-unpacked/resources',
   'dist/linux-arm64-unpacked/resources'
 ]
-const root = roots.map((p) => path.resolve(p)).find((p) => fs.existsSync(p))
+const root = process.argv[2] ? path.resolve(process.argv[2]) : roots.map((p) => path.resolve(p)).find((p) => fs.existsSync(p))
 if (!root) throw new Error(`No unpacked package resources found under dist/ (${roots.join(', ')})`)
 
 const required = [
@@ -32,13 +33,27 @@ const required = [
   'plugins/starter-pack/plugin.json',
   // Spec 035: a capture pack whose manifest is missing does not run.
   'plugins/pack-host-monitors/plugin.json',
-  'plugins/pack-ai-agents/plugin.json',
-  'plugins/pack-windows-output/plugin.json'
+  'plugins/pack-windows-output/plugin.json',
+
 ]
+// Every optional source package must be present but outside automatic discovery.
+for (const provider of fs.readdirSync('optional-plugins', { withFileTypes: true }).filter(e => e.isDirectory())) {
+  const prefix = `optional-ai/${provider.name}`
+  required.push(`${prefix}/plugin.json`, `${prefix}/adapter.cjs`)
+  const manifestPath = path.join(root, prefix, 'plugin.json')
+  const codePath = path.join(root, prefix, 'adapter.cjs')
+  if (fs.existsSync(manifestPath) && fs.existsSync(codePath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    const hash = createHash('sha256').update(fs.readFileSync(codePath)).digest('hex')
+    if (hash !== manifest.redlogAgent?.sha256) throw new Error(`Optional AI checksum mismatch: ${provider.name}`)
+    if (fs.existsSync(path.join(root, 'plugins', manifest.id))) throw new Error(`Optional AI package is auto-discoverable: ${manifest.id}`)
+  }
+}
 const forbidden = [
   'hooks/shell-preexec-hook.sh',
   'hooks/redlog-hook.zsh',
   'hooks/claude-code-hook.sh',
+  'plugins/pack-ai-agents',
   // The plugin code host was removed in Spec 027; its child script must not ship.
   'plugin-runner.js'
 ]
