@@ -86,7 +86,8 @@ test.describe('chrome is not selectable, content is', () => {
     // §10 put one export control in the title bar. Inside a drag region the
     // OS takes the mousedown to move the window and the click never lands —
     // the button would look right and do nothing.
-    const btn = page.locator('[aria-haspopup="menu"]').first()
+    // The control opens the export dialog (c130476c); it was a menu before.
+    const btn = page.locator('[aria-haspopup="dialog"]').first()
     await expect(btn).toBeVisible()
 
     // `-webkit-app-region` does not inherit — its initial value is `none`, and
@@ -103,9 +104,9 @@ test.describe('chrome is not selectable, content is', () => {
     expect(region).toBe('no-drag')
 
     await btn.click()
-    await expect(page.locator('[role="menu"]')).toBeVisible()
+    await expect(page.getByRole('dialog')).toBeVisible()
     await page.keyboard.press('Escape')
-    await expect(page.locator('[role="menu"]')).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
   test('timeline content selects', async () => {

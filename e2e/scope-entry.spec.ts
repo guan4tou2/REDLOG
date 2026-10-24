@@ -46,10 +46,11 @@ test.describe.serial('scope entry and project identity', () => {
     const config = await readConfig()
 
     // Already in Settings from the excludes above; move to the page that
-    // shows the engagement identity. By its stable id, not its visible text —
-    // that label has been reworded once already.
+    // shows the engagement identity — Scope since 0f79e841, where the project's
+    // own settings now live. By its stable id, not its visible text: that
+    // label has been reworded once already.
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings')
-    await page.click('[data-settings-page="general"]')
+    await page.click('[data-settings-page="scope"]')
     const id = page.getByLabel('ID', { exact: true }).first()
     await expect(id).toHaveValue(config.engagement.id)
     await expect(id).toHaveAttribute('readonly', '')
