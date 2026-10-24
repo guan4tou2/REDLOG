@@ -246,9 +246,9 @@ Line references drift; the function names are the stable handle.
 |---|---|---|
 | Transcript reloaded and blanked on every batch | `TranscriptView.tsx` | **Fixed** in `0f1f3746` (PR #437): merge by id, position by visible row, follow by order |
 | PowerShell count advanced past failed writes; pause back-filled on resume | `powershell-transcript.ts` `follow()` | **Fixed** in PR #438. Retry state is in memory only: a restart still loses a write that failed before it |
-| Per-message index written before the event | `tailer-host.ts` `catchUpPerMessageDir()` | **Confirmed, open** |
-| JSONL: a swallowed write failure may still advance the sidecar | `tailer-host.ts` `catchUpJsonl()` / `processUnit()` | Reported, **not yet verified** |
-| Pause still appends raw AI bytes to the sidecar | `tailer-host.ts` `catchUpJsonl()` | **Confirmed, open**. Deliberate in the code (`capture_gap` says "Raw data preserved in sidecar"); §3 reverses it |
+| Per-message index written before the event | `tailer-host.ts` `catchUpPerMessageDir()` | **Fixed** in PR #441: indexed only after the event is written; retried with backoff, then recorded as a `capture_gap` |
+| JSONL: a swallowed write failure may still advance the sidecar | `tailer-host.ts` `catchUpJsonl()` / `processUnit()` | **Confirmed and fixed** in PR #441: a failed write holds the sidecar back and is retried, then recorded as a `capture_gap`. Failed turns are queued in memory only: a restart loses them |
+| Pause still appends raw AI bytes to the sidecar | `tailer-host.ts` `catchUpJsonl()` | **Fixed** in PR #441: a paused read writes same-length newline filler, so offsets hold and no content is kept. Pause is still decided when the line is read, not when it was written |
 | PowerShell: the last command's output is kept as first seen while still growing | `powershell-transcript.ts` | **Confirmed, open** |
 | Shell relay keeps 8 MiB per stream | `hooks/shell-common.sh` `_REDLOG_MAX_BYTES` | Known limit, labelled `truncated`; streaming to disk proposed (§4) |
 | `.cast` stops at 50 MiB | `config.ts` `maxCastBytes` | Known limit, writes a truncation marker; segment rotation proposed |
