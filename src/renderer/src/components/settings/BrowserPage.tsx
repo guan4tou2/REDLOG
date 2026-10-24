@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RuntimePreparation } from '../CapturePreparation'
 import { HttpCaptureStep } from '../HttpCaptureStep'
 import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT } from '../../lib/defaults'
@@ -12,20 +13,21 @@ import BrowserPanel from './BrowserPanel'
 // operator looking for 'where does my web traffic get recorded' had to
 // know to look under network security to find it.
 export default function BrowserPage({
-  config, setConfig, t, onPrepare
+  config, setConfig, t
 }: {
-  onPrepare: () => void
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
+  const [preparing, setPreparing] = useState(false)
   const [verify, setVerify] = useState(false)
   return (
     <>
       <details onToggle={e => setVerify(e.currentTarget.open)} className="mb-4">
         <summary className="min-h-8 cursor-pointer text-xs text-redlog-text content-center">{t('firstRun.http.verifySettings')}</summary>
-        {verify && <HttpCaptureStep onPrepare={onPrepare} />}
+        {verify && <HttpCaptureStep onPrepare={() => setPreparing(true)} />}
       </details>
+      {preparing && <RuntimePreparation onClose={() => setPreparing(false)} />}
       <BrowserPanel t={t} config={config} setConfig={setConfig} />
       <FieldGroup title={t('settings.cdp')}>
         <p className="text-xs text-redlog-text-faint mb-2">

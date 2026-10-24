@@ -49,7 +49,7 @@ describe('the hooks panel on macOS', () => {
       hook('shell-powershell', { name: 'PowerShell adapter', available: false }),
       hook('shell-wsl', { name: 'WSL adapter', available: false })
     ]
-    render(<HooksPanel hooks={hooks} setHooks={() => {}} hookLoading={null} setHookLoading={() => {}} t={(k) => k} />)
+    render(<HooksPanel hooks={hooks} setHooks={() => {}} t={(k) => k} />)
     const other = screen.getByTestId('hooks-other-platforms')
     expect(within(other).getByText('PowerShell adapter')).toBeTruthy()
     expect(within(other).getByText('WSL adapter')).toBeTruthy()
@@ -62,7 +62,7 @@ describe('the hooks panel on macOS', () => {
       platform: 'darwin',
       hooks: { detect: async () => [], terminalPolicy: async () => null }
     }
-    render(<HooksPanel hooks={[hook('shell-zsh')]} setHooks={() => {}} hookLoading={null} setHookLoading={() => {}} t={(k) => k} />)
+    render(<HooksPanel hooks={[hook('shell-zsh')]} setHooks={() => {}} t={(k) => k} />)
     expect(screen.queryByTestId('hooks-other-platforms')).toBeNull()
   })
 })

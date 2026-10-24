@@ -29,7 +29,8 @@ import { useReadState } from '../../lib/readState'
  *  RedLog's own hooks do not. That dot is the whole test. */
 const isExternal = (h: HookInfo): boolean => h.id.includes('.')
 
-export default function ExternalCaptureGroup({ t }: {
+export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
+  onOpenPlugins?: () => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element | null {
   const hookRead = useReadState(async () => {
@@ -129,6 +130,7 @@ export default function ExternalCaptureGroup({ t }: {
                   question an operator actually has about a producer they
                   started by hand. */}
               {l && <SourceLastSeen source={l} active={feeding} t={t} />}
+              {hook.disabled && onOpenPlugins && <Button level="quiet" onClick={onOpenPlugins}>{t('settings.openPlugins')}</Button>}
               <details className="mt-2">
                 <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.externalSetup')}</summary>
                 {describe(hook) && <p className="text-xs text-redlog-text-dim my-2">{describe(hook)}</p>}

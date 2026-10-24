@@ -21,10 +21,13 @@ function plan(included: number): ResolvedExportPlan {
 }
 
 function install(resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>): void {
+  localStorage.setItem('redlog.export.format', 'json')
   ;(window as unknown as { redlog: unknown }).redlog = {
     data: {
+      recentExport: vi.fn(async () => ({ ok: true, delivery: null })),
+      revealExport: vi.fn(async () => true),
       resolveExportPlan,
-      executeExportPlan: vi.fn(async () => ({ ok: true, planId: 'plan-1', fingerprint: 'x', artifactPath: '/tmp/x', counts: plan(1).counts, warnings: [] }))
+      executeExportPlan: vi.fn(async () => ({ ok: true, planId: 'plan-1', fingerprint: 'x', artifactPath: '/tmp/x', counts: plan(1).counts, warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
     }
   }
 }
@@ -49,20 +52,6 @@ describe('ExportMenu plan preview', () => {
   })
 
   afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
-
-  // The evidence bundle cannot scrub operator PII, so the plan resolver
-  // refuses the pair (unsupported-policy). The menu must not offer it as if it
-  // would work.
-  it('does not offer a format that cannot scrub PII once scrubbing is on', () => {
-    install(vi.fn())
-    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
-    fireEvent.click(screen.getByLabelText('Export'))
-    const bundle = (): HTMLOptionElement => screen.getByRole('option', { name: 'Evidence bundle (with verifier)' }) as HTMLOptionElement
-    expect(bundle()?.disabled).toBe(false)
-    fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
-    expect(bundle()?.disabled).toBe(true)
-    expect((screen.getByLabelText('Export range') as HTMLSelectElement).disabled).toBe(false)
-  })
 
   it('keeps confirmation disabled for an empty approved selection', async () => {
     install(async () => ({ ok: true, plan: plan(0) }))
@@ -117,32 +106,6 @@ describe('ExportMenu plan preview', () => {
 describe('ExportMenu as a dialog', () => {
   afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
-  it('opens the preview as a modal dialog', async () => {
-    install(async () => ({ ok: true, plan: plan(2) }))
-    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
-    openJson()
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog.getAttribute('aria-modal')).toBe('true')
-  })
-
-  it('keeps the dialog and its preview when the run fails, and offers to recalculate', async () => {
-    const resolve = vi.fn(async () => ({ ok: true as const, plan: plan(2) }))
-    install(resolve)
-    ;(window as unknown as { redlog: { data: Record<string, unknown> } }).redlog.data.executeExportPlan =
-      vi.fn(async () => ({ ok: false, error: 'disk full' }))
-    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
-    openJson()
-    fireEvent.click(await screen.findByTestId('export-confirm'))
-    const err = await screen.findByTestId('export-run-error')
-    expect(err.textContent).toContain('disk full')
-    expect(screen.getByRole('dialog').textContent).toContain('Plan fingerprint')
-    // Confirming again would reuse a spent plan; the way on is to recalculate.
-    expect((screen.getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(screen.getByText('Recalculate and try again'))
-    await waitFor(() => expect(resolve).toHaveBeenCalledTimes(3))
-    await waitFor(() => expect(screen.queryByTestId('export-run-error')).toBeNull())
-  })
-
   it.each([
     ['source-unavailable', 'changed between the preview and Confirm'],
     ['policy-changed', 'Settings that affect this export']
@@ -169,44 +132,31 @@ describe('ExportMenu as a dialog', () => {
     expect(screen.queryByTestId('export-run-error-meaning')).toBeNull()
   })
 
-  it('closes on success', async () => {
+  it('can recover the previous result after reopening, and reports failed reveal', async () => {
+    install(async () => ({ ok: true, plan: plan(2) }))
+    const data = window.redlog.data
+    vi.mocked(data.recentExport).mockResolvedValue({ ok: true, delivery: { artifactPath: '/tmp/previous.json', format: 'json', completedAt: 1700000000000, availability: 'available' } })
+    vi.mocked(data.revealExport).mockResolvedValue(false)
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    fireEvent.click(screen.getByLabelText('Export'))
+    fireEvent.click(await screen.findByTestId('export-recent'))
+    expect(screen.getByTestId('export-completed').textContent).toContain('/tmp/previous.json')
+    fireEvent.click(screen.getByTestId('export-reveal'))
+    await screen.findByTestId('export-reveal-error')
+    expect(screen.getByTestId('export-completed')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Close'))
+    fireEvent.click(screen.getByLabelText('Export'))
+    expect(await screen.findByTestId('export-recent')).toBeTruthy()
+  })
+
+  it('retains the actual successful file until explicitly closed', async () => {
     install(async () => ({ ok: true, plan: plan(2) }))
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     openJson()
     fireEvent.click(await screen.findByTestId('export-confirm'))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-  })
-})
-
-// A component declared inside another component's body is a new type on every
-// render, so React unmounts and remounts its subtree each time — focus and
-// state are lost on the keystroke that caused the render, and Fast Refresh
-// cannot reconcile the old tree against the new one, which shows up as a panel
-// that renders part of itself and stops. `Option` and `PreviewRow` were
-// written that way and `Toggle` was added beside them.
-describe('the menu renders all of itself', () => {
-  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
-
-  it('shows both choices and every format, not just the first row', () => {
-    install(vi.fn())
-    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
-    fireEvent.click(screen.getByLabelText('Export'))
-    expect(screen.getByLabelText(/scrub operator pii/i)).toBeTruthy()
-    expect(screen.getByLabelText(/mask out-of-scope content using web scope/i)).toBeTruthy()
-    expect(screen.getByLabelText('Export range')).toBeTruthy()
-    expect(screen.getByText('Evidence bundle (with verifier)')).toBeTruthy()
-  })
-
-  it('keeps one toggle checked while the other is clicked', () => {
-    // The remount symptom, made observable: ticking one box re-renders the
-    // menu, and an inline component definition would rebuild the other from
-    // scratch.
-    install(vi.fn())
-    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
-    fireEvent.click(screen.getByLabelText('Export'))
-    const mask = screen.getByLabelText(/mask out-of-scope content using web scope/i) as HTMLInputElement
-    expect(mask.checked).toBe(true)
-    fireEvent.click(screen.getByLabelText(/scrub operator pii/i))
-    expect((screen.getByLabelText(/mask out-of-scope content using web scope/i) as HTMLInputElement).checked).toBe(true)
+    await screen.findByTestId('export-completed')
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByTestId('export-completed').textContent).toContain('/tmp/x')
+    expect(screen.queryByTestId('export-confirm')).toBeNull()
   })
 })

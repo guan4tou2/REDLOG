@@ -1,6 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdirSync, writeFileSync, readFileSync, chmodSync, statSync, readdirSync, renameSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { checkSourceRecovery } from './source-recovery'
 import { launchWithTempHome, openTestProject } from './helpers'
 
 test.describe.serial('approved export plan', () => {
@@ -22,23 +23,54 @@ test.describe.serial('approved export plan', () => {
     if (app) await app.close()
   })
 
+  test('connects the external source before handing off its evidence', async () => {
+    test.skip(process.platform === 'win32', 'POSIX source acceptance; export cases below still run on Windows')
+    test.setTimeout(60_000)
+    await checkSourceRecovery(app, page, tmpHome)
+  })
+
   test('previews and executes the same approved JSON plan', async () => {
-    await page.getByLabel('Export').click()
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()
     await expect(page.getByTestId('export-preview-subset')).toHaveText('Entire approved snapshot')
-    await expect(page.getByLabel('Export format')).toHaveValue('json')
+    await expect(page.getByLabel('Export format')).toHaveValue('bundle')
+    await page.getByLabel('Export format', { exact: true }).selectOption('other')
+    await page.getByLabel('Other formats', { exact: true }).selectOption('json')
     const fingerprint = await page.getByText(/^[a-f0-9]{12}$/).textContent()
     expect(fingerprint).toMatch(/^[a-f0-9]{12}$/)
     await page.getByTestId('export-confirm').click()
-    await expect(page.getByText('Exported Everything')).toBeVisible()
+    await expect(page.getByTestId('export-completed')).toBeVisible()
+    await page.getByRole('button', { name: 'Close', exact: true }).last().click()
+  })
+
+  test('finds the last result after a reload and reports a removed file without losing the result', async () => {
+    const delivery = await page.evaluate(async () => {
+      const result = await window.redlog.data.recentExport()
+      if (!result.ok || !result.delivery) throw new Error('completed result missing')
+      return result.delivery
+    })
+    await page.reload()
+    await page.getByLabel('Export', { exact: true }).click()
+    await page.getByTestId('export-recent').click()
+    await expect(page.getByTestId('export-completed')).toContainText(delivery.artifactPath)
+    await page.keyboard.press('Escape')
+    const held = delivery.artifactPath + '.held'
+    renameSync(delivery.artifactPath, held)
+    try {
+      await page.getByLabel('Export', { exact: true }).click()
+      await page.getByTestId('export-recent').click()
+      await expect(page.getByTestId('export-completed')).toContainText('The exported file has been removed')
+      await expect(page.getByTestId('export-reveal')).toBeDisabled()
+      await page.keyboard.press('Escape')
+    } finally { renameSync(held, delivery.artifactPath) }
   })
 
   // The current export UI is a fixed dialog. Measure its actual viewport
   // bounds and hit targets; old title-bar dropdown ancestry is no longer its
   // contract. Use client rects consistently under body zoom.
   test('keeps the dialog and its actions inside the viewport', async () => {
-    await page.getByLabel('Export').click()
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
     const panel = page.getByTestId('export-dialog')
     await expect(panel).toBeVisible()
     // The action bar renders once the preview has loaded, which under a full
@@ -104,7 +136,8 @@ test.describe.serial('approved export plan', () => {
     const filesBefore = readdirSync(exports).sort()
     const evidenceBefore = await page.evaluate(async () => (await window.redlog.events.query({ limit: -1 })).map(e => e.id))
     await page.getByLabel('Export', { exact: true }).click()
-    await page.getByLabel('Export format', { exact: true }).selectOption('json')
+    await page.getByLabel('Export format', { exact: true }).selectOption('other')
+    await page.getByLabel('Other formats', { exact: true }).selectOption('json')
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
     await expect(page.getByTestId('export-confirm')).toBeEnabled()
     try {
@@ -113,7 +146,7 @@ test.describe.serial('approved export plan', () => {
       const error = page.getByTestId('export-run-error')
       await expect(error).toContainText(/EACCES|permission denied/i)
       await expect(page.getByTestId('export-dialog')).toBeVisible()
-      await expect(page.getByLabel('Export format', { exact: true })).toHaveValue('json')
+      await expect(page.getByLabel('Other formats', { exact: true })).toHaveValue('json')
       await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
       expect(readdirSync(exports).sort()).toEqual(filesBefore)
       chmodSync(exports, mode)
@@ -121,7 +154,8 @@ test.describe.serial('approved export plan', () => {
       await expect(error).toHaveCount(0)
       await expect(page.getByTestId('export-confirm')).toBeEnabled()
       await page.getByTestId('export-confirm').click()
-      await expect(page.getByTestId('export-dialog')).toHaveCount(0)
+      await expect(page.getByTestId('export-completed')).toBeVisible()
+      await page.getByRole('button', { name: 'Close', exact: true }).last().click()
       const newFiles = readdirSync(exports).filter(f => !filesBefore.includes(f) && f.endsWith('.json') && !f.endsWith('.manifest.json'))
       expect(newFiles).toHaveLength(1)
       const delivered = JSON.parse(readFileSync(join(exports, newFiles[0]), 'utf8'))

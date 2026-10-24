@@ -188,3 +188,9 @@ original-chain completeness or transformed source bytes from that projection.
 Checksums and selection declarations do not authenticate source identity against
 an adversary who replaces both content and metadata. Projection success must
 state this boundary rather than report the source chain as INTACT.
+
+## Completed artifact receipt (2026-10-24, Spec 062)
+
+The export dialog retains the actual successful artifact until explicitly dismissed. A main-owned machine-local receipt permits finding the current project's last successful result again. It contains only path, format and completion time; file availability is rechecked. It is not an Export Selection or a plan and cannot authorize a new export. Failed/canceled attempts never replace it. Metadata persistence failure reports a warning without changing a successfully produced artifact into a failed export.
+
+The first export defaults to evidence bundle; applicable HTTP views still start with HAR. Explicitly remembered JSON/NDJSON/bundle choices are preserved. Other formats remain selectable without altering the frozen query, scope policy, attachments or snapshot.

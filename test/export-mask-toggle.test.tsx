@@ -16,7 +16,7 @@ function installBridge(failResolve = false): void {
   lastOpts = undefined
   executeCalls = 0
   ;(window as unknown as { redlog: unknown }).redlog = {
-    data: {
+    data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })),
       resolveExportPlan: async (request: { maskOutOfScope?: boolean }) => {
         lastOpts = request
         if (failResolve) return { ok: false, error: 'selection-failed' }
@@ -40,7 +40,7 @@ function installBridge(failResolve = false): void {
       executeExportPlan: async () => {
         executeCalls++
         return {
-          ok: true, planId: 'plan-1', fingerprint: 'abc', artifactPath: '/tmp/b', warnings: [],
+          ok: true, planId: 'plan-1', fingerprint: 'abc', artifactPath: '/tmp/b', warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' },
           counts: { examined: 10, included: 8, excludedDoNotExport: 1, excludedPersonal: 1, maskedOutOfScope: 2, sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0 }
         }
       },

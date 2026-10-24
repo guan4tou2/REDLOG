@@ -35,7 +35,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('bundle preview: per-attachment selection (#222)', () => {
   it('lists each file with its targets, flags a cross-target cast, and re-resolves without an unticked one', async () => {
     const resolve = vi.fn(async (req: ExportRequest) => ({ ok: true as const, plan: plan(req.excludeAttachments ?? []) }))
-    ;(window as unknown as { redlog: unknown }).redlog = { data: { resolveExportPlan: resolve, executeExportPlan: vi.fn() } }
+    ;(window as unknown as { redlog: unknown }).redlog = { data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })), resolveExportPlan: resolve, executeExportPlan: vi.fn() } }
     render(<I18nProvider><ExportMenu totalCount={3} /></I18nProvider>)
     fireEvent.click(screen.getByLabelText('Export'))
     fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } })

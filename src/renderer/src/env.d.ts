@@ -86,7 +86,7 @@ interface ResolvedExportPlan {
   attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
-type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
+type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[]; delivery: import('../../core/export-delivery').ExportDelivery } | { ok: false; error: string; planId?: string; fingerprint?: string }
 
 
 
@@ -365,6 +365,7 @@ interface RedLogAPI {
     /** `destDir`: a folder returned by `pickExportDir`; omitted means the project's exports folder. */
     executeExportPlan: (input: { planId: string; destDir?: string }) => Promise<ExportPlanResult>
     /** The project's default exports folder, or null with no project open. */
+    recentExport: () => Promise<{ ok: true; delivery: import('../../core/export-delivery').ExportDelivery | null } | { ok: false; error: string }>
     exportDestination: () => Promise<string | null>
     /** System folder picker. Only a folder chosen here is accepted as a destination. */
     pickExportDir: () => Promise<string | null>

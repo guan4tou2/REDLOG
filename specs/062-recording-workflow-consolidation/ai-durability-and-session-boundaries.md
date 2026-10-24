@@ -1,6 +1,6 @@
 # AI capture durability, privacy and package lifecycle — 2026-10-24
 
-Status: implementation in progress. Follows the user-approved capture-trust direction in PR #439 (read-only reference, not merged here).
+Status: bounded implementation and acceptance complete. Follows the user-approved capture-trust direction in PR #439 (read-only reference, not merged here). Exact candidate, subsequent integration and platform limits are recorded in verification.md; Spec 062 remains Draft with T008–T013 open.
 
 ## Observable requirements (Specify / Clarify)
 
@@ -74,7 +74,7 @@ Dependency order: failure regressions → host commits/pause → session gates/U
 - [x] Ignored metadata and ordinary pending parents preserve real provenance.
 - [x] Per-session stop survives reload, another session continues, reallow starts now.
 - [x] Managed update, tamper refusal, rollback and receipt preservation have tests.
-- [ ] Final full/package/native evidence recorded below at closeout.
+- [x] Final full/package/native evidence recorded in verification.md at closeout.
 
 These are bounded contracts. A cwd whitelist cannot detect private prompts or
 private tool-read content inside an authorized session; no semantic classifier

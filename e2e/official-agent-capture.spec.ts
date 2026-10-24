@@ -147,10 +147,12 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
 
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
-    await page.getByLabel('Export format', { exact: true }).selectOption('json')
+    await page.getByLabel('Export format', { exact: true }).selectOption('other')
+    await page.getByLabel('Other formats', { exact: true }).selectOption('json')
     await expect(page.getByTestId('export-confirm')).toBeEnabled()
     await page.getByTestId('export-confirm').click()
-    await expect(page.getByTestId('export-dialog')).toHaveCount(0)
+    await expect(page.getByTestId('export-completed')).toBeVisible()
+      await page.getByRole('button', { name: 'Close', exact: true }).last().click()
     const exports = join(project.path, 'exports')
     const exported = readdirSync(exports).find(p => p.endsWith('.json') && !p.endsWith('.manifest.json'))!
     const delivered = JSON.parse(readFileSync(join(exports, exported), 'utf8'))

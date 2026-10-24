@@ -44,6 +44,43 @@ npx playwright test e2e/packaged-smoke.spec.ts --reporter=list,json
 node scripts/verify-smoke-report.mjs /absolute/path/to/smoke.json
 ```
 
+## Local iteration and process reuse
+
+Run the affected fast tests while editing. Run the ordered full gates once on
+one coherent implementation candidate, before submission; a later docs-only or
+test-only cleanup does not require repeatedly running every shell benchmark.
+A new failure or product change is a reason to rerun its affected checks.
+
+Use one Electron process for a normal user journey, with a fresh project and
+reset preferences/viewport for independent settings cases. Keep separate
+processes for replaced IPC handlers, machine-wide plugin mutations, updater
+restart tests and actual startup/installation differences. Reusing those blindly
+would trade desktop interruptions for contaminated results.
+
+For settings → source connection → export/recovery, select just:
+
+```sh
+REDLOG_PACKAGED_APP='/absolute/path/to/RedLog' \
+npx playwright test e2e/capture-settings-interaction.spec.ts e2e/export-preview.spec.ts --reporter=line
+```
+
+This selection has 14 behavioral cases in four app processes when all pass:
+one shared settings process, two isolated fault/integration cases, and one
+source-to-export journey. Do not also run a separate source-recovery spec or
+repeat the same unchanged journeys against both source and package. Use source
+while no package exists; prefer the package for final acceptance. The external
+Zsh step is POSIX-only; a skip never counts as Windows shell verification.
+
+Renderer tests own draft state, stale replies, policy controls and messages;
+storage tests own atomic receipt writes and project isolation. E2E retains only
+cross-layer recording/delivery, failure recovery and actual layout/focus behavior.
+Do not add another test whose only assertion is that an already-exercised
+control exists. Native manual checks are for remaining OS-specific interactions,
+not another replay of every passed CDP journey. Non-HUD shared-helper
+launches keep the HUD hidden in the test process without changing its product
+or project default. HUD-specific tests request `showHud: true`; a hidden HUD
+fixture does not verify default HUD visibility.
+
 ## Coverage owners
 
 | Requirement | Primary tests |

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import CapturePackGroup, { PackMember } from '../src/renderer/src/components/settings/CapturePackGroup'
 import type { ConfigState } from '../src/renderer/src/components/settings/SettingsShared'
 
@@ -9,20 +9,24 @@ const t = (k: string): string => k
 const cfg = (packs: ConfigState['packs']) => ({ packs } as unknown as ConfigState)
 
 describe('CapturePackGroup', () => {
+  beforeEach(() => Object.assign(window, { redlog: { plugins: {
+    list: vi.fn(async () => [{ id: 'pack-host-monitors', source: 'bundled', status: 'active' }]),
+    setEnabled: vi.fn(async () => [])
+  } } }))
   afterEach(() => cleanup())
 
-  it('turns the pack on for the project, and shows member tuning only while on', () => {
+  it('turns the pack on for the project, and shows member tuning only while on', async () => {
     const seen: ConfigState[] = []
     const { rerender } = render(
-      <CapturePackGroup pack="hostMonitors" title="Host" hint="hint" available config={cfg({ hostMonitors: false })} setConfig={(c) => seen.push(c)} t={t}>
+      <CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: false })} setConfig={(c) => seen.push(c)} t={t}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
     expect(screen.queryByText('member tuning')).toBeNull()
-    fireEvent.click(screen.getByTestId('pack-switch-hostMonitors'))
+    fireEvent.click(await screen.findByTestId('pack-switch-hostMonitors'))
     expect(seen.at(-1)!.packs).toEqual({ hostMonitors: true })
     rerender(
-      <CapturePackGroup pack="hostMonitors" title="Host" hint="hint" available config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
+      <CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
@@ -75,36 +79,82 @@ describe('CapturePackGroup', () => {
     expect(seen.at(-1)!.packMembers).toEqual({ processMonitor: false })
   })
 
-  it('says a pack disabled in Plugins is removed, instead of offering a switch', () => {
+  it('says a pack disabled in Plugins is removed, instead of offering a switch', async () => {
+    vi.mocked(window.redlog.plugins.list).mockResolvedValue([{ id: 'pack-host-monitors', source: 'bundled', status: 'disabled' }])
     render(
-      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
-    expect(screen.getByTestId('pack-removed-hostMonitors')).toBeTruthy()
+    expect(await screen.findByTestId('pack-removed-hostMonitors')).toBeTruthy()
     expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
     expect(screen.queryByText('member tuning')).toBeNull()
   })
 
   // #435: the row that says the pack is disabled offers the way back, so the
   // operator does not have to find the page themselves.
-  it('offers the direct route to plugin settings when the pack is disabled there', () => {
+  it('offers the direct route to plugin settings when the pack is disabled there', async () => {
+    vi.mocked(window.redlog.plugins.list).mockResolvedValue([{ id: 'pack-host-monitors', source: 'bundled', status: 'disabled' }])
     const onOpenPlugins = vi.fn()
     render(
-      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t} onOpenPlugins={onOpenPlugins}>
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t} onOpenPlugins={onOpenPlugins}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
-    fireEvent.click(screen.getByTestId('pack-open-plugins-hostMonitors'))
+    fireEvent.click(await screen.findByTestId('pack-open-plugins-hostMonitors'))
     expect(onOpenPlugins).toHaveBeenCalledTimes(1)
   })
 
-  it('offers no route when there is nowhere to go', () => {
+  it('offers no route when there is nowhere to go', async () => {
+    vi.mocked(window.redlog.plugins.list).mockResolvedValue([{ id: 'pack-host-monitors', source: 'bundled', status: 'disabled' }])
     render(
-      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" available={false} config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
+      <CapturePackGroup pack="hostMonitors" title="AI" hint="hint" config={cfg({ hostMonitors: true })} setConfig={() => {}} t={t}>
         <p>member tuning</p>
       </CapturePackGroup>
     )
     expect(screen.queryByTestId('pack-open-plugins-hostMonitors')).toBeNull()
   })
+  it('keeps loading and failed reads from offering a project recording switch; retry recovers', async () => {
+    vi.mocked(window.redlog.plugins.list).mockRejectedValueOnce(new Error('registry unreadable'))
+    render(<CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: true })} setConfig={vi.fn()} t={t}><p>member tuning</p></CapturePackGroup>)
+    expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
+    expect((await screen.findByRole('alert')).textContent).toContain('registry unreadable')
+    expect(screen.queryByText('member tuning')).toBeNull()
+    fireEvent.click(screen.getByText('common.retry'))
+    await screen.findByTestId('pack-switch-hostMonitors')
+    expect(screen.getByText('member tuning')).toBeTruthy()
+  })
+  it('restores only the disabled bundled integration, leaving project permissions untouched', async () => {
+    vi.mocked(window.redlog.plugins.list).mockResolvedValueOnce([{ id: 'pack-host-monitors', source: 'bundled', status: 'disabled' }])
+    const setConfig = vi.fn()
+    render(<CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: false })} setConfig={setConfig} t={t}><p>member tuning</p></CapturePackGroup>)
+    fireEvent.click(await screen.findByTestId('pack-repair-hostMonitors'))
+    await waitFor(() => expect(window.redlog.plugins.setEnabled).toHaveBeenCalledWith('pack-host-monitors', true))
+    const control = await screen.findByTestId('pack-switch-hostMonitors') as HTMLInputElement
+    expect(control.checked).toBe(false)
+    expect(setConfig).not.toHaveBeenCalled()
+    expect(screen.queryByText('member tuning')).toBeNull()
+  })
+  it('does not pretend a missing or untrusted integration can be enabled', async () => {
+    vi.mocked(window.redlog.plugins.list).mockResolvedValue([{ id: 'pack-host-monitors', source: 'user', status: 'disabled' }])
+    render(<CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: false })} setConfig={vi.fn()} t={t} />)
+    await screen.findByText('settings.packUnavailable')
+    expect(screen.queryByTestId('pack-repair-hostMonitors')).toBeNull()
+    expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
+  })
+
+  it('refreshes integration state on return without changing project capture or restoring it', async () => {
+    const setConfig = vi.fn()
+    render(<CapturePackGroup pack="hostMonitors" title="Host" hint="hint" config={cfg({ hostMonitors: true })} setConfig={setConfig} t={t} />)
+    await screen.findByTestId('pack-switch-hostMonitors')
+    vi.mocked(window.redlog.plugins.list).mockResolvedValue([{ id: 'pack-host-monitors', source: 'bundled', status: 'disabled' }])
+    fireEvent(window, new Event('focus'))
+    fireEvent(document, new Event('visibilitychange'))
+    await screen.findByTestId('pack-removed-hostMonitors')
+    expect(screen.queryByTestId('pack-switch-hostMonitors')).toBeNull()
+    expect(window.redlog.plugins.list).toHaveBeenCalledTimes(2)
+    expect(window.redlog.plugins.setEnabled).not.toHaveBeenCalled()
+    expect(setConfig).not.toHaveBeenCalled()
+  })
+
 })

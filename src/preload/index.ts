@@ -250,6 +250,7 @@ const api: RedLogAPI = {
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
     executeExportPlan: (input: { planId: string; destDir?: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
+    recentExport: () => ipcRenderer.invoke('data:recentExport'),
     exportDestination: () => ipcRenderer.invoke('data:exportDestination') as Promise<string | null>,
     pickExportDir: () => ipcRenderer.invoke('data:pickExportDir') as Promise<string | null>,
     revealExport: (target: string) => ipcRenderer.invoke('data:revealExport', target) as Promise<boolean>

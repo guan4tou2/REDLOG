@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useReadState } from '../lib/readState'
 import { INSTALL_TIMEOUT_MS } from '../../../core/dependency-install'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
@@ -139,4 +140,24 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
       <p data-testid="capture-prepare-exits" className="text-xs text-redlog-text-faint">{t('captureSetup.exitsExplained')}</p>
     </section>
   )
+}
+
+/** Source-local dependency repair; mounting this view never starts an installer. */
+export function RuntimePreparation({ onClose }: { onClose: () => void }): JSX.Element {
+  const { t } = useI18n()
+  const read = useReadState(() => window.redlog.runtime.preflight())
+  const missing = preparationChecks(read.state.value)
+  return <section data-testid="runtime-preparation" className="min-w-0 space-y-3 text-xs">
+    {read.state.phase === 'loading' && <p role="status">{t('captureSetup.checking')}</p>}
+    {read.state.phase === 'failed' && <div role="alert" className="space-y-2">
+      <p>{t('firstRun.preflightFailedTitle')}</p>
+      <p className="break-words">{read.state.error}</p>
+      <Button level="secondary" onClick={read.retry}>{t('common.retry')}</Button>
+    </div>}
+    {read.state.phase === 'loaded' && <>
+      {missing.length === 0 ? <p role="status">{t('settings.dependenciesReady')}</p>
+        : <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={read.retry} />)}</ul>}
+    </>}
+    <Button level="quiet" onClick={onClose}>{t('common.close')}</Button>
+  </section>
 }

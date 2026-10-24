@@ -302,7 +302,7 @@ export default function App(): JSX.Element {
             {/* §10: one export control, in the shell rather than six places.
                 Its scope is an option, not a location. */}
             <ControlBoundary name={t('export.title')}>
-              <ExportMenu totalCount={exportableCount} onOpenScopeSettings={() => navigate(settingsTarget('scope'))} />
+              <ExportMenu key={project.id} totalCount={exportableCount} onOpenScopeSettings={() => navigate(settingsTarget('scope'))} />
             </ControlBoundary>
             <ControlBoundary name={t('browser.launch')}>
               <LaunchBrowserButton onNavigate={navigate} />
@@ -400,7 +400,7 @@ export default function App(): JSX.Element {
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}
-            {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings request={settingsRequest} /></Suspense>}
+            {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings key={project.id} request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>
         </div>

@@ -33,6 +33,18 @@ Installed-only runs use the package's own native modules. With
 `REDLOG_PACKAGED_APP` set, the documented direct Playwright command does not
 need to rebuild workspace SQLite unless another selected spec launches source.
 
+For the bounded settings/source/export check, use the two-file selection in
+[Testing RedLog](../docs/TESTING.md#local-iteration-and-process-reuse). Ordinary
+settings cases share an app and use separate projects; `export-preview` includes
+source connection before export. IPC fault injection stays isolated. Avoid
+running an unchanged journey once for source and again for package by default.
+
+Non-HUD journeys using `launchWithTempHome` suppress automatic HUD display only
+in the E2E process. HUD acceptance opts in with
+`launchWithTempHome(executablePath, { showHud: true })`; direct HUD-specific
+launches retain their normal display. The app's HUD default stays on and the
+project config is not changed by this fixture.
+
 ## What it covers
 
 One spec per journey, named for the journey: `first-run`, `project-flow`,

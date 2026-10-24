@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { StrictMode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from '../src/renderer/src/components/Settings'
+import { ToastContainer, toast } from '../src/renderer/src/components/Toast'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { closeProjectAfterSaves } from '../src/renderer/src/lib/pendingSaves'
 
@@ -13,6 +14,7 @@ import { closeProjectAfterSaves } from '../src/renderer/src/lib/pendingSaves'
 
 const saves: Array<{ config: Record<string, unknown>; opts?: { expectProjectId?: string } }> = []
 let saveResult: boolean | Promise<boolean> = true
+let saveError: Error | null = null
 /** The order main saw the calls in: `save` and `close`. */
 const calls: string[] = []
 let getConfig: () => Promise<unknown>
@@ -41,6 +43,7 @@ function installBridge(): void {
       save: async (config: Record<string, unknown>, opts?: { expectProjectId?: string }) => {
         calls.push('save')
         saves.push({ config, opts })
+        if (saveError) throw saveError
         return saveResult
       }
     },
@@ -70,6 +73,7 @@ describe('the settings autosave does not lose a change on the way out', () => {
     saves.length = 0
     calls.length = 0
     saveResult = true
+    saveError = null
     getConfig = async () => structuredClone(CONFIG)
     installBridge()
   })
@@ -114,6 +118,31 @@ describe('the settings autosave does not lose a change on the way out', () => {
     saveResult = true
     fireEvent.click(screen.getByRole('button', { name: /Retry|重試/ }))
     await waitFor(() => expect(screen.queryByTestId('settings-save-saved')).not.toBeNull())
+  })
+
+  it('clears only this project save error after a successful retry', async () => {
+    saveError = new Error('EACCES')
+    render(<I18nProvider><Settings request={{ page: 'scope' }} /><ToastContainer /></I18nProvider>)
+    act(() => {
+      toast('Other project save failed', { type: 'error', key: 'settings-save:proj-b' })
+      toast('Evidence export failed', 'error')
+    })
+    change(await ready())
+    await screen.findByTestId('settings-save-failed', {}, { timeout: 3000 })
+    expect(screen.getAllByRole('alert')).toHaveLength(3)
+
+    saveError = null
+    saveResult = false
+    fireEvent.click(screen.getByRole('button', { name: /Retry|重試/ }))
+    await waitFor(() => expect(screen.queryByTestId('settings-save-failed')).not.toBeNull())
+    expect(screen.getAllByRole('alert')).toHaveLength(3)
+
+    saveResult = true
+    fireEvent.click(screen.getByRole('button', { name: /Retry|重試/ }))
+    await waitFor(() => expect(screen.queryByTestId('settings-save-saved')).not.toBeNull())
+    expect(screen.getAllByRole('alert').map(x => x.textContent)).toHaveLength(2)
+    expect(screen.getByText('Other project save failed')).toBeTruthy()
+    expect(screen.getByText('Evidence export failed')).toBeTruthy()
   })
 
   // #223: App awaited project.close() and only then unmounted Settings, so the

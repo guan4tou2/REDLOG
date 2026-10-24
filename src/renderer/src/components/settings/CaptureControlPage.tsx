@@ -1,5 +1,5 @@
-import { FieldGroup, Field, ListField, isWindows, type ConfigState } from './SettingsShared'
-import CapturePackGroup, { PackMember, usePackAvailability } from './CapturePackGroup'
+import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
 import { SourceLastSeen } from './SourceLastSeen'
@@ -23,7 +23,6 @@ export default function CaptureControlPage({
   t: (key: string, vars?: Record<string, string | number>) => string
   onOpenPlugins?: () => void
 }): JSX.Element {
-  const packs = usePackAvailability()
   // The same snapshot the dashboard's capture card reads. Every source row on
   // this page says when it last delivered, so the operator does not have to
   // leave the page to learn whether a source is feeding the record.
@@ -118,7 +117,7 @@ export default function CaptureControlPage({
 
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
-        available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
+        config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
       >
         {/* Each member carries its own switch now. The clipboard is the
             reason: it samples whatever the operator copies anywhere on the
@@ -186,30 +185,12 @@ export default function CaptureControlPage({
       </CapturePackGroup>
 
 
-      {/* A Windows capture on a Mac is not setup that is missing. Off Windows
-          it waits in a collapsed group, and stays in the open if it was ever
-          switched on (Spec 060 FR-010). */}
-      {isWindows || config.packs?.windowsOutput === true ? (
-        <CapturePackGroup
-          pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
-          available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
-        />
-      ) : (
-        <details data-testid="pack-other-platforms" className="mb-4">
-          <summary className="text-xs text-redlog-text-faint cursor-pointer">{t('settings.otherPlatforms')} (1)</summary>
-          <CapturePackGroup
-            pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
-            available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
-          />
-        </details>
-      )}
-
       {/* Last, and the one block on this page that is not per project: what
           the operator wires up on the machine itself. It sits here rather
           than on the Plugins page because the question it answers -- "is
           anything actually recording" -- is this page's question, and because
           what ships with RedLog is not a plugin. */}
-      <ExternalCaptureGroup t={t} />
+      <ExternalCaptureGroup t={t} onOpenPlugins={onOpenPlugins} />
 
 
 

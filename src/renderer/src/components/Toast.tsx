@@ -74,10 +74,14 @@ export function capToasts<T extends { type: string }>(list: T[]): T[] {
 
 type PushFn = (message: string, opts: ToastOptions) => void
 let _push: PushFn = () => {}
+let _dismiss: (key: string) => void = () => {}
 
 export function toast(message: string, opts: ToastType | ToastOptions = {}): void {
   _push(message, typeof opts === 'string' ? { type: opts } : opts)
 }
+
+/** Clear a resolved operation without dismissing unrelated errors. */
+export function dismissToast(key: string): void { _dismiss(key) }
 
 /** The action already happened and can be reversed. */
 export function toastUndo(message: string, onUndo: () => void, opts: ToastOptions = {}): void {
@@ -151,7 +155,8 @@ export function ToastContainer(): JSX.Element | null {
 
   useEffect(() => {
     _push = push
-    return (): void => { _push = () => {} }
+    _dismiss = key => setToasts(prev => prev.filter(x => x.key !== key))
+    return (): void => { _push = () => {}; _dismiss = () => {} }
   }, [push])
 
   // Prune by deadline on a steady interval. Each toast carries its own, so a
