@@ -17,21 +17,33 @@ redlog-session() {
 # Native: $HOME/.redlog; WSL: auto-resolve from Windows %USERPROFILE%
 _redlog_resolve_dir() {
   if [[ -f "$HOME/.redlog/api-token" ]]; then
-    # Under WSL a native directory may be stale. Adopt it only while its
-    # API answers; otherwise resolve the Windows profile below (#326).
+    # Under WSL a native directory may be stale. Adopt it only while its own
+    # token is accepted by what answers on its port; otherwise resolve the
+    # Windows profile below (#326).
+    #
+    # /api/health is public, so it cannot say whether the token is current:
+    # with mirrored networking 127.0.0.1:6660 here IS the Windows app, which
+    # answers health for a leftover directory's port and then refuses its old
+    # token, and every event was spooled where nothing drains it. /api/whoami
+    # needs the token. 401 means the token is stale; 503 means the app is up
+    # with no project open, so the token cannot be judged and the directory
+    # is kept, as before; anything else (nothing listening) falls through.
     if [[ -z "${WSL_DISTRO_NAME:-}" ]]; then
       echo "$HOME/.redlog"
       return
     fi
-    local native_port=""
+    local native_port="" native_code=""
     [[ -f "$HOME/.redlog/api-port" ]] && native_port=$(<"$HOME/.redlog/api-port")
     case "$native_port" in
       ''|*[!0-9]*) ;;
-      *) if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 \
-          "http://127.0.0.1:${native_port}/api/health" >/dev/null 2>&1; then
-        echo "$HOME/.redlog"
-        return
-      fi ;;
+      *)
+        # The token is read by curl from stdin config, not placed in argv.
+        native_code=$(printf 'header = "Authorization: Bearer %s"\n' "$(<"$HOME/.redlog/api-token")" \
+          | curl --noproxy '*' -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 \
+            -K - "http://127.0.0.1:${native_port}/api/whoami" 2>/dev/null)
+        case "$native_code" in
+          200|503) echo "$HOME/.redlog"; return ;;
+        esac ;;
     esac
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
@@ -356,14 +368,19 @@ sys.stdout.write(json.dumps(d))
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
   local spool_dir="$redlog_dir/pending"
+  # The body is read from stdin: bash opens the file itself, so the path never
+  # reaches a native Windows curl, which cannot resolve an MSYS path like
+  # /tmp/x when MSYS_NO_PATHCONV=1 (or an MSYS2_ARG_CONV_EXCL covering "@") turns
+  # argument conversion off. It stays out of argv, so the 128 KiB limit above
+  # still does not apply (#345).
   # Foreground POST with short deadline; if it fails — or there was nowhere to
   # send it — spool. The directory and the file's name are made only then: two
   # processes on every event that is delivered, for a spool it never touches.
   if [[ "$reachable" != 1 ]] || ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
-        --data-binary @"$work/payload.json" \
-        --connect-timeout 1 --max-time 2 >/dev/null 2>&1; then
+        --data-binary @- \
+        --connect-timeout 1 --max-time 2 >/dev/null 2>&1 < "$work/payload.json"; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
     # Only the files still waiting for replay. Replay renames what it cannot

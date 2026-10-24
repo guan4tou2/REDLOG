@@ -19,21 +19,25 @@ EXTRA="${3:-}"
 _resolve_redlog_dir() {
   # Native (macOS / Linux / WSL with symlink)
   if [[ -f "$HOME/.redlog/api-token" ]]; then
-    # Under WSL a native directory may be stale. Adopt it only while its
-    # API answers; otherwise resolve the Windows profile below (#326).
+    # Under WSL a native directory may be stale. Adopt it only while its own
+    # token is accepted (/api/health is public and proves nothing about the
+    # token); otherwise resolve the Windows profile below (#326). The reasoning
+    # is in _redlog_resolve_dir, shell-common.sh, which this mirrors.
     if [[ -z "${WSL_DISTRO_NAME:-}" ]]; then
       echo "$HOME/.redlog"
       return
     fi
-    local native_port=""
+    local native_port="" native_code=""
     [[ -f "$HOME/.redlog/api-port" ]] && native_port=$(<"$HOME/.redlog/api-port")
     case "$native_port" in
       ''|*[!0-9]*) ;;
-      *) if curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 \
-          "http://127.0.0.1:${native_port}/api/health" >/dev/null 2>&1; then
-        echo "$HOME/.redlog"
-        return
-      fi ;;
+      *)
+        native_code=$(printf 'header = "Authorization: Bearer %s"\n' "$(<"$HOME/.redlog/api-token")" \
+          | curl --noproxy '*' -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 2 \
+            -K - "http://127.0.0.1:${native_port}/api/whoami" 2>/dev/null)
+        case "$native_code" in
+          200|503) echo "$HOME/.redlog"; return ;;
+        esac ;;
     esac
   fi
   # WSL: resolve from Windows %USERPROFILE%
