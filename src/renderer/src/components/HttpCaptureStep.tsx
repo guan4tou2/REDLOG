@@ -161,6 +161,12 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
 
   useEffect(() => { onVerified?.(verified) }, [verified, onVerified])
 
+  // A rejected start is this card's to report until the proxy says something
+  // newer. A status read that finds it merely stopped knows nothing about why,
+  // and taking it whole erased the failure within one 3 s poll.
+  const takeStatus = (st: ManagedProxyStatus): void =>
+    setStatus((prev) => (prev.state === 'failed' && prev.error && st.state === 'stopped' ? prev : st))
+
   const check = async (): Promise<void> => {
     const [pf, st, cfg] = await Promise.all([
       window.redlog.runtime.preflight().catch(() => null),
@@ -173,7 +179,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
       const mitm = pf.checks.find((c) => c.id === 'mitmdump')
       setMitmMissing(mitm ? !mitm.found : false)
     }
-    if (st) setStatus(st)
+    if (st) takeStatus(st)
     if (cfg) setConfig(cfg as Record<string, unknown>)
   }
 
@@ -193,7 +199,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   // request. Same cadence as the app-wide toggle.
   useEffect(() => {
     const timer = setInterval(() => {
-      window.redlog.httpCapture.status().then(setStatus).catch(() => { /* keep the last known state */ })
+      window.redlog.httpCapture.status().then(takeStatus).catch(() => { /* keep the last known state */ })
     }, 3_000)
     return () => clearInterval(timer)
   }, [])

@@ -53,6 +53,17 @@ let generation = 0
 /** Per-file count of commands already emitted, so a re-parse emits only the new
  *  ones. Keyed by absolute transcript path. */
 const emitted = new Map<string, number>()
+/** Files holding a command whose write failed, and the retry that will try it
+ *  again. A failed write must not wait for the next change event: after the
+ *  last command of a session there may never be one. */
+const retries = new Map<string, { timer: ReturnType<typeof setTimeout>; attempt: number }>()
+const RETRY_BASE_MS = 1000
+const RETRY_LIMIT = 5
+
+function clearRetries(): void {
+  for (const r of retries.values()) clearTimeout(r.timer)
+  retries.clear()
+}
 
 function transcriptDir(): string {
   return path.join(homedir(), '.redlog', 'transcripts')
@@ -67,12 +78,14 @@ export function stopPowershellTranscript(): void {
   generation++
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
+  clearRetries()
 }
 
 async function restart(): Promise<void> {
   const run = ++generation
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
+  clearRetries()
   if (!cfg.enabled) return
   const chok = await loadChokidar()
   // A newer restart or a stop ran while chokidar loaded, and it owns the
@@ -110,19 +123,47 @@ async function restart(): Promise<void> {
 
 function follow(absPath: string): void {
   // Off is checked here too, so no watcher can record after the pack is off.
-  if (!cfg.enabled || eventBus.paused) return
+  if (!cfg.enabled) return
   if (!cfg.engagementId || !cfg.operatorId) return
   let text: string
   try { text = readFileSync(absPath, 'utf-8') } catch { return }
-  const { fresh, newCount, host } = planTranscriptEmit(text, emitted.get(absPath) ?? 0)
+  const already = emitted.get(absPath) ?? 0
+  const { fresh, newCount, host } = planTranscriptEmit(text, already)
   if (fresh.length === 0) return
-  for (const c of fresh) emitCommand(absPath, c, host)
-  emitted.set(absPath, newCount)
+  // Commands run while recording is paused are consumed, not held back: left
+  // unconsumed, the first change after resume recorded the whole pause.
+  if (eventBus.paused) { emitted.set(absPath, newCount); return }
+  // The count advances past a command only once its row is written. The write
+  // is synchronous, so nothing can land between the two and repeat it.
+  let done = already
+  for (const c of fresh) {
+    if (!emitCommand(absPath, c, host)) break
+    done++
+  }
+  emitted.set(absPath, done)
+  if (done < newCount) scheduleRetry(absPath)
+  else if (retries.has(absPath)) { clearTimeout(retries.get(absPath)!.timer); retries.delete(absPath) }
+}
+
+function scheduleRetry(absPath: string): void {
+  const prev = retries.get(absPath)
+  if (prev) clearTimeout(prev.timer)
+  const attempt = (prev?.attempt ?? 0) + 1
+  // Bounded: a store that stays broken is already reported through
+  // noteDbError, and a later change to the file tries again from here.
+  if (attempt > RETRY_LIMIT) { retries.delete(absPath); return }
+  const run = generation
+  const timer = setTimeout(() => {
+    if (run !== generation) return
+    follow(absPath)
+  }, RETRY_BASE_MS * 2 ** (attempt - 1))
+  retries.set(absPath, { timer, attempt })
 }
 
 const OUTPUT_CAP = 100 * 1024  // parity with the shell hook's per-stream cap
 
-function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | null): void {
+/** False only when the write failed; a command ingest declines on purpose is consumed. */
+function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | null): boolean {
   try {
     // Through ingest() so a PowerShell transcript command gets the same
     // target extraction / scope dispatch / companion pipeline a command that
@@ -141,7 +182,8 @@ function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | 
       engagementId: cfg.engagementId,
       operatorId: cfg.operatorId
     })
-  } catch (e) { noteDbError('powershell-transcript', e) }
+    return true
+  } catch (e) { noteDbError('powershell-transcript', e); return false }
 }
 
 /** The pure incremental decision — given a transcript's full text and how
