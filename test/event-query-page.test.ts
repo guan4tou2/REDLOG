@@ -10,6 +10,7 @@ let insertEvent: typeof import('../src/core/db/events').insertEvent
 let queryEventsPage: typeof import('../src/core/db/events').queryEventsPage
 let executeEventQuery: typeof import('../src/core/db/events').executeEventQuery
 let getDB: typeof import('../src/core/db').getDB
+let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let available = false
 
 try {
@@ -21,6 +22,7 @@ try {
   queryEventsPage = events.queryEventsPage
   executeEventQuery = events.executeEventQuery
   getDB = db.getDB
+  closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   available = true
 } catch { /* native SQLite unavailable */ }
 
@@ -33,6 +35,8 @@ describeDB('queryEventsPage', () => {
     initDB(dir)
   })
   afterEach(() => {
+    // A text query opens the body index too; Windows will not delete it open.
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })
