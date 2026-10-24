@@ -43,6 +43,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [findText, setFindText] = useState<{ key: string; text: string } | null>(null)
   const pane = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
+    if (pane.current) pane.current.scrollTop = 0
+  }, [tab])
+  useEffect(() => {
     if (!findText || !pane.current) return
     const root = pane.current
     const locate = (): boolean => {

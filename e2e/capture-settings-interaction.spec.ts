@@ -53,6 +53,11 @@ test('project settings stay separate from display preferences and long content f
         await openView(page, 'settings')
         await openSettingsPage(page, 'scope')
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+        const pane = page.getByTestId('settings-content')
+        await pane.evaluate(el => { el.scrollTop = el.scrollHeight })
+        await expect.poll(() => pane.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
+        await openSettingsPage(page, 'plugins')
+        await expect.poll(() => pane.evaluate(el => el.scrollTop)).toBe(0)
       }
       await win.evaluate(w => w.webContents.setZoomFactor(1))
       await openSettingsPage(page, 'general')

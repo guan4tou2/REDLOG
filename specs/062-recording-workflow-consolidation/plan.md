@@ -209,3 +209,8 @@ project and action rows on narrow layouts, retaining OS caption space; constrain
 the recording caption while keeping uptime and accessible labels. Do not hide
 or remove evidence actions. The same English/Chinese case then measured 400px
 content in the 400px viewport with no off-screen controls.
+
+Native inspection also reproduced inherited scroll position when switching
+settings categories after reaching the project fields. Reset the content pane
+on category changes before applying a requested field-search jump; retain the
+regression in the same narrow/zoom journey, without adding navigation state.
