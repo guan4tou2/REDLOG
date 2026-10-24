@@ -816,6 +816,7 @@
   "transcript.loading": "載入中…",
   "transcript.loadingOlder": "正在載入較舊證據…",
   "transcript.loadOlder": "載入較舊證據",
+  "transcript.unseen": "{{n}} 筆新事件 · 回到最新",
   "transcript.recentSubset": "近期子集",
   "transcript.complete": "已載入完整資料集",
   "transcript.querySubset": "尚有更多符合的證據",

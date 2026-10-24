@@ -816,6 +816,7 @@
   "transcript.loading": "Loading…",
   "transcript.loadingOlder": "Loading older evidence…",
   "transcript.loadOlder": "Load older evidence",
+  "transcript.unseen": "{{n}} new · jump to latest",
   "transcript.recentSubset": "Recent subset",
   "transcript.complete": "Loaded set complete",
   "transcript.querySubset": "More matching evidence is available",
