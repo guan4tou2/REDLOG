@@ -14,11 +14,13 @@ const h = vi.hoisted(() => ({
   failOn: new Set<string>(),
   paused: false,
   n: 0,
-  parsed: [] as string[]
+  parsed: [] as string[],
+  gaps: [] as Array<Record<string, unknown>>
 }))
 
 vi.mock('../src/core/ingest', () => ({
   ingestEvent: (_type: string, data: { subtype?: string; full?: string; preview?: string }) => {
+    if (data.subtype === 'capture_gap') h.gaps.push(data as Record<string, unknown>)
     if (data.subtype !== 'user_message') return { id: `meta-${++h.n}` }
     const text = String(data.full ?? data.preview ?? '')
     if (h.failOn.has(text)) throw new Error('SQLITE_BUSY')
@@ -45,16 +47,19 @@ function adapter(root: string): import('../src/main/services/tailer-host').Taile
     knownIgnoredTypes: new Set(),
     resolveCwd: () => scratch,
     parseUnit: (raw: string) => {
-      const m = JSON.parse(raw) as { id: string; text: string }
+      const m = JSON.parse(raw) as { id: string; text: string; parent?: string }
       h.parsed.push(m.id)
-      return { uuid: m.id, parentUuid: null, type: 'user', role: 'user', textContent: m.text }
+      return { uuid: m.id, parentUuid: m.parent ?? null, type: 'user', role: 'user', textContent: m.text }
     },
     subtypeFor: () => 'user_message'
   }
 }
 
-const message = (name: string, text: string): void =>
-  fs.writeFileSync(path.join(sessionDir, name), JSON.stringify({ id: name.replace('.json', ''), text }))
+const message = (name: string, text: string, parent?: string, mtime?: number): void => {
+  const file = path.join(sessionDir, name)
+  fs.writeFileSync(file, JSON.stringify({ id: name.replace('.json', ''), text, parent }))
+  if (mtime) fs.utimesSync(file, mtime / 1000, mtime / 1000)
+}
 
 const index = (): string[] => {
   const file = path.join(scratch, 'agent-transcripts', `${AGENT}-ses_1.jsonl`)
@@ -65,6 +70,7 @@ beforeEach(async () => {
   vi.resetModules()
   h.written.length = 0
   h.parsed.length = 0
+  h.gaps.length = 0
   h.failOn.clear()
   h.paused = false
   scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tailer-pm-'))
@@ -123,7 +129,7 @@ describe('a per-message file whose events did not land', () => {
     expect(index()).toEqual(['msg_a.json'])
   })
 
-  it('stops retrying after a bounded number of attempts', async () => {
+  it('gives up after the bounded retries, says so, and stops trying', async () => {
     vi.useFakeTimers()
     message('msg_a.json', 'never')
     h.failOn.add('never')
@@ -132,8 +138,11 @@ describe('a per-message file whose events did not land', () => {
     h.failOn.has = (t: string) => { if (t === 'never') attempts++; return real(t) }
     host.registerSession(AGENT, sessionDir)
     await vi.advanceTimersByTimeAsync(10 * 60_000)
-    // The first pass, then five retries.
-    expect(attempts).toBe(6)
+    expect(h.gaps).toEqual([expect.objectContaining({ reason: 'write_failed', failed_turns: 1 })])
+    expect(index()).toEqual(['msg_a.json'])
+    const settled = attempts
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(attempts).toBe(settled)
   })
 })
 
@@ -156,5 +165,48 @@ describe('a handled per-message file', () => {
     host.catchUpSession(AGENT, 'ses_1')
     expect(h.written).toEqual(['work'])
     expect(index()).toEqual(['msg_a.json', 'msg_b.json'])
+  })
+})
+
+describe('a turn with nothing left to re-read', () => {
+  it('is kept when it was a queued child whose flush failed', () => {
+    const t = Date.now() - 10_000
+    // The child's file is older, so it is read first and waits for its parent.
+    message('msg_b.json', 'child', 'msg_a', t)
+    message('msg_a.json', 'parent', undefined, t + 1000)
+    h.failOn.add('child')
+    host.registerSession(AGENT, sessionDir)
+    h.failOn.clear()
+    host.catchUpSession(AGENT, 'ses_1')
+    expect(h.written.sort()).toEqual(['child', 'parent'])
+  })
+
+  it('is written after a pause that began before its retry', async () => {
+    vi.useFakeTimers()
+    message('msg_a.json', 'pre-pause')
+    h.failOn.add('pre-pause')
+    host.registerSession(AGENT, sessionDir)
+    h.failOn.clear()
+    h.paused = true
+    await vi.advanceTimersByTimeAsync(5000)
+    h.paused = false
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.written).toEqual(['pre-pause'])
+  })
+})
+
+describe('a per-message file that never parses', () => {
+  it('is given up after the retries and recorded as unread', async () => {
+    vi.useFakeTimers()
+    fs.writeFileSync(path.join(sessionDir, 'msg_junk.json'), 'not json')
+    host.registerSession(AGENT, sessionDir)
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(index()).toEqual(['msg_junk.json'])
+    expect(h.gaps).toEqual([expect.objectContaining({ reason: 'write_failed', unparsed_units: 1 })])
+    const parses = h.parsed.length
+    message('msg_ok.json', 'ok')
+    host.catchUpSession(AGENT, 'ses_1')
+    expect(h.written).toEqual(['ok'])
+    expect(h.parsed.length).toBe(parses + 1)
   })
 })

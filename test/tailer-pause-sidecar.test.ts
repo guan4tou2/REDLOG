@@ -108,3 +108,74 @@ describe('an AI transcript read while recording is paused', () => {
     expect(recorded()).toEqual(['after', 'before'])
   })
 })
+
+describe('a line that began during the pause', () => {
+  const restart = (): void => {
+    stopHost()
+    registerAdapter(claudeCodeAdapter)
+    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000 })
+  }
+
+  it('is still dropped when the rest arrives after a restart', () => {
+    fs.writeFileSync(source, turn('u1', 'before'))
+    registerSession('claude-code', source)
+    const straddling = turn('u2', 'PRIVATE-START xxxxxxxxxxxxxxxxxxxxxxxx PRIVATE-END')
+    const half = straddling.indexOf('xxxx')
+    eventBus.pause()
+    fs.appendFileSync(source, straddling.slice(0, half))
+    catchUpSession('claude-code', SID)
+    eventBus.resume()
+
+    restart()
+    fs.appendFileSync(source, straddling.slice(half) + turn('u3', 'after'))
+    registerSession('claude-code', source)
+
+    expect(recorded()).toEqual(['after', 'before'])
+    expect(sidecar()).not.toContain('PRIVATE-END')
+  })
+
+  it('does not take the first line of a transcript compacted after the pause', () => {
+    fs.writeFileSync(source, turn('u1', 'before'))
+    registerSession('claude-code', source)
+    eventBus.pause()
+    fs.appendFileSync(source, turn('u2', 'PRIVATE half').slice(0, 20))
+    catchUpSession('claude-code', SID)
+    eventBus.resume()
+
+    fs.writeFileSync(source, turn('c1', 'after compaction'))
+    catchUpSession('claude-code', SID)
+    expect(recorded()).toContain('after compaction')
+  })
+
+  it('leaves no mark that outlives a pruned sidecar', () => {
+    fs.writeFileSync(source, turn('u1', 'before'))
+    registerSession('claude-code', source)
+    eventBus.pause()
+    fs.appendFileSync(source, turn('u2', 'PRIVATE half').slice(0, 20))
+    catchUpSession('claude-code', SID)
+    eventBus.resume()
+    const sidecarPath = _sessionsForTest().get(`claude-code:${SID}`)!.sidecarPath
+
+    // Retention removes the sidecar; the source is then read from the start.
+    restart()
+    fs.rmSync(sidecarPath)
+    fs.writeFileSync(source, turn('n1', 'first line'))
+    registerSession('claude-code', source)
+    expect(recorded()).toContain('first line')
+  })
+})
+
+describe('a CRLF transcript', () => {
+  it('keeps nothing of a paused line', () => {
+    fs.writeFileSync(source, turn('u1', 'before'))
+    registerSession('claude-code', source)
+    eventBus.pause()
+    fs.appendFileSync(source, turn('u2', 'PRIVATE').replace('\n', '\r\n'))
+    catchUpSession('claude-code', SID)
+    eventBus.resume()
+    fs.appendFileSync(source, turn('u3', 'after').replace('\n', '\r\n'))
+    catchUpSession('claude-code', SID)
+    expect(recorded()).toEqual(['after', 'before'])
+    expect(sidecar()).not.toContain('PRIVATE')
+  })
+})

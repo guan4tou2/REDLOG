@@ -197,3 +197,11 @@ describe('readOpenCodeCwd', () => {
     expect(readOpenCodeCwd(sesDir)).toBeNull()
   })
 })
+
+describe('opencodeAdapter.parseUnit on a message file still being written', () => {
+  // Returned empty, the host would mark the file handled and never read it
+  // again. Thrown, it is left unindexed and read on the next pass.
+  it('throws instead of returning nothing', () => {
+    expect(() => opencodeAdapter.parseUnit('{"id":"msg_1","ro', '/x/message/ses_1/msg_1.json')).toThrow()
+  })
+})
