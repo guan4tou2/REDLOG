@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
@@ -298,14 +299,13 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
         />
       )}
       {isRequest && hasFullReqBody && !loadedReqBody && (
-        <button
-          className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-2 py-0.5 rounded border border-redlog-border bg-redlog-elevated hover:bg-redlog-elevated-hover"
+        <Button size="compact" level="quiet" className="font-mono"
           onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
           disabled={loadingReq}
         >
           {loadingReq ? '...' : t('timeline.detail.httpLoadFullBody')}
           {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
-        </button>
+        </Button>
       )}
       {isRequest && loadedReqBody && loadedReqBody !== BODY_GONE && (
         <CollapsibleStream
@@ -328,14 +328,13 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
         />
       )}
       {isResponse && hasFullRespBody && !loadedRespBody && (
-        <button
-          className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-2 py-0.5 rounded border border-redlog-border bg-redlog-elevated hover:bg-redlog-elevated-hover"
+        <Button size="compact" level="quiet" className="font-mono"
           onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
           disabled={loadingResp}
         >
           {loadingResp ? '...' : t('timeline.detail.httpLoadFullBody')}
           {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
-        </button>
+        </Button>
       )}
       {isWs && (wsPreview.length > 0 || (loadedWsBody && loadedWsBody !== BODY_GONE)) && (
         <CollapsibleStream
@@ -348,14 +347,13 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
         />
       )}
       {isWs && hasFullWsBody && !loadedWsBody && (
-        <button
-          className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-2 py-0.5 rounded border border-redlog-border bg-redlog-elevated hover:bg-redlog-elevated-hover"
+        <Button size="compact" level="quiet" className="font-mono"
           onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
           disabled={loadingWs}
         >
           {loadingWs ? '...' : t('timeline.detail.httpLoadFullBody')}
           {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
-        </button>
+        </Button>
       )}
       {isTcp && (tcpPreview.length > 0 || (loadedTcpBody && loadedTcpBody !== BODY_GONE)) && (
         <CollapsibleStream
@@ -368,14 +366,13 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
         />
       )}
       {isTcp && hasFullTcpBody && !loadedTcpBody && (
-        <button
-          className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-2 py-0.5 rounded border border-redlog-border bg-redlog-elevated hover:bg-redlog-elevated-hover"
+        <Button size="compact" level="quiet" className="font-mono"
           onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
           disabled={loadingTcp}
         >
           {loadingTcp ? '...' : t('timeline.detail.httpLoadFullBody')}
           {' '}({formatBytes(inlineTcpBody?.size ?? tcpBodyRef?.size ?? 0)})
-        </button>
+        </Button>
       )}
       {bodyless && (
         <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">

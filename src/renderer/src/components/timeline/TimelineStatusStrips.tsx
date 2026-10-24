@@ -1,3 +1,4 @@
+import { Button } from '../Button'
 // Pieces of the Timeline that only render what they are given (UI/UX audit
 // F13). Timeline.tsx had grown to ~3000 lines in one function; these moved
 // out first because they hold no state of their own, so the move cannot change
@@ -29,12 +30,11 @@ export function BrokenChainBanner({ result, dismissed, onDismiss, t }: {
           walked: String(result.walked ?? 0)
         })}
       </span>
-      <button
+      <Button size="compact" level="quiet"
         onClick={onDismiss}
-        className="ml-auto text-xs text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded bg-red-900/40 hover:bg-red-900/60 transition-colors"
       >
         {t('timeline.brokenChain.dismiss')}
-      </button>
+      </Button>
     </div>
   )
 }

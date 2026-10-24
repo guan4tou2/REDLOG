@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
+import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { Download, X } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -558,8 +558,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             </div>
             </div>
             <div className="shrink-0 bg-redlog-surface border-t border-redlog-border px-3 py-2 flex gap-2 justify-end">
-              <button type="button" onClick={closeAll} disabled={busy} className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text disabled:opacity-40">{t('common.cancel')}</button>
-              {resolvedPlan && !previewLoading && <button data-testid="export-confirm" onClick={() => void confirmExport()} disabled={busy || !!runError || resolvedPlan.counts.included === 0} aria-busy={busy} className="px-4 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{busy ? t('export.running') : t('export.preview.confirm')}</button>}
+              <Button size="compact" level="quiet" type="button" onClick={closeAll} disabled={busy}>{t('common.cancel')}</Button>
+              {resolvedPlan && !previewLoading && <Button size="compact" level="primary" data-testid="export-confirm" onClick={() => void confirmExport()} disabled={busy || !!runError || resolvedPlan.counts.included === 0} aria-busy={busy}>{busy ? t('export.running') : t('export.preview.confirm')}</Button>}
             </div>
           </div>
         </>

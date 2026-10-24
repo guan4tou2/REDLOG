@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
-import { TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
+import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
+import { useNarrowViewport } from './hooks/useNarrowViewport'
 import { ControlBoundary } from './components/ControlBoundary'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
@@ -95,6 +96,7 @@ export default function App(): JSX.Element {
   // The Settings page a link asked for; see lib/navigation.ts.
   const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage } | null>(null)
   const { t } = useI18n()
+  const narrow = useNarrowViewport()
 
   // What the first launch after an update found, said once. It is taken (and so
   // cleared) in main; asked at mount for an outcome that was ready before this
@@ -242,18 +244,10 @@ export default function App(): JSX.Element {
           {t('artifacts.dropHere')}
         </div>
       )}
-      {/* Title bar.
-
-          No `overflow-hidden` on this strip. It is 40px tall and the controls
-          on it open downward — the export menu is `absolute top-7` inside it —
-          so clipping to the strip clips the popover to a single row and cuts
-          it off at the border below. That is what shipped: a menu that drew
-          its first checkbox and nothing else, which read as a broken component
-          and was not one. Wrapping is held off by `whitespace-nowrap`,
-          `shrink-0` and the project name's own `truncate`; overflow was never
-          the thing carrying it. */}
+      {/* Narrow windows keep project navigation and evidence actions on
+          separate rows. Leave overlays unclipped and OS caption controls free. */}
       <div
-        className="h-10 flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap"
+        className={`flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap ${narrow ? 'flex-wrap min-h-10 py-1' : 'h-10'}`}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
@@ -267,7 +261,7 @@ export default function App(): JSX.Element {
             and this one closes a project. */}
         <ControlBoundary name={t('app.closeProject')}>
           <button
-            className={`${TITLEBAR_CONTROL} ml-2 min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40`}
+            className={`${TITLEBAR_CONTROL} min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40 ${narrow ? `flex-1 ${isMac ? '' : 'mr-36'}` : 'ml-2'}`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             data-testid="titlebar-leave-project"
             onClick={async () => {
@@ -299,7 +293,7 @@ export default function App(): JSX.Element {
             (below), so until now a throw here unmounted the app root and left
             a black window -- with the shortcuts still working and nothing on
             screen to say what had happened. */}
-        <div className={`ml-auto flex gap-2 shrink-0 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className={`flex gap-2 ${narrow ? 'w-full flex-wrap justify-end' : `ml-auto shrink-0 ${isMac ? '' : 'pr-36'}`}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <ControlBoundary name={t('control.titlebar')}>
             {/* Each of the two stateful controls gets its own barrier, so one
                 failing leaves the other four working. These are the two that
@@ -372,13 +366,12 @@ export default function App(): JSX.Element {
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
             {view === 'timeline' && returnTo && (
               <div data-testid="timeline-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
-                <button
+                <Button size="compact" level="quiet"
                   type="button"
                   onClick={goBack}
-                  className="text-cyan-400 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
                 >
                   ← {t('nav.backTo', { view: t(`sidebar.${returnTo === 'screenshots' ? 'screens' : returnTo}`) })}
-                </button>
+                </Button>
                 <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
               </div>
             )}

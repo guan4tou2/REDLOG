@@ -166,15 +166,13 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   if (loading) {
     return (
-      <div className="p-5 space-y-5 overflow-auto h-full">
-        <div className="grid grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-lg bg-redlog-surface border border-redlog-border p-4 h-20 animate-pulse">
-              <div className="h-3 w-12 bg-redlog-elevated rounded mb-3" />
-              <div className="h-5 w-8 bg-redlog-elevated rounded" />
-            </div>
-          ))}
-        </div>
+      <div role="status" aria-label={t('common.loading')} data-testid="dashboard-loading" className="p-pad space-y-section overflow-auto h-full">
+        {[40, 32, 20].map((height) => (
+          <div key={height} aria-hidden="true" className="rounded-lg bg-redlog-surface border border-redlog-border p-pad animate-pulse" style={{ minHeight: `${height / 4}rem` }}>
+            <div className="h-3 w-32 max-w-full bg-redlog-elevated rounded mb-3" />
+            <div className="h-5 w-1/2 bg-redlog-elevated rounded" />
+          </div>
+        ))}
       </div>
     )
   }
@@ -268,7 +266,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             {t('dashboard.engagement')}
           </SectionLabel>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm [overflow-wrap:anywhere]">
               <div>
                 <span className="text-redlog-text-dim text-xs">{t('dashboard.id')}</span>
                 <p className="text-redlog-text font-mono text-sm mt-0.5">{config.engagement?.id as string}</p>

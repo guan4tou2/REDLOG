@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
@@ -650,33 +651,28 @@ export default function TranscriptView({ onOpenInTimeline }: {
             </button>
           ))}
         </div>
-        <button
+        <Button size="compact" level="quiet"
           type="button"
           data-testid="transcript-picked-only"
           aria-pressed={pickedOnly}
           onClick={() => setPickedOnly((v) => !v)}
           title={t('transcript.pickedOnlyHint')}
-          className={`text-xs px-2 py-1 rounded border shrink-0 transition-colors ${
-            pickedOnly ? 'border-red-500/50 text-red-300 bg-red-500/10' : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
-          }`}
         >
           {t('transcript.pickedOnly', { n: picks.size ? new Set(blocks.filter((b) => b.events.some((e) => picks.has(e.id))).map((b) => b.id)).size : 0 })}
-        </button>
-        <button
+        </Button>
+        <Button size="compact" level="quiet"
           type="button"
           data-testid="transcript-order"
           onClick={toggleOrder}
           title={t('transcript.orderHint')}
-          className="text-xs px-2 py-1 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text shrink-0 transition-colors"
         >
           {newestFirst ? t('transcript.orderNewest') : t('transcript.orderOldest')}
-        </button>
-        <button
+        </Button>
+        <Button size="compact" level="quiet"
           onClick={() => void copyAsMarkdown()}
-          className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
         >
           {t('transcript.copyMd')}
-        </button>
+        </Button>
       </div>
 
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">

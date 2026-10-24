@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Project identity, operator and profile handoff now live under Project & scope;
+  appearance contains only display preferences, without adding settings pages.
+  Source/evidence settings use their pane width. Ordinary actions share wrapping,
+  density-aware buttons; narrow title bars reflow rather than losing actions.
+  Long recording-status labels shrink while uptime and HUD remain reachable.
+  Dashboard loading follows the current vertical layout.
+
 - Repeated JSON, NDJSON, HAR and Timeline exports in the same second now keep
   separate files and manifests instead of overwriting earlier deliveries.
   Removed seven redundant source-expression tests and updated layout checks

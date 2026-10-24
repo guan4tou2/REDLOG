@@ -30,7 +30,7 @@ test.describe.serial('approved export plan', () => {
     await expect(page.getByLabel('Export format')).toHaveValue('json')
     const fingerprint = await page.getByText(/^[a-f0-9]{12}$/).textContent()
     expect(fingerprint).toMatch(/^[a-f0-9]{12}$/)
-    await page.locator('button.bg-red-600').filter({ hasText: 'Export' }).click()
+    await page.getByTestId('export-confirm').click()
     await expect(page.getByText('Exported Everything')).toBeVisible()
   })
 

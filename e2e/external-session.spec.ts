@@ -31,7 +31,7 @@ test('external PTY output remains searchable and exportable while paused', async
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()
-    await page.locator('button.bg-red-600').filter({ hasText: 'Export' }).click()
+    await page.getByTestId('export-confirm').click()
     await expect(page.getByText('Exported Everything')).toBeVisible()
   } finally {
     await app.close()

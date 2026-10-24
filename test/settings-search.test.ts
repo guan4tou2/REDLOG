@@ -15,6 +15,12 @@ const read = (f: string): string =>
   fs.readFileSync(path.join(__dirname, '..', 'src/renderer/src/components', f), 'utf8')
 
 describe('settings search', () => {
+  it('finds project identity and handoff on the project/scope page, away from display preferences', () => {
+    for (const key of ['settings.engagement', 'settings.operatorGroup', 'settings.handoffProfile']) {
+      expect(SETTINGS_SEARCH_KEYS.scope).toContain(key)
+      expect(SETTINGS_SEARCH_KEYS.general).not.toContain(key)
+    }
+  })
   it('finds the CA setting without interpolation templates or foreign WSL states', () => {
     const hits = searchSettings('CA', tr(zh), 30, 'darwin')
     expect(hits.some(h => h.key === 'httpCapture.caReady' && h.text.includes('CA'))).toBe(true)

@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
@@ -1783,9 +1784,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                 )}
         </span>
         {hasMore && (
-          <button onClick={loadMore} className="ml-1 px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated transition-colors">
+          <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >
             {t('timeline.loadMore')}
-          </button>
+          </Button>
         )}
 
         {/* v0.9.3 U2: keyboard-shortcut cheatsheet button. Every hotkey we
@@ -1994,7 +1995,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           {loadError && rawEvents.length > 0 && (
             <div role="alert" data-testid="timeline-page-failed" className="text-red-300">
               {t('timeline.pageFailed')}{' '}
-              <button onClick={loadMore} className="underline hover:text-red-200">{t('common.retry')}</button>
+              <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >{t('common.retry')}</Button>
             </div>
           )}
           {liveError && (

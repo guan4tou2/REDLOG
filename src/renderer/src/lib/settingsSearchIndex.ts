@@ -216,7 +216,18 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.personalDomainsHint',
     'settings.scopeFile',
     'settings.scopeFileLabel',
-    'settings.scopeFileHint'
+    'settings.scopeFileHint',
+    'settings.engagement',
+    'settings.id',
+    'settings.engagementIdHint',
+    'settings.name',
+    'settings.engagementNameHint',
+    'settings.operatorGroup',
+    'settings.operatorIdHint',
+    'settings.operatorNameHint',
+    'settings.handoffProfile',
+    'settings.exportProfile',
+    'settings.handoffProfileHint'
   ],
   network: [
     'settings.vpnAdapters',
@@ -302,17 +313,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'plugins.builtin.starter-pack'
   ],
   general: [
-    'settings.engagement',
-    'settings.id',
-    'settings.engagementIdHint',
-    'settings.name',
-    'settings.engagementNameHint',
-    'settings.operatorGroup',
-    'settings.operatorIdHint',
-    'settings.operatorNameHint',
-    'settings.handoffProfile',
-    'settings.exportProfile',
-    'settings.handoffProfileHint',
     'settings.language',
     'settings.uiScale',
     'settings.displayZone',

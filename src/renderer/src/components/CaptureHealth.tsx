@@ -436,13 +436,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
         {cta && (
           <div className="flex items-center gap-3 mb-3">
             {cta && (
-              <button
+              <Button size="compact" level="quiet"
                 disabled={busy !== null}
                 onClick={cta.run}
-                className="text-xs font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
               >
                 {cta.label}
-              </button>
+              </Button>
             )}
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}

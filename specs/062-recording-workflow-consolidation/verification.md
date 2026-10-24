@@ -1069,3 +1069,30 @@ and passed resource/signature checks plus **24/24 installed journeys** and the
 strict report gate. All six export cases now pass on the actual package. Exact
 hashes and supersession are in the dated record; native-platform/actual-update
 limits remain explicit. No additional application changes followed those runs.
+
+
+## UI/CSS consolidation / T063（2026-10-24）
+
+Existing project/operator/profile fields moved intact to Project & scope;
+appearance now contains only display preferences. Field search follows the new
+owner. Source/evidence settings use available width, ordinary buttons share
+minimum heights and wrapping, and dashboard placeholders follow its vertical
+layout. At 800×600 with largest UI scale and 200% Electron zoom, header/status
+controls actually overflowed a 400px effective viewport to roughly 500px.
+Narrow header reflow and a constrained recording caption preserve all actions
+and uptime; both locales now measure 400px content with no off-screen controls.
+
+Ordered typecheck/spec/architecture/i18n gates and build passed. The initial
+full unit run had one attachment-focus failure in an unchanged test; isolation
+passed, then the complete unchanged rerun passed **4,165 tests / 28 explicit
+skips** (107.84 seconds). Earlier fixture failures were fixed by supplying the
+project identity now read on the scope page and using the export confirm's
+semantic target rather than its former color class; no checks were skipped.
+
+**52/52 source Electron journeys passed** (1.7 minutes), strict report gate
+passed with no skipped/flaky case. Coverage includes settings classification,
+long unbroken names, both locales, 1600/800 windows, combined 140% UI and
+100–200% Electron zoom, first-run recovery, HTTP details, marker amendments,
+transcript and six real export cases. This is automated source-build coverage;
+native manual and replacement installed-package results follow when completed.
+T063 remains open until those manual checks; T008–T013 remain open.

@@ -183,3 +183,29 @@ and add numeric suffixes on collision, preserving previous artifacts/manifests.
 Do not change ExportPlan selection, destination approval or source evidence.
 Four fixed-time IPC regressions fail before the fix. Re-run real installed
 recovery before accepting a replacement candidate.
+
+### UI/CSS consolidation — T063 (2026-10-24)
+
+Keep the settings page count and route IDs. Move project identity, operator and
+profile handoff to the existing scope page, named Project & scope; appearance
+holds only locale, time zone and scale. Move the existing form logic intact,
+regenerate field search and retain immutable engagement IDs/rename behavior.
+List/evidence-oriented settings use available pane width; ordinary forms retain
+a readable bound. Long prose and IDs wrap without changing source values.
+
+Reuse Button for ordinary actions and toggles, including compact toolbar
+controls. Use minimum heights so translated labels can wrap, keep the density
+floor, expose selected toggles with aria-pressed and preserve disabled/focus
+behavior. The status bar and HUD retain their established geometry. Replace the
+obsolete dashboard four-tile loading skeleton with a vertical layout. Verify
+both locales, long unbroken names, 800/1600 widths, offered UI scale and
+100–200% shell zoom in existing journeys, then inspect native windows. Native
+Windows display-DPI behavior remains distinct from Electron zoom.
+
+The combined largest UI scale and 200% shell zoom reproduced actual clipping:
+at a 400px effective viewport, title-bar actions reached 497px and the status
+bar's recording label pushed scope/HUD beyond 500px. Reflow the title bar into
+project and action rows on narrow layouts, retaining OS caption space; constrain
+the recording caption while keeping uptime and accessible labels. Do not hide
+or remove evidence actions. The same English/Chinese case then measured 400px
+content in the 400px viewport with no off-screen controls.

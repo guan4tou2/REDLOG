@@ -3,6 +3,64 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject, openView, openSettingsPage, resizeMainWindow } from './helpers'
 
+test('project settings stay separate from display preferences and long content fits at large scales', async () => {
+  test.setTimeout(60_000)
+  const { app, page } = await launchWithTempHome()
+  try {
+    await openTestProject(page, 'settings-layout')
+    await page.evaluate(async () => {
+      await window.redlog.httpCapture.stop()
+      const cfg = await window.redlog.config.get()
+      cfg.operator.name = 'Operator'.repeat(40)
+      await window.redlog.config.save(cfg)
+      await window.redlog.marker.create({ title: 'Layout acceptance', severity: 'info' })
+    })
+    for (const locale of ['en', 'zh-TW']) {
+      await page.evaluate(value => localStorage.setItem('redlog-locale', value), locale)
+      await page.reload()
+      await openView(page, 'settings')
+      await openSettingsPage(page, 'general')
+      await expect(page.getByLabel('ID', { exact: true })).toHaveCount(0)
+      await openSettingsPage(page, 'scope')
+      await expect(page.getByLabel('ID', { exact: true })).toHaveCount(2)
+      await resizeMainWindow(app, 1600, 900)
+      for (const setting of ['scope', 'browser', 'captureControl', 'plugins']) {
+        await openSettingsPage(page, setting)
+        await expect.poll(() => page.getByTestId('settings-content').evaluate(el =>
+          el.parentElement!.getBoundingClientRect().right - el.getBoundingClientRect().right
+        )).toBeLessThanOrEqual(2)
+      }
+      await resizeMainWindow(app, 800, 600)
+      const win = await app.browserWindow(page)
+      for (const zoom of [1, 1.5, 2]) {
+        await win.evaluate((w, z) => w.webContents.setZoomFactor(z), zoom)
+        await openSettingsPage(page, 'general')
+        await page.getByRole('button', { name: locale === 'en' ? 'Largest' : '最大', exact: true }).click()
+        await expect(page.getByLabel('ID', { exact: true })).toHaveCount(0)
+        console.log('layout bounds', locale, zoom, await page.evaluate(() => ({
+          viewport: document.documentElement.clientWidth,
+          content: document.documentElement.scrollWidth,
+          outside: [...document.querySelectorAll('button,input,select,textarea')].map(el => {
+            const r = el.getBoundingClientRect()
+            return { text: el.textContent?.trim().slice(0, 30), left: r.left, right: r.right }
+          }).filter(r => r.left < -1 || r.right > document.documentElement.clientWidth + 1)
+        })))
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+        await openView(page, 'dashboard')
+        const name = page.getByText('Operator'.repeat(40), { exact: true })
+        await expect(name).toBeAttached()
+        expect(await name.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
+        await openView(page, 'settings')
+        await openSettingsPage(page, 'scope')
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+      }
+      await win.evaluate(w => w.webContents.setZoomFactor(1))
+      await openSettingsPage(page, 'general')
+      await page.getByRole('button', { name: locale === 'en' ? 'Normal' : '正常', exact: true }).click()
+    }
+  } finally { await app.close() }
+})
+
 test('plugin settings use the available width without overflowing compact windows', async () => {
   const { app, page } = await launchWithTempHome()
   try {

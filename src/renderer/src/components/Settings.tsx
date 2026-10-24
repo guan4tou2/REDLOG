@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AboutPage from './settings/AboutPage'
 import { useI18n } from '../i18n'
@@ -7,6 +8,7 @@ import type { ConfigState, HookInfo } from './settings/SettingsShared'
 import { isWindows } from './settings/SettingsShared'
 import WslPanel from './WslPanel'
 import GeneralPage from './settings/GeneralPage'
+import ProjectSettings from './settings/ProjectSettings'
 import HudPage from './settings/HudPage'
 import NetworkPage from './settings/NetworkPage'
 import BrowserPage from './settings/BrowserPage'
@@ -20,8 +22,7 @@ import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
-// The thirteen pages §10 asks for. Declared as a union so a typo in a route
-// is a compile error rather than a page that silently never renders.
+// Existing settings routes. A typo must fail typechecking, not open an empty pane.
 export type SettingsPage =
   | 'hooks' | 'captureControl' | 'browser'
   | 'scope' | 'network' | 'loot' | 'retention' | 'integrity'
@@ -176,10 +177,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
       <div data-testid="settings-load-failed" role="status" className="p-4 text-xs space-y-2">
         <p className="font-semibold text-redlog-text">{t('settings.loadFailedTitle')}</p>
         <p className="text-redlog-text-dim">{t('settings.loadFailedWhy')}</p>
-        <button
+        <Button size="compact" level="quiet"
           onClick={loadConfig}
-          className="px-2 py-0.5 rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text"
-        >{t('firstRun.recheck')}</button>
+        >{t('firstRun.recheck')}</Button>
       </div>
     ) : <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
   }
@@ -234,6 +234,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
     }
   ]
 
+  const wideContent = ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
   const q = pageQuery.trim().toLowerCase()
   const visible = groups
     .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
@@ -357,12 +358,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
 
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div ref={pane} className={`flex-1 overflow-y-auto p-pad space-y-4 ${tab === 'plugins' || tab === 'hooks' ? '' : 'max-w-[900px]'}`}>
-        {tab === 'general' && <GeneralPage config={config} setConfig={setConfig} />}
+      <div ref={pane} data-testid="settings-content" className={`flex-1 min-w-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent ? '' : 'max-w-[900px]'}`}>
+        {tab === 'general' && <GeneralPage />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'browser' && <BrowserPage onPrepare={() => setTab('hooks')} config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
-        {tab === 'scope' && <ScopePage config={config} setConfig={setConfig} t={t} />}
+        {tab === 'scope' && <><ScopePage config={config} setConfig={setConfig} t={t} /><ProjectSettings config={config} setConfig={setConfig} /></>}
         {tab === 'hooks' && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
@@ -377,7 +378,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      <div className={`px-4 py-2 border-t border-redlog-border shrink-0 ${tab === 'plugins' || tab === 'hooks' ? '' : 'max-w-[900px]'}`}>
+      <div className={`px-4 py-2 border-t border-redlog-border shrink-0 ${wideContent ? '' : 'max-w-[900px]'}`}>
         <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
       </div>
       </div>

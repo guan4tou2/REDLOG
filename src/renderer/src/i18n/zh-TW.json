@@ -1005,7 +1005,7 @@
   "settings.groupApp": "應用程式",
   "settings.pageHooks": "指令與終端",
   "settings.pageCaptureControl": "其他擷取來源",
-  "settings.pageScope": "範圍規則",
+  "settings.pageScope": "專案與範圍",
   "settings.pageNetwork": "IP 曝光與自身流量",
   "settings.pageLoot": "戰利品偵測",
   "settings.pageRetention": "保留與清理",

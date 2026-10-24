@@ -117,12 +117,11 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
               {t('bookmarks.title', { count: marks.length })}
             </span>
-            <button
+            <Button size="compact" level="quiet"
               onClick={quickCapture}
-              className="px-2 py-1 text-xs bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"
             >
               {t('bookmarks.capture')}
-            </button>
+            </Button>
           </div>
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'
@@ -368,10 +367,10 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
         </div>
         <div className="flex flex-wrap gap-1">
           {onOpenInTimeline && (
-            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-redlog-elevated text-cyan-400 rounded hover:bg-redlog-elevated-hover">{t('loot.openInTimeline')}</button>
+            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('loot.openInTimeline')}</Button>
           )}
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('bookmarks.edit')}</button>
-          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('bookmarks.delete')}</button>
+          <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
+          <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>
           {onClose && (
             <button
               type="button"
@@ -387,16 +386,13 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
 
       {/* Pin toggle lives here (low-frequency action, out of the mark list). */}
       {onTogglePin && (
-        <button
+        <Button size="compact" level="quiet"
           onClick={onTogglePin}
-          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
-            isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-redlog-elevated text-redlog-text-dim hover:text-amber-400 hover:bg-redlog-elevated-hover'
-          }`}
           aria-pressed={!!isPinned}
         >
           <span>{isPinned ? '★' : '☆'}</span>
           <span>{isPinned ? t('bookmarks.unpin') : t('bookmarks.pin')}</span>
-        </button>
+        </Button>
       )}
 
       {mark.note && (

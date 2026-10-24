@@ -1,3 +1,4 @@
+import { Button } from './Button'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
@@ -393,13 +394,12 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                         </div>
                       ))}
                       {hasMore && (
-                        <button
+                        <Button size="compact" level="quiet" className="mt-2"
                           onClick={loadMore}
                           disabled={loadingMore}
-                          className="mt-2 px-2 py-0.5 rounded border border-redlog-border text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated disabled:opacity-40"
                         >
                           {loadingMore ? t('targets.loading') : t('targets.loadMore', { loaded: evidence.length, total: tgt.eventCount })}
-                        </button>
+                        </Button>
                       )}
                     </>
                   )}

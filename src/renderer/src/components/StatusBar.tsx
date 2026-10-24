@@ -267,19 +267,19 @@ export default function StatusBar(): JSX.Element {
             data-recording={recording ? 'on' : 'off'}
             data-capture={captureVerdict ?? 'unknown'}
             onClick={handleToggleRecording}
-            className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${narrow ? 'flex-1 overflow-hidden' : ''}`}
             title={tooltip}
             aria-label={tooltip}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-            <span className={labelColor}>{
+            <span className={`${labelColor} ${narrow ? 'min-w-0 truncate' : ''}`} title={tooltip}>{
               !recording
                 ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
             <span
-              className="text-redlog-text-dim tabular-nums"
+              className="text-redlog-text-dim tabular-nums shrink-0"
               title={since ? t('statusBar.uptimeSince', { date: formatDateTime(since) }) : undefined}
               aria-label={since ? `${uptimeStr} — ${t('statusBar.uptimeSince', { date: formatDateTime(since) })}` : undefined}
               data-testid="statusbar-uptime"

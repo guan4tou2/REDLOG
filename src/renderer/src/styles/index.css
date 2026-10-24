@@ -247,12 +247,14 @@ html {
 
 :root {
   --row-h: 40px;
+  --control-h: 34px;
   --pad: 16px;
   --gap: 12px;
   --section-gap: 24px;
 }
 :root[data-density='tight'] {
   --row-h: 32px;
+  --control-h: 30px;
   --pad: 10px;
   --gap: 8px;
   --section-gap: 14px;

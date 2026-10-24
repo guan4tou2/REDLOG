@@ -1005,7 +1005,7 @@
   "settings.groupApp": "Application",
   "settings.pageHooks": "Commands & terminal",
   "settings.pageCaptureControl": "Other capture sources",
-  "settings.pageScope": "Scope rules",
+  "settings.pageScope": "Project & scope",
   "settings.pageNetwork": "IP exposure & own traffic",
   "settings.pageLoot": "Loot detection",
   "settings.pageRetention": "Retention and cleanup",

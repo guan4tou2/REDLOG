@@ -69,8 +69,8 @@ describe('ExportMenu plan preview', () => {
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
     openJson()
     await screen.findByText('Plan fingerprint')
-    const confirm = screen.getAllByText('Export').find((node) => node.closest('button')?.classList.contains('bg-red-600'))
-    expect(confirm?.closest('button')?.disabled).toBe(true)
+    const confirm = screen.getByTestId('export-confirm') as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
   })
 
   it('exposes loading and approved policy/selection details', async () => {

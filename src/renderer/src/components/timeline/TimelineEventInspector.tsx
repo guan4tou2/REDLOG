@@ -1,3 +1,4 @@
+import { Button } from '../Button'
 // The Timeline's detail panel body: everything shown for the selected event,
 // below the resize handle. Moved out of Timeline.tsx (UI/UX audit F13); every
 // value arrives as a prop, so — like MarkerDetail — nothing here can read a
@@ -141,24 +142,18 @@ export function TimelineEventInspector({
               No `title`: it repeated the button's own text word for word, so
               hovering said nothing the label did not. The button names the
               action; the comment above says why it exists. */}
-          <button
+          <Button size="compact" level="quiet"
             type="button"
             data-testid="detail-around-event"
-            className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
             onClick={onAround}
-          >{t('filter.around')}</button>
-          <button
+          >{t('filter.around')}</Button>
+          <Button size="compact" level="quiet" aria-pressed={!!dneFlag}
             type="button"
-            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors whitespace-nowrap ${
-              dneFlag
-                ? 'border-red-500/60 bg-red-500/15 text-red-300'
-                : 'border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border'
-            }`}
             title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}
             onClick={onToggleDoNotExport}
           >
             {dneFlag ? t('timeline.doNotExportActive') : t('timeline.doNotExport')}
-          </button>
+          </Button>
           {/* Dock and close live in the pane's own header now, matching the
               HTTP log, so every detail pane is driven from one place instead of
               the dock control sitting off on the timeline toolbar. */}
