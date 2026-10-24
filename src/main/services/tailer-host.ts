@@ -308,6 +308,9 @@ function sessionKey(agentKind: string, sessionId: string): string {
 }
 
 const COALESCE_MS = 50
+/** Retries for a unit whose events did not land (see scheduleUnitRetry). */
+const UNIT_RETRY_BASE_MS = 1000
+const UNIT_RETRY_LIMIT = 5
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
   const key = sessionKey(agentKind, sid)
@@ -848,6 +851,13 @@ function catchUpJsonl(s: SessionState): void {
   // Now: parse → insert → sidecar-append, so a crash before sidecar-append
   // simply re-reads the same bytes on restart.
   const paused = eventBus.paused
+  // To put back if a write fails: these bytes are then read again.
+  const before = {
+    pending: s.pendingLineBuffer, pauseTail: s.pauseTail, pauseSkipped: s.pauseSkippedLines,
+    // Counted again on the re-read; toolCallsSeen left doubled would raise a
+    // false tool-gap advisory against toolCallsEmitted.
+    linesSeen: s.linesSeen, toolCallsSeen: s.toolCallsSeen
+  }
   const text = s.pendingLineBuffer + bytes.toString('utf-8')
   const lastNl = text.lastIndexOf('\n')
   let complete = lastNl === -1 ? '' : text.slice(0, lastNl)
@@ -870,6 +880,41 @@ function catchUpJsonl(s: SessionState): void {
   }
 
   if (!paused) {
+    const failuresBefore = s.writeFailures
+    for (const raw of complete.split('\n')) {
+      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+      if (!line.trim()) continue
+      s.linesSeen++
+      processUnit(s, line, s.sourcePath)
+    }
+    // A turn that did not land keeps the sidecar where it was, so the same
+    // bytes are read again; turns that did land are skipped then by uuid.
+    // Advancing anyway lost the turn for good while the source looked fine.
+    // After the bounded retries the bytes are consumed, and the loss is
+    // recorded where the operator reads gaps rather than left implied.
+    const failedTurns = s.writeFailures - failuresBefore
+    if (failedTurns > 0 && (s.retry?.attempt ?? 0) < UNIT_RETRY_LIMIT) {
+      s.pendingLineBuffer = before.pending
+      s.pauseTail = before.pauseTail
+      s.pauseSkippedLines = before.pauseSkipped
+      s.linesSeen = before.linesSeen
+      s.toolCallsSeen = before.toolCallsSeen
+      scheduleUnitRetry(s)
+      return
+    }
+    if (failedTurns > 0) {
+      try {
+        ingestEvent('system', {
+          subtype: 'capture_gap',
+          reason: 'write_failed',
+          agent: s.agentKind,
+          session_id: s.sessionId,
+          failed_turns: failedTurns,
+          description: `${failedTurns} transcript turn(s) could not be written after ${UNIT_RETRY_LIMIT} retries and are not in the record. The sidecar keeps their raw bytes.`
+        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      } catch (e) { noteDbError('tailer-host', e) }
+    }
+    if (s.retry) { clearTimeout(s.retry.timer); s.retry = null }
     if (s.pauseSkippedLines > 0) {
       try {
         const ev = ingestEvent('system', {
@@ -884,12 +929,6 @@ function catchUpJsonl(s: SessionState): void {
       } catch (e) { noteDbError('tailer-host', e) }
       s.pauseSkippedLines = 0
       s.pauseStartedAt = null
-    }
-    for (const raw of complete.split('\n')) {
-      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-      if (!line.trim()) continue
-      s.linesSeen++
-      processUnit(s, line, s.sourcePath)
     }
     scheduleIdleSnapshot(s)
   } else {
@@ -970,9 +1009,6 @@ function markIndexed(s: SessionState, name: string, sentinel: string): void {
   // already recorded it, and `_causes` lookups need the id, not a sentinel.
   if (!s.redlogIdByUuid.has(name)) s.redlogIdByUuid.set(name, sentinel)
 }
-
-const UNIT_RETRY_BASE_MS = 1000
-const UNIT_RETRY_LIMIT = 5
 
 function scheduleUnitRetry(s: SessionState): void {
   const attempt = (s.retry?.attempt ?? 0) + 1
