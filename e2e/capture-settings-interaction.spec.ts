@@ -57,14 +57,18 @@ test('project settings stay separate from display preferences and long content f
             return true
           }).slice(-5).map(el => ({ tag: el.tagName, cls: String(el.className).slice(0, 60), testid: el.getAttribute('data-testid'), text: el.textContent?.trim().slice(0, 30), right: el.getBoundingClientRect().right }))
         })))
-        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+        // One pixel of slack, as the controls check above has. On Linux at zoom 2
+        // and the largest scale, scrollWidth read 401 against 400 while no
+        // unclipped element ended past the root's own fractional width: a
+        // rounding in scrollWidth, with nothing actually pushed off screen.
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true)
         await openView(page, 'dashboard')
         const name = page.getByText('Operator'.repeat(40), { exact: true })
         await expect(name).toBeAttached()
         expect(await name.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
         await openView(page, 'settings')
         await openSettingsPage(page, 'scope')
-        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true)  // same rounding as above
         const pane = page.getByTestId('settings-content')
         await pane.evaluate(el => { el.scrollTop = el.scrollHeight })
         await expect.poll(() => pane.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
