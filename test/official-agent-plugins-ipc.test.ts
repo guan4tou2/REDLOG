@@ -4,11 +4,11 @@ import { homedir } from 'node:os'
 
 const m = vi.hoisted(() => ({
   list: vi.fn(), install: vi.fn(), uninstall: vi.fn(), factory: vi.fn(),
-  reload: vi.fn(), plugins: vi.fn(() => []), health: vi.fn(), hooks: vi.fn(), insert: vi.fn(() => ({ id: 'audit' })), publish: vi.fn()
+  reload: vi.fn(), enable: vi.fn(), plugins: vi.fn(() => []), health: vi.fn(), hooks: vi.fn(), insert: vi.fn(() => ({ id: 'audit' })), publish: vi.fn()
 }))
 vi.mock('electron', () => ({ shell: {} }))
 vi.mock('../src/core/plugins/official-agents', () => ({ createOfficialAgentPluginManager: m.factory }))
-vi.mock('../src/core/plugins', () => ({ listPlugins: m.plugins, listEventTypes: vi.fn(), setPluginEnabled: vi.fn(), grantPluginTrust: vi.fn(), revokePluginTrust: vi.fn(), reloadPlugins: m.reload }))
+vi.mock('../src/core/plugins', () => ({ listPlugins: m.plugins, listEventTypes: vi.fn(), setPluginEnabled: m.enable, grantPluginTrust: vi.fn(), revokePluginTrust: vi.fn(), reloadPlugins: m.reload }))
 vi.mock('../src/core/config', () => ({ loadConfig: vi.fn() }))
 vi.mock('../src/core/project-manager', () => ({ getProjectDir: vi.fn() }))
 vi.mock('../src/core/plugins/test-sample', () => ({ testSample: vi.fn() }))
@@ -33,6 +33,7 @@ function setup(engagement: string | null = 'eng') {
 describe('official AI installation IPC', () => {
   beforeEach(() => {
     Object.values(m).forEach(fn => fn.mockReset())
+    m.plugins.mockReturnValue([])
     m.factory.mockReturnValue({ list: m.list, install: m.install, uninstall: m.uninstall })
     m.list.mockReturnValue([{ agentKind: 'codex', pluginId: 'official-ai-codex', state: 'not-installed' }])
     m.insert.mockReturnValue({ id: 'audit' })
@@ -84,4 +85,16 @@ describe('official AI installation IPC', () => {
     expect(ctx.onPluginsChanged).toHaveBeenCalledTimes(1)
     expect(m.reload).toHaveBeenCalledTimes(1)
   })
+  it('rejects a second global official toggle, but can explicitly recover via source installation', () => {
+    m.plugins.mockReturnValue([{ manifest: { id: 'official-ai-codex' }, status: 'disabled' }] as never)
+    m.install.mockReturnValue({ ok: true, changed: false, pluginId: 'official-ai-codex' })
+    const { call, ctx } = setup()
+    expect(() => call('plugins:setEnabled', 'official-ai-codex', false)).toThrow('capture sources')
+    expect(m.enable).not.toHaveBeenCalled()
+    call('plugins:installOfficialAgent', 'codex')
+    expect(m.enable).toHaveBeenCalledWith('official-ai-codex', true)
+    expect(ctx.onPluginsChanged).toHaveBeenCalledTimes(1)
+    expect(m.insert).toHaveBeenCalledWith('system', expect.objectContaining({ changed: { 'plugin.official-ai-codex.enabled': { from: false, to: true } } }), expect.anything())
+  })
+
 })

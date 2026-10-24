@@ -1,4 +1,4 @@
-import { resolveAgentCapture } from '../core/agent-capture-policy'
+import { resolveAgentCapture, agentTranscriptRoot } from '../core/agent-capture-policy'
 import { createOfficialAgentPluginManager } from '../core/plugins/official-agents'
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
@@ -69,7 +69,7 @@ import { initPlugins, listPlugins } from '../core/plugins'
 import { configureIngest, ingest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
-import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
+import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, listAgentSessions, type TailerAdapter } from './services/tailer-host'
 import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError, pendingSpoolDirectory, clearUnattributedCommands } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
@@ -436,12 +436,23 @@ function applyCapturePacks(cfg: RedLogConfig): void {
   configureConnectionMonitor({ enabled: on('connectionMonitor') })
   configureProcessMonitor({ enabled: on('processMonitor') })
   void configurePowershellTranscript({ enabled: on('powershellTranscript') })
-  const agents = resolveAgentCapture(cfg, createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list(), plugins)
-  configureAgentTailer({ enabled: agents.length > 0, enabledAgents: agents.map(a => a.agentKind),
+  const manager = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins'))
+  const catalog = manager.list()
+  const agents = resolveAgentCapture(cfg, catalog, plugins)
+  configureAgentTailer({
+    integrations: agents.flatMap(a => {
+      const entry = catalog.find(p => p.agentKind === a.agentKind)!
+      const modulePath = manager.modulePath(a.agentKind)
+      return modulePath ? [{ agentKind: a.agentKind, modulePath, root: agentTranscriptRoot(entry, homedir(), cfg.agentTailer?.sources?.[a.agentKind]) }] : []
+    }),
+    enabled: agents.length > 0, enabledAgents: agents.map(a => a.agentKind),
     engagementId: cfg.engagement.id, operatorId: cfg.operator.id, emitThinking: cfg.agentTailer?.emitThinking ?? false,
     watchPathsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, a.workPaths])),
     activationStarts: Object.fromEntries(agents.map(a => [a.agentKind, a.startedAt])),
+    excludedSessionsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, cfg.agentTailer?.sources?.[a.agentKind]?.excludedSessions ?? []])),
+    sessionStartsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, cfg.agentTailer?.sources?.[a.agentKind]?.sessionStarts ?? {}])),
     excludedPaths: readHookConfig().excludedPaths })
+
 }
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
@@ -1364,7 +1375,14 @@ app.whenReady().then(() => {
 
   // AI source metadata and shared hook exclusions. The folder picker itself
   // does not grant capture permission.
-  ipcMain.handle('agents:sources', () => describeAgentSources())
+  ipcMain.handle('agents:sessions', () => listAgentSessions())
+  ipcMain.handle('agents:sources', (_event, roots?: Record<string, string>) => {
+    const config = activeProject ? loadConfig(getProjectPath(activeProject)) : {}
+    if (roots === undefined) return describeAgentSources(config)
+    // Metadata-only preview of the unsaved form: directory existence is not permission.
+    if (!roots || typeof roots !== 'object' || Array.isArray(roots) || Object.entries(roots).some(([kind, root]) => !createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list().some(p => p.agentKind === kind) || typeof root !== 'string' || !path.isAbsolute(root))) throw new Error('Invalid AI source directory')
+    return describeAgentSources({ agentTailer: { sources: Object.fromEntries(Object.entries(roots).map(([kind, root]) => [kind, { sourceRoot: root }])) } })
+  })
   ipcMain.handle('hookConfig:get', () => readHookConfig())
   ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[] }) => {
     try {

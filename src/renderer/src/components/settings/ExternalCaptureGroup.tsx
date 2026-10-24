@@ -129,27 +129,16 @@ export default function ExternalCaptureGroup({ t }: {
                   question an operator actually has about a producer they
                   started by hand. */}
               {l && <SourceLastSeen source={l} active={feeding} t={t} />}
-              {/* The manifest's own prose is written for whoever maintains
-                  the pack, in English. The translated line says what this
-                  puts in the record, which is also what makes the source
-                  findable: searching 封包 or tcpdump used to return nothing
-                  at all, because a key built at runtime is invisible to the
-                  index generator. */}
-              {describe(hook) && (
-                <p className="text-xs text-redlog-text-dim mt-1">{describe(hook)}</p>
-              )}
-              <div className="mt-2">
-                {groupIndex === 0 && <SetupAndTeardown
-                  setup={hook.manualSteps}
-                  teardown={hook.removalSteps}
-                  t={t}
-                />}
-              </div>
+              <details className="mt-2">
+                <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.externalSetup')}</summary>
+                {describe(hook) && <p className="text-xs text-redlog-text-dim my-2">{describe(hook)}</p>}
+                {groupIndex === 0 && <SetupAndTeardown setup={hook.manualSteps} teardown={hook.removalSteps} t={t} />}
+              </details>
             </div>
           )
           })
           return groupIndex === 0 ? <div key="native" className="space-y-2">{rows}</div>
-            : group.length > 0 ? <details key="foreign" className="space-y-2">
+            : group.length > 0 ? <details data-testid="external-other-platforms" key="foreign" className="space-y-2">
               <summary className="min-h-8 cursor-pointer content-center text-xs text-redlog-text-dim">{t('settings.otherPlatforms')} ({group.length})</summary>
               {rows}
             </details> : null

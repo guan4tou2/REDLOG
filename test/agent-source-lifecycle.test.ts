@@ -5,7 +5,7 @@ import path from 'node:path'
 const m = vi.hoisted(() => ({ project: '', ingest: vi.fn(() => ({ id: 'turn' })), watchers: [] as Array<Record<string, (...args: string[]) => void>> }))
 vi.mock('../src/core/db/index', () => ({ getProjectDir: () => m.project, getDB: () => ({ prepare: () => ({ all: () => [] }) }) }))
 vi.mock('../src/core/ingest', () => ({ ingestEvent: m.ingest }))
-vi.mock('../src/core/capture-health', () => ({ noteDbError: vi.fn() }))
+vi.mock('../src/core/capture-health', () => ({ noteDbError: vi.fn(), noteCaptureError: vi.fn(), clearCaptureError: vi.fn() }))
 vi.mock('chokidar', () => ({ default: { watch: () => { const callbacks: Record<string, (...args: string[]) => void> = {}; m.watchers.push(callbacks); return { on(name: string, fn: (...args: string[]) => void) { callbacks[name] = fn; return this }, close: async () => { } } } } }))
 import { configureHost, registerAdapter, unregisterAdapter, registerSession, catchUpSession, stopHost, type TailerAdapter } from '../src/main/services/tailer-host'
 let root: string

@@ -30,14 +30,6 @@ export const CAPTURE_PACKS = {
 
 export type CapturePackId = keyof typeof CAPTURE_PACKS
 
-/** Labels used for per-tool health history. Activation is decided by
- *  agent-capture-policy, independently of capture packs. */
-export const AGENT_MEMBER_KIND = {
-  claudeCode: 'claude-code',
-  codex: 'codex',
-  opencode: 'opencode'
-} as const
-
 /** Whether a pack's plugin is installed and active. */
 export function isPackAvailable(id: CapturePackId, plugins: readonly LoadedPlugin[]): boolean {
   const pluginId = CAPTURE_PACKS[id].pluginId

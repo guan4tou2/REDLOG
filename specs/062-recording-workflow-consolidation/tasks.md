@@ -160,3 +160,16 @@ T042–T045 complete the seven recorded layout recommendations, not installer or
 - [x] T063 [US2] Complete the bounded UI/CSS consolidation: classify project/appearance settings without adding pages, align field search, use available width for source/evidence lists, unify ordinary compact actions with accessible wrapping/selection and density, replace the stale loading grid, and verify long content in both locales across narrow/wide/zoomed windows plus native manual checks.
 
 - [x] T064 [US5] Prioritize Claude Code terminal/IDE transcript capture, then Codex, using one shared installed/source journey. Verify explicit installation and directory authorization, new user/assistant text and paired complete tool I/O, search and actual JSON delivery, reload deduplication, stop/uninstall/reinstall/project isolation, and byte preservation. Repair the reproduced multiline JSON search-token defect and unreadable collapsed tool-input summary without changing evidence or adding another AI settings flow; record synthetic/native/provider-version limits.
+
+- [x] T065 [US5] Package provider parsers as inert, separately built optional plugins; copy and validate only the selected package and load/unload it only for an authorized project. Discover provider metadata from package manifests without importing parsers into main. Consolidate official AI installation/recovery and project recording in the source entry, remove its generic plugin switch, preserve explicit opt-in and uninstall boundaries, and reduce repeated source copy using a responsive list with expandable settings.
+- [x] T066 [US5] Resolve Claude/Codex transcript roots consistently for capture, detection and health (explicit project directory, absolute vendor environment root, then default). Changing the source directory stops capture pending explicit confirmation; verify real-file capture, switching and from-now semantics.
+- [x] T067 [US2] Group optional sources by operator task without new navigation layers; manually inspect every work/settings page, including representative wide/narrow journeys, repair observed layout/accessibility friction, and record unexercised states and remaining design decisions.
+
+T065–T067 complete the bounded optional-package/source-placement increment. Exact per-page state/size coverage, package/native evidence and remaining recommendations are in source-placement-and-ui-review-20261024.md; T008–T013 remain open.
+
+- [ ] T068 [US5] Reproduce and repair JSONL/per-message progress on DB/raw/checkpoint failures, preserving event UUID deduplication and complete raw units across retries/restart.
+- [ ] T069 [US5] Make global pause omit new AI sidecar content and establish durable resume boundaries, including delayed notifications and partial lines; retain metadata-only capture gaps.
+- [ ] T070 [US5] Add project/provider/session exclusion and explicit from-now reauthorization through existing AI source rows; show observed sessions without a new page or semantic classifier.
+- [ ] T071 [US5] Repair official managed-package upgrade/removal without executing stale/modified code or adopting foreign files; test and record exact acceptance/platform limits.
+
+T068–T071 follow ai-durability-and-session-boundaries.md; they do not complete T008–T013.

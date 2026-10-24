@@ -25,13 +25,15 @@ describe('tailer naming', () => {
     expect(exists('src/main/services/transcript-tailer.ts')).toBe(false)
   })
 
-  it('keeps every agent adapter in adapters/, and the wiring apart from them', () => {
+  it('keeps optional AI parsers in their packages and the shared host free of provider imports', () => {
     for (const a of ['claude-code', 'codex', 'opencode']) {
-      expect(exists(`src/main/services/adapters/${a}.ts`)).toBe(true)
+      expect(exists(`optional-plugins/${a}/adapter.ts`)).toBe(true)
+      expect(exists(`src/main/services/adapters/${a}.ts`)).toBe(false)
     }
     expect(exists('src/main/services/agent-transcript-tailer.ts')).toBe(false)
     const wiring = fs.readFileSync(path.join(root, 'src/main/services/agent-tailer.ts'), 'utf-8')
     // The wiring registers adapters; it does not parse any agent's format.
     expect(wiring).not.toMatch(/JSON\.parse|parseTranscriptLine\s*\(/)
+    expect(wiring).not.toMatch(/from ['"][^'"]*(?:claude-code|codex|opencode)/)
   })
 })

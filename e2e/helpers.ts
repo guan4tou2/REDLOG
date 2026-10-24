@@ -65,6 +65,8 @@ export async function launchWithTempHome(executablePath?: string): Promise<{
       NODE_ENV: 'test',
       HOME: tmpHome,
       USERPROFILE: tmpHome,
+      CLAUDE_CONFIG_DIR: join(tmpHome, '.claude'),
+      CODEX_HOME: join(tmpHome, '.codex'),
       // Enables dev-only IPC endpoints used by E2E specs. The main process
       // refuses those endpoints when this flag is unset.
       REDLOG_E2E: '1'

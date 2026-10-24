@@ -1191,3 +1191,148 @@ T063's pending manual remainder is superseded by the successful d3387008
 Settings inspection above; T064's bounded AI contract/UX acceptance is complete.
 The entire feature stays Draft: T008–T013/platform/update gates are still open.
 Current candidate/hashes: `dist/internal-20261024-8a8fc093/`. No push/release.
+
+
+## Optional offline AI packages and source/UI consolidation / T065–T067（2026-10-24）
+
+User clarification: AI must be genuinely optional plugin code, not a receipt
+which unlocks parsers already loaded in core. User selected app-supplied inert
+offline packages, copied/loaded only after explicit installation and project
+authorization. This supersedes the earlier receipt-only installation design.
+
+Clarify: selected offline package distribution; source/work/evidence paths kept
+separate. Checklist: default absence, install-without-read, authorized/from-now
+capture, stop/unload, remove/preserve, roots/project isolation, generic plugin
+switch prohibition, real packaged resources. Analysis: plan/domain/spec/tasks
+agree on those boundaries. Converge: T065–T067 complete; detailed manual states,
+remaining recommendations and platform gaps are recorded in
+source-placement-and-ui-review-20261024.md. The entire Spec stays Draft, with
+T008–T013 open. No claim of running slash commands that were not invoked.
+
+Implementation moves parser code/manifests into optional-plugins and builds
+independent adapter.cjs packages outside the automatic plugin discovery root.
+Core has a generic validated package loader; host retains authorization,
+provenance, ingestion and storage. Only app-supplied matching bytes load.
+Discovery/install do not execute parsers or read transcripts; changing source
+stops capture. The source row alone owns official AI lifecycle and project
+recording. Screenshot tuning/external setup steps use existing disclosures.
+No marketplace, arbitrary executable-plugin API, path migration or new main
+navigation layer introduced. Source-level provider names/roots/order come from
+package metadata; a fourth synthetic package works without a core switch.
+
+RED: two root-policy failures and one generic-Plugins exposure failure were
+observed before repairs. Modified package bytes, literal custom directories,
+provider unload/cache, cwd isolation and receipt boundaries have meaningful
+regressions. Existing tests which required removed entry paths/control text
+were updated with the new contract, not skipped. User changes through
+52b80c80, including Transcript anchoring and fractional viewport/rounding
+assertions, remain intact.
+
+Ordered implementation gates passed: typecheck → specs → architecture → i18n
+→ unit. **4,188 passed / 28 existing skips; 418 files passed / 5 skipped**,
+117.84s (`/private/tmp/redlog-placement-unit-final.log`). An initial sandbox
+worker stall was interrupted and is not a pass. Architecture sees 329 source
+files, including optional packages, with 8 existing exemptions. Ten distinct
+affected source journeys passed across initial/rerun logs; one initial case
+still expected the old generic toggle and passed after correction.
+
+Final closeout build includes the observed anchor-status wording repair in
+both locales: verification checks the anchor's covered prefix, not necessarily
+the current head. Existing integrity UI tests now assert that case with an
+older anchor. Typecheck/specs/architecture/i18n and 23 focused UI/copy/search/
+i18n cases pass after the copy change. Crypto/query/export semantics unchanged.
+
+Final packaged candidate:
+`/private/tmp/redlog-ui-placement-20261024/packaged-closeout/mac-arm64/RedLog.app`.
+Resource contract/checksum and strict/deep ad-hoc signature passed. **3/3
+installed AI journeys passed (26.6s)**, both Claude/Codex through new full tool
+I/O, real-file watchers, search/actual JSON, no historical/private content,
+stop/removal/reinstall and source-root/project switching. **5/5 capture-settings
+source journeys passed (15.1s)** including latest user geometry at 800px and
+1/1.5/2 zoom in both locales, generic plugin width, port validation, failure
+states and source-owned AI recovery. Logs:
+`/private/tmp/redlog-placement-installed-closeout.log` and
+`/private/tmp/redlog-placement-geometry-closeout.log`.
+
+Native CUA review manually visited every current work/settings route, including
+representative 1400×900, 875×1095 and 875×548 logical sizes. The route/state
+matrix is in the linked review; it does not mean every page at every size/error
+state. Native Claude selected real system-picker paths, explicitly activated,
+received only later synthetic prompt/reply/tool I/O, reset source (stopped), and
+removed integration while retained conversation remained readable. Native
+terminal output and AI evidence survived actual 27-event JSON export read-back;
+preactivation history was absent. Final package reopened the same isolated
+project and fully verified 32 events; native wording correctly says the old
+4-event anchor matches the evidence it covers. Normal quit stopped only the
+isolated candidate. Node SQLite restored and in-memory open checked afterward.
+
+No model API/free-model external review, private transcript, real shell profile,
+CA trust modification or production project used. Mac candidate is not
+notarized/released, and no new commit/push performed. Windows/Linux installer,
+real vendor-format/version and image coverage, OS-global HUD and update/defer/
+restart remain unverified here. Unrelated lockfile/traffic DB left untouched.
+
+## AI trust follow-up / T068–T071（2026-10-24）
+
+Read-only remote check confirmed origin/main a4e1b456 and candidate 52b80c80;
+PR #437 remains Draft/Open with the reported CI/install smoke green. PR #439
+is an open documentation contract; it was read, not merged or represented as
+implemented. PowerShell #438/#440 work is already present and not redone.
+
+Specify/Clarify/Checklist/Analyze are recorded in
+ai-durability-and-session-boundaries.md. The user explicitly authorized the
+pause-as-preservation boundary and session exclusions; no classifier/model or
+new page required. Canonical lifecycle/domain/operator documents were updated.
+
+RED cases reproduced JSONL event failure with advanced progress, per-message
+index-before-event, raw retention during pause, cross-boundary partial lines,
+new conversations discovered only after resume, partial message acknowledgement,
+wrong restart seed session ID, metadata-parent blocking and unavailable managed
+package updates. Tests use isolated real SQLite/files; write/rename faults are
+injected at the actual module boundary and observe committed raw bytes/rows.
+The initial fs mock used the wrong module namespace; corrected the test boundary
+and explicitly verified that the injection runs. No protection weakened.
+
+Host now commits independent source offsets and raw byte counts, retries
+failed complete units, dedups by AI session/UUID, and replays retained pending
+children after restart. App-level recording boundary metadata also covers
+sessions not yet discovered during pause. Pause/resume omit raw originals,
+including lines/mutable message units crossing the boundary. Only offsets,
+IDs/dispositions and metadata-only capture_gap are stored for omissions. Source
+errors surface on the provider row and recover after a successful commit.
+
+Per-session exclusions persist under the existing source/project settings;
+reallow uses the later session/source boundary. Source rows expose an expandable
+conversation list; another conversation continues when one is stopped. A short
+pre-authorization warning explains that tools can read outside the selected cwd.
+There is no content classifier and cwd is not a sandbox for tool reads.
+
+Machine installation records distinguish intact older packages from modified
+files. Stale code cannot load. Explicit update installs current app-supplied
+bytes, preserves receipt/project authorization, and rolls back if the receipt
+commit fails. Unknown files stay intact. This does not restore compatibility
+with prior receipt-only development builds or provide a marketplace/updater.
+
+Real installed Claude Code 2.1.310 was exercised against a loopback fake
+Anthropic protocol endpoint with a dummy key, isolated HOME/config/cwd and no
+inherited account credentials. No external model response or paid inference
+used. Initial failure had two independent causes: missing transcript root was
+not watched, and actual replies referenced ignored attachment metadata UUIDs.
+Authorized subtree watching now follows existing canonical ancestors; ignored
+parent metadata resolves to recorded ancestors with original parent UUID
+retained. Both new/existing-directory serializer journeys passed (11.4s) before
+final package acceptance. Tool printf actually ran locally and its input/output
+were captured. This is a real producer/serializer test, not a vendor-service or
+IDE-client certification. The CLI prints a synthetic cost estimate even for
+the fake endpoint; that is not a paid API transaction.
+
+Final ordered gates passed: typecheck → specs → architecture → i18n → unit.
+**4,207 passed / 28 existing skips; 419 files passed / 5 skipped** (109.57s).
+Log: `/private/tmp/redlog-ai-trust-full-final.log`. An earlier complete run
+found one stale lifecycle mock missing the newly used error-report methods;
+its fixture was updated and the whole suite passed afterward. Interrupted
+intermediate runs were not counted. Fifteen dedicated durability/privacy cases
+plus managed-upgrade/rollback and source-control behavior are included.
+
+Final packaged/native acceptance follows below. T008–T013 and Spec 062's Draft
+status are not closed by this bounded follow-up; no commit/push/merge/release.

@@ -38,6 +38,8 @@ describe('Integrity verify', () => {
     expect(screen.queryByText('Verify latest')).toBeNull()
     fireEvent.click(screen.getByText('Verify full chain'))
     await screen.findByText('Chain intact')
+    // The anchor covers two of the three walked events, not the current head.
+    expect(screen.getByText('✓ Anchor matches the events it covers')).toBeTruthy()
     expect(verify).toHaveBeenCalledTimes(1)
   })
 
@@ -55,6 +57,7 @@ describe('Integrity verify', () => {
     render(<I18nProvider><Panel /></I18nProvider>)
     fireEvent.click(screen.getByText('Verify full chain'))
     await waitFor(() => expect(chainIssue()).toBe(true))
+    expect(screen.getByText('⚠ Anchor does not match the events it covers')).toBeTruthy()
   })
 
   it('clears the chain issue when the walk and the anchor agree', async () => {

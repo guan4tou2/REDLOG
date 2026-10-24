@@ -15,14 +15,14 @@
     "redlog-cli": "./cli/redlog-cli.js"
   },
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "npm run build:ai-plugins && electron-vite dev",
+    "build": "npm run build:ai-plugins && electron-vite build",
     "verify:package-resources": "node scripts/verify-packaged-resources.mjs",
     "verify:specs": "node scripts/verify-specs.mjs",
     "typecheck": "tsc -p tsconfig.check.json",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f",
-    "pretest": "npm rebuild better-sqlite3",
+    "pretest": "npm rebuild better-sqlite3 && npm run build:ai-plugins",
     "test": "vitest run",
     "test:watch": "vitest",
     "pree2e": "electron-rebuild -f -o better-sqlite3",
@@ -31,7 +31,8 @@
     "e2e:ui": "playwright test --ui",
     "gen:settings-search": "node scripts/gen-settings-search.mjs",
     "verify:architecture": "node scripts/verify-architecture.mjs",
-    "verify:i18n": "node scripts/verify-i18n-assertions.mjs"
+    "verify:i18n": "node scripts/verify-i18n-assertions.mjs",
+    "build:ai-plugins": "node scripts/build-ai-plugins.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

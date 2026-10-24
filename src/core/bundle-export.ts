@@ -90,8 +90,7 @@ export interface ExportBundleOpts {
   /** v0.7.2 F: include the raw Claude Code (and future OpenCode / Codex)
    *  transcripts from `<projectDir>/agent-transcripts/` in the bundle.
    *  DEFAULT FALSE. The sidecar `.jsonl` files are verbatim copies of the
-   *  agent's own transcript, except for stretches read while recording was
-   *  paused, which are newline filler. They may include operator-pasted secrets
+   *  agent's own transcript, which may include operator-pasted secrets
    *  (API keys the operator typed into a Claude Code chat to test auth,
    *  passwords used in an example, etc.). The `agent.transcript_snapshot`
    *  event's sha256 lets an auditor verify the sidecar hasn't been
@@ -521,8 +520,6 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     if (fs.existsSync(srcAgent)) {
       fs.mkdirSync(dstAgent, { recursive: true })
       for (const name of fs.readdirSync(srcAgent)) {
-        // The tailer's pause-tail marker is its own bookkeeping, not evidence.
-        if (name.endsWith('.pause-tail')) continue
         const s = path.join(srcAgent, name)
         const d = path.join(dstAgent, name)
         if (fs.statSync(s).isFile()) {

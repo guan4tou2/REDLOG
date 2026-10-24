@@ -218,3 +218,34 @@ The runtime and health projection use `resolveAgentCapture`. The settings source
 Adapter initialization, main/auxiliary watchers and delayed callbacks share activation/project boundaries. Disable, uninstall and project switch stop those watchers before replacing project identity. Rejected sessions create no sidecar. Existing JSONL sessions begin at the EOF observed on connection; the checkpoint records skipped source bytes and requested activation time. New source files created after activation may begin at byte zero. Recorded evidence is retained on disable/uninstall.
 
 Only data exposed by the supported local transcript format is captured. Source-reported tool calls/results are distinct from independently observed shell execution and output. No promise is made to recover hidden reasoning, all historical sessions, or every vendor storage version.
+
+## Optional AI code packages
+
+Provider parsing code is an optional package, separate from the shared capture host. The shipped catalog is inert: listing sources or installing a package MUST NOT execute its parser or grant project access. Only a valid, active installation with explicit working-directory permission and activation boundary may load a provider module. Stop, uninstall and project switch MUST stop all provider watchers and discard its registered adapter/module instance. Captured evidence and original vendor transcripts survive removal.
+
+Source identity and default/environment directory mappings come from package metadata. Runtime, source detection and health MUST resolve the same source location. An explicitly selected source directory is not an allowed cwd; changing either permission range or source location stops recording pending confirmation, preserving from-now behavior. Unknown or modified executable files MUST NOT execute merely because a manifest has an official-looking ID. This release accepts only exact app-supplied package bytes; it does not authorize arbitrary third-party in-process parsers.
+
+
+AI pause is a preservation boundary: new original conversation bytes must not
+be written to events or sidecars while paused. Resume skips the then-existing
+source range (including delayed file notifications and crossing partial
+lines); durable offset/disposition metadata and capture_gap may describe the
+omission without storing its text. A persisted paused boundary fails closed
+across reopening. Event writes, raw append and progress commit are separate;
+failed units remain retryable, and restart dedup keys use AI data.session_id,
+not RedLog's envelope session ID. Pending-parent replay uses retained raw
+bytes, not conversation copies in checkpoint metadata.
+
+Individual AI exclusions are keyed by project, provider and session. They do
+not widen working-directory authorization. Reauthorizing a conversation or
+source begins at the later applicable activation boundary. The registry's
+empty default still permits cwd-authorized sessions; it is not per-conversation
+consent. Cwd authorization includes the conversation's tool content even if a
+tool reads outside that cwd; no content classifier claims to identify private
+prompts. Source UI exposes observed sessions and their explicit exclusions.
+
+Official AI package installations have separate machine installation records.
+Intact recorded packages can be removed or explicitly updated after an app
+update; only the current app-supplied bytes may load. Unknown/modified packages
+are preserved and refused. Updating preserves prior installation identity but
+does not create or widen project recording permission.

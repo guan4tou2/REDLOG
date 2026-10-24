@@ -7,6 +7,7 @@ import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 
 interface PluginView {
+  officialAgent?: boolean
   id: string
   name: string
   version: string
@@ -134,8 +135,8 @@ const OWNED_ELSEWHERE = new Set<string>([
 // existed would sit disabled forever, with 擷取 pack reporting it unavailable
 // and the only control that could bring it back hidden from the operator. A
 // row that is off is always shown, because that is the row someone needs.
-const isHidden = (p: { id: string; status: string }): boolean =>
-  OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
+const isHidden = (p: { id: string; status: string; officialAgent?: boolean }): boolean =>
+  p.officialAgent === true || (OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled')
 
 // The manifests describe these packs to whoever maintains them: spec
 // numbers, doc paths, the identifiers the code uses, and the reason the

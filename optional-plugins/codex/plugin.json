@@ -1,0 +1,19 @@
+{
+  "id": "official-ai-codex",
+  "name": "Codex CLI",
+  "version": "1.0.0",
+  "redlogApi": 1,
+  "kind": "pack",
+  "author": "RedLog",
+  "contributes": {},
+  "redlogAgent": {
+    "agentKind": "codex",
+    "order": 1,
+    "entry": "adapter.cjs",
+    "source": {
+      "defaultPath": ".codex/sessions",
+      "configEnv": "CODEX_HOME",
+      "envSuffix": "sessions"
+    }
+  }
+}

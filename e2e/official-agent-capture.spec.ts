@@ -8,7 +8,7 @@ type AgentKind = 'claude-code' | 'codex'
 
 function transcriptFixture(kind: AgentKind, home: string) {
   const root = kind === 'claude-code' ? join(home, '.claude', 'projects', 'fixture')
-    : join(home, '.codex', 'sessions', '2026', '10', '24')
+    : join(home, 'custom-codex-團隊 [redlog]')
   const line = (value: unknown): string => JSON.stringify(value) + '\n'
   const message = (role: 'user' | 'assistant', text: string): string => kind === 'claude-code'
     ? line({ type: role, uuid: randomUUID(), message: { role, content: [{ type: 'text', text }] } })
@@ -17,7 +17,7 @@ function transcriptFixture(kind: AgentKind, home: string) {
     root,
     filename: kind === 'claude-code' ? 'client.jsonl' : 'rollout-client.jsonl',
     privateFilename: kind === 'claude-code' ? 'private.jsonl' : 'rollout-private.jsonl',
-    pathPart: kind === 'claude-code' ? '/.claude/projects/' : '/.codex/sessions/',
+    pathPart: kind === 'claude-code' ? '/.claude/projects/' : '/custom-codex-團隊 [redlog]/',
     header: (cwd: string): string => kind === 'claude-code'
       ? line({ type: 'user', uuid: randomUUID(), cwd, message: { role: 'user', content: [] } })
       : line({ type: 'session_meta', payload: { cwd } }),
@@ -68,7 +68,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
         const original = fs[method]
         observedFs[method] = function(this: unknown, ...args: unknown[]) {
           const file = String(args[0]).replaceAll('\\', '/')
-          if (['/.codex/sessions/', '/.claude/projects/', '/opencode/storage/'].some(part => file.includes(part))) state.aiSourceReads.push(file)
+          if (['/.codex/sessions/', '/.claude/projects/', '/custom-codex-團隊 [redlog]/', '/opencode/storage/'].some(part => file.includes(part))) state.aiSourceReads.push(file)
           return Reflect.apply(original, this, args)
         }
       }
@@ -79,8 +79,15 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
       const active = await window.redlog.project.active()
       return (await window.redlog.project.list()).find(p => p.id === active?.id)!
     })
+    const installedModule = join(tmpHome, '.redlog', 'plugins', `official-ai-${kind}`, 'adapter.cjs')
+    const parserLoaded = () => app.evaluate((_electron, file) => {
+      const fs = process.getBuiltinModule('fs')!
+      if (!fs.existsSync(file)) return false
+      return !!process.getBuiltinModule('module')!.createRequire(process.execPath).cache[fs.realpathSync(file)]
+    }, installedModule)
     const rows = () => page.evaluate(() => window.redlog.events.query({ agentType: 'agent', limit: 1000 }))
     expect(await rows()).toEqual([])
+    expect(await parserLoaded()).toBe(false)
     expect(await reads()).toEqual([])
     await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
     await expect(page.getByTestId(`agent-install-${kind}`)).toBeVisible()
@@ -92,11 +99,22 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as typeof dialog.showOpenDialog
     }, work)
     await page.getByTestId(`agent-add-path-${kind}`).click()
+    if (kind === 'codex') {
+      await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
+      await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }) }, fixture.root)
+      await page.getByTestId(`agent-source-path-${kind}`).click()
+      await expect(page.getByTestId(`agent-root-${kind}`)).toHaveText(fixture.root)
+      await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get()))?.agentTailer?.sources?.codex?.sourceRoot).toBe(fixture.root)
+      expect((await page.evaluate(() => window.redlog.agents.sources())).find(s => s.id === kind)).toMatchObject({ root: fixture.root, detected: true })
+    }
+    expect(existsSync(installedModule)).toBe(true)
+    expect(await parserLoaded()).toBe(false)
     await expect(page.getByTestId(`agent-enabled-${kind}`)).toBeEnabled()
     await page.getByTestId(`agent-enabled-${kind}`).check()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get()))?.agentTailer?.sources?.[kind]?.enabled).toBe(true)
     // Registration is the observed connection boundary for existing files.
     await expect.poll(async () => (await rows()).some(e => e.data.subtype === 'transcript_capture_started'), { timeout: 10_000 }).toBe(true)
+    expect(await parserLoaded()).toBe(true)
     const output = 'AI_OUTPUT_SENTINEL\n' + 'ordinary tool output\n'.repeat(50) + 'AI_OUTPUT_TAIL_SENTINEL'
     appendFileSync(source, user('NEW_AUTHORIZED_SENTINEL') + fixture.reply('AI_REPLY_SENTINEL') + fixture.tools(output))
     appendFileSync(privateSource, user('NEW_PRIVATE_SENTINEL'))
@@ -154,6 +172,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(bytes.toString()).not.toContain('OLD_HISTORY_SENTINEL')
     await page.getByTestId(`agent-enabled-${kind}`).uncheck()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get()))?.agentTailer?.sources?.[kind]?.enabled).toBe(false)
+    expect(await parserLoaded()).toBe(false)
     await app.evaluate(() => { (globalThis as unknown as { aiSourceReads: string[] }).aiSourceReads = [] })
     const count = (await rows()).length
     appendFileSync(source, user('WHILE_DISABLED_SENTINEL'))
@@ -164,6 +183,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(readFileSync(file).equals(bytes)).toBe(true)
     // A local removal is machine-wide, so it asks first and names what stops
     // and what stays.
+    await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
     await page.getByTestId(`agent-remove-${kind}`).click()
     const removal = page.getByRole('dialog', { name: 'Remove capture integration' })
     await expect(removal).toBeVisible()
@@ -186,10 +206,74 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(JSON.stringify(await rows())).not.toMatch(/WHILE_DISABLED_SENTINEL|AFTER_REINSTALL_SENTINEL/)
     expect(readFileSync(file).equals(bytes)).toBe(true)
     expect((await page.evaluate(() => window.redlog.plugins.officialAgents())).map(p => p.state)).toEqual(kind === 'claude-code' ? ['installed', 'not-installed', 'not-installed'] : ['not-installed', 'installed', 'not-installed'])
+    // Uninstall directly while active, rather than relying on a prior Stop.
+    await page.getByTestId(`agent-enabled-${kind}`).check()
+    await expect.poll(parserLoaded).toBe(true)
+    const starts = captured.filter(e => e.data.subtype === 'transcript_capture_started').length
+    await expect.poll(async () => (await rows()).filter(e => e.data.subtype === 'transcript_capture_started').length).toBeGreaterThan(starts)
+    appendFileSync(source, user('REACTIVATED_SENTINEL'))
+    await expect.poll(async () => JSON.stringify(await rows())).toContain('REACTIVATED_SENTINEL')
+    await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
+    await page.getByTestId(`agent-remove-${kind}`).click()
+    await page.getByRole('dialog', { name: 'Remove capture integration' }).getByRole('button', { name: 'Remove', exact: true }).click()
+    await expect(page.getByTestId(`agent-install-${kind}`)).toBeVisible()
+    expect(await parserLoaded()).toBe(false)
+    expect(existsSync(installedModule)).toBe(false)
+    appendFileSync(source, user('AFTER_ACTIVE_UNINSTALL_SENTINEL'))
+    await page.waitForTimeout(500)
+    expect(JSON.stringify(await rows())).not.toContain('AFTER_ACTIVE_UNINSTALL_SENTINEL')
+    expect(readFileSync(file).equals(bytes)).toBe(true)
     await openTestProject(page, 'AI-other-project')
+    if (kind === 'codex') expect((await page.evaluate(() => window.redlog.agents.sources())).find(s => s.id === 'codex')?.root).toBe(join(tmpHome, '.codex', 'sessions'))
     appendFileSync(source, user('AFTER_PROJECT_SWITCH_SENTINEL'))
     await page.waitForTimeout(500)
     expect(await rows()).toEqual([])
     expect(readFileSync(file).equals(bytes)).toBe(true)
+  } finally { await app.close() }
+})
+
+test('Claude source pause and individual exclusions omit raw content without stopping another conversation', async () => {
+  const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
+  try {
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en')); await page.reload()
+    const work = join(tmpHome, 'client-work'); mkdirSync(work)
+    const fixture = transcriptFixture('claude-code', tmpHome); mkdirSync(fixture.root, { recursive: true })
+    const first = join(fixture.root, 'first.jsonl'), second = join(fixture.root, 'second.jsonl')
+    writeFileSync(first, fixture.header(work)); writeFileSync(second, fixture.header(work))
+    const project = await openTestProject(page, 'AI-session-privacy')
+    await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
+    await page.getByTestId('agent-install-claude-code').click()
+    await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }) }, work)
+    await page.getByTestId('agent-add-path-claude-code').click(); await page.getByTestId('agent-enabled-claude-code').check()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.agents.sessions())).filter(s => s.recording).length).toBe(2)
+    const rows = () => page.evaluate(() => window.redlog.events.query({ agentType: 'agent', limit: 1000 }))
+    appendFileSync(first, fixture.user('PUBLIC_FIRST')); appendFileSync(second, fixture.user('PUBLIC_SECOND'))
+    await expect.poll(async () => JSON.stringify(await rows())).toContain('PUBLIC_FIRST')
+    expect(await page.evaluate(() => window.redlog.recording.toggle())).toBe(false)
+    appendFileSync(first, fixture.user('PRIVATE_PAUSE_SENTINEL'))
+    // No notification wait: resume must skip what exists now.
+    expect(await page.evaluate(() => window.redlog.recording.toggle())).toBe(true)
+    appendFileSync(second, fixture.user('PUBLIC_AFTER_PAUSE'))
+    await expect.poll(async () => JSON.stringify(await rows())).toContain('PUBLIC_AFTER_PAUSE')
+    const source = page.getByTestId('agent-source-claude-code')
+    await source.locator('summary').filter({ hasText: 'Conversations' }).click()
+    await source.getByTestId('agent-session-first').click()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.['claude-code']?.excludedSessions).toContain('first')
+    appendFileSync(first, fixture.user('PRIVATE_EXCLUDED_SENTINEL')); appendFileSync(second, fixture.user('PUBLIC_OTHER_CONTINUES'))
+    await expect.poll(async () => JSON.stringify(await rows())).toContain('PUBLIC_OTHER_CONTINUES')
+    await page.reload(); await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
+    appendFileSync(first, fixture.user('PRIVATE_AFTER_RELOAD_SENTINEL'))
+    await source.locator('summary').filter({ hasText: 'Conversations' }).click()
+    await expect(source.getByTestId('agent-session-first')).toHaveText('Record new content')
+    await source.getByTestId('agent-session-first').click()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.agents.sessions())).find(s => s.sessionId === 'first')?.recording).toBe(true)
+    appendFileSync(first, fixture.user('PUBLIC_REAUTHORIZED'))
+    await expect.poll(async () => JSON.stringify(await rows())).toContain('PUBLIC_REAUTHORIZED')
+    const projectInfo = (await page.evaluate(() => window.redlog.project.list())).find(p => p.id === project.id)!
+    const sidecarDir = join(projectInfo.path, 'agent-transcripts')
+    const saved = readdirSync(sidecarDir).filter(p => p.endsWith('.jsonl')).map(p => readFileSync(join(sidecarDir, p), 'utf8')).join('')
+    expect(saved).not.toMatch(/PRIVATE_PAUSE_SENTINEL|PRIVATE_EXCLUDED_SENTINEL|PRIVATE_AFTER_RELOAD_SENTINEL/)
+    expect(JSON.stringify(await rows())).not.toMatch(/PRIVATE_PAUSE_SENTINEL|PRIVATE_EXCLUDED_SENTINEL|PRIVATE_AFTER_RELOAD_SENTINEL/)
+    expect((await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.['claude-code']?.enabled).toBe(true)
   } finally { await app.close() }
 })
