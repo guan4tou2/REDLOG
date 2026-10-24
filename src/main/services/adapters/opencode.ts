@@ -358,6 +358,10 @@ export const opencodeAdapter: TailerAdapter = {
   },
   parseUnit(rawContent: string, sourcePath?: string): ParsedTurn | ParsedTurn[] | null {
     if (!sourcePath) return null
+    // A stub that does not parse is usually one OpenCode has not finished
+    // writing. Thrown rather than returned empty: empty tells the host the
+    // file is handled, and it would never be read again.
+    try { JSON.parse(rawContent) } catch { throw new Error('OpenCode message file is not complete JSON yet') }
     const arr = parseOpencodeMessage(rawContent, sourcePath)
     return arr.length ? arr : null
   },
