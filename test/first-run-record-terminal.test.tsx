@@ -488,6 +488,24 @@ describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)',
     expect(screen.getByTestId('first-run-http-restart')).not.toBeNull()
   })
 
+  // The card also polls the proxy's status every 3 s. The poll's answer knows
+  // nothing about this start, so taking it whole erased the failure: on a
+  // slow runner the poll landed before the assertion above, and the operator
+  // saw the message for at most three seconds.
+  it('keeps a rejected start\'s failure through the next status poll', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install()
+    bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: '重新啟動 HTTP 擷取' }, { timeout: 5000 }))
+    const card = await screen.findByTestId('first-run-http')
+    await waitFor(() => expect(card.textContent).toContain('port 8080 in use'))
+    const polls = bridge.proxyStatus.mock.calls.length
+    await act(async () => { await vi.advanceTimersByTimeAsync(3_100) })
+    expect(bridge.proxyStatus.mock.calls.length).toBeGreaterThan(polls)
+    expect(card.textContent).toContain('port 8080 in use')
+  })
+
   // The terminal-proxy switch moved to Settings ▸ Browser, which owns every
   // other proxy setting; a global behaviour switch does not belong on the
   // screen where capture is being proved for the first time.
