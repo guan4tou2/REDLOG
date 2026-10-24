@@ -48,12 +48,14 @@ test('project settings stay separate from display preferences and long content f
           // ancestor clips. The list above includes clipped controls, and on
           // Linux the page was 1px wide with none of them responsible.
           widening: [...document.querySelectorAll('body *')].filter(el => {
-            if (el.getBoundingClientRect().right <= document.documentElement.clientWidth + 0.5) return false
+            // Against the real, fractional viewport: clientWidth and
+            // innerWidth both round, and at zoom 1.5 the layout is 533.33 wide.
+            if (el.getBoundingClientRect().right <= document.documentElement.getBoundingClientRect().width + 0.01) return false
             for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
               if (getComputedStyle(n).overflowX !== 'visible') return false
             }
             return true
-          }).slice(0, 5).map(el => ({ tag: el.tagName, cls: String(el.className).slice(0, 60), testid: el.getAttribute('data-testid'), right: el.getBoundingClientRect().right }))
+          }).slice(-5).map(el => ({ tag: el.tagName, cls: String(el.className).slice(0, 60), testid: el.getAttribute('data-testid'), text: el.textContent?.trim().slice(0, 30), right: el.getBoundingClientRect().right }))
         })))
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
         await openView(page, 'dashboard')
