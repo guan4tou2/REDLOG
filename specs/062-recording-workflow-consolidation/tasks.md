@@ -167,9 +167,31 @@ T042–T045 complete the seven recorded layout recommendations, not installer or
 
 T065–T067 complete the bounded optional-package/source-placement increment. Exact per-page state/size coverage, package/native evidence and remaining recommendations are in source-placement-and-ui-review-20261024.md; T008–T013 remain open.
 
-- [ ] T068 [US5] Reproduce and repair JSONL/per-message progress on DB/raw/checkpoint failures, preserving event UUID deduplication and complete raw units across retries/restart.
-- [ ] T069 [US5] Make global pause omit new AI sidecar content and establish durable resume boundaries, including delayed notifications and partial lines; retain metadata-only capture gaps.
-- [ ] T070 [US5] Add project/provider/session exclusion and explicit from-now reauthorization through existing AI source rows; show observed sessions without a new page or semantic classifier.
-- [ ] T071 [US5] Repair official managed-package upgrade/removal without executing stale/modified code or adopting foreign files; test and record exact acceptance/platform limits.
+- [x] T068 [US5] Reproduce and repair JSONL/per-message progress on DB/raw/checkpoint failures, preserving event UUID deduplication and complete raw units across retries/restart.
+- [x] T069 [US5] Make global pause omit new AI sidecar content and establish durable resume boundaries, including delayed notifications and partial lines; retain metadata-only capture gaps.
+- [x] T070 [US5] Add project/provider/session exclusion and explicit from-now reauthorization through existing AI source rows; show observed sessions without a new page or semantic classifier.
+- [x] T071 [US5] Repair official managed-package upgrade/removal without executing stale/modified code or adopting foreign files; test and record exact acceptance/platform limits.
 
 T068–T071 follow ai-durability-and-session-boundaries.md; they do not complete T008–T013.
+
+- [x] T072 [US2] Reproduce the native stale settings-save error after successful retry; clear only the resolved project notification, retaining failed/refused retries and unrelated errors. Verify the post-merge Mac package and record native/platform limits.
+
+
+## Phase 5: Convergence — #434 / #435 / #436
+
+- [x] T073 [US1] Share RecordTerminalFlow between initial setup, host settings and WSL install/repair; opening settings must remain read-only. Respect detected adapter capabilities, distinguish installed/command/output proof, preserve shell-specific commands/profiles and stale-attempt/project isolation (FR-001/FR-004, partial).
+- [x] T074 [US2] Keep dependency preparation and source repair in the current source entry, move Windows output configuration beside terminal setup, refuse unknown/failed pack availability, and provide direct managed-integration recovery without silently authorizing capture or adding fake external-producer switches (FR-003/FR-005/FR-011, partial).
+- [x] T075 [US6] Retain the successful artifact in the export dialog and expose the last successful delivery for the current project on this machine; persist only main-owned metadata after actual success. Bound reveal to approved locations or that exact completed artifact; missing, inaccessible, corrupt metadata and failed reveal remain distinguishable (FR-014/US6.7, partial).
+- [x] T076 [US6] Present evidence bundle/HAR as primary applicable formats and existing other formats in an advanced choice; retain all selection/policy/attachment/snapshot invariants and important warnings. Verify cancellation, failure/retry and reopening cannot mislabel an old result as the new export (FR-012/FR-013/FR-016, partial).
+- [x] T077 Verify these bounded journeys test-first, run the ordered gates and affected installed/native Mac journeys at wide/narrow sizes, update domain/feature and issue evidence, and preserve unrun Windows/Linux/OS acceptance as NOT RUN (Constitution VIII, FR-016/SC-001).
+
+- [x] T078 Consolidate the affected test journeys: reuse a process for ordinary settings with project/preference/viewport resets, include source connection in the export journey, retain process isolation for IPC fault injection, remove redundant renderer checks, and document one targeted verification run instead of repeatedly launching source/package copies.
+
+T073–T078 close only the bounded #434/#435/#436 increment and its test cleanup.
+The 2026-10-25 verification entry records exact source/package/native coverage,
+including the consolidated-test selector failure and its targeted repair.
+T008–T013 and the wider platform matrix remain open; Spec 062 remains Draft.
+
+- [x] T079 Close the bounded follow-up: distinguish a manual adapter choice from the detected recommendation; refresh hooks, terminal policy and integration availability on return without running installers or changing project permissions; use HUD-off non-HUD test fixtures with explicit HUD-on acceptance and keep the product default unchanged.
+
+- [x] T080 Reproduce the Windows late-discovery pause leak with a filesystem clock ahead of Date.now; persist a filesystem-calibrated recording boundary and reuse it for resumed sessions. Verify paused content stays absent after restart while genuinely new conversations still record; retain the CI/platform results in verification.md.

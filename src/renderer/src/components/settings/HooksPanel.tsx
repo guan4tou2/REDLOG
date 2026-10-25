@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
-import { toast } from '../Toast'
 import { FieldGroup, type HookInfo } from './SettingsShared'
 import { isForeignShellHook } from '../../lib/hookPlatform'
 import { removeHookWithUndo } from '../../lib/hookRemoval'
+import { RecordTerminalFlow } from '../RecordTerminalFlow'
+import { RuntimePreparation } from '../CapturePreparation'
+import { shellNameForHook } from '../../lib/terminalActivation'
+import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
+import { useReadState } from '../../lib/readState'
 import { SetupAndTeardown } from './ManualStepList'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
@@ -50,76 +54,35 @@ function TerminalPolicyNote({ policy, t }: {
   )
 }
 
-export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
+export default function HooksPanel({ hooks, setHooks, t }: {
   hooks: HookInfo[]
   setHooks: (h: HookInfo[] | ((prev: HookInfo[]) => HookInfo[])) => void
-  hookLoading: string | null
-  setHookLoading: (id: string | null) => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
+  const [connecting, setConnecting] = useState<string | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const read = useReadState(async () => {
+    const found = await window.redlog.hooks.detect()
+    if (!Array.isArray(found)) throw new Error('invalid-hook-list')
+    return found
+  })
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [policy, setPolicy] = useState<TerminalPolicy | null>(null)
+  const policy = useReadState(async (): Promise<TerminalPolicy | null> => {
+    const api = window.redlog.hooks
+    return await api.terminalPolicy?.() ?? null
+  })
+  useRevalidateOnFocus(() => { read.retry(); policy.retry() })
 
   useEffect(() => {
-    (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
-  }, [])
+    if (read.state.phase === 'loaded') setHooks(read.state.value)
+  }, [read.state])
 
-  useEffect(() => {
-    // Not cached: `redlog mode manual` happens in a terminal RedLog knows
-    // nothing about, and a panel showing a stale `auto` is worse than one
-    // showing nothing. An older preload has no such method, so a renderer
-    // running against one leaves the note out rather than throwing.
-    const api = (window.redlog as { hooks?: { terminalPolicy?: () => Promise<TerminalPolicy> } }).hooks
-    api?.terminalPolicy?.().then(setPolicy).catch(() => setPolicy(null))
-  }, [])
 
-  // mitmproxy missing: install it here rather than typing the command into the
-  // terminal. Same backend as the capture-preparation page; a `sudo` or missing
-  // prerequisite comes back as a message and the manual step stays below.
-  const installMitm = async (hook: HookInfo): Promise<void> => {
-    setHookLoading(hook.id)
-    try {
-      const result = await window.redlog.runtime.install('mitmdump')
-      if (result.success) toast(t('settings.hookInstalled', { name: hook.name }), 'success')
-      else if (!result.cancelled) {
-        toast(t('settings.hookInstallFailed', { name: hook.id }), {
-          type: 'error', why: t('settings.hookFailedWhy'), detail: result.message,
-          action: { label: t('common.retry'), onClick: () => { void installMitm(hook) } }
-        })
-      }
-    } catch (e) {
-      toast(t('settings.hookInstallFailed', { name: hook.id }), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
-    }
-    setHooks(await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect())
-    setHookLoading(null)
-  }
-
-  const handleToggle = async (hook: HookInfo): Promise<void> => {
-    const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
-    if (hook.installed) {
-      const show = (installed: boolean) => (): void =>
-        setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed } : h)))
-      removeHookWithUndo(hook.id, t, {
-        hide: show(false),
-        restore: show(true),
-        refresh: () => { void (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks) }
-      })
-      return
-    }
-    setHookLoading(hook.id)
-    const result = await hooksApi.install(hook.id)
-    if (result.success) toast(result.message, 'success')
-    else {
-      toast(t('settings.hookInstallFailed', { name: hook.id }), {
-        type: 'error',
-        why: t('settings.hookFailedWhy'),
-        detail: result.message,
-        action: { label: t('common.retry'), onClick: () => { void handleToggle(hook) } }
-      })
-    }
-    const updated = await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect()
-    setHooks(updated)
-    setHookLoading(null)
+  const remove = (hook: HookInfo): void => {
+    if (connecting === hook.id) setConnecting(null)
+    const show = (installed: boolean) => (): void =>
+      setHooks(prev => prev.map(h => h.id === hook.id ? { ...h, installed } : h))
+    removeHookWithUndo(hook.id, t, { hide: show(false), restore: show(true), refresh: read.retry })
   }
 
   const platform = (window as { redlog?: { platform?: string } }).redlog?.platform
@@ -152,7 +115,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                 <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                 {hook.installed && (
                   <span className="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
-                    {t('settings.hookActive')}
+                    {t('settings.shellInstalled')}
                   </span>
                 )}
                 {isManual && (
@@ -169,32 +132,22 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
               <p className="text-xs text-redlog-text-dim mt-0.5 break-words">{hookDescription(hook, t)}</p>
             </div>
             <div className="mt-auto flex flex-wrap justify-end gap-2">
-            {hook.available && hook.installMethod !== 'manual' && (
-              // Enabling a hook is a secondary verb, not the one thing
-              // the page exists for, and there are several of them in a
-              // row — so no primary fill (SS4: one per screen), and never
-              // the danger fill it used to wear: danger red reports a
-              // state, it does not invite a click.
-              <button
-                disabled={hookLoading === hook.id}
-                onClick={() => handleToggle(hook)}
-                className={`min-h-8 px-3 py-1 text-xs rounded shrink-0 transition-colors ${
-                  hook.installed
-                    ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
-                    : 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover'
-                } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
-              >
-                {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
+            {hook.available && shellNameForHook(hook.id) && read.state.phase === 'loaded' && (
+              <button type="button" data-testid={`hook-connect-${hook.id}`}
+                onClick={() => setConnecting(hook.id)}
+                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
+                {hook.installed ? t('settings.shellVerify') : t('settings.shellConnect')}
+              </button>
+            )}
+            {hook.installed && shellNameForHook(hook.id) && (
+              <button type="button" onClick={() => remove(hook)} className="min-h-8 px-3 py-1 text-xs rounded text-redlog-text-dim hover:text-red-400">
+                {t('settings.hookDisable')}
               </button>
             )}
             {hook.id === 'mitmproxy' && !hook.available && (
-              <button
-                data-testid="hook-install-mitmproxy"
-                disabled={hookLoading === hook.id}
-                onClick={() => void installMitm(hook)}
-                className={`min-h-8 px-3 py-1 text-xs rounded shrink-0 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors ${hookLoading === hook.id ? 'opacity-50' : ''}`}
-              >
-                {hookLoading === hook.id ? t('captureSetup.installing') : t('captureSetup.install')}
+              <button type="button" data-testid="hook-install-mitmproxy" onClick={() => setPreparing(true)}
+                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text">
+                {t('captureSetup.install')}
               </button>
             )}
             {hasSteps && (
@@ -235,10 +188,15 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
           plugin that brought it, on the Plugins page — here it was padding a
           list the operator reads to answer "is my shell recording". */}
       <FieldGroup title={t('settings.hooksBuiltin')}>
-        <TerminalPolicyNote policy={policy} t={t} />
-        {hooks.length === 0 && (
+        <TerminalPolicyNote policy={policy.state.phase === 'loaded' ? policy.state.value : null} t={t} />
+        {read.state.phase === 'loading' && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
+        {read.state.phase === 'failed' && <div role="alert" className="text-xs text-red-400 space-y-2">
+          <p>{t('firstRun.record.detectFailed')}</p>
+          <p className="break-words">{read.state.error}</p>
+          <button type="button" data-testid="hooks-read-retry" className="min-h-8 underline" onClick={read.retry}>{t('common.retry')}</button>
+        </div>}
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>
           {mainHooks.map((hook) => renderRow(hook))}
         </div>
@@ -252,6 +210,10 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
             </div>
           </details>
         )}
+        {connecting && !preparing && <RecordTerminalFlow key={connecting}
+          target={{ kind: 'host', hookId: connecting, label: hooks.find(h => h.id === connecting)?.name ?? connecting }}
+          onInstalled={read.retry} onPrepare={() => setPreparing(true)} />}
+        {preparing && <RuntimePreparation onClose={() => { setPreparing(false); read.retry() }} />}
       </FieldGroup>
     </>
   )

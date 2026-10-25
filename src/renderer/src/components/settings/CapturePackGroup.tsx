@@ -1,4 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
+import { useReadState } from '../../lib/readState'
+import { Button } from '../Button'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
@@ -76,31 +79,12 @@ const PLUGIN_OF: Record<PackId, string> = {
   windowsOutput: 'pack-windows-output'
 }
 
-/** Whether each pack's plugin is active; `null` while loading. */
-export function usePackAvailability(): Record<PackId, boolean> | null {
-  const [avail, setAvail] = useState<Record<PackId, boolean> | null>(null)
-  useEffect(() => {
-    let live = true
-    const plugins = (window.redlog as { plugins?: { list?: () => Promise<Array<{ id: string; source: string; status: string }>> } })
-      .plugins?.list?.()
-    if (!plugins) { setAvail({ hostMonitors: true, windowsOutput: true }); return }
-    plugins.then((list) => {
-      if (!live) return
-      const on = (id: string): boolean => list.some((p) => p.id === id && p.source === 'bundled' && p.status === 'active')
-      setAvail({ hostMonitors: on(PLUGIN_OF.hostMonitors), windowsOutput: on(PLUGIN_OF.windowsOutput) })
-    }).catch(() => { if (live) setAvail({ hostMonitors: true, windowsOutput: true }) })
-    return () => { live = false }
-  }, [])
-  return avail
-}
-
 export default function CapturePackGroup({
-  pack, title, hint, available, config, setConfig, t, onOpenPlugins, children
+  pack, title, hint, config, setConfig, t, onOpenPlugins, children
 }: {
   pack: PackId
   title: string
   hint: string
-  available: boolean | undefined
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -110,12 +94,33 @@ export default function CapturePackGroup({
   /** Member tuning, shown while the pack is on. */
   children?: ReactNode
 }): JSX.Element {
+  const read = useReadState(async () => {
+    const list = await window.redlog.plugins.list()
+    if (!Array.isArray(list) || list.some(p => !p || typeof p !== 'object' || !('id' in p) || !('status' in p) || !('source' in p))) throw new Error('invalid-plugin-list')
+    return list as Array<{ id: string; source: string; status: string }>
+  })
+  useRevalidateOnFocus(read.retry)
+  const plugin = read.state.value?.find(p => p.id === PLUGIN_OF[pack] && p.source === 'bundled')
+  const available = read.state.phase === 'loaded' && plugin?.status === 'active'
+  const [busy, setBusy] = useState(false)
+  const [repairError, setRepairError] = useState<string | null>(null)
+  const repair = async (): Promise<void> => {
+    setBusy(true); setRepairError(null)
+    try { await window.redlog.plugins.setEnabled(PLUGIN_OF[pack], true); read.retry() }
+    catch (e) { setRepairError(e instanceof Error ? e.message : String(e)) }
+    finally { setBusy(false) }
+  }
   const on = config.packs?.[pack] === true
   return (
     <FieldGroup title={title}>
-      {available === false ? (
+      {read.state.phase === 'loading' ? <p role="status" className="text-xs">{t('common.loading')}</p>
+        : read.state.phase === 'failed' ? <div role="alert" className="text-xs space-y-2">
+          <p>{t('settings.packReadFailed')}</p><p className="break-words">{read.state.error}</p>
+          <Button level="quiet" onClick={read.retry}>{t('common.retry')}</Button>
+        </div> : !available ? (
         <div className="space-y-1">
-          <p className="text-xs text-amber-500/80" data-testid={`pack-removed-${pack}`}>{t('settings.packRemoved')}</p>
+          <p className="text-xs text-amber-500/80" data-testid={`pack-removed-${pack}`}>{t(plugin?.status === 'disabled' ? 'settings.packRemoved' : 'settings.packUnavailable')}</p>
+          {plugin?.status === 'disabled' && <Button level="secondary" disabled={busy} data-testid={`pack-repair-${pack}`} onClick={() => void repair()}>{t('settings.sourceRestore')}</Button>}
           {onOpenPlugins && (
             <button type="button" data-testid={`pack-open-plugins-${pack}`} onClick={onOpenPlugins} className="text-xs text-redlog-text-dim underline">
               {t('settings.openPlugins')}
@@ -130,8 +135,9 @@ export default function CapturePackGroup({
           label={t('settings.packRecord')}
         />
       )}
+      {repairError && <p role="alert" className="text-xs text-red-400 break-words">{repairError}</p>}
       <p className="text-xs text-redlog-text-faint">{hint}</p>
-      {on && available !== false && children}
+      {on && available && children}
     </FieldGroup>
   )
 }

@@ -37,7 +37,7 @@ const draw = (terminalPolicy?: () => Promise<{ mode: 'auto' | 'manual'; native: 
     }
   }
   render(
-    <HooksPanel hooks={[]} setHooks={() => {}} hookLoading={null} setHookLoading={() => {}} t={t} />
+    <HooksPanel hooks={[]} setHooks={() => {}} t={t} />
   )
 }
 
@@ -54,9 +54,19 @@ describe('the hooks panel says what the shell will do', () => {
     expect(text).toMatch(/Change it from the terminal/)
   })
 
-  it('shows the mode the operator actually set, not the installed default', async () => {
-    draw(async () => ({ mode: 'auto', native: [], pty: [] }))
-    await waitFor(() => expect(screen.getByText(/recording from the first prompt/)).toBeTruthy())
+  it('refreshes the actual mode on return without reinstalling a hook', async () => {
+    const policy = vi.fn().mockResolvedValueOnce({ mode: 'auto', native: [], pty: [] })
+      .mockResolvedValue({ mode: 'manual', native: ['nc'], pty: ['ssh'] })
+    draw(policy)
+    await screen.findByText(/recording from the first prompt/)
+    const install = vi.spyOn(window.redlog.hooks, 'install')
+    const detect = vi.spyOn(window.redlog.hooks, 'detect')
+    fireEvent(window, new Event('focus'))
+    fireEvent(document, new Event('visibilitychange'))
+    await screen.findByText(/not recording until redlog start/)
+    expect(policy).toHaveBeenCalledTimes(2)
+    expect(detect).toHaveBeenCalledTimes(1)
+    expect(install).not.toHaveBeenCalled()
   })
 
   it('keeps the current mode visible while tool classifications are expandable', async () => {

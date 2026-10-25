@@ -121,7 +121,7 @@ describe('record my terminal: adapter selection', () => {
     draw()
     const zsh = await screen.findByTestId('record-terminal-adapter-shell-zsh')
     expect(zsh.getAttribute('data-selected')).toBe('true')
-    expect(screen.getByTestId('record-terminal-adapter-detected-shell-zsh')).toBeTruthy()
+    expect(await screen.findByTestId('record-terminal-adapter-detected-shell-zsh')).toBeTruthy()
     await waitFor(() => expect(bridge.install).toHaveBeenCalledWith('shell-zsh'))
 
     fireEvent.click(screen.getByTestId('record-terminal-adapter-shell-bash'))
@@ -129,6 +129,16 @@ describe('record my terminal: adapter selection', () => {
     expect(bridge.install.mock.calls.at(-1)).toEqual(['shell-bash'])
     expect(screen.getByTestId('record-terminal-adapter-shell-bash').getAttribute('data-selected')).toBe('true')
     expect(screen.getByTestId('record-terminal-adapter-shell-zsh').getAttribute('data-selected')).toBe('false')
+  })
+
+  it('keeps a manually selected Bash separate from the detected Zsh recommendation', async () => {
+    install()
+    draw(BASH_TARGET)
+    await waitFor(() => expect(bridge.install).toHaveBeenCalledWith('shell-bash'))
+    expect(screen.getByTestId('record-terminal-adapter-shell-bash').getAttribute('data-selected')).toBe('true')
+    expect(screen.getByTestId('record-terminal-adapter-detected-shell-zsh')).toBeTruthy()
+    expect(screen.queryByTestId('record-terminal-adapter-detected-shell-bash')).toBeNull()
+    expect(bridge.install).toHaveBeenCalledTimes(1)
   })
 
   it('never lets the other adapter\'s canary mark the selection connected', async () => {
@@ -257,4 +267,13 @@ it('a WSL canary must identify the selected distro, not a host or another distro
   }
   emit([{ id: 'right', timestamp: 1, agentType: 'shell', data: { subtype: 'command_end', command, shell: 'zsh', wsl_distro: 'Ubuntu' } }])
   expect(await screen.findByTestId('record-terminal-verified')).toBeTruthy()
+})
+
+it('offers PowerShell on a POSIX host only when the backend actually reports it available', async () => {
+  install({ hooks: [ZSH, BASH, hostHook('shell-powershell', true)] })
+  draw()
+  const option = await screen.findByTestId('record-terminal-adapter-shell-powershell')
+  expect((option as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.click(option)
+  await waitFor(() => expect(bridge.install).toHaveBeenCalledWith('shell-powershell'))
 })

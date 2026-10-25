@@ -61,7 +61,7 @@ const ACTIVATION_TIMEOUT_MS = 60_000
 
 /** Which adapter the flow actually installs.
  *
- *  The detected one wins when it exists here; when it does not, it stays
+ *  The requested initial adapter wins when it exists here; when it does not, it stays
  *  selected so the screen can say why rather than silently swapping in a shell
  *  the operator did not ask for. Only with no recommendation at all does the
  *  first available adapter become the default. */
@@ -71,8 +71,9 @@ function pickInitialAdapter(choices: AdapterChoice[], recommended: string | null
   return choices.find((c) => c.available)?.hookId ?? choices[0].hookId
 }
 
-export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
+export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInstalled }: {
   target: RecordTarget
+  onInstalled?: () => void
   onPrepare: () => void
   /** Which shell the flow is actually driving. The entry button above names the
    *  detected shell as the recommendation, but the picker inside can select a
@@ -86,8 +87,9 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
   const [installError, setInstallError] = useState('')
   const [nonce, setNonce] = useState('')
   const [choices, setChoices] = useState<AdapterChoice[]>([])
-  const recommended = target.kind === 'host' ? target.hookId : null
-  const [selectedHook, setSelectedHook] = useState<string | null>(recommended)
+  const initialHook = target.kind === 'host' ? target.hookId : null
+  const recommended = target.kind === 'host' ? preflight?.shell?.hookId ?? null : null
+  const [selectedHook, setSelectedHook] = useState<string | null>(initialHook)
   // WSL has one path and no picker, so it is "detected" from the first frame.
   const [detected, setDetected] = useState(target.kind !== 'host')
   const [detectVersion, setDetectVersion] = useState(0)
@@ -111,7 +113,7 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
         if (!live) return
         const found = hostAdapterChoices(hooks ?? [], window.redlog.platform ?? '')
         setChoices(found)
-        setSelectedHook(pickInitialAdapter(found, recommended))
+        setSelectedHook(pickInitialAdapter(found, initialHook))
         setDetected(true)
       })
       .catch((error) => {
@@ -120,7 +122,7 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
         setPhase('detect-failed')
       })
     return () => { live = false }
-  }, [recommended, target.kind, detectVersion])
+  }, [initialHook, target.kind, detectVersion])
 
   const selectedChoice = choices.find((c) => c.hookId === selectedHook) ?? null
   const expectedShell: ShellName | null = target.kind === 'wsl'
@@ -175,6 +177,7 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel }: {
       return
     }
     if (!current()) return
+    onInstalled?.()
     setPhase('installed')
     setNonce(activationNonce())
     setPhase('waiting-for-activation')
@@ -474,9 +477,8 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
  *  means output was recorded, and the same line with no output means only
  *  the metadata was. Nothing is claimed about output that was never seen.
  *
- *  The bare command is what proves zsh's automatic relay; bash has no
- *  printf-style relay at its prompt, so there it runs behind `redlog-run` and
- *  the check proves the wrapper — the only output path bash has. */
+ *  The bare command is what proves zsh's automatic relay; bash uses the same ordinary-command output check; neither is credited
+ *  with output on the strength of a command event alone. */
 function OutputCheck({ shell, onResult }: { shell: ShellName; onResult?: (kind: CanaryResult['kind'] | null) => void }): JSX.Element {
   const { t } = useI18n()
   const [canary] = useState(() => outputCanary(activationNonce()))
@@ -490,7 +492,7 @@ function OutputCheck({ shell, onResult }: { shell: ShellName; onResult?: (kind: 
     })
   }, [canary, result?.kind])
 
-  const viaRun = shell === 'bash' ? `redlog-run ${canary.command}` : canary.command
+  const viaRun = canary.command
   return (
     <div data-testid="record-terminal-output-check" className="space-y-1 pt-1">
       <p className="text-redlog-text-dim">{t('firstRun.record.outputCheck')}</p>

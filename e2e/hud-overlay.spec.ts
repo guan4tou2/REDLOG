@@ -243,7 +243,7 @@ test.describe.serial('HUD size stability', () => {
 // CDP keyboard bypasses before-input-event, so send through Electron's native
 // input pipeline instead. Manual acceptance covers actual macOS key delivery.
 test('the release chord works in main and HUD windows without enabling it again', async () => {
-  const { app, page } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
+  const { app, page } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP, { showHud: true })
   try {
     await openTestProject(page, 'hud-window-release')
     await expect.poll(() => app.windows().some(w => w.url().includes('overlay'))).toBe(true)

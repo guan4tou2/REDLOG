@@ -27,10 +27,10 @@ function plan(): ResolvedExportPlan {
 let execute: ReturnType<typeof vi.fn>
 let pick: ReturnType<typeof vi.fn>
 function install(): void {
-  execute = vi.fn(async () => ({ ok: true, planId: 'plan-1', fingerprint: 'x', artifactPath: '/tmp/x', counts: plan().counts, warnings: [] }))
+  execute = vi.fn(async () => ({ ok: true, planId: 'plan-1', fingerprint: 'x', artifactPath: '/tmp/x', counts: plan().counts, warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
   pick = vi.fn(async () => '/Volumes/evidence')
   ;(window as unknown as { redlog: unknown }).redlog = {
-    data: {
+    data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })),
       resolveExportPlan: vi.fn(async () => ({ ok: true, plan: plan() })),
       executeExportPlan: execute,
       exportDestination: vi.fn(async () => '/proj/exports'),
@@ -83,15 +83,15 @@ describe('Export menu: range, remembered format, destination', () => {
 
   it('remembers the format picked in the dropdown', () => {
     draw(); open()
-    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'ndjson' } })
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'other' } }); fireEvent.change(screen.getByLabelText('Other formats'), { target: { value: 'ndjson' } })
     cleanup(); draw(); open()
-    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('ndjson')
+    expect((screen.getByLabelText('Other formats') as HTMLSelectElement).value).toBe('ndjson')
   })
 
   it('ignores a stored format it does not offer', () => {
     localStorage.setItem('redlog.export.format', 'har')
     draw(); open()
-    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('json')
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('bundle')
   })
 
   it('shows where the file will go, and sends a changed folder with the confirm', async () => {

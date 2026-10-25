@@ -30,9 +30,9 @@ const plan = (over: Partial<ResolvedExportPlan> = {}): ResolvedExportPlan => ({
 
 function install(p: ResolvedExportPlan): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
-    data: {
+    data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })),
       resolveExportPlan: vi.fn(async () => ({ ok: true as const, plan: p })),
-      executeExportPlan: vi.fn(async () => ({ ok: true as const, planId: p.id, fingerprint: 'x', artifactPath: '/tmp/x', counts: p.counts, warnings: [] }))
+      executeExportPlan: vi.fn(async () => ({ ok: true as const, planId: p.id, fingerprint: 'x', artifactPath: '/tmp/x', counts: p.counts, warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
     },
     config: { get: async () => ({}) }
   }

@@ -322,9 +322,18 @@ function sessionKey(agentKind: string, sessionId: string): string {
 let resumeBoundary = 0
 function boundaryPath(): string { return path.join(getProjectDir(), 'agent-transcripts', '.recording-boundary.json') }
 function saveBoundary(paused: boolean): void {
-  const file = boundaryPath(), at = Date.now(), tmp = file + '.tmp'
+  const file = boundaryPath(), tmp = file + '.tmp'
+  let at = Date.now()
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
-  try { fs.writeFileSync(tmp, JSON.stringify({ paused, at }), { mode: 0o600 }); fs.renameSync(tmp, file) }
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ paused, at }), { mode: 0o600 })
+    // Windows file timestamps can lead the coarser Date.now clock. Compare
+    // source timestamps against a filesystem boundary too, or delayed discovery
+    // can mistake paused content for a conversation created after resume.
+    at = Math.max(at, Math.ceil(fs.statSync(tmp).mtimeMs))
+    fs.writeFileSync(tmp, JSON.stringify({ paused, at }), { mode: 0o600 })
+    fs.renameSync(tmp, file)
+  }
   catch (e) { try { fs.unlinkSync(tmp) } catch { /* staging metadata only */ }; throw e }
   resumeBoundary = at
 }
@@ -1010,7 +1019,7 @@ const onRecording = (recording: boolean): void => {
       s.checkpointPaused = true
       if (s.adapter.perMessageDir) catchUpPerMessageDir(s)
       else discardJsonl(s)
-      s.resumedAt = Date.now(); s.skipMissingParents = true
+      s.resumedAt = resumeBoundary; s.skipMissingParents = true
       if (recording) { s.checkpointPaused = false; checkpoint(s) }
     } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e) }
   }

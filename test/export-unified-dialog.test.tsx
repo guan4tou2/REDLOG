@@ -21,7 +21,11 @@ function plan(request: ExportRequest, id = 'latest'): ResolvedExportPlan {
 let resolve: ReturnType<typeof vi.fn>
 let execute: ReturnType<typeof vi.fn>
 const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
-const format = (value: string): void => { fireEvent.change(screen.getByLabelText('Export format'), { target: { value } }) }
+const format = (value: string): void => {
+  const secondary = !['bundle', 'har'].includes(value)
+  fireEvent.change(screen.getByLabelText('Export format'), { target: { value: secondary ? 'other' : value } })
+  if (secondary) fireEvent.change(screen.getByLabelText('Other formats'), { target: { value } })
+}
 const range = (value: string): void => { fireEvent.change(screen.getByLabelText('Export range'), { target: { value } }) }
 const ready = async (): Promise<void> => { await screen.findByTestId('export-confirm') }
 function draw(value = entry): ReturnType<typeof render> {
@@ -30,10 +34,10 @@ function draw(value = entry): ReturnType<typeof render> {
 
 describe('one export dialog', () => {
   beforeEach(() => {
-    localStorage.clear()
+    localStorage.clear(); localStorage.setItem('redlog.export.format', 'json')
     resolve = vi.fn(async (request: ExportRequest) => ({ ok: true, plan: plan(request) }))
-    execute = vi.fn(async () => ({ ok: true, artifactPath: '/tmp/artifact' }))
-    ;(window as unknown as { redlog: unknown }).redlog = { data: { resolveExportPlan: resolve, executeExportPlan: execute } }
+    execute = vi.fn(async () => ({ ok: true, artifactPath: '/tmp/artifact', warnings: [], delivery: { artifactPath: '/tmp/artifact', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
+    ;(window as unknown as { redlog: unknown }).redlog = { data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })), resolveExportPlan: resolve, executeExportPlan: execute } }
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -142,7 +146,7 @@ describe('one export dialog', () => {
     expect(screen.getByRole('dialog')).toBeTruthy()
     release({ ok: false, error: 'disk full' })
     await screen.findByTestId('export-run-error')
-    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('ndjson')
+    expect((screen.getByLabelText('Other formats') as HTMLSelectElement).value).toBe('ndjson')
     expect((screen.getByTestId('export-confirm') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByText('Recalculate and try again')); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'ndjson', subset: selection })

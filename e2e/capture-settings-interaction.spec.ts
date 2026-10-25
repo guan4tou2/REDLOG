@@ -1,12 +1,27 @@
-import { test, expect } from '@playwright/test'
-import { mkdirSync } from 'node:fs'
+import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
+import { chmodSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject, openView, openSettingsPage, resizeMainWindow } from './helpers'
 
-test('project settings stay separate from display preferences and long content fits at large scales', async () => {
-  test.setTimeout(60_000)
-  const { app, page } = await launchWithTempHome()
-  try {
+// These cases change ordinary project settings only. Fresh projects plus a
+// reset viewport/preferences keep them independent without restarting Electron.
+test.describe('settings interaction journey', () => {
+  let app: ElectronApplication
+  let page: Page
+  test.beforeAll(async () => {
+    const launched = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
+    app = launched.app; page = launched.page
+  })
+  test.beforeEach(async () => {
+    const win = await app.browserWindow(page)
+    await win.evaluate(w => w.webContents.setZoomFactor(1))
+    await resizeMainWindow(app, 1100, 800)
+    await page.evaluate(() => localStorage.clear())
+  })
+  test.afterAll(async () => { if (app) await app.close() })
+
+  test('project settings stay separate from display preferences and long content fits at large scales', async () => {
+    test.setTimeout(60_000)
     await openTestProject(page, 'settings-layout')
     await page.evaluate(async () => {
       await window.redlog.httpCapture.stop()
@@ -79,12 +94,9 @@ test('project settings stay separate from display preferences and long content f
       await openSettingsPage(page, 'general')
       await page.getByRole('button', { name: locale === 'en' ? 'Normal' : '正常', exact: true }).click()
     }
-  } finally { await app.close() }
-})
+  })
 
-test('plugin settings use the available width without overflowing compact windows', async () => {
-  const { app, page } = await launchWithTempHome()
-  try {
+  test('plugin settings use the available width without overflowing compact windows', async () => {
     await openTestProject(page, 'plugin-layout')
     await page.evaluate(() => window.redlog.httpCapture.stop())
     await openView(page, 'settings')
@@ -100,12 +112,9 @@ test('plugin settings use the available width without overflowing compact window
       })).toBeLessThanOrEqual(32)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     }
-  } finally { await app.close() }
-})
+  })
 
-test('port drafts are validated before autosave in English and Traditional Chinese', async () => {
-  const { app, page } = await launchWithTempHome()
-  try {
+  test('port drafts are validated before autosave in English and Traditional Chinese', async () => {
     await openTestProject(page, 'capture-port-drafts')
     await page.evaluate(() => window.redlog.httpCapture.stop())
     for (const [locale, label, port] of [
@@ -137,11 +146,49 @@ test('port drafts are validated before autosave in English and Traditional Chine
       await openSettingsPage(page, 'browser')
       await expect(page.getByLabel(label, { exact: true })).toHaveValue(port)
     }
-  } finally { await app.close() }
+  })
+
+  test('a successful settings retry clears its stale error after a real write refusal', async () => {
+    test.skip(process.platform === 'win32', 'POSIX file-mode refusal; Windows is covered by the settings save result tests')
+    let configPath: string | undefined
+    let originalMode: number | undefined
+    try {
+      const project = await openTestProject(page, 'settings-retry-error')
+      await page.evaluate(async () => {
+        localStorage.setItem('redlog-locale', 'en')
+        await window.redlog.httpCapture.stop()
+      })
+      configPath = join(await page.evaluate(async id => {
+        const projects = await window.redlog.project.list()
+        return projects.find(p => p.id === id)!.path
+      }, project.id), 'config.yaml')
+      originalMode = statSync(configPath).mode & 0o777
+      const before = readFileSync(configPath)
+      await page.reload()
+      await openView(page, 'settings')
+      await openSettingsPage(page, 'scope')
+      chmodSync(configPath, 0o444)
+      await page.getByLabel('Name', { exact: true }).nth(1).fill('Recovered operator')
+      await expect(page.getByTestId('settings-save-failed')).toBeVisible()
+      await expect(page.getByRole('alert')).toBeVisible()
+      expect(readFileSync(configPath)).toEqual(before)
+      chmodSync(configPath, originalMode)
+      await page.getByRole('button', { name: 'Retry', exact: true }).click()
+      await expect(page.getByTestId('settings-save-saved')).toBeVisible()
+      await expect(page.getByRole('alert')).toHaveCount(0)
+      await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).operator.name).toBe('Recovered operator')
+      await page.reload()
+      expect((await page.evaluate(() => window.redlog.config.get())).operator.name).toBe('Recovered operator')
+    } finally {
+      if (configPath && originalMode !== undefined) chmodSync(configPath, originalMode)
+    }
+  })
+
 })
 
+// Deliberate isolation: these cases replace IPC or mutate machine integrations.
 test('external-source running and failed IPC reads remain distinct in settings', async () => {
-  const { app, page } = await launchWithTempHome()
+  const { app, page } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
     await openTestProject(page, 'external-source-status')
     await page.evaluate(() => window.redlog.httpCapture.stop())
@@ -178,7 +225,7 @@ test('external-source running and failed IPC reads remain distinct in settings',
 })
 
 test('optional AI recovers in its source entry and requires explicit project authorization', async () => {
-  const { app, page, tmpHome } = await launchWithTempHome()
+  const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
     const first = join(tmpHome, 'client-work')
     const second = join(tmpHome, 'second-client-work')

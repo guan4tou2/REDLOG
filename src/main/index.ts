@@ -89,6 +89,7 @@ import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
+import { RecentExportStore } from './services/recent-export'
 import {
   registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut, stopOverlayMouseTracking,
   configureOverlayState, handleIpExposedChange, startOverlayMouseTracking,
@@ -1093,7 +1094,8 @@ function startProject(project: ProjectMeta): void {
   }, 5 * 60 * 1000)
 
   if (!overlayWindow) {
-    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false })
+    const hideHudForTest = process.env.REDLOG_E2E === '1' && process.env.REDLOG_E2E_HIDE_HUD === '1'
+    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false && !hideHudForTest })
     bindOverlayReleaseShortcut(overlayWindow.webContents)
     // §8: remember where the operator put it, per display. `moved` fires
     // throughout a drag, so debounce to the end of it.
@@ -1319,7 +1321,7 @@ app.whenReady().then(() => {
     onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
-  registerDataExportIpc(ipcMain, ipcCtx)
+  registerDataExportIpc(ipcMain, ipcCtx, { recentExports: new RecentExportStore(path.join(app.getPath('userData'), 'recent-exports')) })
   registerTerminalIpc(ipcMain, ipcCtx)
   registerPluginsIpc(ipcMain, ipcCtx)
   registerOperatorsIpc(ipcMain, ipcCtx)

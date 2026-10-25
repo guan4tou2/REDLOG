@@ -184,13 +184,21 @@ describe('AI capture durable progress and privacy boundaries', () => {
     expect(saved.find(e => e.data.transcript_uuid === 'reply')!.data.transcript_parent_uuid).toBe('attachment')
   })
 
-  it('omits a conversation created during pause even when discovery happens after resume', () => {
+  it.each([0, 1000])('omits a conversation discovered after resume when the filesystem clock leads Date.now by %i ms', async (clockLead) => {
+    if (clockLead) vi.spyOn(Date, 'now').mockReturnValue(Date.now() - clockLead)
     fs.writeFileSync(source, line('before')); start(); eventBus.pause()
     const later = path.join(dir, 'later.jsonl'); fs.writeFileSync(later, line('private', 'NEW_SESSION_WHILE_PAUSED'))
     eventBus.resume(); registerSession(adapter.agentKind, later)
     fs.appendFileSync(later, line('after')); catchUpSession(adapter.agentKind, 'later')
     expect(sidecars()).not.toContain('NEW_SESSION_WHILE_PAUSED')
     expect(rows().map(e => e.data.transcript_uuid).sort()).toEqual(['after', 'before'])
+    restart()
+    // A genuinely new conversation after the persisted boundary still records.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const fresh = path.join(dir, 'fresh.jsonl'); fs.writeFileSync(fresh, line('fresh'))
+    registerSession(adapter.agentKind, fresh)
+    expect(rows().map(e => e.data.transcript_uuid).sort()).toEqual(['after', 'before', 'fresh'])
+    expect(sidecars()).not.toContain('NEW_SESSION_WHILE_PAUSED')
   })
 
   it('does not acknowledge a half-written per-message file and retries its later complete write', () => {

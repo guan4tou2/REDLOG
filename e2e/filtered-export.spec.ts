@@ -26,9 +26,11 @@ for (const locale of ['en', 'zh-TW']) {
    // Search has a 100-row page. Export must include all 106 matches without
    // requiring Load more, and switching format must retain that query.
    const formatLabel=locale==='en'?'Export format':'匯出格式'
-   await page.getByLabel(formatLabel,{exact:true}).selectOption('ndjson')
+   await page.getByLabel(formatLabel,{exact:true}).selectOption('other')
+   const otherLabel=locale==='en'?'Other formats':'其他格式'
+   await page.getByLabel(otherLabel,{exact:true}).selectOption('ndjson')
    await expect(page.getByTestId('export-preview-subset')).toContainText('needle')
-   await page.getByLabel(formatLabel,{exact:true}).selectOption('json')
+   await page.getByLabel(otherLabel,{exact:true}).selectOption('json')
    await expect(page.getByTestId('export-projection-notice')).toBeVisible()
    await expect(page.getByTestId('export-confirm')).toBeEnabled()
    // A matching event received after the operator saw the preview must not
@@ -38,7 +40,8 @@ for (const locale of ['en', 'zh-TW']) {
    const dialog=page.getByTestId('export-dialog')
    expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
    await page.getByTestId('export-confirm').focus(); await page.keyboard.press('Enter')
-   await expect(dialog).toHaveCount(0)
+   await expect(page.getByTestId('export-completed')).toBeVisible()
+   await page.getByRole('button',{name:locale==='en'?'Close':'關閉',exact:true}).last().click()
    const active=await page.evaluate(async () => {
     const current=await window.redlog.project.active()
     return (await window.redlog.project.list()).find(project => project.id===current?.id)!

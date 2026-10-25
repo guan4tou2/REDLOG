@@ -1,4 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
+import { useReadState } from '../lib/readState'
+import { RecordTerminalFlow, type RecordTarget } from './RecordTerminalFlow'
+import { RuntimePreparation } from './CapturePreparation'
 import { SectionLabel } from './SectionLabel'
 import { Button } from './Button'
 import { toast } from './Toast'
@@ -9,57 +13,21 @@ interface WslPanelProps {
 }
 
 export default function WslPanel({ t }: WslPanelProps): JSX.Element {
-  const [distros, setDistros] = useState<WslDistro[]>([])
-  const [networkMode, setNetworkMode] = useState<'mirrored' | 'nat' | 'not-configured'>('not-configured')
-  const [loading, setLoading] = useState(true)
+  const [connecting, setConnecting] = useState<RecordTarget | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const read = useReadState(async () => {
+    const [distros, networkMode] = await Promise.all([window.redlog.wsl.listDistros(), window.redlog.wsl.getNetworkMode()])
+    return { distros, networkMode }
+  })
+  const distros = read.state.value?.distros ?? []
+  const networkMode = read.state.value?.networkMode
+  const refresh = read.retry
+  useRevalidateOnFocus(refresh)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [diagnostics, setDiagnostics] = useState<WslDiagnosticResult | null>(null)
 
-  const refresh = async (): Promise<void> => {
-    setLoading(true)
-    try {
-      const [ds, nm] = await Promise.all([
-        window.redlog.wsl.listDistros(),
-        window.redlog.wsl.getNetworkMode()
-      ])
-      setDistros(ds)
-      setNetworkMode(nm)
-    } catch {
-      setDistros([])
-    }
-    setLoading(false)
-  }
-
-  useEffect(() => { refresh() }, [])
-
-  const handleInstall = async (distro: string, shell: 'bash' | 'zsh'): Promise<void> => {
-    const key = `${distro}-${shell}-install`
-    setActionBusy(key)
-    try {
-      const result = await window.redlog.wsl.installHook(distro, shell)
-      if (result.success) {
-        toast(t('settings.wsl.hookInstalled', { distro, shell }), 'success')
-        await refresh()
-      } else {
-        toast(t('settings.wsl.hookInstallFailed', { distro }), {
-          type: 'error',
-          why: t('settings.wsl.hookInstallFailedWhy'),
-          detail: result.message,
-          action: { label: t('common.retry'), onClick: () => { void handleInstall(distro, shell) } }
-        })
-      }
-    } catch (e) {
-      toast(t('settings.wsl.hookInstallFailed', { distro }), {
-        type: 'error',
-        why: t('settings.wsl.distroUnreachableWhy'),
-        detail: String((e as Error)?.message ?? e),
-        action: { label: t('common.retry'), onClick: () => { void handleInstall(distro, shell) } }
-      })
-    }
-    setActionBusy(null)
-  }
-
   const handleUninstall = async (distro: string, shell: 'bash' | 'zsh'): Promise<void> => {
+    setConnecting(null)
     const key = `${distro}-${shell}-uninstall`
     setActionBusy(key)
     try {
@@ -103,7 +71,13 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
     setActionBusy(null)
   }
 
-  if (loading) {
+  if (read.state.phase === 'failed' && !read.state.value) return <div role="alert" className="space-y-2 text-xs">
+    <p>{t('settings.wsl.readFailed')}</p>
+    <p className="break-words">{read.state.error}</p>
+    <Button level="secondary" onClick={refresh}>{t('common.retry')}</Button>
+  </div>
+
+  if (read.state.phase === 'loading' && !read.state.value) {
     return (
       <div className="space-y-2">
         <SectionLabel>{t('settings.wsl.title')}</SectionLabel>
@@ -148,6 +122,11 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
         <Button level="secondary" onClick={refresh}>{t('settings.wsl.refresh')}</Button>
       </div>
 
+      {read.state.phase === 'loading' && <p role="status" className="text-xs">{t('common.loading')}</p>}
+      {read.state.phase === 'failed' && <div role="alert" className="text-xs space-y-2">
+        <p>{t('settings.wsl.readFailed')}</p><p className="break-words">{read.state.error}</p>
+        <Button level="quiet" onClick={refresh}>{t('common.retry')}</Button>
+      </div>}
       {/* Network mode banner */}
       {networkMode === 'mirrored' && (
         <div className="px-3 py-2 rounded border border-green-900/50 bg-green-950/30 text-xs text-green-400">
@@ -218,7 +197,6 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                     {(['bash', 'zsh'] as const).map((shell) => {
                       const status = distro.hookStatus[shell]
                       if (status === 'no-shell') return null
-                      const installKey = `${distro.name}-${shell}-install`
                       const uninstallKey = `${distro.name}-${shell}-uninstall`
                       return (
                         <div key={shell} className="flex items-center gap-2">
@@ -226,15 +204,13 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                           <span className={`text-xs px-1.5 py-0.5 rounded ${hookStatusColor(status)}`}>
                             {hookStatusLabel(status)}
                           </span>
-                          {status === 'not-installed' && (
-                            <button
-                              disabled={actionBusy === installKey}
-                              onClick={() => handleInstall(distro.name, shell)}
-                              className="px-2.5 py-0.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
+                          <button
+                              disabled={actionBusy !== null || read.state.phase !== 'loaded'}
+                              onClick={() => { setConnecting({ kind: 'wsl', distro: distro.name, shell, label: `WSL ${distro.name} ${shell}` }); setPreparing(false) }}
+                              className="min-h-8 px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover disabled:opacity-50"
                             >
-                              {actionBusy === installKey ? t('settings.wsl.installing') : t('settings.wsl.install')}
+                              {status === 'installed' ? t('settings.shellVerify') : t('settings.shellConnect')}
                             </button>
-                          )}
                           {status === 'installed' && (
                             <button
                               disabled={actionBusy === uninstallKey}
@@ -266,6 +242,9 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
         })}
       </div>
 
+      {connecting && !preparing && <RecordTerminalFlow key={connecting.label} target={connecting}
+        onInstalled={refresh} onPrepare={() => setPreparing(true)} />}
+      {preparing && <RuntimePreparation onClose={() => setPreparing(false)} />}
       {/* Diagnostics result panel */}
       {diagnostics && (
         <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 space-y-2">

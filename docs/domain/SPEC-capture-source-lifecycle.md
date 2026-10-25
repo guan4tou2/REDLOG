@@ -249,3 +249,9 @@ Intact recorded packages can be removed or explicitly updated after an app
 update; only the current app-supplied bytes may load. Unknown/modified packages
 are preserved and refused. Updating preserves prior installation identity but
 does not create or widen project recording permission.
+
+## Shared recovery entry (2026-10-24, Spec 062)
+
+Opening source settings only reads machine state. Explicit Connect / Verify / repair opens the same terminal enrollment used by first-run setup; host Bash/Zsh/PowerShell and WSL retain their own installers and nonce identities. An installed profile is not a received command, and a command is not output proof. Only adapters the backend reports usable may be installed; this does not add PowerShell-on-macOS backend support.
+
+Dependencies are prepared in the selected source page through the existing installer/cancel/progress path. An unknown or failed integration-list read offers retry, never an enabled project switch. Restoring a known disabled bundled integration is a machine action; it does not change the project's pack selection or enable clipboard. Missing/untrusted integrations retain the management route instead of pretending a repair succeeded. External producers retain their own start commands and heartbeat; no project toggle claims to start them.

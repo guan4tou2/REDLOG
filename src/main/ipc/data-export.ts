@@ -1,4 +1,6 @@
 import { dialog, shell, type IpcMain } from 'electron'
+import { RecentExportStore } from '../services/recent-export'
+import type { ExportDelivery } from '../../core/export-delivery'
 import { isInsideDir } from '../../core/paths'
 import path from 'path'
 import fs from 'fs'
@@ -169,9 +171,16 @@ function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan,
 export function registerDataExportIpc(
   ipcMain: IpcMain,
   ctx: IpcContext,
-  options: { planRegistry?: ExportPlanRegistry } = {}
+  options: { planRegistry?: ExportPlanRegistry; recentExports?: RecentExportStore } = {}
 ): void {
   const exportPlans = options.planRegistry ?? new ExportPlanRegistry()
+  const recentExports = options.recentExports ?? new RecentExportStore()
+  ipcMain.handle('data:recentExport', () => {
+    const project = ctx.getActiveProject()
+    if (!project) return { ok: false as const, error: 'no-active-project' }
+    try { return { ok: true as const, delivery: recentExports.get(project.id, getProjectPath(project)) } }
+    catch (error) { return { ok: false as const, error: (error as Error).message } }
+  })
   // Folders the operator picked in the system dialog this session. Only these
   // can be named as an export destination.
   const approvedDestinations = new Set<string>()
@@ -206,9 +215,13 @@ export function registerDataExportIpc(
     if (!project || typeof target !== 'string') return false
     const resolved = path.resolve(target)
     const inApproved = [...approvedDestinations].some((dir) => isInsideDir(dir, resolved))
-    if ((!isInsideDir(getProjectPath(project), resolved) && !inApproved) || !fs.existsSync(resolved)) return false
-    shell.showItemInFolder(resolved)
-    return true
+    try {
+      const knownResult = !isInsideDir(getProjectPath(project), resolved) && !inApproved
+        ? recentExports.get(project.id, getProjectPath(project))?.artifactPath === resolved : true
+      if (!knownResult || !fs.existsSync(resolved)) return false
+      shell.showItemInFolder(resolved)
+      return true
+    } catch { return false }
   })
 
   ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string; destDir?: string }) => {
@@ -320,7 +333,12 @@ export function registerDataExportIpc(
           completedAt: new Date().toISOString()
         }, null, 2), { flag: 'wx' })
       }
-      return { ok: true as const, planId: plan.id, fingerprint: plan.fingerprint, artifactPath, counts: plan.counts, warnings: [] }
+      if (!artifactPath) return { ok: false as const, error: 'export-artifact-missing' }
+      const delivery: ExportDelivery = { artifactPath, format: plan.request.format, completedAt: Date.now(), availability: 'available' }
+      const warnings: string[] = []
+      try { recentExports.remember(project.id, getProjectPath(project), delivery) }
+      catch { warnings.push('recent-export-not-saved') }
+      return { ok: true as const, planId: plan.id, fingerprint: plan.fingerprint, artifactPath, counts: plan.counts, warnings, delivery }
     } catch (error) {
       return { ok: false as const, planId: plan.id, fingerprint: plan.fingerprint, error: (error as Error)?.message ?? String(error) }
     }

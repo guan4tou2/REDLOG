@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import type { ExportDelivery } from '../../../core/export-delivery'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { Download, X } from 'lucide-react'
@@ -179,10 +180,10 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const { filter } = useSharedFilter()
   const currentSubset: ExportSubset = viewExport?.request.subset ?? { kind: 'selection', projection: 'events', filter: toEventFilter(filter) }
   const [draft, setDraft] = useState<ExportDraft>(() => {
-    let format: ExportFormat = 'json'
+    let format: ExportFormat = 'bundle'
     try {
       const saved = localStorage.getItem(FORMAT_KEY)
-      if (saved === 'ndjson' || saved === 'bundle') format = saved
+      if (saved === 'json' || saved === 'ndjson' || saved === 'bundle') format = saved
     } catch { /* remembering a format is optional */ }
     return { format, range: 'current' as 'current' | 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[] }
   })
@@ -192,6 +193,14 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const [destDir, setDestDir] = useState<string | null>(null)
   const [defaultDir, setDefaultDir] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [completion, setCompletion] = useState<ExportDelivery | null>(null)
+  const [recent, setRecent] = useState<ExportDelivery | null>(null)
+  const [recentError, setRecentError] = useState(false)
+  const [recentLoading, setRecentLoading] = useState(false)
+  const [revealError, setRevealError] = useState(false)
+  const [resultWarning, setResultWarning] = useState(false)
+  const recentSequence = useRef(0)
+  const live = useRef(true)
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<PendingExport | null>(null)
   const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
@@ -254,12 +263,36 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     void loadPreview(p)
   }
 
+  const loadRecent = async (): Promise<void> => {
+    const mine = ++recentSequence.current
+    setRecentLoading(true)
+    setRecentError(false)
+    try {
+      const result = await window.redlog.data.recentExport()
+      if (mine !== recentSequence.current || !live.current) return
+      if (!result.ok) throw new Error(result.error)
+      setRecent(result.delivery)
+    } catch { if (mine === recentSequence.current && live.current) setRecentError(true) }
+    finally { if (mine === recentSequence.current && live.current) setRecentLoading(false) }
+  }
+
+  const reveal = async (): Promise<void> => {
+    if (!completion) return
+    setRevealError(false)
+    try { if (!await window.redlog.data.revealExport(completion.artifactPath)) setRevealError(true) }
+    catch { setRevealError(true) }
+  }
+
   const openDialog = (): void => {
     selection.current = JSON.parse(JSON.stringify({ subset: currentSubset, request: viewExport?.request, disabledReason: viewExport?.disabledReason }))
     const format = viewExport?.request.format === 'har' || viewExport?.request.format === 'timeline'
-      ? viewExport.request.format : draft.format === 'har' || draft.format === 'timeline' ? 'json' : draft.format
+      ? viewExport.request.format : draft.format === 'har' || draft.format === 'timeline' ? 'bundle' : draft.format
     setDestDir(null)
+    setCompletion(null)
+    setRevealError(false)
+    setResultWarning(false)
     setOpen(true)
+    void loadRecent()
     updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], scrubPii: false })
   }
 
@@ -294,6 +327,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
 
   const closeAll = (): void => {
     attachmentFocus.current = null
+    ++recentSequence.current
+    setCompletion(null)
     ++previewSequence.current
     setPending(null)
     setResolvedPlan(null)
@@ -310,7 +345,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, busy])
-  useEffect(() => () => { ++previewSequence.current }, [])
+  useEffect(() => { live.current = true; return () => { live.current = false; ++previewSequence.current; ++recentSequence.current } }, [])
 
   const confirmExport = async (): Promise<void> => {
     if (!pending) return
@@ -322,14 +357,18 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
       if (!result.ok) throw new Error(result.error)
       const path = result.artifactPath
       if (!path) throw new Error(t('toast.exportFailedWhy'))
-      toast(t('export.done', { label: pending.label }), {
-        type: 'success',
-        why: path,
-        action: { label: t('export.reveal'), onClick: () => { void window.redlog.data.revealExport?.(path) } },
-        duration: 8000
-      })
-      closeAll()
+      if (!live.current) return
+      ++previewSequence.current
+      setPending(null)
+      setResolvedPlan(null)
+      ++recentSequence.current
+      setRecentLoading(false)
+      setCompletion(result.delivery)
+      setRecent(result.delivery)
+      setRevealError(false)
+      setResultWarning(result.warnings.includes('recent-export-not-saved'))
     } catch (e) {
+      if (!live.current) return
       // Stay open with the preview. A plan is single-use, so resolve it again
       // for the retry: the operator retries the same request, not a stale id.
       setRunError(String((e as Error)?.message ?? e))
@@ -339,7 +378,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
         detail: String((e as Error)?.message ?? e)
       })
     } finally {
-      setBusy(false)
+      if (live.current) setBusy(false)
     }
   }
 
@@ -355,9 +394,10 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     await loadPreview(pending)
   }
 
-  const formats: ExportFormat[] = ['json', 'ndjson', 'bundle']
+  const formats: ExportFormat[] = ['bundle']
   const viewFormat = selection.current?.request?.format
-  if (viewFormat === 'har' || viewFormat === 'timeline') formats.push(viewFormat)
+  if (viewFormat === 'har') formats.push(viewFormat)
+  const otherFormats: ExportFormat[] = ['json', 'ndjson', ...(viewFormat === 'timeline' ? ['timeline' as const] : [])]
   const capability = capabilitiesFor(draft.format)
 
   return (
@@ -390,10 +430,21 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl"
           >
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-redlog-border">
-              <h2 className="text-sm text-redlog-text">{t('export.title')}</h2>
+              <h2 className="text-sm text-redlog-text">{t(completion ? 'export.completedTitle' : 'export.title')}</h2>
+              {!completion && recent && <Button size="compact" level="quiet" data-testid="export-recent" disabled={busy || recentLoading || recentError} onClick={() => { setCompletion(recent); setRevealError(false); setResultWarning(false) }}>{t('export.recent')}</Button>}
               <button type="button" onClick={closeAll} disabled={busy} aria-label={t('common.close')} className="p-1 text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"><X size={16} /></button>
             </div>
             <div className="min-h-0 overflow-y-auto">
+            {completion ? (
+              <div data-testid="export-completed" className="p-3 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-3 text-redlog-text-dim"><span>{completion.format.toUpperCase()}</span><time>{formatDateTime(completion.completedAt, { seconds: true })}</time></div>
+                <code className="block break-all text-redlog-text">{completion.artifactPath}</code>
+                {completion.availability !== 'available' && <p role="alert" className="text-amber-400">{t(completion.availability === 'missing' ? 'export.artifactMissing' : 'export.artifactUnavailable')}</p>}
+                {resultWarning && <p role="alert" className="text-amber-400">{t('export.recentNotSaved')}</p>}
+                {revealError && <p role="alert" data-testid="export-reveal-error" className="text-red-400">{t('artifacts.revealFailed')}</p>}
+              </div>
+            ) : <>
+            {recentError && <div role="alert" className="px-3 pt-2 text-xs text-amber-400"><span>{t('export.recentFailed')}</span> <Button size="compact" level="quiet" onClick={() => void loadRecent()}>{t('common.retry')}</Button></div>}
             <div className="px-3 pt-3 pb-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <label className="min-w-0 text-redlog-text-dim">
                 {t('export.rangeLabel')}
@@ -404,11 +455,18 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
               </label>
               <label className="min-w-0 text-redlog-text-dim">
                 {t('export.currentFormat')}
-                <select aria-label={t('export.currentFormat')} value={draft.format} disabled={busy} onChange={e => changeFormat(e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
+                <select aria-label={t('export.currentFormat')} value={formats.includes(draft.format) ? draft.format : 'other'} disabled={busy} onChange={e => changeFormat(e.target.value === 'other' ? 'json' : e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
                   {formats.map(format => <option key={format} value={format} disabled={draft.scrubPii && !capabilitiesFor(format).piiScrubbing}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
+                  <option value="other">{t('export.otherFormats')}</option>
                 </select>
               </label>
             </div>
+            {!formats.includes(draft.format) && <label className="block px-3 pb-2 text-xs text-redlog-text-dim">
+              {t('export.otherFormats')}
+              <select aria-label={t('export.otherFormats')} value={draft.format} disabled={busy} onChange={e => changeFormat(e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
+                {otherFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
+              </select>
+            </label>}
             <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{draft.range === 'current' ? t('export.range.current', { summary: subsetSummary(selection.current!.subset, t) }) : t('export.range.allHint')}</p>
             <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t(`export.formatHelp.${draft.format}`)}</p>
             {totalCount === 0 && <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t('export.empty')}</p>}
@@ -556,10 +614,18 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                   </div>
                 ) : null}
             </div>
+            </>}
             </div>
             <div className="shrink-0 bg-redlog-surface border-t border-redlog-border px-3 py-2 flex gap-2 justify-end">
-              <Button size="compact" level="quiet" type="button" onClick={closeAll} disabled={busy}>{t('common.cancel')}</Button>
-              {resolvedPlan && !previewLoading && <Button size="compact" level="primary" data-testid="export-confirm" onClick={() => void confirmExport()} disabled={busy || !!runError || resolvedPlan.counts.included === 0} aria-busy={busy}>{busy ? t('export.running') : t('export.preview.confirm')}</Button>}
+              <Button size="compact" level="quiet" type="button" onClick={closeAll} disabled={busy}>{t(completion ? 'common.close' : 'common.cancel')}</Button>
+              {completion && <Button size="compact" level="secondary" onClick={openDialog}>{t('export.another')}</Button>}
+              {(completion || (resolvedPlan && !previewLoading)) && <Button size="compact" level="primary"
+                data-testid={completion ? 'export-reveal' : 'export-confirm'}
+                onClick={() => { if (completion) void reveal(); else void confirmExport() }}
+                disabled={completion ? completion.availability !== 'available' : busy || !!runError || resolvedPlan?.counts.included === 0}
+                aria-busy={busy}>
+                {completion ? t('export.reveal') : busy ? t('export.running') : t('export.preview.confirm')}
+              </Button>}
             </div>
           </div>
         </>

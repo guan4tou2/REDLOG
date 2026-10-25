@@ -98,7 +98,7 @@ interface DetectedHook {
 export function hostAdapterChoices(hooks: DetectedHook[], platform: string): AdapterChoice[] {
   const order = platform === 'win32'
     ? ['shell-powershell', 'shell-bash']
-    : ['shell-zsh', 'shell-bash']
+    : ['shell-zsh', 'shell-bash', ...hooks.filter(h => h.id === 'shell-powershell' && h.available).map(h => h.id)]
   const byId = new Map(hooks.map((h) => [h.id, h]))
   const out: AdapterChoice[] = []
   for (const id of order) {

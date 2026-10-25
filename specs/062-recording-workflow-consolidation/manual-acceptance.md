@@ -72,3 +72,14 @@ bytes 相同，包內驗證器通過。這些採既有合成資料與 source bui
 測試、截圖所指出的部分來源已驗證版面、原生寬版與自動化窄版，以及 Windows／
 Linux runner 結果。NOT RUN 列表示完整案例仍未跑完，不抹除已有子步驟的證據，
 也不將來源版或 CI 自動化冒充下載信任、桌面手動操作或原生 WSL 驗收。
+
+## 2026-10-24 合併後 main
+
+[合併後 Mac 驗收](post-merge-mac-acceptance-20261024.md) 記錄 375f2ee3 的實際 DMG／ZIP 資源、安裝副本與 AI journey，以及原生新建／設定保存／專案隔離／更新檢查。保存重試發現的殘留錯誤另列 T072。僅補 Mac 子步驟，不更改上方完整跨平台列的 NOT RUN 或 T008–T013。
+
+
+2026-10-25 bounded follow-up: reused the already-open isolated Mac package for
+source settings, explicit Zsh install/waiting state, actual bundle completion,
+Finder selection, Last export reopening and native smaller-window inspection.
+See verification.md T073–T078 for exact evidence and test-consolidation results.
+This does not complete the broader T008–T013/platform matrix.

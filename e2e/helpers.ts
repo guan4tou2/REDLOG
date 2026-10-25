@@ -44,7 +44,7 @@ export function makeTempHome(prefix = 'redlog-e2e-'): string {
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
  * artifact exists so the failure message is actionable.
  */
-export async function launchWithTempHome(executablePath?: string): Promise<{
+export async function launchWithTempHome(executablePath?: string, { showHud = false }: { showHud?: boolean } = {}): Promise<{
   app: ElectronApplication
   page: Page
   tmpHome: string
@@ -69,7 +69,8 @@ export async function launchWithTempHome(executablePath?: string): Promise<{
       CODEX_HOME: join(tmpHome, '.codex'),
       // Enables dev-only IPC endpoints used by E2E specs. The main process
       // refuses those endpoints when this flag is unset.
-      REDLOG_E2E: '1'
+      REDLOG_E2E: '1',
+      REDLOG_E2E_HIDE_HUD: showHud ? '0' : '1'
     }
   })
   const page = await app.firstWindow()

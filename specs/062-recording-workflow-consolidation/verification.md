@@ -1336,3 +1336,296 @@ plus managed-upgrade/rollback and source-control behavior are included.
 
 Final packaged/native acceptance follows below. T008–T013 and Spec 062's Draft
 status are not closed by this bounded follow-up; no commit/push/merge/release.
+
+
+### Bounded packaged and native acceptance / T068–T071 closeout
+
+The local Mac arm64 candidate at
+`/private/tmp/redlog-ai-trust-20261024/packaged/mac-arm64/RedLog.app`
+passed all **6/6 installed AI journeys (43.4s)**: actual installed Claude Code
+serializer with new/existing transcript directories, Claude/Codex full paired
+I/O/search/real JSON delivery and lifecycle isolation, individual-session/global
+pause privacy, and explicit installation. Resource checks, package checksums and
+strict/deep ad-hoc signature verification passed. These are local package checks,
+not notarization, distribution or release acceptance.
+Log: `/private/tmp/redlog-ai-trust-installed-final.log`.
+
+The same candidate passed **5/5 source/settings journeys (13.1s)**, including
+800px layout, both locales at zoom 1/1.5/2, applicable fields, external-source
+failure versus stopped states and AI source recovery without implicit permission.
+Log: `/private/tmp/redlog-ai-trust-layout-final.log`.
+
+Native manual QA used a fresh isolated HOME and the project
+`AI-Trust-Native-20261024`. Installed only Claude, selected the temporary client
+work directory through the actual folder picker and explicitly enabled project
+recording. The pre-authorization tool-read boundary warning was visible. Codex
+and OpenCode remained uninstalled. A real Claude Code process used a loopback
+fake response with dummy credentials; prompt, actual local printf tool input/
+output and reply arrived. No private transcript, real account or remote inference
+was used.
+
+Manually opened Conversations with native keyboard Return after an accessibility
+click focused, but did not open, the disclosure. Stopped that Claude session:
+the row changed to Excluded / Record new content while the provider checkbox
+stayed enabled. Clicked Record new content: the row returned to Capturing after
+host refresh and the other session remained Capturing. A transient Paused state
+was visible while the host refreshed; final state was read back. Used the macOS
+Window → Move & Resize → Top Left menu to reduce the window from raster
+2800×1800 to 1750×1096 (Retina screenshots). The full UUIDs, states and actions
+remained visible without overlap or horizontal clipping. The native check covers
+these controls at two actual window sizes; broader all-route coverage belongs to
+source-placement-and-ui-review-20261024.md. Package-update rollback/tamper paths
+were fault-tested, not manually simulated as an actual previous-release upgrade.
+
+During this acceptance the shared checkout independently advanced to **3e84483c**
+(PR #442), including 7f3ea39c and the follow-up 9932a31a. This session did not
+commit, push or merge those changes. The earlier 4,207-unit and installed-package
+results precede the new retry/retention changes and must not be reported as a
+full-suite/package result for that later commit. After fetching origin, current
+3e84483c passed typecheck → specs → architecture → i18n and **63/63 focused
+cases** across tailer durability (22), official packages (23) and source controls
+(18). This includes retained failed children, duplicate queue/tool counts,
+automatic idle retry and missing-versus-truncated retained sidecars.
+Log: `/private/tmp/redlog-ai-trust-latest-focused.log`.
+
+
+Built the latest 3e84483c sources and reran the same six AI journeys against
+source-launched Electron: **6/6 passed (42.4s)**, including both real-Claude
+loopback serializer cases. Log: `/private/tmp/redlog-ai-trust-latest-e2e.log`.
+This is additional current-source coverage, not a claim that the earlier native
+package contains the later retry patch. No production code changed during this
+closeout. The isolated native app was quit and the workspace better-sqlite3
+binding restored to Node; an in-memory SQLite open/query succeeded.
+
+T068–T071 are complete for their bounded requirements. Spec 062 remains Draft:
+T008–T013 still require the recorded wider install/settings/terminal/HUD/updater
+acceptance. Windows/Linux actual client installation, Claude IDE UI, real Codex
+producer versions, images/hidden reasoning and all vendor versions are not
+certified here. This session did not publish a release or send code to an
+external model. The unrelated traffic database was not read or staged.
+
+
+## Post-merge main acceptance and T072 — 2026-10-24
+
+Remote main 375f2ee3 includes #437/#439; its three-platform unit and Ubuntu e2e
+CI were verified successful. Follow-up work is isolated on
+codex/post-merge-mac-acceptance, based on that main, without switching the
+shared checkout. Earlier references to PRs still open are dated observations,
+not the current merge state.
+
+[Post-merge Mac acceptance](post-merge-mac-acceptance-20261024.md) records the
+actual main DMG/ZIP hashes, installed resource/signature checks and 6/6 installed
+AI journeys. Native first launch, project save/switch isolation, a real config
+write refusal/retry and manual update check were exercised. This exposed a stale
+error toast after successful save: T072 clears only that project's resolved
+notification while retaining errors for unsuccessful retries and other operations.
+
+RED reproduced the stale toast; Settings/Toast 20-case regression passed after
+the fix. Final ordered five gates: **4234 passed / 28 existing skips**, 421 files
+passed / 5 skipped (116.00s). Corrected signed package resources passed; real-file
+installed retry journey **1/1 passed (8.3s)**. After the operator unlocked the
+Mac, the same failure/restore/retry was completed natively: Saved appeared and
+the old error disappeared. Candidate quit normally; original modes and Node
+SQLite binding restored. T072 complete. Spec 062 stays Draft with T008–T013 open;
+Windows/Linux native installers, Gatekeeper, interactive/OS HUD and actual
+update/defer/restart are not closed by this Mac increment. No release or push.
+
+
+## 2026-10-25 — Source recovery, completed exports and test consolidation (T073–T078)
+
+Base: main `375f2ee3`, isolated branch `codex/post-merge-mac-acceptance`.
+These changes are local and uncommitted, not a new main/remote CI result.
+
+### Implemented boundaries
+
+- Host settings and WSL reuse `RecordTerminalFlow`. Opening settings does not
+  install; explicit Connect / Verify / repair does. Installed is separate from
+  command/output proof. WSL's installed-state refresh does not remount/reinstall
+  the active nonce attempt. The backend's actual adapter availability governs
+  selection; no PowerShell-on-macOS backend support was invented.
+- Existing dependency preparation is available in the selected source page.
+  Plugin-list failure/unknown cannot offer a working project capture switch.
+  A known disabled bundled integration can be restored without changing project
+  capture permissions. Windows output configuration is beside terminal setup;
+  external producers retain actual start commands and heartbeat states.
+- Export completion remains visible; reopen can inspect the project's last
+  successful artifact. Main-owned, atomic owner-only machine metadata stores
+  path/format/time, never query/evidence. Cancel/failure cannot replace it.
+  Missing/unreadable/corrupt metadata and missing/inaccessible artifacts remain
+  distinct. A receipt-write fault warns without destroying a successful export.
+  Exact custom-artifact reveal after restart does not grant sibling access.
+- Fresh default is bundle, applicable HTTP starts HAR, and other existing
+  formats remain available. Selection/policy/attachment/snapshot behavior is
+  unchanged. Renderer state is keyed to the active project.
+
+### Automated evidence
+
+The source/shell-settings regressions were reproduced first (missing shared
+flow and unhandled detect failure). Export receipt/recovery tests failed before
+implementation. Fault tests cover atomic replacement refusal and malformed
+valid JSON as well as truncation/corruption. Unique privacy, evidence, source
+identity and failure-recovery regressions were retained.
+
+Before the final test-only cleanup, the ordered five gates all passed, with
+**4,252 passed / 28 skipped**, **423 passing files / 5 skipped files**.
+Log: `/private/tmp/redlog-workflow-verified-five-gates.log`.
+
+Source Electron: **16/16 passed** across settings, source connection, export
+recovery and filtered export, including English/Traditional Chinese and actual
+400/533/800 CSS viewport geometry at zoom. Log:
+`/private/tmp/redlog-workflow-e2e.log`.
+
+Mac ARM64 installed-copy source/export journeys: **8/8 passed**. Package
+resource/seal check passed. Installed Claude/Codex regressions plus the source
+external-session regression: **4/4 passed** (the latter still launches source,
+so this is not four installed-producer proofs). Logs:
+`/private/tmp/redlog-workflow-installed-e2e.log`,
+`/private/tmp/redlog-workflow-delivery-regression.log`,
+`/private/tmp/redlog-workflow-package-resources.log`.
+
+### Test maintenance requested by the operator
+
+Removed five duplicate renderer cases from export-menu. Their owners remain:
+PII/format and failed-run/draft/retry behavior in export-unified-dialog; modal
+semantics in its opening scenario; controls/state in the actual interaction
+cases. The old superficial "all controls exist" and controlled-checkbox shape
+checks no longer pretend to prove focus/remount correctness; real attachment
+focus and keyboard E2E remain.
+
+Ordinary settings cases now share one app, each creating a fresh project and
+resetting preferences/viewport. Replaced IPC handlers and machine-integration
+mutations retain two isolated apps. Source connection now runs in the export
+journey's app instead of a standalone source-recovery spec. The 14-case selected
+journey therefore needs four launches when all pass, down from eight.
+
+Consolidated run: the six settings cases passed. The export flow then exposed a
+legacy partial-text locator: `getByLabel('Export')` also matched the now-healthy
+capture status label containing "export". This was a test defect hidden by the
+previous no-source state. Repaired with an exact button target, without altering
+product code or weakening assertions. Only export was rerun: **8/8 passed**;
+the six already-passed settings cases were not rerun. Logs:
+`/private/tmp/redlog-consolidated-e2e.log` (first failure),
+`/private/tmp/redlog-consolidated-export-green.log` (repair).
+
+Focused renderer verification after removing duplicates: **32/32 passed**;
+lightweight type/spec/architecture/i18n gates passed. No repeated full suite or
+source/package replay was run for this test-only cleanup. Procedure and
+coverage owners are recorded in docs/TESTING.md and e2e/README.md.
+
+### Native check, reusing the already-open Mac candidate
+
+The same isolated installed app remained open; no additional launch was needed.
+At the original window size, source settings displayed three usable cards.
+The explicit Zsh Connect action installed only in the disposable HOME and showed
+installed / waiting for its nonce, not verified. No command/output proof is
+claimed from this native click; actual producer proof is in the installed E2E.
+
+Exported a real bundle through the native dialog, inspected its retained path
+and completion time, clicked Show in folder and observed Finder select that
+exact bundle. Closed the completion view, reopened Last export, and read the
+same path/time. Native Window → Move & Resize → Top Left reduced the window;
+long path wrapped, all completion actions remained visible and source settings
+stacked in one column. Other sources showed AI integrations uninstalled and
+optional capture off. Quit the isolated app after acceptance; process exit was
+verified. Native screenshots/AX were inspected in the tool output; no private
+network/IP screenshots were published.
+
+### Explicit remaining limits
+
+T008–T013 remain uncompleted broader acceptance. Windows PowerShell, real WSL,
+Linux desktop/installer, clean dependency download/privilege rejection and full
+OS update/restart matrices are **NOT RUN** here. This local Mac candidate is
+ad-hoc signed, not notarized. No new release, remote PR or CI run is claimed.
+Spec 062 stays Draft. The temporary package is under
+`/private/tmp/redlog-workflow-unification-acceptance/installed/RedLog.app`.
+
+
+## 2026-10-25 — Three bounded closeout corrections (T079)
+
+The manual initial hook and the actual preflight recommendation are separate:
+choosing Bash from Settings installs/selects Bash while a detected Zsh retains
+the detected badge. Changing the recommendation does not restart detection or
+reinstall the selected adapter.
+
+Hooks, terminal mode/class policy, bundled pack availability and WSL discovery
+now use the existing throttled focus/visibility revalidation. These callbacks
+read only; they never restore an integration, install an adapter or change the
+project's capture selection. `useReadState` drops stale replies. The command
+verification attempt stays mounted during source status refresh.
+
+`launchWithTempHome` suppresses auto-show in non-HUD E2E processes via
+`REDLOG_E2E_HIDE_HUD`; main honors that only when `REDLOG_E2E=1` also holds.
+No product default or project setting changed. HUD-specific direct launches
+retain their display; the shared-helper HUD case explicitly requests
+`{ showHud: true }`. The source journey asserts both the unchanged
+`overlay.autoShow: true` config and no visible HUD window.
+
+RED: **3 failed / 23 passed** for the incorrect manual recommendation and the
+missing policy/pack refresh. GREEN: **91/91 passed** across seven affected
+renderer/focus/default suites. An existing assertion was changed to await the
+actual preflight result instead of treating the requested shell as detected.
+Logs: `/private/tmp/redlog-closeout-red.log`,
+`/private/tmp/redlog-closeout-green.log`.
+
+Typecheck, spec, architecture and i18n gates passed; build passed. Only two
+source Electron cases were run, in two processes: external-source connection
+(with HUD hidden) and the explicit HUD release/input case (HUD shown),
+**2/2 passed**. Log: `/private/tmp/redlog-closeout-e2e.log`.
+The HUD input case exercises Electron native delivery, not an OS-global
+keyboard claim. There was no full-suite rerun, package rebuild or manual GUI
+replay. Workspace SQLite is restored to the Node ABI after the source E2E.
+
+The prior installed Mac candidate predates T079; no refreshed installation
+acceptance is claimed. T008–T013 remain open, Spec 062 remains Draft, and all
+changes remain local/uncommitted.
+
+
+## 2026-10-25 — Push candidate and internal-test artifact
+
+The final candidate (T072–T079) passed the five required pre-push gates in
+order: typecheck, specs, architecture, i18n and unit. Unit: **4,249 passed /
+28 skipped; 423 files passed / 5 skipped**. Log:
+`/private/tmp/redlog-push-unit-20261025.log`. The earlier no-full-suite statements
+record their respective increments; this is the final push gate, not another
+manual or GUI replay.
+
+A fresh Mac arm64 DMG containing T079 was built with publish disabled:
+`/private/tmp/redlog-internal-20261025/RedLog-0.18.3-arm64.dmg`.
+SHA-256: `4ed7c3d0b204ecf22479bc01d295d938cb347cf1a7578e43ab11e25bd5f59d25`.
+DMG integrity, packaged capture resources, optional AI checksums and app seal
+verification passed. Build/package logs are
+`/private/tmp/redlog-internal-build-20261025.log`,
+`/private/tmp/redlog-internal-package-20261025.log` and
+`/private/tmp/redlog-internal-resources-20261025.log`.
+The Node SQLite binding was restored after packaging.
+
+This refreshed artifact has build/resource/integrity verification; the prior
+native/installed journeys and the final source T079 E2E are recorded above.
+The refreshed DMG was not installed and manually replayed again. This supports
+bounded Mac internal testing, not cross-platform or release acceptance.
+Ad-hoc signing is not notarization. T008–T013 remain open and Spec 062 remains
+Draft. No main merge or release is authorized by this push.
+
+
+## PR #443 — Windows pause boundary correction (T080)
+
+The first PR run on 857a31cd passed macOS/Ubuntu unit and both installer smoke
+workflows, but Windows failed the existing late-discovery pause assertion.
+E2E was skipped, not passed. No merge was performed.
+
+The comparison mixed Date.now with fractional filesystem birth times. A clock
+lead caused a conversation created while paused to look newer than resume.
+Extending the existing case with a 1-second filesystem/system clock lead
+reproduced the identical raw sidecar leak locally (1 failed / 22 passed).
+
+Recording boundaries now take the later of the wall clock and the rounded-up
+timestamp of their staged metadata file, persist that value atomically, and
+reuse it for resumed sessions. Source contents are never copied to that marker.
+The same case verifies restart preserves omission and a genuinely new
+post-resume conversation still records. The neighboring durability/pause tests
+are retained; checks are not skipped or weakened.
+
+Local focused checks: **31/31 passed**. Ordered pre-push gates passed; unit
+**4,250 passed / 28 skipped**. Logs: `/private/tmp/redlog-pr443-clock-green.log`
+and `/private/tmp/redlog-pr443-final-unit.log`. Windows CI results are tracked
+by PR #443. This does not complete the wider T008–T013 acceptance.

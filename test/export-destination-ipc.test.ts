@@ -7,6 +7,7 @@ const { showOpenDialog } = vi.hoisted(() => ({ showOpenDialog: vi.fn() }))
 vi.mock('electron', () => ({ shell: { openPath: vi.fn(async () => ''), showItemInFolder: vi.fn() }, dialog: { showOpenDialog } }))
 
 import { initDB, closeDB } from '../src/core/db/index'
+import { RecentExportStore } from '../src/main/services/recent-export'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import type { IpcContext } from '../src/main/ipc/types'
 import type { ProjectMeta } from '../src/core/project-manager'
@@ -44,6 +45,7 @@ describe('export destination IPC', () => {
   let dir: string
   let out: string
   let active: ProjectMeta
+  let ctx: IpcContext
   let handlers: Map<string, Handler>
 
   beforeEach(() => {
@@ -54,11 +56,11 @@ describe('export destination IPC', () => {
     handlers = new Map()
     showOpenDialog.mockReset()
     const ipcMain = { handle: (name: string, fn: Handler) => { handlers.set(name, fn) } }
-    const ctx = {
+    ctx = {
       getActiveProject: () => active, getMainWindow: () => null, getOverlayWindow: () => null,
       getCurrentEngagementId: () => active.id, getCurrentOperatorId: () => null, send: () => undefined
     } as unknown as IpcContext
-    registerDataExportIpc(ipcMain as never, ctx, { planRegistry: new ExportPlanRegistry() })
+    registerDataExportIpc(ipcMain as never, ctx, { planRegistry: new ExportPlanRegistry(), recentExports: new RecentExportStore(path.join(dir, 'machine-data')) })
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -74,6 +76,48 @@ describe('export destination IPC', () => {
     expect(r.ok).toBe(true)
     return r.plan.id
   }
+
+  it('remembers only a real successful delivery for the active project', async () => {
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { ok: true; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    const recent = () => handlers.get('data:recentExport')?.({})
+    expect(await recent()).toMatchObject({ ok: true, delivery: { artifactPath: executed.artifactPath, format: 'json', availability: 'available' } })
+    await handlers.get('data:executeExportPlan')?.({}, { planId: 'not-a-plan' } as never)
+    expect(await recent()).toMatchObject({ ok: true, delivery: { artifactPath: executed.artifactPath } })
+    active = { ...active, id: 'another-project' }
+    expect(await recent()).toEqual({ ok: true, delivery: null })
+    active = { ...active, id: 'eng-1' }
+    fs.rmSync(executed.artifactPath)
+    expect(await recent()).toMatchObject({ ok: true, delivery: { availability: 'missing' } })
+  })
+
+  it('can reveal the exact completed custom artifact after restart, never its siblings', async () => {
+    showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [out] })
+    await handlers.get('data:pickExportDir')?.({})
+    const done = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json'), destDir: out } as never) as { ok: true; artifactPath: string }
+    expect(done.ok).toBe(true)
+    const elsewhere = path.join(out, 'unrelated.txt'); fs.writeFileSync(elsewhere, 'not an export')
+    registerDataExportIpc({ handle: (name: string, fn: Handler) => handlers.set(name, fn) } as never, ctx, { recentExports: new RecentExportStore(path.join(dir, 'machine-data')) })
+    expect(await handlers.get('data:revealExport')?.({}, done.artifactPath as never)).toBe(true)
+    expect(await handlers.get('data:revealExport')?.({}, elsewhere as never)).toBe(false)
+    active = { ...active, id: 'other' }
+    expect(await handlers.get('data:revealExport')?.({}, done.artifactPath as never)).toBe(false)
+  })
+
+  it('reports metadata failure without losing a successful artifact or replacing the prior receipt', async () => {
+    const prior = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { artifactPath: string }
+    const rename = fs.renameSync
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(to).includes('machine-data')) throw new Error('injected receipt refusal')
+      rename(from, to)
+    })
+    const next = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { ok: boolean; artifactPath: string; warnings: string[] }
+    expect(next.ok).toBe(true)
+    expect(next.warnings).toContain('recent-export-not-saved')
+    expect(fs.existsSync(next.artifactPath)).toBe(true)
+    expect(fs.existsSync(next.artifactPath + '.manifest.json')).toBe(true)
+    expect(await handlers.get('data:recentExport')?.({})).toMatchObject({ ok: true, delivery: { artifactPath: prior.artifactPath } })
+  })
 
   it('reports the default folder', async () => {
     expect(await handlers.get('data:exportDestination')?.({})).toBe(path.join(dir, 'exports'))

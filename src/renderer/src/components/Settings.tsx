@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import AboutPage from './settings/AboutPage'
 import { useI18n } from '../i18n'
 import { registerPendingSave } from '../lib/pendingSaves'
-import { toast } from './Toast'
+import { dismissToast, toast } from './Toast'
 import type { ConfigState, HookInfo } from './settings/SettingsShared'
 import { isWindows } from './settings/SettingsShared'
 import WslPanel from './WslPanel'
@@ -14,6 +14,7 @@ import NetworkPage from './settings/NetworkPage'
 import BrowserPage from './settings/BrowserPage'
 import ScopePage from './settings/ScopePage'
 import CaptureControlPage from './settings/CaptureControlPage'
+import CapturePackGroup from './settings/CapturePackGroup'
 import HooksPanel from './settings/HooksPanel'
 import PluginsPanel from './settings/PluginsPanel'
 import IntegrityPanel from './settings/IntegrityPanel'
@@ -70,7 +71,6 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // happened.
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [hooks, setHooks] = useState<HookInfo[]>([])
-  const [hookLoading, setHookLoading] = useState<string | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -112,10 +112,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
     // back lets main refuse a write aimed at a project the operator has since
     // switched away from, rather than applying a stale form to a new
     // engagement.
+    const failureKey = `settings-save:${next.engagement?.id}`
     const write = window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
       .then((ok) => {
         window.dispatchEvent(new CustomEvent('redlog:config-saved'))
         if (ok === false) keep()
+        else dismissToast(failureKey)
         if (live.current) {
           setSaveState(ok === false ? 'failed' : 'saved')
           if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
@@ -125,7 +127,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
       .catch(() => {
         keep()
         if (live.current) setSaveState('failed')
-        toast(t('toast.saveFailed'), 'error')
+        toast(t('toast.saveFailed'), { type: 'error', key: failureKey })
         return false
       })
       .finally(() => { if (inFlight.current === write) inFlight.current = null })
@@ -364,12 +366,16 @@ export default function Settings({ request = null }: { request?: { page: Setting
       <div ref={pane} data-testid="settings-content" className={`flex-1 min-w-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent ? '' : 'max-w-[900px]'}`}>
         {tab === 'general' && <GeneralPage />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
-        {tab === 'browser' && <BrowserPage onPrepare={() => setTab('hooks')} config={config} setConfig={setConfig} t={t} />}
+        {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'scope' && <><ScopePage config={config} setConfig={setConfig} t={t} /><ProjectSettings config={config} setConfig={setConfig} /></>}
         {tab === 'hooks' && (
           <>
-            <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+            <HooksPanel hooks={hooks} setHooks={setHooks} t={t} />
+            {(isWindows || config.packs?.windowsOutput === true) && <>
+              <CapturePackGroup pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
+                config={config} setConfig={setConfig} t={t} onOpenPlugins={() => setTab('plugins')} />
+            </>}
             {isWindows && <WslPanel t={t} />}
           </>
         )}
