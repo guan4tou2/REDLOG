@@ -1605,3 +1605,27 @@ The refreshed DMG was not installed and manually replayed again. This supports
 bounded Mac internal testing, not cross-platform or release acceptance.
 Ad-hoc signing is not notarization. T008–T013 remain open and Spec 062 remains
 Draft. No main merge or release is authorized by this push.
+
+
+## PR #443 — Windows pause boundary correction (T080)
+
+The first PR run on 857a31cd passed macOS/Ubuntu unit and both installer smoke
+workflows, but Windows failed the existing late-discovery pause assertion.
+E2E was skipped, not passed. No merge was performed.
+
+The comparison mixed Date.now with fractional filesystem birth times. A clock
+lead caused a conversation created while paused to look newer than resume.
+Extending the existing case with a 1-second filesystem/system clock lead
+reproduced the identical raw sidecar leak locally (1 failed / 22 passed).
+
+Recording boundaries now take the later of the wall clock and the rounded-up
+timestamp of their staged metadata file, persist that value atomically, and
+reuse it for resumed sessions. Source contents are never copied to that marker.
+The same case verifies restart preserves omission and a genuinely new
+post-resume conversation still records. The neighboring durability/pause tests
+are retained; checks are not skipped or weakened.
+
+Local focused checks: **31/31 passed**. Ordered pre-push gates passed; unit
+**4,250 passed / 28 skipped**. Logs: `/private/tmp/redlog-pr443-clock-green.log`
+and `/private/tmp/redlog-pr443-final-unit.log`. Windows CI results are tracked
+by PR #443. This does not complete the wider T008–T013 acceptance.

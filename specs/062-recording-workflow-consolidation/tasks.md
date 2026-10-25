@@ -193,3 +193,5 @@ including the consolidated-test selector failure and its targeted repair.
 T008–T013 and the wider platform matrix remain open; Spec 062 remains Draft.
 
 - [x] T079 Close the bounded follow-up: distinguish a manual adapter choice from the detected recommendation; refresh hooks, terminal policy and integration availability on return without running installers or changing project permissions; use HUD-off non-HUD test fixtures with explicit HUD-on acceptance and keep the product default unchanged.
+
+- [x] T080 Reproduce the Windows late-discovery pause leak with a filesystem clock ahead of Date.now; persist a filesystem-calibrated recording boundary and reuse it for resumed sessions. Verify paused content stays absent after restart while genuinely new conversations still record; retain the CI/platform results in verification.md.
