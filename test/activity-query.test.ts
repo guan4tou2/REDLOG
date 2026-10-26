@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { storeBody } from '../src/core/http-body-store'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { parseQuery } from '../src/core/query/contract'
 import { queryActivityPage, queryActivityMembers } from '../src/core/db/activity-queries'
@@ -24,6 +25,32 @@ function request(query = '', extra: Partial<ActivityRequest> = {}): ActivityRequ
 }
 
 describe('Activity project query', () => {
+  it('binds paging to saved-body coverage inside its dataset boundary', () => {
+    const makeRef=(text:string)=>storeBody({data:text,encoding:'text',size:text.length,sha256:''})!
+    const ref=makeRef('unrelated saved output')
+    add('first-inline',30,'marker',{title:'needle'})
+    add('second-inline',20,'marker',{title:'needle'})
+    add('body-owner',10,'shell',{subtype:'command_end',command_id:'body',stdout_ref:ref})
+    const req=request('needle',{limit:1}),first=queryActivityPage(req)
+    add('later-body',40,'shell',{subtype:'command_end',command_id:'later',stdout_ref:makeRef('another body')})
+    expect(queryActivityPage({...req,cursor:first.nextCursor}).items).toHaveLength(1)
+    fs.unlinkSync(path.join(dir,'http-bodies',ref.file))
+    expect(()=>queryActivityPage({...req,cursor:first.nextCursor})).toThrow(/coverage changed/)
+  })
+
+  it('can show matching source rows first without dropping paged context', () => {
+    add('call-first', 10, 'agent', tool('tool_call', 'M', { tool_name: 'Bash', tool_input: { command: 'id' } }))
+    add('result-last', 20, 'agent', tool('tool_result', 'M', { output: 'needle' }))
+    const req = request('needle'), page = queryActivityPage(req)
+    const detail = { ...req, ref: page.items[0], snapshot: page.snapshot, matchesFirst: true, limit: 1 }
+    const first = queryActivityMembers(detail)
+    expect(first.items.map(r => r.event.id)).toEqual(['result-last'])
+    const next = queryActivityMembers({ ...detail, cursor: first.nextCursor })
+    expect(next.items.map(r => r.event.id)).toEqual(['call-first'])
+    expect(next.hasMore).toBe(false)
+    expect(() => queryActivityMembers({ ...detail, matchesFirst: false, cursor: first.nextCursor })).toThrow(/cursor|query/)
+  })
+
   it('keeps one stable ID when a Result precedes or follows its Call', () => {
     add('result', 200, 'agent', tool('tool_result', 'T', { output: 'answer' }))
     const alone = queryActivityPage(request()).items[0]

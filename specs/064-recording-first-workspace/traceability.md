@@ -56,11 +56,11 @@
 | FR-044 | 安全內容呈現 | TimelineEventDetails、TranscriptView、ReplayCommand；既有安全轉換 | C3/C4 | UX-16；CT-12 | 全階段，S3 共用契約 |
 | FR-045 | 退出／更新／恢復 | App；既有 updater／shutdown／Terminal Manager | UX/C6 | UX-17 | S1/S4 |
 | FR-046 | 穩定 Activity 身分 | TimelineEventLog、TranscriptView；投影、query cursor、來源 IDs | C1 | CT-01/02 | S2 |
-| FR-047 | 內容覆蓋／索引狀態 | SearchPanel；event-queries、http-body-index、cast-index、retention | C2/C4 | CT-03/04/14 | S2 |
+| FR-047 | 內容覆蓋／索引狀態 | SearchPanel／ActivityResults；event-queries、http-body-index、cast-index、retention | C2/C4 | CT-03/04/14 | S2 |
 | FR-048 | 凍結範圍／附件版本 | ExportMenu；export-plan、export-selection、export-attachments、data-export IPC | C5 | CT-05/06/07 | S1 不退步，S3 擴選取 |
 | FR-049 | Terminal App 身分／範圍 | HooksPanel、RecordTerminalFlow；terminal-enrollment、shell adapters／可信 origin resolver 待規劃 | C6 | CT-08/09 | S1 |
 | FR-050 | 非 Shell AI Tool | TranscriptView、FilterBar；Claude/Codex adapters、canonical action projection | C1 | CT-10 | S2 |
-| FR-051 | 共用內容閱讀語意 | TranscriptView、TimelineEventDetails、ReplayCommand；既有 content readers／IPC | C2/C3 | CT-11/12 | S3 |
+| FR-051 | 共用內容閱讀語意 | EventContentReader／ActivityResults（部分）；TranscriptView、TimelineEventDetails、ReplayCommand 待對齊；evidence-content／content-contract／IPC | C2/C3 | CT-11/12 | S3 |
 | FR-052 | 可追溯內容座標 | MarkerDetail、SearchPanel；reader／cast part mapping／Evidence ref | C4 | CT-13/14 | S3 |
 | FR-053 | Session／授權生效邊界 | CaptureHealth、AgentsPanel；terminal-enrollment、terminal-manager、tailer-host、ingest | C6 | CT-09/15/16 | S1 |
 

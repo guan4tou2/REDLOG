@@ -60,3 +60,10 @@ T001→T002–T008→T009–T015→T016–T023→T024–T028→T029。共用 fix
 - T007：本候選的離線長輸出、原生 cast 分段、I/O 取回、bundle／verifier／重啟已在 macOS 驗證；不是其他平台通過。
 - T009／T010 進行中：已修 PID／文字誤折疊、provider／Session／capture namespace 錯配、衝突覆蓋、跨頁補齊及命中高亮；POSIX 傳來源 Session。已補 act1 ID、資料庫先分組後分頁、快照／群組計數／來源集合及 IPC；Activity 閱讀介面與 C2 覆蓋接線未完成。PowerShell 缺來源 Session／command ID 時保留未配對，不加 PID fallback。
 - 其餘來源／隱私邊界、搜尋覆蓋、Viewer／anchor、匯出附件政策、導覽／Settings 整併及原生平台／使用者量測依原任務續做。unchecked 是未完成，不是已交付後續建議。
+
+## 2026-10-26 — Search / Activity / saved-content slice
+
+- T012／T013 部分落地：body index 重新核對原件、base64 解碼文字、缺檔後重試、revision／snapshot 內的 coverage 變更；Cast 有條件排除與 50 筆限制明示。Cast generation、AI raw JSONL／一般附件全文覆蓋尚未齊，不勾完整 C2。
+- T014 部分落地：既有 Search 增加「操作／原始事件」，共用 query／filter；群組先分頁、命中來源優先、展開讀取及原始事件返回位置。未切換主導覽或移除舊 Search／Transcript。
+- T016／T017 部分落地：ContentRef 綁 project／Event／field／hash，UTF-8 有界讀取、可取消的全文 Find、視窗複製及錯誤保留。尚無所有 Reader／cast 的版本契約對等、完整片段座標與跨模式恢復，因此維持未勾。
+- T021／T022 的 Activity／Session 固定選取尚未完成；目前匯出入口只宣告「命中事件」，仍走既有 query → ExportPlan，不把整個群組背景或完整 Session 當成已選取。

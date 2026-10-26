@@ -9,7 +9,7 @@ import {
 } from '../query-page'
 import type { ExportSnapshot } from '../export-plan'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
-import { searchHttpBodyEventIds } from '../http-body-index'
+import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
 
@@ -1082,6 +1082,7 @@ export interface ToolSessionResolution {
 }
 
 export interface EventQueryResult extends QueryPage<RedLogEvent> {
+  bodyCoverage?: BodySearchCoverage
   toolSession?: ToolSessionResolution
 }
 
@@ -1157,7 +1158,7 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
     query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping, snapshot: request.snapshot
   }
   const page = queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
-  return { ...page, ...(query.toolSession ? { toolSession: query.toolSession } : {}) }
+  return { ...page, bodyCoverage: request.parsed.text.trim() ? bodySearchCoverage(request.snapshot) : undefined, ...(query.toolSession ? { toolSession: query.toolSession } : {}) }
 }
 
 /** Identifies one tool exchange. Unique only as a pair; see ToolSessionResolution. */

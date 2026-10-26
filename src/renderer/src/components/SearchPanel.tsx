@@ -1,3 +1,6 @@
+import { ActivityResults, SearchCoverage } from './ActivityResults'
+import type { BodySearchCoverage } from '../../../core/http-body-index'
+import { Button } from './Button'
 import { eventTitle } from '../lib/eventTitle'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -122,11 +125,15 @@ function errorText(error: unknown): string {
 
 interface SearchPanelProps {
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  active?: boolean
 }
 
-export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
+export function SearchPanel({ onOpenInTimeline, active = true }: SearchPanelProps = {}): JSX.Element {
   const { filter: sharedFilter } = useSharedFilter()
   const [query, setQuery] = useState('')
+  const [mode, setMode] = useState<'events' | 'activities'>('events')
+  const [submitted, setSubmitted] = useState('')
+  const [bodyCoverage, setBodyCoverage] = useState<BodySearchCoverage | undefined>()
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
   const [searching, setSearching] = useState(false)
@@ -147,6 +154,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [loadingMore, setLoadingMore] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [castError, setCastError] = useState<string | null>(null)
+  const [castsRestricted, setCastsRestricted] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   const [toolSession, setToolSession] = useState<{ toolUseId: string; sessionId: string; otherSessionIds: string[] } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -160,12 +168,13 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: {
     kind: 'selection', projection: 'events', filter: { ...toEventFilter(sharedFilter), ...(effectiveTypeFilter ? { agentType: effectiveTypeFilter } : {}) }, query
   } }), [sharedFilter, effectiveTypeFilter, query])
-  useContributeExport({ label: t('export.current'), request: exportRequest,
-    ...(query.trim() ? {} : { disabledReason: t('export.enterQuery') }) })
+  useContributeExport(active ? { label: t(mode === 'activities' ? 'activity.exportMatches' : 'export.current'), request: exportRequest,
+    ...(query.trim() ? {} : { disabledReason: t('export.enterQuery') }) } : null)
 
   const filtered = results
   const listNav = useListKeyboard({
     count: filtered.length,
+    enabled: active && mode === 'events',
     onActivate: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
     onJumpToTimeline: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
     onEscape: () => setTypeFilter(null)
@@ -178,6 +187,13 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const doSearch = useCallback((q: string) => {
+    abortRef.current?.abort()
+    ++searchSeqRef.current
+    setSearching(false)
+    setLoadingMore(false)
+    setSubmitted(q)
+    setBodyCoverage(undefined)
+    setCastsRestricted(false)
     if (q.length < 1) {
       setResults([])
       setCastHits([])
@@ -217,13 +233,16 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     const seq = ++searchSeqRef.current
     const opts = buildSearchOpts()
     const eventFilterActive = Boolean(
-      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly
+      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly || opts.hidePersonal || opts.tier || outcome.parsed.conditions.length
     )
-    window.redlog.events.runQuery({
+    setCastsRestricted(eventFilterActive)
+    if (mode === 'events') window.redlog.events.runQuery({
       parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE
     }).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       const { rows, newFolds } = await resolveAndFold(page.items)
+      if (ac.signal.aborted || seq !== searchSeqRef.current) return
+      setBodyCoverage(page.bodyCoverage)
       setFolds(newFolds)
       setResults(rows)
       setHasMore(page.hasMore)
@@ -241,9 +260,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     // metadata. Hiding them while an event filter is active avoids presenting
     // unfiltered transcript matches as if they satisfied that filter.
     setCastHits([])
-    if (!eventFilterActive) {
+    if (mode === 'activities') { setSearching(false); setSearched(true) }
+    if (!eventFilterActive && outcome.parsed.text.trim()) {
       const castSeq = seq
-      window.redlog.events.searchCasts(q, 50)
+      window.redlog.events.searchCasts(outcome.parsed.text, 50)
         .then((r) => {
           if (castSeq !== searchSeqRef.current) return
           setCastHits(r ?? [])
@@ -255,13 +275,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           setCastError(errorText(error))
         })
     }
-  }, [buildSearchOpts])
+  }, [buildSearchOpts, mode])
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
     setLoadingMore(true)
     setLoadMoreError(null)
     const opts = buildSearchOpts()
+    const seq = searchSeqRef.current
     try {
       const outcome = parseQuery(queryRef.current)
       if (!outcome.ok) return
@@ -269,6 +290,8 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
         parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE, cursor: nextCursor
       })
       const { rows, newFolds } = await resolveAndFold(page.items)
+      if (seq !== searchSeqRef.current) return
+      setBodyCoverage(page.bodyCoverage)
       setResults((prev) => [...prev, ...rows])
       setFolds((prev) => {
         const merged = new Map(prev)
@@ -278,25 +301,33 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setHasMore(page.hasMore)
       setNextCursor(page.nextCursor)
     } catch (error: unknown) {
-      setLoadMoreError(errorText(error))
+      if (seq === searchSeqRef.current) setLoadMoreError(errorText(error))
     } finally {
-      setLoadingMore(false)
+      if (seq === searchSeqRef.current) setLoadingMore(false)
     }
   }, [nextCursor, loadingMore, buildSearchOpts])
 
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, mode])
+
+  useEffect(() => () => { abortRef.current?.abort(); ++searchSeqRef.current; if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)
+    setSearching(val.trim().length > 0)
+    abortRef.current?.abort(); ++searchSeqRef.current
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => doSearch(val), 300)
   }, [doSearch])
 
   return (
     <div className="p-4 h-full flex flex-col">
+      <div className="flex flex-wrap gap-2 mb-3 shrink-0" role="group" aria-label={t('activity.view')}>
+        <Button level="quiet" size="compact" aria-pressed={mode === 'activities'} onClick={() => setMode('activities')}>{t('activity.operations')}</Button>
+        <Button level="quiet" size="compact" aria-pressed={mode === 'events'} onClick={() => setMode('events')}>{t('activity.rawEvents')}</Button>
+      </div>
       <div className="relative mb-3 shrink-0">
         <input
           value={query}
@@ -311,18 +342,23 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
         )}
       </div>
 
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
         {parse && (
           <div className="mb-2">
             <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />
           </div>
         )}
-        {toolSession && (
+        {mode === 'activities' && submitted.trim() && (() => {
+          const parsed = parseQuery(submitted)
+          return parsed.ok ? <ActivityResults request={{ parsed: parsed.parsed, filter: buildSearchOpts() }} onOpen={onOpenInTimeline} /> : null
+        })()}
+        <SearchCoverage coverage={bodyCoverage} />
+        {mode === 'events' && toolSession && (
           <div data-testid="search-tool-session" role="status" className="mb-3 rounded border border-redlog-cyan/40 bg-redlog-cyan/10 px-3 py-2 text-xs text-redlog-cyan">
             {t('search.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}
           </div>
         )}
-        {searchError && (
+        {mode === 'events' && searchError && (
           <div data-testid="search-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
             <div className="font-medium">{t('search.failedTitle')}</div>
             <div className="mt-1 text-xs text-redlog-text-dim">{t('search.failedBody')}</div>
@@ -360,6 +396,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             </button>
           </div>
         )}
+        <div hidden={mode !== 'events'}>
         {!searched && !searching && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.hint')}
@@ -473,6 +510,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           </>
         )})()}
 
+        </div>
+        {searched && castsRestricted && <p role="status" className="mt-3 text-xs text-amber-300">{t('activity.castsRestricted')}</p>}
+        {searched && castHits.length === 50 && <p role="status" className="mt-3 text-xs text-amber-300">{t('activity.castLimit')}</p>}
         {searched && (
           <CastResults
             hits={castHits}

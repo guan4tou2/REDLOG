@@ -42,6 +42,17 @@ describe('Search result integrity', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(cleanup)
 
+  it('does not mix unfilterable recordings into a session-qualified event query', async () => {
+    const runQuery=vi.fn().mockResolvedValue(emptyPage), casts=vi.fn().mockResolvedValue([])
+    installBridge(runQuery,casts)
+    render(<SearchPanel />)
+    await searchFor(runQuery,'session:private-session needle')
+    await screen.findByText('search.noResults:session:private-session needle')
+    expect(runQuery.mock.calls[0][0].parsed.conditions).toEqual([{field:'session',value:'private-session'}])
+    expect(casts).not.toHaveBeenCalled()
+    expect(screen.getByText('activity.castsRestricted')).toBeTruthy()
+  })
+
   it('shows a failed event query as an error and never as no results', async () => {
     const searchPage = vi.fn().mockRejectedValue(new Error('database unavailable'))
     installBridge(searchPage)

@@ -122,3 +122,40 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 - GREEN：FirstRun／HTTP focused checks 74 passed；完整五道 gates 通過，unit **4310 passed／28 skipped**（429 files）。補明確等待 deferred status probe 被呼叫後，FirstRun 檔 **51 passed**，不靠加長 timeout。
 - Build 通過；同一 Electron App 的 managed HTTP／nonce 驗證／routing 流程 **1 passed、0 skipped／flaky**，7.78 秒。Log：`/private/tmp/redlog-444-http-race-unit.log`；Report：`/private/tmp/redlog-444-http-race-e2e.json`。這個 UI fixture 不替代真實 CA 信任或跨平台人工驗收。
 - Electron 後恢復 Node SQLite ABI；遠端新 head 的 CI 需另行確認，舊 head 的紅／綠均不當成新修正驗證。
+
+
+## 2026-10-26 — Activity search → saved I/O → source Event
+
+本輪基於 `ef65ca15` 的隔離工作樹；提交／推送狀態以 Git 記錄為準。新增既有 Search 內的「操作／原始事件」呈現，未取代主 Timeline、Search、Transcript，也不代表 S2／S3／S4 全部完成。
+
+### 行為與故障驗證
+
+- C2：UTF-8 sidecar（包括以 base64 傳入、落盤為原始 bytes 的文字）可索引；binary 不假裝是文字。缺檔移除舊命中，稍後到達／還原可重建；相同大小改寫及還原 mtime 仍失效。損壞 ref 回報 failed coverage，不阻擋其他已驗證內容。資料邊界內的 coverage 變動使舊 Activity cursor 明確失效；邊界外新增 body 不污染舊分頁。
+- C3：ContentRef 綁 project／Event／field／hash；64 KiB 視窗（UTF-8 邊界補償）、JSON／空輸出／未擷取區分、逐段字面 Find 及取消、當前視窗複製。17 MiB 尾端命中跨多次 1 MiB 掃描，不把掃描預算當成零結果。來源檔案或 body-store 目錄的 symlink、缺檔、版本改變、跨專案請求均明確拒絕；不重寫原始 Event hash。
+- UI：同一 query/filter 送 SQL 群組／分頁，命中與背景分開計數。一般指令兩端皆命中時預設開結果，可切 stdout／stderr／工具參數／工具結果。新查詢等待期間不可誤點舊結果；失效分頁提供重新整理，不反覆重送舊 cursor。原始事件返回保留查詢、展開及內容位置。
+- 實際截圖發現 Find 跳到尾端後 Previous 停用，已補回歸並修正，可回看前文、回到命中範圍及標亮文字。
+- 移除兩個限定程式碼字面形狀的舊斷言，改以實際 Session 查詢確認 Cast 不混入無法套用條件的結果。錄影條件限制、50 筆上限及不可索引 body 只在影響判讀時顯示。
+
+### 驗證與限制
+
+- 完整 typecheck → specs → architecture → i18n → unit 通過：**4328 passed、28 skipped（426 passed／5 skipped files）**。Log：`/private/tmp/redlog-064-content-unit-final.log`。之前一次未修改的 Bash PTY 測試受 `setpgid: Operation not permitted` 干擾；未改斷言，完整重跑通過。
+- 後續 UI 來源選擇、等待及失效分頁恢復以受影響檢查驗證；最後 focused **70 passed／9 files**，結果見 `/private/tmp/redlog-064-content-focused-final.log`，不倒灌成前一次完整測試數。
+- Production build 通過：`/private/tmp/redlog-064-content-build-final.log`。
+- Electron 自動操作：原有 query contract 與 Activity workflow 2 passed；擴充同一 workflow 驗 Shell stdout／stderr、Claude 工具結果、HTTP body、前後段、原始事件返回及 800×700 視窗，最新 **1 passed、0 skipped／flaky**，6.11 秒。Report：`/private/tmp/redlog-064-content-e2e-final.json`。之後的失效分頁恢復按鈕由 UI 故障注入驗證、build 通過，未為此重開 App。
+- 已檢視實際截圖：`/private/tmp/redlog-064-activity-desktop.png`、`/private/tmp/redlog-064-activity-narrow.png`。這是合成持久化資料的 Electron 操作及視覺檢查，**不是人工全 App、真實 AI vendor、Windows／WSL／Kali 驗收**。
+- 十萬個 inline Event、30 次代表查詢：p95 **932.9 ms**、冷啟動 **1838.1 ms**。已移除重複 coverage 掃描；report：`/private/tmp/redlog-064-content-performance-final.log`。不代表大量 sidecar、持續寫入負載或完整 SC-007 通過；暫存量測腳本已刪除。
+- 本輪未建立新安裝包、合併或發版；Electron 後恢復 Node SQLite ABI。
+
+### 仍未完成的契約
+
+- FTS 每份 body 上限 **16 MiB**；超過時明示 limited，原件不刪／不截短，仍能用來源 Reader 及完整 Find 讀取。不能宣稱所有保存內容皆已進入全域索引。
+- Cast generation、AI raw JSONL／一般附件的 C2 覆蓋，C3 其他 Reader／完整 raw/readable 映射及跨模式恢復、C4 片段 anchor，仍依原 tasks 維持未勾。
+- 目前匯出 canonical query 命中事件，沿用 ExportPlan；尚未提供 Activity 全背景／跨目標 Session 附件的固定選取，不將這輪當成 C5 完成。
+- 五主頁面、Settings 整併及全產品人工／跨平台矩陣依原 gate 繼續，不提前刪除舊入口。
+
+
+### Push preparation
+
+- 新增故障回歸：來源分頁出現匹配的 Result 時，不得自動切走正在閱讀的 Call。先重現來源從 start 跳到 end，再固定首次選擇，保留明確切換控制。
+- 推送前會在本批提交上重跑五道 gates，log：`/private/tmp/redlog-064-push-gates.log`；前述 4328／70 為各自當時的實際結果，不預先改寫成新的測試數。
+- 本輪提交包含 Activity 搜尋、內容 Reader、body index、相關 IPC／UI／測試與 Spec 紀錄；不把其餘未勾的 Session 匯出／跨平台驗收等項目列為完成。

@@ -1,3 +1,5 @@
+import { describeEventContent, readEventContent, findEventContent } from '../../core/evidence-content'
+import type { ContentReadRequest, ContentFindRequest } from '../../core/content-contract'
 import { queryActivityPage, queryActivityMembers } from '../../core/db/activity-queries'
 import type { ActivityRequest, ActivityMembersRequest } from '../../core/activity-contract'
 import type { IpcMain } from 'electron'
@@ -67,6 +69,15 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   }
   ipcMain.handle('events:activityPage', (_e, req: ActivityRequest) => queryActivityPage(activityRequest(req)))
   ipcMain.handle('events:activityMembers', (_e, req: ActivityMembersRequest) => queryActivityMembers(activityRequest(req)))
+
+  const contentAllowed = (projectId: unknown): boolean => Boolean(ctx.getActiveProject() && typeof projectId === 'string' && projectId === ctx.getCurrentEngagementId())
+  const deniedContent = () => ({ ok: false as const, status: 'denied' as const, message: 'Content project changed; reopen the source' })
+  ipcMain.handle('content:list', (_e, req: { projectId: string; eventId: string }) =>
+    contentAllowed(req?.projectId) ? describeEventContent(req.projectId, req.eventId) : deniedContent())
+  ipcMain.handle('content:read', (_e, req: ContentReadRequest) =>
+    contentAllowed(req?.ref?.projectId) ? readEventContent(req) : deniedContent())
+  ipcMain.handle('content:find', (_e, req: ContentFindRequest) =>
+    contentAllowed(req?.ref?.projectId) ? findEventContent(req) : deniedContent())
 
   // Spec 038. The Timeline's total and "earlier matches", and the check of
   // rows it already holds, go through the same predicates as its pages. Scope

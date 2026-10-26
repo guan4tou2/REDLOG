@@ -226,6 +226,11 @@ interface RedLogAPI {
     /** `title`: the picker's title, already translated */
     pickPath: (title?: string) => Promise<string | null>
   }
+  content: {
+    list: (req: { projectId: string; eventId: string }) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentDescriptor[]>>
+    read: (req: import('../../core/content-contract').ContentReadRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentWindow>>
+    find: (req: import('../../core/content-contract').ContentFindRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentFindResult>>
+  }
   events: {
     commandEvidence: () => Promise<{ builtin: boolean; external: boolean }>
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>

@@ -100,6 +100,11 @@ const api: RedLogAPI = {
     save: (cfg: { excludedPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
+  content: {
+    list: (req: { projectId: string; eventId: string }) => ipcRenderer.invoke('content:list', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentDescriptor[]>>,
+    read: (req: import('../core/content-contract').ContentReadRequest) => ipcRenderer.invoke('content:read', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentWindow>>,
+    find: (req: import('../core/content-contract').ContentFindRequest) => ipcRenderer.invoke('content:find', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentFindResult>>
+  },
   events: {
     commandEvidence: () => ipcRenderer.invoke('events:commandEvidence') as Promise<{ builtin: boolean; external: boolean }>,
     query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),

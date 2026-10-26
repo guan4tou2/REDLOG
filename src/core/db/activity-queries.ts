@@ -1,3 +1,4 @@
+import { bodySearchCoverage, type BodySearchCoverage } from '../http-body-index'
 import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './index'
 import { rowToEvent, type RedLogEvent } from './event-types'
@@ -54,7 +55,7 @@ function snapshot(db: ReturnType<typeof getReadonlyDB>, old?: ActivitySnapshot):
 }
 interface Cursor {
   v: 1; kind: 'groups' | 'members'; q: string; s: ActivitySnapshot; p: ParsedQuery; body: string
-  ts: number; key: string; toolSession?: ActivityPage['toolSession']
+  ts: number; key: string; matched?: number; toolSession?: ActivityPage['toolSession']
 }
 function decode(raw: string, kind: Cursor['kind'], q: string): Cursor {
   try {
@@ -85,16 +86,17 @@ function requestKey(req: ActivityRequest, ref?: string): string {
 }
 function setup(req: ActivityRequest, kind: Cursor['kind'], ref?: string): {
   db: ReturnType<typeof getReadonlyDB>; boundary: ActivitySnapshot; cursor: Cursor | null; q: string
-  sql: string; params: unknown[]; resolved: ParsedQuery; body: string; toolSession?: ActivityPage['toolSession']
+  sql: string; params: unknown[]; resolved: ParsedQuery; body: string; coverage: BodySearchCoverage | undefined; toolSession?: ActivityPage['toolSession']
 } {
   const db = register(), q = requestKey(req, ref), cursor = req.cursor ? decode(req.cursor, kind, q) : null
   if (cursor && req.snapshot && fingerprint(req.snapshot) !== fingerprint(cursor.s)) throw new Error('Activity cursor snapshot changed')
   const boundary = snapshot(db, cursor?.s ?? req.snapshot)
   const selection = compileEventSelection({ ...req, snapshot: boundary, parsed: cursor?.p ?? req.parsed })
   const bodyIds = selection.bodyMatchIds.length ? (db.prepare(`SELECT id FROM events WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) UNION SELECT id FROM events_logged WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(boundary.chainedMaxRowId, JSON.stringify(selection.bodyMatchIds), boundary.loggedMaxRowId, JSON.stringify(selection.bodyMatchIds)) as { id: string }[]).map(r => r.id) : []
-  const body = fingerprint(bodyIds)
+  const coverage = req.parsed.text.trim() ? bodySearchCoverage(boundary, req.projectId) : undefined
+  const body = fingerprint([bodyIds, coverage?.revision ?? null])
   if (cursor && cursor.body !== body) throw new Error('Activity search index coverage changed; refresh the query')
-  return { db, boundary, cursor, q, sql: selection.sql, params: selection.params, resolved: selection.resolved, body, toolSession: cursor?.toolSession ?? selection.toolSession }
+  return { db, boundary, cursor, q, sql: selection.sql, params: selection.params, resolved: selection.resolved, body, coverage, toolSession: cursor?.toolSession ?? selection.toolSession }
 }
 function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
   const before = indexed.get(db)
@@ -202,7 +204,7 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
     })
     const last = picked.at(-1)
     const nextCursor = hasMore && last ? encode({ v: 1, kind: 'groups', q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.sort_at), key: String(last.ak), toolSession: s.toolSession }) : null
-    return { items, hasMore, nextCursor, totalGroups: Number(rows[0]?.total_groups ?? 0), totalMatches: Number(rows[0]?.total_matches ?? 0), snapshot: s.boundary, ...(s.toolSession ? { toolSession: s.toolSession } : {}) }
+    return { items, hasMore, nextCursor, bodyCoverage: s.coverage, totalGroups: Number(rows[0]?.total_groups ?? 0), totalMatches: Number(rows[0]?.total_matches ?? 0), snapshot: s.boundary, ...(s.toolSession ? { toolSession: s.toolSession } : {}) }
   })
 }
 
@@ -211,16 +213,18 @@ export function queryActivityMembers(request: ActivityMembersRequest): ActivityM
   return readActivity(db, () => {
     if (!request.snapshot) throw new Error('Activity source context requires the confirmed snapshot')
     if (!request.ref || request.ref.projectId !== request.projectId || typeof request.ref.key !== 'string' || request.ref.id !== activityId(request.ref.key)) throw new Error('Invalid Activity source reference')
-    const limit = pageLimit(request.limit, 200), s = setup(request, 'members', request.ref.id), c = ctes(request, s)
-    const past = s.cursor ? 'AND (p.timestamp>? OR (p.timestamp=? AND p.id>?))' : ''
+    const limit = pageLimit(request.limit, 200), s = setup(request, 'members', `${request.ref.id}:${request.matchesFirst === true}`), c = ctes(request, s)
+    const byMatch = request.matchesFirst === true
+    if (byMatch && s.cursor && ![0, 1].includes(s.cursor.matched!)) throw new Error('Invalid Activity source cursor')
+    const past = s.cursor ? byMatch ? 'AND (p.matched<? OR (p.matched=? AND (p.timestamp>? OR (p.timestamp=? AND p.id>?))))' : 'AND (p.timestamp>? OR (p.timestamp=? AND p.id>?))' : ''
     const rows = db.prepare(`${c.sql} SELECT p.*,
       f.source_count,f.matched_count FROM projected p JOIN filtered f ON f.ak=p.ak
-      WHERE p.ak=? ${past} ORDER BY p.timestamp,p.id LIMIT ?`).all(...c.params, `${JSON.parse(request.ref.key)[1]}:${request.ref.id}`, ...(s.cursor ? [s.cursor.ts, s.cursor.ts, s.cursor.key] : []), limit + 1) as Array<Record<string, unknown>>
+      WHERE p.ak=? ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}p.timestamp,p.id LIMIT ?`).all(...c.params, `${JSON.parse(request.ref.key)[1]}:${request.ref.id}`, ...(s.cursor ? [...(byMatch ? [s.cursor.matched, s.cursor.matched] : []), s.cursor.ts, s.cursor.ts, s.cursor.key] : []), limit + 1) as Array<Record<string, unknown>>
     if (!rows.length) throw new Error('Activity source unavailable in this query snapshot')
     const hasMore = rows.length > limit, picked = rows.slice(0, limit), last = picked.at(-1)!
     return {
       items: picked.map(row => ({ event: sourceEvent(db, row), matched: row.matched === 1 })), hasMore,
-      nextCursor: hasMore ? encode({ v: 1, kind: 'members', q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.timestamp), key: String(last.id), toolSession: s.toolSession }) : null,
+      nextCursor: hasMore ? encode({ v: 1, kind: 'members', matched: Number(last.matched), q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.timestamp), key: String(last.id), toolSession: s.toolSession }) : null,
       sourceCount: Number(rows[0].source_count), matchedCount: Number(rows[0].matched_count), snapshot: s.boundary
     }
   })

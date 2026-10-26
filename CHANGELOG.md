@@ -14,7 +14,16 @@ for full commit body + generated notes.
   separate match/context counts. Project changes and retention invalidate stale
   references explicitly. Known Claude Code/Codex tool schemas distinguish
   execution, file operations, search and browsing; unknown tools stay unknown.
-  The existing reading/navigation UI has not switched to this query yet.
+  Search now offers Operations and Raw events using the same query/filter.
+  Operation details open matching source Events first and read saved Shell,
+  AI and HTTP text in bounded windows. Content Find scans the saved version;
+  returning from the original Event preserves search and reading position.
+  The existing main navigation remains until reader/search parity is complete.
+- Body search now handles decoded UTF-8 sidecars, retries files that arrive
+  later, removes missing-file hits and rejects replaced contents. Search
+  reports missing, binary, unavailable and over-budget content. The per-body
+  FTS budget is 16 MiB; larger originals remain saved and available to the
+  bounded content reader and its Find operation.
 
 - Terminal App restrictions on macOS now check OS-observed process ancestry and
   bundle identity instead of trusting TERM_PROGRAM, WT_SESSION or a built-in

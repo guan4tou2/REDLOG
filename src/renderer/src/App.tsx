@@ -394,7 +394,7 @@ export default function App(): JSX.Element {
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {view === 'search' && <SearchPanel onOpenInTimeline={openInTimeline} />}
+            {(view === 'search' || (view === 'timeline' && returnTo === 'search')) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><SearchPanel key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

@@ -4,6 +4,7 @@ import os from 'os'
 import path from 'path'
 import { parseQuery } from '../src/core/query/contract'
 import type { ActivityPage } from '../src/core/activity-contract'
+import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { initDB, closeDB } from '../src/core/db/index'
 import { loadConfig, saveConfig } from '../src/core/config'
 import { registerEventsIpc } from '../src/main/ipc/events'
@@ -37,8 +38,20 @@ describe('events:count and events:matchIds', () => {
   })
 
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('does not read saved content after the active project changes', () => {
+    const eventId = fx.rows.find(r => r.agentType === 'shell')!.id
+    const reply = handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
+    expect(reply.ok).toBe(true)
+    active = {...active!,id:'other-project'}
+    expect(handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
+    expect(handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
+    active = null
+    expect(handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
   })
 
   it('returns its empty shape without an active project', () => {

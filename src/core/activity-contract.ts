@@ -1,3 +1,4 @@
+import type { BodySearchCoverage } from './http-body-index'
 import type { RedLogEvent } from './db/event-types'
 import type { EventQueryRequest, ToolSessionResolution } from './db/event-queries'
 
@@ -31,10 +32,12 @@ export interface ActivitySummary extends ActivityRef {
 export interface ActivityPage {
   items: ActivitySummary[]; hasMore: boolean; nextCursor: string | null
   totalGroups: number; totalMatches: number; snapshot: ActivitySnapshot
+  bodyCoverage?: BodySearchCoverage
   toolSession?: ToolSessionResolution
 }
 export interface ActivityMembersRequest extends Omit<ActivityRequest, 'limit' | 'cursor'> {
   ref: ActivityRef; snapshot: ActivitySnapshot; limit?: number; cursor?: string | null
+  matchesFirst?: boolean
 }
 export interface ActivityMembersPage {
   items: Array<{ event: RedLogEvent; matched: boolean }>; hasMore: boolean; nextCursor: string | null
