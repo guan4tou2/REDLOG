@@ -667,6 +667,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
       </I18nProvider>
     )
     const initialNonce = (await screen.findByTestId('first-run-http')).getAttribute('data-nonce')
+    await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
     await act(async () => { resolveStatus(RUNNING) })
     const runningCommits = commits.filter(c => c.proxy === '127.0.0.1:8080')
     expect(runningCommits.length).toBeGreaterThan(0)

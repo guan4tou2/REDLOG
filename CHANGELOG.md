@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- HTTP verification now changes its nonce and readiness together with the proxy
+  endpoint and certificate policy. Initial loading can no longer expose a stale
+  check that discards a reply or clears a just-started timeout.
+
 - Added the Activity query contract: stable operation IDs, database grouping
   before pagination, frozen dataset boundaries, bounded source-event pages and
   separate match/context counts. Project changes and retention invalidate stale

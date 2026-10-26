@@ -111,3 +111,14 @@ GREEN：
 - 最新 production build 通過；指令 I/O 與 Transcript／Activity Electron 整合 **8 passed、0 skipped／flaky**。Report：`/private/tmp/redlog-approved-checkpoint-e2e.json`；build log：`/private/tmp/redlog-approved-checkpoint-build.log`。
 - Electron 驗證後恢復 Node SQLite ABI；沒有改正式安裝或專案。
 - 本次 push 包含已授權的累積實作／文件，不代表 Spec 062／063／064、原生跨平台矩陣或全產品人工驗收已完成。macOS package 證據仍僅適用上面的 S1 candidate；本次未建立新安裝包、合併或發布 release。
+
+## 2026-10-26 — PR #444 macOS CI follow-up
+
+Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certificate-errors 警告未出現，以及 paused 驗證逾時未出現；Ubuntu／Windows unit 及 package smoke 成功，GitHub E2E 因 unit gate 失敗跳過。
+
+- 可重現根因：HttpCaptureStep 在新 proxy／policy 已 commit 後，才於 passive effect 更換 attempt nonce 並清 timer。這個過渡狀態能接受使用者操作，之後卻丟棄回覆或取消已開始的逾時。
+- RED：新增同一個 FirstRun Profiler 回歸案例，直接觀察每個 commit 的 endpoint／nonce／readiness，修正前穩定失敗；不是只靠重跑原本偶發案例。
+- 修正：在同一元件的 context 改變時，先調整 attempt／timeout state 再 commit；沒有放寬 CA 警告、nonce 比對、60 秒逾時、測試條件或平台檢查。
+- GREEN：FirstRun／HTTP focused checks 74 passed；完整五道 gates 通過，unit **4310 passed／28 skipped**（429 files）。補明確等待 deferred status probe 被呼叫後，FirstRun 檔 **51 passed**，不靠加長 timeout。
+- Build 通過；同一 Electron App 的 managed HTTP／nonce 驗證／routing 流程 **1 passed、0 skipped／flaky**，7.78 秒。Log：`/private/tmp/redlog-444-http-race-unit.log`；Report：`/private/tmp/redlog-444-http-race-e2e.json`。這個 UI fixture 不替代真實 CA 信任或跨平台人工驗收。
+- Electron 後恢復 Node SQLite ABI；遠端新 head 的 CI 需另行確認，舊 head 的紅／綠均不當成新修正驗證。
