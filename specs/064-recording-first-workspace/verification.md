@@ -168,4 +168,4 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 - 附件排除重新解析的焦點還原原本在 passive effect。Profiler 在已更新、可操作的附件列 commit 時穩定觀察到 focus 仍在 body（RED），不是只重跑偶發失敗。改為 layout effect 並等待 previewLoading 結束，在畫面交還操作者前恢復焦點；保留不搶走其他控制項焦點的條件。
 - 大量輸出測試在 Windows 超過原 15 秒預算。前置資料逐筆自動提交，包含 2005 筆 chunk；改為一個批次 transaction 建立同一資料集。520 筆查詢、505 對 HTTP fixture 亦改批次；預覽後的新增資料仍在獨立 transaction，2006 筆交付及快照排除斷言不變。不改產品 SQLite durability 設定、不延長 testTimeout、不跳過 Windows。
 - 修正後兩檔 8 passed；本機長輸出案例 671 → 367 ms、整批 2.41 → 1.20 秒（含 RED／GREEN 執行差異，僅作前置成本參考，不當 Windows 效能證明）。Log：`/private/tmp/redlog-444-export-ci-red.log`、`/private/tmp/redlog-444-export-ci-green.log`。
-- 修正提交的五道 gates、build 與 Electron 匯出操作另行驗證；新的 Windows CI 通過前不宣稱問題已於 Windows 驗收完成。
+- 來源提交 `8768c5c0` 五道 gates 全通過，unit **4330 passed／28 skipped**；production build 通過，單一 Electron App 的匯出操作 **8 passed、0 skipped／flaky**，6.22 秒（含附件 Space 勾選、焦點、小視窗、預覽／執行、失敗重試及成品找回）。Logs：`/private/tmp/redlog-444-export-ci-unit.log`、`/private/tmp/redlog-444-export-ci-build.log`；report：`/private/tmp/redlog-444-export-ci-e2e.json`。Electron 後已恢復 Node SQLite ABI。新的 Windows CI 通過前不宣稱已在 Windows 驗收完成。
