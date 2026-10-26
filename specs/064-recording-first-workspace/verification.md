@@ -102,3 +102,12 @@ GREEN：
 - 索引冷啟動第一次 **1653.7 ms**，其餘 **519.2–905.9 ms**；不把冷啟動成本藏掉。這份 fixture 的 p95 達到一秒目標，但尚無完整舊 UI／輸入延遲比較，**不將 SC-007 全項標完成**。
 - Index 只含身分、時間、分類及 digest；不保存輸出／Prompt／Tool Input 原文。原始證據仍只由既有 Event 查詢讀回。新列增量補入；資料清理／rowid 替換、失敗 rollback 及關專案重開均驗證不沿用錯誤索引。
 - Report：`/private/tmp/redlog-064-activity-indexed-performance.log`；對照 `/private/tmp/redlog-064-activity-final-performance.log`；fixture 存 `/private/tmp/redlog-064-activity-benchmark.fixture.txt`。暫存 timing test 已移除，不加入每輪 unit suite。
+
+## 2026-10-26 — Approved full-checkpoint push
+
+使用者明確授權原隔離工作樹 178 個路徑全部提交／推送；先前獨立 Activity checkpoint 之外的剩餘 171 路徑已提交。來源驗證 commit：`deb483f9`（含 `fbd43f35` 的整批實作與 `4cf286be` 的 Activity query）。
+
+- 在已提交來源上依序完成 typecheck、Spec、architecture、i18n、unit gates。**4309 passed、28 skipped；429 files（424 passed／5 skipped）**。Log：`/private/tmp/redlog-approved-checkpoint-unit.log`。
+- 最新 production build 通過；指令 I/O 與 Transcript／Activity Electron 整合 **8 passed、0 skipped／flaky**。Report：`/private/tmp/redlog-approved-checkpoint-e2e.json`；build log：`/private/tmp/redlog-approved-checkpoint-build.log`。
+- Electron 驗證後恢復 Node SQLite ABI；沒有改正式安裝或專案。
+- 本次 push 包含已授權的累積實作／文件，不代表 Spec 062／063／064、原生跨平台矩陣或全產品人工驗收已完成。macOS package 證據仍僅適用上面的 S1 candidate；本次未建立新安裝包、合併或發布 release。
