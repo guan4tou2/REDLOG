@@ -241,6 +241,8 @@ interface RedLogAPI {
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
+    activityPage: (req: import('../../core/activity-contract').ActivityRequest) => Promise<import('../../core/activity-contract').ActivityPage>
+    activityMembers: (req: import('../../core/activity-contract').ActivityMembersRequest) => Promise<import('../../core/activity-contract').ActivityMembersPage>
     /** Spec 038: how many rows a page or a query walks past `cursor`. */
     count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
     /** Spec 038: which of up to 1000 held ids the filter (and query) admit. */

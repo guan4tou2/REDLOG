@@ -1,3 +1,5 @@
+import { queryActivityPage, queryActivityMembers } from '../../core/db/activity-queries'
+import type { ActivityRequest, ActivityMembersRequest } from '../../core/activity-contract'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
@@ -55,6 +57,16 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject()
       ? executeEventQuery({ ...req, filter: withActiveScope(req.filter ?? {}) })
       : { items: [], hasMore: false, nextCursor: null })
+
+  // A delayed renderer request must not run against a newly opened database.
+  const activityRequest = <T extends ActivityRequest>(req: T): T => {
+    const project = ctx.getActiveProject()
+    const owner = ctx.getCurrentEngagementId()
+    if (!project || !owner || req?.projectId !== owner) throw new Error('Activity project changed; reopen the query')
+    return { ...req, filter: withActiveScope(req.filter ?? {}) }
+  }
+  ipcMain.handle('events:activityPage', (_e, req: ActivityRequest) => queryActivityPage(activityRequest(req)))
+  ipcMain.handle('events:activityMembers', (_e, req: ActivityMembersRequest) => queryActivityMembers(activityRequest(req)))
 
   // Spec 038. The Timeline's total and "earlier matches", and the check of
   // rows it already holds, go through the same predicates as its pages. Scope

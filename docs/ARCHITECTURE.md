@@ -126,6 +126,17 @@ Two reserved internal keys:
 `clipboard`, `file_transfer`, `credential_use`, `c2_checkin`, `marker`,
 `loot`, `cleanup`, `scope`, `process`, `system`.
 
+### Activity query projection (Spec 064)
+
+`activity-projection.ts` derives versioned operation identity without changing
+Events. `db/activity-queries.ts` groups matches before paging and distinguishes
+matching Events from source context. Its SQLite TEMP index belongs to the
+project's read connection, stores metadata/digests only, updates incrementally,
+and is rebuilt after retention or failed reads. Closing the project drops it;
+it is neither a new evidence table nor an export attachment. IPC checks the
+active engagement and applies its scope before querying. The existing reading
+UI has not yet switched to this API.
+
 ## 4. Capture pipeline
 
 The canonical path, shell hook → chain → UI:

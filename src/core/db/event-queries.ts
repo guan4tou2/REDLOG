@@ -551,6 +551,24 @@ export function queryEventsPage(opts: EventFilter & {
   return queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
 }
 
+/** Canonical predicates without paging. Activity grouping and Event reads
+ * must share these conditions; grouping is applied after this selection. */
+export function compileEventSelection(request: Omit<EventQueryRequest, 'limit' | 'cursor'>): {
+  sql: string; params: unknown[]; resolved: ParsedQuery; toolSession?: ToolSessionResolution; bodyMatchIds: string[]
+} {
+  const db = getReadonlyDB()
+  const query = prepareQuery(db, request.parsed)
+  const input: TierWhereInput = { query, filter: request.filter, snapshot: request.snapshot, excludeHousekeeping: request.excludeHousekeeping }
+  const chained = buildTierWhere('chained', input), logged = buildTierWhere('logged', input)
+  return {
+    sql: `SELECT e.id FROM events e ${chained.where} UNION SELECT e.id FROM events_logged e ${logged.where}`,
+    params: [...chained.params, ...logged.params],
+    resolved: { ...request.parsed, conditions: query.conditions },
+    toolSession: query.toolSession,
+    bodyMatchIds: query.bodyIdsJson ? JSON.parse(query.bodyIdsJson) as string[] : []
+  }
+}
+
 export interface EventCountRequest {
   /** Omitted: count what the filter admits, as `queryEventsPage` pages it. */
   parsed?: ParsedQuery

@@ -34,10 +34,32 @@ test('folds request/response pairs into single exchanges', async () => {
   await post('scanner', { subtype: 'http_request_start', flow_id: 'f1', method: 'GET', url: 'https://t.example/api/users', params: { query: { page: '1' } } })
   await post('scanner', { subtype: 'http_response', flow_id: 'f1', method: 'GET', url: 'https://t.example/api/users', status: 200, content_length: 42, duration_ms: 87, response_preview: '{"users":[{"id":1,"name":"admin"}]}' })
   // An agent tool call + result
-  await post('agent', { subtype: 'tool_call', agent: 'claude-code', tool_name: 'Bash', tool_use_id: 'tu1', tool_input: { command: 'id' } })
-  await post('agent', { subtype: 'tool_result', agent: 'claude-code', tool_use_id: 'tu1', output: 'uid=0(root) gid=0(root)' })
+  await post('agent', { subtype: 'tool_call', agent: 'claude-code', session_id: 'ai-session', tool_name: 'Bash', tool_use_id: 'tu1', tool_input: { command: 'id' } })
+  await post('agent', { subtype: 'tool_result', agent: 'claude-code', session_id: 'ai-session', tool_use_id: 'tu1', output: 'uid=0(root) gid=0(root)' })
   await post('marker', { title: 'found admin panel', severity: 'important' })
   await page.waitForTimeout(1500)
+
+  // Exercise the new projection through the shipped preload/IPC, using the
+  // same real ingest fixture and Electron session as the reading journey.
+  const activity = await page.evaluate(async () => {
+    const config = await window.redlog.config.get()
+    const request = {
+      projectId: config.engagement.id,
+      parsed: { text: 'root', tokens: [], conditions: [{ field: 'tool' as const, value: 'tu1' }, { field: 'session' as const, value: 'ai-session' }] }
+    }
+    const page = await window.redlog.events.activityPage(request)
+    const item = page.items[0]
+    const members = await window.redlog.events.activityMembers({ ...request, snapshot: page.snapshot, ref: item })
+    let foreignRejected = false
+    try { await window.redlog.events.activityPage({ ...request, projectId: 'foreign-project' }) }
+    catch { foreignRejected = true }
+    return { item, totalGroups: page.totalGroups, totalMatches: page.totalMatches, members, foreignRejected }
+  })
+  expect(activity).toMatchObject({ totalGroups: 1, totalMatches: 1, foreignRejected: true,
+    item: { kind: 'tool', state: 'paired', action: 'command', provider: 'claude-code', sourceCount: 2, contextCount: 1 },
+    members: { sourceCount: 2, matchedCount: 1, hasMore: false } })
+  expect(activity.item.id).toMatch(/^act1:[a-f0-9]{64}$/)
+  expect(activity.members.items.map(m => [m.event.data.subtype, m.matched])).toEqual([['tool_call', false], ['tool_result', true]])
 
   await resizeMainWindow(app, 1500, 1000)
   await openView(page, 'transcript')

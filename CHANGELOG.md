@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Added the Activity query contract: stable operation IDs, database grouping
+  before pagination, frozen dataset boundaries, bounded source-event pages and
+  separate match/context counts. Project changes and retention invalidate stale
+  references explicitly. Known Claude Code/Codex tool schemas distinguish
+  execution, file operations, search and browsing; unknown tools stay unknown.
+  The existing reading/navigation UI has not switched to this query yet.
+
 - AI conversation acceptance now runs Claude Code first, then Codex through the
   same optional install, directory authorization, message/tool I/O, search,
   transcript, JSON delivery and removal journey. Fixed multiline text search:
