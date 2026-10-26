@@ -11,6 +11,7 @@
 // because the spec fixes the Traditional Chinese copy.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Profiler } from 'react'
 import { render, cleanup, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
@@ -646,6 +647,47 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
 
 
 describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039, #220)', () => {
+  it('commits proxy changes and verification attempts together', async () => {
+    install({ proxy: RUNNING })
+    let resolveStatus!: (value: ManagedProxyStatus) => void
+    bridge.proxyStatus.mockReturnValueOnce(new Promise<ManagedProxyStatus>(resolve => { resolveStatus = resolve }))
+    const commits: Array<{ nonce: string | null; proxy: string | null; verified: boolean }> = []
+    render(
+      <I18nProvider>
+        <Profiler id="http-initialization" onRender={() => {
+          const card = screen.queryByTestId('first-run-http')
+          if (card) commits.push({
+            nonce: card.getAttribute('data-nonce'),
+            proxy: screen.queryByTestId('first-run-http-proxy')?.querySelector('code')?.textContent ?? null,
+            verified: screen.queryByTestId('first-run-http-status')?.textContent === '✓ 已驗證'
+          })
+        }}>
+          <FirstRunView onNavigate={() => {}} renderCaptureCard={() => <div />} />
+        </Profiler>
+      </I18nProvider>
+    )
+    const initialNonce = (await screen.findByTestId('first-run-http')).getAttribute('data-nonce')
+    await act(async () => { resolveStatus(RUNNING) })
+    const runningCommits = commits.filter(c => c.proxy === '127.0.0.1:8080')
+    expect(runningCommits.length).toBeGreaterThan(0)
+    expect(runningCommits.every(c => c.nonce !== initialNonce)).toBe(true)
+    // The attempt the operator sees must still be the one receiving a reply.
+    const verifiedNonce = await shownNonce()
+    await report({ scheme: 'https', nonce: verifiedNonce })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
+
+    bridge.proxyStatus.mockResolvedValue({ ...RUNNING, url: 'http://127.0.0.1:8099' })
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    await screen.findByText('127.0.0.1:8099')
+    const reconfigured = commits.filter(c => c.proxy === '127.0.0.1:8099')
+    expect(reconfigured.length).toBeGreaterThan(0)
+    expect(reconfigured.every(c => !c.verified && c.nonce !== verifiedNonce)).toBe(true)
+    await report({ scheme: 'https', nonce: verifiedNonce })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await report({ scheme: 'https', nonce: await shownNonce() })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
+  })
+
   it('ignores ordinary traffic and other checks; verifies only its own nonce, then stops listening', async () => {
     install({ proxy: RUNNING })
     draw()

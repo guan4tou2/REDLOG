@@ -17,7 +17,7 @@
 // without HTTP the card names the reasons that apply and keeps listening, so a
 // late request still verifies.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
@@ -250,14 +250,16 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   // A check belongs to its endpoint, CA and client policy. Historical success
   // must not light a restarted or reconfigured proxy with the old nonce.
   const verificationContext = JSON.stringify([running, status.url, status.caFingerprint?.sha256, ignoresCertErrors, routeTerminals])
-  const lastContext = useRef(verificationContext)
-  useEffect(() => {
-    if (lastContext.current === verificationContext) return
-    lastContext.current = verificationContext
+  const [lastContext, setLastContext] = useState(verificationContext)
+  if (lastContext !== verificationContext) {
+    // Reset before committing the new endpoint/policy. An effect left one
+    // frame accepting the old nonce, then erased a reply or a newly started
+    // timeout after the operator had already used that frame's controls.
+    setLastContext(verificationContext)
     setAttempt(newAttempt(newVerifyNonce()))
     setTimedOut(false)
     setVerificationStarted(0)
-  }, [verificationContext])
+  }
 
   // `data-nonce` carries the attempt the card would accept. The per-tool
   // commands that used to be the only place it appeared are now the fallback
