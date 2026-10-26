@@ -159,3 +159,13 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 - 新增故障回歸：來源分頁出現匹配的 Result 時，不得自動切走正在閱讀的 Call。先重現來源從 start 跳到 end，再固定首次選擇，保留明確切換控制。
 - 已在來源提交 `b14d18ee` 依序完成 typecheck → specs → architecture → i18n → unit，全部通過；unit **4330 passed、28 skipped（426 passed／5 skipped files）**，140.12 秒，log：`/private/tmp/redlog-064-push-unit.log`。此提交的 production build 亦通過，log：`/private/tmp/redlog-064-push-build.log`。前述 4328／70 保留為當時的實際結果。
 - 本輪提交包含 Activity 搜尋、內容 Reader、body index、相關 IPC／UI／測試與 Spec 紀錄；不把其餘未勾的 Session 匯出／跨平台驗收等項目列為完成。
+
+
+## 2026-10-26 — Windows CI export follow-up
+
+遠端 head `82073921`：Ubuntu／macOS unit、Linux package smoke 及 Windows install smoke 通過；Windows unit job `121567924365` 失敗兩項，E2E 因 unit gate 未通過而跳過。此結果不是跨平台手動驗收。
+
+- 附件排除重新解析的焦點還原原本在 passive effect。Profiler 在已更新、可操作的附件列 commit 時穩定觀察到 focus 仍在 body（RED），不是只重跑偶發失敗。改為 layout effect 並等待 previewLoading 結束，在畫面交還操作者前恢復焦點；保留不搶走其他控制項焦點的條件。
+- 大量輸出測試在 Windows 超過原 15 秒預算。前置資料逐筆自動提交，包含 2005 筆 chunk；改為一個批次 transaction 建立同一資料集。520 筆查詢、505 對 HTTP fixture 亦改批次；預覽後的新增資料仍在獨立 transaction，2006 筆交付及快照排除斷言不變。不改產品 SQLite durability 設定、不延長 testTimeout、不跳過 Windows。
+- 修正後兩檔 8 passed；本機長輸出案例 671 → 367 ms、整批 2.41 → 1.20 秒（含 RED／GREEN 執行差異，僅作前置成本參考，不當 Windows 效能證明）。Log：`/private/tmp/redlog-444-export-ci-red.log`、`/private/tmp/redlog-444-export-ci-green.log`。
+- 修正提交的五道 gates、build 與 Electron 匯出操作另行驗證；新的 Windows CI 通過前不宣稱問題已於 Windows 驗收完成。

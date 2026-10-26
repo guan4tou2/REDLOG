@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 vi.mock('electron', () => ({ shell: { showItemInFolder: vi.fn() } }))
-import { initDB, closeDB } from '../src/core/db/index'
+import { initDB, closeDB, getDB } from '../src/core/db/index'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import { addExportEvent as insertFixture } from './helpers/export-fixtures'
@@ -25,7 +25,9 @@ afterEach(() => { closeDB(); closeHttpBodyIndex(); fs.rmSync(dir, { recursive: t
 const resolve = (request: unknown) => handlers.get('data:resolveExportPlan')!({}, request)
 const execute = (id: string) => handlers.get('data:executeExportPlan')!({}, { planId: id })
 it('exports all matching rows beyond the screen page and freezes preview membership', () => {
- for (let i = 0; i < 520; i++) addExportEvent('events_logged', `match-${i}`, 1000+i, 'EXAMPLE.COM', { subtype: 'command', command: 'canary' })
+ getDB().transaction(() => {
+  for (let i = 0; i < 520; i++) addExportEvent('events_logged', `match-${i}`, 1000+i, 'EXAMPLE.COM', { subtype: 'command', command: 'canary' })
+ })()
  addExportEvent('events', 'wrong', 1300, 'other.test')
  const r=resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{targetId:'example.com'},query:'canary'}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(520)
@@ -38,10 +40,12 @@ it('invalid typed query and unknown selection kind fail rather than export every
  expect(resolve({format:'json',subset:{kind:'typo'}}).ok).toBe(false)
 })
 it('HTTP predicates select complete exchanges before pagination and response-time bounds', () => {
+ getDB().transaction(() => {
  for(let i=0;i<505;i++) {
   addExportEvent('events_logged',`req-${i}`,1000+i,'example.com',{subtype:'http_request_start',flow_id:`f-${i}`,method:'GET',url:'https://example.com/needle',host:'example.com'})
   addExportEvent('events_logged',`res-${i}`,9000+i,'example.com',{subtype:'http_response',flow_id:`f-${i}`,status:404,content_type:'text/plain'})
  }
+ })()
  addExportEvent('events_logged','unrelated',1200,'example.com',{subtype:'http_request_start',flow_id:'no',method:'POST',url:'https://example.com/needle'})
  const r=resolve({format:'har',maskOutOfScope:false,subset:{kind:'selection',projection:'http',filter:{since:1000,before:1600},http:{method:'GET',statusPrefix:'4',host:'example.com',text:'needle'}}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(1010)
@@ -75,7 +79,10 @@ it('chooses latest response for HTTP status and freezes late response updates', 
 
 it('exports every long-command companion beyond the preview limit, at the approved snapshot', () => {
  addExportEvent('events','long-end',100,'example.com',{subtype:'command_end',command:'long-canary',command_id:'long-command',late_output:true})
- for(let seq=1;seq<=2005;seq++) addExportEvent(seq%2?'events':'events_logged',`chunk-${seq}`,100+seq,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq,stdout:`line-${seq}\n`})
+ // Seed one immutable dataset; independent fsyncs are not the export contract.
+ getDB().transaction(() => {
+  for(let seq=1;seq<=2005;seq++) addExportEvent(seq%2?'events':'events_logged',`chunk-${seq}`,100+seq,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq,stdout:`line-${seq}\n`})
+ })()
  const r=resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'long-canary',excludeHousekeeping:true}})
  expect(r.ok).toBe(true)
  expect(r.plan.counts.included).toBe(2006)

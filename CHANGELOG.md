@@ -5,6 +5,9 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Export attachment selection restores keyboard focus before the updated preview
+  is painted, after its controls are enabled.
+
 - HTTP verification now changes its nonce and readiness together with the proxy
   endpoint and certificate policy. Initial loading can no longer expose a stale
   check that discards a reply or clears a just-started timeout.

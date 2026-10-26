@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import type { ExportDelivery } from '../../../core/export-delivery'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
@@ -312,18 +312,19 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     updateDraft({ ...draft, excludeAttachments: [...excluded] })
   }
 
-  useEffect(() => {
-    if (!resolvedPlan || !attachmentFocus.current) return
+  useLayoutEffect(() => {
+    if (!resolvedPlan || previewLoading || !attachmentFocus.current) return
     const id = attachmentFocus.current
     attachmentFocus.current = null
     // Re-resolving replaces the attachment list. Restore its checkbox only
-    // when focus fell to the body; never steal it from another draft control.
+    // when focus fell to the body; do it before paint, once controls are
+    // enabled, and never steal it from another draft control.
     if (document.activeElement === document.body) {
       const input = [...(panel.current?.querySelectorAll<HTMLInputElement>('input') ?? [])]
         .find(el => el.getAttribute('aria-label') === id)
       input?.focus()
     }
-  }, [resolvedPlan])
+  }, [resolvedPlan, previewLoading])
 
   const closeAll = (): void => {
     attachmentFocus.current = null

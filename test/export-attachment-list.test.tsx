@@ -3,6 +3,7 @@
 // #222: the evidence-bundle preview lists each file with the targets it is
 // tied to, and unticking one resolves the plan again without it — so what is
 // confirmed is exactly what was previewed.
+import { Profiler } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
@@ -36,7 +37,14 @@ describe('bundle preview: per-attachment selection (#222)', () => {
   it('lists each file with its targets, flags a cross-target cast, and re-resolves without an unticked one', async () => {
     const resolve = vi.fn(async (req: ExportRequest) => ({ ok: true as const, plan: plan(req.excludeAttachments ?? []) }))
     ;(window as unknown as { redlog: unknown }).redlog = { data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })), resolveExportPlan: resolve, executeExportPlan: vi.fn() } }
-    render(<I18nProvider><ExportMenu totalCount={3} /></I18nProvider>)
+    const unfocusedCommits: string[] = []
+    render(<Profiler id="attachment-focus" onRender={() => {
+      const row = screen.queryByTestId('export-attachment-casts/term-1.cast')
+      const checkbox = row?.querySelector<HTMLInputElement>('input')
+      if (row?.getAttribute('data-status') === 'excluded-by-operator' && checkbox && !checkbox.disabled && document.activeElement === document.body) {
+        unfocusedCommits.push('excluded attachment committed without keyboard focus')
+      }
+    }}><I18nProvider><ExportMenu totalCount={3} /></I18nProvider></Profiler>)
     fireEvent.click(screen.getByLabelText('Export'))
     fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } })
 
@@ -57,6 +65,7 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     expect(after.getAttribute('data-status')).toBe('excluded-by-operator')
     const excluded = within(after).getByLabelText('casts/term-1.cast') as HTMLInputElement
     expect(excluded.checked).toBe(false)
+    expect(unfocusedCommits).toEqual([])
     expect(document.activeElement).toBe(excluded)
 
     // Ticking it again puts it back.
