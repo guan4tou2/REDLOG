@@ -165,10 +165,11 @@ export function SearchPanel({ onOpenInTimeline, active = true }: SearchPanelProp
   const { t } = useI18n()
   const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
 
-  const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: {
+  const [operationExport,setOperationExport] = useState<ExportRequest['subset'] | null>(null)
+  const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: mode === 'activities' && operationExport ? operationExport : {
     kind: 'selection', projection: 'events', filter: { ...toEventFilter(sharedFilter), ...(effectiveTypeFilter ? { agentType: effectiveTypeFilter } : {}) }, query
-  } }), [sharedFilter, effectiveTypeFilter, query])
-  useContributeExport(active ? { label: t(mode === 'activities' ? 'activity.exportMatches' : 'export.current'), request: exportRequest,
+  } }), [sharedFilter, effectiveTypeFilter, query, mode, operationExport])
+  useContributeExport(active ? { label: t(mode === 'activities' && operationExport ? `activity.export.${operationExport.kind}` : mode === 'activities' ? 'activity.exportMatches' : 'export.current'), request: exportRequest,
     ...(query.trim() ? {} : { disabledReason: t('export.enterQuery') }) } : null)
 
   const filtered = results
@@ -350,7 +351,7 @@ export function SearchPanel({ onOpenInTimeline, active = true }: SearchPanelProp
         )}
         {mode === 'activities' && submitted.trim() && (() => {
           const parsed = parseQuery(submitted)
-          return parsed.ok ? <ActivityResults request={{ parsed: parsed.parsed, filter: buildSearchOpts() }} onOpen={onOpenInTimeline} /> : null
+          return parsed.ok ? <ActivityResults onExportSelection={setOperationExport} request={{ parsed: parsed.parsed, filter: buildSearchOpts() }} onOpen={onOpenInTimeline} /> : null
         })()}
         <SearchCoverage coverage={bodyCoverage} />
         {mode === 'events' && toolSession && (

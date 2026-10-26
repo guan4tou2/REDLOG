@@ -34,7 +34,7 @@
 - [ ] T018 [US4] 於 TranscriptView.tsx／TimelineEventDetails.tsx／ReplayCommand.tsx 實作三閱讀方式、Session 及側欄／全寬位置保持。
 - [ ] T019 [US6] 在 test/ 先驗 CT-13／14；實作 src/core/ reader 及 MarkerDetail.tsx 的來源版本／raw 與可讀座標映射。
 - [ ] T020 [US6] 在 test/export-attachments.test.ts／filtered-export.test.ts 先驗 CT-05–07：並行資料／改寫／跨目標 cast。
-- [ ] T021 [US6] 於 src/core/export-plan.ts、export-selection.ts、export-attachments.ts 實作 Activity／Session 固定邊界及保守附件預選。
+- [x] T021 [US6] 於 src/core/export-plan.ts、export-selection.ts、export-attachments.ts 實作 Activity／Session 固定邊界及保守附件預選。
 - [ ] T022 [US6] 於 ExportMenu.tsx 及 data-export IPC 呈現同一 plan、逐附件選擇、失敗／重新確認及找回成品。
 - [ ] T023 [US6] 完成 UX-07／10／12／13、CT-05–07／11–14；讀回來源與成品並記 verification.md 的 S3 gate。
 
@@ -67,3 +67,11 @@ T001→T002–T008→T009–T015→T016–T023→T024–T028→T029。共用 fix
 - T014 部分落地：既有 Search 增加「操作／原始事件」，共用 query／filter；群組先分頁、命中來源優先、展開讀取及原始事件返回位置。未切換主導覽或移除舊 Search／Transcript。
 - T016／T017 部分落地：ContentRef 綁 project／Event／field／hash，UTF-8 有界讀取、可取消的全文 Find、視窗複製及錯誤保留。尚無所有 Reader／cast 的版本契約對等、完整片段座標與跨模式恢復，因此維持未勾。
 - T021／T022 的 Activity／Session 固定選取尚未完成；目前匯出入口只宣告「命中事件」，仍走既有 query → ExportPlan，不把整個群組背景或完整 Session 當成已選取。
+
+## 2026-10-27 — macOS export / large-output slice
+
+- [x] T030 移除 body 檔案 16 MiB 略過政策，採有界 UTF-8 分段索引；全檔尾端、多段 AND、同 Event 不同 ref 不混合、巨大 token／標點邊界及來源改寫以實際搜尋驗證。
+- [x] T031 由展開的 Activity 選擇操作或來源 Session，沿同一 ExportPlan 完成 JSON／NDJSON／Bundle；配對 companions、project／capture／provider namespace、固定資料集合、附件明選、完整 prefix、新 part 排除與成品讀回。
+- [x] T032 修正 Activity E2E 的 viewport emulation：使用原生視窗 800×700／1600×1000，核對原生 content size、root／status bar 右下邊界及 overflow；保存截圖並實際查看。
+
+T021 的核心實作已完成。T012–T018、T020／T022／T023 仍為複合任務，不能因這輪功能完成便宣告所有 reader、anchor、一般附件／raw AI 搜尋、C5 全矩陣或跨平台人工驗收已齊。本輪交付到既有候選分支；合併、安裝包與發版狀態另行驗收。

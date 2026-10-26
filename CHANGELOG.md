@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Selected operations and source sessions can be exported through the shared
+  export dialog as JSON, NDJSON or evidence bundles. Selection stays within the
+  reviewed dataset and source namespace. Related recordings require explicit
+  selection, preserve approved prefixes, and never add newly written parts.
+  Bundle copying is restricted to approved attachments and checked afterwards.
+- Saved UTF-8 output and HTTP bodies larger than 16 MiB now use bounded chunks
+  in the global full-text index, including tail matches and terms in different
+  chunks of the same source. Source changes invalidate obsolete matches.
+
 - Export attachment selection restores keyboard focus before the updated preview
   is painted, after its controls are enabled.
 

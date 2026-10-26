@@ -87,3 +87,19 @@ it('does not warn about recordings when only a screenshot will be carried', asyn
   const list = await screen.findByTestId('export-attachments')
   expect(list.textContent).not.toContain('never trimmed to scope')
 })
+
+it('allows explicitly adding a recording excluded by the bounded-selection policy', async()=>{
+ const resolve=vi.fn(async(req:ExportRequest)=>{
+   const preview=plan([])
+   preview.attachments=[{...rows([])[0],status:req.includeAttachments?.includes('casts/term-1.cast') ? 'included' : 'excluded-by-policy'}]
+   return {ok:true as const,plan:preview}
+ })
+ ;(window as unknown as {redlog:unknown}).redlog={data:{recentExport:vi.fn(async()=>({ok:true,delivery:null})),resolveExportPlan:resolve,executeExportPlan:vi.fn()}}
+ render(<I18nProvider><ExportMenu /></I18nProvider>)
+ fireEvent.click(screen.getByLabelText('Export'))
+ const checkbox=await screen.findByLabelText('casts/term-1.cast') as HTMLInputElement
+ expect(checkbox.checked).toBe(false); expect(checkbox.disabled).toBe(false)
+ fireEvent.click(checkbox)
+ await waitFor(()=>expect(resolve).toHaveBeenLastCalledWith(expect.objectContaining({includeAttachments:['casts/term-1.cast'],excludeAttachments:[]})))
+ await waitFor(()=>expect((screen.getByLabelText('casts/term-1.cast') as HTMLInputElement).checked).toBe(true))
+})

@@ -80,7 +80,10 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     personalDomains: scopeSnap.personalDomains
   }
   const doNotExportIds = getDoNotExportIds()
-  const snapshot = takeExportSnapshot()
+  const operation = request.subset.kind === 'activity' || request.subset.kind === 'session' ? request.subset : null
+  const bounded = operation !== null
+  if (operation && operation.projectId !== project.id) throw new Error('project-changed')
+  const snapshot = operation ? operation.snapshot : takeExportSnapshot()
   const events = resolveExportSelection(request, snapshot, scope)
   const rOpts: RedactExportOpts = {
     scope: request.maskOutOfScope ? scope : undefined,
@@ -103,14 +106,18 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     if (redacted.data !== event.data) sanitized++
   }
   const exclude = new Set(request.excludeAttachments)
-  const attachmentCounts = request.format === 'bundle'
-    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
-    : { included: 0, missing: 0, unattributed: 0, excludedByOperator: 0 }
-  // One row per file for the preview, so the operator can see which cast or
-  // screenshot is about to leave and drop any of them (#222).
   const attachments = request.format === 'bundle'
-    ? listExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
+    ? listExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude,
+      bounded, include:new Set(request.includeAttachments), context: bounded ? queryEvents({limit:-1,snapshot}) : undefined })
     : []
+  const attachmentCounts = bounded ? {
+    included:attachments.filter(a=>a.status==='included').length,
+    missing:attachments.filter(a=>a.status==='missing').length,
+    unattributed:attachments.filter(a=>a.status==='included' && a.attribution==='unattributed').length,
+    excludedByOperator:attachments.filter(a=>a.status==='excluded-by-operator').length
+  } : request.format === 'bundle'
+    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
+    : { included:0, missing:0, unattributed:0, excludedByOperator:0 }
   const plan = createExportPlan({
     projectId: project.id,
     request,
@@ -237,6 +244,7 @@ export function registerDataExportIpc(
     const plan = claimed.plan
     try {
       const selectedIds = new Set(plan.selectedEventIds)
+      if ([...getDoNotExportIds()].some(id=>selectedIds.has(id))) return {ok:false as const,error:'policy-changed'}
       const available = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
       const planRedaction: RedactExportOpts = {
         scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
@@ -249,14 +257,21 @@ export function registerDataExportIpc(
         return { ok: false as const, error: 'policy-changed' }
       }
       if (plan.request.format === 'bundle') {
+        const bounded = plan.request.subset.kind === 'activity' || plan.request.subset.kind === 'session'
         const currentFiles = listExportAttachments(getProjectPath(project), approvedNow, {
           scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope,
-          exclude: new Set(plan.request.excludeAttachments)
-        })
+          exclude: new Set(plan.request.excludeAttachments), bounded, include:new Set(plan.request.includeAttachments),
+          context:bounded ? queryEvents({limit:-1,snapshot:plan.snapshot}) : undefined
+        }).filter(a=>!bounded || plan.attachments.some(approved=>approved.id===a.id))
         if (exportAttachmentDigest(getProjectPath(project), withFrozenSizes(currentFiles, plan.attachments)) !== plan.attachmentDigest) {
           return { ok: false as const, error: 'source-unavailable' }
         }
-        const attachments = countExportAttachments(getProjectPath(project), approvedNow, {
+        const attachments = bounded ? {
+          included:currentFiles.filter(a=>a.status==='included').length,
+          missing:currentFiles.filter(a=>a.status==='missing').length,
+          unattributed:currentFiles.filter(a=>a.status==='included' && a.attribution==='unattributed').length,
+          excludedByOperator:currentFiles.filter(a=>a.status==='excluded-by-operator').length
+        } : countExportAttachments(getProjectPath(project), approvedNow, {
           scope: plan.scopeSnapshot,
           maskOutOfScope: plan.request.maskOutOfScope,
           exclude: new Set(plan.request.excludeAttachments)
@@ -293,6 +308,7 @@ export function registerDataExportIpc(
           attachments: plan.attachments,
           ...(destination.custom ? { outRoot: destination.dir } : {})
         })
+        if (exportAttachmentDigest(result.outDir,plan.attachments) !== plan.attachmentDigest) throw new Error('source-unavailable')
         artifactPath = result.outDir
       } else if (plan.request.format === 'har') {
         const subset = plan.request.subset

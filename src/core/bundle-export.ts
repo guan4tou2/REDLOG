@@ -407,7 +407,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
-      if (excluded.has(`screenshots/${name}`)) continue
+      if (excluded.has(`screenshots/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`screenshots/${name}` && a.status==='included'))) continue
       {
         const target = shotFilenameToTarget.get(name)
         if (isPersonalDomain(target ?? null, opts.scope)) {
@@ -446,7 +446,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
     for (const name of fs.readdirSync(srcCasts)) {
-      if (excluded.has(`casts/${name}`)) continue
+      if (excluded.has(`casts/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`casts/${name}` && a.status==='included'))) continue
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
@@ -472,7 +472,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {
-        if (excluded.has(`http-bodies/${name}`)) continue
+        if (excluded.has(`http-bodies/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`http-bodies/${name}` && a.status==='included'))) continue
         if (scope) {
           const hash = name.replace(/\.body$/, '')
           if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
@@ -494,7 +494,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // byte-for-byte: the sha256 in the event that added each one must match.
   let artifactsIncluded = 0
   for (const id of [...survivingArtifacts].sort()) {
-    if (excluded.has(id)) continue
+    if (excluded.has(id) || (opts.attachments && !opts.attachments.some(a=>a.id===id && a.status==='included'))) continue
     const s = path.join(projectDir, id)
     if (!fs.existsSync(s) || !fs.statSync(s).isFile()) continue
     const d = path.join(bundleDir, id)

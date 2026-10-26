@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
 
 test('Search opens indexed Activity output and returns from original evidence without losing the query', async ({}, testInfo) => {
   test.setTimeout(120_000)
@@ -26,7 +26,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
         data: {
           subtype: 'http_response', flow_id: 'body-search-flow', status: 200,
           url: 'https://body-search.test/result',
-          response_body: { data: `${'x'.repeat(128 * 1024)} ${marker}`, encoding: 'text', size: 5024, sha256: 'producer-value' }
+          response_body: { data: `${'x'.repeat(17 * 1024 * 1024)} ${marker}`, encoding: 'text', size: 5024, sha256: 'producer-value' }
         }
       })
     })
@@ -56,10 +56,22 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('button', { name: /Back to Search/ }).click()
     await expect(page.getByTestId('search-input')).toHaveValue(marker)
     await expect(page.locator('pre')).toContainText(marker)
-    await page.setViewportSize({ width: 800, height: 700 })
-    await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-    await page.screenshot({path:testInfo.outputPath('activity-narrow.png')})
+    // Resize the native window, not Chromium's emulated viewport. Emulation
+    // leaves the renderer occupying only part of a larger Electron surface.
+    for(const [name,width,height] of [['narrow',800,700],['wide',1600,1000]] as const) {
+      await resizeMainWindow(app,width,height)
+      const native=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>!w.webContents.getURL().includes('overlay'))!.getContentSize())
+      await expect.poll(()=>page.evaluate(()=>[innerWidth,innerHeight])).toEqual(native)
+      await expect(page.getByRole('searchbox',{name:'Find in content'})).toBeVisible()
+      await expect.poll(()=>page.evaluate(()=>{
+        const root=document.getElementById('root')!.getBoundingClientRect()
+        const status=document.querySelector('[data-testid="status-bar"]')!.getBoundingClientRect()
+        return Math.abs(root.right-innerWidth)<=2 && Math.abs(root.bottom-innerHeight)<=2
+          && Math.abs(status.right-innerWidth)<=2 && Math.abs(status.bottom-innerHeight)<=2
+          && document.documentElement.scrollWidth<=document.documentElement.clientWidth
+      })).toBe(true)
+      await page.screenshot({path:testInfo.outputPath(`activity-${name}.png`)})
+    }
     const aiMarker = 'AI-SAVED-RESULT-482'
     for (const data of [
       {subtype:'tool_call',agent:'claude-code',session_id:'activity-ai',tool_use_id:'tool-ai',tool_name:'Bash',tool_input:{command:'printf sample'}},
@@ -101,6 +113,28 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event').locator('option:checked')).toContainText('Command result')
     await expect(page.locator('pre')).toHaveText(shellMarker)
+    // The same running app proves both explicit scopes, including members
+    // that did not match the search text. No separate launch per assertion.
+    for (const kind of ['activity','session'] as const) {
+      await page.getByLabel('Selection',{exact:true}).selectOption(kind)
+      await page.getByRole('button',{name:'Export',exact:true}).click()
+      await expect(page.getByTestId('export-preview-subset')).toContainText(kind==='activity' ? 'Selected operation' : 'Entire source session')
+      await page.getByLabel('Export format',{exact:true}).selectOption('other')
+      await page.getByLabel('Other formats',{exact:true}).selectOption('json')
+      await page.getByTestId('export-confirm').click()
+      await expect(page.getByTestId('export-completed')).toBeVisible()
+      const delivery=await page.evaluate(async()=>{
+        const result=await window.redlog.data.recentExport()
+        if(!result.ok || !result.delivery) throw new Error('missing delivery')
+        return result.delivery
+      })
+      const evidence=JSON.parse(readFileSync(delivery.artifactPath,'utf8'))
+      expect(evidence.events).toHaveLength(2)
+      expect(evidence.events.some((e:any)=>e.data.stdout===shellMarker)).toBe(true)
+      expect(evidence.events.some((e:any)=>e.data.subtype==='command_start')).toBe(true)
+      await page.getByRole('button',{name:'Close',exact:true}).last().click()
+    }
+
 
 
   } finally {

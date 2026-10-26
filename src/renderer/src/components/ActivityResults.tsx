@@ -1,3 +1,5 @@
+import type { ExportRequest } from '../../../core/export-plan'
+import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
 import type { ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
 import type { BodySearchCoverage } from '../../../core/http-body-index'
@@ -71,7 +73,7 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen }: { request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+export function ActivityResults({ request, onOpen, onExportSelection }: { onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -81,11 +83,12 @@ export function ActivityResults({ request, onOpen }: { request: Omit<ActivityReq
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} />
 }
-function ActivityList({ request, onOpen }: { request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection }: { onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
+  const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -103,6 +106,13 @@ function ActivityList({ request, onOpen }: { request: ActivityRequest; onOpen?: 
   }
   const refresh = (): void => { setError(null); setExpanded(null); read.retry() }
   const page = read.state.value
+  const selectedActivity = page?.items.find(item=>item.id===expanded)
+  const anchorId = selectedActivity?.anchor.id
+  const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
+  useEffect(()=>{
+    onExportSelection?.(anchorId && page ? {kind:exportKind==='session' && hasSession ? 'session' : 'activity',projectId:request.projectId,anchorEventId:anchorId,snapshot:page.snapshot} : null)
+    return ()=>onExportSelection?.(null)
+  },[anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
@@ -122,6 +132,7 @@ function ActivityList({ request, onOpen }: { request: ActivityRequest; onOpen?: 
             </div>
             <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
           </button>
+          {expanded === item.id && <div className="flex justify-end gap-2 py-2"><select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select></div>}
           {expanded === item.id && <ActivitySources key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
         </div>)}
       </div>

@@ -177,3 +177,31 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 - 改為 `testInfo.outputPath()` 儲存 desktop／narrow 圖片，留在 Playwright 每次測試的成品目錄，隨既有 CI `test-results/` artifact 上傳。保留原來所有操作、結果及版面斷言，不跳過 Linux 或取消截圖。
 
 - `ee9f41ff` 五道 gates 通過，unit **4330 passed／28 skipped**；build 通過。修正後 Activity workflow **1 passed、0 skipped／flaky**（5.84 秒），desktop／narrow 圖片實際產生於 `test-results/http-body-search-*/`。Logs：`/private/tmp/redlog-444-portable-e2e-unit.log`、`/private/tmp/redlog-444-portable-e2e-build.log`；report：`/private/tmp/redlog-444-portable-e2e-local.json`。Electron 後已恢復 Node SQLite ABI；完整 Linux CI 結果仍須讀新 head，不能沿用本機或舊 head 的綠燈。
+
+## 2026-10-27 — macOS Activity / Session export and large saved-output search
+
+基底 `05949443`，本次在隔離工作樹完成並交付至候選分支；未發版、不更新公開安裝包。上述 2026-10-26 checkpoint 的「16 MiB 整份不入全域索引」及「只匯出命中 Event」限制，已由這個 slice 取代。整份 Spec 064 不升 Verified。
+
+### Behaviour
+
+- Search → Operations 展開後，可在同一匯出入口選操作或來源 Session；後端固定完整成員，不只包含搜尋命中列。未知 Session 不可選，Claude／Codex 同名 Session 不混合，project 不符拒絕。
+- 保留 query snapshot 的來源集合；預覽後的新 Event／cast part 不加入。cast 預設不選，預覽依完整來源顯示跨目標歸因。無關截圖／body 不交付。明選的錄影保留核准 prefix；出包後 digest 再核對；新增 do-not-export 拒絕舊 plan。
+- 17 MiB HTTP body 的檔尾可全域命中、開啟完整 Reader、Find／Previous／Next／原始事件返回。另以 >16 MiB 中英文輸出驗多段 AND、不同 ref 不拼湊、長 token／URL 邊界及來源改寫失效。
+
+### Checks and actual app flow
+
+- Ordered typecheck → verify:specs → verify:architecture → verify:i18n → unit：**4338 passed / 28 skipped**。之後追加成品-copy 故障注入與 AI provider 隔離，最新針對性回歸 **66 passed**（匯出／Bundle／UI）及 **19 passed**（搜尋／固定選取）；不把先前全套數量改寫為追加後的全套實跑。
+- Production build 通過；本機原生 Electron 匯出流程 **8 passed**（JSON preview/execute、recent delivery、窄窗、附件鍵盤 focus、失敗重試／缺檔／切專案）。
+- 更新的 Search → large body Reader → Shell／AI → Activity／Session JSON export 流程 **1 passed / 6.6s**。實際讀回成品，兩種選取皆含未命中搜尋文字的 command_start 與 command_end／stdout；不是只核對成功通知。
+- UI screenshots 已查看：`test-results/http-body-search-Search-op-c05e0-ce-without-losing-the-query/activity-narrow.png` 與 `activity-wide.png`（不提交產生圖片）。
+- 這是 macOS source-built Electron 的自動操作與畫面檢視，不是新 DMG 的乾淨安裝或 Windows／WSL／Kali 真機人工驗收。
+
+### Layout defect in acceptance method
+
+使用者指出測試視窗大片空白。診斷實測：Electron native content `[1400,900]`，舊 `page.setViewportSize` 將 renderer 固定為 `[800,700]`。只測 `scrollWidth <= clientWidth` 會漏掉縮小視區沒有填滿實體視窗的問題。改用既有 `resizeMainWindow`，以真實 800×700 與 1600×1000 視窗核對 native content、renderer viewport、root 及 status-bar 邊界；移除診斷用模擬與 CDP 程式碼。未為測試視區問題任意修改產品 CSS，也不宣稱所有頁面版面已全面人工驗收。
+
+剩餘：AI raw JSONL／一般附件／Cast generation 搜尋覆蓋、完整 reader／fragment 契約、導覽整併及跨平台人工驗收；不屬於本次兩項功能已完成的範圍。
+
+### Push gate — 2026-10-27
+
+重新 fetch 遠端後，最終修改依序通過 typecheck、verify:specs、verify:architecture、verify:i18n、完整 unit：**4340 passed / 28 skipped**（426 passed / 5 skipped files，126.32s）。沒有把先前 05949443 的遠端 CI 綠燈套到本次提交；新提交的跨平台 CI 以 PR #444 checks 為準。

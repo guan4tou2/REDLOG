@@ -26,6 +26,7 @@ export type ExportAttachmentStatus =
   | 'included'
   /** the operator left it out */
   | 'excluded-by-operator'
+  | 'excluded-by-policy'
   /** scope masking drops it (a screenshot of an out-of-scope target) */
   | 'excluded-out-of-scope'
   /** an event refers to it and the file is gone */
@@ -139,7 +140,7 @@ function sizeOf(p: string): number | null {
 export function listExportAttachments(
   projectDir: string,
   events: readonly RedLogEvent[],
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string> } = {}
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; bounded?: boolean; include?: ReadonlySet<string>; context?: readonly RedLogEvent[] } = {}
 ): ExportAttachment[] {
   const exclude = options.exclude ?? new Set<string>()
   const out: ExportAttachment[] = []
@@ -156,7 +157,7 @@ export function listExportAttachments(
   }
   const shotsDir = path.join(projectDir, 'screenshots')
   const shotFiles = new Set(fs.existsSync(shotsDir) ? fs.readdirSync(shotsDir) : [])
-  for (const name of new Set([...shotFiles, ...shotTargets.keys()])) {
+  for (const name of new Set([...(options.bounded ? [] : shotFiles), ...shotTargets.keys()])) {
     const id = `screenshots/${name}`
     const targets = shotTargets.get(name) ?? new Set<string>()
     const bytes = sizeOf(path.join(shotsDir, name))
@@ -176,15 +177,13 @@ export function listExportAttachments(
   const castSource = new Map<string, string>()
   const castOfTerminal = new Map<string, string>()
   const referencedCasts = new Set<string>()
-  for (const e of events) {
+  for (const e of options.context ?? events) {
     const castPath = typeof e.data.castPath === 'string' ? e.data.castPath : null
     const term = typeof e.data.terminalId === 'string' ? e.data.terminalId : null
-    if (castPath) referencedCasts.add(path.basename(castPath))
     if (Array.isArray(e.data.castSegments)) {
       for (const part of e.data.castSegments as Array<{ path?: unknown }>) {
         if (typeof part.path === 'string') {
           const name = path.basename(part.path)
-          referencedCasts.add(name)
           if (term) castSource.set(name, term)
         }
       }
@@ -194,21 +193,27 @@ export function listExportAttachments(
       castSource.set(path.basename(castPath), term)
     }
   }
-  for (const e of events) {
+  for (const e of options.context ?? events) {
     const io = e.data.io as { ref?: unknown } | undefined
     const term = typeof e.data.terminalId === 'string' ? e.data.terminalId : null
     const name = typeof io?.ref === 'string' ? path.basename(io.ref) : term ? castOfTerminal.get(term) : undefined
     if (!name) continue
-    referencedCasts.add(name)
     const set = castTargets.get(name) ?? new Set<string>()
     if (e.targetId) set.add(e.targetId)
     castTargets.set(name, set)
     if (term && !castSource.has(name)) castSource.set(name, term)
   }
+  for (const event of events) {
+    const io=event.data.io as {ref?:unknown}|undefined
+    for (const value of [io?.ref,event.data.castPath]) if(typeof value==='string') referencedCasts.add(path.basename(value))
+    const terminal=typeof event.data.terminalId==='string' ? event.data.terminalId : null
+    if(terminal && castOfTerminal.has(terminal)) referencedCasts.add(castOfTerminal.get(terminal)!)
+    if(Array.isArray(event.data.castSegments)) for(const segment of event.data.castSegments as {path?:unknown}[]) if(typeof segment.path==='string') referencedCasts.add(path.basename(segment.path))
+  }
   const castsDir = path.join(projectDir, 'casts')
   {
     const castFiles = fs.existsSync(castsDir) ? fs.readdirSync(castsDir) : []
-    for (const name of new Set([...castFiles, ...referencedCasts])) {
+    for (const name of new Set([...(options.bounded ? castFiles.filter(name=>referencedCasts.has(name) || referencedCasts.has(name.replace(/\.part\d{6,}(?=\.cast$)/,''))) : castFiles), ...referencedCasts])) {
       const size = sizeOf(path.join(castsDir, name))
       if (size === null && !referencedCasts.has(name)) continue
       const bytes = size === null ? null : completeLinePrefix(path.join(castsDir, name), size)
@@ -220,7 +225,7 @@ export function listExportAttachments(
         id, kind: 'cast', bytes, ...(bytes === null ? {} : { frozenBytes: bytes }), targets: [...targets].sort(), attribution: attribution(targets),
         // Never excluded by scope: RedLog does not trim a recording, so an
         // out-of-scope command inside it stays unless the operator drops it.
-        status: bytes === null ? 'missing' : status(id, 'included'),
+        status: bytes === null ? 'missing' : status(id, options.bounded && !options.include?.has(id) ? 'excluded-by-policy' : 'included'),
         ...(source ? { source } : {})
       })
     }

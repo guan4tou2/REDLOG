@@ -7,7 +7,8 @@ import type { ExportSnapshot } from './export-plan'
 import { toFtsMatch } from './query/fts-match'
 import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, ContentAccessError } from './body-source'
-const MAX_DOCUMENT_BYTES = 16 * 1024 * 1024
+const INDEX_CHUNK_BYTES = 1024 * 1024
+const INDEX_OVERLAP_CHARS = 65536
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -16,13 +17,13 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   index = new Database(path.join(projectDir, 'http-body-index.db'))
   index.pragma('journal_mode = WAL')
   // Rebuild only this disposable index, never a source Event or sidecar.
-  if (index.pragma('user_version', { simple: true }) !== 3)
+  if (index.pragma('user_version', { simple: true }) !== 4)
     index.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state')
   index.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,event_id UNINDEXED,sha256 UNINDEXED,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
   CREATE TABLE IF NOT EXISTS body_event_refs (
    event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
    status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,PRIMARY KEY(event_id,sha256)
-  ); PRAGMA user_version=3;
+  ); PRAGMA user_version=4;
   CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));`)
   indexDir = projectDir
   return index
@@ -48,26 +49,48 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'>, proje
         status: string
       } | undefined
       try {
-        if (ref.size > MAX_DOCUMENT_BYTES) {
-          status = 'limited'
-          reason = 'size-limit'
-        }
-        else
-          withVerifiedBody(ref, source => {
-            if (source.format === 'binary') {
-              status = 'binary'
-              reason = 'binary'
-              return
+        withVerifiedBody(ref, source => {
+          if (source.format === 'binary') {
+            status = 'binary'
+            reason = 'binary'
+            return
+          }
+          bytes = source.bytes
+          if (prior?.status === 'indexed') return
+          db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
+          const insert = db.prepare('INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)')
+          const decoder = new TextDecoder('utf-8', { fatal: true })
+          let text = '', skippingToken = false
+          const separator = /[^\p{L}\p{N}\p{Co}\p{M}]/u
+          const write = (part: string): void => { if(part) insert.run(part,event.id,ref.sha256) }
+          const consume = (part: string, final = false): void => {
+            if(skippingToken) {
+              const at=part.search(separator)
+              if(at<0) return
+              part=part.slice(at); skippingToken=false
             }
-            bytes = source.bytes
-            if (prior?.status === 'indexed')
-              return
-            const parts: Buffer[] = []
-            for (let off = 0; off < source.bytes; off += 65536)
-              parts.push(source.read(off, Math.min(65536, source.bytes - off)))
-            db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
-            db.prepare('INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)').run(Buffer.concat(parts).toString('utf8'), event.id, ref.sha256)
-          }, projectDir)
+            text+=part
+            if(final) { write(text); text=''; return }
+            if(text.length<INDEX_CHUNK_BYTES) return
+            let end=text.length-1
+            while(end>=0 && !separator.test(text[end])) end--
+            if(end<0) {
+              // The FTS tokenizer itself caps a single token at 32768 bytes. Preserve
+              // that prefix once; never turn a huge token's suffix into a hit.
+              write(Buffer.from(text).subarray(0,32768).toString('utf8'))
+              text=''; skippingToken=true; return
+            }
+            const complete=text.slice(0,end+1)
+            write(complete)
+            let start=complete.length>INDEX_OVERLAP_CHARS ? complete.length-INDEX_OVERLAP_CHARS : complete.length
+            // Both ends of every overlapping document are tokenizer boundaries.
+            while(start<complete.length && start>0 && !separator.test(complete[start-1])) start++
+            text=complete.slice(start)+text.slice(end+1)
+          }
+          for (let off = 0; off < source.bytes; off += INDEX_CHUNK_BYTES)
+            consume(decoder.decode(source.read(off, Math.min(INDEX_CHUNK_BYTES, source.bytes - off)), {stream:true}))
+          consume(decoder.decode(),true)
+        }, projectDir)
       }
       catch (error) {
         status = error instanceof ContentAccessError && error.status === 'missing' ? 'missing' : 'failed'
@@ -118,9 +141,18 @@ export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir
   const db = getIndex(projectDir)
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches.
-  return (db.prepare('SELECT DISTINCT event_id FROM body_fts WHERE body_fts MATCH ?').all(match) as {
-    event_id: string
-  }[]).map(r => r.event_id)
+  // AND remains scoped to one saved body even when its terms occur in
+  // different chunks. A term must never be assembled across unrelated refs.
+  const terms = query.trim().split(/\s+/).filter(Boolean)
+  let matches: Map<string, string> | undefined
+  for (const [i, term] of terms.entries()) {
+    const quoted = `"${term.replace(/"/g, '""')}"${i === terms.length - 1 ? '*' : ''}`
+    const rows = db.prepare('SELECT DISTINCT event_id,sha256 FROM body_fts WHERE body_fts MATCH ?').all(quoted) as {event_id:string;sha256:string}[]
+    const current = new Map(rows.map(row => [JSON.stringify([row.event_id,row.sha256]),row.event_id]))
+    matches = matches ? new Map([...matches].filter(([key])=>current.has(key))) : current
+    if (!matches.size) break
+  }
+  return [...new Set(matches?.values() ?? [])]
 }
 export interface BodySearchCoverage {
   revision: string
@@ -137,7 +169,7 @@ export interface BodySearchCoverage {
 export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string): BodySearchCoverage {
   const hash = createHash('sha256'), coverage: BodySearchCoverage = { revision: '', indexed: 0, missing: 0, binary: 0, limited: 0, pending: 0, failed: 0, indexedBytes: 0, sourceBytes: 0 }
   let lookup: Database.Statement | undefined
-  hash.update('body-index-v3:decoded-utf8')
+  hash.update('body-index-v4:chunked-utf8')
   for (const tier of rows(snapshot, projectId))
     for (const row of tier)
       for (const ref of refsOf(JSON.parse(row.data) as Record<string, unknown>)) {

@@ -69,11 +69,11 @@ describe('saved content windows', () => {
     expect(out).not.toContain('�')
     expect(readEventContent({ ref: descriptor('utf8', 'stderr').ref!, cursor: { version: d.ref!.version, offset: 7 } })).toMatchObject({ ok: false, status: 'changed' })
   })
-  it('finds text at the tail beyond the global index budget without treating a scan budget as zero results', () => {
-    const text = 'x'.repeat(17 * 1024 * 1024 - 3) + 'needle尾端', ref = body(Buffer.from(text))
+  it('finds indexed text at the tail beyond one reader scan budget without treating a scan budget as zero results', () => {
+    const text = 'x'.repeat(17 * 1024 * 1024 - 4) + ' needle尾端', ref = body(Buffer.from(text))
     event('large', { stdout_ref: ref })
-    expect(searchHttpBodyEventIds('needle尾端')).toEqual([])
-    expect(bodySearchCoverage()).toMatchObject({limited:1,indexed:0})
+    expect(searchHttpBodyEventIds('needle尾端')).toEqual(['large'])
+    expect(bodySearchCoverage()).toMatchObject({limited:0,indexed:1})
     const d = descriptor('large', 'stdout')
     let cursor
     let pages = 0

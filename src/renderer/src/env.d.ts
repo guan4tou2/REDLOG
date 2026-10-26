@@ -28,25 +28,8 @@ interface ExportSnapshot {
 
 type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
 type ExportSubset = import('../../core/export-plan').ExportSubset
-interface ExportRequest {
-  format: ExportFormat
-  subset?: ExportSubset
-  maskOutOfScope?: boolean
-  scopeOnly?: boolean
-  scrubPii?: boolean
-  /** Attachments left out, by bundle-relative path (#222). */
-  excludeAttachments?: string[]
-}
-/** One file an evidence bundle would carry (core/export-attachments.ts). */
-interface ExportAttachmentRow {
-  id: string
-  kind: 'screenshot' | 'cast' | 'httpBody' | 'artifact'
-  bytes: number | null
-  targets: string[]
-  attribution: 'target' | 'cross-target' | 'unattributed'
-  status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
-  source?: string
-}
+type ExportRequest = import('../../core/export-plan').ExportRequest
+type ExportAttachmentRow = import('../../core/export-attachments').ExportAttachment
 /** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
 type ArtifactAddOutcome =
   | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
@@ -57,7 +40,7 @@ interface ResolvedExportPlan {
   fingerprint: string
   expiresAt: number
   snapshot: ExportSnapshot
-  request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  request: import('../../core/export-plan').NormalizedExportRequest
   /** The boundary this plan was resolved against, so the menu can name it
    *  rather than guess at it. */
   scopeSnapshot: { targets: string[]; excludeTargets: string[]; personalDomains: string[] }

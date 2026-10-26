@@ -69,3 +69,9 @@
 同一 FR 跨階段時，先完成基礎行為，再擴新選取／導覽，不把既有正確性延後到視覺批次。實作任務須引用 FR、C／UX、驗收 ID 及候選版本；需求變更同步改此表與對應案例，不能只勾 task。驗收結果記在各 bounded feature 的 verification，不在本表把預期當成 PASS。
 
 本表完整涵蓋 FR-001–053；FR-046–053 是細化原需求的跨層保證，不重複建立八套 UI 或八個新系統。CT 案例可合併成共享 fixture／少量 table-driven integration checks，僅真實來源、原生權限及人工任務才需要獨立走測。
+
+## 2026-10-27 slice
+
+- FR-047 → http-body-index.ts／http-body-search.test.ts／evidence-content.test.ts：超過 16 MiB 的 body 分段全文覆蓋，來源版本及同 ref 交集；raw JSONL／一般附件／Cast 的其他限制保留。
+- FR-037–039／FR-048 → export-plan.ts／export-selection.ts／export-attachments.ts／data-export.ts／ExportMenu.tsx／ActivityResults.tsx：固定 Activity／Session 成員、保守錄影、逐項 opt-in、成品內容核對；filtered-export.test.ts 及 macOS Electron 成品讀回。
+- UX-16／17 → http-body-search.spec.ts：原生 resize + root／status-bar 填滿驗收，避免 viewport emulation 的假通過。完整平台／使用者矩陣未完成。

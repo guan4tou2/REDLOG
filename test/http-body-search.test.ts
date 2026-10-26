@@ -68,6 +68,30 @@ describeDB('HTTP body search', () => {
     return result.event!.id
   }
 
+  it('indexes large saved output through its tail, multi-chunk terms and UTF-8 boundaries', () => {
+    const text = 'HEADONLY ' + 'normal output 漢字\n'.repeat(950000) + ' TAILONLY';
+    expect(Buffer.byteLength(text)).toBeGreaterThan(16 * 1024 * 1024)
+    const ref = storeBody({data:text,encoding:'text',size:Buffer.byteLength(text),sha256:''})!
+    const event = insertEvent('shell',{subtype:'command_end',stdout_ref:ref}, {engagementId:'eng',operatorId:'op'})!
+    expect(searchPage({query:'TAILONLY',limit:10}).items.map(e=>e.id)).toEqual([event.id])
+    const head=storeBody({data:'HEADONLY',encoding:'text',size:8,sha256:''})!
+    const tail=storeBody({data:'TAILONLY',encoding:'text',size:8,sha256:''})!
+    insertEvent('shell',{stdout_ref:head,stderr_ref:tail},{engagementId:'eng',operatorId:'op'})
+    expect(searchPage({query:'HEADONLY TAILONLY',limit:10}).items.map(e=>e.id)).toEqual([event.id])
+    expect(searchPage({query:'漢字',limit:10}).items.map(e=>e.id)).toEqual([event.id])
+    fs.writeFileSync(path.join(dir,'http-bodies',ref.file), 'changed')
+    expect(searchPage({query:'TAILONLY',limit:10}).items.map(e=>e.id)).not.toContain(event.id)
+  }, 30000)
+
+  it('keeps punctuation phrases at chunk boundaries without indexing token suffixes', () => {
+    const prefix='x'.repeat(1024*1024-65536)
+    const text=prefix+'suffixcanary'+'x'.repeat(200000)+' /admin/login?boundary=needle';
+    const ref=storeBody({data:text,encoding:'text',size:text.length,sha256:''})!
+    const event=insertEvent('shell',{stdout_ref:ref},{engagementId:'eng',operatorId:'op'})!
+    expect(searchPage({query:'suffixcanary',limit:10}).items).toHaveLength(0)
+    expect(searchPage({query:'/admin/login?boundary=needle',limit:10}).items.map(e=>e.id)).toEqual([event.id])
+  })
+
   it('finds a marker that exists only in an externalized response body', () => {
     const id = response('f1', 'BODYMARKER-9182')
     const page = searchPage({ query: 'BODYMARKER-9182', limit: 10 })

@@ -40,3 +40,11 @@
 ## 4. 成品及驗證
 
 Manifest／結果保留 plan、資料邊界、已交付事件／必要上下文、實際附件／prefix、排除與已知缺口。部分事件鏈的驗證與完整原鏈驗證須區分；可讀摘要不能當作全量原件。證據包、HAR 及既有進階格式均遵守自身能力邊界，同一承諾不能只對其中一條執行路徑成立。
+
+## 2026-10-27 implemented slice
+
+`activity`／`session` subset 由展開列的 anchor Event、project 及 ActivitySnapshot 決定。兩 tier 的 row boundary／count／tail 在解析前核對；後端以 canonical activityKey 或 sourceSessionKey 選全部成員，而非 renderer 當頁 IDs。Session namespace 包含 project、capture binding、來源種類、provider／shell 及 producer Session；未知 Session 不提供整組匯出，不跨重啟 binding 推測合併。
+
+JSON、NDJSON、Bundle 沿既有 plan，HAR／Timeline 格式不接受此新選取方式。預覽使用該查詢快照；晚到的配對結果、chunk 不自動加入。無關截圖／body 不隨包帶出；相關 cast（含現存實體分段）預設不選，逐檔 opt-in。cast 的 target 歸因以快照中完整來源核對，不只使用選中的單目標事件；不宣稱裁切乾淨。執行不加入新附件／分段，只複製核准 prefix，並再核對成品附件 digest。預覽後新增禁止匯出使 plan 失效。
+
+這是 macOS 候選實作與合成資料流程驗收；不代表全部 C5／平台矩陣皆 Verified。
