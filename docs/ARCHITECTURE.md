@@ -134,8 +134,16 @@ matching Events from source context. Its SQLite TEMP index belongs to the
 project's read connection, stores metadata/digests only, updates incrementally,
 and is rebuilt after retention or failed reads. Closing the project drops it;
 it is neither a new evidence table nor an export attachment. IPC checks the
-active engagement and applies its scope before querying. The existing reading
-UI has not yet switched to this API.
+active engagement and applies its scope before querying. Search offers an
+Operations view backed by this API alongside Raw events and Cast search.
+Main navigation remains until reading and search coverage reach parity.
+
+`content-contract.ts` defines the browser-safe saved-content references and
+bounded read/Find replies. `evidence-content.ts` binds them to the active
+project, owner Event, field and saved-content version. `body-source.ts` verifies
+fixed sidecar references before reading; missing, changed and inaccessible
+sources remain distinct from empty output. `EventContentReader` renders those
+windows without loading an entire large file into the renderer.
 
 ## 4. Capture pipeline
 

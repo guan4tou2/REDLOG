@@ -157,5 +157,5 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 ### Push preparation
 
 - 新增故障回歸：來源分頁出現匹配的 Result 時，不得自動切走正在閱讀的 Call。先重現來源從 start 跳到 end，再固定首次選擇，保留明確切換控制。
-- 推送前會在本批提交上重跑五道 gates，log：`/private/tmp/redlog-064-push-gates.log`；前述 4328／70 為各自當時的實際結果，不預先改寫成新的測試數。
+- 已在來源提交 `b14d18ee` 依序完成 typecheck → specs → architecture → i18n → unit，全部通過；unit **4330 passed、28 skipped（426 passed／5 skipped files）**，140.12 秒，log：`/private/tmp/redlog-064-push-unit.log`。此提交的 production build 亦通過，log：`/private/tmp/redlog-064-push-build.log`。前述 4328／70 保留為當時的實際結果。
 - 本輪提交包含 Activity 搜尋、內容 Reader、body index、相關 IPC／UI／測試與 Spec 紀錄；不把其餘未勾的 Session 匯出／跨平台驗收等項目列為完成。
