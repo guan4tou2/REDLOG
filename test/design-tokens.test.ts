@@ -89,7 +89,11 @@ describe('token palette', () => {
     const t = redlogTokens()
     const amber = /--color-amber-400:\s*(#[0-9a-fA-F]{6})/.exec(INDEX_CSS)?.[1]
     expect(amber, 'warning fill is defined').toBeTruthy()
-    for (const [fill, on] of [[t.accent, t['on-accent']], [t.danger, t['on-danger']], [amber!, t['on-warn']]]) {
+    const button = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/Button.tsx'), 'utf8')
+    const hover = /primary: '[^']*hover:bg-redlog-([a-z-]+)/.exec(button)?.[1]
+    expect(hover, 'primary hover fill is defined').toBeTruthy()
+    expect(t[hover!], 'primary hover uses a palette token').toBeTruthy()
+    for (const [fill, on] of [[t.accent, t['on-accent']], [t[hover!], t['on-accent']], [t.danger, t['on-danger']], [t['danger-hover'], t['on-danger']], [amber!, t['on-warn']]]) {
       expect(contrast(on, fill), `${on} on ${fill}`).toBeGreaterThanOrEqual(4.5)
     }
   })

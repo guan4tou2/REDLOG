@@ -62,3 +62,5 @@ Investigation        Handoff
 6. **Observed Artifact Correlation**: cwd 與時間重疊只能形成明確標示為推測的 command candidate，不得寫成 `_causes`。多個候選必須全部保留；只有 producer 提供直接來源證據時才能建立 cause。
 7. **Query Intersection**: Event Query 的 structured conditions 必須對 stored fields 求值，free text 必須走全文索引；兩者同時存在時全部條件都必須成立。
 8. **Time Provenance**: Investigation surface 不得把 Source Time 與 Receipt Time 合併成一個未標示的時間。
+
+9. **Source-Scoped Pairing**: Shell 起訖與 AI Tool 配對須具備 project、真實來源 Session 及穩定 operation ID，不能用 PID＋文字或未限定的 tool ID 代替。Capture Session 可保守限制配對命名空間，但不能當成來源 Session；缺欄位或衝突保持原始 Events，不選最後一筆覆蓋。現有兩個閱讀面及跨頁補齊遵守同一身分條件；配對不等於獨立執行或交付選取。

@@ -1,3 +1,5 @@
+import { operationPairKey } from '../../../core/operation-pair-key'
+
 // Pure event-shaping helpers pulled out of Timeline.tsx (D1 decomposition):
 // collapsing agent turns, collapsing command_start/end pairs, and the literal
 // "fuzzy" score the palette + filter share. No React, no DOM — so they can be
@@ -30,20 +32,23 @@ export function filterAgentTurns(events: RedLogEvent[], collapse: boolean): RedL
   return events.filter((e) => !isCollapsibleAgentTurn(e))
 }
 
-/** Drop a `command_start` when a matching `command_end` exists (same pid +
- *  command), so a completed command shows as one row, not two. An unmatched
- *  start (still running, or its end was pruned) stays. */
+/** Fold only an unambiguous, source-scoped command exchange. Missing identity
+ * keeps the original Events visible; PID and text never substitute for it. */
 export function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
-  const closed = new Set<string>()
-  for (const e of events) {
-    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_end') continue
-    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
-    closed.add(key)
+  const closed = new Map<string, { data: Record<string, unknown>; conflict: boolean }>()
+  for (const event of events) {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_end') continue
+    const key = operationPairKey(event)
+    if (!key) continue
+    const previous = closed.get(key)
+    if (!previous) closed.set(key, { data: event.data, conflict: false })
+    else if (JSON.stringify(previous.data) !== JSON.stringify(event.data)) previous.conflict = true
   }
-  return events.filter((e) => {
-    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_start') return true
-    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
-    return !closed.has(key)
+  return events.filter(event => {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_start') return true
+    const key = operationPairKey(event)
+    const end = key ? closed.get(key) : undefined
+    return !end || end.conflict || typeof event.data.command !== 'string' || end.data.command !== event.data.command
   })
 }
 

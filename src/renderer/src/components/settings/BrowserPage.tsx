@@ -27,7 +27,7 @@ export default function BrowserPage({
         <summary className="min-h-8 cursor-pointer text-xs text-redlog-text content-center">{t('firstRun.http.verifySettings')}</summary>
         {verify && <HttpCaptureStep onPrepare={() => setPreparing(true)} />}
       </details>
-      {preparing && <RuntimePreparation onClose={() => setPreparing(false)} />}
+      {preparing && <RuntimePreparation source="web" onClose={() => setPreparing(false)} />}
       <BrowserPanel t={t} config={config} setConfig={setConfig} />
       <FieldGroup title={t('settings.cdp')}>
         <p className="text-xs text-redlog-text-faint mb-2">

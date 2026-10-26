@@ -11,9 +11,9 @@ describe('describeAgentSources', () => {
   let scratch = ''
   afterEach(() => { if (scratch) fs.rmSync(scratch, { recursive: true, force: true }) })
 
-  it('lists the three adapters with the folder each one watches', () => {
+  it('lists the two adapters with the folder each one watches', () => {
     const sources = describeAgentSources()
-    expect(sources.map((s) => s.id)).toEqual(['claude-code', 'codex', 'opencode'])
+    expect(sources.map((s) => s.id)).toEqual(['claude-code', 'codex'])
     for (const s of sources) {
       expect(s.root).not.toMatch(/[*?[{]/)
       expect(path.isAbsolute(s.root)).toBe(true)
@@ -24,11 +24,10 @@ describe('describeAgentSources', () => {
     scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-sources-'))
     const claude = path.join(scratch, 'claude-projects')
     fs.mkdirSync(claude)
-    const config = { agentTailer: { sources: { 'claude-code': { sourceRoot: claude }, codex: { sourceRoot: path.join(scratch, 'no-codex') }, opencode: { sourceRoot: path.join(scratch, 'no-opencode') } } } }
+    const config = { agentTailer: { sources: { 'claude-code': { sourceRoot: claude }, codex: { sourceRoot: path.join(scratch, 'no-codex') } } } }
     const byId = Object.fromEntries(describeAgentSources(config).map((s) => [s.id, s]))
     expect(byId['claude-code'].detected).toBe(true)
     expect(byId['claude-code'].root).toBe(claude)
     expect(byId.codex.detected).toBe(false)
-    expect(byId.opencode.detected).toBe(false)
   })
 })

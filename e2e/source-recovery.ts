@@ -15,13 +15,16 @@ export async function checkSourceRecovery(app: ElectronApplication, page: Page, 
   await page.getByTestId('hook-connect-shell-zsh').click()
   const command = await page.getByTestId('record-terminal-command').textContent()
   expect(command).toMatch(/redlog-ok-/)
+  await expect(page.getByTestId('hook-connect-shell-zsh')).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('#hook-connection-shell-zsh').getByTestId('record-terminal-command')).toHaveText(command!)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByTestId('record-terminal-command')).toHaveText(command!)
   await expect(page.getByTestId('record-terminal-verified')).toHaveCount(0)
   const shell = findShellTarget(); expect(shell).toBeTruthy()
   const recorded = await runZsh(shell!, { rc: readFileSync(join(tmpHome, '.zshrc'), 'utf8'), commands: [command!], timeoutSeconds: 20,
     env: { _REDLOG_DIR: join(tmpHome, '.redlog'), REDLOG_EXTERNAL_SESSION: '', REDLOG_TERMINAL: '' } })
   expect(recorded.ok, recorded.error).toBe(true)
   await expect(page.getByTestId('record-terminal-verified')).toBeVisible()
-  await page.getByTestId('record-terminal-details-toggle').click()
   const outputCommand = await page.getByTestId('record-terminal-output-command').textContent()
   const output = await runZsh(shell!, { rc: readFileSync(join(tmpHome, '.zshrc'), 'utf8'), commands: [outputCommand!], timeoutSeconds: 20,
     env: { _REDLOG_DIR: join(tmpHome, '.redlog'), REDLOG_EXTERNAL_SESSION: '', REDLOG_TERMINAL: '' } })

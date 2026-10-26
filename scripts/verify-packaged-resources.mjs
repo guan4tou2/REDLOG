@@ -24,6 +24,7 @@ const required = [
   // through to running the command unrecorded — a degradation quiet enough
   // that only a packaged build would show it.
   'hooks/redlog-relay.py',
+  'hooks/terminal_app.py',
   // The class policy both readers share. Missing, the relay cannot classify
   // and every command falls back to `native` — the adapter stops capturing
   // output with no error anywhere.
@@ -50,6 +51,9 @@ for (const provider of fs.readdirSync('optional-plugins', { withFileTypes: true 
   }
 }
 const forbidden = [
+  'optional-ai/opencode',
+  'plugins/official-ai-opencode',
+  'hooks/__pycache__',
   'hooks/shell-preexec-hook.sh',
   'hooks/redlog-hook.zsh',
   'hooks/claude-code-hook.sh',

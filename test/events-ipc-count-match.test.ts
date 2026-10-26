@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { parseQuery } from '../src/core/query/contract'
+import type { ActivityPage } from '../src/core/activity-contract'
+import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { initDB, closeDB } from '../src/core/db/index'
 import { loadConfig, saveConfig } from '../src/core/config'
 import { registerEventsIpc } from '../src/main/ipc/events'
@@ -29,14 +32,26 @@ describe('events:count and events:matchIds', () => {
     active = { id: 'eng-1', name: 'Test', path: dir, createdAt: 1, lastOpened: 1 }
     handlers = new Map()
     const ipcMain = { handle: (name: string, fn: Handler) => { handlers.set(name, fn) } }
-    const ctx = { getActiveProject: () => active } as unknown as IpcContext
+    const ctx = { getActiveProject: () => active, getCurrentEngagementId: () => active?.id ?? null } as unknown as IpcContext
     registerEventsIpc(ipcMain as never, ctx)
     fx = seedTimelineFixture({ total: 60, newestShell: 10 })
   })
 
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('does not read saved content after the active project changes', () => {
+    const eventId = fx.rows.find(r => r.agentType === 'shell')!.id
+    const reply = handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
+    expect(reply.ok).toBe(true)
+    active = {...active!,id:'other-project'}
+    expect(handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
+    expect(handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
+    active = null
+    expect(handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
   })
 
   it('returns its empty shape without an active project', () => {
@@ -66,4 +81,25 @@ describe('events:count and events:matchIds', () => {
     const ids = Array.from({ length: 1001 }, (_, i) => `x-${i}`)
     expect(() => handlers.get('events:matchIds')?.({}, { ids })).toThrow('at most 1000 ids')
   })
+  it('binds Activity pages and source references to the active project', () => {
+    const parsed = parseQuery(''); if (!parsed.ok) throw new Error('fixture')
+    const req = { projectId: 'eng-1', parsed: parsed.parsed, limit: 1 }
+    const page = handlers.get('events:activityPage')?.({}, req) as ActivityPage
+    expect(page.items).toHaveLength(1)
+    const detail = { ...req, ref: page.items[0], snapshot: page.snapshot }
+    expect(handlers.get('events:activityMembers')?.({}, detail)).toMatchObject({ sourceCount: 1 })
+    active = { ...active!, id: 'other-project' }
+    expect(() => handlers.get('events:activityPage')?.({}, req)).toThrow(/project/i)
+    expect(() => handlers.get('events:activityMembers')?.({}, detail)).toThrow(/project/i)
+    active = null
+    expect(() => handlers.get('events:activityPage')?.({}, req)).toThrow(/project/i)
+  })
+
+  it('uses the active scope for Activity matches and totals', () => {
+    const parsed = parseQuery(''); if (!parsed.ok) throw new Error('fixture')
+    const req = { projectId: 'eng-1', parsed: parsed.parsed, filter: { inScopeOnly: true, scope: { targets: ['*'], excludeTargets: [] } } }
+    const page = handlers.get('events:activityPage')?.({}, req) as ActivityPage
+    expect(page.totalMatches).toBe(fx.rows.filter(r => r.targetId === null || r.targetId === '10.0.0.5').length)
+  })
+
 })

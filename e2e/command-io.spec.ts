@@ -153,4 +153,48 @@ test.describe.serial('command I/O capture', () => {
     // The echo's own output must be inside the bracketed range.
     expect(body.text, 'the byte range did not cover the command output').toContain('REDLOG_IO_MARKER_OUTPUT')
   })
+  test('a command crosses cast parts and its bundle keeps every saved part', async () => {
+    await page.evaluate(async () => {
+      const api = (window as any).redlog
+      const config = await api.config.get()
+      config.terminal.maxCastBytes = 32 * 1024
+      await api.config.save(config)
+      await api.terminal.spawn('segmented-io', 80, 24)
+      api.terminal.write('segmented-io', "python3 -c \"import sys;sys.stdout.write('SEGMENT_BEGIN'+'x'*180000+'SEGMENT_END')\"\r")
+    })
+    let command: { id: string; data?: Record<string, unknown> } | undefined
+    await expect.poll(async () => {
+      command = (await events()).find(e => e.data?.subtype === 'command_end' && e.data?.terminalId === 'segmented-io' && String(e.data.command).includes('SEGMENT_BEGIN'))
+      return Boolean(command)
+    }, { timeout: 30_000 }).toBe(true)
+    const response = await fetch(`${base}/api/terminal/replay`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ eventId: command!.id })
+    })
+    const replay = await response.json() as { text: string; truncated: boolean }
+    expect(replay.text).toContain('SEGMENT_BEGIN')
+    expect(replay.text).toContain('SEGMENT_END')
+    expect(replay.truncated).toBe(false)
+    await page.evaluate(() => (window as any).redlog.terminal.kill('segmented-io'))
+    let end: any
+    await expect.poll(async () => {
+      end = (await events()).find(e => e.data?.subtype === 'session_end' && e.data?.terminalId === 'segmented-io')
+      return Boolean(end)
+    }).toBe(true)
+    expect(end.data.castTruncated).toBe(false)
+    expect(end.data.castSegments.length).toBeGreaterThan(1)
+    const exported = await page.evaluate(async () => {
+      const api = (window as any).redlog
+      const resolved = await api.data.resolveExportPlan({ format: 'bundle', subset: { kind: 'all' }, maskOutOfScope: false })
+      if (!resolved.ok) throw new Error(JSON.stringify(resolved))
+      return api.data.executeExportPlan({ planId: resolved.plan.id })
+    })
+    expect(exported.ok, JSON.stringify(exported)).toBe(true)
+    for (const segment of end.data.castSegments) {
+      const { basename, join } = await import('node:path')
+      const bytes = readFileSync(join(exported.artifactPath, 'casts', basename(segment.path)))
+      expect(bytes).toEqual(readFileSync(segment.path))
+    }
+  })
+
 })

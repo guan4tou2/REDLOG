@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 declare const __APP_VERSION__: string
+declare const __APP_BUILD__: string
 
 interface TerminalCastState {
   recording: boolean
@@ -27,25 +28,8 @@ interface ExportSnapshot {
 
 type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
 type ExportSubset = import('../../core/export-plan').ExportSubset
-interface ExportRequest {
-  format: ExportFormat
-  subset?: ExportSubset
-  maskOutOfScope?: boolean
-  scopeOnly?: boolean
-  scrubPii?: boolean
-  /** Attachments left out, by bundle-relative path (#222). */
-  excludeAttachments?: string[]
-}
-/** One file an evidence bundle would carry (core/export-attachments.ts). */
-interface ExportAttachmentRow {
-  id: string
-  kind: 'screenshot' | 'cast' | 'httpBody' | 'artifact'
-  bytes: number | null
-  targets: string[]
-  attribution: 'target' | 'cross-target' | 'unattributed'
-  status: 'included' | 'excluded-by-operator' | 'excluded-out-of-scope' | 'missing'
-  source?: string
-}
+type ExportRequest = import('../../core/export-plan').ExportRequest
+type ExportAttachmentRow = import('../../core/export-attachments').ExportAttachment
 /** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
 type ArtifactAddOutcome =
   | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
@@ -56,7 +40,7 @@ interface ResolvedExportPlan {
   fingerprint: string
   expiresAt: number
   snapshot: ExportSnapshot
-  request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  request: import('../../core/export-plan').NormalizedExportRequest
   /** The boundary this plan was resolved against, so the menu can name it
    *  rather than guess at it. */
   scopeSnapshot: { targets: string[]; excludeTargets: string[]; personalDomains: string[] }
@@ -225,6 +209,11 @@ interface RedLogAPI {
     /** `title`: the picker's title, already translated */
     pickPath: (title?: string) => Promise<string | null>
   }
+  content: {
+    list: (req: { projectId: string; eventId: string }) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentDescriptor[]>>
+    read: (req: import('../../core/content-contract').ContentReadRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentWindow>>
+    find: (req: import('../../core/content-contract').ContentFindRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentFindResult>>
+  }
   events: {
     commandEvidence: () => Promise<{ builtin: boolean; external: boolean }>
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
@@ -241,6 +230,8 @@ interface RedLogAPI {
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
+    activityPage: (req: import('../../core/activity-contract').ActivityRequest) => Promise<import('../../core/activity-contract').ActivityPage>
+    activityMembers: (req: import('../../core/activity-contract').ActivityMembersRequest) => Promise<import('../../core/activity-contract').ActivityMembersPage>
     /** Spec 038: how many rows a page or a query walks past `cursor`. */
     count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
     /** Spec 038: which of up to 1000 held ids the filter (and query) admit. */
@@ -268,7 +259,7 @@ interface RedLogAPI {
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
-    commandOutput: (commandId: string) => Promise<RedLogEvent[]>
+    commandOutput: (commandId: string) => Promise<import('../../core/db/events').CommandOutputPage>
     commandEnds: (commandIds: string[]) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
@@ -400,14 +391,14 @@ interface RedLogAPI {
     kill: (id: string) => void
     list: () => Promise<Array<{
       id: string; pid: number; lastActivity: number
-      /** 2b per-pane chip: open cast stream and under the size cap. */
+      /** 2b per-pane chip: open cast stream; capacity continues in the next part. */
       recording: boolean; castBytes: number; castTruncated: boolean; paused: boolean; castStartedAt: number | null
       recordingReason?: 'no-project' | 'recording-failed'; recordingError?: string
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     onCastState: (id: string, cb: (state: TerminalCastState) => void) => () => void
-    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
+    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; truncated?: boolean; error?: string }>
     replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     /** A discriminated union, not a bag of optionals: the handler returns
      *  either `{ ok: false, error }` or `{ ok: true, events, … }`, and it
@@ -449,7 +440,8 @@ interface RedLogAPI {
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 052: what the SHELL will do — the machine's mode and the effective
      *  class lists, defaults with the operator's `redlog class` edits on top. */
-    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[] }>
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }>
+    setTerminalApp: (value: string) => Promise<string>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }
   runtime: {

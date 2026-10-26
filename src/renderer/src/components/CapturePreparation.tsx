@@ -5,18 +5,26 @@ import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { requestRunInTerminal } from '../lib/terminalRunner'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
+
+type PreparationSource = 'all' | 'commands' | 'web'
 
 /** Optional shells are not dependencies of the selected recording path. */
-export function preparationChecks(preflight: RuntimePreflight | null): RuntimePreflight['checks'] {
+export function preparationChecks(preflight: RuntimePreflight | null, source: PreparationSource = 'all'): RuntimePreflight['checks'] {
   if (!preflight) return []
-  const selected = new Set(['mitmdump', ...(preflight.platform === 'win32' ? [] : ['python3', 'curl'])])
-  if (preflight.shell) selected.add(preflight.shell.name)
+  const selected = new Set<string>()
+  if (source !== 'commands') selected.add('mitmdump')
+  if (source !== 'web') {
+    if (preflight.platform !== 'win32') { selected.add('python3'); selected.add('curl') }
+    if (preflight.shell) selected.add(preflight.shell.name)
+  }
   return preflight.checks.filter(c => selected.has(c.id) && !c.found)
 }
 
-function DependencyRow({ check, onRecheck }: {
+function DependencyRow({ check, onRecheck, onInstalling }: {
   check: RuntimePreflight['checks'][number]
   onRecheck: () => void
+  onInstalling?: (id: string, pending: boolean) => void
 }): JSX.Element {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
@@ -38,6 +46,7 @@ function DependencyRow({ check, onRecheck }: {
   }, [busy])
   const install = async (): Promise<void> => {
     pending.current = true
+    onInstalling?.(check.id, true)
     setBusy(true)
     setError(null)
     setCancelled(false)
@@ -56,6 +65,7 @@ function DependencyRow({ check, onRecheck }: {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       pending.current = false
+      onInstalling?.(check.id, false)
       setBusy(false)
     }
   }
@@ -104,17 +114,19 @@ function DependencyRow({ check, onRecheck }: {
   )
 }
 
-export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLeave }: {
+export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLeave, source = 'all', onInstalling }: {
   preflight: RuntimePreflight | null
   failed: boolean
   onRecheck: () => void
   onSkip: () => void
   onLeave: () => void
+  source?: PreparationSource
+  onInstalling?: (id: string, pending: boolean) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const missing = preflight ? preparationChecks(preflight) : []
+  const missing = preparationChecks(preflight, source)
   // Only the web-traffic tool is missing: commands need nothing from this page.
-  const onlyWeb = missing.length > 0 && missing.every(c => c.id === 'mitmdump')
+  const onlyWeb = missing.length > 0 && missing.every(c => c.id === 'mitmdump') && preparationChecks(preflight, 'commands').length === 0
   return (
     <section data-testid="capture-prepare" className="w-full max-w-xl space-y-3">
       <h3 className="font-semibold text-redlog-text">{t('captureSetup.prepare')}</h3>
@@ -130,7 +142,7 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
         <>
           <p className="text-sm text-redlog-text-dim">{t('captureSetup.missing')}</p>
           {onlyWeb && <p data-testid="capture-prepare-web-only" className="text-sm text-redlog-text">{t('captureSetup.webOnly')}</p>}
-          <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={onRecheck} />)}</ul>
+          <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={onRecheck} onInstalling={onInstalling} />)}</ul>
         </>
       )}
       <div className="flex flex-wrap gap-3 pt-2">
@@ -143,10 +155,15 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
 }
 
 /** Source-local dependency repair; mounting this view never starts an installer. */
-export function RuntimePreparation({ onClose }: { onClose: () => void }): JSX.Element {
+export function RuntimePreparation({ onClose, source = 'all' }: { onClose: () => void; source?: PreparationSource }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.runtime.preflight())
-  const missing = preparationChecks(read.state.value)
+  const installing = useRef(new Set<string>())
+  const onInstalling = (id: string, pending: boolean): void => {
+    if (pending) installing.current.add(id); else installing.current.delete(id)
+  }
+  useRevalidateOnFocus(() => { if (installing.current.size === 0) read.retry() })
+  const missing = preparationChecks(read.state.value, source)
   return <section data-testid="runtime-preparation" className="min-w-0 space-y-3 text-xs">
     {read.state.phase === 'loading' && <p role="status">{t('captureSetup.checking')}</p>}
     {read.state.phase === 'failed' && <div role="alert" className="space-y-2">
@@ -154,9 +171,9 @@ export function RuntimePreparation({ onClose }: { onClose: () => void }): JSX.El
       <p className="break-words">{read.state.error}</p>
       <Button level="secondary" onClick={read.retry}>{t('common.retry')}</Button>
     </div>}
-    {read.state.phase === 'loaded' && <>
-      {missing.length === 0 ? <p role="status">{t('settings.dependenciesReady')}</p>
-        : <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={read.retry} />)}</ul>}
+    {read.state.value && <>
+      {missing.length === 0 ? read.state.phase === 'loaded' && <p role="status">{t('settings.dependenciesReady')}</p>
+        : <ul className="space-y-2">{missing.map(check => <DependencyRow key={check.id} check={check} onRecheck={read.retry} onInstalling={onInstalling} />)}</ul>}
     </>}
     <Button level="quiet" onClick={onClose}>{t('common.close')}</Button>
   </section>

@@ -23,6 +23,7 @@ export function selectionConditions(subset: Extract<Subset, { kind: 'selection' 
 export function subsetSummary(subset: Subset | undefined, t: T): string {
   if (!subset || subset.kind === 'all') return t('export.preview.subsetAll')
   if (subset.kind === 'selection') return selectionConditions(subset, t).join(' · ') || t('export.range.noFilter')
+  if (subset.kind === 'activity' || subset.kind === 'session') return `${t(`activity.export.${subset.kind}`)} · ${subset.anchorEventId}`
   const span = `${formatDateTime(subset.since, { seconds: true })} → ${formatDateTime(subset.before, { seconds: true })}`
   return subset.targetId ? `${span} · ${t('export.preview.subsetTarget', { target: subset.targetId })}` : span
 }

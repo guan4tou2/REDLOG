@@ -274,3 +274,42 @@ T073–T077 implement the already specified US1/US2/US6 gaps. Requirements-quali
 - Bundle and source-applicable HAR are primary format choices; JSON/NDJSON/timeline remain available through Other formats. Fresh use defaults to bundle (HTTP retains HAR); an explicitly remembered general format remains respected. This supersedes only the previous fresh JSON default, not selection, attachment or policy invariants. Detailed preview/attachments can fold only if missing/truncated/whole-cast/scope warnings remain visible.
 
 Analyze: canonical ExportPlan selection/execution and source lifecycle remain authoritative. Machine-only result metadata is not evidence, a backup or an additional audit chain. No marketplace, workflow engine, new shell, C2 operation, migration shim or expanded AI capture. Risks to test first: read-only settings must not install, stale attempts, unavailable packs, rejected repair, export/reveal/write failures, cross-project lookup, result persistence, format/selection independence and keyboard/size behavior. Existing T008–T013 stay open for their wider platform/OS matrix.
+
+
+### First-use friction closeout (T082–T085)
+
+Keep one source setup path. Pass a commands/web dependency scope through the
+existing preparation components and use existing focus revalidation. Move the
+existing POSIX output canary outside collapsed session help; retain capture
+contracts and PowerShell capability limits. Own-browser verification uses the
+existing external-URL IPC; a local attempt counter arms/restarts only the
+requested timeout, with all nonce/client/CA checks unchanged.
+
+Inject a build-time Git id (plus a modified-tree marker, or unknown) into the
+existing About version line; no runtime Git process, new IPC, updater version
+change or public release is needed. Internal filenames are selected by the
+existing builder flag. Split installer instructions from Windows development
+requirements, and verify existing behavioral tests rather than adding another
+onboarding framework or duplicate launch suite.
+
+Store the terminal application's canonical identifier in the machine RedLog root
+(`terminal-app`), validate writes in main and expose one selector on the existing
+terminal settings page. POSIX/PowerShell adapters check it before registering and
+before delivery; Python session/background producers share the packaged matcher.
+Do not treat terminal identifiers as authentication or infer remote app identity
+from an SSH connection. Prepend Zsh descriptor cleanup to existing precmd hooks
+only when diversion starts, preserving other hooks' relative order.
+
+
+2026-10-26 user-directed whole-app visual follow-up: apply the existing design
+system in staged settings/source, investigation and delivery batches. See
+ui-refinement-20261026.md and T087–T090. The eight requested design dimensions
+are review criteria, not new product features. Native/source/package evidence
+must stay distinct; live-resize uncertainty cannot be marked passed by tests.
+
+
+2026-10-26 AI scope correction: current shipped optional providers are Claude
+Code and Codex only, both default uninstalled. Remove OpenCode from executable
+source, package contents and current UI/contracts/docs. Past acceptance records
+remain historical. Unsupported stored source settings cannot authorize reading;
+existing evidence is retained. This supersedes earlier three-provider planning.

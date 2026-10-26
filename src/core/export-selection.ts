@@ -1,3 +1,6 @@
+import { activityKey } from './activity-projection'
+import { sourceSessionKey } from './operation-pair-key'
+import { getReadonlyDB } from './db/index'
 import { executeEventQuery, queryEvents, queryEventsPage, queryHttpFlowPage, queryCommandOutput, type EventFilter, type RedLogEvent } from './db/events'
 import { parseQuery } from './query/contract'
 import type { NormalizedExportRequest, ExportScopeSnapshot, ExportSnapshot } from './export-plan'
@@ -5,6 +8,25 @@ import type { NormalizedExportRequest, ExportScopeSnapshot, ExportSnapshot } fro
 /** Resolve membership from persisted predicates, never a renderer page. */
 export function resolveExportSelection(request: NormalizedExportRequest, snapshot: ExportSnapshot, scope: ExportScopeSnapshot): RedLogEvent[] {
   const subset = request.subset
+  if (subset.kind === 'activity' || subset.kind === 'session') {
+    // Validate the rendered dataset before resolving a source namespace. A
+    // reused rowid after retention cannot substitute an unrelated source.
+    const db = getReadonlyDB()
+    for (const [table,max,count,tail] of [
+      ['events',subset.snapshot.chainedMaxRowId,subset.snapshot.chainedCount,subset.snapshot.chainedTailId],
+      ['events_logged',subset.snapshot.loggedMaxRowId,subset.snapshot.loggedCount,subset.snapshot.loggedTailId]
+    ] as const) {
+      const row=db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE rowid<=?`).get(max) as {n:number}
+      const last=max ? (db.prepare(`SELECT id FROM ${table} WHERE rowid=?`).get(max) as {id:string}|undefined)?.id : null
+      if(row.n!==count || last!==tail) throw new Error('Operation dataset changed; refresh the selection')
+    }
+    const events=queryEvents({limit:-1,snapshot:subset.snapshot}).filter(event=>event.engagementId===subset.projectId)
+    const anchor=events.find(event=>event.id===subset.anchorEventId)
+    if(!anchor) throw new Error('Operation source unavailable')
+    const key=subset.kind==='activity' ? activityKey(anchor) : sourceSessionKey(anchor)
+    if(!key) throw new Error('Session identity is unavailable')
+    return events.filter(event=>(subset.kind==='activity' ? activityKey(event) : sourceSessionKey(event))===key)
+  }
   if (subset.kind !== 'selection') {
     return queryEvents({ limit: -1, snapshot,
       ...(subset.kind === 'time-range' ? { since: subset.since, before: subset.before, targetId: subset.targetId } : {}),
@@ -33,9 +55,9 @@ export function resolveExportSelection(request: NormalizedExportRequest, snapsho
   // says `late_output` and holds nothing to show for it. The snapshot bound is
   // applied below, with the rest of the canonical order.
   for (const event of [...events]) {
-    if (event.agentType !== 'shell' || event.data.subtype !== 'command_end' || event.data.late_output !== true) continue
+    if (event.agentType !== 'shell' || event.data.subtype !== 'command_end' || (event.data.late_output !== true && event.data.output_streamed !== true)) continue
     if (typeof event.data.command_id !== 'string') continue
-    events.push(...queryCommandOutput(event.data.command_id))
+    events.push(...queryCommandOutput(event.data.command_id, -1, snapshot))
   }
   // Execution uses this same canonical order to compare the approved digest.
   const ids = new Set(events.map(event => event.id))

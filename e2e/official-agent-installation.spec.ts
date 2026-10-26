@@ -7,8 +7,9 @@ test('official AI installation is explicit, local and independent of project act
   const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
     const catalog = await page.evaluate(() => window.redlog.plugins.officialAgents())
-    expect(catalog.map(p => p.agentKind)).toEqual(['claude-code', 'codex', 'opencode'])
+    expect(catalog.map(p => p.agentKind)).toEqual(['claude-code', 'codex'])
     expect(catalog.every(p => p.state === 'not-installed')).toBe(true)
+    expect(await page.evaluate(() => window.redlog.plugins.installOfficialAgent('opencode'))).toMatchObject({ ok: false })
     const pluginRoot = join(tmpHome, '.redlog', 'plugins')
     expect(catalog.every(p => !existsSync(join(pluginRoot, p.pluginId)))).toBe(true)
     await openTestProject(page, 'official-ai-install')
@@ -23,7 +24,7 @@ test('official AI installation is explicit, local and independent of project act
 
     expect(await page.evaluate(() => window.redlog.plugins.installOfficialAgent('codex'))).toMatchObject({ ok: true, changed: true })
     const installed = await page.evaluate(() => window.redlog.plugins.officialAgents())
-    expect(installed.map(p => p.state)).toEqual(['not-installed', 'installed', 'not-installed'])
+    expect(installed.map(p => p.state)).toEqual(['not-installed', 'installed'])
     expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
     const manifest = join(pluginRoot, 'official-ai-codex', 'plugin.json')
     const original = readFileSync(manifest)

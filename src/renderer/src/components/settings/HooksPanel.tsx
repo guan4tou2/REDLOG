@@ -8,6 +8,7 @@ import { shellNameForHook } from '../../lib/terminalActivation'
 import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 import { useReadState } from '../../lib/readState'
 import { SetupAndTeardown } from './ManualStepList'
+import { Button } from '../Button'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -20,7 +21,7 @@ function hookDescription(hook: HookInfo, t: (key: string) => string): string {
   return localized === key ? hook.description : localized
 }
 
-interface TerminalPolicy { mode: 'auto' | 'manual'; native: string[]; pty: string[] }
+interface TerminalPolicy { mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }
 
 /** What the operator's shell will actually do, for the terminals this machine
  *  opens: the mode `redlog mode` last set, and the class lists as `redlog
@@ -59,8 +60,10 @@ export default function HooksPanel({ hooks, setHooks, t }: {
   setHooks: (h: HookInfo[] | ((prev: HookInfo[]) => HookInfo[])) => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
+  const [savingApp, setSavingApp] = useState(false)
+  const [appError, setAppError] = useState('')
   const [connecting, setConnecting] = useState<string | null>(null)
-  const [preparing, setPreparing] = useState(false)
+  const [preparing, setPreparing] = useState<'commands' | 'web' | null>(null)
   const read = useReadState(async () => {
     const found = await window.redlog.hooks.detect()
     if (!Array.isArray(found)) throw new Error('invalid-hook-list')
@@ -72,6 +75,17 @@ export default function HooksPanel({ hooks, setHooks, t }: {
     return await api.terminalPolicy?.() ?? null
   })
   useRevalidateOnFocus(() => { read.retry(); policy.retry() })
+
+  const selectApp = async (value: string): Promise<void> => {
+    setSavingApp(true)
+    setAppError('')
+    try {
+      const saved = await window.redlog.hooks.setTerminalApp(value)
+      policy.update(prev => prev ? { ...prev, app: saved } : null)
+      policy.retry()
+    } catch (error) { setAppError(String((error as Error)?.message ?? error)) }
+    finally { setSavingApp(false) }
+  }
 
   useEffect(() => {
     if (read.state.phase === 'loaded') setHooks(read.state.value)
@@ -109,10 +123,10 @@ export default function HooksPanel({ hooks, setHooks, t }: {
               : 'border-redlog-border bg-redlog-surface/20 opacity-50'
           }`}
         >
-          <div className="flex flex-1 flex-col gap-3 p-3">
-            <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-gap p-3">
+            <div className="min-w-0 flex-1 basis-48">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
+                <span className="text-sm font-medium text-redlog-text">{hook.name}</span>
                 {hook.installed && (
                   <span className="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
                     {t('settings.shellInstalled')}
@@ -131,37 +145,44 @@ export default function HooksPanel({ hooks, setHooks, t }: {
               </div>
               <p className="text-xs text-redlog-text-dim mt-0.5 break-words">{hookDescription(hook, t)}</p>
             </div>
-            <div className="mt-auto flex flex-wrap justify-end gap-2">
-            {hook.available && shellNameForHook(hook.id) && read.state.phase === 'loaded' && (
-              <button type="button" data-testid={`hook-connect-${hook.id}`}
-                onClick={() => setConnecting(hook.id)}
-                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
+            <div className="flex flex-wrap items-center gap-2">
+            {hook.available && shellNameForHook(hook.id) && read.state.value !== null && read.state.phase !== 'failed' && (
+              <Button size="compact" data-testid={`hook-connect-${hook.id}`}
+                aria-expanded={connecting === hook.id}
+                aria-controls={connecting === hook.id ? `hook-connection-${hook.id}` : undefined}
+                onClick={() => setConnecting(hook.id)}>
                 {hook.installed ? t('settings.shellVerify') : t('settings.shellConnect')}
-              </button>
+              </Button>
             )}
             {hook.installed && shellNameForHook(hook.id) && (
-              <button type="button" onClick={() => remove(hook)} className="min-h-8 px-3 py-1 text-xs rounded text-redlog-text-dim hover:text-red-400">
+              <Button size="compact" level="quiet" onClick={() => remove(hook)}>
                 {t('settings.hookDisable')}
-              </button>
+              </Button>
             )}
             {hook.id === 'mitmproxy' && !hook.available && (
-              <button type="button" data-testid="hook-install-mitmproxy" onClick={() => setPreparing(true)}
-                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text">
+              <Button size="compact" data-testid="hook-install-mitmproxy" onClick={() => setPreparing('web')}>
                 {t('captureSetup.install')}
-              </button>
+              </Button>
             )}
             {hasSteps && (
-              <button
+              <Button size="compact"
+                aria-expanded={isOpen}
                 onClick={() => setExpanded(isOpen ? null : hook.id)}
-                className="min-h-8 px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
               >
                 {isOpen
                   ? t('settings.hookHideSetup')
                   : hook.stepsAreOptional ? t('settings.hookOptionalSteps') : t('settings.hookShowSetup')}
-              </button>
+              </Button>
             )}
             </div>
           </div>
+          {connecting === hook.id && !preparing && (
+            <div id={`hook-connection-${hook.id}`} className="min-w-0 px-3 pb-3">
+              <RecordTerminalFlow key={connecting}
+                target={{ kind: 'host', hookId: connecting, label: hook.name }}
+                onInstalled={read.retry} onPrepare={() => setPreparing('commands')} />
+            </div>
+          )}
           {isOpen && (
             <div className="border-t border-redlog-border px-3 py-2.5">
               {/* Shared with the external-capture group, so a teardown
@@ -188,7 +209,34 @@ export default function HooksPanel({ hooks, setHooks, t }: {
           plugin that brought it, on the Plugins page — here it was padding a
           list the operator reads to answer "is my shell recording". */}
       <FieldGroup title={t('settings.hooksBuiltin')}>
-        <TerminalPolicyNote policy={policy.state.phase === 'loaded' ? policy.state.value : null} t={t} />
+        {policy.state.value && (platform === 'darwin' || policy.state.value.app !== 'all') && <div className="mb-3 space-y-2">
+          <label className="flex flex-wrap items-center gap-3 text-xs text-redlog-text">
+            {t('settings.terminalApp')}
+            <select aria-label={t('settings.terminalApp')} value={policy.state.value?.app ?? 'all'} disabled={savingApp || policy.state.phase === 'failed'}
+              onChange={e => { void selectApp(e.target.value) }}
+              className="min-h-8 rounded border border-redlog-border bg-redlog-surface px-2">
+              <option value="all">{t('settings.terminalApp.all')}</option>
+              {platform === 'darwin' ? <>
+                <option value="WarpTerminal">Warp</option>
+                <option value="Apple_Terminal">Terminal.app</option>
+                <option value="iTerm.app">iTerm2</option>
+                <option value="vscode">VS Code</option>
+              </> : policy.state.value.app !== 'all' && <option value={policy.state.value.app} disabled>
+                {({ WarpTerminal: 'Warp', Apple_Terminal: 'Terminal.app', 'iTerm.app': 'iTerm2', vscode: 'VS Code', WindowsTerminal: 'Windows Terminal' } as Record<string, string>)[policy.state.value.app] ?? policy.state.value.app}
+              </option>}
+
+            </select>
+          </label>
+          {policy.state.value.app !== 'all' && <p role={platform !== 'darwin' ? 'alert' : undefined} className="text-xs text-redlog-text-faint">
+            {t(platform === 'darwin' ? 'settings.terminalApp.boundary' : 'settings.terminalApp.unsupported')}
+          </p>}
+        </div>}
+        {policy.state.phase === 'failed' && <div role="alert" className="mb-3 text-xs text-red-400">
+          <p>{policy.state.error}</p>
+          <button type="button" className="min-h-8 underline" onClick={policy.retry}>{t('common.retry')}</button>
+        </div>}
+        {appError && <p role="alert" className="mb-3 text-xs text-red-400">{appError}</p>}
+        <TerminalPolicyNote policy={policy.state.value} t={t} />
         {read.state.phase === 'loading' && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
@@ -197,7 +245,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
           <p className="break-words">{read.state.error}</p>
           <button type="button" data-testid="hooks-read-retry" className="min-h-8 underline" onClick={read.retry}>{t('common.retry')}</button>
         </div>}
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>
+        <div className="space-y-3">
           {mainHooks.map((hook) => renderRow(hook))}
         </div>
         {otherHooks.length > 0 && (
@@ -210,10 +258,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
             </div>
           </details>
         )}
-        {connecting && !preparing && <RecordTerminalFlow key={connecting}
-          target={{ kind: 'host', hookId: connecting, label: hooks.find(h => h.id === connecting)?.name ?? connecting }}
-          onInstalled={read.retry} onPrepare={() => setPreparing(true)} />}
-        {preparing && <RuntimePreparation onClose={() => { setPreparing(false); read.retry() }} />}
+        {preparing && <RuntimePreparation source={preparing} onClose={() => { setPreparing(null); read.retry() }} />}
       </FieldGroup>
     </>
   )

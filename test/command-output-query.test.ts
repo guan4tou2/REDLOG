@@ -3,7 +3,9 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { initDB, closeDB } from '../src/core/db/index'
-import { queryCommandOutput } from '../src/core/db/events'
+import { takeExportSnapshot } from '../src/core/export-plan'
+import { queryCommandOutput, queryEventsPage } from '../src/core/db/events'
+import { getDoNotExportIds, toggleDoNotExport } from '../src/core/db/do-not-export'
 import { insertFixtureRow } from './helpers/timeline-query-fixture'
 
 // Background output is stored as rows of its own and read back by the command
@@ -27,6 +29,31 @@ describe('queryCommandOutput', () => {
     const rows = queryCommandOutput('c1')
     expect(rows.map((r) => r.id)).toEqual(['a', 'b', 'f'])
     expect(rows[2].data.final).toBe(true)
+  })
+
+  it('deduplicates foreground resends before a bounded preview and retains the full export query', () => {
+    for (let seq = 1; seq <= 5; seq++) {
+      chunk(`f-${seq}`, seq, { command_id: 'foreground', streamed: true, late: false, seq, stdout: `${seq}` })
+      chunk(`dup-${seq}`, seq + 1, { command_id: 'foreground', streamed: true, late: false, seq, stdout: 'duplicate' }, 'events_logged')
+    }
+    expect(queryCommandOutput('foreground', 3).map(r => r.id)).toEqual(['f-1', 'f-2', 'f-3'])
+    expect(queryCommandOutput('foreground', -1)).toHaveLength(5)
+  })
+
+  it('keeps foreground chunks inside the command projection and honors its export exclusion', () => {
+    insertFixtureRow({ table: 'events', id: 'end', timestamp: 1, agentType: 'shell', subtype: 'command_end', operatorId: 'o', targetId: null,
+      data: { command_id: 'stream', subtype: 'command_end', output_streamed: true, command: 'tool' } })
+    chunk('stream-chunk', 2, { command_id: 'stream', subtype: 'command_output', streamed: true, late: false, seq: 1, stdout: 'private' })
+    expect(queryEventsPage({ excludeHousekeeping: true }).items.map(row => row.id)).toEqual(['end'])
+    toggleDoNotExport('end')
+    expect(getDoNotExportIds().has('stream-chunk')).toBe(true)
+  })
+
+  it('applies the export snapshot before deduplicating a later backdated resend', () => {
+    chunk('approved', 10, { command_id: 'snapshot', streamed: true, seq: 1, stdout: 'approved' })
+    const snapshot = takeExportSnapshot()
+    chunk('unapproved', 1, { command_id: 'snapshot', streamed: true, seq: 1, stdout: 'new' })
+    expect(queryCommandOutput('snapshot', -1, snapshot).map(r => r.id)).toEqual(['approved'])
   })
 
   it('returns nothing for a command with no background output', () => {

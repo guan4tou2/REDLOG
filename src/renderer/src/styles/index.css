@@ -202,7 +202,7 @@
   --color-redlog-on-safe: #03150d;
   --color-redlog-on-info: #031215;
   --color-redlog-accent: #d75f63;
-  --color-redlog-accent-dim: #b84d51;
+  --color-redlog-accent-hover: #e07478;
   --color-redlog-danger: #ff4d4f;
   --color-redlog-danger-hover: #ff6a6c;
   /* §1's state colours. `on-safe` and `on-warn` were already here -- the dark

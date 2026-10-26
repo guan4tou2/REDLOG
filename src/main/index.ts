@@ -54,7 +54,7 @@ import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
-import { readTerminalMode, readClassOverlay } from '../core/terminal-enrollment'
+import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { mergeClassPolicy } from '../core/terminal-class'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -959,7 +959,7 @@ function startProject(project: ProjectMeta): void {
       excludedPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
       // v0.12.0: route agent tool_call events through the alert subsystem
-      // so a Claude / Codex / OpenCode session hitting an out-of-scope host
+      // so a Claude / Codex session hitting an out-of-scope host
       // registers a scope_violation the same way a shell command would.
       scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
     })
@@ -1762,8 +1762,10 @@ app.whenReady().then(() => {
   // stale `auto` is worse than one showing nothing.
   ipcMain.handle('hooks:terminalPolicy', () => ({
     mode: readTerminalMode(),
+    app: readTerminalApp(),
     ...mergeClassPolicy(readClassOverlay())
   }))
+  ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.
   const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }): void => {

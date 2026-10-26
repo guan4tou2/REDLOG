@@ -28,6 +28,8 @@ describe('opening a target in the Timeline', () => {
   it('sets the shared target, and the Timeline pages through it', async () => {
     const onOpen = vi.fn()
     render(<I18nProvider><FilterProvider><Probe /><TargetView onOpenInTimeline={onOpen} /></FilterProvider></I18nProvider>)
+    await screen.findByText('3 events')
+    expect(screen.queryByText('3 cmds')).toBeNull()
     const list = await screen.findByRole('listbox')
     await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0))
     fireEvent.keyDown(list, { key: 'ArrowDown' })

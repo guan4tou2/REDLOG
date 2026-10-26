@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import type { ExportDelivery } from '../../../core/export-delivery'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
@@ -56,6 +56,7 @@ interface ExportDraft {
   scrubPii: boolean
   maskScope: boolean
   excludeAttachments: string[]
+  includeAttachments: string[]
 }
 
 interface PendingExport {
@@ -90,7 +91,7 @@ function AttachmentList({ rows, onToggle, busy, t }: {
       {rows.some(a => a.kind === 'cast' && a.status === 'included') && <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>}
       <ul className="max-h-48 overflow-auto space-y-0.5">
         {rows.map((a) => {
-          const selectable = a.status === 'included' || a.status === 'excluded-by-operator'
+          const selectable = a.status === 'included' || a.status === 'excluded-by-operator' || a.status === 'excluded-by-policy'
           const name = a.id.split('/').slice(1).join('/')
           const where = a.attribution === 'unattributed'
             ? t('export.attachments.unattributed')
@@ -185,7 +186,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
       const saved = localStorage.getItem(FORMAT_KEY)
       if (saved === 'json' || saved === 'ndjson' || saved === 'bundle') format = saved
     } catch { /* remembering a format is optional */ }
-    return { format, range: 'current' as 'current' | 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[] }
+    return { format, range: 'current' as 'current' | 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[], includeAttachments: [] as string[] }
   })
   // Freeze the declarative selection, never the currently loaded row ids.
   // Live view changes behind the dialog must not change what is reviewed.
@@ -245,7 +246,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     subset: next.range === 'all' ? { kind: 'all' } : selection.current!.subset,
     scrubPii: next.scrubPii,
     maskOutOfScope: capabilitiesFor(next.format).scopeMasking && next.maskScope,
-    excludeAttachments: next.excludeAttachments
+    excludeAttachments: next.excludeAttachments,
+    includeAttachments: next.includeAttachments
   })
 
   const updateDraft = (next: typeof draft): void => {
@@ -293,7 +295,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     setResultWarning(false)
     setOpen(true)
     void loadRecent()
-    updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], scrubPii: false })
+    updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], includeAttachments: [], scrubPii: false })
   }
 
   const changeFormat = (format: ExportFormat): void => {
@@ -307,23 +309,26 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const toggleAttachment = (id: string): void => {
     attachmentFocus.current = id
     const excluded = new Set(draft.excludeAttachments)
-    if (excluded.has(id)) excluded.delete(id)
-    else excluded.add(id)
-    updateDraft({ ...draft, excludeAttachments: [...excluded] })
+    const included = new Set(draft.includeAttachments)
+    const attachment = resolvedPlan?.attachments.find(a=>a.id===id)
+    if(attachment?.status==='included') { excluded.add(id); included.delete(id) }
+    else { excluded.delete(id); included.add(id) }
+    updateDraft({ ...draft, excludeAttachments: [...excluded], includeAttachments:[...included] })
   }
 
-  useEffect(() => {
-    if (!resolvedPlan || !attachmentFocus.current) return
+  useLayoutEffect(() => {
+    if (!resolvedPlan || previewLoading || !attachmentFocus.current) return
     const id = attachmentFocus.current
     attachmentFocus.current = null
     // Re-resolving replaces the attachment list. Restore its checkbox only
-    // when focus fell to the body; never steal it from another draft control.
+    // when focus fell to the body; do it before paint, once controls are
+    // enabled, and never steal it from another draft control.
     if (document.activeElement === document.body) {
       const input = [...(panel.current?.querySelectorAll<HTMLInputElement>('input') ?? [])]
         .find(el => el.getAttribute('aria-label') === id)
       input?.focus()
     }
-  }, [resolvedPlan])
+  }, [resolvedPlan, previewLoading])
 
   const closeAll = (): void => {
     attachmentFocus.current = null
@@ -500,6 +505,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                               ? t('export.preview.subsetAll')
                               : resolvedPlan.request.subset.kind === 'selection'
                                 ? <span className="break-words">{t('export.current')}<br />{selectionConditions(resolvedPlan.request.subset, t).join(' · ')}</span>
+                                : resolvedPlan.request.subset.kind === 'activity' || resolvedPlan.request.subset.kind === 'session'
+                                  ? subsetSummary(resolvedPlan.request.subset,t)
                                 : <>
                                   {formatDateTime(resolvedPlan.request.subset.since, { seconds: true })}
                                   {' → '}

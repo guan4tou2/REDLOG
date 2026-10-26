@@ -195,3 +195,60 @@ T008–T013 and the wider platform matrix remain open; Spec 062 remains Draft.
 - [x] T079 Close the bounded follow-up: distinguish a manual adapter choice from the detected recommendation; refresh hooks, terminal policy and integration availability on return without running installers or changing project permissions; use HUD-off non-HUD test fixtures with explicit HUD-on acceptance and keep the product default unchanged.
 
 - [x] T080 Reproduce the Windows late-discovery pause leak with a filesystem clock ahead of Date.now; persist a filesystem-calibrated recording boundary and reuse it for resumed sessions. Verify paused content stays absent after restart while genuinely new conversations still record; retain the CI/platform results in verification.md.
+
+- [x] T081 Complete the bounded installed Mac last-export restart check using an external custom destination, a real artifact/verifier and Finder selection. Correct the observed marker opt-out submit label to Save marker in both locales without changing capture behavior or adding controls; record remaining manual/platform limits.
+
+
+- [x] T082 Separate Windows installer-use documentation from source development and identify internal candidates in the existing About version line and internal packaging instructions; preserve official release/update versions.
+- [x] T083 Keep Bash/Zsh output proof visible after command activation and only fold session guidance; accept the same valid canary after timeout; preserve shell-specific capability limits and the existing evidence contract.
+- [x] T084 Scope dependency preparation to the requested source and revalidate on return without auto-installation or authorization changes.
+- [ ] T085 Open the own-browser verification URL directly; start the timeout only on operator initiation, retain nonce/client/CA checks and verify the affected native/source journey at narrow/wide sizes.
+
+- [x] T086 Add a machine-local terminal-app choice independent of Bash/Zsh/PowerShell; keep the selector and connect action mounted during background revalidation; exclude other/unknown apps before hook installation into a session and on subsequent command delivery, including background/session producers. Preserve built-in terminal fallback, explicit opt-in, recording stops and project identity. Record the native prompt report and with/without-adapter evidence without claiming an unverified theme fix.
+
+T082–T084 and bounded T086 are implemented and verified to the recorded limits.
+T085 remains open for reliable native terminal-settings resize inspection.
+The ready-dist record in verification.md supersedes earlier pending checkpoints. The Mac lock and the native tool's Warp refusal
+are environment limits, not a clean-OS or Windows acceptance result.
+
+
+## Whole-app visual refinement (2026-10-26, staged)
+
+User chose staged improvements across the whole app. The existing token system,
+recording semantics and layout-over-copy rule remain authoritative. Scope and
+review dimensions: [ui-refinement-20261026.md](ui-refinement-20261026.md).
+
+- [ ] T087 [US2] Refine terminal-source actions with shared Button geometry, shorter rows, explicit expanded state and adjacent connection steps; verify source connection survives revalidation and bilingual narrow/wide/zoom geometry. Record source versus packaged/native visual limits.
+- [ ] T088 [US2] Review the other settings/source pages against the same hierarchy, control, loading/error and responsive criteria; implement observed inconsistencies, preserving source authorization and security boundaries.
+- [ ] T089 [US2] Review dashboard, search, transcript, HTTP, targets, screenshots, bookmarks and the built-in fallback for toolbar/table/detail consistency at representative sizes; preserve evidence completeness and existing navigation.
+- [ ] T090 [US6] Review export preview/completion/reopen and marker dialogs for shared sizing, action order, keyboard/focus and long-content handling; verify actual artifact recovery without redesigning export selection.
+
+Each batch needs its own evidence. T088–T090 are requested unbuilt work, not
+completed merely by this plan or earlier UI audits. Awards are a design reference,
+not a measurable certification or a reason to add decorative capture-time motion.
+
+
+T087 implementation and bounded checks passed: 17 focused units, 2 affected
+existing Electron journeys, typecheck/build and the three lightweight gates.
+The final smaller native view was inspected; a reliable native wide live-resize
+check is still outstanding, so the checkbox is deliberately not closed. See
+ui-refinement-20261026.md. No completed whole-app audit is implied.
+
+
+## Forensic Editorial foundation — 2026-10-26
+
+Full product scope and exact page/state matrix: [UIUX-FORENSIC-EDITORIAL.md](../../docs/UIUX-FORENSIC-EDITORIAL.md).
+The earlier T087 source-row increment is retained as history; the next sequence
+is foundation, T089 core work views, T088/T090 evidence/settings/delivery, then
+full acceptance. T089 also covers the remaining evidence work views it names.
+No page removal or evidence-semantic change is authorized by visual consistency.
+
+- [ ] T091 Audit and refine existing design primitives for Forensic Editorial: contrast in all action states, readable type ramp, 4px-based spacing with explicit exceptions, density, borders, keyboard focus and short/reduced motion. Map Canvas/xterm/HUD roles before applying a new palette. Do not build wrappers or aliases without an actual need.
+- [ ] T092 Complete the per-page/state/locale/viewport acceptance matrix in UIUX-FORENSIC-EDITORIAL.md with reproducible synthetic fixtures, actual Electron visual review, targeted regression and performance evidence. Do not close it from token tests or earlier baseline audits.
+
+T091 partial: confirmed primary hover contrast failure in the existing token
+test, then corrected the shared hover token. No whole-palette or whole-App
+visual completion is implied by that bounded repair.
+
+
+- [x] T093 Narrow shipped optional AI capture to Claude Code then Codex: remove the OpenCode parser/manifest, executable example, source/health UI and obsolete provider tests; update active contracts/docs, reject removed-provider activation/install, and verify the built/package catalog contains exactly the two supported providers. Preserve stored evidence and generic reading/export semantics; do not delete user-installed files or add compatibility shims.

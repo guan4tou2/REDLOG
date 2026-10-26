@@ -5,6 +5,56 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Selected operations and source sessions can be exported through the shared
+  export dialog as JSON, NDJSON or evidence bundles. Selection stays within the
+  reviewed dataset and source namespace. Related recordings require explicit
+  selection, preserve approved prefixes, and never add newly written parts.
+  Bundle copying is restricted to approved attachments and checked afterwards.
+- Saved UTF-8 output and HTTP bodies larger than 16 MiB now use bounded chunks
+  in the global full-text index, including tail matches and terms in different
+  chunks of the same source. Source changes invalidate obsolete matches.
+
+- Export attachment selection restores keyboard focus before the updated preview
+  is painted, after its controls are enabled.
+
+- HTTP verification now changes its nonce and readiness together with the proxy
+  endpoint and certificate policy. Initial loading can no longer expose a stale
+  check that discards a reply or clears a just-started timeout.
+
+- Added the Activity query contract: stable operation IDs, database grouping
+  before pagination, frozen dataset boundaries, bounded source-event pages and
+  separate match/context counts. Project changes and retention invalidate stale
+  references explicitly. Known Claude Code/Codex tool schemas distinguish
+  execution, file operations, search and browsing; unknown tools stay unknown.
+  Search now offers Operations and Raw events using the same query/filter.
+  Operation details open matching source Events first and read saved Shell,
+  AI and HTTP text in bounded windows. Content Find scans the saved version;
+  returning from the original Event preserves search and reading position.
+  The existing main navigation remains until reader/search parity is complete.
+- Body search now handles decoded UTF-8 sidecars, retries files that arrive
+  later, removes missing-file hits and rejects replaced contents. Search
+  reports missing, binary, unavailable and over-budget content. The per-body
+  FTS budget is 16 MiB; larger originals remain saved and available to the
+  bounded content reader and its Find operation.
+
+- Terminal App restrictions on macOS now check OS-observed process ancestry and
+  bundle identity instead of trusting TERM_PROGRAM, WT_SESSION or a built-in
+  terminal flag. Unknown origins are excluded. Unsupported platforms do not
+  offer a restriction they cannot enforce; existing unsupported choices can be
+  reset to all terminals.
+- An offline local receiver no longer makes the foreground stream discard the
+  bounded output record that the shell can preserve for replay. Paused or
+  refused streams do not use this offline fallback.
+- Command and AI Tool pairing now keeps repeated commands, other providers,
+  source Sessions and capture namespaces separate. Conflicting records remain
+  unpaired instead of silently selecting the last copy. POSIX adapters include
+  their source Session identity; stored evidence is not rewritten.
+
+- Optional AI capture now ships only Claude Code and Codex, both uninstalled
+  by default. Removed the OpenCode parser package, source controls and executable
+  plugin example. Removed-provider settings cannot authorize capture; already
+  recorded evidence remains readable and exportable.
+
 - AI conversation acceptance now runs Claude Code first, then Codex through the
   same optional install, directory authorization, message/tool I/O, search,
   transcript, JSON delivery and removal journey. Fixed multiline text search:

@@ -117,7 +117,7 @@ export default function AboutPage({ t }: {
     <div className="space-y-4">
       <FieldGroup title={t('settings.aboutVersion')}>
         <p className="font-mono text-sm text-redlog-text select-text cursor-text">
-          RedLog v{__APP_VERSION__}
+          RedLog v{__APP_VERSION__} · {__APP_BUILD__}
         </p>
         <UpdateBlock t={t} />
       </FieldGroup>

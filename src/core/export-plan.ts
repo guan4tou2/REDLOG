@@ -1,3 +1,4 @@
+import type { ActivitySnapshot } from './activity-contract'
 import { parseQuery } from './query/contract'
 import type { EventFilter, HttpFlowQueryOptions } from './db/events'
 import { getReadonlyDB } from './db/index'
@@ -23,6 +24,8 @@ export interface ExportSnapshot {
 
 export type ExportSubset =
   | { kind: 'selection'; projection: 'events' | 'http'; filter: Omit<EventFilter, 'scope' | 'personalDomains'>; query?: string; excludeHousekeeping?: boolean; http?: HttpFlowQueryOptions['http'] }
+  | { kind: 'activity'; projectId: string; anchorEventId: string; snapshot: ActivitySnapshot }
+  | { kind: 'session'; projectId: string; anchorEventId: string; snapshot: ActivitySnapshot }
   | { kind: 'all' }
   | { kind: 'time-range'; since: number; before: number; targetId?: string }
 
@@ -34,6 +37,7 @@ export interface ExportRequest {
   scrubPii?: boolean
   /** Attachments the operator left out, by bundle-relative path (#222). */
   excludeAttachments?: string[]
+  includeAttachments?: string[]
 }
 
 export interface NormalizedExportRequest {
@@ -43,6 +47,7 @@ export interface NormalizedExportRequest {
   scopeOnly: boolean
   scrubPii: boolean
   excludeAttachments: readonly string[]
+  includeAttachments: readonly string[]
 }
 
 export interface ExportCounts {
@@ -239,7 +244,18 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 export function normalizeExportRequest(request: ExportRequest): NormalizedExportRequest {
   if (!isExportFormat(request.format)) throw new Error('Invalid export format')
   const subset = structuredClone(request.subset ?? { kind: 'all' as const })
-  if (!['all', 'time-range', 'selection'].includes(subset.kind)) throw new Error('Invalid export subset')
+  if (!['all', 'time-range', 'selection', 'activity', 'session'].includes(subset.kind)) throw new Error('Invalid export subset')
+  if (subset.kind === 'activity' || subset.kind === 'session') {
+    if (typeof subset.projectId !== 'string' || !subset.projectId || typeof subset.anchorEventId !== 'string' || !subset.anchorEventId || !isPlainRecord(subset.snapshot)) throw new Error('Invalid operation export reference')
+    for (const key of ['chainedMaxRowId','loggedMaxRowId','chainedCount','loggedCount','takenAt'] as const) {
+      if (!Number.isSafeInteger(subset.snapshot[key]) || subset.snapshot[key] < 0) throw new Error('Invalid operation export boundary')
+    }
+    for (const key of ['chainedTailId','loggedTailId'] as const) {
+      if (subset.snapshot[key] !== null && typeof subset.snapshot[key] !== 'string') throw new Error('Invalid operation export boundary')
+    }
+    if (!['json','ndjson','bundle'].includes(request.format)) throw new Error('Unsupported operation export format')
+    Object.freeze(subset.snapshot)
+  }
   if (subset.kind === 'selection') {
     if (!['events', 'http'].includes(subset.projection) || !isPlainRecord(subset.filter)) throw new Error('Invalid export selection')
     const allowed = new Set(['targetId', 'agentType', 'since', 'before', 'inScopeOnly', 'hidePersonal', 'tier'])
@@ -274,7 +290,8 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
     maskOutOfScope: request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
     scrubPii: request.scrubPii === true,
-    excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort())
+    excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort()),
+    includeAttachments: Object.freeze([...new Set((request.includeAttachments ?? []).filter(isAttachmentId))].sort())
   })
 }
 

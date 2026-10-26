@@ -73,23 +73,24 @@ function RefBackedStream({ label, refValue, bytes, accent }: {
  */
 function LateOutput({ commandId }: { commandId: string }): JSX.Element {
   const { t } = useI18n()
-  const [rows, setRows] = useState<Array<{ id: string; data: Record<string, unknown> }> | null>(null)
+  const [rows, setRows] = useState<import('../../../core/db/events').CommandOutputPage | null>(null)
 
   useEffect(() => {
     let live = true
     const load = (): void => {
       window.redlog.events.commandOutput(commandId)
         .then((r) => { if (live) setRows(r) })
-        .catch(() => { if (live) setRows([]) })
+        .catch(() => { if (live) setRows({ items: [], hasMore: false }) })
     }
     load()
     const unsub = window.redlog.events.onNewBatch(load)
     return () => { live = false; unsub() }
   }, [commandId])
 
-  const { stdout, stderr, state, lateBytes, lostBytes: lost } = summarizeLateOutput(rows ?? [])
+  const { stdout, stderr, state, lateBytes, lostBytes: lost } = summarizeLateOutput(rows?.items ?? [], rows?.hasMore)
   const last = state !== 'running'
-  const status = state === 'incomplete' ? t('timeline.detail.lateTruncated')
+  const status = state === 'preview' ? t('timeline.detail.outputPreview')
+    : state === 'incomplete' ? t('timeline.detail.lateTruncated')
     : state === 'done' ? t('timeline.detail.lateDone')
       : t('timeline.detail.lateRunning')
 
@@ -155,7 +156,7 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           accent="amber"
         />
       )}
-      {data.late_output === true && typeof data.command_id === 'string' && (
+      {(data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string' && (
         <LateOutput commandId={data.command_id} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}

@@ -287,7 +287,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                         className="text-xs text-redlog-text-dim hover:text-redlog-accent bg-redlog-elevated px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/40"
                       >{t('activeTarget.workOn')}</button>
                     )}
-                    <span className="text-redlog-text-dim text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
+                    <span className="text-redlog-text-dim text-xs">{t('targets.events', { count: tgt.eventCount })}</span>
                     {tgt.inScope === false && (
                       <>
                         <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>

@@ -88,13 +88,41 @@ describe('LateOutput', () => {
     expect(rx.headers[0].authorization).toBe('Bearer tok')
   })
 
-  it('stops at the cap, and says how much it refused to keep', async () => {
+  it('segments beyond the old lifetime cap and preserves all output', async () => {
     const rx = await receiver(() => ({ status: 200, body: {} }))
     await drive(home(rx.port), 10, [['stdout', 'abcdefghij\nklmnopqrst\n']])
-    const f = finalOf(rx.bodies)
-    expect(f.truncated).toBe(true)
-    expect(f.late_bytes).toBe(10)
-    expect(f.over_cap_bytes).toBe(12)  // 22 bytes in, 10 kept
+    const rows = rx.bodies.map(b => b.data).filter(d => !d.final)
+    expect(rows.map(d => d.stdout ?? '').join('')).toBe('abcdefghij\nklmnopqrst\n')
+    expect(rows.every(d => d.bytes <= 10)).toBe(true)
+    expect(finalOf(rx.bodies)).toMatchObject({ truncated: false, late_bytes: 22, over_cap_bytes: 0, dropped_bytes: 0 })
+  })
+
+  it.skipIf(process.platform === 'win32')('persists foreground output before exit, beyond its inline preview budget', async () => {
+    const rx = await receiver(() => ({ status: 200, body: { ok: true } }))
+    const h = home(rx.port), event = path.join(h, 'end.json')
+    const text = 'long-output-'.repeat(10000)
+    const child = spawn('python3', [RELAY, 'run', '--home', h, '--event-out', event,
+      '--command-id', 'foreground-1', '--max-bytes', '32', '--', 'python3', '-c',
+      `import sys,time;sys.stdout.write(${JSON.stringify(text)});sys.stdout.flush();time.sleep(1);sys.stderr.write('last-error\\n')`],
+      { stdio: ['ignore', 'pipe', 'pipe'] })
+    let screen = '', errors = ''
+    child.stdout.on('data', c => { screen += c })
+    child.stderr.on('data', c => { errors += c })
+    const early = await new Promise<boolean>(resolve => {
+      const interval = setInterval(() => { if (rx.bodies.some(b => b.data.subtype === 'command_output')) { clearInterval(interval); clearTimeout(timer); resolve(child.exitCode === null) } }, 10)
+      const timer = setTimeout(() => { clearInterval(interval); resolve(false) }, 900)
+    })
+    const code = await new Promise<number | null>(resolve => child.on('close', resolve))
+    expect(code, errors).toBe(0)
+    expect(early).toBe(true)
+    expect(screen).toBe(text)
+    const rows = rx.bodies.map(b => b.data)
+    expect(rows.filter(d => !d.final).map(d => d.stdout ?? '').join('')).toBe(text)
+    expect(Buffer.concat(rows.filter(d => d.stream === 'stdout').map(d => Buffer.from(d.output_body.data, 'base64'))).toString()).toBe(text)
+    expect(rows.filter(d => !d.final).map(d => d.stderr ?? '').join('')).toBe('last-error\n')
+    expect(rows.every(d => d.streamed === true && d.late === false)).toBe(true)
+    expect(rows.at(-1)).toMatchObject({ final: true, dropped_bytes: 0, truncated: false })
+    expect(JSON.parse(fs.readFileSync(event, 'utf8'))).toMatchObject({ output_streamed: true, stdout_bytes: Buffer.byteLength(text), stdout_truncated: false })
   })
 
   it('counts bytes the server would not take while recording is paused', async () => {

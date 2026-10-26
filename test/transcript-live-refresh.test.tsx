@@ -43,7 +43,7 @@ function installBridge(head: () => Page, older: Page = empty): {
       queryPage,
       runQuery: vi.fn(),
       toolCounterparts: vi.fn().mockResolvedValue([]),
-      commandOutput: vi.fn().mockResolvedValue([]),
+      commandOutput: vi.fn().mockResolvedValue({ items: [], hasMore: false }),
       onNewBatch: (cb: () => void) => { listener = cb; return () => { listener = null } }
     },
     operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) },
@@ -127,7 +127,7 @@ describe('an older page and a batch landing together', () => {
     ;(window as unknown as { redlog: unknown }).redlog = {
       events: {
         queryPage, runQuery: vi.fn(), toolCounterparts: vi.fn().mockResolvedValue([]),
-        commandOutput: vi.fn().mockResolvedValue([]),
+        commandOutput: vi.fn().mockResolvedValue({ items: [], hasMore: false }),
         onNewBatch: (cb: () => void) => { listener = cb; return () => { listener = null } }
       },
       operators: { list: vi.fn().mockResolvedValue([]) },

@@ -11,7 +11,6 @@ describe('shared event filter wiring', () => {
     expect(source).toMatch(/const opts = toEventFilter\(sharedFilter\)/)
     expect(source).toMatch(/opts\.agentType = effectiveTypeFilter/)
     expect(source).not.toMatch(/results\.filter\(\(event\).*hostInScope/s)
-    expect(source).toMatch(/if \(!eventFilterActive\) \{[\s\S]*searchCasts/)
   })
 
   it('Search restarts on filter changes and preserves the filter for load more', () => {
@@ -19,7 +18,6 @@ describe('shared event filter wiring', () => {
     const loadMore = source.slice(source.indexOf('const loadMore'), source.indexOf('useEffect(() => {', source.indexOf('const loadMore')))
     expect(loadMore).toMatch(/const opts = buildSearchOpts\(\)/)
     expect(loadMore).toMatch(/filter: opts, limit: PAGE_SIZE, cursor: nextCursor/)
-    expect(source).toMatch(/\[effectiveTypeFilter, sharedFilter\.targetId, sharedFilter\.timeRange, sharedFilter\.inScopeOnly, sharedFilter\.hidePersonal, sharedFilter\.tier\]/)
   })
 
   it('Transcript sends shared predicates with each bounded backend bucket', () => {

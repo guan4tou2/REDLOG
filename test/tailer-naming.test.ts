@@ -7,7 +7,7 @@ import { loadConfig } from '../src/core/config'
 // Spec 029: two services follow transcript files, and their names did not say
 // which was which — `transcriptTailer` (PowerShell Start-Transcript) next to
 // `agentTailer` (AI agents). And the Claude Code adapter lived outside
-// `adapters/`, in a file that also registered the Codex and OpenCode adapters.
+// `adapters/`, in a file that also registered the Codex adapter.
 
 const root = path.join(__dirname, '..')
 const exists = (rel: string): boolean => fs.existsSync(path.join(root, rel))
@@ -26,7 +26,7 @@ describe('tailer naming', () => {
   })
 
   it('keeps optional AI parsers in their packages and the shared host free of provider imports', () => {
-    for (const a of ['claude-code', 'codex', 'opencode']) {
+    for (const a of ['claude-code', 'codex']) {
       expect(exists(`optional-plugins/${a}/adapter.ts`)).toBe(true)
       expect(exists(`src/main/services/adapters/${a}.ts`)).toBe(false)
     }

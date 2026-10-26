@@ -8,8 +8,10 @@ export type RecordingToggleSource = 'ui' | 'api' | 'mcp' | 'unknown'
 
 class RedLogEventBus extends EventEmitter {
   private _paused = false
+  private _resumedAt = 0
 
   get paused(): boolean { return this._paused }
+  get resumedAt(): number { return this._resumedAt }
 
   // v0.9.5: `source` rides along so the recording_paused / recording_resumed
   // rows say who flipped it. Pause now genuinely stops recording, which means
@@ -26,6 +28,7 @@ class RedLogEventBus extends EventEmitter {
   resume(source: RecordingToggleSource = 'unknown'): void {
     if (!this._paused) return
     this._paused = false
+    this._resumedAt = Date.now()
     this.emit('recording', true, source)
   }
 

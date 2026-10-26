@@ -218,8 +218,8 @@ describe('the Timeline filter box on the query contract', () => {
   })
 
   it('lights the drawn end of a command whose start matched', async () => {
-    const start = makeEvent('st', T0 - 2000, 'shell', { data: { subtype: 'command_start', command: 'nmap -sV x', pid: 7 } })
-    const end = makeEvent('en', T0 - 1000, 'shell', { data: { subtype: 'command_end', command: 'nmap -sV x', pid: 7, exit_code: 0 } })
+    const start = makeEvent('st', T0 - 2000, 'shell', { data: { subtype: 'command_start', command: 'nmap -sV x', pid: 7, command_id: 'cmd', terminalId: 'terminal', shell: 'zsh' } })
+    const end = makeEvent('en', T0 - 1000, 'shell', { data: { subtype: 'command_end', command: 'nmap -sV x', pid: 7, command_id: 'cmd', terminalId: 'terminal', shell: 'zsh', exit_code: 0 } })
     const other = shell('z', T0)
     firstPageOnly([start, end, other])
     b.matchIds.mockImplementation(async (req: { ids: string[]; parsed?: unknown }) => req.parsed ? ['st'] : req.ids)

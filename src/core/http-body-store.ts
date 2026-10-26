@@ -18,7 +18,7 @@ const INLINE_THRESHOLD = 4096
  */
 export const BODY_REF_FIELDS = [
   'request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref',
-  'stdout_ref', 'stderr_ref'
+  'stdout_ref', 'stderr_ref', 'output_body_ref'
 ] as const
 
 export interface BodyRef {
@@ -62,7 +62,7 @@ export function storeBody(body: {
   const filePath = path.join(bodiesDir(), filename)
 
   if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, rawBytes)
+    fs.writeFileSync(filePath, rawBytes, { mode: 0o600 })
   }
 
   return { sha256, size: rawBytes.length, file: filename, encoding: body.encoding }
@@ -127,7 +127,7 @@ export function extractTextToSidecar(
 
 export function extractBodyToSidecar(
   data: Record<string, unknown>,
-  field: 'request_body' | 'response_body' | 'ws_body' | 'tcp_body'
+  field: 'request_body' | 'response_body' | 'ws_body' | 'tcp_body' | 'output_body'
 ): void {
   const body = data[field] as {
     data: string
@@ -138,17 +138,13 @@ export function extractBodyToSidecar(
     content_type?: string
   } | undefined
 
-  if (!body || !shouldExternalize(body)) return
+  if (!body || (field !== 'output_body' && !shouldExternalize(body))) return
 
   const ref = storeBody(body)
   if (!ref) return
 
   if (body.truncated) ref.truncated = true
 
-  const refField = field === 'request_body' ? 'request_body_ref'
-    : field === 'response_body' ? 'response_body_ref'
-    : field === 'ws_body' ? 'ws_body_ref'
-    : 'tcp_body_ref'
-  data[refField] = ref
+  data[`${field}_ref`] = ref
   delete data[field]
 }

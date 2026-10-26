@@ -30,7 +30,7 @@ const forShell = (kind: 'bash' | 'zsh', target: ShellTarget | null): void => {
       report = await runZsh(target!, {
         shellKind: kind,
         rc: `source ${hookPath(target!, kind === 'bash' ? 'shell-bash-hook.sh' : 'shell-zsh-hook.zsh')}`,
-        commands: [JOB, 'echo after-job'],
+        commands: [JOB, 'echo after-job', `python3 -c 'import sys,time; sys.stdout.write("foreground-start-"+"x"*20000); sys.stdout.flush(); time.sleep(1.2); sys.stdout.write("foreground-end")'`],
         redlog: { port: collector.port, token, identity: { engagementId: 'eng-late', operatorId: 'op-late' } },
         timeoutSeconds: 40
       })
@@ -71,6 +71,15 @@ const forShell = (kind: 'bash' | 'zsh', target: ShellTarget | null): void => {
       expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
       expect(new Set(seqs).size, 'a seq was reused').toBe(seqs.length)
       expect(rows.every((r) => r.data.late === true)).toBe(true)
+    })
+
+    it('saves long foreground output through the same adapter without duplicating its prefix', () => {
+      const foreground = collector.events.find(e => e.data.subtype === 'command_end' && String(e.data.command).includes('foreground-start-'))
+      expect(foreground?.data).toMatchObject({ output_streamed: true, stdout_truncated: false })
+      const rows = collector.events.filter(e => e.data.subtype === 'command_output' && e.data.command_id === foreground!.data.command_id)
+      expect(rows.filter(e => e.data.final)).toHaveLength(1)
+      expect(rows.filter(e => !e.data.final).map(e => e.data.stdout ?? '').join('')).toBe('foreground-start-' + 'x'.repeat(20000) + 'foreground-end')
+      expect(rows.every(e => e.data.streamed === true && e.data.late === false)).toBe(true)
     })
 
     it('ends with one final row that accounts for the bytes', () => {

@@ -65,7 +65,7 @@
 **Independent Test**: 乾淨安裝只安裝一個 AI 擷取插件，選工作目錄後啟用；其他工具產生的對話不得被讀取或寫入。
 
 **Acceptance Scenarios**:
-1. Claude Code、Codex、OpenCode 作為官方可選擷取插件分別提供，預設未安裝、不載入、不監看對話；停用不能偽裝成未安裝。
+1. Claude Code、Codex 作為官方可選擷取插件分別提供，預設未安裝、不載入、不監看對話；停用不能偽裝成未安裝。
 2. 安裝的是 RedLog 擷取插件，不是 AI 工具本體。插件清楚說明來源、用途與支援範圍；未偵測到工具不顯示已記錄。
 3. 安裝為本機層級；啟用與記錄範圍為專案層級，在同一項目可完成，不在多處維護不同語義的開關。
 4. 啟用前明示會讀哪些目錄與資料。不能以空範圍悄悄代表整台電腦；無法判定工作歸屬時不自動寫進前景專案。
@@ -169,3 +169,36 @@ Claude/Codex source directories resolve in order: an explicit absolute project s
 Review all existing work/settings pages at representative desktop and narrow window sizes. This is a desktop Electron app: narrow-window coverage does not claim mobile application support. No marketplace, new AI workspace, project-data relocation or whole-app redesign is added.
 
 User clarification (2026-10-24): AI integrations are actual optional code packages supplied offline with the app. Uninstalled providers are neither registered nor executed; installation copies only that provider. Provider identity, default/source environment paths and parsing belong to its package, not a fixed core provider switch. Loading requires valid installed bytes and explicit project permission; removal stops/unloads it and preserves all captured evidence. This does not authorize executing arbitrary third-party parser code in-process.
+
+
+### 2026-10-25 — First-time internal-test handoff clarification
+
+A novice must distinguish the supplied internal candidate from an older public
+asset with the same package version. The existing About version line includes
+build provenance; a modified tree and missing Git identity are explicit.
+Installer use documentation is separate from source-build requirements.
+
+Command arrival is evidence of command capture, not proof of retained output.
+The existing Bash/Zsh output canary is directly visible after activation;
+interactive-session guidance stays optional. This does not invent a PowerShell
+output capability or redefine the shared command-evidence store.
+
+Dependency repair lists only the currently requested command or web source.
+Returning from an external prerequisite installation rechecks availability
+without running an installer or granting capture. The own-browser check has a
+direct verification-URL action. Its timeout starts only after the operator
+initiates a check; received nonce reports may still verify a manually opened
+URL. Certificate and per-client trust boundaries remain unchanged.
+
+### Terminal app selection and prompt isolation (2026-10-25)
+
+The operator may restrict external shell capture to a terminal application (for
+example Warp), independently of selecting Bash, Zsh or PowerShell. This is a
+machine preference, not engagement network scope. A specific choice excludes
+unknown applications; built-in fallback capture remains available. New terminal
+sessions apply the choice before registering capture hooks; already loaded hooks
+must not deliver commands from an excluded application. No installer rewrites a
+prompt theme. Descriptor restoration/draining must precede prompt-rendering hooks
+so prompt text is neither reordered with command output nor saved as that output.
+A late valid activation canary completes the same attempt after the help timeout;
+retry/shell/project changes continue to invalidate the previous attempt.

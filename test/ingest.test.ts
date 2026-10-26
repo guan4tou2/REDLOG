@@ -264,6 +264,36 @@ describeDB('ingest', () => {
     expect(res.ok, res.brokenReason ?? '').toBe(true)
   })
 
+  it('stores raw output bytes before acknowledging the source event', () => {
+    const bytes = Buffer.from([255, 0, 27, 65])
+    const result = ingestMod.ingest({ ...base, agentType: 'shell', data: {
+      subtype: 'command_output', command_id: 'raw-output', streamed: true, seq: 1, stdout: 'readable',
+      output_body: { data: bytes.toString('base64'), encoding: 'base64', size: 4, sha256: '' }
+    } })
+    expect(result.event).not.toBeNull()
+    const ref = result.event!.data.output_body_ref as { file: string; size: number; sha256: string }
+    expect(ref).toMatchObject({ size: 4, sha256: crypto.createHash('sha256').update(bytes).digest('hex') })
+    expect(fs.readFileSync(path.join(tmpDir, 'http-bodies', ref.file))).toEqual(bytes)
+    expect(result.event!.data.output_body).toBeUndefined()
+  })
+
+  it('never saves delayed stream or inline bytes from a closed pause interval after resume', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const observedBeforeResume = Date.now() - 10000
+    eventBus.pause('api'); eventBus.resume('api')
+    for (const subtype of ['command_output', 'session_output', 'command_end']) {
+      const bytes = Buffer.from('private delayed ' + subtype)
+      const data = { subtype, command_id: 'closed-' + subtype, streamed: subtype === 'command_output', seq: 1,
+        source_timestamp: observedBeforeResume, output_started_at: observedBeforeResume,
+        stdout: bytes.toString(), output_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length, sha256: '' } }
+      const denied = ingestMod.ingest({ ...base, agentType: 'shell', data })
+      expect(denied.skipped, subtype).toBe('paused')
+      expect(fs.existsSync(path.join(tmpDir, 'http-bodies', crypto.createHash('sha256').update(bytes).digest('hex') + '.body'))).toBe(false)
+    }
+    const accepted = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'session_output', terminalId: 'new-interval', stdout: 'after resume', source_timestamp: Date.now() + 1 } })
+    expect(accepted.event).not.toBeNull()
+  })
+
   it('a paused recording writes nothing and derives nothing', async () => {
     const { eventBus } = await import('../src/core/event-bus')
     eventBus.pause('api')
@@ -275,6 +305,10 @@ describeDB('ingest', () => {
       expect(r.event).toBeNull()
       expect(r.skipped).toBe('paused')
       expect(r.companions).toHaveLength(0)
+      const bytes = Buffer.from('private paused raw output')
+      const denied = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'session_output', terminalId: 'paused-raw', stdout: bytes.toString(), output_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length, sha256: '' } } })
+      expect(denied.skipped).toBe('paused')
+      expect(fs.existsSync(path.join(tmpDir, 'http-bodies', crypto.createHash('sha256').update(bytes).digest('hex') + '.body'))).toBe(false)
     } finally {
       eventBus.resume('api')
     }

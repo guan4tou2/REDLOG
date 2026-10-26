@@ -118,8 +118,8 @@ export interface RedLogConfig {
     passThroughOpacity: number
   }
   terminal: {
-    /** Truncates a SINGLE runaway recording, bytes. A capture limit, not
-     *  retention — store-wide cleanup lives under `retention.casts`. */
+    /** Maximum physical cast-part bytes; capacity rotates, never stops capture.
+     *  Store-wide cleanup lives under `retention.casts`. */
     maxCastBytes: number
   }
   /** Clipboard monitor tuning. Whether it runs is the Host monitors pack

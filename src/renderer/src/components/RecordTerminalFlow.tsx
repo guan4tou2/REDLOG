@@ -204,19 +204,24 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInsta
   // failure the operator must retry themselves, so none of them re-runs here.
   useRevalidateOnFocus(() => { if (phase === 'blocked') void run() })
 
-  // Listen only while waiting: verification or the timeout ends it, and the
-  // cleanup unsubscribes either way.
+  // A timeout offers recovery, but the same canary can still arrive. Keep
+  // listening until verification, a new attempt, or leaving this flow.
+  const awaitingActivation = phase === 'waiting-for-activation' || phase === 'timed-out'
   useEffect(() => {
-    if (phase !== 'waiting-for-activation' || !nonce) return
+    if (!awaitingActivation || !nonce) return
     const mine = attempt.current
+    let received = false
     const unsub = window.redlog.events.onNewBatch((evs: RedLogEvent[]) => {
       if (attempt.current !== mine) return
-      if ((evs ?? []).some((ev) => isActivationEvent(ev, nonce, expectedShell, wslDistro))) setPhase('verified')
+      if ((evs ?? []).some((ev) => isActivationEvent(ev, nonce, expectedShell, wslDistro))) {
+        received = true
+        setPhase('verified')
+      }
     })
     const timer = setTimeout(() => {
       // Re-check the machine: the reasons worth naming are the ones true now.
       const done = (pf: RuntimePreflight | null): void => {
-        if (attempt.current !== mine) return
+        if (attempt.current !== mine || received) return
         if (pf) setPreflight(pf)
         setPhase('timed-out')
       }
@@ -224,7 +229,7 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInsta
       else done(null)
     }, ACTIVATION_TIMEOUT_MS)
     return () => { clearTimeout(timer); unsub() }
-  }, [phase, nonce, target.kind, expectedShell, wslDistro])
+  }, [awaitingActivation, nonce, target.kind, expectedShell, wslDistro])
 
   const missing = missingDependencies(preflight, target.kind === 'host' ? selectedHook ?? undefined : undefined)
   const command = activationCommand(nonce, expectedShell)
@@ -423,12 +428,7 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
   const { t } = useI18n()
   // PowerShell has no `redlog-session` helper; its output path is `Redlog-Run`.
   const hasSessionHelper = shell !== 'powershell'
-  // Once the shell is connected the next thing the operator wants is the Start
-  // button, which these two optional steps push off the screen. They stay
-  // mounted while folded (the canary listener must keep hearing the check), and
-  // the toggle carries their outcome so a result is not hidden with them.
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [outputResult, setOutputResult] = useState<CanaryResult['kind'] | null>(null)
   return (
     <div className="space-y-2">
       <p data-testid="record-terminal-verified" className="text-emerald-500 font-medium">
@@ -442,6 +442,7 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
           <p className="text-redlog-text-dim">{t('firstRun.record.outputPwsh')}</p>
         ) : (
           <>
+            <OutputCheck />
             <button
               type="button"
               data-testid="record-terminal-details-toggle"
@@ -450,8 +451,6 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
               className="underline text-redlog-text-dim hover:text-redlog-text"
             >
               {detailsOpen ? t('firstRun.record.detailsHide') : t('firstRun.record.detailsShow')}
-              {outputResult === 'output' && <span className="ml-1 text-emerald-500">✓</span>}
-              {outputResult === 'metadata-only' && <span className="ml-1 text-amber-400">!</span>}
             </button>
             <div data-testid="record-terminal-details" hidden={!detailsOpen} className="space-y-1">
               <p className="text-redlog-text-dim">
@@ -463,7 +462,6 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
                   <CopyButton text={'redlog-session'} />
                 </div>
               )}
-              <OutputCheck shell={shell} onResult={setOutputResult} />
             </div>
           </>
         )}
@@ -479,11 +477,10 @@ function VerifiedScope({ shell, label }: { shell: ShellName; label: string }): J
  *
  *  The bare command is what proves zsh's automatic relay; bash uses the same ordinary-command output check; neither is credited
  *  with output on the strength of a command event alone. */
-function OutputCheck({ shell, onResult }: { shell: ShellName; onResult?: (kind: CanaryResult['kind'] | null) => void }): JSX.Element {
+function OutputCheck(): JSX.Element {
   const { t } = useI18n()
   const [canary] = useState(() => outputCanary(activationNonce()))
   const [result, setResult] = useState<CanaryResult | null>(null)
-  useEffect(() => { onResult?.(result?.kind ?? null) }, [result?.kind, onResult])
 
   useEffect(() => {
     if (result?.kind === 'output') return
@@ -497,10 +494,9 @@ function OutputCheck({ shell, onResult }: { shell: ShellName; onResult?: (kind: 
     <div data-testid="record-terminal-output-check" className="space-y-1 pt-1">
       <p className="text-redlog-text-dim">{t('firstRun.record.outputCheck')}</p>
       <div className="flex items-center gap-2">
-        <code data-testid="record-terminal-output-command" title={viaRun} className="flex-1 min-w-0 truncate font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{viaRun}</code>
+        <code data-testid="record-terminal-output-command" className="flex-1 min-w-0 break-all whitespace-pre-wrap font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">{viaRun}</code>
         <CopyButton text={viaRun} />
       </div>
-      <p className="text-redlog-text-faint">{t('firstRun.record.outputCheckSession', { command: canary.command })}</p>
       {result?.kind === 'output' ? (
         <p data-testid="record-terminal-output-verified" className="text-emerald-500 font-medium">
           {t('firstRun.record.outputVerified', { via: result.capturedBy })}

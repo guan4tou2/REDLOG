@@ -1,3 +1,4 @@
+import { operationPairKey, sourceSessionKey } from '../../../core/operation-pair-key'
 import type { RedLogEvent } from '../../../core/db/event-types'
 import { isMarkerAmendment } from './markerFold'
 import { isCollapsibleAgentTurn } from './timelineEvents'
@@ -21,13 +22,13 @@ export function mapMatchesToDrawn(
   drawn: readonly RedLogEvent[]
 ): { lit: Set<string>; hiddenByCollapse: number } {
   const drawnIds = new Set(drawn.map((e) => e.id))
-  const commandKey = (e: RedLogEvent): string => `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
-  const endByCommand = new Map<string, string>()
+  const endByCommand = new Map<string, RedLogEvent>()
   const rowBySession = new Map<string, string>()
   for (const e of drawn) {
-    if (e.agentType === 'shell' && e.data?.subtype === 'command_end') endByCommand.set(commandKey(e), e.id)
-    const session = e.data?.session_id
-    if (e.agentType === 'agent' && typeof session === 'string' && !rowBySession.has(session)) rowBySession.set(session, e.id)
+    const key = operationPairKey(e)
+    if (e.agentType === 'shell' && e.data?.subtype === 'command_end' && key) endByCommand.set(key, e)
+    const session = sourceSessionKey(e)
+    if (e.agentType === 'agent' && session && !rowBySession.has(session)) rowBySession.set(session, e.id)
   }
   const lit = new Set<string>()
   let hiddenByCollapse = 0
@@ -40,12 +41,15 @@ export function mapMatchesToDrawn(
       continue
     }
     if (e.agentType === 'shell' && e.data?.subtype === 'command_start') {
-      const end = endByCommand.get(commandKey(e))
-      if (end) lit.add(end)
+      const key = operationPairKey(e)
+      const end = key ? endByCommand.get(key) : undefined
+      if (end && end.data.command === e.data.command) lit.add(end.id)
+      else hiddenByCollapse += 1
       continue
     }
     if (isCollapsibleAgentTurn(e)) {
-      const row = typeof e.data?.session_id === 'string' ? rowBySession.get(e.data.session_id) : undefined
+      const key = sourceSessionKey(e)
+      const row = key ? rowBySession.get(key) : undefined
       if (row) lit.add(row)
       else hiddenByCollapse += 1
     }

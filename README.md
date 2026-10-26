@@ -16,8 +16,7 @@ from), not on a target. It records what you do; it is not an implant.
 
 Grab the installer for your platform from the
 [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.18.3**.
-Builds are unsigned (ad-hoc signed, not notarised), so each OS asks you to
-confirm once.
+Builds do not yet carry a trusted publisher identity (macOS is ad-hoc signed, not notarised). First launch may require an OS trust decision; managed machines may block it.
 
 | Platform | File | Install |
 |----------|------|---------|
@@ -41,6 +40,10 @@ unsigned download), clear the flag as a last resort:
 ```sh
 xattr -dr com.apple.quarantine /Applications/RedLog.app
 ```
+
+For an internal test, use the specifically supplied candidate, not the public
+release link above. Copy the full version/build line from **Settings ▸ About**
+when reporting a problem; equal version numbers can contain different commits.
 
 ### Verify the download
 
@@ -78,7 +81,7 @@ The first engagement, in the order that proves capture works:
 2. **Connect your normal shell.** On the Dashboard's first-run screen choose
    **Record my Zsh / Bash / PowerShell terminal**. Confirm the detected shell
    or select another supported shell, install its adapter, open a **new**
-   terminal and run the displayed canary. The screen verifies arriving evidence,
+   terminal and run the displayed canary, then the visible output check. The screen verifies arriving evidence,
    not merely the installation. Existing terminal tabs do not reload themselves.
    Ordinary Bash and Zsh commands automatically record bounded stdout/stderr,
    exit code, duration and working directory. Interactive/native exceptions
@@ -104,9 +107,9 @@ built-in terminals opened afterwards. Proxy-aware tools still need the right
 trust configuration; client support for proxy variables varies. Raw TCP, SMB,
 LDAP, RDP and nmap SYN scans do not become HTTP evidence through this switch.
 
-Optional host monitoring, Windows transcript output, clipboard and AI capture
+Optional host monitoring, clipboard and AI capture
 are configured under **Settings ▸ Other capture sources**. Clipboard has its
-own opt-in. AI integrations are individually uninstalled by default; install,
+own opt-in. Windows output is beside terminal setup under **Commands & terminal**. AI integrations are individually uninstalled by default; install,
 select project working directories and explicitly enable the chosen integration.
 
 > **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for PowerShell hooks and WSL integration.
@@ -133,7 +136,6 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 
 **Key differentiators:**
 
-- **Zero-friction capture** — installs, starts recording, stays out of your way
 - **Optional AI conversations** — Claude Code and Codex integrations record supported local messages and tool calls/results for explicitly authorized project directories; shell hooks record terminal commands separately
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
 - **Operator identity** — every event carries an operator id resolved from the API token
@@ -158,7 +160,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 | Module | What it captures | Notes |
 |--------|-----------------|-------|
 | Shell hook (bash/zsh preexec) | Every command with pid, exit code, duration | Auto-installed for the built-in terminal; opt-in `source` for external shells |
-| Built-in terminal (node-pty) | Terminal-pane lifecycle + asciinema `.cast` recording | SHA-256'd, size-capped (default 50 MB) |
+| Built-in terminal (node-pty) | Terminal-pane lifecycle + asciinema `.cast` recording | SHA-256'd, automatic segments (default 50 MiB per file) |
 | Pivot auto-detector | ssh -D/-L/-R, chisel, ligolo, sshuttle, proxychains, socat → structured `pivot` events | Foreground close detected via `command_end`; 30-min recency window fallback |
 | Cleanup auto-detector | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` → `cleanup` events | NIST SP 800-86 anti-forensics tracking |
 | File-transfer auto-detector | `curl -o`, `wget -O`, `scp`, `rsync`, `python -m http.server` → `file_transfer` events | T1105 ingress / T1041 exfil |
@@ -240,7 +242,7 @@ Shell hooks record terminal commands separately; a shell hook alone does not cap
 
 Connect your interactive terminal to record its commands and supported output. Non-interactive shells spawned by AI tools may not load shell hooks; use the optional AI transcript integration for their conversation and source-reported tool results.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code, Codex and OpenCode are individually optional and uninstalled by default. Parser packages ship as inert offline resources; only the chosen package is installed and loaded after project authorization. Install the desired integration in Settings ▸ Other capture sources ▸ AI conversations, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI capture integrations for Claude Code and Codex are individually optional and uninstalled by default. Parser packages ship as inert offline resources; only the chosen package is installed and loaded after project authorization. Install the desired integration in Settings ▸ Other capture sources ▸ AI conversations, add project working directories, then explicitly enable it to record new supported messages and tool calls/results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 

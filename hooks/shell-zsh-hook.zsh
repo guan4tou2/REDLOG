@@ -11,7 +11,6 @@ fi
 # are the usual way) the banner printed twice and the prompt hooks registered
 # twice. Plain, un-exported: a child shell is a new interpreter and must load.
 [[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
-_REDLOG_HOOK_LOADED_IN=$$
 
 _redlog_adapter_dir="${${(%):-%N}:A:h}"
 
@@ -22,6 +21,8 @@ export REDLOG_SHELL=zsh
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
+_redlog_terminal_allowed || return 0
+_REDLOG_HOOK_LOADED_IN=$$
 
 # EPOCHREALTIME, for the event payload (shell-common.sh builds it without
 # starting python3 when it can). bash has it built in from 5.0; zsh needs this.
@@ -122,6 +123,7 @@ _redlog_class_of() {
 # nor a prompt, and an operator who types `redlog stop` before a client's
 # credential and sees it recorded anyway uninstalls the tool.
 _REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
+export _REDLOG_SESSION_ID
 _REDLOG_STATE_FILE=""
 
 _redlog_state_file() {
@@ -153,6 +155,7 @@ _redlog_state() {
 # variable. No file yet means a terminal that has not been told otherwise,
 # and the installed default is auto (research.md D4).
 _redlog_is_recording() {
+  _redlog_terminal_allowed || return 1
   local file
   file=$(_redlog_state_file)
   [[ -f "$file" ]] || return 0
@@ -369,6 +372,9 @@ _redlog_divert() {
   if [[ -n "$pts[1]" && -n "$pts[2]" ]] && exec 1>|"$pts[1]" 2>|"$pts[2]"; then
     : >"$dir/opened"
     _redlog_pagers_off
+    # Restore descriptors and drain the command before prompt/theme hooks draw.
+    # Preserve their relative order; only our cleanup must run first.
+    precmd_functions=(_redlog_precmd "${(@)precmd_functions:#_redlog_precmd}")
     return 0
   fi
   exec 1>&$_REDLOG_SAVED_OUT 2>&$_REDLOG_SAVED_ERR
@@ -532,7 +538,7 @@ _redlog_install_pty_wrappers() {
     # without ssh turns "command not found" into a confusing python error.
     command -v -- "$prog" >/dev/null 2>&1 || continue
     functions[$prog]='
-      if _redlog_is_running; then
+      if _redlog_terminal_allowed && _redlog_is_running; then
         python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"

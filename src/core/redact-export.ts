@@ -30,6 +30,7 @@ export const BODY_REF_FOR: Record<string, string> = {
   ws_preview: 'ws_body_ref',
   tcp_body: 'tcp_body_ref',
   tcp_preview: 'tcp_body_ref',
+  output_body: 'output_body_ref',
   output: 'output_ref',
   stdout: 'stdout_ref',
   stderr: 'stderr_ref'
@@ -80,6 +81,11 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
     if (ref && ref in data) { if (data === e.data) data = { ...e.data }; delete data[ref] }
   }
 
+  if (maskedFields.some(field => field === 'stdout' || field === 'stderr' || field === 'output_body')) {
+    if (data === e.data) data = { ...e.data }
+    delete data.output_body
+    delete data.output_body_ref
+  }
   return data === e.data ? e : { ...e, data }
 }
 

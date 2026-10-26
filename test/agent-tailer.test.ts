@@ -1,5 +1,3 @@
-import chokidar from 'chokidar'
-import { createAdapter as createOpenCodeAdapter } from '../optional-plugins/opencode/adapter'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -404,120 +402,6 @@ describe('catchUpSession — end-to-end', () => {
     expect(_sessionsForTest().size).toBe(2)
   })
 
-  it('OpenCode per-message adapter fans one msg into text + tool_call + tool_result (v0.8.1 B)', () => {
-    // Seed a fake OpenCode storage tree.
-    const storage = path.join(scratch, 'opencode-storage')
-    fs.mkdirSync(path.join(storage, 'session', 'projhash'), { recursive: true })
-    fs.mkdirSync(path.join(storage, 'message', 'ses_e2e'), { recursive: true })
-    const projCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-proj-'))
-    fs.writeFileSync(path.join(storage, 'session', 'projhash', 'ses_e2e.json'),
-      JSON.stringify({ id: 'ses_e2e', directory: projCwd }))
-    // Message stub + parts.
-    fs.writeFileSync(path.join(storage, 'message', 'ses_e2e', 'msg_e2e.json'), JSON.stringify({
-      id: 'msg_e2e', sessionID: 'ses_e2e', role: 'assistant',
-      model: { modelID: 'sonnet' }
-    }))
-    fs.mkdirSync(path.join(storage, 'part', 'msg_e2e'), { recursive: true })
-    fs.writeFileSync(path.join(storage, 'part', 'msg_e2e', 'prt_1.json'), JSON.stringify({
-      id: 'prt_1', messageID: 'msg_e2e', sessionID: 'ses_e2e',
-      type: 'text', text: 'let me run ls'
-    }))
-    fs.writeFileSync(path.join(storage, 'part', 'msg_e2e', 'prt_2.json'), JSON.stringify({
-      id: 'prt_2', messageID: 'msg_e2e', sessionID: 'ses_e2e',
-      type: 'tool', callID: 'call_ls', tool: 'bash',
-      state: { status: 'completed', input: { command: 'ls' }, output: 'a\nb\n' }
-    }))
-    // Configure host with the storage override, then hand-register the
-    // ses_e2e session (skips chokidar — deterministic for the test).
-    registerAdapter(createOpenCodeAdapter(path.join(storage, 'message'), { watch: chokidar.watch }))
-    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP })
-    hostRegisterSession('opencode', path.join(storage, 'message', 'ses_e2e'))
-
-    const rows = queryEvents({ agentType: 'agent', limit: 100 })
-    const opencodeRows = rows.filter((r) => r.data.agent === 'opencode')
-    // 1 assistant_message + 1 tool_call + 1 tool_result
-    expect(opencodeRows.some((r) => r.data.subtype === 'assistant_message')).toBe(true)
-    expect(opencodeRows.some((r) => r.data.subtype === 'tool_call' && r.data.tool_name === 'bash')).toBe(true)
-    expect(opencodeRows.some((r) => r.data.subtype === 'tool_result' && r.data.tool_use_id === 'call_ls')).toBe(true)
-    // Chain: tool_result._causes → tool_call.id
-    const call = opencodeRows.find((r) => r.data.subtype === 'tool_call')!
-    const res = opencodeRows.find((r) => r.data.subtype === 'tool_result')!
-    expect((res.data._causes as string[])?.[0]).toBe(call.id)
-
-    fs.rmSync(projCwd, { recursive: true, force: true })
-  })
-
-  it('v0.8.3 host.emitTurns lands as delta events on a live session with dedup + chain', async () => {
-    // Prove the HostControlSurface path: register an OpenCode-style session
-    // (initial msg + tool_call, no tool_result yet), then inject a
-    // supplemental tool_result via host.emitTurns (as the OpenCode secondary
-    // watcher would when a completed part file lands). Result: tool_result
-    // event lands, chain-linked to the tool_call; re-emitting the same
-    // turns is a safe no-op via uuid dedup.
-    const { _hostControlSurfaceForTest } = await import('../src/main/services/tailer-host')
-    const host = _hostControlSurfaceForTest()
-
-    // Seed a fake OpenCode storage with msg stub + a PENDING tool part.
-    const storage = path.join(scratch, 'oc-delta-storage')
-    fs.mkdirSync(path.join(storage, 'session', 'projhash'), { recursive: true })
-    fs.mkdirSync(path.join(storage, 'message', 'ses_delta'), { recursive: true })
-    const projCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-delta-'))
-    fs.writeFileSync(path.join(storage, 'session', 'projhash', 'ses_delta.json'),
-      JSON.stringify({ id: 'ses_delta', directory: projCwd }))
-    fs.writeFileSync(path.join(storage, 'message', 'ses_delta', 'msg_delta.json'), JSON.stringify({
-      id: 'msg_delta', sessionID: 'ses_delta', role: 'assistant'
-    }))
-    fs.mkdirSync(path.join(storage, 'part', 'msg_delta'), { recursive: true })
-    fs.writeFileSync(path.join(storage, 'part', 'msg_delta', 'prt_pending.json'), JSON.stringify({
-      id: 'prt_pending', messageID: 'msg_delta', sessionID: 'ses_delta',
-      type: 'tool', callID: 'call_delta', tool: 'bash',
-      state: { status: 'pending', input: { command: 'sleep 5' } }
-    }))
-    // Configure + register (uses the wrapped adapter's init to capture host).
-    registerAdapter(createOpenCodeAdapter(path.join(storage, 'message'), { watch: chokidar.watch }))
-    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP })
-    hostRegisterSession('opencode', path.join(storage, 'message', 'ses_delta'))
-
-    let rows = queryEvents({ agentType: 'agent', limit: 100 })
-    const ocRows = () => queryEvents({ agentType: 'agent', limit: 100 })
-      .filter((r) => r.data.agent === 'opencode' && r.data.session_id === 'ses_delta')
-    // Initial: msg + tool_call, no tool_result.
-    expect(ocRows().some((r) => r.data.subtype === 'assistant_message')).toBe(true)
-    expect(ocRows().some((r) => r.data.subtype === 'tool_call')).toBe(true)
-    expect(ocRows().some((r) => r.data.subtype === 'tool_result')).toBe(false)
-
-    // Now inject the delta as the secondary watcher would.
-    host.emitTurns('opencode', 'ses_delta', [{
-      uuid: 'opencode:tr:call_delta',
-      parentUuid: 'opencode:tc:call_delta',
-      type: 'tool_result',
-      toolUseId: 'call_delta',
-      toolOutput: 'done'
-    }])
-    const after = ocRows()
-    const tr = after.find((r) => r.data.subtype === 'tool_result')
-    const tc = after.find((r) => r.data.subtype === 'tool_call')
-    expect(tr).toBeDefined()
-    expect(tc).toBeDefined()
-    expect((tr!.data._causes as string[])?.[0]).toBe(tc!.id)
-
-    // Re-emit the same delta → dedup via uuid, no new row.
-    const beforeCount = ocRows().length
-    host.emitTurns('opencode', 'ses_delta', [{
-      uuid: 'opencode:tr:call_delta',
-      parentUuid: 'opencode:tc:call_delta',
-      type: 'tool_result',
-      toolUseId: 'call_delta',
-      toolOutput: 'done'
-    }])
-    expect(ocRows().length).toBe(beforeCount)
-
-    rows = rows  // silence unused-var lint
-    fs.rmSync(projCwd, { recursive: true, force: true })
-    const { _stopOpencodeSecondaryWatcherForTest } = await import('../optional-plugins/opencode/adapter')
-    _stopOpencodeSecondaryWatcherForTest()
-  })
-
   // Spec 050: one switch per agent. A disabled agent's transcript is refused
   // before the self-exclusion and watch-path gates, so it is never opened.
   it('refuses a session of an agent that is switched off, and takes one that is on', () => {
@@ -533,7 +417,7 @@ describe('catchUpSession — end-to-end', () => {
       enabled: true, engagementId: 'e1', operatorId: OP,
       claudeProjectsDir: path.join(scratch, 'claude-projects'), idleFlushMs: 50, previewChars: 100
     }
-    registerSession(source, { ...base, enabledAgents: ['codex', 'opencode'] })
+    registerSession(source, { ...base, enabledAgents: ['codex'] })
     expect(_sessionsForTest().size).toBe(0)
     configureHost({ ...base, enabledAgents: ['claude-code'] })
     hostRegisterSession('claude-code', source)

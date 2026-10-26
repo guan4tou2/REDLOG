@@ -243,13 +243,13 @@ to `http://127.0.0.1:${port}/api/events`. Minimum shape:
 {
   "agent_type": "agent",           // or "shell" if command-line grade
   "data": {
-    "subtype": "opencode_tool",  // free-form; group in the timeline
+    "subtype": "external_tool",  // free-form; group in the timeline
     "command": "sed -i s/a/b/ foo",
     "output_preview": "…truncated…",
     "session_id": "…",             // if the agent gives you one
     "cwd": "/path/to/engagement",
     "tool": "shell",
-    "wrapper": "opencode"             // your plugin id
+    "wrapper": "external-agent"             // your plugin id
   }
 }
 ```
@@ -264,49 +264,6 @@ Read the current shell adapter and wrapper patterns:
   redaction gate, recording-state check, and spool behavior for POSIX shells.
 - Official AI transcript integrations use `src/core/plugins/official-agents.ts` for explicit local installation and `agent-capture-policy.ts` for per-project permission. They do not inject a shell wrapper.
 
-##### Full example: OpenCode
-
-OpenCode is a Tier A agent — it exposes a native plugin API (`tool.execute.after`)
-that auto-loads any `.mjs` / `.ts` from `.opencode/plugins/` (project-scoped)
-or `~/.config/opencode/plugins/` (global). Docs: <https://opencode.ai/docs/plugins/>.
-
-Live reference: [`examples/plugins/opencode-hook/`](../examples/plugins/opencode-hook/).
-
-`plugin.json`:
-
-```json
-{
-  "id": "opencode-hook",
-  "name": "OpenCode",
-  "version": "0.1.0",
-  "redlogApi": 1,
-  "contributes": {
-    "capture": [{
-      "id": "opencode-plugin",
-      "name": "OpenCode (plugin API)",
-      "agentType": "agent",
-      "requires": ["opencode"],
-      "hookFile": "plugin/redlog.mjs",
-      "installMethod": "manual",
-      "manualSteps": [
-        { "label": "Project-scoped install:",
-          "command": "mkdir -p .opencode/plugins && ln -sf \"$PWD/examples/plugins/opencode-hook/plugin/redlog.mjs\" .opencode/plugins/redlog.mjs" },
-        { "label": "Global install (every OpenCode session):",
-          "command": "mkdir -p ~/.config/opencode/plugins && cp examples/plugins/opencode-hook/plugin/redlog.mjs ~/.config/opencode/plugins/redlog.mjs" }
-      ]
-    }]
-  }
-}
-```
-
-The plugin module exports a `Plugin` factory that returns
-`{ 'tool.execute.after': async (input, output) => ... }`. The hook body reads
-`~/.redlog/api-token` + `~/.redlog/api-port`, applies the two-gate privacy
-filter (recording + cwd exclusion), redacts common secret shapes from the
-output preview, and POSTs an `agent` event with
-`subtype: opencode_tool`. It's ~130 LOC and never throws — a failed capture
-must never break the operator's OpenCode session.
-
 ##### Testing your plugin
 
 1. Drop the plugin dir under `~/.redlog/plugins/` or your project's
@@ -314,18 +271,14 @@ must never break the operator's OpenCode session.
 2. Restart RedLog (or click **Reload** in Settings ▸ Plugins).
 3. The plugin should appear in Settings ▸ Plugins as 🟢 declarative and in
    Settings ▸ Hooks as an installable capture.
-4. Fire the hook for real by running the agent:
-   ```bash
-   opencode run "list files in /tmp"
-   ```
+4. Run your tool against a disposable local fixture and fire its configured hook.
 5. Verify the events land via CLI or timeline:
    ```bash
    redlog-cli events --agent_type agent --limit 3
    ```
 
 If nothing shows up: check RedLog is recording, check the cwd isn't in
-your exclusion list, and confirm the plugin loaded (`opencode` prints a
-warning on startup if a plugin file fails to import).
+your exclusion list, and inspect your tool’s own plugin-loading errors.
 
 ---
 

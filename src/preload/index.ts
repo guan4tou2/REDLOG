@@ -100,6 +100,11 @@ const api: RedLogAPI = {
     save: (cfg: { excludedPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
+  content: {
+    list: (req: { projectId: string; eventId: string }) => ipcRenderer.invoke('content:list', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentDescriptor[]>>,
+    read: (req: import('../core/content-contract').ContentReadRequest) => ipcRenderer.invoke('content:read', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentWindow>>,
+    find: (req: import('../core/content-contract').ContentFindRequest) => ipcRenderer.invoke('content:find', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentFindResult>>
+  },
   events: {
     commandEvidence: () => ipcRenderer.invoke('events:commandEvidence') as Promise<{ builtin: boolean; external: boolean }>,
     query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),
@@ -115,6 +120,10 @@ const api: RedLogAPI = {
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
+    activityPage: (req: import('../core/activity-contract').ActivityRequest) =>
+      ipcRenderer.invoke('events:activityPage', req) as Promise<import('../core/activity-contract').ActivityPage>,
+    activityMembers: (req: import('../core/activity-contract').ActivityMembersRequest) =>
+      ipcRenderer.invoke('events:activityMembers', req) as Promise<import('../core/activity-contract').ActivityMembersPage>,
     // Spec 038: the Timeline's total, earlier matches and held-row checks.
     count: (req: import('../core/db/events').EventCountRequest) =>
       ipcRenderer.invoke('events:count', req) as Promise<number>,
@@ -140,7 +149,7 @@ const api: RedLogAPI = {
     readCastRange: (castRel: string, off: number, len: number) =>
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
-    commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<RedLogEvent[]>,
+    commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<import('../core/db/events').CommandOutputPage>,
     commandEnds: (commandIds: string[]) => ipcRenderer.invoke('events:commandEnds', commandIds) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
@@ -258,6 +267,7 @@ const api: RedLogAPI = {
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
     terminalPolicy: () => ipcRenderer.invoke('hooks:terminalPolicy'),
+    setTerminalApp: (value: string) => ipcRenderer.invoke('hooks:setTerminalApp', value),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },

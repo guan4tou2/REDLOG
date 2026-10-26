@@ -45,6 +45,7 @@ describe('About: update status', () => {
   it('says "up to date" only for a check that really found nothing newer', async () => {
     draw({ result: 'upToDate', checkedAt: 1 })
     expect(await state()).toBe('update.state.upToDate')
+    expect(screen.getByText(/RedLog v/).textContent).toContain('test-build')
     expect(screen.getByTestId('update-checked-at')).not.toBeNull()
   })
 

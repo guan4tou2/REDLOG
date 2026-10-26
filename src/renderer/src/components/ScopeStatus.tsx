@@ -6,6 +6,7 @@ import { formatTime, formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
+import { useReadState } from '../lib/readState'
 
 const SCOPE_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
 
@@ -75,21 +76,27 @@ interface ViolationRow {
 }
 
 export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: () => void } = {}): JSX.Element {
-  const [violations, setViolations] = useState<ViolationRow[]>([])
-  const [configured, setConfigured] = useState(false)
-  const [chainLen, setChainLen] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [lastRecompute, setLastRecompute] = useState<Record<string, unknown> | null>(null)
+  const loadScope = async () => {
+    const [configured, result, standing, chainLen, lastRecompute] = await Promise.all([
+      window.redlog.scope.isConfigured(), window.redlog.scope.getViolations(),
+      window.redlog.scope.getViolationCount(), window.redlog.chain.length(),
+      window.redlog.scope.getLastRecompute()
+    ])
+    return { configured, violations: result.rows as ViolationRow[], truncated: result.truncated, standing, chainLen, lastRecompute }
+  }
+  const read = useReadState<Awaited<ReturnType<typeof loadScope>> | null>(loadScope)
+  const { configured = false, violations = [], truncated = false, standing = 0, chainLen = 0, lastRecompute = null } = read.state.value ?? {}
+
   // Ephemeral: whether the withdrawn rows are expanded. Not persisted and not
   // navigation state — reopening the page starts from the active rows again,
   // which is what an operator wants under time pressure.
   const [showCleared, setShowCleared] = useState(false)
   // The store holds more violation records than the page read.
-  const [truncated, setTruncated] = useState(false)
+
   // How many violations stand across the whole chain: the status bar's number.
   // The rows are only the newest records, so a count or an "all within scope"
   // taken from them alone could contradict it (TESTING.md G-S3).
-  const [standing, setStanding] = useState(0)
+
   const { t } = useI18n()
 
   const active = violations.filter((v) => !v.cleared)
@@ -112,42 +119,31 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   })
 
   useEffect(() => {
-    const refetch = (): void => {
-      void window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) })
-      void window.redlog.scope.getViolationCount().then(setStanding).catch(() => {})
-      void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
-    }
-    Promise.all([
-      window.redlog.scope.isConfigured().then(setConfigured),
-      window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) }),
-      window.redlog.scope.getViolationCount().then(setStanding),
-      window.redlog.chain.length().then(setChainLen)
-    ]).then(() => setLoading(false))
-    void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
-
-    // A recompute publishes hundreds of rows in one tick, so the refetch is
-    // narrowed to rows that can actually change this page and then coalesced —
-    // otherwise the page re-queries once per written row.
+    let live = true
     let timer: ReturnType<typeof setTimeout> | null = null
+    const refetch = (): void => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { if (live) read.retry() }, 100)
+    }
     const unsub = window.redlog.events.onNewBatch((events) => {
-      const affectsScope = events.some((event) => {
-        const sub = String((event.data as Record<string, unknown>)?.subtype ?? '')
-        return event.agentType === 'system' && SCOPE_SUBTYPES.has(sub)
-      })
-      if (affectsScope) {
-        if (timer) clearTimeout(timer)
-        timer = setTimeout(refetch, 100)
-      }
-      window.redlog.chain.length().then(setChainLen)
+      const affectsScope = events.some(event => event.agentType === 'system'
+        && SCOPE_SUBTYPES.has(String(event.data.subtype ?? '')))
+      if (affectsScope) refetch()
+      else void window.redlog.chain.length().then(chainLen => {
+        if (live) read.update(prev => prev ? { ...prev, chainLen } : prev)
+      }).catch(() => { if (live) refetch() })
     })
-    return () => { if (timer) clearTimeout(timer); unsub() }
-  }, [])
+    return () => { live = false; if (timer) clearTimeout(timer); unsub() }
+  }, [read.retry, read.update])
 
-  if (loading) {
-    return (
-      <LoadingSpinner />
-    )
+  if (read.state.phase === 'failed') {
+    return <div role="alert" className="p-pad space-y-2 text-sm text-red-400">
+      <p>{t('scope.loadFailed')}</p>
+      <p className="break-words text-xs">{read.state.error}</p>
+      <Button onClick={read.retry}>{t('common.retry')}</Button>
+    </div>
   }
+  if (!read.state.value) return <LoadingSpinner />
 
   return (
     <div className="p-pad space-y-4 overflow-auto h-full">

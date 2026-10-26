@@ -14,10 +14,11 @@ const manager = () => createOfficialAgentPluginManager(root)
 const pluginDir = () => path.join(root, 'official-ai-codex')
 
 describe('official AI capture plugin installation', () => {
-  it('lists three uninstalled integrations without creating anything', () => {
+  it('lists two uninstalled integrations without creating anything', () => {
     const catalog = manager().list()
-    expect(catalog.map(p => p.agentKind)).toEqual(['claude-code', 'codex', 'opencode'])
+    expect(catalog.map(p => p.agentKind)).toEqual(['claude-code', 'codex'])
     expect(catalog.every(p => p.state === 'not-installed')).toBe(true)
+    expect(manager().modulePath('opencode')).toBeUndefined()
     expect(fs.existsSync(root)).toBe(false)
   })
   it('installs only the selected package manifest and parser, never the AI tool', () => {
@@ -29,7 +30,7 @@ describe('official AI capture plugin installation', () => {
     expect(parsed.ok).toBe(true)
     expect(tierOf(parsed.manifest!)).toBe('declarative')
     expect(parsed.manifest!.contributes).toEqual({})
-    expect(manager().list().map(p => p.state)).toEqual(['not-installed', 'installed', 'not-installed'])
+    expect(manager().list().map(p => p.state)).toEqual(['not-installed', 'installed'])
   })
   it('assigns a different authorization receipt on reinstall', () => {
     manager().install('codex')
@@ -59,7 +60,7 @@ describe('official AI capture plugin installation', () => {
     expect(manager().uninstall('codex')).toMatchObject({ ok: true, changed: false })
     expect(fs.existsSync(root)).toBe(false)
   })
-  it.each(['../codex', 'codex/../../x', 'C:\\tmp', '', null, 1, { id: 'codex' }])('rejects unknown input %j without writing', id => {
+  it.each(['opencode', '../codex', 'codex/../../x', 'C:\\tmp', '', null, 1, { id: 'codex' }])('rejects unknown input %j without writing', id => {
     expect(manager().install(id)).toMatchObject({ ok: false })
     expect(manager().uninstall(id)).toMatchObject({ ok: false })
     expect(fs.existsSync(root)).toBe(false)

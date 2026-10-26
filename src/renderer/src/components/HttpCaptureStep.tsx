@@ -17,7 +17,7 @@
 // without HTTP the card names the reasons that apply and keeps listening, so a
 // late request still verifies.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
@@ -140,6 +140,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const [browserPath, setBrowserPath] = useState<'own' | 'capture'>('own')
   const [attempt, setAttempt] = useState<VerifyAttempt>(() => newAttempt(newVerifyNonce()))
   const [timedOut, setTimedOut] = useState(false)
+  const [verificationStarted, setVerificationStarted] = useState(0)
   const running = status.state === 'running'
   const verified = running && attempt.https !== null
   const certRefused = attempt.rejectedAt !== null
@@ -153,11 +154,11 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   }, [running, verified])
 
   useEffect(() => {
-    if (!running || verified) return
+    if (!running || verified || !verificationStarted) return
     setTimedOut(false)
     const timer = setTimeout(() => setTimedOut(true), HTTP_VERIFY_TIMEOUT_MS)
     return () => clearTimeout(timer)
-  }, [running, verified])
+  }, [running, verified, verificationStarted])
 
   useEffect(() => { onVerified?.(verified) }, [verified, onVerified])
 
@@ -218,12 +219,19 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   }
 
   const verifyInBrowser = async (): Promise<void> => {
+    setVerificationStarted(n => n + 1)
     const r = await window.redlog.httpCapture.verifyInBrowser(attempt.nonce).catch((e) => ({ ok: false, error: String(e) }))
-    if (!r.ok) toast(r.error || t('browser.failed'), 'error')
+    if (!r.ok) { setVerificationStarted(0); toast(r.error || t('browser.failed'), 'error') }
+  }
+
+  const verifyOwnBrowser = async (): Promise<void> => {
+    setVerificationStarted(n => n + 1)
+    try { await window.redlog.app.openExternal(verifyUrl('https', attempt.nonce)) }
+    catch (error) { setVerificationStarted(0); toast(String(error), 'error') }
   }
 
   // A new nonce: an earlier attempt's requests can no longer count.
-  const retry = (): void => { setAttempt(newAttempt(newVerifyNonce())); setTimedOut(false) }
+  const retry = (): void => { setAttempt(newAttempt(newVerifyNonce())); setTimedOut(false); setVerificationStarted(0) }
 
   const httpCapture = (config?.httpCapture ?? {}) as Record<string, unknown>
   // Only to name it as a reason a check found nothing; the switch itself
@@ -242,13 +250,16 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   // A check belongs to its endpoint, CA and client policy. Historical success
   // must not light a restarted or reconfigured proxy with the old nonce.
   const verificationContext = JSON.stringify([running, status.url, status.caFingerprint?.sha256, ignoresCertErrors, routeTerminals])
-  const lastContext = useRef(verificationContext)
-  useEffect(() => {
-    if (lastContext.current === verificationContext) return
-    lastContext.current = verificationContext
+  const [lastContext, setLastContext] = useState(verificationContext)
+  if (lastContext !== verificationContext) {
+    // Reset before committing the new endpoint/policy. An effect left one
+    // frame accepting the old nonce, then erased a reply or a newly started
+    // timeout after the operator had already used that frame's controls.
+    setLastContext(verificationContext)
     setAttempt(newAttempt(newVerifyNonce()))
     setTimedOut(false)
-  }, [verificationContext])
+    setVerificationStarted(0)
+  }
 
   // `data-nonce` carries the attempt the card would accept. The per-tool
   // commands that used to be the only place it appeared are now the fallback
@@ -357,6 +368,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
               <div className="flex flex-wrap items-center gap-2">
                 <code className="font-mono bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-redlog-text break-all">{verifyUrl('https', attempt.nonce)}</code>
                 <CopyButton text={verifyUrl('https', attempt.nonce)} />
+                <Button level="secondary" data-testid="first-run-http-verify-own" onClick={() => void verifyOwnBrowser()}>{t('firstRun.http.openVerify')}</Button>
               </div>
             </div>
           )}

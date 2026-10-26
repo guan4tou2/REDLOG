@@ -12,7 +12,7 @@
 // dependency on the host's `TailerAdapter` interface. The sink casts.
 
 export interface TailerLike {
-  /** Stable identifier (e.g. `claude-code`, `codex`, `opencode`). Used by
+  /** Stable identifier (e.g. `claude-code`, `codex`). Used by
    *  the host to key the internal registry. */
   agentKind: string
 }

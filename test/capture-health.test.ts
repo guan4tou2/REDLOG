@@ -671,6 +671,6 @@ describeDB('each AI tool reports its own last event', () => {
     ins('agent', { subtype: 'user_prompt', agent: 'codex', session_id: 's1' })
     expect(row('agent-codex')?.lastEventAt).not.toBeNull()
     expect(row('agent-claude-code')?.lastEventAt).toBeNull()
-    expect(row('agent-opencode')?.lastEventAt).toBeNull()
+    expect(row('agent-opencode')).toBeUndefined()
   })
 })

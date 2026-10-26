@@ -54,8 +54,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     writeFileSync(source, fixture.header(work) + user('OLD_HISTORY_SENTINEL'))
     writeFileSync(privateSource, fixture.header(privateWork) + user('PRIVATE_HISTORY_SENTINEL'))
     const otherSources = [
-      kind === 'claude-code' ? join(tmpHome, '.codex', 'sessions', 'fixture', 'rollout-other.jsonl') : join(tmpHome, '.claude', 'projects', 'fixture', 'session.jsonl'),
-      join(tmpHome, '.local', 'share', 'opencode', 'storage', 'message', 'ses_fixture', 'msg_fixture.json')
+      kind === 'claude-code' ? join(tmpHome, '.codex', 'sessions', 'fixture', 'rollout-other.jsonl') : join(tmpHome, '.claude', 'projects', 'fixture', 'session.jsonl')
     ]
     for (const file of otherSources) { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, '{}\n') }
     // Observe actual filesystem opens/reads, not just an empty event table.
@@ -68,7 +67,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
         const original = fs[method]
         observedFs[method] = function(this: unknown, ...args: unknown[]) {
           const file = String(args[0]).replaceAll('\\', '/')
-          if (['/.codex/sessions/', '/.claude/projects/', '/custom-codex-團隊 [redlog]/', '/opencode/storage/'].some(part => file.includes(part))) state.aiSourceReads.push(file)
+          if (['/.codex/sessions/', '/.claude/projects/', '/custom-codex-團隊 [redlog]/'].some(part => file.includes(part))) state.aiSourceReads.push(file)
           return Reflect.apply(original, this, args)
         }
       }
@@ -207,7 +206,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     await page.waitForTimeout(500)
     expect(JSON.stringify(await rows())).not.toMatch(/WHILE_DISABLED_SENTINEL|AFTER_REINSTALL_SENTINEL/)
     expect(readFileSync(file).equals(bytes)).toBe(true)
-    expect((await page.evaluate(() => window.redlog.plugins.officialAgents())).map(p => p.state)).toEqual(kind === 'claude-code' ? ['installed', 'not-installed', 'not-installed'] : ['not-installed', 'installed', 'not-installed'])
+    expect((await page.evaluate(() => window.redlog.plugins.officialAgents())).map(p => p.state)).toEqual(kind === 'claude-code' ? ['installed', 'not-installed'] : ['not-installed', 'installed'])
     // Uninstall directly while active, rather than relying on a prior Stop.
     await page.getByTestId(`agent-enabled-${kind}`).check()
     await expect.poll(parserLoaded).toBe(true)

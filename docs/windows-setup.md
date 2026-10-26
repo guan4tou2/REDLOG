@@ -1,191 +1,57 @@
-# Windows & WSL Setup
+# Windows 與 WSL：安裝與開始記錄
 
-Running RedLog on Windows — build environment, PowerShell hooks, WSL integration,
-and operational isolation.
+這份文件以目前 main 內測候選為準，適用安裝包使用者。不需要 Node.js、Visual Studio 或編譯工具；從原始碼開發請看 [Windows 開發指南](windows-development.md)。
 
----
+## 1. 安裝 App
 
-## 1. Prerequisites
+1. 從 [GitHub Releases](https://github.com/guan4tou2/REDLOG/releases/latest) 取得 Windows x64 的 `RedLog.Setup.<版本>.exe`。參與內測時使用邀請提供的指定安裝包，公開版本不一定包含最新修正。
+2. 執行安裝包，選擇安裝位置，完成後從開始功能表開啟 RedLog。
+3. 未簽署的候選可能被 SmartScreen 擋下。先核對來源及下載頁的 SHA-256，再依 Windows 的安裝提示處理；組織管理的電腦可能需要管理者核准。
 
-RedLog uses `better-sqlite3` (native C++ module), which must be compiled for
-Electron's ABI. That requires a C/C++ toolchain.
+回報問題時，複製「設定 → 關於」的完整版本與 build。`+local` 表示建置時含未提交修改；同一版本號不代表相同內容。
 
-| Requirement | Notes |
-|---|---|
-| **Node.js 20 or 22 (LTS)** | Not 24+ — no prebuilt `better-sqlite3` binary yet. |
-| **Visual Studio Build Tools** | Install the **"Desktop development with C++"** workload. |
-| **Python 3** | Required by `node-gyp`. |
+## 2. 建立專案並接入終端
 
-```powershell
-winget install Microsoft.VisualStudio.2022.BuildTools
-winget install --id OpenJS.NodeJS.22 -e
-```
+1. 在 RedLog 建立專案，保持專案開啟。
+2. 從首次畫面「記我的 PowerShell 終端」，或「設定 → 指令與終端」接入。
+3. 開一個**新的終端分頁**，執行 App 顯示的測試指令。原本已開啟的分頁不會自動重載設定。
+4. Windows 目前未提供可驗證的 Terminal App 限定；接入 PowerShell 不代表能限定只記 Windows Terminal 或 Warp。以你實際接入並驗證的 Shell 環境為準。
+5. 確認 App 收到指令；需要保存 PowerShell 輸出時，在「指令與終端」啟用對應的 Windows 輸出來源，核對實際輸出後再開始工作。
 
-### PowerShell notes
+Windows PowerShell 5.1 與 PowerShell 7 是不同環境，profile 可能不同。你實際使用的那個環境必須收到測試紀錄，不能借用另一個 shell 的驗證結果。若執行原則阻擋 profile，依 App 顯示的原因處理；組織原則可能需管理者核准。
 
-- Windows PowerShell 5.1 does **not** support `&&`. Either install PowerShell 7
-  (`winget install Microsoft.PowerShell`, run as `pwsh`) or chain with
-  `cmd1; if ($?) { cmd2 }`.
-- If `npm` reports *"running scripts is disabled"*, allow user scripts once:
-  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+「已安裝」「已收到指令」「已保存輸出」是不同結果。無法確認輸出時，可用內建終端作為備用，先驗證有保存再使用。
 
----
+## 3. 使用 WSL
 
-## 2. Build & Run
+RedLog 放在 Windows 主機，WSL 透過自己的 Bash／Zsh adapter 接入。
 
-```powershell
-npm install
-npm run rebuild        # compile better-sqlite3 for Electron's ABI
-npm run dev            # launch the app
-```
+1. 開啟「設定 → 指令與終端」的 WSL 項目，選擇實際使用的 Linux 發行版與 shell。
+2. 在 App 接入後，開新的 WSL 分頁並執行該項目提供的測試。
+3. 分別確認 WSL 的指令與輸出。Windows 主機收到事件不代表 WSL 已接通。
 
----
+連不上時先看 App 的發行版／網路診斷；NAT、mirrored 與轉送的可用方式依環境而異，不要求所有使用者先修改 `.wslconfig`。若需要重新啟動 WSL，先儲存其中工作。
 
-## 3. Packaging
+## 4. 接入網頁流量
 
-Installers are built by [electron-builder](https://www.electron.build). The
-GitHub Actions workflow (`.github/workflows/release.yml`) produces releases on
-tags. To build locally:
+從「設定 → 瀏覽器與 HTTP 擷取」準備依賴並啟動代理。選自己的瀏覽器時，依序設定代理、信任這張擷取 CA，再按「開啟驗證網址」。也可選 RedLog 擷取瀏覽器。
 
-```powershell
-npm run build
-npx electron-builder --win    # NSIS + portable → dist\
-```
+驗證結果屬於實際送出請求的客戶端。瀏覽器成功不代表 WSL 裡的 curl 或其他工具也已設定；HTTP(S) 代理不會擷取原始 TCP、SMB、RDP 或 nmap SYN 封包。
 
-**First-run note:** electron-builder downloads `winCodeSign`, which may need
-symlink privileges. Either enable **Developer Mode** (Settings → For developers)
-or run the packaging command once from an elevated terminal.
+## 5. 工作前做一次小驗收
 
----
+- 用實際工作的終端執行一條有輸出與退出碼的指令，確認保存結果。
+- 要記網頁流量時，確認 HTTPS 測試與一個實際請求都有到。
+- 匯出一份小證據包，打開並核對內容，再重開 App 確認原始紀錄仍在。
 
-## 4. PowerShell Shell Hook
+關閉視窗會留在背景；「停止並結束」才退出。退出會停止受管代理，仍指向它的工具可能失去代理服務。使用完整更新／退出矩陣前，仍需完成對應平台內測。
 
-The PowerShell hook (`hooks/shell-hook.ps1`) captures every command from
-PowerShell 5.1+ and pwsh 7+ and sends it to RedLog's timeline.
+## 常見卡點
 
-### Quick start
-
-```powershell
-# Source in current session
-. "C:\path\to\redlog\hooks\shell-hook.ps1"
-
-# Or add to your profile for every session
-Add-Content $PROFILE '. "C:\path\to\redlog\hooks\shell-hook.ps1"'
-```
-
-The hook:
-- Overrides the `prompt` function to capture commands via `Get-History`
-- Sends `command_start` + `command_end` events with exit code and duration
-- Uses background runspaces so the prompt is never blocked
-- No-ops silently when RedLog isn't running
-
-### Event sender (scripting)
-
-For custom scripts, use `hooks/redlog-send.ps1`:
-
-```powershell
-. ".\hooks\redlog-send.ps1"
-Send-RedLogEvent "invoke-mimikatz" command_start
-# ... run tool ...
-Send-RedLogEvent "invoke-mimikatz" command_end @{ exit_code = 0 }
-```
-
----
-
-## 5. WSL Integration
-
-Pentest tooling often runs in WSL. Two things must line up for WSL → RedLog.
-
-### 5.1 Token path
-
-RedLog writes `api-token` and `api-port` to `%USERPROFILE%\.redlog\`. The WSL
-hook scripts first check `$HOME/.redlog/api-token` (works when WSL2 mirrored
-networking shares the same filesystem view), then falls back to resolving the
-Windows path via `cmd.exe /c 'echo %USERPROFILE%'` + `wslpath`.
-
-### 5.2 Networking — mirrored mode
-
-The API binds `127.0.0.1` on Windows. Under WSL2's default NAT mode, WSL's
-`127.0.0.1` is a separate loopback. Enable **mirrored networking**:
-
-1. Create `%USERPROFILE%\.wslconfig`:
-   ```ini
-   [wsl2]
-   networkingMode=mirrored
-   ```
-2. `wsl --shutdown` (from Windows PowerShell), then reopen WSL.
-3. Verify: `wslinfo --networking-mode` → `mirrored`.
-
-### 5.3 WSL hooks
-
-```bash
-# Diagnose the WSL → RedLog link
-bash /mnt/c/Users/<you>/Desktop/REDLOG/hooks/wsl-redlog-test.sh
-
-# Fire-and-forget event sender
-hooks/redlog-send.sh "nmap -sV $TARGET" command_start
-nmap -sV "$TARGET"
-hooks/redlog-send.sh "nmap -sV $TARGET" command_end "{\"exit_code\":$?}"
-```
-
-The shell-specific adapters also work inside WSL: source `shell-bash-hook.sh`
-from `~/.bashrc` or `shell-zsh-hook.zsh` from `~/.zshrc`. The Bash hook uses deferred trap arming
-(`_REDLOG_TRAP_ARMED`) so shell init statements are never captured as user
-commands.
-
-> **Important:** When sourcing the hook from Git Bash on Windows, use a POSIX
-> path — `source /c/Users/<you>/.redlog/shell-bash-hook.sh`, **not**
-> `source C:\Users\<you>\.redlog\shell-bash-hook.sh` (backslashes are
-> interpreted as escape characters).
-
----
-
-## 6. Security Notes
-
-### 6.1 File permissions on NTFS
-
-RedLog writes `api-token` and Ed25519 signing keys with `mode: 0o600`, which
-is enforced on Unix but **silently ignored on NTFS**. The files inherit the
-parent directory's ACL, which typically grants read access to all local users.
-On a shared workstation, restrict access manually:
-
-```powershell
-icacls "$env:USERPROFILE\.redlog\api-token" /inheritance:r /grant:r "$env:USERNAME:(R)"
-icacls "$env:USERPROFILE\.redlog\signing-key.pem" /inheritance:r /grant:r "$env:USERNAME:(R)"
-```
-
----
-
-## 7. Operational Privacy
-
-### 7.1 Workspace isolation (primary control)
-
-Source hooks **only** in engagement shells. Commands in unhooked shells are never
-logged. A clean pattern: do engagement work in a dedicated WSL distro with the
-hook in `~/.bashrc`; keep personal work on the Windows host (unhooked).
-
-### 7.2 What pause does
-
-Pausing (status bar, ⌘/Ctrl+., or `POST /api/recording`) stops RedLog from
-**writing**, not just from displaying. The gate sits at the single database
-write point, so every source is covered — the shell and PowerShell hooks, the
-mitmproxy addon, the monitors. While paused:
-
-- No event is written except RedLog's own audit trail (`system`, including the
-  `recording_paused` / `recording_resumed` pair that explains the gap) and
-  markers you create explicitly.
-- Nothing is derived from the discarded events either — no scope violation,
-  loot, pivot or target row that would leak the paused content.
-- The built-in terminal keeps working, but its `.cast` recording stops growing.
-  Periodic screenshots are skipped.
-- The API answers a paused event with `200 {recording:false, skipped}`, so the
-  hook does not spool the command and replay it after resume.
-
-The hook still *sends* each command to `127.0.0.1` while paused; RedLog drops
-it on arrival. If a command must never leave the shell at all, run it in a
-shell that does not source the hook (see 7.1).
-
-### 7.3 Per-engagement isolation
-
-Each project is a separate SQLite DB (`~/.redlog/projects/<id>/`). Close /
-switch the project when you stop working an engagement.
+| 現象 | 先檢查 |
+| --- | --- |
+| 安裝好了但沒指令 | 專案是否開啟、是否開了新分頁、是否使用剛接入的 PowerShell edition |
+| 指令有到但沒輸出 | 對應輸出來源是否啟用，並核對實際事件內容 |
+| WSL 沒紀錄 | 發行版／shell 是否選對，以及客體的網路與身分診斷 |
+| HTTPS 沒紀錄 | 該客戶端是否走代理、信任 CA；不要用關閉驗證的結果當成信任成功 |
+| 安裝或來源失敗 | 保留錯誤文字與「關於」的版本／build；不要先刪除專案 |

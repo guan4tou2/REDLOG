@@ -38,13 +38,19 @@ Standard library only, and no third-party anything: this runs on the
 operator's machine, inside their shell, on every command.
 """
 import errno
+import base64
 import json
 import os
 import re
 import select
 import shlex
 import sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from terminal_app import terminal_app_allowed
 import time
+import queue
+import threading
 
 DEFAULT_MAX_BYTES = 102400  # 100 KB per stream, as redlog-run has always used
 
@@ -103,15 +109,21 @@ class Stream:
         self.cap = cap
         self.kept = bytearray()
         self.total = 0
+        self.first_seen = None
         # Set once the command's record has been written and a background
         # writer is still on this descriptor: from then on the bytes belong to
         # the late-output sender, not to `kept`.
         self.late = None
+        self.capture = None
+        self.stream_name = None
 
     def pump(self):
         chunk = os.read(self.source.fileno(), 65536)
         if not chunk:
             return False
+        observed = int(time.time() * 1000)
+        if self.first_seen is None:
+            self.first_seen = observed
         if self.sink is not None:
             try:
                 self.sink.write(chunk)
@@ -123,21 +135,27 @@ class Stream:
                 # still written. The record outlives the pipe.
                 self.sink = None
         if self.late is not None:
-            self.late.feed(chunk)
+            self.late.feed(chunk, observed)
             return True
         self.total += len(chunk)
-        room = self.cap - len(self.kept)
+        if self.capture and self.capture.active:
+            self.capture.feed(self.stream_name, chunk, observed)
+            return True
+        cap = max(self.cap, self.total) if self.capture and self.capture.enabled else self.cap
+        room = cap - len(self.kept)
         if room > 0:
             self.kept.extend(chunk[:room])
+        if self.capture:
+            self.capture.maybe_start()
         return True
 
     def text(self):
         # Invalid UTF-8 becomes U+FFFD rather than an exception. The command
         # whose output is not text is exactly the one worth having recorded.
-        return self.kept.decode("utf-8", errors="replace")
+        return "" if self.capture and self.capture.active else self.kept.decode("utf-8", errors="replace")
 
     def truncated(self):
-        return self.total > self.cap
+        return self.total > self.cap and not (self.capture and self.capture.active)
 
 
 class LateOutput:
@@ -166,10 +184,11 @@ class LateOutput:
     RETRY_MAX = 64
 
     def __init__(self, opts):
+        self.foreground = opts.get("foreground", False)
         self.command_id = opts["command_id"]
         self.source = opts["source"]
         self.captured_by = opts["captured_by"]
-        self.cap = int(opts["max_bytes"])
+        self.cap = max(4, min(int(opts["max_bytes"]), 65536))
         self.seq = 0
         self.kept_bytes = 0
         self.over_cap = 0
@@ -177,6 +196,7 @@ class LateOutput:
         self.truncated = False
         self.bufs = {"stdout": bytearray(), "stderr": bytearray()}
         self.since = {"stdout": 0.0, "stderr": 0.0}
+        self.source_since = {"stdout": 0, "stderr": 0}
         self.pending = []
         self.client = self._client(opts)
         trace("late-start", "client=%s" % ("yes" if self.client else "no"))
@@ -184,7 +204,6 @@ class LateOutput:
     @staticmethod
     def _client(opts):
         from pathlib import Path
-        import urllib.request
 
         try:
             directory = Path(terminal_home(opts)) / ".redlog"
@@ -193,22 +212,23 @@ class LateOutput:
                 "engagement": identity["engagementId"],
                 "token": (directory / "api-token").read_text().strip(),
                 "url": "http://127.0.0.1:%d/api/events" % int((directory / "api-port").read_text()),
-                "opener": urllib.request.build_opener(urllib.request.ProxyHandler({})),
+                "opener": None,
             }
         except (OSError, ValueError, KeyError):
             return None
 
     def feed(self, stream_name, chunk):
+        if not terminal_app_allowed():
+            self.dropped += len(chunk) + sum(len(b) for b in self.bufs.values())
+            self.bufs = {"stdout": bytearray(), "stderr": bytearray()}
+            self.pending.clear()
+            return
         buf = self.bufs[stream_name]
         if not buf:
             self.since[stream_name] = time.time()
-        room = self.cap - self.kept_bytes - sum(len(b) for b in self.bufs.values())
-        if room < len(chunk):
-            self.truncated = True
-            self.over_cap += len(chunk) - max(room, 0)
-            chunk = chunk[:max(room, 0)]
+            self.source_since[stream_name] = getattr(self, "observed", int(time.time() * 1000))
         buf.extend(chunk)
-        if len(buf) >= self.FLUSH_BYTES:
+        if len(buf) >= min(self.FLUSH_BYTES, self.cap):
             self.flush(stream_name)
 
     def tick(self):
@@ -225,31 +245,43 @@ class LateOutput:
         buf = self.bufs[name]
         if not buf:
             return
-        cut = len(buf) if whole else buf.rfind(b"\n") + 1
-        if cut <= 0:
-            # No complete line yet; a very long line is not held for ever.
-            cut = len(buf) if len(buf) >= 4 * self.FLUSH_BYTES else 0
-        if cut <= 0:
-            return
-        raw = bytes(buf[:cut])
-        del buf[:cut]
-        self.since[name] = time.time()
-        self.kept_bytes += len(raw)
-        self.seq += 1
-        self.pending.append(self._payload({
-            "seq": self.seq, "stream": name, "bytes": len(raw),
-            name: clean(raw.decode("utf-8", errors="replace")),
-            "final": False,
-        }))
-        self.retry()
+        while buf:
+            ceiling = min(len(buf), self.cap)
+            cut = ceiling if whole or ceiling == self.cap else buf.rfind(b"\n", 0, ceiling) + 1
+            if cut <= 0:
+                return
+            # The reader's text must not acquire a replacement character just
+            # because a valid UTF-8 codepoint crossed a segment boundary.
+            while cut < len(buf) and buf[cut] & 0xC0 == 0x80 and cut > 0:
+                cut -= 1
+            if cut <= 0:
+                cut = ceiling  # arbitrary binary, byte counts remain exact
+            raw = bytes(buf[:cut])
+            del buf[:cut]
+            self.since[name] = time.time()
+            self.kept_bytes += len(raw)
+            self.seq += 1
+            self.pending.append(self._payload({
+                "seq": self.seq, "stream": name, "bytes": len(raw),
+                "source_timestamp": self.source_since[name],
+                "output_body": {"data": base64.b64encode(raw).decode("ascii"), "encoding": "base64", "size": len(raw), "sha256": ""},
+                name: clean(raw.decode("utf-8", errors="replace")),
+                "final": False,
+            }))
+            self.retry()
+            if not whole and len(buf) < min(self.FLUSH_BYTES, self.cap):
+                return
 
     def _payload(self, extra):
         data = {
-            "subtype": "command_output", "command_id": self.command_id, "late": True,
-            "captured_by": self.captured_by, "timestamp": int(time.time() * 1000),
+            "subtype": "command_output", "command_id": self.command_id, "late": not self.foreground,
+            "captured_by": self.captured_by, "timestamp": getattr(self, "observed", int(time.time() * 1000)),
         }
+        if self.foreground:
+            data["streamed"] = True
         if self.source:
             data["source"] = self.source
+        data["source_timestamp"] = data["timestamp"]
         data.update(extra)
         return {"agent_type": "shell", "data": data}
 
@@ -268,11 +300,15 @@ class LateOutput:
         self.dropped += int(payload["data"].get("bytes", 0))
 
     def _send(self, payload):
+        if not terminal_app_allowed():
+            return "refused"
         if not self.client:
             return "refused"
         import urllib.error
         import urllib.request
 
+        if self.client["opener"] is None:
+            self.client["opener"] = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         request = urllib.request.Request(
             self.client["url"], json.dumps(payload).encode(),
             {"Content-Type": "application/json", "Authorization": "Bearer " + self.client["token"],
@@ -281,7 +317,15 @@ class LateOutput:
             with self.client["opener"].open(request, timeout=1) as response:
                 result = json.load(response)
             return "paused" if result.get("recording") is False else "accepted"
-        except urllib.error.HTTPError:
+        except urllib.error.HTTPError as error:
+            # The row may have committed before a lost response; a replayed
+            # command+seq is acknowledged by the API as its duplicate.
+            if error.code == 409:
+                try:
+                    if json.load(error).get("error") == "Duplicate event (dedup window)":
+                        return "accepted"
+                except (ValueError, OSError):
+                    pass
             return "refused"
         except Exception:
             return "failed"
@@ -289,22 +333,25 @@ class LateOutput:
     def finish(self):
         for name in ("stdout", "stderr"):
             self.flush(name, whole=True)
-        self.seq += 1
-        self.pending.append(self._payload({
-            "seq": self.seq, "stream": "both", "final": True, "bytes": 0,
-            "late_bytes": self.kept_bytes, "truncated": self.truncated,
-            "over_cap_bytes": self.over_cap, "dropped_bytes": self.dropped,
-        }))
-        # A stalled API must not keep this process alive: a few tries, then the
-        # shortfall is in the debug log if the final row never reaches the server.
+        # Settle data before constructing the summary: retries can still be
+        # refused or dropped, and a summary frozen earlier would undercount it.
         for _ in range(3):
             self.retry()
             if not self.pending:
                 break
-            time.sleep(0.5)
+            time.sleep(0.1)
         unsent = len(self.pending)
         for payload in self.pending:
             self._drop(payload)
+        self.pending.clear()
+        self.observed = int(time.time() * 1000)
+        self.seq += 1
+        self.pending.append(self._payload({
+            "seq": self.seq, "stream": "both", "final": True, "bytes": 0,
+            "late_bytes": self.kept_bytes, "truncated": self.truncated or self.dropped > 0,
+            "over_cap_bytes": self.over_cap, "dropped_bytes": self.dropped,
+        }))
+        self.retry()
         trace("late-end", "kept=%d dropped=%d over_cap=%d truncated=%s unsent=%d" % (
             self.kept_bytes, self.dropped, self.over_cap, self.truncated, unsent))
 
@@ -312,8 +359,112 @@ class LateOutput:
         late = self
 
         class Tap:
-            def feed(self, chunk):
+            def feed(self, chunk, observed=None):
+                if observed is not None:
+                    late.observed = observed
                 late.feed(name, chunk)
+        return Tap()
+
+
+class ForegroundOutput:
+    """Bounded asynchronous transport: network stalls never block the PTY pump.
+
+    Small commands keep the existing inline path. After 16 KiB or one second,
+    the retained prefix and following bytes move to the same ordered output
+    records used for background jobs. Refused/paused bytes are never replayed.
+    """
+    def __init__(self, opts, streams):
+        self.streams = streams
+        self.sender = LateOutput({**opts, "foreground": True, "max_bytes": 65536})
+        self.enabled = bool(self.sender.client and opts.get("command_id"))
+        self.active = False
+        self.started = time.monotonic()
+        self.threshold = min(16384, max(1, int(opts["max_bytes"])))
+        self.pending = queue.Queue(maxsize=64)
+        self.stopping = threading.Event()
+        self.thread = None
+        self.dropped = 0
+        for name, stream in streams.items():
+            stream.capture = self
+            stream.stream_name = name
+
+    def maybe_start(self):
+        if not self.enabled or self.active:
+            return
+        size = sum(stream.total for stream in self.streams.values())
+        if size == 0 or (size < self.threshold and time.monotonic() - self.started < 1):
+            return
+        # An identity/token file is not proof that a receiver is listening.
+        # Do not discard the bounded inline record for a dead local port:
+        # the shell can still spool that record. This bounded loopback
+        # connection check has a 5 ms ceiling, not the HTTP retry deadline.
+        import errno
+        import socket
+        from urllib.parse import urlsplit
+        try:
+            port = urlsplit(self.sender.client['url']).port
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.setblocking(False)
+                status = probe.connect_ex(('127.0.0.1', port))
+                ready = status == 0 or (status in (errno.EINPROGRESS, errno.EWOULDBLOCK)
+                    and bool(select.select([], [probe], [], 0.005)[1])
+                    and probe.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0)
+        except (OSError, ValueError, TypeError):
+            ready = False
+        if not ready:
+            self.enabled = False
+            for stream in self.streams.values():
+                del stream.kept[stream.cap:]
+            return
+        self.active = True
+        self.thread = threading.Thread(target=self.drain, daemon=True)
+        self.thread.start()
+        for name, stream in self.streams.items():
+            raw = bytes(stream.kept)
+            # The initial read can exceed a deliberately tiny preview budget.
+            # pump supplies that read separately (below); never claim its lost
+            # suffix was streamed just because the prefix was.
+            self.feed(name, raw, stream.first_seen)
+            self.dropped += stream.total - len(raw)
+            stream.kept.clear()
+
+    def feed(self, name, raw, observed=None):
+        if not raw:
+            return
+        try:
+            self.pending.put_nowait((name, raw, observed if observed is not None else int(time.time() * 1000)))
+        except queue.Full:
+            self.dropped += len(raw)
+
+    def tick(self):
+        self.maybe_start()
+
+    def drain(self):
+        while not self.stopping.is_set() or not self.pending.empty():
+            try:
+                name, raw, observed = self.pending.get(timeout=0.1)
+            except queue.Empty:
+                self.sender.tick()
+                continue
+            self.sender.observed = observed
+            self.sender.feed(name, raw)
+            self.sender.tick()
+        self.sender.dropped += self.dropped
+        self.sender.finish()
+
+    def finish(self):
+        if not self.active:
+            return
+        self.stopping.set()
+        self.thread.join(timeout=4)
+        if self.thread.is_alive():
+            trace("foreground-unfinished", "pending=%d dropped=%d" % (self.pending.qsize(), self.dropped))
+
+    def stream_tap(self, name):
+        capture = self
+        class Tap:
+            def feed(self, chunk, observed=None):
+                capture.feed(name, chunk, observed)
         return Tap()
 
 
@@ -352,9 +503,11 @@ def run(argv):
 
     out = Stream(proc.stdout, sys.stdout.buffer, cap)
     err = Stream(proc.stderr, sys.stderr.buffer, cap)
+    capture = ForegroundOutput(opts, {"stdout": out, "stderr": err})
     live = {proc.stdout.fileno(): out, proc.stderr.fileno(): err}
     while live:
         ready, _, _ = select.select(list(live), [], [], 0.2)
+        capture.tick()
         for fd in ready:
             stream = live[fd]
             try:
@@ -363,6 +516,7 @@ def run(argv):
                 alive = False
             if not alive:
                 del live[fd]
+    capture.finish()
     code = proc.wait()
     if code < 0:  # killed by a signal; report it as the shell does
         code = 128 + (-code)
@@ -414,6 +568,14 @@ def emit(opts, code, started_at, out, err):
         "output_disposition": disposition,
         "limit_hit": ",".join(cut) if cut else None,
     }
+    seen = [stream.first_seen for stream in (out, err) if stream and stream.first_seen is not None]
+    if seen:
+        event["output_started_at"] = min(seen)
+    if out and out.capture and out.capture.active:
+        event["output_streamed"] = True
+        event["completeness"] = "partial"
+        event["output_stream_dropped"] = out.capture.dropped + out.capture.sender.dropped
+        event.pop("stdout", None); event.pop("stderr", None)
     # Written whole, then moved into place: a caller that reads a half-written
     # event would record a command that did not happen. If the write fails the
     # caller falls back to bare metadata, as it always has — losing the body is
@@ -588,6 +750,8 @@ def pty_pipe(argv):
         })
         names.append(os.ttyname(slave))
 
+    capture = ForegroundOutput(opts, {leg["name"]: leg["stream"] for leg in legs})
+
     def sync_size():
         size = window_size()
         if size is None:
@@ -631,6 +795,8 @@ def pty_pipe(argv):
             return 1
         time.sleep(0.005)
     while legs:
+        if late is None:
+            capture.tick()
         # Also notice the file-based completion signal promptly. Waiting a
         # quarter second here would add that delay to every short command.
         ready, _, _ = select.select([leg["master"] for leg in legs], [], [], 0.05)
@@ -679,6 +845,8 @@ def pty_pipe(argv):
                         "text": leg["stream"].text(),
                         "bytes": leg["stream"].total,
                         "truncated": leg["stream"].truncated(),
+                        "streamed": capture.active,
+                        "observed_at": leg["stream"].first_seen,
                         "cap": opts["max_bytes"],
                     })
         if not ready:
@@ -711,7 +879,7 @@ def pty_pipe(argv):
         # being written for it.
         if legs and released_at and late is None and time.time() - released_at > 0.3 \
                 and os.path.isdir(directory):
-            late = LateOutput(opts)
+            late = capture if capture.active else LateOutput(opts)
             for leg in legs:
                 stream = leg["stream"]
                 write_json(os.path.join(directory, leg["name"] + ".json"), {
@@ -719,6 +887,8 @@ def pty_pipe(argv):
                     "text": stream.text(),
                     "bytes": stream.total,
                     "truncated": stream.truncated(),
+                    "streamed": capture.active,
+                    "observed_at": stream.first_seen,
                     "cap": opts["max_bytes"],
                     "background": True,
                 })
@@ -730,6 +900,8 @@ def pty_pipe(argv):
             time.sleep(0.01)
     if late is not None:
         late.finish()
+    elif capture.active:
+        capture.finish()
     return 0
 
 
@@ -817,6 +989,13 @@ def finish(argv):
         "output_disposition": disposition,
         "limit_hit": ",".join(cut) if cut else None,
     }
+    seen = [p["observed_at"] for p in parts.values() if p and isinstance(p.get("observed_at"), int)]
+    if seen:
+        event["output_started_at"] = min(seen)
+    if any(p and p.get("streamed") for p in parts.values()):
+        event["output_streamed"] = True
+        event["completeness"] = "partial"
+        event.pop("stdout", None); event.pop("stderr", None)
     if background:
         event["late_output"] = True
     if opts["source"]:

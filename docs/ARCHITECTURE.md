@@ -21,7 +21,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 │  windows · tray · terminal-manager (node-pty) · clipboard-monitor              │
 │  services/  screenshot-agent · cdp-connector · browser-launcher · file-watcher │
 │             process-monitor · opsec-state · network-info · updater             │
-│             tailer-host + adapters/{claude-code,codex,opencode}                │
+│             tailer-host + optional parsers/{claude-code,codex}                │
 └──────────────▲────────────────────────────────────────────────────────────────┘
 ┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
 │  db/{index,events,operators,findings}   event-bus   clock   signing            │
@@ -31,7 +31,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 │  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘
         ▲ HTTP 127.0.0.1:6660 (Bearer)         ▲ file watch
-   hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex · opencode storage
+   hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex
    mitmproxy addon · VPS reverse tunnel
 ```
 
@@ -126,6 +126,25 @@ Two reserved internal keys:
 `clipboard`, `file_transfer`, `credential_use`, `c2_checkin`, `marker`,
 `loot`, `cleanup`, `scope`, `process`, `system`.
 
+### Activity query projection (Spec 064)
+
+`activity-projection.ts` derives versioned operation identity without changing
+Events. `db/activity-queries.ts` groups matches before paging and distinguishes
+matching Events from source context. Its SQLite TEMP index belongs to the
+project's read connection, stores metadata/digests only, updates incrementally,
+and is rebuilt after retention or failed reads. Closing the project drops it;
+it is neither a new evidence table nor an export attachment. IPC checks the
+active engagement and applies its scope before querying. Search offers an
+Operations view backed by this API alongside Raw events and Cast search.
+Main navigation remains until reading and search coverage reach parity.
+
+`content-contract.ts` defines the browser-safe saved-content references and
+bounded read/Find replies. `evidence-content.ts` binds them to the active
+project, owner Event, field and saved-content version. `body-source.ts` verifies
+fixed sidecar references before reading; missing, changed and inaccessible
+sources remain distinct from empty output. `EventContentReader` renders those
+windows without loading an entire large file into the renderer.
+
 ## 4. Capture pipeline
 
 The canonical path, shell hook → chain → UI:
@@ -213,8 +232,7 @@ did. Same chain, same operator attribution, same pause semantics.
 
 Adapters: `claude-code` (`~/.claude/projects/**/<session>.jsonl`), `codex`
 (`~/.codex/sessions/**/rollout-*.jsonl`, synthesises ids since Codex has no
-wire-level uuid), `opencode` (`storage/message/` + secondary `storage/part/`
-watcher).
+wire-level uuid).
 
 ## 6. Evidence chain
 

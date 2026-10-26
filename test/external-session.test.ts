@@ -186,12 +186,22 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.events.every(e => e.source === 'external-session')).toBe(true)
   })
 
-  it('keeps terminal output live beyond the recording cap and declares truncation', async () => {
-    const r = await session(1)
+  it('continues saving beyond the per-chunk budget without truncating the session', async () => {
+    const r = await session(5)
     expect(r.output).toContain('PTY_OK')
-    expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
-    expect(r.events.at(-1)).toMatchObject({ truncated: true })
-    expect(r.diagnostic).toContain('limit reached')
+    const chunks = r.events.filter(e => e.subtype === 'session_output')
+    expect(chunks.map(e => e.stdout).join('')).toContain('PTY_OKSTDERR_OK')
+    expect(chunks.every(e => Buffer.byteLength(e.stdout) <= 5)).toBe(true)
+    expect(r.events.at(-1)).toMatchObject({ truncated: false, omittedBytes: 0 })
+    expect(r.diagnostic).not.toContain('limit reached')
+  })
+
+  it('keeps binary and terminal control bytes independently of its readable transcript', async () => {
+    const r = await session(8, false, ['python3', '-c', "import sys;sys.stdout.buffer.write(bytes([255,0,27,91,51,49,109,65]))"])
+    const chunks = r.events.filter(e => e.subtype === 'session_output')
+    const raw = Buffer.concat(chunks.filter(e => e.output_body).map(e => Buffer.from(e.output_body.data, 'base64')))
+    expect(raw).toEqual(Buffer.from([255,0,27,91,51,49,109,65]))
+    expect(r.events.at(-1)).toMatchObject({ outputBytes: 8, omittedBytes: 0 })
   })
 
   // The trace exists so a lost-output report can come with a timeline (#333

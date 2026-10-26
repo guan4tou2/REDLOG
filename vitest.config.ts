@@ -7,7 +7,7 @@ const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), '
 
 export default defineConfig({
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
+  define: { __APP_VERSION__: JSON.stringify(pkgVersion), __APP_BUILD__: JSON.stringify('test-build') },
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     setupFiles: ['./test/setup.ts'],

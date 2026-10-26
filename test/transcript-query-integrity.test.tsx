@@ -11,11 +11,11 @@ vi.mock('../src/renderer/src/components/Toast', () => ({ toast: vi.fn() }))
 
 const empty = { items: [], hasMore: false, nextCursor: null }
 const call = {
-  id: 'call-1', timestamp: 1_000, createdAt: 2_000, operatorId: 'op', agentType: 'agent', targetId: null,
+  id: 'call-1', timestamp: 1_000, createdAt: 2_000, engagementId: 'project', sessionId: 'binding', operatorId: 'op', agentType: 'agent', targetId: null,
   data: { subtype: 'tool_call', agent: 'codex', session_id: 'S1', tool_use_id: 'T1', tool_name: 'shell', tool_input: { command: 'id' } }
 }
 const result = {
-  id: 'result-1', timestamp: 1_500, createdAt: 2_500, operatorId: 'op', agentType: 'agent', targetId: null,
+  id: 'result-1', timestamp: 1_500, createdAt: 2_500, engagementId: 'project', sessionId: 'binding', operatorId: 'op', agentType: 'agent', targetId: null,
   data: { subtype: 'tool_result', agent: 'codex', session_id: 'S1', tool_use_id: 'T1', output: 'uid=0' }
 }
 
@@ -49,7 +49,32 @@ describe('Transcript query integrity', () => {
     fireEvent.click(await screen.findByTestId('transcript-toggle'))
     expect(await screen.findByText(/uid=0/)).not.toBeNull()
     expect(toolCounterparts).toHaveBeenCalledTimes(1)
-    expect(toolCounterparts).toHaveBeenCalledWith([{ sessionId: 'S1', toolUseId: 'T1' }])
+    expect(toolCounterparts).toHaveBeenCalledWith([{ sessionId: 'S1', toolUseId: 'T1', provider: 'codex', engagementId: 'project', captureSessionId: 'binding' }])
+  })
+
+  it('keeps another provider with the same Session/tool IDs as a separate exchange', async () => {
+    const foreign = { ...result, data: { ...result.data, agent: 'claude-code' } }
+    installBridge([], [call, foreign])
+    const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
+    render(<TranscriptView />)
+    await waitFor(() => expect(screen.getAllByTestId('transcript-toggle')).toHaveLength(2))
+  })
+
+  it('pairs an earlier-timestamped Result without depending on array order', async () => {
+    installBridge([], [{ ...result, timestamp: 500 }, call])
+    const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
+    render(<TranscriptView />)
+    await waitFor(() => expect(screen.getAllByTestId('transcript-toggle')).toHaveLength(1))
+    fireEvent.click(screen.getByTestId('transcript-toggle'))
+    expect(await screen.findByText('uid=0')).toBeTruthy()
+  })
+
+  it('does not overwrite conflicting Tool Calls with the last loaded copy', async () => {
+    const conflicting = { ...call, id: 'call-conflict', data: { ...call.data, tool_input: { command: 'different' } } }
+    installBridge([], [call, conflicting, result])
+    const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
+    render(<TranscriptView />)
+    await waitFor(() => expect(screen.getAllByTestId('transcript-toggle')).toHaveLength(3))
   })
 
   it('marks a tool half as unresolved when the store has no counterpart', async () => {

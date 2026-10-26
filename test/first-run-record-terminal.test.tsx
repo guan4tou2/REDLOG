@@ -11,6 +11,7 @@
 // because the spec fixes the Traditional Chinese copy.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Profiler } from 'react'
 import { render, cleanup, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
@@ -319,7 +320,7 @@ describe('first run: record my terminal', () => {
     expect(screen.queryByTestId('record-terminal-verified')).toBeNull()
 
     emit([{ id: 'x4', timestamp: 5, agentType: 'shell', data: { subtype: 'command_start', shell: 'zsh', command: `echo ${nonce}` } }])
-    expect((await screen.findByTestId('record-terminal-verified')).textContent).toContain('Zsh 已連線')
+    expect((await screen.findByTestId('record-terminal-verified')).textContent).toContain('已收到 Zsh 指令')
   })
 
   it('after 60 s without the event, names the likely reasons and offers another attempt with a new nonce', async () => {
@@ -346,6 +347,23 @@ describe('first run: record my terminal', () => {
     act(() => { window.dispatchEvent(new Event('focus')) })
     const second = (await screen.findByTestId('record-terminal-command')).textContent
     expect(second).not.toBe(first)
+  })
+
+  it('accepts the same external canary after timeout without reinstalling', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install()
+    draw()
+    fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
+    const command = (await screen.findByTestId('record-terminal-command')).textContent
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
+    await screen.findByTestId('record-terminal-timeout')
+    emit([{ id: 'wrong', timestamp: 2, agentType: 'shell', data: { subtype: 'command_start', shell: 'bash', command } }])
+    expect(screen.queryByTestId('record-terminal-verified')).toBeNull()
+    emit([{ id: 'late', timestamp: 3, agentType: 'shell', data: { subtype: 'command_start', shell: 'zsh', command } }])
+    expect((await screen.findByTestId('record-terminal-verified')).textContent).toContain('已收到 Zsh 指令')
+    expect(screen.queryByTestId('record-terminal-timeout')).toBeNull()
+    expect(screen.getByTestId('record-terminal-output-command')).toBeTruthy()
+    expect(bridge.install).toHaveBeenCalledTimes(1)
   })
 
   it('follows the picker: after a manual bash choice the entry button no longer says Zsh', async () => {
@@ -600,25 +618,21 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
     expect((await screen.findByTestId('record-terminal-output-verified')).textContent).toContain('redlog-run')
   })
 
-  // The session helper and output check are optional; they used to push the
-  // Start button off the screen the moment the shell connected.
-  it('folds the optional session and output steps, and the toggle carries the output result', async () => {
+  it('keeps output verification visible while interactive session help stays folded', async () => {
     install()
     draw()
     await verifyShell()
     const details = screen.getByTestId('record-terminal-details')
     expect(details.hasAttribute('hidden')).toBe(true)
-    const toggle = screen.getByTestId('record-terminal-details-toggle')
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    // Folded, but still listening: a result that lands while folded shows on the toggle.
+    const output = screen.getByTestId('record-terminal-output-check')
+    expect(details.contains(output)).toBe(false)
     const cmd = screen.getByTestId('record-terminal-output-command').textContent ?? ''
     const nonce = cmd.split(' ').at(-1)!
-    expect(toggle.textContent).not.toContain('✓')
     emit([{ id: 'o1', timestamp: 21, agentType: 'shell', data: { subtype: 'command_end', command: cmd, stdout: `redlog-out-${nonce}\n`, captured_by: 'redlog-run' } }])
-    await waitFor(() => expect(screen.getByTestId('record-terminal-details-toggle').textContent).toContain('✓'))
-    fireEvent.click(toggle)
-    expect(screen.getByTestId('record-terminal-details').hasAttribute('hidden')).toBe(false)
-    expect(screen.getByTestId('record-terminal-details-toggle').getAttribute('aria-expanded')).toBe('true')
+    await screen.findByTestId('record-terminal-output-verified')
+    fireEvent.click(screen.getByTestId('record-terminal-details-toggle'))
+    expect(details.hasAttribute('hidden')).toBe(false)
+    expect(screen.getByTestId('record-terminal-output-verified')).toBeTruthy()
   })
 
   it('does not offer redlog-session for PowerShell, which has no such command', async () => {
@@ -633,6 +647,48 @@ describe('first run: a verified shell says what it records (Spec 039)', () => {
 
 
 describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039, #220)', () => {
+  it('commits proxy changes and verification attempts together', async () => {
+    install({ proxy: RUNNING })
+    let resolveStatus!: (value: ManagedProxyStatus) => void
+    bridge.proxyStatus.mockReturnValueOnce(new Promise<ManagedProxyStatus>(resolve => { resolveStatus = resolve }))
+    const commits: Array<{ nonce: string | null; proxy: string | null; verified: boolean }> = []
+    render(
+      <I18nProvider>
+        <Profiler id="http-initialization" onRender={() => {
+          const card = screen.queryByTestId('first-run-http')
+          if (card) commits.push({
+            nonce: card.getAttribute('data-nonce'),
+            proxy: screen.queryByTestId('first-run-http-proxy')?.querySelector('code')?.textContent ?? null,
+            verified: screen.queryByTestId('first-run-http-status')?.textContent === '✓ 已驗證'
+          })
+        }}>
+          <FirstRunView onNavigate={() => {}} renderCaptureCard={() => <div />} />
+        </Profiler>
+      </I18nProvider>
+    )
+    const initialNonce = (await screen.findByTestId('first-run-http')).getAttribute('data-nonce')
+    await waitFor(() => expect(bridge.proxyStatus).toHaveBeenCalled())
+    await act(async () => { resolveStatus(RUNNING) })
+    const runningCommits = commits.filter(c => c.proxy === '127.0.0.1:8080')
+    expect(runningCommits.length).toBeGreaterThan(0)
+    expect(runningCommits.every(c => c.nonce !== initialNonce)).toBe(true)
+    // The attempt the operator sees must still be the one receiving a reply.
+    const verifiedNonce = await shownNonce()
+    await report({ scheme: 'https', nonce: verifiedNonce })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
+
+    bridge.proxyStatus.mockResolvedValue({ ...RUNNING, url: 'http://127.0.0.1:8099' })
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    await screen.findByText('127.0.0.1:8099')
+    const reconfigured = commits.filter(c => c.proxy === '127.0.0.1:8099')
+    expect(reconfigured.length).toBeGreaterThan(0)
+    expect(reconfigured.every(c => !c.verified && c.nonce !== verifiedNonce)).toBe(true)
+    await report({ scheme: 'https', nonce: verifiedNonce })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await report({ scheme: 'https', nonce: await shownNonce() })
+    expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
+  })
+
   it('ignores ordinary traffic and other checks; verifies only its own nonce, then stops listening', async () => {
     install({ proxy: RUNNING })
     draw()
@@ -699,6 +755,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     // appear once it has not landed.
     await screen.findByText('127.0.0.1:8080')
     expect(screen.queryByTestId('first-run-http-verify-commands')).toBeNull()
+    fireEvent.click(screen.getByTestId('first-run-http-verify-own'))
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const codes = [...screen.getByTestId('first-run-http-verify-commands').querySelectorAll('code')].map((c) => c.textContent ?? '')
     expect(codes).toEqual([
@@ -749,19 +806,18 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     vi.useFakeTimers({ shouldAdvanceTime: true })
     install({ proxy: { ...RUNNING, certReady: false } })
     draw()
-    // `first-run-http` is the section wrapper and is present in every state,
-    // so finding it says nothing about whether the proxy has been reported as
-    // running yet. The timeout timer is armed by the effect that runs *when*
-    // it is (`if (!running || verified) return`), so advancing the clock
-    // before that arms nothing and the banner never appears. Wait for the
-    // running state, then advance.
-    await screen.findByTestId('first-run-http')
     await screen.findByText('127.0.0.1:8080')
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
+    expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
+    fireEvent.click(screen.getByTestId('first-run-http-verify-own'))
+    expect(window.redlog.app.openExternal).toHaveBeenCalledWith(`https://redlog.verify.invalid/${await shownNonce()}`)
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const why = await screen.findByTestId('first-run-http-timeout')
     expect(why.textContent).toContain('用擷取瀏覽器驗證')
     expect(why.textContent).toContain('HTTPS')
     expect(why.textContent).toContain('預設關閉')
+    fireEvent.click(screen.getByTestId('first-run-http-verify-own'))
+    expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
     await report({ scheme: 'https', nonce: await shownNonce() })
     await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
     expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
@@ -773,6 +829,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     ;(window as unknown as { redlog: { recording: unknown } }).redlog.recording = { get: async () => false, onChange: () => () => {} }
     draw()
     await screen.findByText('127.0.0.1:8080')
+    fireEvent.click(screen.getByTestId('first-run-http-verify-own'))
     await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
     const why = await screen.findByTestId('first-run-http-timeout')
     expect(why.querySelector('li')?.textContent).toContain('錄製已暫停')

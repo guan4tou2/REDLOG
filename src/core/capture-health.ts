@@ -448,7 +448,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // the script is a no-op stub and its detectHooks() entry is commented out —
   // so `installed` was always undefined and the row rendered as a permanent
   // "idle" with an Install button that could not work. The agent-tailer row
-  // below covers Claude Code (and Codex, and OpenCode) properly.
+  // below covers Claude Code and Codex properly.
   // One terminal capability, fed by either terminal.
   //
   // This was two rows — the operator's own shell (via a preexec hook) and

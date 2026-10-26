@@ -9,6 +9,7 @@ import { useI18n } from '../i18n'
 
 export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 'command' | 'session' }): JSX.Element {
   const [text, setText] = useState<string | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -18,6 +19,7 @@ export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; 
   const { t } = useI18n()
   const load = async (): Promise<void> => {
     setLoading(true)
+    setError(null)
     try {
       const fn = mode === 'session'
         ? window.redlog.terminal.replaySession
@@ -34,13 +36,17 @@ export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; 
         return
       }
       // Command replay and empty session slices stay inline as text.
+      setTruncated(Boolean(r.truncated))
       setText(r.text ?? '')
       setExpanded(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
   }
   const btnLabel = mode === 'session' ? 'timeline.replay.sessionButton' : 'timeline.replay.button'
+  if (error) return <p role="alert" className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
   if (!expanded) {
     return (
       <div className="mt-1.5 flex items-center gap-2">
@@ -53,11 +59,13 @@ export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; 
       </div>
     )
   }
-  if (error) return <p className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
   const heightCls = mode === 'session' ? 'max-h-[400px]' : 'max-h-[200px]'
   return (
+    <>
+    {truncated && <p className="text-xs text-amber-400">{t('timeline.replay.truncated')}</p>}
     <pre className={`mt-1.5 p-2 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
       {text || t('timeline.replay.empty')}
     </pre>
+    </>
   )
 }

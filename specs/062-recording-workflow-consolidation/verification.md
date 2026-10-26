@@ -1629,3 +1629,271 @@ Local focused checks: **31/31 passed**. Ordered pre-push gates passed; unit
 **4,250 passed / 28 skipped**. Logs: `/private/tmp/redlog-pr443-clock-green.log`
 and `/private/tmp/redlog-pr443-final-unit.log`. Windows CI results are tracked
 by PR #443. This does not complete the wider T008–T013 acceptance.
+
+
+## 2026-10-25 — Installed Mac last-export restart acceptance (T081)
+
+Installed the ccf0347a DMG into
+`/private/tmp/redlog-last-export-acceptance-20261025/installed/RedLog.app` by
+read-only mount/copy/unmount. The DMG SHA-256 is
+`be1e6514893445dbf5250148b7aac17634630e8c365da65dc67fea9ce171eb93`.
+This is the code merged by #443, not a notarized release. Used a disposable
+HOME and explicit user-data-dir; no REDLOG_E2E flag or real project was used.
+
+Through native UI, created Export-Restart-A, saved a synthetic text marker with
+screenshot unchecked, selected a custom destination outside the project using
+the OS picker and exported five events as a bundle. The completion dialog
+showed the actual path/format/time. Quit normally through Stop and quit and
+verified process exit 0; reopened the same installed copy/profile once.
+The project survived, Last export restored the exact original custom path,
+BUNDLE and completion time, and Show in folder selected that exact artifact
+in Finder. The packaged verifier passed five signatures and manifest files;
+it correctly reported a projection, not a verified full source chain.
+
+Both launches showed the HUD by default; it was hidden only to operate the
+main window. No shell adapter or system CA was installed. The marker's
+screenshot opt-out produced no screenshot event or bundle attachment.
+A visible mismatch remained: its submit button still said Mark + Screenshot
+while unchecked. Corrected only marker.submit to Save marker / 儲存標記;
+the existing checkbox controls screenshot capture. No new state/control/help
+copy or capture behavior was added.
+
+This closes only the Mac restart/reveal slice of M25 and the observed label.
+It does not mark the cross-platform rows or T008–T013 complete. The main
+post-merge CI 40171701987 completed successfully: Windows/macOS/Ubuntu unit
+and Ubuntu Electron E2E. Focused copy/save checks: **10/10 passed**; typecheck,
+spec, architecture and i18n gates and build passed. No full-suite rerun or
+new test was added for this two-string correction.
+
+One additional source-build native launch reused the same disposable profile
+solely to inspect the changed copy: 儲存標記 was visible with screenshot checked
+and unchecked. The draft was cancelled and the app quit normally (exit 0).
+English copy passed the existing locale/copy checks but was not separately
+clicked in native UI. The Node SQLite binding was restored afterwards. The
+existing ccf0347a DMG does not contain this later copy-only correction.
+
+
+### 2026-10-25: bounded first-use follow-up (local, uncommitted)
+
+Base: main `4d528ba5`; branch `codex/first-use-recording-guidance`. No release,
+version bump, update-feed change, commit or push in this follow-up.
+
+- T082–T085: installer-oriented Windows instructions separated from developer
+  setup, internal build provenance in About, ordinary-command output check
+  visible after activation, source-scoped dependency preparation, and initiated
+  own-browser HTTPS verification. Focus revalidation no longer unmounts/cancels
+  an in-flight dependency installer. Initial affected units: 119 passed;
+  first-run/export existing E2E: 21 passed; targeted dependency recovery after
+  the focus fix: 1 passed. These results predate the terminal-app increment.
+- Native installed candidate reproduced a late-canary defect: the DB contained
+  the correct external Zsh command but the flow remained timed out. Regression
+  failed before the fix; after keeping the same-attempt listener live, the
+  50-test first-run file passed. Wrong-shell/nonce and retry isolation remain.
+- T086: machine `terminal-app` selection is independent of shell choice. Added
+  one selector to existing terminal settings; unknown/other apps are excluded
+  for a specific choice. Internal fallback remains independent. Both POSIX
+  adapters and Python background/session senders consult the preference;
+  PowerShell guards startup/delivery and its explicit wrapper. No real profile
+  or theme was modified.
+- Prompt investigation: ordinary Zsh had identical `stty -g` before/after with
+  and without the adapter, with normal CRLF output. A controlled Powerlevel10k
+  probe showed reordered prompt decorations. A minimal existing-precmd printer
+  reproduced prompt text contaminating command_end stdout; the regression
+  failed with `command-visible\nEXISTING-PROMPT`. Prioritizing descriptor
+  restoration/draining fixed it while preserving the other hooks' order.
+- Affected terminal/runtime/search/copy tests: 10 files, 89 passed. Real Bash and
+  Zsh PTYs covered Warp allowed, other app denied, unknown app denied and an
+  already loaded adapter narrowing to another app. The installer test caught a
+  missing starter-pack helper entry; manifest and fallback were both corrected.
+
+Native final-candidate and final checks are recorded below when completed.
+Windows PowerShell runtime, real Warp UI prompt rendering, clean-OS dependency
+installation/system trust and the wider T008–T013 matrix are not yet verified.
+
+
+Follow-up checks: all four lightweight gates passed; build and Electron native
+rebuild passed. Resource verification initially received the `.app` path instead
+of `Contents/Resources`; rerun with the correct root passed. Inspection also
+found generated Python bytecode in the hooks directory, so the builder now
+excludes it and the resource gate refuses that directory. Final DMG is ad-hoc
+signed, not notarized; it is not an official or clean-OS install acceptance.
+The final three affected real-PTY cases passed after the preference reader was
+made whole-file rather than first-line. A post-fix controlled Powerlevel10k probe
+also preserved the expected command outputs without prompt decorations. This
+still is not a real Warp-window verification: the native tool explicitly refused
+that application. The Mac was locked when final RedLog UI acceptance began;
+no GUI completion is inferred from resource checks or PTY results.
+
+
+Final artifact (after the last copy/SSH exclusion adjustments):
+`/private/tmp/redlog-terminal-app-final-dist/RedLog-0.18.3-internal-4d528ba5-local-arm64.dmg`
+
+SHA-256: `a11b9567e01c7edba16766777bb88785aa231e1e532e780b8c7b8fccb3be5372`.
+Build, optional-package/resource contract, strict bundle seal and DMG checksum
+passed. Latest focused verification: 6 files / 99 tests passed, including actual
+Bash/Zsh app-boundary and prompt-order cases. No full unit suite or new CI run
+is claimed for these uncommitted changes. The final native candidate has NOT
+been manually accepted: an intermediate copy was launched with an isolated HOME
+but the desktop was locked; after the final rebuild it must be replaced before
+continuing native inspection. No real user profile/theme was changed.
+
+
+### 2026-10-26: resumed native acceptance and stable selection
+
+After unlock, installed the then-final DMG in an isolated home and created
+Terminal-App-Acceptance through the UI. HUD started visible by default; About
+showed `RedLog v0.18.3 · 4d528ba5+local`; the terminal-app selector, own-browser
+verification action and responsive wide setup were visible. No personal project
+was opened or used as test evidence. Do not publish screenshots with host IPs.
+
+A delayed focus refresh reproduced a further control-lifetime defect: the
+terminal-app select was removed while the preference read was loading. The new
+case in the existing hooks-panel test failed before repair. The panel now keeps
+the known value/control while revalidating, updates from the successful main
+response before reading back, and disables editing on a failed read. Focused
+selector/copy checks: 12 passed; typecheck, build and the three lightweight gates
+passed. This is a targeted follow-up to the preceding 99-test run, not a new full
+suite claim.
+
+Updated artifact:
+`/private/tmp/redlog-terminal-app-accepted-dist/RedLog-0.18.3-internal-4d528ba5-local-arm64.dmg`
+
+The preceding `final-dist` artifact predates this control-lifetime fix and is
+superseded. Package resources, immutable optional-AI checksums, strict bundle
+seal and DMG integrity passed again. Native automation still dismisses the
+HTML select popup without selecting Warp; requested one assisted user selection
+and do not count merely opening the menu as successful save/retention. Native
+window resizing and full output proof remain pending at this checkpoint.
+
+The UI tool briefly auto-launched an additional candidate without the isolated
+user-data argument while the replacement launch was in progress. It remained at
+the project picker; no listed personal project was opened. Stopped only that
+exact test executable PID, retained the correctly isolated instance, and verified
+the named isolated project before resuming. Future launches must wait for the
+isolated child PID before binding the UI tool.
+
+
+2026-10-26 updated-artifact SHA-256:
+`f0e7202860a5679cfaeef42731f66fde995e585b54e8b0d8db5fd0ddd8807b3a`.
+Still local/uncommitted/unpushed. T085/T086 remain open pending the assisted
+selection/save check and remaining native layout/output steps; T008–T013 remain
+unchanged. The isolated test window is intentionally left at terminal settings
+for the requested manual selection.
+
+
+### 2026-10-26: assisted Warp save and final installed-runtime checks
+
+User selected Warp in the isolated native settings. Read-back confirmed both
+`WarpTerminal` in the isolated machine preference and Warp in the native control.
+After normal quit, replacement with the ready-dist candidate and restart, the
+same named isolated project and Warp preference remained selected.
+
+Ready-dist artifact (supersedes accepted-dist for the control-lifetime fixes):
+`/private/tmp/redlog-terminal-app-ready-dist/RedLog-0.18.3-internal-4d528ba5-local-arm64.dmg`
+SHA-256: `720ad93b9cda89a9f3d8db95241a20fb786e95324f89ec146686e85e2b766a7a`.
+Resources, strict bundle seal and DMG integrity passed. Still ad-hoc signed,
+not notarized, local/uncommitted and not an official release.
+
+- Installed accepted-dist: the same displayed activation command from an
+  Apple_Terminal-identified isolated Zsh produced zero shell events. A
+  WarpTerminal-identified Zsh produced three, and its late arrival completed
+  the previously timed-out native activation flow. These are actual installed
+  adapters in controlled PTYs, not an actual Warp App GUI test.
+- Ready-dist repeated native verification/repair, actual displayed canary and
+  output command: the UI showed received Zsh command and output recorded via
+  auto-relay with interactive-session help still folded. A controlled command's
+  persisted stdout was `redlog-ready-stdout\n`, stderr
+  `redlog-ready-stderr\n`, exit code 7 and completeness complete.
+- The connect action had the selector's same loaded-only lifetime defect.
+  Extended the existing delayed-revalidation test, observed failure before the
+  repair, then 11 focused panel/platform tests passed. Typecheck/build and
+  package resources passed. This is additional to, not a rerun of, the prior
+  99-test affected group.
+- Own-browser direct action opened the exact displayed nonce URL in Chrome.
+  The unconfigured browser failed DNS as expected; RedLog remained unverified
+  and offered timeout recovery only after initiation. No system proxy, CA
+  trust or certificate validation was changed. The created tab was closed.
+- Native Window menu changed narrow/wide bounds. Some captured images retained
+  a previous render surface while accessibility showed the current settings
+  and live verification results. A freshly loaded narrow dashboard rendered
+  within its window, but this is insufficient to accept the terminal settings'
+  live resize. Do not infer a CSS defect or a successful visual pass from these
+  conflicting observations. That remaining visual check keeps T085 open.
+- Candidate quit normally via Stop and quit, exit 0. No personal project,
+  terminal profile or theme was modified. Real Warp prompt rendering, real
+  PowerShell, clean-OS install/trust and T008–T013 remain unverified.
+
+The later source-row visual increment in ui-refinement-20261026.md is NOT in
+this DMG. Keep source geometry and installed-package evidence separate.
+
+
+### 2026-10-26: source-row visual increment (after ready-dist)
+
+See ui-refinement-20261026.md for the staged whole-app scope and exact native
+limitations. The first attempt's auto-fit empty-column behavior was caught in
+native wide review and replaced by compact full-width rows. Final typecheck,
+build, spec/architecture/i18n gates passed; focused units 17/17 and the two
+affected existing Electron journeys passed. Native reloaded smaller-view list
+and expanded connection were visible and within the content boundary. Wide
+live-resize capture remains unreliable, so T087/T085 stay open. The source
+candidate quit normally and Node SQLite was restored. No repackaging or push.
+
+
+### 2026-10-26: Forensic Editorial scope and bounded foundation repair
+
+User confirmed the whole Electron product: 11 work views plus Settings, project
+selection/onboarding, Export/HUD/dialogs/notifications and all states. Canonical
+requirements and acceptance matrix are in docs/UIUX-FORENSIC-EDITORIAL.md.
+T091/T092 remain open; this is not a completed whole-App visual redesign.
+
+RED: extended the existing design-tokens action-fill assertion to check the
+actual primary hover token and danger hover. Existing primary hover failed at
+3.9148:1 with #16090A on #B84D51 (13 passed, 1 failed).
+GREEN: renamed the unused-elsewhere accent-dim role to accent-hover, selected
+#E07478 with existing dark on-accent text (6.44:1). No compatibility alias,
+new component/state/dependency, product copy or data behavior was added.
+Existing palette, buttons, density, token and confirm-dialog checks: 36 passed
+across 5 files. Typecheck, build and Spec gate passed; diff whitespace clean.
+No full suite, CI, new packaged artifact or manual native hover review is
+claimed. The prior ready-dist artifact does not include this later renderer
+color change. No commit/push/release. Other colors and the 4px spacing migration
+remain proposed until mapped and visually verified across ordinary and custom
+Canvas/xterm/HUD surfaces.
+
+
+### 2026-10-26: Claude Code / Codex only (T093)
+
+User narrowed AI capture to Claude Code first, then Codex. Removed the OpenCode
+optional parser/manifest, executable hook example and provider-only tests;
+updated readiness/health labels, current contracts, guides and provider lists.
+Historical acceptance records remain historical. Generic evidence/query/export
+behavior was not changed, and no user plugin/configuration/transcript was deleted.
+
+The catalog, module resolver and install action no longer offer OpenCode.
+A policy regression retains old OpenCode configuration plus a plugin entry and
+proves they cannot authorize capture without a current catalog entry. Claude and
+Codex remain opt-in, separately installed and authorized. The build removes stale
+output packages; the packaged resource gate explicitly refuses OpenCode resources.
+
+Verification:
+- Focused AI source/install/policy/durability/readiness/health/copy: 172 passed
+  across 12 existing files. Later module-path refusal assertion: the existing
+  official-install file passed 24 tests.
+- Typecheck, Spec/architecture/i18n gates and build passed. Whitespace corrected
+  after the removed test seam left an extra EOF blank line.
+- Actual ad-hoc-signed Mac arm64 app directory:
+  `/private/tmp/redlog-two-agent-dist/mac-arm64/RedLog.app`.
+  Resource/checksum/seal verification passed; optional-ai contains exactly
+  `claude-code` and `codex`. No DMG/release/update-feed change.
+- Packaged installation and Claude pause/session-exclusion journeys passed.
+  Claude/Codex capture journeys initially stopped at an overlooked three-state
+  catalog assertion; actual capture/search/delivery had already passed. Corrected
+  that test contract, then reran only those two cases: both passed, completing
+  reauthorization, active uninstall and cross-project checks. Four affected
+  packaged journeys completed across the initial run and focused rerun.
+
+These are isolated synthetic transcript fixtures, not a real model run or
+Windows/Linux acceptance. No new full-suite or remote CI result is claimed.
+The preceding ready-dist package still contains the former provider set and is
+superseded for this scope; do not use it to claim two-provider packaging.
+Changes remain local and uncommitted; no push or release.

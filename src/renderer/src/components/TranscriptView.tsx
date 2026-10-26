@@ -1,3 +1,6 @@
+import { operationPairKey } from '../../../core/operation-pair-key'
+import { buildToolPairIndex } from '../lib/toolPairing'
+import type { ToolPairKey } from '../../../core/db/events'
 import { Button } from './Button'
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
@@ -35,6 +38,8 @@ import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcri
  */
 
 interface Ev {
+  engagementId?: string
+  sessionId?: string
   id: string
   timestamp: number
   createdAt?: number
@@ -49,12 +54,12 @@ function toolPairKey(e: Ev): string | null {
   const d = e.data ?? {}
   if ((d.subtype !== 'tool_call' && d.subtype !== 'tool_result' && d.subtype !== 'tool_interrupted') ||
       typeof d.session_id !== 'string' || typeof d.tool_use_id !== 'string') return null
-  return `${d.session_id}:${d.tool_use_id}`
+  return operationPairKey(e)
 }
 
 async function completeToolPairs(events: Ev[]): Promise<Ev[]> {
   const seenKinds = new Map<string, Set<unknown>>()
-  const keyParts = new Map<string, { sessionId: string; toolUseId: string }>()
+  const keyParts = new Map<string, ToolPairKey>()
   for (const event of events) {
     const key = toolPairKey(event)
     if (!key) continue
@@ -62,7 +67,7 @@ async function completeToolPairs(events: Ev[]): Promise<Ev[]> {
     const kinds = seenKinds.get(key) ?? new Set()
     kinds.add(d.subtype)
     seenKinds.set(key, kinds)
-    keyParts.set(key, { sessionId: String(d.session_id), toolUseId: String(d.tool_use_id) })
+    keyParts.set(key, { sessionId: String(d.session_id), toolUseId: String(d.tool_use_id), provider: String(d.agent), engagementId: event.engagementId!, captureSessionId: event.sessionId! })
   }
   const missing = [...seenKinds]
     .filter(([, kinds]) => !(kinds.has('tool_call') && (kinds.has('tool_result') || kinds.has('tool_interrupted'))))
@@ -70,7 +75,10 @@ async function completeToolPairs(events: Ev[]): Promise<Ev[]> {
   if (missing.length === 0) return events
   const counterparts = await window.redlog.events.toolCounterparts(missing) as Ev[]
   const byId = new Map(events.map((event) => [event.id, event]))
-  for (const event of counterparts) byId.set(event.id, event)
+  for (const event of counterparts) {
+    const key = toolPairKey(event)
+    if (key && seenKinds.has(key)) byId.set(event.id, event)
+  }
   return [...byId.values()]
 }
 
@@ -154,14 +162,19 @@ const KIND_COLOR: Record<Kind, string> = {
  * Fold the event stream into exchanges.
  *
  * The pairing rules mirror what the Timeline already knows: shell
- * command_start/command_end share (pid, command); agent tool_call/tool_result
- * share tool_use_id; HTTP request/response share flow_id. Where a pair is
+ * agent tool_call/tool_result share the canonical source-scoped key;
+ * command completion stays source-linked; HTTP request/response share flow_id. Where a pair is
  * incomplete — the command is still running, the response never came — the
  * block renders with the half that exists and says so.
  */
 function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string, v?: Record<string, string | number>) => string, late: Record<string, LateOutputSummary> = {}): Block[] {
   const out: Block[] = []
   const pendingTool = new Map<string, Block>()
+  const toolPairs = buildToolPairIndex(events)
+  const safeToolKey = (event: Ev): string | null => {
+    const key = toolPairKey(event)
+    return key && !toolPairs.conflicts.has(key) ? key : null
+  }
   const pendingHttp = new Map<string, Block>()
   const actorOf = (e: Ev): string => names[e.operatorId] ?? e.operatorId
 
@@ -181,9 +194,10 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
       // A background job's later output is part of this command. Nothing is
       // said about it while it is whole; only a still-open or lossy one is.
-      const lateSum = d.late_output === true && typeof d.command_id === 'string' ? late[d.command_id] : undefined
+      const lateSum = (d.late_output === true || d.output_streamed === true) && typeof d.command_id === 'string' ? late[d.command_id] : undefined
       const inlineOut = [d.stdout, d.stderr, lateSum?.stdout, lateSum?.stderr].filter((x) => typeof x === 'string').join('')
-      const lateNote = lateSum?.state === 'running' ? ` · ${t('transcript.metaLateRunning')}`
+      const lateNote = lateSum?.state === 'preview' ? ` · ${t('timeline.detail.outputPreview')}`
+        : lateSum?.state === 'running' ? ` · ${t('transcript.metaLateRunning')}`
         : lateSum?.state === 'incomplete' ? ` · ${t('transcript.metaLateIncomplete')}` : ''
       const exitRaw = d.exit_code
       const exitKnown = exitRaw != null
@@ -228,15 +242,19 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
           outputNote: 'unpaired',
           events: [e]
         }
-        if (typeof d.tool_use_id === 'string') {
-          const tk = `${d.session_id ?? ''}:${d.tool_use_id}`
-          pendingTool.set(tk, b)
-        }
+        const tk = safeToolKey(e)
+        const result = tk ? toolPairs.results.get(tk) : undefined
+        if (result?.data) {
+          b.output = typeof result.data.output === 'string' ? result.data.output : ''
+          b.outputBytes = typeof result.data.output_length === 'number' ? result.data.output_length : b.output.length
+          b.outputNote = undefined
+          b.events.push(result)
+        } else if (tk) pendingTool.set(tk, b)
         out.push(b)
         continue
       }
       if (sub === 'tool_interrupted') {
-        const tk = typeof d.tool_use_id === 'string' ? `${d.session_id ?? ''}:${d.tool_use_id}` : null
+        const tk = safeToolKey(e)
         const b = tk ? pendingTool.get(tk) : undefined
         if (b) {
           b.outputNote = 'interrupted'
@@ -252,7 +270,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       }
       if (sub === 'tool_result') {
         const body = typeof d.output === 'string' ? (d.output as string) : ''
-        const tk = typeof d.tool_use_id === 'string' ? `${d.session_id ?? ''}:${d.tool_use_id}` : null
+        const tk = safeToolKey(e)
+        if (tk && toolPairs.calls.has(tk)) continue
         const b = tk ? pendingTool.get(tk) : undefined
         if (b) {
           b.output = body
@@ -540,12 +559,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [lateOutput, setLateOutput] = useState<Record<string, LateOutputSummary>>({})
   useEffect(() => {
     const ids = events
-      .filter((e) => e.agentType === 'shell' && e.data?.subtype === 'command_end' && e.data?.late_output === true && typeof e.data?.command_id === 'string')
+      .filter((e) => e.agentType === 'shell' && e.data?.subtype === 'command_end' && (e.data?.late_output === true || e.data?.output_streamed === true) && typeof e.data?.command_id === 'string')
       .map((e) => e.data?.command_id as string)
     if (ids.length === 0) { setLateOutput((cur) => (Object.keys(cur).length === 0 ? cur : {})); return }
     let live = true
     void Promise.all(ids.map((id) => window.redlog.events.commandOutput(id)
-      .then((rows) => [id, summarizeLateOutput(rows)] as const)
+      .then((rows) => [id, summarizeLateOutput(rows.items, rows.hasMore)] as const)
       .catch(() => null)))
       .then((pairs) => {
         if (live) setLateOutput(Object.fromEntries(pairs.filter((p): p is readonly [string, LateOutputSummary] => p !== null)))

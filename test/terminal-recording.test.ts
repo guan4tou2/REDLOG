@@ -24,13 +24,51 @@ describe('closed terminal recording bytes', () => {
     expect(fs.readFileSync(target)).toEqual(bytes)
   })
 
-  it('ends a capped recording explicitly and lets a new recording have its own budget', () => {
-    const a = new TerminalRecording(file(), { version: 2 }, 100)
-    expect(a.append([0, 'o', 'a'.repeat(200)])).toBe(false)
-    expect(a.close().truncated).toBe(true)
-    const b = new TerminalRecording(file(), { version: 2 }, 100)
-    expect(b.append([0, 'o', 'new'])).toBe(true)
-    expect(b.close().truncated).toBe(false)
+  it('continues across bounded cast parts and keeps logical byte ranges readable', async () => {
+    const target = file()
+    const writer = new TerminalRecording(target, { version: 2, timestamp: 1700000000 }, 180)
+    const first = writer.bytes
+    const text = '長輸出\r\n'.repeat(100)
+    expect(writer.append([0.1, 'o', text])).toBe(true)
+    const closed = writer.close()
+    expect(closed.truncated).toBe(false)
+    expect(closed.segments.length).toBeGreaterThan(1)
+    const parts = closed.segments.map(part => fs.readFileSync(part.path))
+    expect(parts.every(part => part.length <= 180)).toBe(true)
+    expect(closed.sha256).toBe(crypto.createHash('sha256').update(Buffer.concat(parts)).digest('hex'))
+    const { readCastRange, readCastSlice } = await import('../src/core/cast-slice')
+    expect((await readCastRange(target, first, closed.bytes - first))?.text).toBe(text)
+    expect((await readCastSlice(target, 0, Number.MAX_SAFE_INTEGER))?.text).toBe(text)
+    for (const part of closed.segments) {
+      expect(part.sha256).toBe(crypto.createHash('sha256').update(fs.readFileSync(part.path)).digest('hex'))
+    }
+  })
+
+  it('bounds previews without hiding a later time window or losing exported parts', async () => {
+    const target = file()
+    const writer = new TerminalRecording(target, { version: 2, timestamp: 1700000000 }, 160)
+    writer.append([0.1, 'o', 'early-'.repeat(20)])
+    writer.append([4, 'o', 'late-'.repeat(20)])
+    writer.close()
+    const { readCastSlice } = await import('../src/core/cast-slice')
+    const preview = await readCastSlice(target, 0, Number.MAX_SAFE_INTEGER, 70)
+    expect(preview?.truncated).toBe(true)
+    expect(preview!.bytes).toBeLessThanOrEqual(70)
+    expect((await readCastSlice(target, 1700000003000, 1700000005000))?.text).toBe('late-'.repeat(20))
+    fs.unlinkSync(path.join(path.dirname(target), 'session.part000002.cast'))
+    expect(await readCastSlice(target, 0, Number.MAX_SAFE_INTEGER)).toBeNull()
+  })
+
+  it('keeps a real recording beyond 50 MiB with bounded parts and incremental hashes', () => {
+    const target = file()
+    const writer = new TerminalRecording(target, { version: 2, timestamp: 1700000000 }, 50 * 1024 * 1024)
+    const block = 'x'.repeat(64 * 1024)
+    for (let n = 0; n < 850; n++) expect(writer.append([n / 10, 'o', block])).toBe(true)
+    const closed = writer.close()
+    expect(closed.bytes).toBeGreaterThan(50 * 1024 * 1024)
+    expect(closed.segments).toHaveLength(2)
+    expect(closed.truncated).toBe(false)
+    expect(closed.segments.every(part => part.bytes <= 50 * 1024 * 1024)).toBe(true)
   })
 
   it('does not claim a successful recording hash after a partial disk write failure', () => {

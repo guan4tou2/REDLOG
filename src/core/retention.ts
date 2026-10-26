@@ -36,9 +36,10 @@ function lookupCauseEventId(subtype: 'cast_pruned' | 'screenshot_pruned', absPat
         SELECT id FROM events
         WHERE agent_type = 'shell'
           AND subtype = 'session_end'
-          AND json_extract(data,'$.castPath') = ?
+          AND (json_extract(data,'$.castPath') = ? OR EXISTS (
+            SELECT 1 FROM json_each(data, '$.castSegments') part WHERE json_extract(part.value, '$.path') = ?))
         ORDER BY created_at DESC LIMIT 1
-      `).get(absPath) as { id: string } | undefined
+      `).get(absPath, absPath) as { id: string } | undefined
       return row?.id ?? null
     }
     // screenshot_pruned: the screenshot event stores `filename` (basename only)
@@ -427,7 +428,7 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
   // shell/screenshot agents write there), so — unlike bodies — no
   // events_logged pass is needed.
   const query = kind === 'cast'
-    ? `SELECT target_id, json_extract(data,'$.castPath') AS p, NULL AS fn FROM events
+    ? `SELECT target_id, json_extract(data,'$.castPath') AS p, NULL AS fn, json_extract(data,'$.castSegments') AS parts FROM events
          WHERE agent_type = 'shell'
            AND subtype = 'session_end'
            AND json_extract(data,'$.castPath') IS NOT NULL`
@@ -444,6 +445,11 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
     if (!scopeTargets.some((p) => matchPattern(target, p))) continue
     const p = row.p as string | null
     if (p) pinned.add(path.basename(p))
+    if (kind === 'cast' && typeof row.parts === 'string') {
+      for (const part of JSON.parse(row.parts) as Array<{ path?: unknown }>) {
+        if (typeof part.path === 'string') pinned.add(path.basename(part.path))
+      }
+    }
     const fn = row.fn as string | null
     if (fn) pinned.add(path.basename(fn))
   }
