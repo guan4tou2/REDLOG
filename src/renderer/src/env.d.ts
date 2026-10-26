@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 declare const __APP_VERSION__: string
+declare const __APP_BUILD__: string
 
 interface TerminalCastState {
   recording: boolean
@@ -270,7 +271,7 @@ interface RedLogAPI {
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
-    commandOutput: (commandId: string) => Promise<RedLogEvent[]>
+    commandOutput: (commandId: string) => Promise<import('../../core/db/events').CommandOutputPage>
     commandEnds: (commandIds: string[]) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
@@ -402,14 +403,14 @@ interface RedLogAPI {
     kill: (id: string) => void
     list: () => Promise<Array<{
       id: string; pid: number; lastActivity: number
-      /** 2b per-pane chip: open cast stream and under the size cap. */
+      /** 2b per-pane chip: open cast stream; capacity continues in the next part. */
       recording: boolean; castBytes: number; castTruncated: boolean; paused: boolean; castStartedAt: number | null
       recordingReason?: 'no-project' | 'recording-failed'; recordingError?: string
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     onCastState: (id: string, cb: (state: TerminalCastState) => void) => () => void
-    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
+    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; truncated?: boolean; error?: string }>
     replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     /** A discriminated union, not a bag of optionals: the handler returns
      *  either `{ ok: false, error }` or `{ ok: true, events, … }`, and it
@@ -451,7 +452,8 @@ interface RedLogAPI {
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 052: what the SHELL will do — the machine's mode and the effective
      *  class lists, defaults with the operator's `redlog class` edits on top. */
-    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[] }>
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }>
+    setTerminalApp: (value: string) => Promise<string>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }
   runtime: {

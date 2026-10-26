@@ -142,7 +142,7 @@ describeDB('capture packs: health', () => {
     expect(rows.find((s) => s.id === 'process-monitor')).toMatchObject({
       configPath: 'packMembers.processMonitor', packPath: 'packs.hostMonitors', enabled: true
     })
-    for (const id of ['agent-claude-code', 'agent-codex', 'agent-opencode']) {
+    for (const id of ['agent-claude-code', 'agent-codex']) {
       expect(rows.find((s) => s.id === id)).toMatchObject({
         installed: false, enabled: false, state: 'off'
       })

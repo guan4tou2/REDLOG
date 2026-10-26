@@ -23,6 +23,17 @@ $script:_RedLogLastId    = 0
 $script:_RedLogMaxBytes  = 102400   # 100 KB per stream (parity with bash hook)
 $script:_RedLogSpoolCap  = 5000     # protects against a runaway loop while RedLog is offline
 
+function _RedLogTerminalAllowed {
+    $file = Join-Path $script:_RedLogDir 'terminal-app'
+    if (-not (Test-Path $file)) { return $true }
+    try { $wanted = [System.IO.File]::ReadAllText($file).Trim() } catch { return $false }
+    # No verified Windows host-origin resolver yet. WT_SESSION and inherited
+    # flags must not silently turn an unsupported restriction into capture-all.
+    return $wanted -ceq 'all'
+}
+
+if (-not (_RedLogTerminalAllowed)) { return }
+
 function _RedLogIsRunning {
     (Test-Path $script:_RedLogPortFile) -and (Test-Path $script:_RedLogTokenFile)
 }
@@ -100,6 +111,7 @@ function _RedLogSendEvent {
         [string]$Command,
         [hashtable]$Extra = @{}
     )
+    if (-not (_RedLogTerminalAllowed)) { return }
     # Built-in panes survive at the picker; that interval must not be spooled.
     if ($env:REDLOG_TERMINAL -eq '1' -and -not (Test-Path (Join-Path $script:_RedLogDir 'active-identity.json'))) { return }
     $body = _RedLogBuildPayload -Subtype $Subtype -Command $Command -Extra $Extra
@@ -194,6 +206,12 @@ function Redlog-Run {
     # token after `Redlog-Run` reaches us verbatim, matching bash `redlog-run`.
     if ($args.Count -eq 0) {
         Write-Error 'Redlog-Run: expected a command'
+        return
+    }
+    if (-not (_RedLogTerminalAllowed)) {
+        $program = $args[0]
+        $programArgs = @($args | Select-Object -Skip 1)
+        & $program @programArgs
         return
     }
     $Command = @($args)

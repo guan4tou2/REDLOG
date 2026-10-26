@@ -72,3 +72,18 @@ it('chooses latest response for HTTP status and freezes late response updates', 
  expect(entry.response.status).toBe(200)
  expect(entry._redlog.responseEventId).toBe('new-response')
 })
+
+it('exports every long-command companion beyond the preview limit, at the approved snapshot', () => {
+ addExportEvent('events','long-end',100,'example.com',{subtype:'command_end',command:'long-canary',command_id:'long-command',late_output:true})
+ for(let seq=1;seq<=2005;seq++) addExportEvent(seq%2?'events':'events_logged',`chunk-${seq}`,100+seq,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq,stdout:`line-${seq}\n`})
+ const r=resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'long-canary',excludeHousekeeping:true}})
+ expect(r.ok).toBe(true)
+ expect(r.plan.counts.included).toBe(2006)
+ addExportEvent('events','after-preview-duplicate',1,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq:1,stdout:'must not replace the approved chunk'})
+ addExportEvent('events','after-preview',9999,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq:2006,stdout:'not approved'})
+ const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const exported=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).events
+ expect(exported).toHaveLength(2006)
+ expect(exported.some((e:any)=>e.id==='chunk-2005')).toBe(true)
+ expect(exported.some((e:any)=>e.id==='after-preview')).toBe(false)
+})

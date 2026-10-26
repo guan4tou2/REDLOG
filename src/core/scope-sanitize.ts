@@ -30,7 +30,7 @@ export interface ScopeForSanitize {
  *  status, timing) stays — what a purple team needs to see "you touched X" —
  *  only the captured bytes go. */
 export const SCOPE_SANITIZED_FIELDS = [
-  'output', 'output_preview', 'stdout', 'stderr',
+  'output', 'output_preview', 'stdout', 'stderr', 'output_body',
   'request_body', 'request_body_preview', 'response_body', 'response_preview',
   'ws_body', 'ws_preview', 'tcp_body', 'tcp_preview'
 ] as const
@@ -86,7 +86,7 @@ export function scopeMaskReplacements(
   const reason = outOfScope ? '[redacted: out of scope]' : '[redacted: no target — scope unclassified]'
   const out: Record<string, string> = {}
   for (const field of SCOPE_SANITIZED_FIELDS) {
-    const v = data[field]
+    const v = data[field] ?? (field === 'output_body' ? data.output_body_ref : undefined)
     if (v == null) continue
     if (typeof v === 'string') {
       if (v.length > 0) out[field] = reason

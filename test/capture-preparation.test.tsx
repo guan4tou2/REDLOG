@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
-import { CapturePreparation, preparationChecks } from '../src/renderer/src/components/CapturePreparation'
+import { CapturePreparation, RuntimePreparation, preparationChecks } from '../src/renderer/src/components/CapturePreparation'
 
 const preflight = (missing = true): RuntimePreflight => ({
   platform: 'darwin', shell: { name: 'zsh', hookId: 'shell-zsh' },
@@ -60,6 +60,10 @@ describe('capture preparation', () => {
     expect(screen.getByTestId('prepare-dependency-mitmdump')).toBeTruthy()
     expect(screen.queryByTestId('prepare-dependency-bash')).toBeNull()
     expect(screen.queryByTestId('prepare-dependency-python3')).toBeNull()
+    const missingBoth = preflight()
+    missingBoth.checks = missingBoth.checks.map(c => c.id === 'python3' ? { ...c, found: false } : c)
+    expect(preparationChecks(missingBoth, 'commands').map(c => c.id)).toEqual(['python3'])
+    expect(preparationChecks(missingBoth, 'web').map(c => c.id)).toEqual(['mitmdump'])
     expect(screen.queryByText('uv tool install mitmproxy')).toBeNull()
     expect(preparationChecks({ ...preflight(), platform: 'win32', shell: { name: 'pwsh', hookId: 'shell-powershell' }, checks: [
       { id: 'powershell', found: false, neededFor: [] }, { id: 'pwsh', found: true, neededFor: [] }
@@ -145,4 +149,29 @@ it('offers a known missing installer before attempting a dependency install', ()
   expect(screen.queryByTestId('prepare-install-mitmdump')).toBeNull()
   fireEvent.click(action)
   expect(window.redlog.runtime.install).not.toHaveBeenCalled()
+})
+
+
+it('rechecks on return without unmounting or cancelling an active source installer', async () => {
+  const probe = vi.fn(async () => preflight())
+  window.redlog.runtime.preflight = probe
+  let finish!: (value: { success: boolean; message: string }) => void
+  vi.mocked(window.redlog.runtime.install).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  render(<I18nProvider><RuntimePreparation source="web" onClose={() => {}} /></I18nProvider>)
+  fireEvent.click(await screen.findByTestId('prepare-install-mitmdump'))
+  try {
+    await act(async () => { fireEvent(window, new Event('focus')) })
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(window.redlog.runtime.cancelInstall).not.toHaveBeenCalled()
+  } finally {
+    await act(async () => { finish({ success: false, message: 'test download failed' }) })
+  }
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 2000)
+  try {
+    await act(async () => { fireEvent(window, new Event('focus')) })
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(window.redlog.runtime.install).toHaveBeenCalledTimes(1)
+    expect(window.redlog.runtime.cancelInstall).not.toHaveBeenCalled()
+    expect(screen.getByTestId('prepare-error-mitmdump').textContent).toContain('test download failed')
+  } finally { clock.mockRestore() }
 })

@@ -81,7 +81,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [hostShellLabel, setHostShellLabel] = useState<string | null>(null)
   const [httpVerified, setHttpVerified] = useState(false)
   const [preparing, setPreparing] = useState(true)
+  const [preparationSource, setPreparationSource] = useState<'commands' | 'web'>('commands')
   const preparationRequested = useRef(false)
+  const activeDependencyInstalls = useRef(new Set<string>())
   const [showBuiltin, setShowBuiltin] = useState(false)
   const onHttpVerified = useCallback((verified: boolean) => setHttpVerified(verified), [])
 
@@ -100,11 +102,11 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   useEffect(checkRuntime, [])
   // Coming back to the window is the re-check. The operator left to install
   // something; there is nothing for them to press on the way back.
-  useRevalidateOnFocus(checkRuntime)
+  useRevalidateOnFocus(() => { if (activeDependencyInstalls.current.size === 0) checkRuntime() })
   useEffect(() => {
-    if (preflight && !preflightFailed && (preparationChecks(preflight).length === 0 || (!preparationRequested.current && commandCaptureBlockers(preflight).length === 0))) setPreparing(false)
-  }, [preflight, preflightFailed])
-  const openPreparation = (): void => { preparationRequested.current = true; setHttpVerified(false); setPreparing(true); checkRuntime() }
+    if (preflight && !preflightFailed && (preparationChecks(preflight, preparationSource).length === 0 || (!preparationRequested.current && commandCaptureBlockers(preflight).length === 0))) setPreparing(false)
+  }, [preflight, preflightFailed, preparationSource])
+  const openPreparation = (source: 'commands' | 'web'): void => { setPreparationSource(source); preparationRequested.current = true; setHttpVerified(false); setPreparing(true); checkRuntime() }
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -186,7 +188,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
       </div>
-      <CapturePreparation preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
+      <CapturePreparation onInstalling={(id, pending) => {
+        if (pending) activeDependencyInstalls.current.add(id); else activeDependencyInstalls.current.delete(id)
+      }} source={preparationSource} preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
         onSkip={() => setPreparing(false)} onLeave={() => onNavigate('timeline')} />
     </div>
   )
@@ -287,7 +291,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                       <div data-testid="first-run-missing-deps" className="space-y-2">
                         <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
                         <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
-                        <Button level="secondary" onClick={openPreparation}>{t('captureSetup.openPreparation')}</Button>
+                        <Button level="secondary" onClick={() => openPreparation('commands')}>{t('captureSetup.openPreparation')}</Button>
                       </div>
                     )}
                   </div>
@@ -319,7 +323,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                         </Button>
                       )}
                     </div>
-                    {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={openPreparation}
+                    {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={() => openPreparation('commands')}
                       onSelectedLabel={recording.kind === 'host' ? setHostShellLabel : undefined} />}
                   </div>
                 )}
@@ -342,7 +346,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 </div>
               )}
             </div>
-            <HttpCaptureStep onVerified={onHttpVerified} onPrepare={openPreparation} paused={recordingOn === false} />
+            <HttpCaptureStep onVerified={onHttpVerified} onPrepare={() => openPreparation('web')} paused={recordingOn === false} />
           </div>
         </div>
         <div className="w-full space-y-2">

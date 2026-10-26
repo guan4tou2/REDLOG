@@ -9,7 +9,7 @@
 // event/redaction/chokidar plumbing. This file OWNS the plumbing; the
 // per-agent parsing is delegated to a `TailerAdapter` implementation
 // registered via `registerAdapter()`. v0.8.0 C moves the Claude adapter
-// into `plugins/claude-code-tailer/`; v0.8.1 adds Codex + OpenCode
+// into `plugins/claude-code-tailer/`; later versions add optional provider packages
 // adapters against the same interface.
 //
 // **What lives here:**
@@ -78,7 +78,7 @@ const PENDING_TTL_MS = 60_000
 
 /** Normalized per-turn shape every adapter produces. Fields are optional
  *  because different agents emit different metadata (Claude has thinking
- *  blocks + `_causes`; Codex has session_meta; OpenCode has file-message
+ *  blocks + `_causes`; Codex has session_meta; adapters can have file-message
  *  ordering). Host uses whatever it gets. */
 export interface ParsedTurn {
   uuid: string | null
@@ -130,7 +130,7 @@ export interface ParsedTurn {
 
 /** v0.8.3: control surface handed to `adapter.init(...)` so an adapter can
  *  inject turns from sources the host does not natively watch — a secondary
- *  chokidar tree (OpenCode's `storage/part/`), a WebSocket, a timer.
+ *  file tree, a WebSocket, or a timer.
  *
  *  Turns injected via `emitTurns` run through the same dedup (`redlogIdByUuid`
  *  keyed on `turn.uuid`), redaction, and chain-linking as `parseUnit`-produced
@@ -152,15 +152,14 @@ export interface HostControlSurface {
  *  The host provides all side effects around it. */
 export interface TailerAdapter {
   /** Stable identifier that lands in every emitted event's `data.agent`
-   *  field. Namespace with hyphen: `claude-code`, `codex`, `opencode`. */
+   *  field. Namespace with hyphen: `claude-code`, `codex`. */
   agentKind: string
   /** Chokidar-watched pattern rooted at the adapter's home dir. May start
    *  with `~/` (host expands). Recursive globs (`**`) are honored. */
   transcriptGlob: string
   /** Literal built-in source root; never interpret directory names as globs. */
   transcriptRoot?: string
-  /** True = each matching FILE is one unit (OpenCode's
-   *  `~/.local/share/opencode/storage/message/*.json` layout).
+  /** True = each matching FILE is one unit in a per-message directory.
    *  False (default) = each matching file is a JSONL stream, one unit per
    *  line (Claude Code, Codex CLI). */
   perMessageDir?: boolean
@@ -182,12 +181,12 @@ export interface TailerAdapter {
    *  routes on the eventual `subtypeFor(...)` string. `sourcePath` is
    *  the JSONL line's file (for JSONL adapters) or the per-message
    *  file itself (for per-message adapters); adapters that need to
-   *  read sibling files (OpenCode's split `part/msg_<id>/` layout)
+   *  read sibling files in split-content layouts
    *  use it to resolve the companion path. Line-based adapters that
    *  only look at `rawContent` can ignore it.
    *
    *  May return an ARRAY of turns for units that fan out into multiple
-   *  audit events (OpenCode: one msg stub with N parts → text turn +
+   *  audit events (one message with N parts → text turn +
    *  tool_call turn + tool_result turn). The returned turns emit in
    *  order and each can carry its own `parentUuid` (adapter is
    *  responsible for wiring the intra-unit chain). */
@@ -524,7 +523,7 @@ export function deepRedactStrings(value: unknown, seen: WeakSet<object> = new We
 // this, tool_call events ran deepRedactStrings over the ENTIRE tool_input
 // tree — including `Read`'s numeric `offset`/`limit` and `file_path` (path
 // strings never contain the secrets redactSecrets matches). The map below
-// covers the Claude Code + OpenCode + Codex tool names we ingest today; a
+// covers the Claude Code + Codex tool names we ingest today; a
 // tool not in the map falls back to scanning EVERY string field (safe
 // default). This is the "known-safe fields" shape from the audit — the tree
 // walk still happens for arrays / nested objects on the listed fields, so a
@@ -540,7 +539,7 @@ const TOOL_INPUT_SCAN_FIELDS: Record<string, Set<string>> = {
   WebFetch: new Set(['prompt', 'url']),
   WebSearch: new Set(['query']),
   Task: new Set(['prompt', 'description']),
-  // OpenCode / Codex tools (best-effort; unknown tools scan-all so we're
+  // Codex tools (best-effort; unknown tools scan-all so we're
   // fine here — this list is an optimisation, not a correctness gate)
   bash: new Set(['command']),
   read: new Set([]),
@@ -1542,11 +1541,4 @@ function perMessageSessionDirFor(p: string, watchDirCanon: string): string | nul
 
 export function _sessionsForTest(): Map<string, SessionState> {
   return sessions
-}
-
-/** Test-only. Exposes the same HostControlSurface that adapter.init(...)
- *  receives, so tests can exercise the emit-turns path directly without
- *  registering a wrapper adapter. */
-export function _hostControlSurfaceForTest(): HostControlSurface {
-  return hostControlSurface
 }

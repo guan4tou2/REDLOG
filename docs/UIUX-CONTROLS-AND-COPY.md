@@ -243,3 +243,10 @@ blue / indigo 改成 `redlog-cyan`。
 - 新增的 i18n 鍵若超過 N 字，review 時標示（提醒，不是阻擋）
 
 未寫成測試之前，這些是 review 時的檢查項。
+
+
+## 2026-10-26 全產品視覺改版
+
+[Forensic Editorial 規格](UIUX-FORENSIC-EDITORIAL.md) 定義整個 Electron App 的
+階段、配色角色與逐頁驗收。沿用本文件的必要性測試；方向稿中的標語與說明不加入 UI。
+品牌紅、可讀文字、主要按鈕 hover 與危險紅分別核對，不能只驗證預設狀態。

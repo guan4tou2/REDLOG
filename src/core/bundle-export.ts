@@ -87,7 +87,7 @@ export interface ExportBundleOpts {
   scope?: ScopeForSanitize
   /** Turn scope masking off even when `scope` is supplied. Default on. */
   maskOutOfScope?: boolean
-  /** v0.7.2 F: include the raw Claude Code (and future OpenCode / Codex)
+  /** v0.7.2 F: include the raw Claude Code and Codex
    *  transcripts from `<projectDir>/agent-transcripts/` in the bundle.
    *  DEFAULT FALSE. The sidecar `.jsonl` files are verbatim copies of the
    *  agent's own transcript, which may include operator-pasted secrets

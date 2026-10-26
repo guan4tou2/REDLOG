@@ -222,3 +222,27 @@ function parse(file: string): TerminalEnrollment | null {
     return null
   }
 }
+
+// Machine preference: adapters use the terminal application's own identifier,
+// independently of the selected shell. Unknown/corrupt values never widen it.
+const TERMINAL_APPS = ['all', 'WarpTerminal', 'Apple_Terminal', 'iTerm.app', 'vscode', 'WindowsTerminal'] as const
+export type TerminalApp = typeof TERMINAL_APPS[number]
+export function readTerminalApp(home: string = os.homedir()): TerminalApp {
+  let value: string
+  try { value = fs.readFileSync(path.join(home, '.redlog', 'terminal-app'), 'utf8').trim() }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'all'; throw error }
+  if (!TERMINAL_APPS.includes(value as TerminalApp)) throw new Error('Invalid terminal app preference')
+  return value as TerminalApp
+}
+export function writeTerminalApp(value: unknown, home: string = os.homedir(), platform: NodeJS.Platform = process.platform): TerminalApp {
+  if (!TERMINAL_APPS.includes(value as TerminalApp)) throw new Error('Invalid terminal app preference')
+  if (value !== 'all' && (platform !== 'darwin' || value === 'WindowsTerminal')) {
+    throw new Error('Terminal app restriction is unsupported on this platform')
+  }
+  const dir = path.join(home, '.redlog')
+  fs.mkdirSync(dir, { recursive: true })
+  const dest = path.join(dir, 'terminal-app')
+  fs.writeFileSync(dest + '.part', String(value) + '\n', { mode: 0o600 })
+  fs.renameSync(dest + '.part', dest)
+  return value as TerminalApp
+}

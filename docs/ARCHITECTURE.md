@@ -21,7 +21,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 │  windows · tray · terminal-manager (node-pty) · clipboard-monitor              │
 │  services/  screenshot-agent · cdp-connector · browser-launcher · file-watcher │
 │             process-monitor · opsec-state · network-info · updater             │
-│             tailer-host + adapters/{claude-code,codex,opencode}                │
+│             tailer-host + optional parsers/{claude-code,codex}                │
 └──────────────▲────────────────────────────────────────────────────────────────┘
 ┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
 │  db/{index,events,operators,findings}   event-bus   clock   signing            │
@@ -31,7 +31,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 │  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘
         ▲ HTTP 127.0.0.1:6660 (Bearer)         ▲ file watch
-   hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex · opencode storage
+   hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex
    mitmproxy addon · VPS reverse tunnel
 ```
 
@@ -224,8 +224,7 @@ did. Same chain, same operator attribution, same pause semantics.
 
 Adapters: `claude-code` (`~/.claude/projects/**/<session>.jsonl`), `codex`
 (`~/.codex/sessions/**/rollout-*.jsonl`, synthesises ids since Codex has no
-wire-level uuid), `opencode` (`storage/message/` + secondary `storage/part/`
-watcher).
+wire-level uuid).
 
 ## 6. Evidence chain
 

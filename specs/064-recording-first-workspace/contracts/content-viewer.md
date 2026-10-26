@@ -1,0 +1,34 @@
+# C3 — 共用 Content Viewer Contract
+
+**Status**: Draft contract · 2026-10-26。適用 FR-022–027、FR-044、FR-051；驗收 CT-11／12。共用讀取語意，不要求 Shell、AI、HTTP 長得相同，也不指定建立巨型 Viewer 元件。
+
+## 1. 內容身分與讀取
+
+讀取上下文包含 project、owner Event IDs、來源 Session、Evidence ref、版本、raw／readable 表示。固定內容使用保存版本與內容 hash；持續寫入內容使用錄製 binding、分段 generation、完整可讀 prefix 長度及其識別。版本欄位是契約概念，沿用現有 reader／IPC 能力擴充，不宣稱目前已有同名 API。
+
+讀取採有界視窗及 cursor，回覆實際範圍、hasMore、nextCursor；cursor 綁來源與版本且必須前進。不得為「顯示全部」一次載入無界資料。UTF-8 跨視窗須正確拼接，不把字元切半當成原始內容損壞。
+
+Shell 保留 command／stdout／stderr／PTY 的來源性質，AI 保留訊息／參數／結果，HTTP 保留 headers／entity body／已知編碼。raw 指實際保存的表示，不把解碼後 HTTP body 稱為完整網路封包。只有已保存 PTY 可提供 Session 回放。
+
+## 2. 三組獨立狀態
+
+| 狀態軸 | 必須可辨識的狀態 |
+| --- | --- |
+| 可讀性 | available、pending、not-captured、metadata-only、undecrypted、pruned、missing、denied、failed。 |
+| 擷取完整性 | 已知完整、已知部分／截斷、未知；需有來源依據。 |
+| 閱讀範圍 | 預覽／載入視窗／已確認保存範圍；hasMore 不等於原件截斷。 |
+
+讀取失敗不清成空內容；已有預覽可保留但標明不是成功重新讀取。來源版本變更須要求刷新／重新定位或回版本衝突，不能無聲替換正在閱讀的內容。相同版本重試不重新執行來源命令。
+
+## 3. Find、Copy、Restore
+
+- 內容搜尋預設對整份已確認保存版本／prefix 求值，分段且可取消；不只搜目前畫面。未覆蓋尾端、binary 不支援文字搜尋及來源不可讀，沿 [C2](search-coverage.md) 回報範圍。命中使用 [C4](evidence-anchor.md) 定位。
+- 複製選取片段、複製全部及取出 raw 原件是不同操作。複製全部指目前確認的內容版本，不偷偷裁切；超過安全剪貼簿上限時提供檔案取得方式並明示限制。選取複製不得夾帶折疊、遮蔽或未選取內容。
+- 側欄／全寬／閱讀模式切換沿用同一內容 ref、版本、可見 anchor、選取及搜尋位置，返回保留來源 Event。原件不可讀時按 C4 降級，不以同名檔案冒充原版本。
+- 即時新增保留目前位置；使用者啟用跟隨才移動。新增內容可刷新可讀 prefix，但不能使舊 cursor 讀到另一來源或不同版本。
+
+## 4. 安全及來源限制
+
+原始 bytes 不因可讀呈現被改寫。ANSI／CRLF／Markdown 等轉換有版本及定位映射；沒有精確映射就降低定位精度。只處理受支援的控制序列，不執行 OSC 52、程式碼、外部圖片／追蹤請求或系統指令。沿用既有敏感資料顯示／揭露政策，不以 raw 按鈕繞過存取權限。
+
+AI 的 Thinking、Tool Result、Shell stdin 及 HTTP 解密內容都以實際保存資料為準。沒有的內容不藉另一種呈現補造。這份契約要求可靠讀取與必要回饋，不增加每個區塊的說明段落或重複按鈕。

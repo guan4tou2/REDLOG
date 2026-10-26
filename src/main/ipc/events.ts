@@ -101,8 +101,10 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) =>
     ctx.getActiveProject() ? queryByFlowId(flowId) : [])
 
-  ipcMain.handle('events:commandOutput', (_e, commandId: string) =>
-    ctx.getActiveProject() && typeof commandId === 'string' && commandId ? queryCommandOutput(commandId) : [])
+  ipcMain.handle('events:commandOutput', (_e, commandId: string) => {
+    const rows = ctx.getActiveProject() && typeof commandId === 'string' && commandId ? queryCommandOutput(commandId, 2001) : []
+    return { items: rows.slice(0, 2000), hasMore: rows.length > 2000 }
+  })
 
   ipcMain.handle('events:commandEnds', (_e, commandIds: string[]) =>
     ctx.getActiveProject() && Array.isArray(commandIds) ? queryCommandEnds(commandIds.map(String)) : [])

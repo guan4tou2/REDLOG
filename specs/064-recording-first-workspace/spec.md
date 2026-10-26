@@ -1,9 +1,9 @@
 # Feature Specification: 紀錄優先的工作區與操作流程
 
-**Feature Branch**: 尚未建立 UI 實作分支；本次僅整理規格。
+**Feature Branch**: `codex/first-use-recording-guidance`（隔離候選；擷取基礎與配對修正進行中，主導覽尚未替換）。
 **Created**: 2026-10-26
 **Status**: Draft
-**Input**: 使用者提供的全產品審查、Activity Log／搜尋／I/O／AI 閱讀與設定整併建議，及本次「先整理成規格書」。
+**Input**: 使用者提供的全產品審查、Activity Log／搜尋／I/O／AI 閱讀與設定整併建議，及本次補齊八項跨層契約與需求追溯的審查。
 
 ## 決策與範圍
 
@@ -17,9 +17,23 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 
 規格的操作契約在 [ux-contract.md](ux-contract.md)，驗收在 [acceptance.md](acceptance.md)。[implementation-notes.md](implementation-notes.md) 記錄現況、既有能力、依賴與分批界線；不把建議當成已實作。
 
+新增的跨層契約依序為 [C1 Activity／工具分類](contracts/activity-projection.md)、[C2 搜尋覆蓋](contracts/search-coverage.md)、[C3 Content Viewer](contracts/content-viewer.md)、[C4 證據錨點](contracts/evidence-anchor.md)、[C5 匯出快照](contracts/export-snapshot.md)、[C6 擷取邊界／Terminal App](contracts/capture-boundaries.md)。[需求追溯表](traceability.md) 將全部 FR 對應既有元件／資料契約、驗收案例及交付階段；[契約案例](contract-acceptance.md) 全為 NOT RUN。
+
+新增契約細化原有需求，不重編 FR-001–045，也不聲稱 API、索引或可信 Terminal App 辨識已完成。
+
+
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 — 第一次就能開始記自己的終端（Priority: P1）
+| 故事 | 優先級 | 交付階段 |
+| --- | --- | --- |
+| US1 初次終端接入、US2 可信保存／恢復 | P0 | S1 Capture Baseline。 |
+| US3 查找完整輸出 | P1 | S2 Activity Core → S3 Reading & Evidence。 |
+| US4 AI 閱讀與工具核對、US6 證據交付 | P1 | S2 穩定身分／查詢，S3 連續閱讀／定位／交付。 |
+| US5 設定導覽統一、US7 全產品操作精修 | P2 | S4 Navigation & Polish；必要授權／修復屬 S1，基本可達性全階段適用。 |
+
+四階段 gate 見 [實作切分](implementation-notes.md#5-四階段交付與退場-gate)；優先級不是允許跳過前置契約的許可。
+
+### User Story 1 — 第一次就能開始記自己的終端（Priority: P0）
 
 新使用者建立專案，選擇正在使用的終端環境，完成一次接入，確認指令、輸出與結束碼確實保存。HTTP(S) 與選用來源可稍後設定。
 
@@ -33,7 +47,7 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 4. **Given** 同時使用 Warp 與其他 Terminal App，**When** 設為只記 Warp，**Then** 選擇的作用範圍清楚，其他 App 不因安裝同一 Shell 接入而被記錄。
 5. **Given** 略過首次引導，**When** 稍後從總覽的來源狀態進入，**Then** 直達該來源的接入／驗證設定，不重走整場首次引導。
 
-### User Story 2 — 不打斷操作地記錄，知道缺口在哪（Priority: P1）
+### User Story 2 — 不打斷操作地記錄，知道缺口在哪（Priority: P0）
 
 操作員正常使用多個終端、瀏覽器及已授權的工具。RedLog 不要求逐道切模式，不以安靜冒充故障，也不以程序啟動冒充已保存。
 
@@ -76,11 +90,11 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 4. **Given** 對話長文，**When** 側欄切成全寬或換閱讀模式，**Then** 保留同一訊息、搜尋及閱讀位置；不再新增獨立 AI 主頁。
 5. **Given** Thinking 未提供或只保存預覽，**When** 使用者展開，**Then** 如實呈現可用程度；「不顯示」不冒充「未保存原文」。
 
-### User Story 5 — 一個來源入口完成設定與修復（Priority: P1）
+### User Story 5 — 一個來源入口完成設定與修復（Priority: P2）
 
 使用者以工作目的找設定，不需要理解外掛、Adapter 或 Pack；安裝範圍與專案授權仍清楚分開。
 
-**Why this priority**: 先修復失敗與雙重開關，再進行設定導覽整併。
+**Why this priority**: 設定資訊架構整理排在可靠擷取之後；既有來源授權、保存失敗及可用修復入口仍屬第一階段，不因本故事 P2 而延後。
 **Independent Test**: 從總覽進入失敗來源，原地修復；安裝 Claude Code 整合，授權一個目錄，排除一個 Session。
 
 **Acceptance Scenarios**:
@@ -118,6 +132,16 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 3. **Given** 使用者熟悉鍵盤，**When** 切換新工作區，**Then** 畫面、指令面板與捷徑指向一致；不偷偷啟用選用來源。
 4. **Given** 未受信任的輸出、Markdown 或連結，**When** 開啟證據，**Then** 不執行內容、不自動操作剪貼簿或載入外部內容。
 
+### 補充契約驗收情境
+
+1. **Given** Tool Result 先到或重送且翻頁後才見 Call，**When** 重建投影及開原深連結，**Then** 相同可靠來源鍵仍是同一 Activity；衝突與缺可靠鍵保留可追溯的原始 Event，不猜配對。
+2. **Given** 關鍵字只在未索引的 stdout／cast 尾端，**When** 全域搜尋無命中，**Then** 回報該類覆蓋限制；能讀原件不冒充已全文索引。
+3. **Given** 預覽後有新 Result、檔案追加或同大小改寫，**When** 執行匯出，**Then** 只交付已確認版本／prefix；版本不符就失敗／重新確認，不偷偷換件或少交。
+4. **Given** 同 Shell 跑於兩個 App 且提示可偽造，**When** 限定 Warp，**Then** 只有可信正向身分可記；unknown／conflict 不回退為全記，也不宣稱隔離成功。
+5. **Given** AI 執行讀檔、寫檔、搜尋、瀏覽或未知工具，**When** 分類與閱讀，**Then** 保留工具 I/O 及來源性質，不一律歸指令，也不冒充已保存檔案或觀測網路。
+6. **Given** Unicode／ANSI 轉換或附件被清理，**When** 開內容命中／標記，**Then** 使用版本化座標還原；不可精確定位時明示範圍／原件不可用，不指到同名替代檔。
+7. **Given** 切專案、排除 Session 或暫停時仍有在途資料，**When** 後端確認新邊界，**Then** 不保存禁止區間新原文，不改歸目前專案，也不在恢復後補讀。
+
 ### Edge Cases
 
 - 同一 PID／相同文字在不同 Session 重複；結果跨頁、亂序、重送、缺少起點或結束。
@@ -128,6 +152,10 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 - 暫停後延遲送達、專案切換時未完成輸入、匯出時持續有新資料、更新／退出時仍在記錄。
 - 無 Scope、未知目標、規則後來重算、私人流量；閱讀條件不改變擷取授權。
 - 大量即時新增、字型／語言／縮放變更、快速切換結果、查詢回覆順序反轉。
+- 相同 Tool ID 跨 provider／Session、同鍵內容衝突；Result 先到與孤立事件後續建立可靠關聯。
+- Terminal App 環境提示與真實來源衝突、tmux／SSH／WSL 來源鏈中斷、PID 重用。
+- 同大小檔案改寫、live prefix 追加、跨目標 cast、匯出中切專案及政策收緊。
+- UTF-8／UTF-16／正規化位置不同、CRLF／ANSI 轉換、跨實體 cast 分段及清理後索引陳舊。
 
 ## Requirements *(mandatory)*
 
@@ -199,6 +227,17 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 - **FR-044**: 證據內容安全呈現，原始 bytes 保留；不得因閱讀而執行命令、寫剪貼簿、載入外部追蹤內容或改動系統設定。
 - **FR-045**: 沿用既有退出與更新流程，完成下載不代表必須重啟；保留取消、收尾失敗及更新後真實能力狀態，不以還原介面冒充還原原 PTY／網路 Session。
 
+#### 跨層一致性補充
+
+- **FR-046**: Activity 必須具有穩定、可重建的投影身分及來源參照；晚到／重送／亂序／翻頁不得造成同一已確認操作重複或原事件無法定位。缺可靠鍵、衝突及配對狀態依 C1 處理。
+- **FR-047**: 每種可搜尋內容須提供覆蓋範圍、索引狀態／資料邊界及定位能力；Event、sidecar、stdout／stderr、cast 與附件內容分開判定。未索引、不支援或失敗不得默認為零結果。
+- **FR-048**: 匯出確認時固定查詢、原始事件、必要伴隨資料、政策及附件版本／prefix；持續新增不擴大集合，來源改寫或政策收緊必須使舊確認失效或回具體失敗，不靜默換件／少交。跨目標 Session 附件另按 C5 明確選取。
+- **FR-049**: Terminal App 限定擷取須有可驗證來源身分、適用範圍及繼承邊界；環境提示不能單獨作隔離證明。未知／衝突時不得退回全記或宣稱已隔離，變更亦須影響現有來源及待寫入資料。
+- **FR-050**: AI Tool 除執行指令，須支援檔案讀寫、搜尋、瀏覽／網路、自訂及未知操作的通用分類與 I/O；不得一律當成 Command，或把工具回報升格為獨立觀測／已保存產物。
+- **FR-051**: Shell、AI、HTTP 閱讀共用長內容分段、完整保存範圍內搜尋、選取／全量複製、位置復原、版本及來源完整性契約；呈現可不同，不能各自將有限預覽冒充全部內容。
+- **FR-052**: 證據片段保存來源、版本、座標種類及實際可用的定位依據；raw bytes、正規化文字與 cast 時間／分段座標不得混用。內容轉換、改寫、清理或不可讀時明示精度與限制，原標記仍可追溯。
+- **FR-053**: 專案切換、來源重啟、授權變更、Session 排除及暫停／停止須有明確生效邊界、歸屬與可驗證後果；在途／延遲資料不得繞過新邊界、保存被拒原文或默默歸入目前專案。
+
 ### Key Entities
 
 以 [既有術語表](../../docs/domain/glossary.md) 為準；下列描述限定閱讀與操作契約，不建立第二份證據來源。
@@ -213,7 +252,10 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 | 查詢上下文 | 專案、文字、條件、結果邊界、覆蓋及原始命中；與相關背景分開。 |
 | 閱讀錨點 | 來源事件、Session、附件及可用內容位置；不以儲存原文到全域介面偏好代替還原位置。 |
 | 來源狀態 | 安裝、權限、運作、實際保存及錯誤；沿用來源生命週期，不創造綜合覆蓋分數。 |
-| 匯出選取 | 經確認的事件與附件集合，與閱讀布局、顯示群組及私人書籤分開。 |
+| 匯出選取 | 經確認的事件、必要 companions、政策及附件版本／prefix，與閱讀布局、群組及私人書籤分開；C5。 |
+| 錄製 Binding | 來源 Session 在特定 project／授權 generation 下的保存邊界；來源工作階段可以延續，binding 不能默默改歸；C6。 |
+| 搜尋覆蓋 | 每種內容／版本／索引範圍與條件適用程度；不等同原件已保存；C2。 |
+| 內容版本與座標 | Viewer 及片段參照的來源版本、表示與位置精度；不能用顯示字元 index 冒充 raw bytes；C3／C4。 |
 
 ## Success Criteria *(mandatory)*
 
@@ -234,7 +276,7 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 
 ## Assumptions
 
-- 本次是規格整理，不是 UI 已改版、已手測、已發版或所有來源都已完成的聲明；規格通過檢查也不等於產品驗收通過。
+- 本文件是目標規格；實作進度與候選證據見 verification.md。局部來源／配對驗證不等於整套工作區已改版、全平台已驗收或已發版。
 - 五主要入口是資訊架構目標；取代舊 Search／Transcript 入口前，先證明搜尋覆蓋、完整閱讀、定位與交付對等。過渡期不把兩套主要查詢介面永久並列。
 - 外部終端優先；只設計 Bash／Zsh／PowerShell，其他環境與擷取限制沿既有能力。不新增遠端 hook 或框架專屬解析器。
 - 網頁 Scope 不自動套用指令；Target 仍可作標註與閱讀維度。IP 曝光安全判定與授權範圍不同，不因設定重分組混成一種規則。

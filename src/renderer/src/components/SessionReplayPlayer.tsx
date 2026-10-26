@@ -21,7 +21,7 @@ const SPEED_OPTIONS = [0.5, 1, 2, 4] as const
 // bytes into a live xterm.js instance so ANSI escapes render exactly the way
 // they did in the original pty. Seeks by resetting the terminal and
 // fast-replaying every frame up to the target — clean, and cheap enough for
-// the ~50MB cast cap enforced upstream.
+// the bounded replay preview, independently of saved recording size.
 export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { events: Array<[number, 'o', string]>; truncated: boolean; initialSeekMs?: number }): JSX.Element {
   const { t } = useI18n()
   const wrapRef = useRef<HTMLDivElement | null>(null)

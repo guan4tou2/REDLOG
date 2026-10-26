@@ -12,6 +12,24 @@ for full commit body + generated notes.
   execution, file operations, search and browsing; unknown tools stay unknown.
   The existing reading/navigation UI has not switched to this query yet.
 
+- Terminal App restrictions on macOS now check OS-observed process ancestry and
+  bundle identity instead of trusting TERM_PROGRAM, WT_SESSION or a built-in
+  terminal flag. Unknown origins are excluded. Unsupported platforms do not
+  offer a restriction they cannot enforce; existing unsupported choices can be
+  reset to all terminals.
+- An offline local receiver no longer makes the foreground stream discard the
+  bounded output record that the shell can preserve for replay. Paused or
+  refused streams do not use this offline fallback.
+- Command and AI Tool pairing now keeps repeated commands, other providers,
+  source Sessions and capture namespaces separate. Conflicting records remain
+  unpaired instead of silently selecting the last copy. POSIX adapters include
+  their source Session identity; stored evidence is not rewritten.
+
+- Optional AI capture now ships only Claude Code and Codex, both uninstalled
+  by default. Removed the OpenCode parser package, source controls and executable
+  plugin example. Removed-provider settings cannot authorize capture; already
+  recorded evidence remains readable and exportable.
+
 - AI conversation acceptance now runs Claude Code first, then Codex through the
   same optional install, directory authorization, message/tool I/O, search,
   transcript, JSON delivery and removal journey. Fixed multiline text search:

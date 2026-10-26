@@ -6,12 +6,12 @@ export interface LateOutputSummary {
   stdout: string
   stderr: string
   /** `running`: no final row yet. `incomplete`: finished, but bytes were lost. */
-  state: 'running' | 'done' | 'incomplete'
+  state: 'running' | 'done' | 'incomplete' | 'preview'
   lateBytes: number
   lostBytes: number
 }
 
-export function summarizeLateOutput(rows: Array<{ data: Record<string, unknown> }>): LateOutputSummary {
+export function summarizeLateOutput(rows: Array<{ data: Record<string, unknown> }>, hasMore = false): LateOutputSummary {
   const text = (key: 'stdout' | 'stderr'): string =>
     rows.map((c) => (typeof c.data[key] === 'string' ? (c.data[key] as string) : '')).join('')
   const last = rows.find((c) => c.data.final === true)
@@ -19,7 +19,7 @@ export function summarizeLateOutput(rows: Array<{ data: Record<string, unknown> 
   return {
     stdout: text('stdout'),
     stderr: text('stderr'),
-    state: !last ? 'running' : (last.data.truncated === true || lostBytes > 0 ? 'incomplete' : 'done'),
+    state: hasMore ? 'preview' : !last ? 'running' : (last.data.truncated === true || lostBytes > 0 ? 'incomplete' : 'done'),
     lateBytes: Number(last?.data.late_bytes ?? 0),
     lostBytes
   }

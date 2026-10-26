@@ -46,7 +46,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const startMs = target.timestamp - Math.max(duration, 100)
       const slice = await readCastSlice(castPath, startMs, target.timestamp)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
-      return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes }
+      return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes, truncated: slice.truncated }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }

@@ -17,6 +17,7 @@ extraResources:
     to: optional-ai
   - from: hooks
     to: hooks
+    filter: ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
   # Bundled plugin packs (loader.ts bundledRoot() reads <resources>/plugins).
   # Ships the declarative packs the app depends on — builtin-tools (E1 Option B:
   # the tool→target extraction table core no longer hardcodes) and c2-tailers.

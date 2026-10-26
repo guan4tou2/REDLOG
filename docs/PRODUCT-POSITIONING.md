@@ -77,7 +77,7 @@ operator runs their own RedLog; there is no central server by design.
 
 ### P3 — The AI-agent-driven operator
 
-Drives the engagement through Claude Code / Codex / OpenCode. Their risk is a
+Drives the engagement through Claude Code / Codex. Their risk is a
 **silent gap**: the agent did something and forgot to log it. RedLog's answer is
 the transcript tailer + shell hooks (passive, can't be forgotten) with the API
 as an explicit control plane. This persona is why "hooks log, the API operates"

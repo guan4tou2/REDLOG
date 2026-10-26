@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Explicit POSIX PTY capture. No input logging, global hooks, or private spool."""
 import argparse
+import base64
 import codecs
 import datetime
 import json
@@ -9,6 +10,9 @@ import queue
 import select
 import signal
 import sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from terminal_app import terminal_app_allowed
 import threading
 import time
 import urllib.request
@@ -65,7 +69,7 @@ class Recorder:
         self.url = f'http://127.0.0.1:{self.port}/api/events'
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.session = str(uuid.uuid4())
-        self.limit = max_bytes
+        self.limit = max(4, min(max_bytes, 65536))
         self.used = 0
         self.accepted = 0
         self.dropped = 0
@@ -76,6 +80,8 @@ class Recorder:
         self.thread = threading.Thread(target=self.drain, daemon=True)
 
     def send(self, data):
+        if not terminal_app_allowed():
+            return 'paused'
         payload = {'agent_type': 'shell', 'data': {
             'source': 'external-session', 'terminalId': self.session,
             'captured_by': 'redlog-session', **data}}
@@ -91,28 +97,44 @@ class Recorder:
 
     def start(self, command):
         status = self.send({'subtype': 'session_start', 'command': command,
-                            'maxBytes': self.limit, 'stdout_stderr': 'merged',
+                            'segmentBytes': self.limit, 'stdout_stderr': 'merged',
                             'timestamp': int(time.time() * 1000)})
         if status != 'accepted':
             raise RuntimeError('capture is paused or unavailable; resume recording in the intended project first')
 
-    def output(self, text):
-        size = len(text.encode('utf8'))
-        if self.truncated or self.used + size > self.limit:
-            if not self.truncated:
-                print('\r\n[redlog] capture size limit reached; terminal remains live', file=sys.stderr)
-            self.truncated = True
-            self.dropped += size
+    def output(self, text, original=None):
+        if not terminal_app_allowed():
+            self.paused += len(original if original is not None else text.encode('utf8'))
             return
-        self.used += size
-        self.sequence += 1
-        try:
-            self.pending.put_nowait({'subtype': 'session_output', 'stdout': text,
-                                    'sequence': self.sequence, 'timestamp': int(time.time() * 1000)})
-        except queue.Full:
-            if self.dropped == 0:
-                print('\r\n[redlog] capture queue full; output is being omitted', file=sys.stderr)
-            self.dropped += size
+        text_bytes = text.encode('utf8')
+        raw = original if original is not None else text_bytes
+        self.used += len(raw)
+        # Raw bytes and the incremental decoder's readable text need not have
+        # equal boundaries (or byte counts). Preserve each in order, separately.
+        raw_parts = [raw[i:i + self.limit] for i in range(0, len(raw), self.limit)]
+        text_parts = []
+        while text_bytes:
+            cut = min(self.limit, len(text_bytes))
+            while cut < len(text_bytes) and text_bytes[cut] & 0xC0 == 0x80:
+                cut -= 1
+            piece, text_bytes = text_bytes[:cut], text_bytes[cut:]
+            text_parts.append(piece.decode('utf8'))
+        for i in range(max(len(raw_parts), len(text_parts))):
+            raw_part = raw_parts[i] if i < len(raw_parts) else b''
+            self.sequence += 1
+            stamp = int(time.time() * 1000)
+            data = {'subtype': 'session_output', 'stdout': text_parts[i] if i < len(text_parts) else '',
+                    'sequence': self.sequence, 'bytes': len(raw_part),
+                    'timestamp': stamp, 'source_timestamp': stamp}
+            if raw_part:
+                data['output_body'] = {'data': base64.b64encode(raw_part).decode('ascii'),
+                                       'encoding': 'base64', 'size': len(raw_part), 'sha256': ''}
+            try:
+                self.pending.put_nowait(data)
+            except queue.Full:
+                if self.dropped == 0:
+                    print('\r\n[redlog] capture queue full; output is being omitted', file=sys.stderr)
+                self.dropped += len(raw_part)
 
     def drain(self):
         while True:
@@ -121,7 +143,7 @@ class Recorder:
                 return
             # Never replay dropped or paused bytes into another interval.
             status = self.send(data)
-            size = len(data.get('stdout', '').encode('utf8'))
+            size = int(data.get('bytes', len(data.get('stdout', '').encode('utf8'))))
             if status == 'failed':
                 if self.dropped == 0:
                     print('\r\n[redlog] capture unavailable; output is being omitted', file=sys.stderr)
@@ -209,7 +231,7 @@ def run(command, recorder):
         trace('output', f'bytes={len(data)}')
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
-        recorder.output(decoder.decode(data))
+        recorder.output(decoder.decode(data), data)
 
     inputs = [master, 0]
     child_status = None
@@ -274,7 +296,7 @@ def run(command, recorder):
         trace('loop-exit')
         tail = decoder.decode(b'', final=True)
         if tail:
-            recorder.output(tail)
+            recorder.output(tail, b'')
     except BaseException as error:
         trace('aborted', type(error).__name__)
         # Reap even when stdout closes or the launcher is interrupted. Kill

@@ -3,7 +3,7 @@ import { buildToolPairIndex, pairedToolHalf } from '../src/renderer/src/lib/tool
 import type { RedLogEvent } from '../src/core/db/events'
 
 // The helpers only ever read `event.data`, so a minimal shape suffices.
-const ev = (data: Record<string, unknown>): RedLogEvent => ({ data } as unknown as RedLogEvent)
+const ev = (data: Record<string, unknown>): RedLogEvent => ({ id: 'event', engagementId: 'project', sessionId: 'binding', agentType: 'agent', data: { agent: 'claude-code', session_id: 'conversation', ...data } } as unknown as RedLogEvent)
 
 const call = (tuid: string, name = 'Bash', input: unknown = { command: 'ls' }): RedLogEvent =>
   ev({ subtype: 'tool_call', tool_use_id: tuid, tool_name: name, tool_input: input })
@@ -47,14 +47,30 @@ describe('toolPairing', () => {
     ])
     expect(idx.calls.size).toBe(1)
     expect(idx.results.size).toBe(1)
-    expect(idx.calls.has('t3')).toBe(true)
+    expect(pairedToolHalf(call('t3'), idx)?.kind).toBe('result')
   })
 
-  it('on a retried tool_use_id the later turn wins', () => {
+  it('does not choose a winner when the same tool key has conflicting calls', () => {
     const first = call('dup', 'Bash', { command: 'first' })
     const second = call('dup', 'Bash', { command: 'second' })
-    const idx = buildToolPairIndex([first, second, result('dup')])
-    expect((idx.calls.get('dup')!.data as Record<string, unknown>).tool_input).toEqual({ command: 'second' })
-    expect(pairedToolHalf(result('dup'), idx)?.data.tool_input).toEqual({ command: 'second' })
+    const r = result('dup')
+    const idx = buildToolPairIndex([first, second, r])
+    expect(pairedToolHalf(r, idx)).toBeUndefined()
+    expect(pairedToolHalf(first, idx)).toBeUndefined()
+  })
+
+  it.each(['project', 'binding', 'provider', 'session'])('does not pair across a different %s', boundary => {
+    const c = call('same'), r = result('same')
+    if (boundary === 'project') r.engagementId = 'other'
+    if (boundary === 'binding') r.sessionId = 'other'
+    if (boundary === 'provider') r.data.agent = 'codex'
+    if (boundary === 'session') r.data.session_id = 'other'
+    expect(pairedToolHalf(c, buildToolPairIndex([c, r]))).toBeUndefined()
+  })
+
+  it('requires a recorded source namespace instead of guessing one', () => {
+    const c = call('same'), r = result('same')
+    delete c.data.session_id; delete r.data.session_id
+    expect(pairedToolHalf(c, buildToolPairIndex([c, r]))).toBeUndefined()
   })
 })

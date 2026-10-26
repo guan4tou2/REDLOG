@@ -170,7 +170,7 @@ function finaliseSession(session: TerminalSession, exitCode: number | null, reas
       recordingId: session.recordingId, reason, continued: reason === 'project-switched',
       ...(reason === 'project-switched' ? { rotationPaneCount: sessions.size } : {}),
       exitCode, pid: session.pty.pid, castPath: session.castPath,
-      castSha256: closed?.sha256 ?? null, castBytes: session.castBytes,
+      castSha256: closed?.sha256 ?? null, castSegments: closed?.segments ?? [], castBytes: session.castBytes,
       castTruncated: session.castTruncated, durationMs: Date.now() - session.castStart,
       ...(closed?.error ? { recordingError: closed.error } : {}),
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
@@ -182,7 +182,7 @@ function finaliseSession(session: TerminalSession, exitCode: number | null, reas
   if (session.castPath && closed?.sha256) {
     const castPath = session.castPath, dir = session.projectDir
     void Promise.resolve().then(() => {
-      if (getProjectDir() === dir) return indexCast(castPath, dir)
+      if (getProjectDir() === dir) return Promise.all((closed.segments.length ? closed.segments.map(part => part.path) : [castPath]).map(part => indexCast(part, dir)))
       return undefined
     }).catch(() => { /* next project-open backfill rebuilds this index */ })
   }

@@ -16,6 +16,11 @@ describe('official AI capture policy', () => {
     expect(resolveAgentCapture({ agentTailer: { sources: { codex: { enabled: true, installationId: 'install-1', workPaths: [], startedAt: 1000 } } } }, catalog as never, plugins as never)).toEqual([])
     expect(resolveAgentCapture({ agentTailer: { sources: { codex: { enabled: false, workPaths: [path.resolve('work/client')], startedAt: 1000 } } } }, catalog as never, plugins as never)).toEqual([])
   })
+  it('ignores a removed provider even when project authorization and its plugin remain', () => {
+    const sources = { ...config.agentTailer.sources, opencode: { enabled: true, installationId: 'old-install', workPaths: [path.resolve('work/client')], startedAt: 1000 } }
+    const installed = [...plugins, { manifest: { id: 'official-ai-opencode' }, status: 'active' }]
+    expect(resolveAgentCapture({ agentTailer: { sources } }, catalog as never, installed as never)).toEqual([{ agentKind: 'codex', workPaths: [path.resolve('work/client')], startedAt: 1000 }])
+  })
   it('does not resume old project authorization after reinstalling', () => {
     expect(resolveAgentCapture(config, [{ ...catalog[0], installationId: 'new-receipt' }] as never, plugins as never)).toEqual([])
   })

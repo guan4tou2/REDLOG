@@ -48,6 +48,31 @@ describe('listExportAttachments', () => {
     expect(byId.get('casts/orphan.cast')).toMatchObject({ attribution: 'unattributed', status: 'included' })
   })
 
+  it('keeps segmented casts tied to the same terminal and targets', () => {
+    fs.writeFileSync(path.join(dir, 'casts', 'term-1.part000002.cast'), '{}\n')
+    const rows = listExportAttachments(dir, events() as never)
+    expect(rows.find(r => r.id === 'casts/term-1.part000002.cast')).toMatchObject({
+      source: 't1', targets: ['10.0.0.1', '10.0.0.2'], attribution: 'cross-target', status: 'included'
+    })
+  })
+
+  it('reports a missing closed recording part instead of silently shrinking the bundle', () => {
+    const rows = listExportAttachments(dir, [ev('end', 'shell', '10.0.0.1', {
+      subtype: 'session_end', terminalId: 't1', castPath: '/p/casts/term-1.cast',
+      castSegments: [{ path: '/p/casts/term-1.cast' }, { path: '/p/casts/term-1.part000002.cast' }]
+    })])
+    expect(rows.find(r => r.id === 'casts/term-1.part000002.cast')).toMatchObject({ status: 'missing', bytes: null, source: 't1' })
+  })
+
+  it('exports original stream bytes through the shared body reference registry', () => {
+    fs.writeFileSync(path.join(dir, 'http-bodies', 'raw-stream.body'), Buffer.from([255, 0, 27, 65]))
+    const rows = listExportAttachments(dir, [ev('chunk', 'shell', '10.0.0.1', {
+      subtype: 'command_output', command_id: 'c1', streamed: true, seq: 1,
+      output_body_ref: { sha256: 'raw-stream', size: 4, file: 'raw-stream.body', encoding: 'base64' }
+    })])
+    expect(rows.find(r => r.id === 'http-bodies/raw-stream.body')).toMatchObject({ status: 'included', bytes: 4, targets: ['10.0.0.1'] })
+  })
+
   it('drops an out-of-scope screenshot, and reports a missing body as missing', () => {
     const rows = listExportAttachments(dir, events() as never, { scope: { targets: ['10.0.0.1'], excludeTargets: [], personalDomains: [] }, maskOutOfScope: true })
     const byId = new Map(rows.map((r) => [r.id, r]))

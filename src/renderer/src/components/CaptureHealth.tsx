@@ -171,7 +171,6 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
     'mitmproxy': t('capture.mitmproxy'),   // HTTP + DNS — one addon, one row
     'agent-claude-code': t('capture.agentClaudeCode'),
     'agent-codex': t('capture.agentCodex'),
-    'agent-opencode': t('capture.agentOpencode'),
     'screenshot': t('capture.screenshot'),
     'clipboard': t('capture.clipboard'),
     // v0.6.92 W-project producers.

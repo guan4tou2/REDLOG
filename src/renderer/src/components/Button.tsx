@@ -36,7 +36,7 @@ const BASE =
 const LEVEL: Record<ButtonLevel, string> = {
   // The verb. At most one per screen (§4). Dark text, like every fill in this
   // palette — see the `on-*` tokens for why white fails on all of them.
-  primary: 'border-transparent bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
+  primary: 'border-transparent bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-hover focus-visible:ring-redlog-accent/40',
   secondary: 'border-redlog-border bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-text-dim/40',
   // Bordered, not bare. "Quiet" is about weight, not about whether the
   // operator can see where the control is: an unframed label gives no hit

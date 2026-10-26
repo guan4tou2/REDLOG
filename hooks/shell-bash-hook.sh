@@ -11,7 +11,6 @@ fi
 # are the usual way) the banner printed twice and the prompt hooks registered
 # twice. Plain, un-exported: a child shell is a new interpreter and must load.
 [[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
-_REDLOG_HOOK_LOADED_IN=$$
 
 _redlog_adapter_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -22,6 +21,8 @@ export REDLOG_SHELL=bash
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
+_redlog_terminal_allowed || return 0
+_REDLOG_HOOK_LOADED_IN=$$
 
 # Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
 [[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
@@ -61,6 +62,7 @@ _REDLOG_CMD_CLASS=""
 # `redlog stop` before a client's credential and sees it recorded anyway
 # uninstalls the tool (FR-022). The transitions live in redlog-relay.py.
 _REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
+export _REDLOG_SESSION_ID
 _REDLOG_SKIP=""
 
 _redlog_state_file() {
@@ -76,6 +78,7 @@ _redlog_state() {
 
 # No file yet means a terminal that has not been told otherwise: recording.
 _redlog_is_recording() {
+  _redlog_terminal_allowed || return 1
   local file
   file=$(_redlog_state_file)
   [[ -f "$file" ]] || return 0

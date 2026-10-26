@@ -46,6 +46,19 @@ beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => cleanup())
 
 describe('Scope & Evidence page', () => {
+  it.each(['getViolations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
+    installBridge({ rows: [], truncated: false }, 0)
+    vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))
+    render(<I18nProvider><ScopeStatus /></I18nProvider>)
+    expect((await screen.findByRole('alert')).textContent).toContain('read refused')
+    expect(screen.queryByText('All commands within scope')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
+    await screen.findByText('Scope Monitor')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('All commands within scope')).toBeTruthy()
+  })
+
   it('counts the violations the status bar counts, not the ones in the window', async () => {
     installBridge({ rows: [row('a'), row('b'), row('c')], truncated: true }, 7)
     await open()

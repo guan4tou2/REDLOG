@@ -47,9 +47,9 @@ describe('causes-resolver', () => {
     describe('late output from a background job', () => {
       const started = (): void => noteStartEvent('shell', { subtype: 'command_start', command: 'nmap -p- h &', command_id: 'cmd-bg' }, 'evt-bg')
 
-      it('keeps a command whose end said a background job is still printing', () => {
+      it.each(['late_output', 'output_streamed'])('keeps a command whose %s still has output in transit', flag => {
         started()
-        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg', late_output: true })
+        resolveIncomingCauses('shell', { subtype: 'command_end', command: 'nmap -p- h &', command_id: 'cmd-bg', [flag]: true })
         expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', late: true })).toEqual(['evt-bg'])
         expect(resolveIncomingCauses('shell', { subtype: 'command_output', command_id: 'cmd-bg', late: true })).toEqual(['evt-bg'])
       })

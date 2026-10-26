@@ -175,9 +175,20 @@ export function listExportAttachments(
   const castTargets = new Map<string, Set<string>>()
   const castSource = new Map<string, string>()
   const castOfTerminal = new Map<string, string>()
+  const referencedCasts = new Set<string>()
   for (const e of events) {
     const castPath = typeof e.data.castPath === 'string' ? e.data.castPath : null
     const term = typeof e.data.terminalId === 'string' ? e.data.terminalId : null
+    if (castPath) referencedCasts.add(path.basename(castPath))
+    if (Array.isArray(e.data.castSegments)) {
+      for (const part of e.data.castSegments as Array<{ path?: unknown }>) {
+        if (typeof part.path === 'string') {
+          const name = path.basename(part.path)
+          referencedCasts.add(name)
+          if (term) castSource.set(name, term)
+        }
+      }
+    }
     if (castPath && term) {
       castOfTerminal.set(term, path.basename(castPath))
       castSource.set(path.basename(castPath), term)
@@ -188,25 +199,28 @@ export function listExportAttachments(
     const term = typeof e.data.terminalId === 'string' ? e.data.terminalId : null
     const name = typeof io?.ref === 'string' ? path.basename(io.ref) : term ? castOfTerminal.get(term) : undefined
     if (!name) continue
+    referencedCasts.add(name)
     const set = castTargets.get(name) ?? new Set<string>()
     if (e.targetId) set.add(e.targetId)
     castTargets.set(name, set)
     if (term && !castSource.has(name)) castSource.set(name, term)
   }
   const castsDir = path.join(projectDir, 'casts')
-  if (fs.existsSync(castsDir)) {
-    for (const name of fs.readdirSync(castsDir)) {
+  {
+    const castFiles = fs.existsSync(castsDir) ? fs.readdirSync(castsDir) : []
+    for (const name of new Set([...castFiles, ...referencedCasts])) {
       const size = sizeOf(path.join(castsDir, name))
-      if (size === null) continue
-      const bytes = completeLinePrefix(path.join(castsDir, name), size)
+      if (size === null && !referencedCasts.has(name)) continue
+      const bytes = size === null ? null : completeLinePrefix(path.join(castsDir, name), size)
       const id = `casts/${name}`
-      const targets = castTargets.get(name) ?? new Set<string>()
-      const source = castSource.get(name)
+      const root = name.replace(/\.part\d{6,}(?=\.cast$)/, '')
+      const targets = castTargets.get(name) ?? castTargets.get(root) ?? new Set<string>()
+      const source = castSource.get(name) ?? castSource.get(root)
       out.push({
-        id, kind: 'cast', bytes, frozenBytes: bytes, targets: [...targets].sort(), attribution: attribution(targets),
+        id, kind: 'cast', bytes, ...(bytes === null ? {} : { frozenBytes: bytes }), targets: [...targets].sort(), attribution: attribution(targets),
         // Never excluded by scope: RedLog does not trim a recording, so an
         // out-of-scope command inside it stays unless the operator drops it.
-        status: status(id, 'included'),
+        status: bytes === null ? 'missing' : status(id, 'included'),
         ...(source ? { source } : {})
       })
     }

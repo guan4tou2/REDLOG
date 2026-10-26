@@ -16,7 +16,7 @@
 //
 // `insertEvent` stays the DB write; ingest is the policy around it.
 
-import { insertEvent, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
+import { insertEvent, lastRecordingResumeTime, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { eventBus } from './event-bus'
 import { isCapturePlumbing } from './capture-plumbing'
 import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
@@ -141,6 +141,18 @@ export function ingest(input: IngestInput): IngestResult {
     return { event: null, skipped: 'unrecorded', companions: [] }
   }
 
+  // An asynchronous sender can arrive after the operator resumed. Receipt
+  // time cannot authorize bytes observed in the closed interval. Reject the
+  // whole mixed batch conservatively, before any sidecar or derivation.
+  const outputAt = data.subtype === 'command_end' && data.output_streamed !== true
+    ? data.output_started_at : data.source_timestamp
+  if (agentType === 'shell' && !input.bypassPause
+      && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype))
+      && typeof outputAt === 'number' && Number.isFinite(outputAt)
+      && outputAt <= Math.max(eventBus.resumedAt, lastRecordingResumeTime())) {
+    return { event: null, skipped: 'paused', companions: [] }
+  }
+
   // 1. Pause gate. Nothing below may run while paused: the derivations emit
   //    their own rows and would leak the very content the operator paused to
   //    keep out — a scope_violation names the target of a command that was
@@ -201,7 +213,7 @@ export function ingest(input: IngestInput): IngestResult {
   //     otherwise the detail pane prints those lines twice and the byte count
   //     on the final row stops matching what is stored.
   if (agentType === 'shell' && !input.derived && data.subtype === 'command_output'
-      && data.late === true && typeof data.command_id === 'string' && typeof data.seq === 'number'
+      && (data.late === true || data.streamed === true) && typeof data.command_id === 'string' && typeof data.seq === 'number'
       && lateChunkSeen.get(data.command_id)?.has(data.seq)) {
     return { event: null, skipped: 'dedup', companions: [] }
   }
@@ -240,7 +252,7 @@ export function ingest(input: IngestInput): IngestResult {
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
   if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
-  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && data.late === true
+  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
       && typeof data.command_id === 'string' && typeof data.seq === 'number') {
     let seen = lateChunkSeen.get(data.command_id)
     if (!seen) {
@@ -251,7 +263,7 @@ export function ingest(input: IngestInput): IngestResult {
     seen.add(data.seq)
   }
   if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
-    if (data.subtype === 'command_end' && data.late_output === true) {
+    if (data.subtype === 'command_start' || (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true))) {
       if (lateTargetByCommand.size >= LATE_TARGET_MAX) lateTargetByCommand.delete(lateTargetByCommand.keys().next().value as string)
       lateTargetByCommand.set(data.command_id, targetId ?? null)
     } else if (data.subtype === 'command_output' && data.final === true) {
@@ -506,6 +518,10 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
   if (agentType === 'shell' && data.subtype === 'command_end') {
     extractTextToSidecar(data, 'stdout', 'stdout_ref')
     extractTextToSidecar(data, 'stderr', 'stderr_ref')
+  }
+
+  if (agentType === 'shell' && (data.subtype === 'command_output' || data.subtype === 'session_output')) {
+    extractBodyToSidecar(data, 'output_body')
   }
 
   if (agentType === 'scanner') {

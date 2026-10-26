@@ -39,7 +39,7 @@ test.describe('settings interaction journey', () => {
       await openSettingsPage(page, 'scope')
       await expect(page.getByLabel('ID', { exact: true })).toHaveCount(2)
       await resizeMainWindow(app, 1600, 900)
-      for (const setting of ['scope', 'browser', 'captureControl', 'plugins']) {
+      for (const setting of ['hooks', 'scope', 'browser', 'captureControl', 'plugins']) {
         await openSettingsPage(page, setting)
         await expect.poll(() => page.getByTestId('settings-content').evaluate(el =>
           el.parentElement!.getBoundingClientRect().right - el.getBoundingClientRect().right
@@ -89,6 +89,8 @@ test.describe('settings interaction journey', () => {
         await expect.poll(() => pane.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
         await openSettingsPage(page, 'plugins')
         await expect.poll(() => pane.evaluate(el => el.scrollTop)).toBe(0)
+        await openSettingsPage(page, 'hooks')
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true)
       }
       await win.evaluate(w => w.webContents.setZoomFactor(1))
       await openSettingsPage(page, 'general')
@@ -112,6 +114,32 @@ test.describe('settings interaction journey', () => {
       })).toBeLessThanOrEqual(32)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     }
+  })
+
+  test('terminal App restriction persists through the real settings bridge at compact widths', async () => {
+    await openTestProject(page, 'terminal-app-policy')
+    await page.evaluate(() => window.redlog.httpCapture.stop())
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'hooks')
+    const platform = await app.evaluate(() => process.platform)
+    const selector = page.locator('select').filter({ has: page.locator('option[value="all"]') })
+    if (platform !== 'darwin') {
+      await expect(selector).toHaveCount(0)
+      return
+    }
+    await selector.selectOption('WarpTerminal')
+    await expect.poll(() => page.evaluate(async () => (await window.redlog.hooks.terminalPolicy()).app)).toBe('WarpTerminal')
+    await page.reload()
+    await openView(page, 'settings')
+    await openSettingsPage(page, 'hooks')
+    await expect(selector).toHaveValue('WarpTerminal')
+    for (const [width, height] of [[800, 600], [1600, 900]]) {
+      await resizeMainWindow(app, width, height)
+      await expect(selector).toBeVisible()
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true)
+    }
+    await selector.selectOption('all')
+    await expect.poll(() => page.evaluate(async () => (await window.redlog.hooks.terminalPolicy()).app)).toBe('all')
   })
 
   test('port drafts are validated before autosave in English and Traditional Chinese', async () => {

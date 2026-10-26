@@ -105,8 +105,8 @@ OpenCode 不提供安裝或擷取入口，既有證據仍按一般事件閱讀�
 
 ## 6. 實作階段與順序
 
-後續順序採 Spec 064 的 R0–R5：紀錄可用收口 → 工作區契約／原型 → 活動／搜尋／I/O →
-導覽與證據／目標 → Settings 整理 → 視覺及完整驗收。基礎對比等小缺陷可獨立修，
+後續順序採 Spec 064 的四階段：Capture Baseline → Activity Core → Reading & Evidence →
+Navigation & Polish（導覽／Settings／全產品驗收）。基礎對比等小缺陷可獨立修，
 但不再以全面換色／動畫作為整套改版的第一階段。
 
 各批可獨立 review，沿用 Spec 062／063 與既有 domain contract；不複製查詢、安裝、來源狀態或

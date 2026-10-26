@@ -4,7 +4,7 @@
 // line. This file is pure parsing — the line-type whitelist, the parser, the
 // subtype mapping and the `TailerAdapter` object. The sidecar, redaction,
 // chain writes and session lifecycle are the host's (tailer-host.ts); the
-// adapters are registered by agent-tailer.ts, alongside Codex and OpenCode.
+// adapters are registered by agent-tailer.ts, alongside Codex.
 
 import * as fs from 'fs'
 import * as path from 'path'

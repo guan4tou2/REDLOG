@@ -83,3 +83,33 @@ source settings, explicit Zsh install/waiting state, actual bundle completion,
 Finder selection, Last export reopening and native smaller-window inspection.
 See verification.md T073–T078 for exact evidence and test-consolidation results.
 This does not complete the broader T008–T013/platform matrix.
+
+
+## 2026-10-25 最近匯出跨重啟
+
+verification.md T081 補上新 Mac DMG 的原生 M25 子流程：專案外自訂目錄、實際匯出、正常退出與重開、讀回原完成時間及路徑、Finder 選取同一份成品，以及包內驗證器。只補此子流程，不把整列跨平台 NOT RUN 改為 PASS。
+
+
+### 2026-10-25 first-use / terminal-app follow-up
+
+T082–T084 have bounded automated/source evidence. T085/T086 native UI inspection
+remains NOT RUN: desktop locked; Warp is unavailable to the native tool. After
+unlocking, use the final artifact and SHA in verification.md, not the intermediate
+copy currently in the isolated test folder. Inspect About build identity,
+Settings → Commands & terminals → terminal app selection (save/reopen/error),
+late activation → visible ordinary-command output proof, own-browser initiation
+and 1600/800 window layouts. Real PowerShell, Warp UI, clean-OS installation and
+system CA trust still require their own acceptance; the 99 focused tests and
+resource checks do not replace those steps.
+
+
+### 2026-10-26 terminal-app and source proof
+
+The previous pending checkpoint is superseded by verification.md's ready-dist
+record: assisted Warp save and restart retention passed; native command/output
+proof and exact persisted stdout/stderr/exit code passed using installed Zsh.
+The identifier-based denial was checked in controlled PTYs, not Warp's GUI.
+Own-browser direct opening and unverified-client timeout were observed; no CA
+trust was changed. Native live-resize screenshots remained inconsistent with
+accessibility, so terminal-settings visual resize is NOT ACCEPTED. T085 and the
+full platform matrix stay open; bounded T086 is complete with those limits.

@@ -33,6 +33,7 @@ const BIG = 'x'.repeat(40_000)
 
 const CASES: Case[] = [
   { name: 'a plain command', command: 'ls -la /tmp', fast: true },
+  { name: 'external source session identity', command: 'id', env: { _REDLOG_SESSION_ID: 'source-session-fixture' }, fast: true },
   { name: 'an empty command', command: '', fast: true },
   { name: 'double quotes', command: 'echo "hi there"', fast: true },
   { name: 'single quotes', command: "echo 'it works'", fast: true },
@@ -110,11 +111,11 @@ run_case() {
   done
   # What the fast builder says on its own, with the python home's identity.
   local probe="$W/probe$i"
-  ( export HOME="$W/fast$i"; if [ -n "$envs" ]; then eval "export $envs"; fi
+  ( export HOME="$W/fast$i"; export _REDLOG_DIR="$HOME/.redlog"; if [ -n "$envs" ]; then eval "export $envs"; fi
     _redlog_build_payload_fast command_start "$cmd" "$extra" "$probe" ; echo "RC $i $?" )
-  ( export HOME="$W/py$i"; if [ -n "$envs" ]; then eval "export $envs"; fi
+  ( export HOME="$W/py$i"; export _REDLOG_DIR="$HOME/.redlog"; if [ -n "$envs" ]; then eval "export $envs"; fi
     REDLOG_PAYLOAD_BUILDER=python _redlog_send_event command_start "$cmd" "$extra" )
-  ( export HOME="$W/fast$i"; if [ -n "$envs" ]; then eval "export $envs"; fi
+  ( export HOME="$W/fast$i"; export _REDLOG_DIR="$HOME/.redlog"; if [ -n "$envs" ]; then eval "export $envs"; fi
     _redlog_send_event command_start "$cmd" "$extra" )
 }
 
@@ -184,6 +185,10 @@ describeShell('the shell-built event payload', () => {
           const { py, fast } = results[shell]!.dump[String(i)]
           // Sent, in both homes — or dropped, in both.
           expect(fast).toEqual(py)
+          if (c.env?._REDLOG_SESSION_ID) {
+            expect(fast).toHaveLength(1)
+            expect((fast[0] as { data: { terminalId: string } }).data.terminalId).toBe(c.env._REDLOG_SESSION_ID)
+          }
           if (c.env?.WSL_DISTRO_NAME) {
             expect(fast).toHaveLength(1)
             expect((fast[0] as { data: { wsl_distro: string } }).data.wsl_distro).toBe(c.env.WSL_DISTRO_NAME)

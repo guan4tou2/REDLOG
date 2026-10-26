@@ -7,7 +7,7 @@ import {
 // coverage). Now unit-tested. Behaviour must match the previous inline code.
 
 const ev = (agentType: string, data: Record<string, unknown>): RedLogEvent =>
-  ({ agentType, data } as unknown as RedLogEvent)
+  ({ id: 'event', engagementId: 'project', sessionId: 'binding', agentType, data: { shell: 'zsh', terminalId: 'terminal', ...data } } as unknown as RedLogEvent)
 
 describe('isCollapsibleAgentTurn / filterAgentTurns', () => {
   it('collapses per-turn agent subtypes but keeps session-level + housekeeping', () => {
@@ -26,10 +26,10 @@ describe('isCollapsibleAgentTurn / filterAgentTurns', () => {
 })
 
 describe('collapseCommandPairs', () => {
-  it('drops a command_start that has a matching command_end (same pid + command)', () => {
+  it('drops a command_start that has a matching command_end by source session and command ID', () => {
     const events = [
-      ev('shell', { subtype: 'command_start', pid: 1, command: 'nmap x' }),
-      ev('shell', { subtype: 'command_end', pid: 1, command: 'nmap x' }),
+      ev('shell', { subtype: 'command_start', pid: 1, command: 'nmap x', command_id: 'cmd-1' }),
+      ev('shell', { subtype: 'command_end', pid: 1, command: 'nmap x', command_id: 'cmd-1' }),
       ev('shell', { subtype: 'command_start', pid: 2, command: 'still running' }) // no matching end
     ]
     const out = collapseCommandPairs(events)
@@ -46,6 +46,38 @@ describe('collapseCommandPairs', () => {
       ev('shell', { subtype: 'command_end', pid: 2, command: 'ls' })       // different pid
     ]
     expect(collapseCommandPairs(events)).toHaveLength(2)
+  })
+
+  it('does not hide a second identical command when only the first has ended', () => {
+    const first = ev('shell', { subtype: 'command_start', pid: 1, command: 'ls', command_id: 'first' })
+    const end = ev('shell', { subtype: 'command_end', pid: 1, command: 'ls', command_id: 'first' })
+    const next = ev('shell', { subtype: 'command_start', pid: 1, command: 'ls', command_id: 'next' })
+    expect(collapseCommandPairs([first, end, next])).toEqual([end, next])
+  })
+
+  it('keeps both halves when only PID and text match, or the source session is missing', () => {
+    const start = ev('shell', { subtype: 'command_start', pid: 1, command: 'ls' })
+    const end = ev('shell', { subtype: 'command_end', pid: 1, command: 'ls' })
+    expect(collapseCommandPairs([start, end])).toEqual([start, end])
+    start.data.command_id = end.data.command_id = 'cmd'
+    start.data.terminalId = end.data.terminalId = ''
+    expect(collapseCommandPairs([start, end])).toEqual([start, end])
+  })
+
+  it.each(['project', 'binding', 'terminal'])('does not pair the same ID across a different %s', boundary => {
+    const start = ev('shell', { subtype: 'command_start', pid: 1, command: 'ls', command_id: 'cmd' })
+    const end = ev('shell', { subtype: 'command_end', pid: 1, command: 'ls', command_id: 'cmd' })
+    if (boundary === 'project') end.engagementId = 'other'
+    if (boundary === 'binding') end.sessionId = 'other'
+    if (boundary === 'terminal') end.data.terminalId = 'other'
+    expect(collapseCommandPairs([start, end])).toEqual([start, end])
+  })
+
+  it('keeps conflicting results visible instead of folding away their start', () => {
+    const start = ev('shell', { subtype: 'command_start', command_id: 'cmd', command: 'ls' })
+    const good = ev('shell', { subtype: 'command_end', command_id: 'cmd', command: 'ls', exit_code: 0 })
+    const bad = ev('shell', { subtype: 'command_end', command_id: 'cmd', command: 'ls', exit_code: 1 })
+    expect(collapseCommandPairs([start, good, bad])).toEqual([start, good, bad])
   })
 
   it('leaves non-shell events untouched', () => {

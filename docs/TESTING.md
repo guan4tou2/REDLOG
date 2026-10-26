@@ -154,3 +154,17 @@ acceptance record; do not treat old screenshots as a new pass.
 The former Part 1–6 option/audit matrix (including G-* references in historical
 tests/specs) is [archived](archive/TEST-MATRIX-2026-10-16.md). It is not the
 current procedure or an assertion that those historical gaps remain open.
+
+
+## 發送內測候選
+
+公開 release 與本機候選不能只靠 package.json 的版本號區分。App 的「關於」顯示版本與 build commit；`+local` 明示建置含未提交檔案，沒有 Git 資訊時顯示 `unknown`。正式內測交付使用乾淨、已提交的來源，附 OS／架構與 SHA-256；不要把本機檔案上傳覆蓋已發布的同版 asset。
+
+Mac 內測安裝檔可使用獨立名稱，且不觸發發版：
+
+```sh
+npm run build
+REDLOG_BUILD_ID=$(git rev-parse --short=8 HEAD) npx electron-builder --mac dmg --arm64 --publish never '-c.artifactName=RedLog-${version}-internal-${env.REDLOG_BUILD_ID}-${arch}.${ext}'
+```
+
+這不改動正式版本、更新 feed 或現有 release 檔名。發給第一次使用者的是指定安裝檔與使用者指南，不是原始碼開發流程。

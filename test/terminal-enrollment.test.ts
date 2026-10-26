@@ -5,7 +5,7 @@ import path from 'path'
 import {
   beginTerminal, applyTerminalAction, captureDecision,
   readTerminalEnrollment, writeTerminalEnrollment, removeTerminalEnrollment,
-  listTerminalEnrollments, terminalStateDir
+  readTerminalApp, writeTerminalApp, listTerminalEnrollments, terminalStateDir
 } from '../src/core/terminal-enrollment'
 
 // Spec 052 T016. Two properties decide whether an operator will leave this
@@ -138,4 +138,27 @@ describe('terminal enrollment', () => {
     expect(readTerminalEnrollment(home(), 'never')).toBeNull()
     expect(listTerminalEnrollments(path.join(os.tmpdir(), 'redlog-no-such-home'))).toEqual([])
   })
+})
+
+
+describe('terminal app selection', () => {
+  it('persists one machine selection and refuses corrupt or unrecognized values', () => {
+    const dir = home()
+    expect(readTerminalApp(dir)).toBe('all')
+    expect(writeTerminalApp('WarpTerminal', dir, 'darwin')).toBe('WarpTerminal')
+    expect(readTerminalApp(dir)).toBe('WarpTerminal')
+    expect(() => writeTerminalApp('../any', dir)).toThrow()
+    expect(readTerminalApp(dir)).toBe('WarpTerminal')
+    fs.writeFileSync(path.join(dir, '.redlog', 'terminal-app'), 'broken')
+    expect(() => readTerminalApp(dir)).toThrow()
+  })
+  it('refuses unsupported app restrictions without changing the saved policy', () => {
+    const dir = home()
+    writeTerminalApp('all', dir, 'linux')
+    expect(() => writeTerminalApp('WarpTerminal', dir, 'linux')).toThrow(/unsupported/i)
+    expect(() => writeTerminalApp('WindowsTerminal', dir, 'win32')).toThrow(/unsupported/i)
+    expect(() => writeTerminalApp('WindowsTerminal', dir, 'darwin')).toThrow(/unsupported/i)
+    expect(readTerminalApp(dir)).toBe('all')
+  })
+
 })

@@ -2,6 +2,8 @@
 
 **Status**: Draft · 2026-10-26。配套：[spec.md](spec.md)。本文件是產品行為規格，不是已上線畫面或逐像素設計稿。
 
+Activity 身分／工具分類、搜尋覆蓋、內容閱讀、片段座標、匯出快照及擷取邊界分別由 [C1](contracts/activity-projection.md)、[C2](contracts/search-coverage.md)、[C3](contracts/content-viewer.md)、[C4](contracts/evidence-anchor.md)、[C5](contracts/export-snapshot.md)、[C6](contracts/capture-boundaries.md) 細化。此處定義入口與布局；涉及資料邊界時遵守相應契約，不由頁面自行解讀。全部需求對照見 [traceability.md](traceability.md)。
+
 ## 1. 操作路徑與導覽
 
 ```text

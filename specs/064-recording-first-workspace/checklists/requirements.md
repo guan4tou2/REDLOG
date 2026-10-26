@@ -6,7 +6,7 @@
 
 ## Content Quality
 
-- [x] 主規格描述使用者成果及界線，程式位置與技術待辦分置 implementation-notes。
+- [x] 主規格描述使用者成果及界線，資料契約／責任位置分置 contracts、traceability 及 implementation-notes。
 - [x] 聚焦接入、記錄、找回、交付；易用性優先於視覺及頁數。
 - [x] 可供非開發者閱讀；內部詞彙只在必要的來源／證據語意使用。
 - [x] 必要 user stories、edge cases、requirements、entities、success criteria、assumptions 皆有內容。
@@ -24,10 +24,10 @@
 
 ## Feature Readiness
 
-- [x] FR-001–045 對應 UX-01–19，涵蓋接入、查詢、內容、來源、證據、HUD／退出更新。
-- [x] 七個 user journeys 各可獨立展示與驗收，不要求一次推翻全 App。
+- [x] FR-001–053 均在 traceability 對應責任位置／契約、UX-01–19 或 CT-01–16 及四階段交付。
+- [x] 七個 user journeys 依 P0／P1／P2 及 S1–S4 區分；基礎授權／修復不因設定改版較晚而延後。
 - [x] 結果包含實際成品與原始資料核對，非只依截圖／DOM／測試數字。
-- [x] 保存／顯示／查詢／匯出與本機／專案兩組邊界明確。
+- [x] 六份 canonical 契約明定身分、覆蓋、Viewer、錨點、快照及擷取有效邊界；不宣稱現有程式已通過。
 
 ## Notes
 
@@ -36,4 +36,4 @@
 - `.specify/extensions.yml` 不存在，沒有 before_specify／after_specify hooks。
 - 本次僅文件檢查及 Spec Kit gate，不為文書整理重跑整套 App 測試。
 
-Validation: 45 個唯一 FR 均有 UX 對照；19 個唯一驗收 ID；相對連結、範本占位符及 Markdown code fence 檢查通過；`npm run verify:specs`、`git diff --check` 通過。
+Validation: 53 個唯一 FR 全部有責任位置／契約／驗收／階段對照；19 個唯一 UX、16 個唯一 CT、六份跨層契約；14 份 Markdown 的相對連結、範本占位符與 code fence 檢查通過。`npm run verify:specs`、`git diff --check` 通過。這是規格文件檢查，全部產品任務仍為 NOT RUN。

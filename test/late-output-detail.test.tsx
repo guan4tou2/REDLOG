@@ -11,7 +11,7 @@ import { CommandEndDetail } from '../src/renderer/src/components/TimelineEventDe
 const install = (rows: unknown[]): void => {
   window.localStorage.setItem('redlog-locale', 'en')
   ;(window as unknown as { redlog: unknown }).redlog = {
-    events: { commandOutput: vi.fn(async () => rows), onNewBatch: vi.fn(() => () => {}) }
+    events: { commandOutput: vi.fn(async () => ({ items: rows, hasMore: false })), onNewBatch: vi.fn(() => () => {}) }
   }
 }
 afterEach(() => { cleanup(); window.localStorage.clear() })
@@ -23,7 +23,7 @@ describe('CommandEndDetail background output', () => {
     install([{ id: 'a', data: { seq: 1, late: true, stdout: 'hi\n' } }])
     render(<I18nProvider><CommandEndDetail data={data} /></I18nProvider>)
     await waitFor(() => expect(screen.getByTestId('late-output').textContent).toContain('hi'))
-    expect(screen.getByTestId('late-output').textContent).toMatch(/still running|仍在執行/)
+    expect(screen.getByTestId('late-output').textContent).toMatch(/no output completion record|尚無輸出完成紀錄/)
   })
 
   it('says finished, and what was not kept', async () => {
@@ -34,6 +34,14 @@ describe('CommandEndDetail background output', () => {
     render(<I18nProvider><CommandEndDetail data={data} /></I18nProvider>)
     await waitFor(() => expect(screen.getByTestId('late-output').textContent).toMatch(/incomplete|不完整/))
     expect(screen.getByTestId('late-output').textContent).toMatch(/not kept|未保留/)
+  })
+
+  it('labels a bounded preview without pretending its missing final row means still running', async () => {
+    install([])
+    vi.mocked(window.redlog.events.commandOutput).mockResolvedValue({ items: [], hasMore: true })
+    render(<I18nProvider><CommandEndDetail data={data} /></I18nProvider>)
+    await screen.findByText(/Preview limited/)
+    expect(screen.queryByText(/no output completion record/)).toBeNull()
   })
 
   it('does not ask for background output of an ordinary command', () => {

@@ -211,7 +211,7 @@ product exists to rule out.
 
 ## Optional AI integrations (Spec 062)
 
-Installation and permission are separate. Claude Code, Codex and OpenCode each start uninstalled. A local managed manifest carries a fresh installation receipt; project activation must match that receipt, select absolute working directories and include a capture-start boundary. An empty list, missing cwd, inactive plugin or missing installation cannot authorize capture. Reinstalling never restores the former receipt's permission.
+Installation and permission are separate. Claude Code and Codex each start uninstalled. A local managed manifest carries a fresh installation receipt; project activation must match that receipt, select absolute working directories and include a capture-start boundary. An empty list, missing cwd, inactive plugin or missing installation cannot authorize capture. Reinstalling never restores the former receipt's permission.
 
 The runtime and health projection use `resolveAgentCapture`. The settings source row owns installation, native directory selection and explicit project activation. A global AI pack or API watch path is not an alternate authority. Session registration can narrow the enabled sessions, but cannot grant a new working directory.
 

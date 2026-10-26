@@ -14,7 +14,7 @@ vi.mock('node-pty', () => ({ spawn: vi.fn(() => {
 }) }))
 vi.mock('electron', () => ({ BrowserWindow: class {} }))
 vi.mock('../src/core/cast-index', () => ({ indexCast: vi.fn(async () => undefined) }))
-import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { getProjectDir, initDB, closeDB, getDB } from '../src/core/db/index'
 import { configureIngest, ingestEvent, _resetIngest } from '../src/core/ingest'
 import { resetCausesResolver } from '../src/core/causes-resolver'
 import { eventBus } from '../src/core/event-bus'
@@ -123,7 +123,8 @@ describe('project recording rotation without killing the pane', () => {
     closeDB(); resetCausesResolver()
     current = 'B'; open('B', 350); eventBus.resume('ui'); resumeTerminalRecordings()
     fake.panes[0].emit('x'.repeat(2000))
-    expect(listTerminals()[0].castTruncated).toBe(true)
+    expect(listTerminals()[0]).toMatchObject({ recording: true, castTruncated: false })
+    expect(fs.readdirSync(path.join(getProjectDir(), 'casts')).filter(name => name.endsWith('.cast')).length).toBeGreaterThan(1)
     detachTerminalRecordings(); closeDB(); resetCausesResolver()
     current = 'C'; open('C'); resumeTerminalRecordings()
     expect(listTerminals()[0]).toMatchObject({ recording: true, castTruncated: false })

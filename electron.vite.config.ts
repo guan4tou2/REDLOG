@@ -1,9 +1,19 @@
 import { resolve } from 'path'
 import { readFileSync } from 'fs'
+import { execFileSync } from 'node:child_process'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
 const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version
+const buildId = (() => {
+  try {
+    const options = { cwd: __dirname, encoding: 'utf8' as const, stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'] }
+    const commit = execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], options).trim()
+    const changed = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], options).trim()
+    return `${commit}${changed ? '+local' : ''}`
+  } catch { return 'unknown' }
+})()
+
 
 // @fontsource ships every face twice: woff2 first, woff as a fallback for
 // browsers from before 2018. Electron is Chromium, which has supported woff2
@@ -39,7 +49,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), dropLegacyWoff],
-    define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
+    define: { __APP_VERSION__: JSON.stringify(pkgVersion), __APP_BUILD__: JSON.stringify(buildId) },
     build: {
       rollupOptions: {
         input: {

@@ -31,7 +31,7 @@ function install(rows: unknown[]): ReturnType<typeof vi.fn> {
   const queryPage = vi.fn().mockImplementation((opts: { agentType: string }) =>
     Promise.resolve(opts.agentType === 'shell' ? { items: [commandEnd], hasMore: false, nextCursor: null } : emptyPage))
   ;(window as unknown as { redlog: unknown }).redlog = {
-    events: { queryPage, commandOutput: vi.fn().mockResolvedValue(rows), onNewBatch: () => () => {} },
+    events: { queryPage, commandOutput: vi.fn().mockResolvedValue({ items: rows, hasMore: false }), onNewBatch: () => () => {} },
     operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) },
     clipboard: { writeText: vi.fn(), readText: vi.fn().mockResolvedValue('') }
   }

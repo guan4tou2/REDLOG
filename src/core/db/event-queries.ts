@@ -161,6 +161,15 @@ export function lastRecordingSubtype(): string | null {
   return row?.subtype ?? null
 }
 
+/** Durable stream boundary, including a resume before an app restart. Delayed
+ * bytes from a closed recording interval may be omitted, never replayed. */
+export function lastRecordingResumeTime(): number {
+  const row = getReadonlyDB().prepare(`SELECT timestamp FROM events
+    WHERE agent_type = 'system' AND subtype = 'recording_resumed'
+    ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { timestamp: number } | undefined
+  return row?.timestamp ?? 0
+}
+
 /** Historical command proof for the open project, independent of recent rows.
  * This does not assert that the source is still running or that stdout arrived. */
 export function commandEvidence(): { builtin: boolean; external: boolean } {
@@ -192,7 +201,7 @@ export const HOUSEKEEPING_SQL = `
   NOT (
     (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
-    OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'command_output' AND COALESCE(json_extract(data,'$.late'), 0) = 1)
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'command_output' AND (COALESCE(json_extract(data,'$.late'), 0) = 1 OR COALESCE(json_extract(data,'$.streamed'), 0) = 1))
     OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
     OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%tlogger_prompt_command%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%Microsoft.PowerShell_profile.ps1%'))
   )
@@ -963,28 +972,26 @@ export function queryByFlowId(flowId: string): RedLogEvent[] {
  *  sent. These rows are hidden from the Timeline (HOUSEKEEPING_SQL) because they
  *  belong to the command, not beside it; the command's detail reads them here.
  *  Both tiers, because a chunk lands wherever its command did. */
-export function queryCommandOutput(commandId: string, limit = 2000): RedLogEvent[] {
+export function queryCommandOutput(commandId: string, limit = 2000, snapshot?: ExportSnapshot): RedLogEvent[] {
   const db = getReadonlyDB()
   const where = `agent_type = 'shell' AND subtype = 'command_output'
-     AND json_extract(data, '$.command_id') = ? AND json_extract(data, '$.late') = 1`
-  const rows = [
-    ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>),
-    ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(commandId) as Array<Record<string, unknown>>)
-  ]
-  const ordered = rows
-    .map(rowToEvent)
-    .sort((a, b) => Number(a.data.seq ?? 0) - Number(b.data.seq ?? 0) || a.timestamp - b.timestamp)
-  // One row per seq: a resend that was stored twice (an app restart between the
-  // two, which ingest's own memory does not span) is the same chunk, not more
-  // output. The earliest is kept.
-  const seen = new Set<number>()
-  return ordered.filter((r) => {
-    const seq = r.data.seq
-    if (typeof seq !== 'number') return true
-    if (seen.has(seq)) return false
-    seen.add(seq)
-    return true
-  }).slice(0, limit)
+     AND json_extract(data, '$.command_id') = ? AND (json_extract(data, '$.late') = 1 OR json_extract(data, '$.streamed') = 1)`
+  // Bound the rows crossing into JS, after deduplicating retries across tiers.
+  // Export passes -1 with its frozen snapshot before retries are deduplicated.
+  const fields = 'id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, created_at'
+  const rows = db.prepare(`WITH chunks AS (
+    SELECT ${fields}, monotonic_ns, ntp_offset_ms, hash, prev_hash, signature, 'chained' AS tier FROM events WHERE ${where} AND rowid <= ?
+    UNION ALL SELECT ${fields}, NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS hash, NULL AS prev_hash, NULL AS signature, 'logged' AS tier FROM events_logged WHERE ${where} AND rowid <= ?
+  ), ranked AS (
+    SELECT *, ROW_NUMBER() OVER (
+      PARTITION BY CASE WHEN json_type(data, '$.seq') IN ('integer', 'real') THEN json_extract(data, '$.seq') ELSE id END
+      ORDER BY timestamp, created_at, id
+    ) AS chunk_rank FROM chunks
+  ) SELECT * FROM ranked WHERE chunk_rank = 1
+    ORDER BY COALESCE(json_extract(data, '$.seq'), 0), timestamp, id LIMIT ?`)
+    .all(commandId, snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, commandId, snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER, limit < 0 ? -1 : limit) as Array<Record<string, unknown>>
+  return rows.map(rowToEvent)
+
 }
 
 /** The `command_end` rows of the given commands, either tier. A search hit on a
@@ -1157,6 +1164,9 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
 export interface ToolPairKey {
   sessionId: string
   toolUseId: string
+  provider: string
+  engagementId: string
+  captureSessionId: string
 }
 
 /**
@@ -1165,14 +1175,18 @@ export interface ToolPairKey {
  * pairs one lookup at a time is N+1 against the store for a single scroll.
  */
 export function fetchToolCounterparts(keys: ToolPairKey[]): RedLogEvent[] {
+  const fields = ['sessionId', 'toolUseId', 'provider', 'engagementId', 'captureSessionId'] as const
+  if (!Array.isArray(keys) || keys.some(key => !key || fields.some(field => typeof key[field] !== 'string' || !key[field]))) {
+    throw new Error('Invalid tool pair identity')
+  }
   if (keys.length === 0) return []
   const db = getReadonlyDB()
 
   // The keys travel as one JSON array and are joined against, so the statement
-  // count is the same for fifty keys as for five. Matching on the two fields
+  // count is the same for fifty keys as for five. Matching on the identity fields
   // separately rather than on a concatenation avoids inventing a separator
   // that an id could itself contain.
-  const keysJson = JSON.stringify(keys.map((k) => ({ s: k.sessionId, t: k.toolUseId })))
+  const keysJson = JSON.stringify(keys.map((k) => ({ s: k.sessionId, t: k.toolUseId, p: k.provider, g: k.engagementId, b: k.captureSessionId })))
   const arm = (table: string, extra: string): string => `
     SELECT e.rowid AS _row,
            e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
@@ -1182,7 +1196,12 @@ export function fetchToolCounterparts(keys: ToolPairKey[]): RedLogEvent[] {
     FROM ${table} e
     JOIN json_each(?) k
       ON json_extract(k.value, '$.s') = json_extract(e.data, '$.session_id')
-     AND json_extract(k.value, '$.t') = json_extract(e.data, '$.tool_use_id')`
+     AND json_extract(k.value, '$.t') = json_extract(e.data, '$.tool_use_id')
+     AND json_extract(k.value, '$.p') = json_extract(e.data, '$.agent')
+     AND json_extract(k.value, '$.g') = e.engagement_id
+     AND json_extract(k.value, '$.b') = e.session_id
+    WHERE e.agent_type = 'agent'
+      AND json_extract(e.data, '$.subtype') IN ('tool_call', 'tool_result', 'tool_interrupted')`
 
   const rows = db.prepare(`
     SELECT * FROM (

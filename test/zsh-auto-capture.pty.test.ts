@@ -319,3 +319,49 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
     })
   })
 })
+
+
+describeShell('terminal application boundary in real POSIX adapters', () => {
+  it.each(['zsh', 'bash'] as const)('stops an existing %s adapter after narrowing, regardless of inherited app hints', async shellKind => {
+    const collector = await startCollector('app-scope')
+    const rc = `mkdir -p "$HOME/.redlog"\nprintf 'all\\n' > "$HOME/.redlog/terminal-app"\nsource ${hookPath(target!, shellKind === 'zsh' ? 'shell-zsh-hook.zsh' : 'shell-bash-hook.sh')}`
+    try {
+      for (const terminal of ['WarpTerminal', 'Apple_Terminal', '']) {
+        const before = collector.events.length
+        const report = await runZsh(target!, {
+          shellKind, rc,
+          redlog: { port: collector.port, token: 'app-scope' },
+          env: { TERM_PROGRAM: terminal, WT_SESSION: '', REDLOG_TERMINAL: '', REDLOG_EXTERNAL_SESSION: '' },
+          commands: ['echo app-probe', `printf 'WindowsTerminal\\n' > "$HOME/.redlog/terminal-app"`, 'echo after-exclusion'],
+          timeoutSeconds: 30
+        })
+        expect(report.ok, report.error).toBe(true)
+        expect(report.steps[0].output).toContain('app-probe')
+        expect(report.steps[2].output).toContain('after-exclusion')
+        const events = collector.events.slice(before)
+        expect(events.some(e => String(e.data.command).includes('app-probe'))).toBe(true)
+        expect(events.some(e => String(e.data.command).includes('after-exclusion'))).toBe(false)
+        expect(report.transcript).toContain('[redlog] shell hook loaded')
+      }
+    } finally { await collector.close() }
+  }, 180_000)
+})
+
+
+describeShell('existing prompt rendering', () => {
+  it('drains command output before another precmd hook renders a prompt', async () => {
+    const collector = await startCollector('prompt-order')
+    try {
+      const report = await runZsh(target!, {
+        rc: `autoload -Uz add-zsh-hook\n_existing_prompt() { print -rn -- 'EXISTING-PROMPT'; }\nadd-zsh-hook precmd _existing_prompt\nsource ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: ['echo command-visible'],
+        redlog: { port: collector.port, token: 'prompt-order' },
+        timeoutSeconds: 30
+      })
+      expect(report.ok, report.error).toBe(true)
+      const end = shellEvents(collector.events, 'command_end', 'command-visible')[0]
+      expect(end?.data.stdout).toBe('command-visible\n')
+      expect(report.steps[0].output.indexOf('command-visible')).toBeLessThan(report.steps[0].output.indexOf('EXISTING-PROMPT'))
+    } finally { await collector.close() }
+  }, 60_000)
+})

@@ -33,9 +33,9 @@ export function resolveExportSelection(request: NormalizedExportRequest, snapsho
   // says `late_output` and holds nothing to show for it. The snapshot bound is
   // applied below, with the rest of the canonical order.
   for (const event of [...events]) {
-    if (event.agentType !== 'shell' || event.data.subtype !== 'command_end' || event.data.late_output !== true) continue
+    if (event.agentType !== 'shell' || event.data.subtype !== 'command_end' || (event.data.late_output !== true && event.data.output_streamed !== true)) continue
     if (typeof event.data.command_id !== 'string') continue
-    events.push(...queryCommandOutput(event.data.command_id))
+    events.push(...queryCommandOutput(event.data.command_id, -1, snapshot))
   }
   // Execution uses this same canonical order to compare the approved digest.
   const ids = new Set(events.map(event => event.id))

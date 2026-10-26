@@ -36,10 +36,13 @@ try {
 
 const describeDB = available ? describe : describe.skip
 let dir: string
+let captureSessionId: string
+const key = (sessionId: string, toolUseId: string) => ({ sessionId, toolUseId, provider: 'claude-code', engagementId: 'project', captureSessionId })
 
 function seed(data: Record<string, unknown>): string {
-  const event = insertEvent('agent', data, { operatorId: 'op' })
+  const event = insertEvent('agent', { agent: 'claude-code', ...data }, { operatorId: 'op', engagementId: 'project' })
   if (!event) throw new Error('insertEvent returned null; capture is paused')
+  captureSessionId = event.sessionId
   return event.id
 }
 
@@ -78,14 +81,14 @@ describeDB('tool pair completion (T005)', () => {
   it('returns the half that was not on the page', () => {
     const theCall = call('S1', 'T7')
     result('S1', 'T7')
-    const found = fetchToolCounterparts([{ sessionId: 'S1', toolUseId: 'T7' }])
+    const found = fetchToolCounterparts([key('S1', 'T7')])
     expect(found.map((e) => e.id)).toContain(theCall)
   })
 
   it('keys on the session as well as the tool-use id', () => {
     call('S1', 'T7')
     const otherCall = call('S2', 'T7')
-    const found = fetchToolCounterparts([{ sessionId: 'S2', toolUseId: 'T7' }])
+    const found = fetchToolCounterparts([key('S2', 'T7')])
     expect(found.map((e) => e.id)).toContain(otherCall)
     expect(found.every((e) => (e.data as { session_id?: string }).session_id === 'S2')).toBe(true)
   })
@@ -94,28 +97,36 @@ describeDB('tool pair completion (T005)', () => {
     // The caller marks this pair incomplete rather than showing one half as a
     // whole exchange; an empty return is the input to that, not an error.
     call('S1', 'T-unanswered')
-    const found = fetchToolCounterparts([{ sessionId: 'S1', toolUseId: 'T-absent' }])
+    const found = fetchToolCounterparts([key('S1', 'T-absent')])
     expect(found).toEqual([])
   })
 
   it('serves many keys at once', () => {
     const wanted: string[] = []
     for (let i = 0; i < 50; i++) wanted.push(call('S1', `T${i}`))
-    const keys = wanted.map((_, i) => ({ sessionId: 'S1', toolUseId: `T${i}` }))
+    const keys = wanted.map((_, i) => key('S1', `T${i}`))
     const found = fetchToolCounterparts(keys)
     expect(found.map((e) => e.id).sort()).toEqual([...wanted].sort())
   })
 
   it('does not issue more queries for more keys', () => {
     for (let i = 0; i < 50; i++) call('S1', `T${i}`)
-    const keysFor = (n: number): Array<{ sessionId: string; toolUseId: string }> =>
-      Array.from({ length: n }, (_, i) => ({ sessionId: 'S1', toolUseId: `T${i}` }))
+    const keysFor = (n: number) =>
+      Array.from({ length: n }, (_, i) => key('S1', `T${i}`))
 
     const few = countPrepares(() => { fetchToolCounterparts(keysFor(5)) })
     const many = countPrepares(() => { fetchToolCounterparts(keysFor(50)) })
 
     expect(few).toBeGreaterThan(0)
     expect(many).toBe(few)
+  })
+
+  it('does not pull another provider, project or capture namespace into the pair', () => {
+    const wanted = call('S1', 'T7')
+    seed({ subtype: 'tool_result', agent: 'codex', session_id: 'S1', tool_use_id: 'T7', output: 'foreign' })
+    expect(fetchToolCounterparts([key('S1', 'T7')]).map(e => e.id)).toEqual([wanted])
+    expect(fetchToolCounterparts([{ ...key('S1', 'T7'), engagementId: 'other' }])).toEqual([])
+    expect(fetchToolCounterparts([{ ...key('S1', 'T7'), captureSessionId: 'other' }])).toEqual([])
   })
 
   it('accepts an empty key list without touching the store', () => {

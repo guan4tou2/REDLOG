@@ -42,16 +42,28 @@ describe('mapMatchesToDrawn', () => {
   })
 
   it('lights the drawn end of a command whose hidden start matched', () => {
-    const start = evt('s', 'shell', { subtype: 'command_start', command: 'nmap x', pid: 3 })
-    const end = evt('e', 'shell', { subtype: 'command_end', command: 'nmap x', pid: 3 })
+    const start = evt('s', 'shell', { subtype: 'command_start', command: 'nmap x', pid: 3, command_id: 'cmd', shell: 'zsh', terminalId: 'terminal' })
+    const end = evt('e', 'shell', { subtype: 'command_end', command: 'nmap x', pid: 3, command_id: 'cmd', shell: 'zsh', terminalId: 'terminal' })
     expect([...mapMatchesToDrawn(new Set(['s']), [start, end], [end]).lit]).toEqual(['e'])
   })
 
   it('lights the session row of a collapsed agent turn, or counts it as hidden', () => {
-    const turn = evt('t', 'agent', { subtype: 'tool_call', session_id: 'S1' })
-    const snap = evt('n', 'agent', { subtype: 'transcript_snapshot', session_id: 'S1' })
+    const turn = evt('t', 'agent', { subtype: 'tool_call', agent: 'claude-code', session_id: 'S1' })
+    const snap = evt('n', 'agent', { subtype: 'transcript_snapshot', agent: 'claude-code', session_id: 'S1' })
     expect(mapMatchesToDrawn(new Set(['t']), [turn, snap], [snap])).toEqual({ lit: new Set(['n']), hiddenByCollapse: 0 })
     expect(mapMatchesToDrawn(new Set(['t']), [turn], [])).toEqual({ lit: new Set(), hiddenByCollapse: 1 })
+  })
+
+  it('does not highlight a different command with matching PID and text', () => {
+    const start = evt('s', 'shell', { subtype: 'command_start', command: 'ls', pid: 3, command_id: 'first', shell: 'zsh', terminalId: 'terminal' })
+    const other = evt('e', 'shell', { subtype: 'command_end', command: 'ls', pid: 3, command_id: 'second', shell: 'zsh', terminalId: 'terminal' })
+    expect([...mapMatchesToDrawn(new Set(['s']), [start, other], [other]).lit]).toEqual([])
+  })
+
+  it('does not highlight another provider with the same session ID', () => {
+    const turn = evt('t', 'agent', { subtype: 'tool_call', agent: 'claude-code', session_id: 'S1' })
+    const other = evt('n', 'agent', { subtype: 'transcript_snapshot', agent: 'codex', session_id: 'S1' })
+    expect(mapMatchesToDrawn(new Set(['t']), [turn, other], [other])).toEqual({ lit: new Set(), hiddenByCollapse: 1 })
   })
 
   it('lights a marker when its drawn amendment matched', () => {

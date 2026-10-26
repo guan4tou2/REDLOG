@@ -11,6 +11,7 @@ async function startCollector(token: string) {
   const server = createServer((req, res) => {
     if (req.url === '/api/health') { res.writeHead(200).end('{"ok":true}'); return }
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end(); return }
+    if (req.url === '/api/whoami') { res.writeHead(200).end('{}'); return }
     let body = ''
     req.on('data', chunk => { body += chunk })
     req.on('end', () => { events.push(JSON.parse(body)); res.writeHead(201).end() })
@@ -27,15 +28,22 @@ const suite = process.platform === 'win32' ? describe.skip : describe
 
 suite('WSL shell directory selection', () => {
   for (const entry of ['common', 'sender'] as const) {
-    for (const nativeAlive of [false, true]) {
-      it(`${entry}: ${nativeAlive ? 'keeps a live native app' : 'does not let a stale native directory shadow the Windows app'}`, async () => {
-        const native = await startCollector('native-token')
+    // 'stale-token' is #326: with mirrored networking the native port answers,
+    // because it is the Windows app, but it no longer accepts this token.
+    for (const variant of ['down', 'live', 'stale-token'] as const) {
+      const title = {
+        down: 'does not let a stale native directory shadow the Windows app',
+        live: 'keeps a live native app',
+        'stale-token': 'does not adopt a live port that refuses the native token'
+      }[variant]
+      it(`${entry}: ${title}`, async () => {
+        const native = await startCollector(variant === 'stale-token' ? 'rotated-token' : 'native-token')
         const windows = await startCollector('windows-token')
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-wsl-directory-'))
         temporary.push(root)
         const home = path.join(root, 'native-home'), winHome = path.join(root, 'windows-home'), bin = path.join(root, 'bin')
         fs.mkdirSync(bin)
-        for (const [dir, token, port] of [[home, 'native-token', nativeAlive ? native.port : 1], [winHome, 'windows-token', windows.port]] as const) {
+        for (const [dir, token, port] of [[home, 'native-token', variant === 'down' ? 1 : native.port], [winHome, 'windows-token', windows.port]] as const) {
           fs.mkdirSync(path.join(dir, '.redlog'), { recursive: true })
           fs.writeFileSync(path.join(dir, '.redlog', 'api-token'), token)
           fs.writeFileSync(path.join(dir, '.redlog', 'api-port'), String(port))
@@ -56,9 +64,9 @@ suite('WSL shell directory selection', () => {
             child.on('error', reject); child.on('close', code => { clearTimeout(timer); resolve(code) })
           })
           expect(result).toBe(0)
-          const expected = nativeAlive ? native : windows
+          const expected = variant === 'live' ? native : windows
           expect(expected.events.map(e => e.data.command), `output=${output}, native=${JSON.stringify(native.events)}, windows=${JSON.stringify(windows.events)}`).toContain('wsl-directory-probe')
-          expect((nativeAlive ? windows : native).events).toHaveLength(0)
+          expect((variant === 'live' ? windows : native).events).toHaveLength(0)
         } finally { await native.close(); await windows.close() }
       }, 15_000)
     }

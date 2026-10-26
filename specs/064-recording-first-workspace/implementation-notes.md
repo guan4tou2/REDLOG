@@ -1,7 +1,7 @@
 # 現況、範圍收斂與後續切法
 
-**Status**: Draft specification only · 2026-10-26。
-本次尚未建立 UI 實作分支、改造導覽或發布；沒有將文件描述當已完成成果。
+**Status**: Draft · implementation in progress · 2026-10-26。
+隔離候選已開始 S1／S2 的核心修正；尚未替換主導覽或發布。進度與候選證據見 [verification.md](verification.md)，不能把局部通過當成整份規格完成。
 
 ## 1. 依據與版本界線
 
@@ -45,36 +45,35 @@
 
 檔案路徑用於後續 planning 盤點，不指定一定建立新的元件或資料表。Activity 可沿用既有純投影；若要抽共用模組，先證明它解決已存在的多個使用情境。
 
-## 4. 先定契約，再替換表面
+## 4. 已補的跨層契約與實作規劃界線
 
-後續 planning 必須明確回答：
-
-1. Activity 穩定身分、來源原始 IDs、部分配對／跨頁合併、時間範圍、命中與背景如何表示。
-2. Action、Provider、Actor、Source、Session、Outcome、完整性如何從**確實存在**的欄位投影；未知的處理。查詢先於 cursor／統計，所有 surface 及匯出共用。
-3. 大輸出的 reader／內容錨點如何跨 inline、sidecar、chunk、cast part；沒有偏移資料時的可用降級，不造假全量內容。
-4. 全域專案 query 與局部 find、閱讀模式、原始／操作層級、精確選取如何區分；一個可追蹤 context，不能多套互相覆寫的狀態。
-5. 匯出當前查詢、單 Activity、Session 與原始證據如何映射到既有 ExportPlan。哪些上下文是必要 companions，哪些只有閱讀相關性。
-6. 來源設定的本機／專案範圍、唯一主要動作、AI 真正安裝內容、平台限制、修復與診斷如何沿用既有 lifecycle。
-
-這些是跨層 contract 的 planning 工作；本次不寫新的儲存 schema、不將規格假裝成 API 已支援。
-
-## 5. 分批落地與退場 gate
-
-| 批次 | 內容 | 通過才往下的條件 |
+| 契約 | 已決定的語意 | bounded Plan 才決定的細節 |
 | --- | --- | --- |
-| R0 紀錄可用收口 | 沿 #317 修漏記／歸屬／長輸出／保存故障、安裝接入、最小讀取與交付；小型失敗修復入口先做。 | 對候選及宣稱平台有真實來源、重啟及成品證據；未測限制公開，#432 不因 UI 規格直接合併。 |
-| R1 工作區契約及原型 | 三閱讀模式、Session、Activity 映射、查詢／匯出邊界；以五個實際任務驗證結構。 | 不改原始事件；使用者可找回長內容；沒有新來源／AI／隱私設定擴張。 |
-| R2 活動、搜尋與 I/O | 沿用 query／cursor、Inspector／Transcript／Replay，整合條件、內容定位與返回。 | UX-06–10／13／18 對等；未覆蓋 cast／sidecar 時不能關掉現有深搜入口。 |
-| R3 導覽／證據／目標 | 五主入口、Evidence 子分類、目標唯讀判定與設定跳轉、全域動作及鍵盤。 | 原十一能力有對應入口，選取／匯出／返回不退步；不以減少頁數充作功能通過。 |
-| R4 Settings 重分組 | 五類目的導覽；內建／外部來源、平台及授權、原地修復與欄位搜尋。 | UX-01–03／14–16 對等；不改既有設定 ownership／生命週期、不新增雙重開關。 |
-| R5 視覺及全產品驗收 | 字體／間距／狀態／排版／微互動、鍵盤／縮放／語系／HUD。 | 任務量測及適用矩陣有明確結果；沒有以舊候選或 seed 取代真實 producer。 |
+| [C1](contracts/activity-projection.md) | 穩定投影鍵、配對／衝突、來源參照、AI Tool 分類。 | 既有純投影的抽取位置、群組查詢／cursor 實作及效能。 |
+| [C2](contracts/search-coverage.md) | 各內容覆蓋／索引／條件／定位，未涵蓋不等於零筆。 | 既有 FTS／cast／body index 的 metadata 與增量失效處理。 |
+| [C3](contracts/content-viewer.md)／[C4](contracts/evidence-anchor.md) | 有界讀取、Find／Copy／Restore、來源版本與座標精度。 | 沿既有 reader 增補的最小 IPC 型別、chunk 大小及可讀轉換映射。 |
+| [C5](contracts/export-snapshot.md) | 固定 plan／prefix、並行改寫失敗、跨目標錄影明確選取。 | Activity／Session 選取接入既有 ExportPlan，不另寫預覽引擎。 |
+| [C6](contracts/capture-boundaries.md) | Session／專案／暫停生效邊界，Terminal App 的可信身分與 unknown 拒絕。 | 支援 OS 的可信 resolver／生命週期接線；沒有證據就不宣稱可隔離。 |
 
-規格及可丟棄原型可在可靠性驗收等待時進行；主介面替換與擷取後端修正保持可分辨的交付單位，不能為改版混入大批 recorder 改寫。開發拆成可獨立 review 的 bounded change，不要求一次實作全部頁面。
+這些是擬定契約，不是新增 schema、API 已支援或人工驗收已通過的聲明。[追溯表](traceability.md) 指定現有候選責任位置；同一需求由一處 canonical 語意服務多個 surface，不要求新增同名元件／框架。
 
-R3 新導覽落地時同步修訂 `docs/UIUX-STANDARD.md` §5.3 的既有固定順序註記及對應 tests。該標準目前仍描述現行導覽，本份 Draft 不把未實作設計變成已發布行為。`docs/UIUX-CONTROLS-AND-COPY.md` 的少文案規則與既有 domain invariants 持續有效。
+## 5. 四階段交付與退場 gate
+
+| 階段 | 範圍與依賴 | 完成門檻 |
+| --- | --- | --- |
+| S1 Capture Baseline | 沿 #317／#290 收口安裝接入、錄製歸屬、長輸出、恢復、最小讀取與基本匯出；先定 C6、保留 C5 不退步。US1／2 為 P0。 | 真實來源→落盤→重啟讀回→交付；CT-08／09／15／16、UX-01–05 及基本 UX-13／14 通過適用平台。未知 App 不假隔離；#432 不直接合併。 |
+| S2 Activity Core | 依 S1 建 C1／C2，單一日誌、穩定群組、Session、整案查詢、分頁與原事件定位；沿既有 query／cursor。 | CT-01–04／10、UX-06／08／09 及查詢正確性／效能通過；同一原始集合與 cursor 不重複、不漏列。尚未搜尋對等不能移除舊 Search。 |
+| S3 Reading & Evidence | 依 S2 接 C3／C4、完整 I/O／AI 閱讀、長內容定位、片段標記及 C5 Activity／Session 選取與附件政策。 | CT-05–07／11–14、UX-07／10／12／13 通過；預覽／成品／來源相符、跨目標錄影不誤交付。尚未完整閱讀對等不能移除 Transcript。 |
+| S4 Navigation & Polish | 前三階段能力成立後，五主入口、目標／證據整併、Settings 五分類、快捷鍵、窄窗、微互動及全產品走測。 | UX-11／15–19、既有十一能力對照及全部量化／平台矩陣有結果；原生 HUD／焦點須實測，未測不當 PASS。 |
+
+每階段均保留最小視窗、鍵盤、安全呈現及錯誤修復，不把基本可用性拖到最後。S1 的基本匯出使用既有 Event／附件 plan；S3 才新增 Activity／Session 選取，不互相等待。設定重分組屬 S4，但既有授權、保存失敗、來源修復入口屬 S1。
+
+每階段拆為可獨立 review 的 bounded change，前一階段的必要 gate 未通過不能藉導覽／視覺完成繞過；文件與可丟棄原型可並行。前三階段沿既有入口驗證，不以永久雙套查詢作過渡結果。
+
+S4 新導覽落地時同步修訂 `docs/UIUX-STANDARD.md` §5.3 的固定順序與對應測試。該標準目前仍描述現行導覽，本 Draft 不把未實作設計當已發布行為；少文案規則與 domain invariants 持續有效。
 
 ## 6. 文件邊界與未完成事項
 
-本次完成 Specify：需求、UX 契約、驗收標準、現況／分批界線與品質檢查。下一步才是 bounded Plan／Tasks、原型及實作；沒有為此新增 GitHub issue、修改遠端、建立實作分支、merge 或發版。
+本次完成 Specify 及審查補充：53 項需求、六份跨層契約、追溯表、驗收標準、四階段界線與品質檢查。後續已建立 plan／tasks 並開始實作；尚未新增 GitHub issue、修改遠端、merge 或發版。
 
-不得把本份規格套回歷史版本宣稱缺陷都存在，也不得把本地候選變更算成 main 已修復。既有規格／驗收保留其當時版本；新導覽尚未人工驗收，狀態全部 NOT RUN。
+不得把本份規格套回歷史版本宣稱缺陷都存在，也不得把本地候選變更算成 main 已修復。既有規格／驗收保留其當時版本；新導覽尚未人工驗收，整體 UX 矩陣維持 NOT RUN；局部擷取、設定與配對結果另記 verification.md。

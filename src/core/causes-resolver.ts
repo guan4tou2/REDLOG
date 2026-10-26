@@ -157,7 +157,7 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
         // unless the relay said at the time that a background job would keep
         // printing, in which case the late chunks are that command's.
         commandIdMap.delete(commandId)
-        if (data.late_output === true) lateCommandIdMap.set(commandId, id)
+        if (data.late_output === true || data.output_streamed === true) lateCommandIdMap.set(commandId, id)
         const key = shellKey(data)
         if (key) {
           shellStartMap.delete(key)

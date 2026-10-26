@@ -38,6 +38,23 @@ describe('redactEventForExport', () => {
     mockGetSanitizedFields.mockReturnValue({})
   })
 
+  it('removes raw stream bytes together with an explicitly sanitized output field', () => {
+    mockGetSanitizedFields.mockReturnValue({ stdout: '[sanitized]' })
+    const event = mkEvent({ agentType: 'shell', data: { stdout: 'secret', output_body_ref: { sha256: 'raw' }, output_body: { data: 'c2VjcmV0', encoding: 'base64' } } })
+    const result = redactEventForExport(event)!
+    expect(result.data.stdout).toBe('[sanitized]')
+    expect(result.data.output_body_ref).toBeUndefined()
+    expect(result.data.output_body).toBeUndefined()
+    expect(event.data.output_body_ref).toBeDefined()
+  })
+
+  it('scope-masks a raw stream ref even when control-only output has no visible text', () => {
+    const event = mkEvent({ agentType: 'shell', targetId: 'outside.test', data: { stdout: '', output_body_ref: { sha256: 'raw' } } })
+    const result = redactEventForExport(event, { targets: ['inside.test'], excludeTargets: [], personalDomains: [] })!
+    expect(result.data.output_body_ref).toBeUndefined()
+    expect(JSON.stringify(result.data)).not.toContain('raw')
+  })
+
   it('returns event unchanged when no opts', () => {
     const e = mkEvent()
     expect(redactEventForExport(e)).toBe(e)

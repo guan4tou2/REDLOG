@@ -57,7 +57,7 @@ function hoverTitle(
  *  folds for all markers in the result set. Returns the (possibly adjusted)
  *  rows and the fold map. */
 const isLateChunk = (e: RedLogEvent): boolean =>
-  e.agentType === 'shell' && e.data.subtype === 'command_output' && e.data.late === true && typeof e.data.command_id === 'string'
+  e.agentType === 'shell' && e.data.subtype === 'command_output' && (e.data.late === true || e.data.streamed === true) && typeof e.data.command_id === 'string'
 
 /** A hit inside what a background command printed after its prompt came back is
  *  a hit on that command. The follow-up rows are hidden from the Timeline, so

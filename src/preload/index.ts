@@ -144,7 +144,7 @@ const api: RedLogAPI = {
     readCastRange: (castRel: string, off: number, len: number) =>
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
-    commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<RedLogEvent[]>,
+    commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<import('../core/db/events').CommandOutputPage>,
     commandEnds: (commandIds: string[]) => ipcRenderer.invoke('events:commandEnds', commandIds) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
@@ -262,6 +262,7 @@ const api: RedLogAPI = {
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
     terminalPolicy: () => ipcRenderer.invoke('hooks:terminalPolicy'),
+    setTerminalApp: (value: string) => ipcRenderer.invoke('hooks:setTerminalApp', value),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },

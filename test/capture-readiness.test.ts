@@ -33,7 +33,7 @@ function health(sources: ReadinessSource[], _over: Record<string, unknown> = {})
 // plus the operator's own shell once the hook is installed — and the agent
 // tailer for AI agents. The two terminals are one source because they are one
 // capture in two places; which one a command came from is on the command.
-const CORE = ['terminal', 'agent-claude-code', 'agent-codex', 'agent-opencode']
+const CORE = ['terminal', 'agent-claude-code', 'agent-codex']
 
 describe('computeCaptureReadiness', () => {
   it('is dark with a clear first step when nothing is wired', () => {
@@ -167,8 +167,7 @@ describe('computeCaptureReadiness', () => {
     const h = health([
       src('terminal', { hookId: 'shell-zsh', installed: true, state: 'ready', lastEventAt: null }),
       src('agent-claude-code', { enabled: true, state: 'ready' }),
-      src('agent-codex', { enabled: true, state: 'ready' }),
-      src('agent-opencode', { enabled: true, state: 'ready' })
+      src('agent-codex', { enabled: true, state: 'ready' })
     ], { verdict: 'partial' })
 
     const r = computeCaptureReadiness(h)

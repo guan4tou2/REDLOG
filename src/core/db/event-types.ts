@@ -22,6 +22,9 @@ export interface RedLogEvent {
   tier: EventTier
 }
 
+/** A bounded output preview; exporting uses the full snapshot selection. */
+export interface CommandOutputPage { items: RedLogEvent[]; hasMore: boolean }
+
 /** v0.13.0 tier identifiers. `chained` and `logged` name the two DB tables;
  *  `all` is the IPC / UI query filter that means "both". Exported so
  *  main / preload / renderer share one source of truth for the string
