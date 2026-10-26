@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, act } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { BookmarksView } from '../src/renderer/src/components/BookmarksView'
 import { formatDateTime } from '../src/renderer/src/lib/time'
@@ -66,4 +66,34 @@ describe('empty bookmarks', () => {
     fireEvent.click(capture)
     expect(await screen.findByRole('textbox', { name: /Title/i })).toBeTruthy()
   })
+})
+
+it('returns to the narrow list without losing search, selection, scroll or an editing draft', async () => {
+  let width = 600
+  let resized = () => {}
+  vi.spyOn(HTMLElement.prototype,'clientWidth','get').mockImplementation(()=>width)
+  vi.stubGlobal('ResizeObserver',class {
+    constructor(callback:()=>void) { resized=callback }
+    observe() {} disconnect() {}
+  })
+  window.redlog.bookmarks.list = vi.fn(async()=>[...marks,...Array.from({length:8},(_,i)=>({...marks[0],id:`extra-${i}`,title:`Other ${i}`}))])
+  try {
+    render(<I18nProvider><BookmarksView /></I18nProvider>)
+    const search = await screen.findByPlaceholderText('Search bookmarks (title / URL / note)')
+    fireEvent.change(search,{target:{value:'mark'}})
+    const list = screen.getByRole('listbox')
+    list.scrollTop=48; fireEvent.scroll(list)
+    fireEvent.click(screen.getByText('Current mark'))
+    fireEvent.click(await screen.findByRole('button',{name:'Edit',exact:true}))
+    const note=screen.getByRole('textbox',{name:'Note'})
+    fireEvent.change(note,{target:{value:'unsaved draft'}})
+    fireEvent.click(screen.getByRole('button',{name:'Back to bookmarks'}))
+    expect((search as HTMLInputElement).value).toBe('mark')
+    expect(list.scrollTop).toBe(48)
+    fireEvent.click(screen.getByText('Current mark'))
+    expect((screen.getByRole('textbox',{name:'Note'}) as HTMLTextAreaElement).value).toBe('unsaved draft')
+    act(() => { width=1200; resized() })
+    expect(screen.queryByRole('button',{name:'Back to bookmarks'})).toBeNull()
+    expect((screen.getByRole('textbox',{name:'Note'}) as HTMLTextAreaElement).value).toBe('unsaved draft')
+  } finally { vi.restoreAllMocks(); vi.unstubAllGlobals() }
 })

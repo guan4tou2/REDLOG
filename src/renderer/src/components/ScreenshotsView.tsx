@@ -167,7 +167,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             ))}
           </div>
         )}
-        <div className="grid grid-cols-3 gap-2">
+        <div data-testid="screenshot-grid" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-2">
           {screenshots.map((s) => (
             <div
               key={s.id}

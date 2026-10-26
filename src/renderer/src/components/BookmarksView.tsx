@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useId } from 'react'
+import { useContainerWidth } from '../hooks/useContainerWidth'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
@@ -25,6 +26,18 @@ function readPinned(): string[] {
 }
 
 export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
+  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
+  const narrow = containerWidth !== null && containerWidth < 720
+  const [detailOpen, setDetailOpen] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const listPosition = useRef(0)
+  const selectedRow = useRef<HTMLButtonElement | null>(null)
+  useLayoutEffect(() => {
+    if (narrow && !detailOpen && listRef.current) {
+      listRef.current.scrollTop = listPosition.current
+      selectedRow.current?.focus({ preventScroll: true })
+    }
+  }, [narrow, detailOpen])
   const [marks, setMarks] = useState<Bookmark[]>([])
   const [selected, setSelected] = useState<Bookmark | null>(null)
   const [creating, setCreating] = useState(false)
@@ -75,7 +88,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   // an operator asks of a finding more often than any other.
   const listNav = useListKeyboard({
     count: visibleMarks.length,
-    onActivate: (i) => { const m = visibleMarks[i]; if (m) { setSelected(m); setCreating(false) } },
+    onActivate: (i) => { const m = visibleMarks[i]; if (m) { setSelected(m); setCreating(false); setDetailOpen(true) } },
     onJumpToTimeline: (i) => { const m = visibleMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
     onEscape: () => setSelected(null)
   })
@@ -106,12 +119,13 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
     const tab = await window.redlog.cdp.getTab()
     setBrowserTab(tab)
     setCreating(true)
+    setDetailOpen(true)
     setSelected(null)
   }
 
   return (
-    <div className="flex h-full">
-      {(marks.length > 0 || !creating) && <div className={`${marks.length > 0 ? 'w-80 shrink-0 border-r border-redlog-border' : 'flex-1 min-w-0'} flex flex-col`}>
+    <div ref={containerRef} data-testid="bookmarks-workspace" className="flex h-full min-w-0">
+      {(marks.length > 0 || !creating || (narrow && !detailOpen)) && <div hidden={narrow && detailOpen} className={`${marks.length > 0 && !narrow ? 'w-80 shrink-0 border-r border-redlog-border' : 'flex-1 min-w-0'} flex flex-col`}>
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
@@ -145,7 +159,9 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             />
           </div>
         )}
-        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
+        <div ref={listRef} onScroll={() => {
+          if (!narrow || !detailOpen) listPosition.current = listRef.current?.scrollTop ?? 0
+        }} className="flex-1 min-h-0 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
           {visibleMarks.map((m, i) => {
             const isPinned = pinned.has(m.id)
             const rowProps = listNav.itemProps(i)
@@ -153,8 +169,11 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               <button
                 key={m.id}
                 {...rowProps}
-                ref={(el) => rowProps.ref(el)}
-                onClick={() => { rowProps.onClick(); setSelected(m); setCreating(false) }}
+                ref={(el) => {
+                  rowProps.ref(el)
+                  if (m.id === selected?.id) selectedRow.current = el
+                }}
+                onClick={() => { rowProps.onClick(); setSelected(m); setCreating(false); setDetailOpen(true) }}
                 className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-redlog-accent/50 ${
                   selected?.id === m.id ? 'bg-redlog-elevated' : ''
                 }`}
@@ -181,7 +200,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
                 icon={Flag}
                 title={t('bookmarks.empty')}
                 reason={t('bookmarks.emptyReason')}
-                action={{ label: t('bookmarks.quickCapture'), onClick: () => setCreating(true) }}
+                action={{ label: t('bookmarks.quickCapture'), onClick: () => { setCreating(true); setDetailOpen(true) } }}
               />
             ) : (
               <div className="p-4 text-xs text-redlog-text-faint text-center">
@@ -192,28 +211,37 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         </div>
       </div>}
 
-      {(marks.length > 0 || creating) && <div className="min-w-0 flex-1 overflow-auto p-pad">
+      {(marks.length > 0 || creating) && <div hidden={narrow && !detailOpen} data-testid="bookmark-detail-pane" className="min-w-0 flex-1 overflow-auto p-pad">
+        {narrow && detailOpen && (
+          <Button data-testid="bookmarks-back" size="compact" level="quiet" onClick={() => setDetailOpen(false)}>
+            <ChevronLeft size={14} aria-hidden />{t('bookmarks.backToList')}
+          </Button>
+        )}
         {creating && (
           <BookmarkForm
             browserTab={browserTab}
-            onSave={() => { setCreating(false); refresh() }}
-            onCancel={() => setCreating(false)}
+            onSave={() => { setCreating(false); setDetailOpen(false); refresh() }}
+            onCancel={() => { setCreating(false); setDetailOpen(false) }}
           />
         )}
         {selected && !creating && (() => {
           const idx = visibleMarks.findIndex((m) => m.id === selected.id)
           return (
             <BookmarkDetail
+              key={selected.id}
               mark={selected}
               onUpdate={() => { refresh(); window.redlog.bookmarks.get(selected.id).then((m) => m && setSelected(m)) }}
-              onDelete={() => { setSelected(null); refresh() }}
+              onDelete={() => { setSelected(null); setDetailOpen(false); refresh() }}
               onOpenInTimeline={onOpenInTimeline}
               isPinned={pinned.has(selected.id)}
               onTogglePin={() => togglePin(selected.id)}
               onStep={(d) => { const n = visibleMarks[idx + d]; if (n) setSelected(n) }}
               canStepPrev={idx > 0}
               canStepNext={idx >= 0 && idx < visibleMarks.length - 1}
-              onClose={() => setSelected(null)}
+              onClose={() => {
+                setDetailOpen(false)
+                if (!narrow) { setSelected(null); selectedRow.current = null }
+              }}
             />
           )
         })()}

@@ -201,6 +201,7 @@
   "bookmarks.capture": "+ Capture",
   "bookmarks.pin": "Pin this bookmark to the top",
   "bookmarks.unpin": "Unpin this bookmark",
+  "bookmarks.backToList": "Back to bookmarks",
   "bookmarks.searchPlaceholder": "Search bookmarks (title / URL / note)",
   "bookmarks.noSearchMatches": "No bookmarks match \"{{query}}\"",
   "loot.complete": "Complete loaded set",
