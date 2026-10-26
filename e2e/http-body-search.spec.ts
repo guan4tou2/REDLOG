@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
-test('Search opens indexed Activity output and returns from original evidence without losing the query', async () => {
+test('Search opens indexed Activity output and returns from original evidence without losing the query', async ({}, testInfo) => {
   test.setTimeout(120_000)
   const tmpHome = makeTempHome('redlog-body-search-')
   const app = await electron.launch({
@@ -50,7 +50,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.locator('pre')).not.toContainText(marker)
     await page.getByRole('button', { name: 'Next window' }).click()
     await expect(page.locator('pre mark')).toHaveText(marker)
-    await page.screenshot({path:'/private/tmp/redlog-064-activity-desktop.png'})
+    await page.screenshot({path:testInfo.outputPath('activity-desktop.png')})
     await page.getByRole('button', { name: 'Open original event' }).click()
     await expect(page.getByTestId('search-input')).toBeHidden()
     await page.getByRole('button', { name: /Back to Search/ }).click()
@@ -59,7 +59,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.setViewportSize({ width: 800, height: 700 })
     await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-    await page.screenshot({path:'/private/tmp/redlog-064-activity-narrow.png'})
+    await page.screenshot({path:testInfo.outputPath('activity-narrow.png')})
     const aiMarker = 'AI-SAVED-RESULT-482'
     for (const data of [
       {subtype:'tool_call',agent:'claude-code',session_id:'activity-ai',tool_use_id:'tool-ai',tool_name:'Bash',tool_input:{command:'printf sample'}},

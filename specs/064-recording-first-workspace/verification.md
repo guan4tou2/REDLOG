@@ -169,3 +169,9 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 - 大量輸出測試在 Windows 超過原 15 秒預算。前置資料逐筆自動提交，包含 2005 筆 chunk；改為一個批次 transaction 建立同一資料集。520 筆查詢、505 對 HTTP fixture 亦改批次；預覽後的新增資料仍在獨立 transaction，2006 筆交付及快照排除斷言不變。不改產品 SQLite durability 設定、不延長 testTimeout、不跳過 Windows。
 - 修正後兩檔 8 passed；本機長輸出案例 671 → 367 ms、整批 2.41 → 1.20 秒（含 RED／GREEN 執行差異，僅作前置成本參考，不當 Windows 效能證明）。Log：`/private/tmp/redlog-444-export-ci-red.log`、`/private/tmp/redlog-444-export-ci-green.log`。
 - 來源提交 `8768c5c0` 五道 gates 全通過，unit **4330 passed／28 skipped**；production build 通過，單一 Electron App 的匯出操作 **8 passed、0 skipped／flaky**，6.22 秒（含附件 Space 勾選、焦點、小視窗、預覽／執行、失敗重試及成品找回）。Logs：`/private/tmp/redlog-444-export-ci-unit.log`、`/private/tmp/redlog-444-export-ci-build.log`；report：`/private/tmp/redlog-444-export-ci-e2e.json`。Electron 後已恢復 Node SQLite ABI。新的 Windows CI 通過前不宣稱已在 Windows 驗收完成。
+
+
+### Linux E2E artifact path follow-up
+
+- Head `6632a486` 的三平台 unit 與兩項 package／install smoke 全部通過。CI 完整 E2E：157 passed、7 skipped、1 failed；失敗是新增 Activity workflow 將畫面截圖寫到 macOS 專用 `/private/tmp`，Linux runner 無此路徑。匯出焦點及其他操作已通過，不將此次腳本錯誤描述成產品讀取失敗。
+- 改為 `testInfo.outputPath()` 儲存 desktop／narrow 圖片，留在 Playwright 每次測試的成品目錄，隨既有 CI `test-results/` artifact 上傳。保留原來所有操作、結果及版面斷言，不跳過 Linux 或取消截圖。
