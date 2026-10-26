@@ -175,3 +175,5 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 
 - Head `6632a486` 的三平台 unit 與兩項 package／install smoke 全部通過。CI 完整 E2E：157 passed、7 skipped、1 failed；失敗是新增 Activity workflow 將畫面截圖寫到 macOS 專用 `/private/tmp`，Linux runner 無此路徑。匯出焦點及其他操作已通過，不將此次腳本錯誤描述成產品讀取失敗。
 - 改為 `testInfo.outputPath()` 儲存 desktop／narrow 圖片，留在 Playwright 每次測試的成品目錄，隨既有 CI `test-results/` artifact 上傳。保留原來所有操作、結果及版面斷言，不跳過 Linux 或取消截圖。
+
+- `ee9f41ff` 五道 gates 通過，unit **4330 passed／28 skipped**；build 通過。修正後 Activity workflow **1 passed、0 skipped／flaky**（5.84 秒），desktop／narrow 圖片實際產生於 `test-results/http-body-search-*/`。Logs：`/private/tmp/redlog-444-portable-e2e-unit.log`、`/private/tmp/redlog-444-portable-e2e-build.log`；report：`/private/tmp/redlog-444-portable-e2e-local.json`。Electron 後已恢復 Node SQLite ABI；完整 Linux CI 結果仍須讀新 head，不能沿用本機或舊 head 的綠燈。
