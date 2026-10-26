@@ -17,9 +17,9 @@ AI 僅 Claude Code、Codex，依此順序；離線可選套件預設未安裝、
 
 規格的操作契約在 [ux-contract.md](ux-contract.md)，驗收在 [acceptance.md](acceptance.md)。[implementation-notes.md](implementation-notes.md) 記錄現況、既有能力、依賴與分批界線；不把建議當成已實作。
 
-新增的跨層契約依序為 [C1 Activity／工具分類](contracts/activity-projection.md)、[C2 搜尋覆蓋](contracts/search-coverage.md)、[C3 Content Viewer](contracts/content-viewer.md)、[C4 證據錨點](contracts/evidence-anchor.md)、[C5 匯出快照](contracts/export-snapshot.md)、[C6 擷取邊界／Terminal App](contracts/capture-boundaries.md)。[需求追溯表](traceability.md) 將全部 FR 對應既有元件／資料契約、驗收案例及交付階段；[契約案例](contract-acceptance.md) 全為 NOT RUN。
+新增的跨層契約依序為 [C1 Activity／工具分類](contracts/activity-projection.md)、[C2 搜尋覆蓋](contracts/search-coverage.md)、[C3 Content Viewer](contracts/content-viewer.md)、[C4 證據錨點](contracts/evidence-anchor.md)、[C5 匯出快照](contracts/export-snapshot.md)、[C6 擷取邊界／Terminal App](contracts/capture-boundaries.md)。[需求追溯表](traceability.md) 將全部 FR 對應既有元件／資料契約、驗收案例及交付階段；[契約案例](contract-acceptance.md) 的局部 query／來源驗證與未完成項目見 verification.md；端到端尚未完成。
 
-新增契約細化原有需求，不重編 FR-001–045，也不聲稱 API、索引或可信 Terminal App 辨識已完成。
+新增契約細化原有需求，不重編 FR-001–045，也不將局部 API／索引與 macOS 來源驗證當成完整工作區或全平台完成。
 
 
 ## User Scenarios & Testing *(mandatory)*

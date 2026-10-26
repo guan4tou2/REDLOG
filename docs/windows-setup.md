@@ -15,7 +15,7 @@
 1. 在 RedLog 建立專案，保持專案開啟。
 2. 從首次畫面「記我的 PowerShell 終端」，或「設定 → 指令與終端」接入。
 3. 開一個**新的終端分頁**，執行 App 顯示的測試指令。原本已開啟的分頁不會自動重載設定。
-4. 若只想記錄特定終端 App，在「指令與終端」選擇它，再開新分頁。指定 App 時，其他或無法識別的終端不記錄。這與 PowerShell／Bash／Zsh 的選擇分開。
+4. Windows 目前未提供可驗證的 Terminal App 限定；接入 PowerShell 不代表能限定只記 Windows Terminal 或 Warp。以你實際接入並驗證的 Shell 環境為準。
 5. 確認 App 收到指令；需要保存 PowerShell 輸出時，在「指令與終端」啟用對應的 Windows 輸出來源，核對實際輸出後再開始工作。
 
 Windows PowerShell 5.1 與 PowerShell 7 是不同環境，profile 可能不同。你實際使用的那個環境必須收到測試紀錄，不能借用另一個 shell 的驗證結果。若執行原則阻擋 profile，依 App 顯示的原因處理；組織原則可能需管理者核准。
