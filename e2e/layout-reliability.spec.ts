@@ -13,12 +13,17 @@ const host = `${'long-target-'.repeat(12)}example.test`
 const projectName = `Layout ${'long-project-name-'.repeat(8)}`
 
 async function noOverflow(page: Page, selector: string): Promise<void> {
-  await expect.poll(() => page.locator(selector).evaluate(el => el.scrollWidth <= el.clientWidth + 2 && el.getBoundingClientRect().right <= innerWidth + 2)).toBe(true)
+  await expect.poll(() => page.locator(selector).evaluate(el => ({
+    overflows: el.scrollWidth > el.clientWidth + 2 || el.getBoundingClientRect().right > innerWidth + 2,
+    scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+    right: el.getBoundingClientRect().right, viewport: innerWidth
+  }))).toMatchObject({ overflows: false })
 }
 
 test('five workspaces remain usable across native size, zoom and language changes', async ({}, info) => {
   test.setTimeout(240_000)
   const { app, page, tmpHome } = await launchWithTempHome()
+  const win = await app.browserWindow(page)
   try {
     await page.evaluate(() => {
       localStorage.setItem('redlog-locale', 'en')
@@ -56,7 +61,6 @@ test('five workspaces remain usable across native size, zoom and language change
       writeFileSync(filePath, png)
       await seed('screenshot', { filePath, filename: `layout-${i}.png`, trigger: 'manual' })
     }
-    const win = await app.browserWindow(page)
     const matrix: unknown[] = []
     let locale = 'en'
     async function fit(width: number, height: number, zoom: number) {
@@ -69,7 +73,7 @@ test('five workspaces remain usable across native size, zoom and language change
     async function matrixFor(name: string, check: () => Promise<void>) {
       for (const [width, height] of sizes) for (const zoom of zooms) {
         await fit(width, height, zoom)
-        await check()
+        await test.step(`${locale} ${name}: ${width}×${height} @${zoom * 100}%`, check)
         matrix.push({ locale, name, width, height, zoom, result: 'pass' })
         // Every size/zoom has an actual Electron screenshot for inspection.
         const capture = await win.evaluate(async w => (await w.capturePage()).toPNG().toString('base64'))
@@ -206,7 +210,9 @@ test('five workspaces remain usable across native size, zoom and language change
     expect(matrix).toHaveLength(120)
   } catch (error) {
     console.error('[layout-reliability]', (error as Error).message)
-    await page.screenshot({ path: info.outputPath('failure.png') }).catch(() => {})
+    await win.evaluate(async w => (await w.capturePage()).toPNG().toString('base64'))
+      .then(data => writeFileSync(info.outputPath('failure.png'), Buffer.from(data, 'base64')))
+      .catch(() => {})
     throw error
   } finally {
     // Bounded teardown keeps the original assertion visible if shutdown fails.

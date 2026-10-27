@@ -59,7 +59,7 @@ test.describe.serial('target focus on the timeline', () => {
   })
 
   test('the chip clears it', async () => {
-    await chip().getByRole('button', { name: 'Clear' }).click()
+    await page.getByRole('button', { name: 'Clear Target: 10.10.11.24', exact: true }).click()
     await expect(chip()).toHaveCount(0)
   })
 
