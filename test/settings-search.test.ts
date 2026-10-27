@@ -26,6 +26,19 @@ describe('settings search', () => {
     expect(hits.some(h => h.key === 'httpCapture.caReady' && h.text.includes('CA'))).toBe(true)
     expect(hits.some(h => h.text.includes('{{') || /WSL|cargo|calendar|localhost/.test(h.text))).toBe(false)
   })
+  it('offers each platform only the HUD settings and wording it renders', () => {
+    // Found in Windows acceptance: a search for HUD offered the Dock icon and
+    // ⌘⇧P, neither of which exists there.
+    const win = searchSettings('HUD', tr(zh), 30, 'win32')
+    expect(win.some(h => /Dock|⌘|選單列|macOS/.test(h.text))).toBe(false)
+    expect(win.some(h => h.text.includes('Ctrl+Shift+P'))).toBe(true)
+    expect(searchSettings('Dock', tr(en), 30, 'linux')).toEqual([])
+    expect(searchSettings('SSID', tr(en), 30, 'win32')).toEqual([])
+    const mac = searchSettings('HUD', tr(zh), 30, 'darwin')
+    expect(mac.some(h => h.text.includes('⌘⇧P'))).toBe(true)
+    expect(mac.some(h => /系統匣|Ctrl\+Shift\+P/.test(h.text))).toBe(false)
+    expect(searchSettings('Dock', tr(en), 30, 'darwin').length).toBeGreaterThan(0)
+  })
   it('has an index entry for every key each page renders — regenerate with npm run gen:settings-search', () => {
     for (const page of Object.keys(PAGE_SOURCES)) {
       expect({ page, keys: SETTINGS_SEARCH_KEYS[page as keyof typeof SETTINGS_SEARCH_KEYS] })
