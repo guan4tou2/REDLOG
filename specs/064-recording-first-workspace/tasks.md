@@ -84,3 +84,9 @@ T021 的核心實作已完成。T012–T018、T020／T022／T023 仍為複合任
 - [x] T036 本批 native 視窗／高縮放／雙語實際截圖及相關回歸驗收；記錄具體覆蓋與未完成 gate。
 
 T014／T018 僅新增閱讀入口整合，不將 Session 完整選擇、Markdown／raw 座標映射、所有檔案索引及 S2／S3 contract 矩陣宣告完成。T025 主導覽退場仍等待原定 parity gate；本批不藉由減少選單繞過 gate。
+
+## 2026-10-27 — Windows internal candidate
+
+- [x] T037 將 shared reading workspace、無專案時不包 PTY 指令、#432 剩餘的 first-run mock 修正合成單一候選 `integrate/spec064-internal`；在 Windows 跑四道 gate、完整 unit、WSL 完整 e2e、NSIS 打包與 installed smoke，失敗項以 main 同環境對照，記 verification.md。
+
+T037 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShell 接入 canary、閱讀模式、DPI）。那些及 T004／T008 的 Windows 列仍 NOT RUN。

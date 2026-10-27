@@ -320,3 +320,27 @@ Same isolated source-build process, synthetic Shell and Claude events, Tradition
 - Quit the isolated App through Cmd+Q. CUA returned `App quit`. No user shell profile, official project, system proxy preference or system CA was changed. The source window used E2E mode for synthetic seeding, so this quit is cleanup, not a replacement for production native-exit acceptance.
 
 T036 is complete for this bounded UI integration. The broader compound tasks and unsupported/unrun platform and user studies remain unchanged; this does not upgrade the whole Spec to Verified.
+
+
+## 2026-10-27 — Windows internal candidate `42601438`
+
+Product commit `4260143897ffe732b61662c4ae2cc483e1db243d` on `integrate/spec064-internal`: `main/37b6d74f` + `codex/recording-workspace-integration` (e7dbf331) + `codex/session-without-project` (960ff12c) + the part of `fix/windows-followups` (#432) not already on main — only the first-run rejected-start mock. Its WSL token probe and stdin payload reached main separately. This record is a docs-only commit on top; the installer was not rebuilt for it.
+
+Host: Windows 11 Pro 26300 x64, Node 22.23.1; e2e in WSL kali-linux under `xvfb-run`, as CI does.
+
+### Gates and suites
+
+- `typecheck`, `verify:specs`, `verify:architecture` (341 files), `verify:i18n` (9 removed strings, none asserted): passed on Windows.
+- Unit, Windows: **4,191 passed / 51 failed / 148 skipped** (435 files, 443 s). All 51 failures are in 10 files that drive zsh through `wsl -d kali-linux` (`zsh-*.pty`, `zsh-builtin-source`, `zsh-divert-missing-pts`, `zsh-pty-harness`, `relay-contract`); every other file passed. Rerun alone: same 10 files fail. Run natively inside kali (no `wsl.exe` hop) they fail too, and `zsh-pty-harness`/`zsh-redlog-command`/`relay-contract` fail **15/25 on both main `37b6d74f` and this candidate**. Main CI (ubuntu unit + e2e) is green on `37b6d74f`. The likely cause is `WSL_DISTRO_NAME` steering the hook to the Windows profile (`hooks/shell-common.sh`) instead of the harness collector; not proven. Counted as environment, **not** as a pass.
+- e2e, full suite in WSL: **150 passed / 3 failed / 7 skipped** (12.2 min). The 3 failures — `dependency-cancel` (prepare button never clickable), `export-preview:26` (`record-terminal-verified` absent), one `layout-reliability` bookmarks scroll case at 200% (size combination differs per run) — reproduce alone with `--retries=0`, and reproduce identically on main `37b6d74f` in the same distro. Not regressions of this candidate; also not a pass.
+
+### Windows package
+
+- Local VS 2026 lacks the Spectre-mitigated libraries (MSB8040), so `node-pty` cannot rebuild from source here. Packaged with `-c.npmRebuild=false`: `node-pty` 1.1.0 loads its N-API prebuild, `better-sqlite3` 13 is N-API. This differs from CI packaging, which rebuilds; the PR's `Windows install smoke` artifact is the authoritative installer.
+- `RedLog.Setup-0.18.3-internal-42601438.exe` SHA-256 `d9355641411b7f1c715b05ce2daab646771ed593e69aa2a54c2c6787391b2e87`; `app.asar` SHA-256 `71411e2a72223c90706c58402e2b6021406e56dff7aaaa7deef746ef0743fac2`. Not committed.
+- `verify:package-resources` passed on `dist/win-unpacked`.
+- `npm run e2e:smoke` against `dist/win-unpacked/RedLog.exe`, `REDLOG_EXPECTED_BUILD=42601438`: **1 passed**, strict report: no skipped tests or not-exercised steps. `packaged-session-smoke` is POSIX-only and skipped on win32 by design.
+
+### NOT RUN
+
+Silent install/uninstall on this machine (CI does it on a clean runner), native manual Windows interaction — PowerShell enrollment canary, the three reading modes, Settings five groups, display DPI — and T004/T008 Windows rows. The local Windows→WSL zsh harness needs its own fix before it can say anything about the adapter on this host.
