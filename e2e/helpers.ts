@@ -188,3 +188,13 @@ export async function resizeMainWindow(
     main.setSize(size.width, size.height)
   }, { width, height })
 }
+
+/** Check identity in the already-running app; never launch another window just
+ * to inspect its build. The caller chooses where to navigate afterwards. */
+export async function expectAppBuild(app: ElectronApplication, page: Page, expected?: string): Promise<void> {
+  if (!expected) return
+  const version = await app.evaluate(({app}) => app.getVersion())
+  await openView(page,'settings')
+  await openSettingsPage(page,'about')
+  await expect(page.getByText(`RedLog v${version} · ${expected}`,{exact:true})).toBeVisible()
+}

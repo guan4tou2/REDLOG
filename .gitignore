@@ -15,3 +15,6 @@ __pycache__/
 # PowerShell drops this beside the working directory when the sandboxed
 # shell runs; it is a binary cache of module metadata, not project state.
 Microsoft/
+
+# electron-vite bundles its ESM config here while evaluating build identity.
+/electron.vite.config.[0-9]*.mjs

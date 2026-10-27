@@ -139,7 +139,7 @@ test.describe.serial('the first run', () => {
     await openTestProject(page, 'first-run')
     if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({ app }) => app.isPackaged)).toBe(true)
     await openCaptureProof(page)
-    await page.waitForTimeout(2000)
+    await expect(page.getByTestId('first-run-record-terminal')).toBeVisible()
     await resizeMainWindow(app, 1500, 1000)
   })
 
@@ -254,10 +254,9 @@ test.describe.serial('the first run', () => {
 
   test('hands over to the real dashboard, and does not come back', async () => {
     await page.reload()
-    await page.waitForTimeout(2500)
     await openView(page, 'dashboard')
-    await page.waitForTimeout(1000)
-    expect(await page.locator('[data-testid="first-run-strip"]').count()).toBe(0)
+    await expect(page.getByTestId('capture-open-setup')).toBeVisible()
+    await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
   })
 
   test('the dashboard capture button opens terminal source settings and loses no evidence', async () => {
@@ -292,13 +291,13 @@ test.describe.serial('the first run', () => {
       ((await (window as unknown as { redlog: { terminal: { list: () => Promise<Array<{ pid: number }>> } } })
         .redlog.terminal.list()) ?? []).map((s) => s.pid))
     await openView(page, 'terminal')
-    await page.waitForTimeout(2000)
+    await expect.poll(pids).toHaveLength(1)
     const first = await pids()
+    await expect(page.getByTestId('view-root').getByText(String(first[0]), {exact:true})).toBeVisible()
     expect(first.length).toBe(1)
     await openView(page, 'timeline')
-    await page.waitForTimeout(800)
     await openView(page, 'terminal')
-    await page.waitForTimeout(2000)
-    expect(await pids(), 'a second shell was spawned').toEqual(first)
+    await expect(page.getByTestId('view-root').getByText(String(first[0]), {exact:true})).toBeVisible()
+    await expect.poll(pids, {message:'a second shell was spawned'}).toEqual(first)
   })
 })
