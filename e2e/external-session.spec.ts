@@ -28,7 +28,9 @@ test('external PTY output remains searchable and exportable while paused', async
     await openView(page, 'search')
     await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('external-pty-canary')
-    await expect(page.getByText(/PTY #1: external-pty-canary/)).toBeVisible()
+    // Visited readers stay mounted while hidden, so the same title also exists
+    // in the Activity tab; the raw event row is the one this tab shows.
+    await expect(page.getByRole('option').filter({ hasText: /PTY #1: external-pty-canary/ })).toBeVisible()
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()
