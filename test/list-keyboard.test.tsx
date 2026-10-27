@@ -135,11 +135,15 @@ describe('every list view uses the shared contract', () => {
   const COMPONENTS = path.join(__dirname, '../src/renderer/src/components')
 
   /** Include workspace subpages, not just the six primary Sidebar entries. */
-  const sidebarViews = fs
-    .readFileSync(path.join(__dirname, '../src/renderer/src/lib/sidebarOrder.ts'), 'utf-8')
-    .match(/export type SidebarViewId\s*=([\s\S]*?)\n\n/)?.[1]
-    .match(/'(\w+)'/g)
-    ?.map((q) => q.slice(1, -1)) ?? []
+  const sidebarSource = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/sidebarOrder.ts'), 'utf-8')
+  const discoverViews = (source:string):string[] => source
+    .match(/export type SidebarViewId\s*=([\s\S]*?)\r?\n\r?\n/)?.[1]
+    .match(/'(\w+)'/g)?.map((q) => q.slice(1, -1)) ?? []
+  const sidebarViews = discoverViews(sidebarSource)
+  it.each(['\n','\r\n'])('discovers the same routes with %j line endings',(ending)=>{
+    expect(discoverViews(sidebarSource.replace(/\r?\n/g,ending))).toEqual(sidebarViews)
+    expect(sidebarViews.length).toBeGreaterThanOrEqual(9)
+  })
 
   // Surfaces with no row list to move through. Each is a deliberate opt-out,
   // not an oversight — which is the difference this rewrite is for.

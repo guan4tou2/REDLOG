@@ -122,6 +122,9 @@ export async function openView(page: Page, view: string): Promise<void> {
     await page.locator(`[data-view-btn="${view==='scope'?'targets':'screenshots'}"]`).first().click()
     await page.locator(`[data-view-btn="${view}"]`).click()
   }else{
+    // The global palette deliberately yields to text editing. Move focus to
+    // the current navigation control rather than changing that product rule.
+    await page.locator('nav [aria-current="page"]').focus()
     await page.keyboard.press(process.platform==='darwin'?'Meta+k':'Control+k')
     await page.locator(`[data-command-id="nav:${view}"]`).click()
   }
