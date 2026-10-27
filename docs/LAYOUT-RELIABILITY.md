@@ -64,3 +64,13 @@ HTTP 和 Screenshots 沿用共同載入元件；載入狀態有可讀名稱。
 最終狀態 journey 已通過（7.3秒）；發現截圖載入只有無文字 spinner，已統一使用共用載入名稱。截圖保存於 `test-results/layout-read-states-*/`。這不是擷取 producer 或原生系統權限驗收。
 
 後續推送前五道檢查全部通過，完整 unit 為 4,342 passed / 28 skipped（134.94s）；production build 通過。
+
+## Linux CI closeout
+
+PR #445 首次 Linux E2E 發現日期時間原生輸入欄位在窄容器仍超寬，以及舊 Target 清除測試依賴 chip 文字外層結構。
+日期欄位與時間預設改為換行並限制欄寬；清除測試直接使用既有可及名稱，維持清除行為驗證。
+矩陣失敗現在回報實際容器／捲動寬度與具體尺寸、語言、縮放，避免只有布林逾時。
+本機集中版面與 Target 跳轉／清除共5項 Electron 測試通過（35.4秒）。
+推送前五道檢查再次通過，unit 4,341 passed / 28 skipped（122.08秒）。失敗截圖也改用 Electron 原生擷取，避免高縮放失敗畫面被瀏覽器截圖裁切。
+
+同步至狀態恢復分支後，兩段文件均保留；再次依序通過五道檢查，4,342 passed / 28 skipped（124.24秒），未略過或放寬測試。
