@@ -222,6 +222,30 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     }
   })
 
+  it('runs automatic commands unchanged without a project, but explains an explicit recording refusal', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-no-project-'))
+    const dir = path.join(home, '.redlog')
+    fs.mkdirSync(dir)
+    // These survive app shutdown; their presence does not mean a project is open.
+    fs.writeFileSync(path.join(dir, 'api-port'), '1')
+    fs.writeFileSync(path.join(dir, 'api-token'), 'test-token')
+    const env = { ...process.env, HOME: home, REDLOG_EXTERNAL_SESSION: '' }
+    try {
+      const command = ['--', '/bin/sh', '-c', 'printf OUTPUT; printf ERROR >&2; exit 7']
+      const automatic = spawnSync('python3', ['hooks/redlog-session.py', '--best-effort', ...command], { env, encoding: 'utf8' })
+      expect(automatic.status).toBe(7)
+      expect(automatic.stdout).toBe('OUTPUT')
+      expect(automatic.stderr).toBe('ERROR')
+      const explicit = spawnSync('python3', ['hooks/redlog-session.py', ...command], { env, encoding: 'utf8' })
+      expect(explicit.status).toBe(1)
+      expect(explicit.stdout).toBe('')
+      expect(explicit.stderr).toBe('[redlog] session not started: open a RedLog project first\n')
+      expect(fs.readdirSync(dir).sort()).toEqual(['api-port', 'api-token'])
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+
   // A refusal to start is the case a bug report most needs a line for, and its
   // message can carry a path under the operator's home, so only the type is kept.
   it('traces a refusal to start by error type, not message', () => {

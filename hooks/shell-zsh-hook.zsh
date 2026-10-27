@@ -538,7 +538,7 @@ _redlog_install_pty_wrappers() {
     # without ssh turns "command not found" into a confusing python error.
     command -v -- "$prog" >/dev/null 2>&1 || continue
     functions[$prog]='
-      if _redlog_terminal_allowed && _redlog_is_running; then
+      if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
         python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"

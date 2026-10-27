@@ -373,7 +373,15 @@ def main():
         recorder = Recorder(Path.home() / '.redlog', args.max_bytes)
         recorder.start(' '.join(command))
     except Exception as error:
-        print(f'[redlog] session not started: {error}', file=sys.stderr)
+        no_project = (isinstance(error, FileNotFoundError)
+                      and error.filename == str(Path.home() / '.redlog' / 'active-identity.json'))
+        # Closing a project is normal, including between the adapter's guard
+        # and this read. Automatic wrappers must leave the command untouched.
+        if no_project:
+            if not args.best_effort:
+                print('[redlog] session not started: open a RedLog project first', file=sys.stderr)
+        else:
+            print(f'[redlog] session not started: {error}', file=sys.stderr)
         # Type only: the message can carry a path under the operator's home.
         trace('not-started', f'error={type(error).__name__} best_effort={args.best_effort}')
         # Spec 052: the adapter wraps `ssh` and the other PTY-class programs
