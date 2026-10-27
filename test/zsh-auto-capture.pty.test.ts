@@ -235,6 +235,18 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
   describe('the PTY class', () => {
     let run: Awaited<ReturnType<typeof runZsh>>
 
+    it('leaves ssh on its native path when no project is open', async () => {
+      const result = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: ['ssh -V'],
+        redlog: { port: collector.port, token },
+        timeoutSeconds: 60
+      })
+      expect(result.ok, result.error).toBe(true)
+      expect(result.steps[0].output).toContain('OpenSSH')
+      expect(result.steps[0].output).not.toContain('[redlog] session')
+    }, 300_000)
+
     beforeAll(async () => {
       run = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
