@@ -1,3 +1,4 @@
+import { useContainerWidth } from '../hooks/useContainerWidth'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { X, PanelBottom, PanelRight, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -118,9 +119,12 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // The detail pane docks under the table or beside it — the SAME choice the
   // Timeline's inspector uses (shared via detailLayout), so switching it in
   // either place moves both. Size is kept per layout and per panel.
-  const [layout, setLayout] = useState<DetailLayout>(storedDetailLayout)
+  const [preferredLayout, setPreferredLayout] = useState<DetailLayout>(storedDetailLayout)
+  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
+  const compact = containerWidth !== null && containerWidth < 960
+  const layout = compact ? 'bottom' : preferredLayout
   useEffect(() => {
-    const onChange = (): void => setLayout(storedDetailLayout())
+    const onChange = (): void => setPreferredLayout(storedDetailLayout())
     window.addEventListener(DETAIL_LAYOUT_EVENT, onChange)
     return () => window.removeEventListener(DETAIL_LAYOUT_EVENT, onChange)
   }, [])
@@ -344,8 +348,8 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
+    <div ref={containerRef} data-testid="http-workspace" className="flex flex-col h-full min-w-0 overflow-auto">
+      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-2 px-3 py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
         <span className="text-sm font-semibold text-redlog-text">{t('httpHistory.title')}</span>
         <span className="text-xs text-redlog-text-dim font-mono tabular-nums">
           {t('httpHistory.counts', { flows: filtered.length })}
@@ -357,11 +361,11 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
           value={filterText}
           onChange={e => setFilterText(e.target.value)}
           placeholder={t('httpHistory.filterPlaceholder')}
-          className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-2 py-1 text-redlog-text placeholder-redlog-text-faint w-64 focus:outline-none focus:border-redlog-accent/50"
+          className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-2 py-1 text-redlog-text placeholder-redlog-text-faint w-64 min-w-0 max-w-full focus:outline-none focus:border-redlog-accent/50"
         />
       </div>
 
-      <div className="flex items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
+      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
         <button
           onClick={() => { setMethodFilter(null); setStatusFilter(null); setHostFilter(null) }}
           aria-pressed={!methodFilter && !statusFilter && !hostFilter}
@@ -409,7 +413,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
         <EmptyByConstructionNotice text={t('filter.chainedOnlyHttp')} />
       )}
 
-      <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
         {busy ? (
           // Auto-following to completion: either a page is in flight, or the
           // last one settled and the next is about to be dispatched. Held as
@@ -439,7 +443,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
         )}
       </div>
 
-      <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
+      <div data-testid="http-workspace-split" data-layout={layout} className={`flex-1 min-h-48 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
         <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-auto">
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
@@ -550,16 +554,16 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
             <div
               ref={detailPanelRef}
               data-testid="http-detail-panel"
-              className={`shrink-0 bg-redlog-surface overflow-auto ${
+              className={`shrink-0 min-w-0 min-h-0 bg-redlog-surface overflow-auto ${
                 layout === 'bottom'
                   ? `border-t border-redlog-border${detailPanel.px == null ? ' max-h-[50%]' : ''}`
                   : 'border-l border-redlog-border h-full'
               }`}
-              style={detailPanel.px == null
-                ? (layout === 'right' ? { width: 440 } : undefined)
-                : (layout === 'bottom' ? { height: detailPanel.px } : { width: detailPanel.px })}
+              style={layout === 'right'
+                ? { width: Math.min(detailPanel.px ?? 440, Math.max(280, (containerWidth ?? 1000) - 480)) }
+                : { ...(detailPanel.px === null ? {} : { height: detailPanel.px }), maxHeight: '65%' }}
             >
-              <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-surface sticky top-0 z-10">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-surface">
                 <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
 
                 {/* ◀ ▶ step to the previous/next request without returning to the table. */}
@@ -594,11 +598,12 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                 {/* Dock under the table or beside it — the same choice (and store) as the Timeline. */}
                 <button
                   data-testid="http-detail-layout-toggle"
-                  onClick={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
+                  disabled={compact}
+                  onClick={() => setDetailLayout(preferredLayout === 'bottom' ? 'right' : 'bottom')}
                   title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
                   aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
                   aria-pressed={layout === 'right'}
-                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40 disabled:opacity-40"
                 >
                   {layout === 'bottom'
                     ? <PanelBottom size={14} aria-hidden />

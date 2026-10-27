@@ -201,6 +201,7 @@
   "bookmarks.capture": "+ 擷取",
   "bookmarks.pin": "釘選這則書籤到最上",
   "bookmarks.unpin": "取消釘選",
+  "bookmarks.backToList": "返回書籤",
   "bookmarks.searchPlaceholder": "搜尋書籤(標題 / URL / 備註)",
   "bookmarks.noSearchMatches": "找不到「{{query}}」相關的書籤",
   "loot.complete": "已載入完整集合",

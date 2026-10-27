@@ -128,7 +128,7 @@ function ConfirmDialogInner({ state, close, t }: {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm select-text"
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm select-text"
       onClick={() => close(false)}
     >
       <div
@@ -137,63 +137,65 @@ function ConfirmDialogInner({ state, close, t }: {
         aria-modal="true"
         aria-label={state.title}
         tabIndex={-1}
-        className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-2xl max-w-sm w-full mx-4 animate-toast-in outline-none"
+        className="bg-redlog-surface border border-redlog-border rounded-xl shadow-2xl max-w-sm w-full max-h-full min-h-0 flex flex-col overflow-hidden animate-toast-in outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-redlog-text">{state.title}</h3>
-        <p className="text-xs text-redlog-text-dim mt-2 leading-relaxed">{state.message}</p>
+        <div data-testid="confirm-content" className="min-h-0 overflow-y-auto px-5 py-4 [overflow-wrap:anywhere]">
+          <h3 className="text-sm font-semibold text-redlog-text break-words mb-2">{state.title}</h3>
+          <p className="text-xs text-redlog-text-dim leading-relaxed">{state.message}</p>
 
-        {state.consequences && state.consequences.length > 0 && (
-          <ul className="mt-3 space-y-1">
-            {state.consequences.map((c) => (
-              <li key={c} className="flex gap-2 text-xs text-redlog-text-dim leading-relaxed">
-                <span className="text-redlog-danger shrink-0" aria-hidden>•</span>
-                <span>{c}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+          {state.consequences && state.consequences.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {state.consequences.map((c) => (
+                <li key={c} className="flex gap-2 text-xs text-redlog-text-dim leading-relaxed">
+                  <span className="text-redlog-danger shrink-0" aria-hidden>•</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
-        {level === 'irreversible' && (
-          <label className="mt-4 flex items-start gap-2 min-h-8 py-1 text-xs text-redlog-text cursor-pointer">
-            <input
-              ref={ackBox}
-              type="checkbox"
-              checked={acked}
-              onChange={(e) => setAcked(e.target.checked)}
-              className="mt-0.5 w-4 h-4 shrink-0 accent-redlog-danger"
-            />
-            <span className="min-w-0 flex-1">{state.ackLabel ?? t('confirm.ackDefault')}</span>
-          </label>
-        )}
-
-        {level === 'chain' && (
-          <div className="mt-4">
-            {/* The name to type is set in the same prose as the instruction
-                around it, so the exact string -- where it starts, where it
-                ends, whether the punctuation is part of it -- had to be
-                guessed on the app's most destructive action. It is a value
-                now, and it looks like one. */}
-            <label htmlFor="confirm-typed" className="block text-xs text-redlog-text-dim mb-1">
-              {t('confirm.typeToConfirmBefore')}{' '}
-              <code className="font-mono text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 select-all">
-                {state.requireTyped ?? ''}
-              </code>{' '}
-              {t('confirm.typeToConfirmAfter')}
+          {level === 'irreversible' && (
+            <label className="mt-4 flex items-start gap-2 min-h-8 py-1 text-xs text-redlog-text cursor-pointer">
+              <input
+                ref={ackBox}
+                type="checkbox"
+                checked={acked}
+                onChange={(e) => setAcked(e.target.checked)}
+                className="mt-0.5 w-4 h-4 shrink-0 accent-redlog-danger"
+              />
+              <span className="min-w-0 flex-1">{state.ackLabel ?? t('confirm.ackDefault')}</span>
             </label>
-            <input
-              id="confirm-typed"
-              ref={typedField}
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs font-mono text-redlog-text focus:border-redlog-danger outline-none"
-            />
-          </div>
-        )}
+          )}
 
-        <div className="flex justify-end gap-2 mt-5">
+          {level === 'chain' && (
+            <div className="mt-4">
+              {/* The name to type is set in the same prose as the instruction
+                  around it, so the exact string -- where it starts, where it
+                  ends, whether the punctuation is part of it -- had to be
+                  guessed on the app's most destructive action. It is a value
+                  now, and it looks like one. */}
+              <label htmlFor="confirm-typed" className="block text-xs text-redlog-text-dim mb-1">
+                {t('confirm.typeToConfirmBefore')}{' '}
+                <code className="font-mono text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 select-all">
+                  {state.requireTyped ?? ''}
+                </code>{' '}
+                {t('confirm.typeToConfirmAfter')}
+              </label>
+              <input
+                id="confirm-typed"
+                ref={typedField}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs font-mono text-redlog-text focus:border-redlog-danger outline-none"
+              />
+            </div>
+          )}
+
+        </div>
+        <div data-testid="confirm-actions" className="shrink-0 flex flex-wrap justify-end gap-2 px-5 py-3 border-t border-redlog-border">
           {/* Both carry the app's button geometry rather than a second,
               smaller one invented here: a dialog is where the two controls are
               compared most closely, and Cancel had no edge at all. */}

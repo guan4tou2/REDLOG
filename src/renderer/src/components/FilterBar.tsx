@@ -27,13 +27,13 @@ export function FilterBar(): JSX.Element | null {
   }, [expanded])
 
   return (
-    <div ref={barRef} className="shrink-0 border-b border-redlog-border bg-redlog-bg/50">
-      <div className="flex items-center gap-2 px-4 py-1.5 text-xs">
+    <div ref={barRef} className="shrink-0 max-h-[60%] overflow-y-auto border-b border-redlog-border bg-redlog-bg/50">
+      <div className="flex flex-wrap min-w-0 items-center gap-2 px-4 py-1.5 text-xs">
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls="filter-bar-panel"
-          className="flex items-center gap-1 min-h-6 text-redlog-text-dim hover:text-redlog-text transition-colors"
+          className="flex shrink-0 items-center gap-1 min-h-6 text-redlog-text-dim hover:text-redlog-text transition-colors"
           title={t('filter.title')}
         >
           <Filter size={12} strokeWidth={1.5} />
@@ -150,9 +150,9 @@ export function FilterBar(): JSX.Element | null {
           />
 
           {/* Time range presets */}
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 max-w-full flex-col gap-1">
             <span className="text-xs text-redlog-text-faint uppercase tracking-wider">{t('filter.time')}</span>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {/* A preset takes a SNAPSHOT of the last N hours: the condition
                   stops where it was clicked, so a result set does not slide
                   while the operator reads it. That was already the behaviour;
@@ -191,8 +191,8 @@ export function FilterBar(): JSX.Element | null {
                 for at all. The inputs are wall-clock in whichever zone the
                 rest of the UI is displaying, so they agree with the
                 timestamps beside them. */}
-            <div className="flex items-end gap-2 pt-1">
-              <label className="flex flex-col gap-0.5">
+            <div className="flex flex-wrap min-w-0 items-end gap-2 pt-1">
+              <label className="flex min-w-0 max-w-full flex-col gap-0.5">
                 <span className="text-xs text-redlog-text-faint">{t('filter.from')}</span>
                 <input
                   type="datetime-local"
@@ -204,10 +204,10 @@ export function FilterBar(): JSX.Element | null {
                     const next = { ...(filter.timeRange ?? {}), since }
                     setTimeRange(next.since === undefined && next.before === undefined ? null : next)
                   }}
-                  className="bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
+                  className="min-w-0 max-w-full bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
                 />
               </label>
-              <label className="flex flex-col gap-0.5">
+              <label className="flex min-w-0 max-w-full flex-col gap-0.5">
                 <span className="text-xs text-redlog-text-faint">{t('filter.to')}</span>
                 <input
                   type="datetime-local"
@@ -219,7 +219,7 @@ export function FilterBar(): JSX.Element | null {
                     const next = { ...(filter.timeRange ?? {}), before }
                     setTimeRange(next.since === undefined && next.before === undefined ? null : next)
                   }}
-                  className="bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
+                  className="min-w-0 max-w-full bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
                 />
               </label>
               <span className="text-xs text-redlog-text-faint pb-1">{zoneLabel}</span>
@@ -242,11 +242,11 @@ export function FilterBar(): JSX.Element | null {
 function Chip({ label, title, onClear }: { label: string; title?: string; onClear: () => void }): JSX.Element {
   const { t } = useI18n()
   return (
-    <span title={title} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
-      {label}
+    <span className="inline-flex min-w-0 max-w-full items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
+      <span title={title ?? label} className="truncate">{label}</span>
       <button
         onClick={onClear}
-        className="hover:text-red-400 transition-colors"
+        className="shrink-0 hover:text-red-400 transition-colors"
         /* Names the condition it removes, and in the operator's language.
            Every chip used to announce the same untranslated "Clear". */
         aria-label={t('filter.clearCondition', { condition: label })}
@@ -266,12 +266,12 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
   placeholder: string
 }): JSX.Element {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 max-w-full flex-col gap-1">
       <span className="text-xs text-redlog-text-faint uppercase tracking-wider">{label}</span>
       <select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
+        className="min-w-0 max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
