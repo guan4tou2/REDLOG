@@ -222,3 +222,35 @@ describe('Activity project query', () => {
   })
 
 })
+
+it('pages stored source sessions before rendering and separates provider/capture namespaces', async () => {
+  const {querySourceSessions}=await import('../src/core/source-sessions')
+  for(let i=0;i<105;i++) add(`session-${i}`,i,'agent',tool('assistant_message','unused',{session_id:`session-${i}`,full:'saved'}))
+  add('same-other-provider',200,'agent',tool('assistant_message','unused',{session_id:'session-0',agent:'codex'}))
+  add('same-other-capture',201,'agent',tool('assistant_message','unused',{session_id:'session-0'}),{binding:'capture-b'})
+  add('other-project',300,'agent',tool('assistant_message','unused',{session_id:'private'}),{project:'other'})
+  add('unidentified',400,'agent',{subtype:'assistant_message',full:'unknown'})
+  const first=querySourceSessions({projectId:'eng',kind:'agent',limit:50})
+  expect(first.total).toBe(107)
+  expect(first.hasMore).toBe(true)
+  expect(first.items[0].lastAt).toBe(201)
+  add('after-boundary',500,'agent',tool('assistant_message','unused',{session_id:'late'}))
+  const second=querySourceSessions({projectId:'eng',kind:'agent',limit:50,cursor:first.nextCursor!})
+  const third=querySourceSessions({projectId:'eng',kind:'agent',limit:50,cursor:second.nextCursor!})
+  expect(new Set([...first.items,...second.items,...third.items].map(item=>item.token)).size).toBe(107)
+  expect(third.hasMore).toBe(false)
+  expect(second.items[0].lastAt).toBeLessThanOrEqual(first.items.at(-1)!.lastAt)
+  expect(()=>querySourceSessions({projectId:'other',kind:'agent',cursor:first.nextCursor!})).toThrow(/cursor|project/)
+})
+
+it('uses a picked source Session in the same query engine as events and export', async()=>{
+  const {querySourceSessions}=await import('../src/core/source-sessions')
+  const {executeEventQuery}=await import('../src/core/db/event-queries')
+  add('claude',1,'agent',tool('assistant_message','unused',{full:'saved'}))
+  add('codex',2,'agent',tool('assistant_message','unused',{agent:'codex',full:'saved'}))
+  add('capture-b',3,'agent',tool('assistant_message','unused',{full:'saved'}),{binding:'capture-b'})
+  const picked=querySourceSessions({projectId:'eng',kind:'agent',provider:'claude-code'}).items.find(item=>item.captureSessionId==='binding')!
+  expect(executeEventQuery({parsed:request(`source:${picked.token}`).parsed}).items.map(event=>event.id)).toEqual(['claude'])
+  expect(queryActivityPage(request(`provider:codex`)).items.map(item=>item.anchor.id)).toEqual(['codex'])
+  expect(()=>executeEventQuery({parsed:request('source:bad-token').parsed})).toThrow(/source|Session/i)
+})

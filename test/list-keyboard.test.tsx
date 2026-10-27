@@ -134,10 +134,10 @@ describe('list keyboard', () => {
 describe('every list view uses the shared contract', () => {
   const COMPONENTS = path.join(__dirname, '../src/renderer/src/components')
 
-  /** Views the sidebar can reach, from the single source that orders it. */
+  /** Include workspace subpages, not just the six primary Sidebar entries. */
   const sidebarViews = fs
     .readFileSync(path.join(__dirname, '../src/renderer/src/lib/sidebarOrder.ts'), 'utf-8')
-    .match(/DEFAULT_ORDER[^=]*=\s*\[([^\]]*)\]/s)?.[1]
+    .match(/export type SidebarViewId\s*=([\s\S]*?)\n\n/)?.[1]
     .match(/'(\w+)'/g)
     ?.map((q) => q.slice(1, -1)) ?? []
 

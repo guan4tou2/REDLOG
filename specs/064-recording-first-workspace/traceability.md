@@ -75,3 +75,10 @@
 - FR-047 → http-body-index.ts／http-body-search.test.ts／evidence-content.test.ts：超過 16 MiB 的 body 分段全文覆蓋，來源版本及同 ref 交集；raw JSONL／一般附件／Cast 的其他限制保留。
 - FR-037–039／FR-048 → export-plan.ts／export-selection.ts／export-attachments.ts／data-export.ts／ExportMenu.tsx／ActivityResults.tsx：固定 Activity／Session 成員、保守錄影、逐項 opt-in、成品內容核對；filtered-export.test.ts 及 macOS Electron 成品讀回。
 - UX-16／17 → http-body-search.spec.ts：原生 resize + root／status-bar 填滿驗收，避免 viewport emulation 的假通過。完整平台／使用者矩陣未完成。
+
+## Session / Reader / fragment / navigation slice
+
+- FR-009／017／026／048／053 → source-sessions.ts、dataset-snapshot.ts、query/contract.ts、event-queries.ts、SourceSessionPicker、RecordingWorkspace、TranscriptView：整案 Session catalog、provider／完整 namespace、固定讀取／匯出邊界與明確 refresh；activity-query、source-session-picker 及 http-body-search 整合案例。
+- FR-022／023／035／051／052 → content-contract.ts、evidence-content.ts、content IPC／marker:create、EventContentReader、EventMarker、ContentAnchorView／MarkerDetail：原件版本、UTF-8 bytes、片段摘要、選取／回看／錯誤、全寬與 Find 保持；evidence-content、marker-create-causes、evidence-content-reader 及同一 Electron journey。來源原文不額外複製進 marker。
+- FR-002／007／040／043 → App、Sidebar、sidebarOrder、CommandPalette、shortcuts、既有工作頁面：五主工作區／備用終端／Settings，組內頁籤及命令面板保持完整功能可達。shortcuts／sidebar／narrow tests、chrome-selection 與工作區 journey 驗證；不等於泳道／連續逐字稿程式已移除。
+- 本批不聲稱 raw AI JSONL／一般附件全文索引、Markdown／ANSI-normalized／cast 座標對等、來源故障矩陣、所有平台真機或五人量測完成。

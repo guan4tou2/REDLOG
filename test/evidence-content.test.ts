@@ -171,3 +171,40 @@ describe('saved content windows', () => {
     expect(searchHttpBodyEventIds('validNeedle')).toEqual(['valid-after-damage'])
   })
 })
+
+describe('precise saved-content anchors',()=>{
+  it('resolves a single byte and reports a removed sidecar without substituting text',async()=>{
+    const {createContentAnchor,resolveContentAnchor}=await import('../src/core/evidence-content')
+    const saved=body(Buffer.from('abc')); event('tiny-fragment',{stdout_ref:saved})
+    const ref=descriptor('tiny-fragment','stdout').ref!
+    const anchor=createContentAnchor({ref:{...ref,extra:'must not persist'} as typeof ref,start:1,end:2})
+    if(!anchor.ok)throw new Error(anchor.message)
+    expect(anchor.value.ref).toEqual(ref)
+    expect(resolveContentAnchor(anchor.value)).toMatchObject({ok:true,value:{text:'b',offset:1}})
+    fs.unlinkSync(path.join(dir,'http-bodies',saved.file))
+    expect(resolveContentAnchor(anchor.value)).toMatchObject({ok:false,status:'missing'})
+  })
+  it('uses UTF-8 bytes for emoji/CRLF/ANSI and refuses a replaced source',async()=>{
+    const {createContentAnchor,resolveContentAnchor}=await import('../src/core/evidence-content')
+    const text='前🙂\r\n\x1b[31msecret\x1b[0m尾'
+    const saved=body(Buffer.from(text)); event('anchored',{stdout_ref:saved})
+    const ref=descriptor('anchored','stdout').ref!
+    const start=Buffer.byteLength('前🙂\r\n'),end=start+Buffer.byteLength('\x1b[31msecret\x1b[0m')
+    const anchor=createContentAnchor({ref,start,end})
+    expect(anchor.ok).toBe(true)
+    if(!anchor.ok)throw new Error(anchor.message)
+    expect(anchor.value).not.toHaveProperty('excerpt')
+    expect(resolveContentAnchor(anchor.value)).toMatchObject({ok:true,value:{text:'\x1b[31msecret\x1b[0m',offset:start}})
+    expect(resolveContentAnchor({...anchor.value,sha256:'0'.repeat(64)})).toMatchObject({ok:false})
+    fs.writeFileSync(path.join(dir,'http-bodies',saved.file),'replacement')
+    expect(resolveContentAnchor(anchor.value)).toMatchObject({ok:false,status:'changed'})
+  })
+  it('rejects split codepoints, excessive selections and different-project references',async()=>{
+    const {createContentAnchor}=await import('../src/core/evidence-content')
+    event('anchor-limits',{stdout:'🙂'+ 'x'.repeat(20000)})
+    const ref=descriptor('anchor-limits','stdout').ref!
+    expect(createContentAnchor({ref,start:1,end:3})).toMatchObject({ok:false})
+    expect(createContentAnchor({ref,start:0,end:18000})).toMatchObject({ok:false})
+    expect(createContentAnchor({ref:{...ref,projectId:'other'},start:0,end:4})).toMatchObject({ok:false,status:'denied'})
+  })
+})

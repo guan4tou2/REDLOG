@@ -1795,5 +1795,21 @@
   "settings.groupData": "資料與隱私",
   "settings.groupSystem": "進階與系統",
   "content.savedContent": "已保存內容",
-  "workspace.noScopeMatches": "目前來源篩選下沒有此類紀錄。"
+  "workspace.noScopeMatches": "目前來源篩選下沒有此類紀錄。",
+  "workspace.session": "來源 Session",
+  "workspace.allSessions": "所有 Session",
+  "workspace.moreSessions": "載入更多 Session（{{loaded}}／{{total}}）",
+  "workspace.provider": "AI 來源",
+  "workspace.allProviders": "所有 AI 來源",
+  "query.sourceSession": "選取的 Session",
+  "content.markSelection": "標記選取片段",
+  "content.openFragment": "開啟來源片段",
+  "content.expandReader": "展開閱讀",
+  "content.selectionTooLarge": "選取超過 16 KiB 上限",
+  "content.collapseReader": "關閉展開閱讀",
+  "workspace.refreshSessions": "重新整理 Session",
+  "sidebar.evidence": "證據",
+  "sidebar.targetsScope": "目標與範圍",
+  "workspace.searchCoverage": "搜尋範圍",
+  "workspace.notIndexed": "不搜尋 AI 原始 JSONL 與一般附件內文。"
 }

@@ -90,3 +90,45 @@ it('restores each content field window and Find input after switching stdout and
   expect(screen.getByText('stdout-tail',{selector:'pre'}).closest('[hidden]')).toBeNull()
   expect(read).toHaveBeenCalledTimes(3)
 })
+
+it('preserves the same reader while expanded and builds a Unicode byte-range marker',async()=>{
+  const text='前🙂secret',ref={projectId:'p',eventId:'e',field:'stdout',version:'v'}
+  const anchor={v:1,coordinate:'utf8-bytes',ref,start:7,end:13,sha256:'digest'}
+  const create=vi.fn().mockResolvedValue({ok:true,value:anchor})
+  ;(window as any).redlog={content:{list:vi.fn().mockResolvedValue({ok:true,value:[{field:'stdout',status:'available',ref,bytes:13,format:'utf8',capture:'unknown'}]}),read:vi.fn().mockResolvedValue({ok:true,value:{text,offset:0,end:13,total:13,hasMore:false,nextCursor:null}}),anchor:create}}
+  const marked=vi.fn();window.addEventListener('redlog:mark-content',marked)
+  try{
+    render(<EventContentReader projectId="p" eventId="e" />)
+    const pre=await screen.findByText(text,{selector:'pre'})
+    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'remember'}})
+    fireEvent.click(screen.getByRole('button',{name:'content.expandReader'}))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('searchbox')).toHaveProperty('value','remember')
+    fireEvent.keyDown(pre,{key:'f',metaKey:true})
+    expect(document.activeElement).toBe(screen.getByRole('searchbox'))
+    fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'})
+    expect(screen.queryByRole('dialog')).toBeNull()
+    const range=document.createRange();range.setStart(pre.firstChild!,3);range.setEnd(pre.firstChild!,9)
+    window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range)
+    fireEvent.mouseUp(pre)
+    fireEvent.click(screen.getByRole('button',{name:'content.markSelection'}))
+    await waitFor(()=>expect(create).toHaveBeenCalledWith({ref,start:7,end:13}))
+    expect(marked).toHaveBeenCalledTimes(1)
+    expect((marked.mock.calls[0][0] as CustomEvent).detail).toEqual(anchor)
+  }finally{window.removeEventListener('redlog:mark-content',marked);window.getSelection()?.removeAllRanges()}
+})
+
+it('explains an excessive selection without truncating or submitting it',async()=>{
+  const text='x'.repeat(16385),ref={projectId:'p',eventId:'e',field:'stdout',version:'v'}
+  const create=vi.fn()
+  ;(window as any).redlog={content:{list:async()=>({ok:true,value:[{field:'stdout',status:'available',ref,bytes:text.length,format:'utf8',capture:'unknown'}]}),read:async()=>({ok:true,value:{text,offset:0,end:text.length,total:text.length,hasMore:false,nextCursor:null}}),anchor:create}}
+  render(<EventContentReader projectId="p" eventId="e" />)
+  const pre=await screen.findByText(text,{selector:'pre'})
+  const range=document.createRange();range.selectNodeContents(pre)
+  window.getSelection()!.removeAllRanges();window.getSelection()!.addRange(range)
+  fireEvent.mouseUp(pre)
+  expect(screen.getByText('content.selectionTooLarge')).toBeTruthy()
+  expect(screen.getByRole('button',{name:'content.markSelection'})).toHaveProperty('disabled',true)
+  expect(create).not.toHaveBeenCalled()
+  window.getSelection()?.removeAllRanges()
+})

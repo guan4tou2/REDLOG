@@ -13,7 +13,7 @@ rules those terms obey.
 ```
 typed text
   → parseQuery()                         src/core/query/contract.ts
-      conditions    event:  session:  transcript:  tool:  operator:
+      conditions    event:  session:  transcript:  tool:  operator:  provider:  source:
       text          every token not read as a condition
       tokens        how each token was read, for display
   → events:runQuery                      main attaches the active scope policy
@@ -34,7 +34,7 @@ typed text
 1. Input splits on whitespace. A double-quoted run is one token and may contain
    spaces.
 2. A token whose text before its first colon is a recognised field — `event`,
-   `session`, `transcript`, `tool`, `operator`, in any case — is a condition.
+   `session`, `transcript`, `tool`, `operator`, `provider`, `source`, in any case — is a condition.
    The value is everything after that first colon and may itself contain
    colons.
 3. Any other token is text, so a pasted URL or `host:port` matches as typed.
@@ -56,6 +56,12 @@ typed text
    tool-use ID; `operator:` is the recorded operator ID (`operator_id`), never
    a display name. An ID quoted inside unrelated output does not satisfy a
    condition.
+   `provider:` is the exact saved AI provider. `source:` is the validated opaque
+   source-Session tuple issued by the Session catalog: project, capture binding,
+   event source, provider/shell and producer Session. It is a reference, not an
+   authorization token. Unknown/malformed tuples fail explicitly; they never
+   become text or an unfiltered read. Session choices use the same frozen dataset
+   for reading and whole-Session export. Explicit refresh advances that boundary.
 3. **A tool-use ID is unique only within a session.** Without a `session:`
    condition, `tool:` resolves to the newest session that contains the ID. The
    chosen session and the sessions not chosen travel back with the page as

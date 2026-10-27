@@ -116,7 +116,15 @@ export async function openTestProject(
  * So: click the stable hook, and assert the view arrived rather than hoping.
  */
 export async function openView(page: Page, view: string): Promise<void> {
-  await page.click(`[data-view-btn="${view}"]`)
+  const direct=page.locator(`[data-view-btn="${view}"]`).first()
+  if(await direct.count())await direct.click()
+  else if(['scope','loot','bookmarks'].includes(view)){
+    await page.locator(`[data-view-btn="${view==='scope'?'targets':'screenshots'}"]`).first().click()
+    await page.locator(`[data-view-btn="${view}"]`).click()
+  }else{
+    await page.keyboard.press(process.platform==='darwin'?'Meta+k':'Control+k')
+    await page.locator(`[data-command-id="nav:${view}"]`).click()
+  }
   await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
 }
 

@@ -1795,5 +1795,21 @@
   "settings.groupData": "Data & privacy",
   "settings.groupSystem": "Advanced & system",
   "content.savedContent": "Saved content",
-  "workspace.noScopeMatches": "No records match both this reading mode and the source filter."
+  "workspace.noScopeMatches": "No records match both this reading mode and the source filter.",
+  "workspace.session": "Source session",
+  "workspace.allSessions": "All sessions",
+  "workspace.moreSessions": "Load more sessions ({{loaded}} / {{total}})",
+  "workspace.provider": "AI source",
+  "workspace.allProviders": "All AI sources",
+  "query.sourceSession": "Selected session",
+  "content.markSelection": "Mark selection",
+  "content.openFragment": "Open source fragment",
+  "content.expandReader": "Expand reader",
+  "content.selectionTooLarge": "Selection exceeds the 16 KiB limit",
+  "content.collapseReader": "Close expanded reader",
+  "workspace.refreshSessions": "Refresh sessions",
+  "sidebar.evidence": "Evidence",
+  "sidebar.targetsScope": "Targets & scope",
+  "workspace.searchCoverage": "Search coverage",
+  "workspace.notIndexed": "AI raw JSONL and general attachment contents are not searched."
 }

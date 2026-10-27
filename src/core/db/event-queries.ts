@@ -1,3 +1,6 @@
+import { readActivitySnapshot } from './dataset-snapshot'
+import type { ActivitySnapshot } from '../activity-contract'
+import { decodeSourceSession } from '../source-sessions'
 import { getDB, getReadonlyDB } from './index'
 import type { EventCausalChain, EventCausalEdge, RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
@@ -1118,6 +1121,16 @@ function appendConditions(
         sqlParts.push("json_extract(e.data, '$.tool_use_id') = ?")
         params.push(c.value)
         break
+      case 'provider':
+        sqlParts.push("e.agent_type='agent' AND json_extract(e.data,'$.agent')=?")
+        params.push(c.value)
+        break
+      case 'source': {
+        const tuple=decodeSourceSession(c.value)
+        sqlParts.push(`e.engagement_id=? AND e.session_id=? AND e.agent_type=? AND json_extract(e.data,'$.${tuple[3]==='agent' ? 'agent' : 'shell'}')=? AND json_extract(e.data,'$.${tuple[3]==='agent' ? 'session_id' : 'terminalId'}')=?`)
+        params.push(...tuple.slice(1))
+        break
+      }
       case 'operator':
         sqlParts.push('e.operator_id = ?')
         params.push(c.value)
@@ -1151,6 +1164,7 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
     return { items: [], hasMore: false, nextCursor: null }
   }
   const db = getReadonlyDB()
+  if(request.snapshot && 'chainedCount' in request.snapshot)readActivitySnapshot(db,request.snapshot as ActivitySnapshot)
   const limit = request.limit ?? 100
   const cursor: CursorKey | null = request.cursor ? decodeCursor(request.cursor) : null
   const query = prepareQuery(db, request.parsed)

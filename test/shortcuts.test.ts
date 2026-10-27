@@ -60,7 +60,7 @@ describe('the cheatsheet table', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true)
     const nav = rows.filter((r) => r.scope === 'nav')
     expect(nav).toHaveLength(SIDEBAR_ORDER.length + 1)
-    expect(nav.map((r) => r.keys)).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6', '⌘7', '⌘8', '⌘9'])
+    expect(nav.map((r) => r.keys)).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6', '⌘9'])
     expect(nav.at(-1)?.label).toBe('sidebar.settings')
   })
 
@@ -235,7 +235,7 @@ describe('every nav label resolves, in both languages', () => {
 describe('the number a view wears', () => {
   it('comes from the fixed order, not from where it is rendered', () => {
     expect(shortcutNumberFor('dashboard')).toBe(1)
-    expect(shortcutNumberFor('targets')).toBe(NUMBERED_SLOTS)
+    expect(shortcutNumberFor('terminal')).toBe(NUMBERED_SLOTS)
   })
 
   it('is null for the views past the numbered run', () => {
@@ -244,6 +244,6 @@ describe('the number a view wears', () => {
     for (const view of DEFAULT_ORDER.slice(NUMBERED_SLOTS)) {
       expect(shortcutNumberFor(view), `${view} should carry no chord`).toBeNull()
     }
-    expect(DEFAULT_ORDER.slice(NUMBERED_SLOTS)).toEqual(['scope', 'loot', 'bookmarks'])
+    for(const secondary of ['scope','loot','bookmarks','timeline','transcript'] as const)expect(shortcutNumberFor(secondary)).toBeNull()
   })
 })

@@ -210,6 +210,9 @@ interface RedLogAPI {
     pickPath: (title?: string) => Promise<string | null>
   }
   content: {
+    anchor: (req: import('../../core/content-contract').ContentAnchorRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentAnchor>>
+    resolveAnchor: (req: import('../../core/content-contract').ContentAnchor) => Promise<import('../../core/content-contract').ContentResult<{ text: string; offset: number }>>
+
     list: (req: { projectId: string; eventId: string }) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentDescriptor[]>>
     read: (req: import('../../core/content-contract').ContentReadRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentWindow>>
     find: (req: import('../../core/content-contract').ContentFindRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentFindResult>>
@@ -230,6 +233,7 @@ interface RedLogAPI {
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
+    sourceSessions: (req: import('../../core/source-sessions').SourceSessionRequest) => Promise<import('../../core/source-sessions').SourceSessionPage>
     activityPage: (req: import('../../core/activity-contract').ActivityRequest) => Promise<import('../../core/activity-contract').ActivityPage>
     activityMembers: (req: import('../../core/activity-contract').ActivityMembersRequest) => Promise<import('../../core/activity-contract').ActivityMembersPage>
     /** Spec 038: how many rows a page or a query walks past `cursor`. */
