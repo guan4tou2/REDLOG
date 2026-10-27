@@ -234,6 +234,13 @@ describe('complete saved-content delivery',()=>{
       expect((await saveEventContent(ref,dest,()=>true)).ok).toBe(false)
       expect(fs.readFileSync(dest)).toEqual(bytes)
       expect((await saveEventContent(ref,path.join(dir,'new-evidence.txt'),()=>true)).ok).toBe(false)
+      let replacementChecks=0
+      const replaced=path.join(output,'replaced.txt')
+      expect(await saveEventContent(ref,replaced,()=>{
+        if(++replacementChecks===3){fs.unlinkSync(replaced);fs.writeFileSync(replaced,'other program content')}
+        return true
+      })).toMatchObject({ok:false,status:'changed'})
+      expect(fs.readFileSync(replaced,'utf8')).toBe('other program content')
       let checks=0
       const refused=path.join(output,'refused.txt')
       expect(await saveEventContent(ref,refused,()=>++checks<3)).toMatchObject({ok:false,status:'denied'})
