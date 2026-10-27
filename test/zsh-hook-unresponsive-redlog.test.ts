@@ -25,6 +25,11 @@ describeShell(`shell hook against an unresponsive RedLog (${target?.label ?? 'no
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: ['echo still-alive'],
         redlog: { port: hole.port, token: 'black-hole-token' },
+        // Not under WSL: there the hook asks this port's /api/whoami, gets no
+        // answer, and abandons this HOME for the Windows profile (#326) — so
+        // the hole is never probed, and on a box with RedLog installed the
+        // command goes to the real app. On CI the variable is unset already.
+        env: { WSL_DISTRO_NAME: '' },
         timeoutSeconds: 45
       })
 

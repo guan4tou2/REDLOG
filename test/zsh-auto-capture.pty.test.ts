@@ -363,5 +363,5 @@ describeShell('existing prompt rendering', () => {
       expect(end?.data.stdout).toBe('command-visible\n')
       expect(report.steps[0].output.indexOf('command-visible')).toBeLessThan(report.steps[0].output.indexOf('EXISTING-PROMPT'))
     } finally { await collector.close() }
-  }, 60_000)
+  }, 300_000) // includes the queue for the WSL lock when run from Windows
 })

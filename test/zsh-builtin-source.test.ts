@@ -16,7 +16,9 @@ suite('an embedded Zsh keeps its terminal provenance', () => {
       commands: ['echo builtin-source-canary', "sh -c 'exit 3'"],
       timeoutSeconds: 30
     })
-  }, 60_000)
+    // From Windows every file queues on one WSL lock (zsh-pty.ts), and the
+    // wait is charged to this budget; 60 s timed out behind the other files.
+  }, 300_000)
   afterAll(async () => { await collector?.close() })
 
   it('keeps both command boundaries attributed to the embedded pane, including relay output', () => {
@@ -48,5 +50,5 @@ suite('an embedded Zsh keeps its terminal provenance', () => {
     expect(result.ok, result.error).toBe(true)
     expect(result.steps[0].output).toContain('picker-command-is-not-evidence')
     expect(collector.events.filter(event => event.data.terminalId === 'picker-pane')).toEqual([])
-  })
+  }, 300_000)
 })

@@ -151,18 +151,30 @@ export function findShellTarget(): ShellTarget | null {
 
 export interface CapturedEvent { agentType: string; data: Record<string, unknown>; receivedAt: number }
 
-/** Stands in for the running app: the two endpoints `hooks/shell-common.sh`
+/** Stands in for the running app: the endpoints `hooks/shell-common.sh`
  *  reaches for, and nothing else. Bound on every interface because under WSL
  *  the shell is on the other side of a virtual switch and resolves the host by
  *  the default gateway — the hook already does that, so the harness does not
- *  have to teach it anything. */
+ *  have to teach it anything.
+ *
+ *  `/api/whoami` is how the hook decides, under WSL, whether a native
+ *  `~/.redlog` is current (#326): anything but 200 or 503 and it abandons the
+ *  harness HOME for the Windows profile. Without it every WSL run — through
+ *  `wsl.exe` or inside kali — recorded nothing and never defined `redlog`,
+ *  while CI, which has no `WSL_DISTRO_NAME`, never asks. */
 export async function startCollector(token: string): Promise<{
   port: number; events: CapturedEvent[]; close: () => Promise<void>
 }> {
   const events: CapturedEvent[] = []
   const server: Server = createServer((req, res) => {
-    if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return }
+    // Public, ahead of the token, as in `src/core/api-server.ts`: the hook
+    // probes it without one. Behind the check it answered 401, and under WSL
+    // the hook then tried the default gateway and waited out its one-second
+    // connect timeout — inside the first command, which pushed its output past
+    // the relay's streaming threshold and out of `command_end`.
     if (req.url?.startsWith('/api/health')) { res.writeHead(200).end('{"ok":true}'); return }
+    if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return }
+    if (req.url?.startsWith('/api/whoami')) { res.writeHead(200).end('{"operator":null,"engagementId":null}'); return }
     if (req.url?.startsWith('/api/events') && req.method === 'POST') {
       let body = ''
       req.on('data', (c) => { body += c })
