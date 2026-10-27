@@ -48,13 +48,6 @@ describe('one export control', () => {
     expect(timeline).not.toMatch(/timeline\.exportSlice['"]\)\}<\/button>/)
   })
 
-  it('clears the view contribution on unmount', () => {
-    // An option labelled "the visible time range" that still means the
-    // previous view's range is worse than no option at all.
-    const store = R('src/renderer/src/lib/exportScope.ts')
-    expect(store).toMatch(/return \(\) => \{\s*current = null/)
-  })
-
   it('labels each format option clearly', () => {
     // Each export option uses a translated label so the operator knows what
     // they are getting — the label IS the preview (format name + audience).

@@ -59,11 +59,14 @@ export function useContributeExport(entry: ViewExport | null): void {
     if (!label || !request) {
       return
     }
-    current = { label, request, count, disabledReason }
+    const contribution = { label, request, count, disabledReason }
+    current = contribution
     emit()
     return () => {
-      current = null
-      emit()
+      if (current === contribution) {
+        current = null
+        emit()
+      }
     }
   }, [label, count, request, disabledReason])
 }

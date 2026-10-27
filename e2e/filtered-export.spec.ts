@@ -17,8 +17,9 @@ for (const locale of ['en', 'zh-TW']) {
     expect(result.ok).toBe(true)
    }
    await openView(page,'search')
+    await page.locator('#reading-tab-events').click()
    await page.getByTestId('search-input').fill('needle')
-   await expect(page.getByText('needle paginated 104',{exact:false}).first()).toBeVisible()
+   await expect(page.getByRole('option').filter({hasText:'needle paginated 104'}).first()).toBeVisible()
    const win=await app.browserWindow(page); await win.evaluate(w=>w.setSize(800,850))
    const exportLabel=locale==='en'?'Export':'匯出'
    await page.getByLabel(exportLabel,{exact:true}).click()

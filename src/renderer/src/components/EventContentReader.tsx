@@ -93,9 +93,13 @@ export function EventContentReader({ projectId, eventId }: { projectId: string; 
     return reply.value
   }, true, [projectId, eventId])
   const [selected, setSelected] = useState<string | null>(null)
+  const [visited, setVisited] = useState<Set<string>>(new Set())
   const current = fields.state.value?.find(f => f.field === selected)
     ?? fields.state.value?.find(f => f.status === 'available' && ['stdout', 'output', 'full', 'response_body', 'output_body'].includes(f.field))
     ?? fields.state.value?.[0]
+  useEffect(() => {
+    if (current) setVisited(prev => prev.has(current.field) ? prev : new Set([...prev, current.field]))
+  }, [current?.field])
   return <div className="min-w-0 space-y-2" aria-busy={fields.state.phase === 'loading'}>
     {fields.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {fields.state.phase === 'failed' && <div role="alert" className="text-amber-300 text-xs">{fields.state.error} <Button onClick={fields.retry}>{t('common.retry')}</Button></div>}
@@ -104,7 +108,10 @@ export function EventContentReader({ projectId, eventId }: { projectId: string; 
       <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
         {fields.state.value?.map(f => <option key={f.field} value={f.field}>{t(`content.field.${f.field}`)}</option>)}
       </select>
-      <ContentFieldReader key={`${projectId}:${eventId}:${current.field}:${current.ref?.version}`} descriptor={current} onReload={fields.retry} />
+      {fields.state.value?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
+        <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>
+          <ContentFieldReader descriptor={field} onReload={fields.retry} />
+        </div>)}
     </>}
   </div>
 }

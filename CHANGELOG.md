@@ -5,6 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- The Activity workspace shares one project search across Operations, Input /
+  Output, AI Conversations and Raw Events. Empty queries browse the record;
+  source output, recording-index search and operation/session export remain
+  available. Visited readers retain their position and content Find state.
+  Hidden readers defer live refresh, and export selection follows the active
+  reader. Existing Timeline and Transcript navigation remains until parity.
+- Settings groups existing pages into Capture Sources, Project & Scope,
+  Data & Privacy, Interface & Controls, and Advanced & System without changing
+  project permissions or save ownership.
+
 - Selected operations and source sessions can be exported through the shared
   export dialog as JSON, NDJSON or evidence bundles. Selection stays within the
   reviewed dataset and source namespace. Related recordings require explicit

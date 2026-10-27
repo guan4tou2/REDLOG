@@ -40,7 +40,7 @@
 
 ## S4 — US5／US6／US7
 
-- [ ] T024 [US5] 於 Settings.tsx 及既有設定頁整理五類／唯一入口／搜尋直達，不改儲存 ownership 或 AI 授權邊界。
+- [x] T024 [US5] 於 Settings.tsx 及既有設定頁整理五類／唯一入口／搜尋直達，不改儲存 ownership 或 AI 授權邊界。
 - [ ] T025 [US6] 於 App.tsx／sidebarOrder.ts 整併五主入口、目標／證據，待前段 parity 成立才移除舊 Search／Transcript 導覽。
 - [ ] T026 [US7] 同步 docs/UIUX-STANDARD.md、指令面板／快捷鍵及受影響導覽測試，不加舊入口 shim。
 - [ ] T027 [US7] 於 styles/index.css 與受影響元件驗 UX-16／17：窄窗、高縮放、語系、鍵盤、HUD、狀態及必要安全警告。
@@ -75,3 +75,12 @@ T001→T002–T008→T009–T015→T016–T023→T024–T028→T029。共用 fix
 - [x] T032 修正 Activity E2E 的 viewport emulation：使用原生視窗 800×700／1600×1000，核對原生 content size、root／status bar 右下邊界及 overflow；保存截圖並實際查看。
 
 T021 的核心實作已完成。T012–T018、T020／T022／T023 仍為複合任務，不能因這輪功能完成便宣告所有 reader、anchor、一般附件／raw AI 搜尋、C5 全矩陣或跨平台人工驗收已齊。本輪交付到既有候選分支；合併、安裝包與發版狀態另行驗收。
+
+## 2026-10-27 — shared reading workspace integration
+
+- [x] T033 沿既有 Search 入口提供共用搜尋框、操作／輸入輸出／AI 對話／原始事件；空查詢可瀏覽，保留 Cast 深搜、內容 Find、Activity／Session 匯出與原始 Event 返回。
+- [x] T034 保留已開啟讀取模式、來源 Event 與 stdout／stderr 各自的內容視窗及 Find；隱藏 reader 延後 live refresh，舊 export contribution 清理不得清掉新 owner。
+- [x] T035 Settings 五類使用原有 routes、欄位搜尋及保存 ownership；不新增來源開關或安裝生命週期。
+- [x] T036 本批 native 視窗／高縮放／雙語實際截圖及相關回歸驗收；記錄具體覆蓋與未完成 gate。
+
+T014／T018 僅新增閱讀入口整合，不將 Session 完整選擇、Markdown／raw 座標映射、所有檔案索引及 S2／S3 contract 矩陣宣告完成。T025 主導覽退場仍等待原定 parity gate；本批不藉由減少選單繞過 gate。

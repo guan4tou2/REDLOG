@@ -270,3 +270,53 @@ Windows／Linux installed workflow 路徑補 core／main／preload／optional pa
 ### Test consolidation submission — 2026-10-27
 
 本批15個路徑獨立收尾：依序通過 typecheck、verify:specs、verify:architecture、verify:i18n 與完整 npm test（4,347 passed / 28 skipped，121.76s）。未啟動 GUI；新 smoke selector 的實際安裝包執行將沿用合併後候選，避免另外啟動一次只驗證 selector。
+
+
+## 2026-10-27 — shared reading workspace candidate
+
+Base: `main/37b6d74f`; branch `codex/recording-workspace-integration`. This is a source UI candidate, not the previously delivered installed DMG and not a public release.
+
+### Implemented scope
+
+- `RecordingWorkspace`: one query and keyboard-accessible reading tabs over the existing Search entry. Empty queries browse Activities. Raw Events and Cast results retain the same store query and coverage restrictions.
+- `TranscriptView`: I/O and AI modes constrain source buckets before database pagination. Workspace reads open saved results on load, including matching Tool Results. Standalone continuous Transcript remains reachable until parity.
+- `ActivityResults`／`EventContentReader`: visited reading modes, source events and output fields retain their individual windows and Find text. New batches signal refresh without replacing the active Activity snapshot. Hidden narrative readers catch up on return instead of querying every incoming batch.
+- `exportScope`: only the owner may clear its contribution; an older reader unmount cannot erase the active reader selection. Query transitions discard stale operation selection and preview the latest typed query through ExportPlan, without freezing a transient searching state. Operation/session export still uses the canonical frozen ExportPlan.
+- `Settings`: five groups, unchanged routes, field search, auto-save, project ownership and source permissions. No new integration lifecycle or duplicate source switch.
+
+### Automated evidence so far
+
+- Workspace test began RED because the new module did not exist; the shared-query/mode/reader-preservation journey passes after implementation.
+- Focused behavioral checks: 56 passed in 10 files before final layout checks, including source-field restoration, scoped backend queries, inactive-reader refresh and export ownership.
+- Full unit suite: 4,354 passed, 28 skipped. The previous source-regex test requiring unconditional `current = null` was removed and replaced by an actual two-reader ownership/unmount test. The single-control API-call-site guard remains.
+- Electron saved-content journey passed after catching and fixing a real collapsed matching Tool Result. Its final native-size/zoom capture and expanded regression are recorded below when complete.
+
+### Boundaries
+
+This batch does not claim complete C2–C4 parity, a finished Session selector, generalized Markdown/raw coordinate maps, raw AI JSONL/general attachment full-text indexing, S1 source failure matrices, other-OS native acceptance or five-user task metrics. Existing main Timeline/Transcript routes are retained as required by the retirement gate; no old-hook or schema compatibility shim was added. Spec remains Draft and the compound tasks remain unchecked.
+
+
+### Final automated / visual results for this slice
+
+- `typecheck`, `verify:specs`, `verify:architecture`, `verify:i18n`, production build passed. Full unit suite: 4,354 passed / 28 skipped; later query/export refinements additionally passed 12 focused cases. No skip was counted as a pass.
+- 14 distinct Electron cases across `capture-settings-interaction`, `filtered-export` (both locales), `http-body-search`, `layout-reliability`, `search-query-contract`, and `transcript-view` passed. The first batch passed 12; failed export cases were diagnosed and rerun with the shared saved-content journey, all 3 then passed. No automatic retry masked these failures.
+- The export failures exposed a real transient-state freeze; latest typed query now goes directly through the canonical preview. Raw result locators were also narrowed to visible semantic rows; hidden visited readers remain mounted intentionally.
+- The saved-content journey uses one App for raw body search beyond 16 MiB, Activity source selection, full-content Find, original Event/back, stdout/stderr, selected Activity/Session export with artifact readback, all reading modes, empty-query browsing, and native 800×600 / 150% zoom.
+- Captured native zoom screenshot with `BrowserWindow.capturePage()` after sidebar transition settles. Chromium `page.screenshot` at non-default Electron zoom clipped the frame and was not used as native layout proof. Reviewed wide and native narrow screenshots directly; shared tabs, search, status bar and actions fit. Generated artifacts are under ignored `dist/uiqa-workspace-20261027/`, not committed.
+- The five-component layout matrix also passed 120 native size/zoom/locale combinations. Settings interaction checks passed English/Traditional Chinese at 800px and 100/150/200% zoom.
+- A separate isolated source-build window with synthetic Shell and Claude data is open for native interaction. CUA reported the Mac locked; requested unlock. Native clicks are NOT RUN until unlock, and this is not presented as installed-package acceptance.
+
+
+### Native interaction follow-up — completed after unlock
+
+Same isolated source-build process, synthetic Shell and Claude events, Traditional Chinese. No second App launch was needed; one renderer reload loaded the small cleanup built during this check. This is native interaction through CUA, not Playwright driving the following actions.
+
+- Typed `synthetic-output`, expanded its Activity, searched its saved content, opened the original Event and returned. Query, selected source, content Find text and highlight remained present.
+- Switched I/O and AI modes. Both displayed saved output immediately. Chose stderr via the native dropdown, then returned to stdout; the Find input and output selection were preserved. Arrow keys switched AI/Raw tabs, and Cmd+F selected the common query field.
+- Inspected the five Settings categories at the original window size. Used macOS Window > Move & Resize > Left to resize the actual window, then increased zoom until the source settings switched to the compact category dropdown. Source cards and primary actions remained readable and reachable.
+- Found and removed legacy Transcript heading and unrelated kind buttons inside scoped I/O/AI modes. Standalone Transcript retains its mixed-type controls. Shortened the coverage warning to reflect saved body indexing and the separate recording-search path. `typecheck`, 25 affected unit cases and production build passed after this cleanup; reloaded and inspected the result natively.
+- Opened the selected Claude operation's actual Export dialog. The preview showed exactly its two source events and the selected operation boundary; canceled the preview without writing another artifact.
+- Saved `native-settings-narrow.png`, `native-ai-reading.png`, `native-export-preview.png` under ignored `dist/uiqa-workspace-20261027/`. These synthetic-project screenshots remain local, not public fixtures.
+- Quit the isolated App through Cmd+Q. CUA returned `App quit`. No user shell profile, official project, system proxy preference or system CA was changed. The source window used E2E mode for synthetic seeding, so this quit is cleanup, not a replacement for production native-exit acceptance.
+
+T036 is complete for this bounded UI integration. The broader compound tasks and unsupported/unrun platform and user studies remain unchanged; this does not upgrade the whole Spec to Verified.

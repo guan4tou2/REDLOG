@@ -132,6 +132,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(toolResult.data.output).toBe(output)
 
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('AI_OUTPUT_TAIL_SENTINEL')
     await expect(page.getByRole('option')).toHaveCount(1)
     await expect(page.getByRole('option')).toContainText('AI_OUTPUT_SENTINEL')

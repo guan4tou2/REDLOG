@@ -16,7 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { BookmarksView } from './components/BookmarksView'
 import { ToastContainer } from './components/Toast'
 import { CommandPalette } from './components/CommandPalette'
-import { SearchPanel } from './components/SearchPanel'
+import RecordingWorkspace from './components/RecordingWorkspace'
 import { ExportMenu } from './components/ExportMenu'
 import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
@@ -394,7 +394,7 @@ export default function App(): JSX.Element {
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || (view === 'timeline' && returnTo === 'search')) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><SearchPanel key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
+            {(view === 'search' || (view === 'timeline' && returnTo === 'search')) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

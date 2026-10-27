@@ -41,7 +41,7 @@ it('refreshes the query instead of retrying an invalidated pagination cursor for
   const item={id:'activity',kind:'command',toolAction:'unknown',provider:null,firstAt:1,anchor:event,matchedCount:1,contextCount:0}
   const page={items:[item],hasMore:true,nextCursor:'old-cursor',totalGroups:2,totalMatches:2,snapshot:{}}
   const activityPage=vi.fn().mockResolvedValueOnce(page).mockRejectedValueOnce(new Error('index coverage changed')).mockResolvedValueOnce({...page,hasMore:false,nextCursor:null})
-  ;(window as any).redlog={config:{get:vi.fn().mockResolvedValue({engagement:{id:'p'}})},events:{activityPage}}
+  ;(window as any).redlog={config:{get:vi.fn().mockResolvedValue({engagement:{id:'p'}})},events:{onNewBatch:()=>()=>{},activityPage}}
   render(<ActivityResults request={{parsed:{text:'id',conditions:[],tokens:[]}} as any}/>)
   fireEvent.click(await screen.findByRole('button',{name:'search.loadMore'}))
   await screen.findByRole('alert')
@@ -59,7 +59,7 @@ it('keeps the open source and its reading position when another source page arri
   const activityMembers=vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce({...first,items:[{event:end,matched:true}],hasMore:false,nextCursor:null})
   ;(window as any).redlog={
     config:{get:vi.fn().mockResolvedValue({engagement:{id:'p'}})},
-    events:{activityPage:vi.fn().mockResolvedValue({items:[item],hasMore:false,totalGroups:1,totalMatches:2,snapshot:{}}),activityMembers},
+    events:{onNewBatch:()=>()=>{},activityPage:vi.fn().mockResolvedValue({items:[item],hasMore:false,totalGroups:1,totalMatches:2,snapshot:{}}),activityMembers},
     content:{
       list:vi.fn().mockImplementation(({eventId})=>Promise.resolve({ok:true,value:[{field:'stdout',status:'available',ref:{projectId:'p',eventId,field:'stdout',version:eventId},bytes:5,format:'utf8',capture:'unknown'}]})),
       read:vi.fn().mockImplementation(({ref})=>Promise.resolve({ok:true,value:{offset:0,end:5,total:5,text:ref.eventId==='start'?'input':'later result',format:'utf8',hasMore:false,nextCursor:null}}))
@@ -72,4 +72,21 @@ it('keeps the open source and its reading position when another source page arri
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'activity.sourceEvent'}).querySelectorAll('option')).toHaveLength(2))
   expect((screen.getByRole('combobox',{name:'activity.sourceEvent'}) as HTMLSelectElement).value).toBe('start')
   expect(screen.getByText('input',{selector:'pre'})).toBeTruthy()
+})
+
+it('restores each content field window and Find input after switching stdout and stderr', async () => {
+  const fields = ['stdout', 'stderr'].map(field => ({ field, status: 'available', ref: { projectId: 'p', eventId: 'e', field, version: field }, bytes: 8, format: 'utf8', capture: 'unknown' }))
+  const read = vi.fn().mockImplementation(({ref, cursor}: any) => Promise.resolve({ok:true,value:{offset:cursor?.offset ?? 0,end:cursor ? 8 : 4,total:8,text:`${ref.field}-${cursor ? 'tail' : 'head'}`,format:'utf8',hasMore:!cursor,nextCursor:cursor ? null : {version:ref.version,offset:4}}}))
+  ;(window as any).redlog = { content: {list: vi.fn().mockResolvedValue({ok:true,value:fields}),read,find:vi.fn()} }
+  render(<EventContentReader projectId="p" eventId="e" />)
+  await screen.findByText('stdout-head',{selector:'pre'})
+  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'remember'}})
+  fireEvent.click(screen.getByRole('button',{name:'content.next'}))
+  await screen.findByText('stdout-tail',{selector:'pre'})
+  fireEvent.change(screen.getByRole('combobox'),{target:{value:'stderr'}})
+  await screen.findByText('stderr-head',{selector:'pre'})
+  fireEvent.change(screen.getByRole('combobox'),{target:{value:'stdout'}})
+  expect(screen.getByRole('searchbox')).toHaveProperty('value','remember')
+  expect(screen.getByText('stdout-tail',{selector:'pre'}).closest('[hidden]')).toBeNull()
+  expect(read).toHaveBeenCalledTimes(3)
 })

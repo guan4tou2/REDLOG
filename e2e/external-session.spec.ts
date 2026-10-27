@@ -26,6 +26,7 @@ test('external PTY output remains searchable and exportable while paused', async
     await page.getByRole('button', { name: '▶ 19 B' }).click()
     await expect(page.getByText('external-pty-canary', { exact: true })).toBeVisible()
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('external-pty-canary')
     await expect(page.getByText(/PTY #1: external-pty-canary/)).toBeVisible()
     await page.getByLabel('Export', { exact: true }).click()

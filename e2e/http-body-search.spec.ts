@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject, openView, resizeMainWindow, expectAppBuild } from './helpers'
 
@@ -34,29 +34,30 @@ test('Search opens indexed Activity output and returns from original evidence wi
     expect(response.ok).toBe(true)
 
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill(marker)
-    await expect(page.getByText('body-search.test')).toBeVisible()
+    await expect(page.getByRole('option').filter({hasText:'body-search.test'})).toBeVisible()
     await expect(page.getByText(/scanner:/)).toBeVisible()
     await expect(page.getByTestId('search-error')).toHaveCount(0)
-    await page.getByRole('button', { name: 'Operations', exact: true }).click()
+    await page.getByRole('tab', { name: 'Operations', exact: true }).click()
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event')).toBeVisible()
     await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
     await page.getByRole('searchbox', { name: 'Find in content' }).fill(marker)
     await page.getByRole('button', { name: 'Find in content', exact: true }).click()
-    await expect(page.locator('pre')).toContainText(marker)
+    await expect(page.locator('pre:visible')).toContainText(marker)
     await expect(page.getByRole('button', { name: 'Previous window' })).toBeEnabled()
     await page.getByRole('button', { name: 'Previous window' }).click()
-    await expect(page.locator('pre')).not.toContainText(marker)
+    await expect(page.locator('pre:visible')).not.toContainText(marker)
     await page.getByRole('button', { name: 'Next window' }).click()
-    await expect(page.locator('pre mark')).toHaveText(marker)
+    await expect(page.locator('pre:visible mark')).toHaveText(marker)
     await page.screenshot({path:testInfo.outputPath('activity-desktop.png')})
     await page.getByRole('button', { name: 'Open original event' }).click()
     await expect(page.getByTestId('search-input')).toBeHidden()
-    await page.getByRole('button', { name: /Back to Search/ }).click()
+    await page.getByRole('button', { name: /Back to Activity/ }).click()
     await expect(page.getByTestId('search-input')).toHaveValue(marker)
-    await expect(page.locator('pre')).toContainText(marker)
+    await expect(page.locator('pre:visible')).toContainText(marker)
     // Resize the native window, not Chromium's emulated viewport. Emulation
     // leaves the renderer occupying only part of a larger Electron surface.
     for(const [name,width,height] of [['narrow',800,700],['wide',1600,1000]] as const) {
@@ -89,7 +90,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event').locator('option:checked')).toContainText('Tool result')
-    await expect(page.locator('pre')).toContainText(aiMarker)
+    await expect(page.locator('pre:visible')).toContainText(aiMarker)
     const shellMarker = 'SHELL-SAVED-RESULT-611'
     for (const data of [
       {subtype:'command_start',shell:'bash',terminalId:'shell-e2e',command_id:'command-e2e',command:'printf shell-e2e-input'},
@@ -106,14 +107,14 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
     await expect(page.getByTestId('activity-row')).toContainText('Command operation')
     await page.getByTestId('activity-row').click()
-    await expect(page.locator('pre')).toContainText(shellMarker)
+    await expect(page.locator('pre:visible')).toContainText(shellMarker)
     await page.getByLabel('Content field').selectOption('stderr')
-    await expect(page.locator('pre')).toHaveText('synthetic stderr')
+    await expect(page.locator('pre:visible')).toHaveText('synthetic stderr')
     await page.getByTestId('search-input').fill('shell-e2e-input')
     await expect(page.getByTestId('activity-row')).toContainText('2 matching · 0 context')
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event').locator('option:checked')).toContainText('Command result')
-    await expect(page.locator('pre')).toHaveText(shellMarker)
+    await expect(page.locator('pre:visible')).toHaveText(shellMarker)
     // The same running app proves both explicit scopes, including members
     // that did not match the search text. No separate launch per assertion.
     for (const kind of ['activity','session'] as const) {
@@ -137,6 +138,33 @@ test('Search opens indexed Activity output and returns from original evidence wi
     }
 
 
+    // The same workspace owns all reading modes and the query. Switching modes
+    // must preserve a visited reader instead of reopening the application.
+    await page.getByRole('tab', {name:'Input / output',exact:true}).click()
+    await expect(page.locator('[data-block-id]')).toContainText(['shell-e2e-input'])
+    await page.getByRole('button',{name:'Saved content',exact:true}).first().click()
+    await expect(page.getByRole('searchbox',{name:'Find in content'})).toBeVisible()
+    await page.getByRole('searchbox',{name:'Find in content'}).fill('saved-reader-position')
+    await page.getByRole('tab',{name:'Raw events',exact:true}).click()
+    await expect(page.getByTestId('search-input')).toHaveValue('shell-e2e-input')
+    await page.getByRole('tab',{name:'Input / output',exact:true}).click()
+    await expect(page.getByRole('searchbox',{name:'Find in content'})).toHaveValue('saved-reader-position')
+    await page.getByRole('tab',{name:'AI conversations',exact:true}).click()
+    await page.getByTestId('search-input').fill(aiMarker)
+    await expect(page.locator('[role="tabpanel"]:visible [data-block-id]')).toContainText([aiMarker])
+    await page.getByRole('tab',{name:'Operations',exact:true}).click()
+    await page.getByTestId('search-input').fill('')
+    await expect.poll(()=>page.getByTestId('activity-row').count()).toBeGreaterThanOrEqual(3)
+    await page.screenshot({path:testInfo.outputPath('workspace-desktop.png')})
+    const win=await app.browserWindow(page)
+    await resizeMainWindow(app,800,600)
+    await win.evaluate(w=>w.webContents.setZoomFactor(1.5))
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+    await expect(page.getByRole('tab',{name:'AI conversations',exact:true})).toBeInViewport()
+    await expect.poll(()=>page.locator('nav').first().evaluate(el=>Math.round(parseFloat(getComputedStyle(el).width)))).toBe(48)
+    await page.evaluate(() => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))))
+    const capture=await win.evaluate(async w=>(await w.capturePage()).toPNG().toString('base64'))
+    writeFileSync(testInfo.outputPath('workspace-narrow-150.png'),Buffer.from(capture,'base64'))
 
   } finally {
     await app.close()

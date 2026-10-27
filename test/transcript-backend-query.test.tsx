@@ -114,3 +114,17 @@ describe('Transcript queries the store, not the loaded blocks (T012)', () => {
     expect(runQuery).not.toHaveBeenCalled()
   })
 })
+
+describe('workspace reading scopes', () => {
+  it.each([['ai', ['agent']], ['io', ['shell', 'scanner']]] as const)('queries only the %s reading scope in the store', async (reading, types) => {
+    const { queryPage, runQuery } = installBridge()
+    const { default: TranscriptView } = await import('../src/renderer/src/components/TranscriptView')
+    render(<TranscriptView reading={reading} externalQuery="session:focused" />)
+    await waitFor(() => expect(queryPage).toHaveBeenCalled())
+    expect([...new Set(queryPage.mock.calls.map(call => call[0].agentType))].sort()).toEqual([...types].sort())
+    await waitFor(() => expect(runQuery).toHaveBeenCalled())
+    expect([...new Set(runQuery.mock.calls.map(call => call[0].filter.agentType))].sort()).toEqual([...types].sort())
+    expect(runQuery.mock.calls.every(call => call[0].parsed.conditions.some((condition: any) => condition.field === 'session' && condition.value === 'focused'))).toBe(true)
+    expect(screen.queryByPlaceholderText('transcript.filter')).toBeNull()
+  })
+})

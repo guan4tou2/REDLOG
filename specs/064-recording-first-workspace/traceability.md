@@ -24,19 +24,19 @@
 | FR-012 | 順序與晚到 | TimelineEventLog、TranscriptView；query cursor | C1 | UX-04/10；CT-01 | S2 |
 | FR-013 | 配對／執行狀態 | TranscriptView、TimelineEventDetails；來源結果欄位 | C1 | UX-04/08；CT-02/10 | S2 |
 | FR-014 | 未知來源可讀 | TimelineEventDetails、TranscriptView；原始 Event | C1 | UX-09；CT-02/10 | S2 |
-| FR-015 | 單一查詢入口 | SearchPanel、FilterBar、FilterContext；query/contract | C2 | UX-06；CT-04 | S2 |
+| FR-015 | 單一查詢入口 | RecordingWorkspace／SearchPanel、FilterBar、FilterContext；query/contract | C2 | UX-06；CT-04 | S2 |
 | FR-016 | 條件語意 | FilterContext；query/contract、event-queries | C2 | UX-06；CT-04 | S2 |
-| FR-017 | 整案求值／cursor | SearchPanel；query/contract、event-queries | C1/C2 | UX-06/18；CT-01/04 | S2 |
-| FR-018 | 命中／群組／背景數量 | TimelineEventLog、SearchPanel、ExportMenu；投影及 plan counts | C1/C2/C5 | UX-06/13；CT-01/04 | S2–S3 |
-| FR-019 | 命中展開／查詢狀態 | SearchPanel、TimelineEventInspector；query/contract | C2 | UX-06/18；CT-03/04 | S2 |
+| FR-017 | 整案求值／cursor | RecordingWorkspace／SearchPanel；query/contract、event-queries | C1/C2 | UX-06/18；CT-01/04 | S2 |
+| FR-018 | 命中／群組／背景數量 | TimelineEventLog、RecordingWorkspace／SearchPanel、ExportMenu；投影及 plan counts | C1/C2/C5 | UX-06/13；CT-01/04 | S2–S3 |
+| FR-019 | 命中展開／查詢狀態 | RecordingWorkspace／SearchPanel、TimelineEventInspector；query/contract | C2 | UX-06/18；CT-03/04 | S2 |
 | FR-020 | cast／長內容搜尋 | SearchPanel、ReplayCommand；cast-index、http-body-index | C2/C3 | UX-18；CT-03/04/11 | S2–S3 |
-| FR-021 | 同查詢／舊回覆失效 | FilterContext、SearchPanel、App；query/contract、export-plan | C2/C5 | UX-06/10；CT-04 | S2–S3 |
-| FR-022 | 詳情與來源附近開啟 | TimelineEventInspector、TimelineEventDetails、TranscriptView、ReplayCommand | C3 | UX-07/10；CT-11/12 | S3 |
-| FR-023 | 有界讀取／內容 Find | ReplayCommand、TranscriptView；既有 body/cast readers | C2/C3 | UX-07/18；CT-11/12 | S3 |
+| FR-021 | 同查詢／舊回覆失效 | FilterContext、RecordingWorkspace／SearchPanel、App；query/contract、export-plan | C2/C5 | UX-06/10；CT-04 | S2–S3 |
+| FR-022 | 詳情與來源附近開啟 | TimelineEventInspector、TimelineEventDetails、RecordingWorkspace／TranscriptView、ReplayCommand | C3 | UX-07/10；CT-11/12 | S3 |
+| FR-023 | 有界讀取／內容 Find | ReplayCommand、RecordingWorkspace／TranscriptView；既有 body/cast readers | C2/C3 | UX-07/18；CT-11/12 | S3 |
 | FR-024 | 預覽／保存／可用性 | TimelineEventDetails、ReplayCommand；Evidence ref、reader、retention | C3/C4/C5/C6 | UX-05/07；CT-06/11/14/16 | S1/S3 |
 | FR-025 | 輸出方向與 PTY | TranscriptView、SessionReplayPlayer；來源 stream metadata | C3 | UX-04/07；CT-12 | S1/S3 |
-| FR-026 | 增量及閱讀位置 | Timeline、TranscriptView、SessionReplayPlayer | C1/C3 | UX-10/18；CT-12 | S2–S3 |
-| FR-027 | AI 內容／Thinking | TranscriptView、AgentsPanel；Claude/Codex adapters | C1/C3 | UX-08；CT-10/12 | S3 |
+| FR-026 | 增量及閱讀位置 | Timeline、RecordingWorkspace／TranscriptView、SessionReplayPlayer | C1/C3 | UX-10/18；CT-12 | S2–S3 |
+| FR-027 | AI 內容／Thinking | RecordingWorkspace／TranscriptView、AgentsPanel；Claude/Codex adapters | C1/C3 | UX-08；CT-10/12 | S3 |
 | FR-028 | 真實來源動作 | HooksPanel、BrowserPage、CaptureControlPage；來源 lifecycle | UX/C6 | UX-01/02/15 | S1/S4 |
 | FR-029 | 安裝／授權／落盤證明 | CaptureHealth、RecordTerminalFlow、HttpCaptureStep、AgentsPanel | C6 | UX-01/02/05；CT-08/16 | S1 |
 | FR-030 | AI opt-in 及授權 | AgentsPanel、PluginsPanel；agent-capture-policy、tailer-host | C6 | UX-14；CT-15/16 | S1 |
