@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
-import { makeTempHome } from './helpers'
+import { makeTempHome, openView, expectAppBuild } from './helpers'
 import { readCastSlice } from '../src/core/cast-slice'
 
 // Smoke test for a PACKAGED build, run against the executable rather than the
@@ -99,6 +99,8 @@ test.describe('packaged app', () => {
         await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('pkg-smoke')
         await page.getByRole('button', { name: 'Create' }).click()
         await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
+        await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
+        if (process.env.REDLOG_EXPECTED_BUILD) await openView(page,'dashboard')
       })
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {

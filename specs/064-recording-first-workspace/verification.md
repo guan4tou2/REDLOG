@@ -205,3 +205,68 @@ Head `66aef83a` 的 macOS unit job `121474366721` 有兩個失敗：ignore-certi
 ### Push gate — 2026-10-27
 
 重新 fetch 遠端後，最終修改依序通過 typecheck、verify:specs、verify:architecture、verify:i18n、完整 unit：**4340 passed / 28 skipped**（426 passed / 5 skipped files，126.32s）。沒有把先前 05949443 的遠端 CI 綠燈套到本次提交；新提交的跨平台 CI 以 PR #444 checks 為準。
+
+## 2026-10-27 — installed macOS candidate d2917021
+
+開發基底為已合併的 main `d2917021`。本輪工作分支 `codex/macos-internal-acceptance` 只修建置來源狀態與驗收入口；候選仍鎖定 d2917021 的 application source，不把未提交的驗收修改編進候選。
+
+### Artifact
+
+- `dist/RedLog-0.18.3-internal-d2917021-arm64.dmg`，約 207 MiB；Mac Apple Silicon。
+- SHA-256：`0a3042357c6c4c5da7166f0da814a69ad963dad431edc93edf5ff2836a13de7e`。
+- `dist/SHA256SUMS-d2917021.txt`、`dist/INTERNAL-TEST-d2917021.md` 為內測交付附件，不提交大型 binary。
+- DMG checksum、`codesign --verify --deep --strict`、package resources contract 均通過。ad-hoc，不是 Developer ID／公證。沒有 publish、修改 release 或更新 feed。
+- readonly mount DMG，用 ditto 安裝至 `/private/tmp/redlog-internal-d2917021/Applications/RedLog.app`，再卸載 image。正式 `/Applications/RedLog.app`、使用者 shell profile／系統 proxy／系統 CA 均未修改。
+
+### Build identity defect and repair
+
+首次包的 About 顯示 `d2917021+local`，不作為最終交付。原因由 electron-vite 5.0.0 的 `loadConfigFormBundledFile` 原始碼確認：它先在 configRoot 寫出 `electron.vite.config.<timestamp>.mjs`，再評估 Git status。即使來源在建置前後皆乾淨，評估當刻也把自己的產物當未追蹤來源。
+
+補一個實際 temp Git repo 的 RED→GREEN regression：編譯產物不算 dirty，修改 tracked config／新增一般 untracked source 仍算 dirty；`.gitignore` 只加根目錄對應 pattern。不移除 dirty check、不硬蓋 Build ID。
+
+為保留指定 d2917021 候選，本輪只暫存並還原自己的驗收修改，以乾淨 d2917021 重建；建置 subprocess 的 `core.excludesFile` 僅排除該已確認的編譯產物，其他來源照常檢查。沒有改 shared Git exclude／其他工作樹。重建後以實際 About 內容確定為 `RedLog v0.18.3 · d2917021`。
+
+### Final installed-package automated acceptance
+
+同一最終 DMG 副本，`REDLOG_PACKAGED_APP` 指向其實際 executable，About 比對 `REDLOG_EXPECTED_BUILD=d2917021`：**25 passed / 1.1m**，沒有將 source-launched 結果當安裝版通過。
+
+- Export dialog／external source recovery：8 cases，含真實 shell、附件、失敗重試、recent result、窄窗及 project switch。
+- FirstRun：11 cases 在同一 App 連續操作，驗證來源獨立、安裝 hook、略過／返回／修復與不遺失既有紀錄；此組部分 proof 是 fixture，不冒充真人從終端輸入。
+- Activity／saved output：1 case，實際 About、17 MiB body 搜尋／Find／原始 Event 返回、原生 resize、操作／Session JSON 匯出讀回。
+- Official AI：3 capture cases + 1 installation case，Claude Code／Codex 的合成 JSONL、明確授權／排除／暫停／移除；不宣稱啟動真人 AI provider client。
+- Packaged smoke：1 case，UI 建專案、真實終端／exit／cast、已存在 mitmdump 12.3.1 的真實 loopback HTTP 與 HTTPS nonce（client --cacert，不變更系統 trust）、bundle verifier，以及重啟後內容／cast 搜尋。
+
+Logs：`/private/tmp/redlog-d2917021-final-installed-acceptance.log`、`redlog-d2917021-final-resources.log`、`redlog-d2917021-final-dmg-verify.log`。測試 artifacts 不提交；若再跑其他 Playwright 項目需先保存想保留的截圖。
+
+### Native, non-E2E exit acceptance
+
+使用同一安裝副本、獨立 native-home，`REDLOG_E2E=0`，透過原生 UI 建立 `native-exit-d2917021`。未透過 Playwright／IPC 代替退出確認。
+
+- ⌘Q 實際出現原生確認，明示「受管網頁擷取代理：經由它的工具會失去代理服務」及外部終端後續指令不再記錄。
+- 點「留在背景」後可繼續專案。送出關窗操作後，authenticated health 為 `{ok:true,projectOpen:true}`，proxy 仍 listening。
+- 再次 ⌘Q →「停止並結束」，原生工具回 App quit，程序 exit 0；回環 API 與 proxy 皆停止。
+- 注意：E2E 模式原本會略過退出確認，因此沒有用那 25 個自動案例冒充此原生結果。
+
+### Remaining friction / not run
+
+- 網路下載後 Gatekeeper 與 macOS 系統 CA 授權未人工驗收；不以本機 build 或 client --cacert 當成通過。未做 Windows／WSL／Kali 此候選真機驗收。
+- 原生首次畫面在本輪未執行使用者指令前，等待一段時間後出現「指令跑了，但沒有東西進來」；目前只能確認文案／觸發時機可能誤導，仍需核對狀態條件，未宣稱已修。
+- 本輪是隔離安裝副本與工程驗收，不等於 2–3 名新使用者的無人協助完成率／時間量測。
+
+交付副本保存在 `/Users/guantou/Desktop/REDLOG/dist/internal-d2917021/`（DMG／SHA256SUMS／內測說明），避免隔離 worktree 後續清理時遺失 binary；不進 Git。共用 Desktop checkout 的既有三份規格 WIP 與未追蹤 DB 未變更。
+
+## 2026-10-27 — test execution consolidation (no GUI run)
+
+先前已有 docs 規則但沒有本機 default selector。上輪約 20 次 App 啟動：第一包的 AI／package 六次、export／Activity 二次、FirstRun／About 二次、重建後 25-case 全選九次，以及非測試原生退出一次。關鍵錯誤是把 metadata 重建當作整組 AI／FirstRun／UI 重跑理由；不是每次都需要全量。
+
+本批新增 `npm run e2e:smoke`：只選 packaged recording/export/restart 一案，正常二次啟動（第二次是明確重啟讀回），禁自動 retry；要求 executable／預期 commit／mitmdump，report 保存在獨立暫存目錄並經既有 strict validator。`--list` 不啟動 Electron。Build ID 檢查抽到共用 helper，在既有 App 執行。
+
+Windows／Linux installed workflow 路徑補 core／main／preload／optional packages 及 build inputs；純 i18n／docs／spec 不因此重建安裝包，保留 workflow_dispatch。FirstRun 六處固定 wait 改狀態／元件／PID 判定。現況改由 test-coverage-matrix.md 對照，不更寫舊 NOT RUN。未批次移動 tests、未刪產品仍使用的泳道測試，也不以這個整理宣稱 C2–C6 缺口完成。
+
+這輪只跑非 GUI unit、type/gates 與 Playwright --list；不為驗證這個整理再次開關 App。新 FirstRun 等待邏輯與 smoke runner 的實際執行留待下一次必要 E2E／CI；不能將 collection 通過寫成 UI 操作已通過。
+
+本批非 GUI 檢查：13 tests passed（installed-smoke-policy／smoke-report／build-source-status）、typecheck／Spec／architecture／i18n gates 通過。`e2e:smoke -- --list` 精確列出 1 test；FirstRun＋Activity collection 共 14 tests。這些列出與檢查均未啟動 App，新的 GUI 等待條件仍未執行。
+
+### Test consolidation submission — 2026-10-27
+
+本批15個路徑獨立收尾：依序通過 typecheck、verify:specs、verify:architecture、verify:i18n 與完整 npm test（4,347 passed / 28 skipped，121.76s）。未啟動 GUI；新 smoke selector 的實際安裝包執行將沿用合併後候選，避免另外啟動一次只驗證 selector。

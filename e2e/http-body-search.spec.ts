@@ -1,20 +1,21 @@
-import { test, expect, _electron as electron } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
+import { launchWithTempHome, openTestProject, openView, resizeMainWindow, expectAppBuild } from './helpers'
 
 test('Search opens indexed Activity output and returns from original evidence without losing the query', async ({}, testInfo) => {
   test.setTimeout(120_000)
-  const tmpHome = makeTempHome('redlog-body-search-')
-  const app = await electron.launch({
-    args: [MAIN_ENTRY], cwd: REPO_ROOT,
-    env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
-  })
+  const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   try {
-    const page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({app})=>app.isPackaged)).toBe(true)
     await openTestProject(page, 'http-body-search')
+    if (process.env.REDLOG_EXPECTED_BUILD) {
+      await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
+      await page.screenshot({path:testInfo.outputPath('installed-build-id.png')})
+    }
+
     const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
     const marker = 'BODY-ONLY-MARKER-77219'

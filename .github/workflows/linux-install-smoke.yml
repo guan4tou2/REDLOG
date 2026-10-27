@@ -7,16 +7,30 @@ on:
   pull_request:
     paths:
       - '.github/workflows/linux-install-smoke.yml'
+      - '.gitignore'
       - 'electron-builder.yml'
+      - 'electron.vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
       - 'hooks/**'
+      - 'plugins/**'
+      - 'optional-plugins/**'
       - 'scripts/verify-packaged-resources.mjs'
       - 'scripts/verify-smoke-report.mjs'
+      - 'scripts/run-installed-smoke.mjs'
       - 'e2e/packaged-*.spec.ts'
+      - 'e2e/helpers.ts'
+      - 'src/core/**'
+      - 'src/main/**'
+      - 'src/preload/**'
+      - 'src/renderer/src/components/ExportMenu.tsx'
+      - 'src/renderer/src/components/EventContentReader.tsx'
+      - 'src/renderer/src/components/ActivityResults.tsx'
+      - 'src/renderer/src/components/FirstRunView.tsx'
+      - 'src/renderer/src/components/RecordTerminalFlow.tsx'
+      - 'src/renderer/src/components/HttpCaptureStep.tsx'
       - 'e2e/dependency-cancel.spec.ts'
       - 'e2e/terminal-session-rotation.spec.ts'
-      - 'src/main/services/dependency-installer.ts'
-      - 'src/main/terminal-manager.ts'
-      - 'src/preload/index.ts'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

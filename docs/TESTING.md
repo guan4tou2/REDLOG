@@ -34,15 +34,18 @@ selection and headers before changing product code or skipping database tests.
 | Strict installation result | `node scripts/verify-smoke-report.mjs <report.json>` | Every selected test passed, with no skip, flaky result or `not-exercised` annotation. |
 | Release asset contract | `RELEASE_TAG=v<version> node scripts/verify-release-assets.mjs <directory>` | All versioned installers and Windows updater metadata match the actual files. |
 
-For an installed smoke, keep the JSON report outside Playwright's output folder
-so a following invocation cannot clear it:
+本機安裝版的預設驗收只跑 recording/delivery/restart 一條流程：
 
 ```sh
+# 只列出範圍，不啟動 App，也不要求已安裝候選。
+npm run e2e:smoke -- --list
+
+# 正式執行需明確指定候選與 commit。正常 2 次啟動：初次 + 重啟讀回。
 REDLOG_PACKAGED_APP='/absolute/path/to/RedLog' \
-PLAYWRIGHT_JSON_OUTPUT_NAME='/absolute/path/to/smoke.json' \
-npx playwright test e2e/packaged-smoke.spec.ts --reporter=list,json
-node scripts/verify-smoke-report.mjs /absolute/path/to/smoke.json
+REDLOG_EXPECTED_BUILD=d2917021 npm run e2e:smoke
 ```
+
+入口會先檢查 executable、commit 及 mitmdump，再啟動單一 packaged-smoke；不自動 retry、不加其他 suite。JSON report 每次存入獨立暫存資料夾，離開前沿用 `verify-smoke-report.mjs` 拒絕 skipped／flaky／not-exercised。About 在同一 App 開始時檢查，不為版本查核另啟動一個 App。直接執行原有 Playwright 命令仍可用於 CI 或刻意指定的驗收。
 
 ## Local iteration and process reuse
 
@@ -57,19 +60,20 @@ processes for replaced IPC handlers, machine-wide plugin mutations, updater
 restart tests and actual startup/installation differences. Reusing those blindly
 would trade desktop interruptions for contaminated results.
 
-For settings → source connection → export/recovery, select just:
+本機依變更選一條，不把下表全部串跑：
 
-```sh
-REDLOG_PACKAGED_APP='/absolute/path/to/RedLog' \
-npx playwright test e2e/capture-settings-interaction.spec.ts e2e/export-preview.spec.ts --reporter=line
-```
+| 變更 | 選取 | 正常 App 啟動次數 |
+| --- | --- | --- |
+| 候選安裝包／資源／recording 交付基線 | `npm run e2e:smoke` | 2，包含刻意重啟 |
+| 外部 Shell 接入或匯出 UI／失敗恢復 | `e2e/export-preview.spec.ts` | 1，8 cases 共用 |
+| Activity／搜尋／saved-content Reader | `e2e/http-body-search.spec.ts` | 1 |
+| 首次設定操作流程 | `e2e/first-run.spec.ts --grep 'the first run'` | 1，11 cases 共用 |
+| AI provider parser／privacy | 選對應 provider 或 privacy case | 每個被選的隔離案例 1 次 |
+| 改設定元件與 source workflow | 先 Vitest；必要時才選 capture-settings-interaction | 完整檔案 3 次，包含 2 個隔離故障案例 |
 
-This selection has 14 behavioral cases in four app processes when all pass:
-one shared settings process, two isolated fault/integration cases, and one
-source-to-export journey. Do not also run a separate source-recovery spec or
-repeat the same unchanged journeys against both source and package. Use source
-while no package exists; prefer the package for final acceptance. The external
-Zsh step is POSIX-only; a skip never counts as Windows shell verification.
+上表單檔選取形式為 `REDLOG_PACKAGED_APP=... npx playwright test <selection>`；有 package 就優先使用它，沒有才使用 source。不為同一未變行為在 source／package 各跑一次。Shell、原生權限及重啟的適用性仍需如實記錄。
+
+重建包先查 resources、簽章、hash 與來源狀態，再跑受影響的 installed smoke；只改 Build metadata 不重跑 AI 安裝／授權和全部 FirstRun。整套 `npm run e2e` 保留給 CI 或有明確理由的全量回歸，不是本機小修改的預設。
 
 Renderer tests own draft state, stale replies, policy controls and messages;
 storage tests own atomic receipt writes and project isolation. E2E retains only
@@ -168,3 +172,13 @@ REDLOG_BUILD_ID=$(git rev-parse --short=8 HEAD) npx electron-builder --mac dmg -
 ```
 
 這不改動正式版本、更新 feed 或現有 release 檔名。發給第一次使用者的是指定安裝檔與使用者指南，不是原始碼開發流程。
+
+安裝包的 Activity／大型輸出驗收可直接沿用同一工作流程，並核對 About 的 commit（不硬寫 UI 版本號）：
+
+```sh
+REDLOG_PACKAGED_APP='/absolute/path/to/RedLog.app/Contents/MacOS/RedLog' \
+REDLOG_EXPECTED_BUILD=d2917021 \
+npx playwright test e2e/http-body-search.spec.ts --reporter=line
+```
+
+直接執行 Activity spec 時，`REDLOG_EXPECTED_BUILD` 選用；`e2e:smoke` 則必填。指定時必須在 About 實際看到精確 Build，`+local` 不當作乾淨候選通過。electron-vite 讀 ESM 設定時建立的 `electron.vite.config.<timestamp>.mjs` 是編譯產物；應由根目錄 `.gitignore` 排除，不能因此略過真正的 tracked／untracked 來源修改檢查。
