@@ -97,3 +97,19 @@ it('returns to the narrow list without losing search, selection, scroll or an ed
     expect((screen.getByRole('textbox',{name:'Note'}) as HTMLTextAreaElement).value).toBe('unsaved draft')
   } finally { vi.restoreAllMocks(); vi.unstubAllGlobals() }
 })
+
+it('does not report a pending or failed bookmark read as an empty collection, and can retry', async () => {
+  let rejectRead!: (error: Error) => void
+  const list = vi.fn(() => new Promise<Bookmark[]>((_resolve, reject) => { rejectRead = reject }))
+  window.redlog.bookmarks.list = list
+  render(<I18nProvider><BookmarksView /></I18nProvider>)
+  expect(screen.getByRole('status').textContent).toContain('Loading')
+  expect(screen.queryByText('No bookmarks yet')).toBeNull()
+  await act(async () => rejectRead(new Error('synthetic bookmark read failure')))
+  expect(screen.getByRole('alert').textContent).toContain('synthetic bookmark read failure')
+  expect(screen.queryByText('No bookmarks yet')).toBeNull()
+  list.mockImplementation(async () => marks)
+  fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
+  expect(await screen.findByText('Current mark')).toBeTruthy()
+  expect(screen.queryByRole('alert')).toBeNull()
+})

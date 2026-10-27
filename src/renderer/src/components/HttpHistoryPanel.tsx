@@ -1,3 +1,4 @@
+import { LoadingSpinner } from './Feedback'
 import { useContainerWidth } from '../hooks/useContainerWidth'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -341,9 +342,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin w-5 h-5 border-2 border-redlog-border border-t-transparent rounded-full" />
-      </div>
+      <LoadingSpinner label={t('common.loading')} />
     )
   }
 
@@ -436,7 +435,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
           </button>
         )}
         {loadError && (
-          <span data-testid="http-load-error" role="alert" className="text-red-300">
+          <span data-testid="http-load-error" role="alert" className="min-w-0 break-words text-red-300">
             {t('httpHistory.loadFailed')}{' '}
             <button type="button" onClick={() => void loadFlows(flows.length > 0)} className="underline">{t('common.retry')}</button>
           </span>
