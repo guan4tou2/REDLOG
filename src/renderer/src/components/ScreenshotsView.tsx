@@ -111,7 +111,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
 
   if (loading) {
     return (
-      <LoadingSpinner />
+      <LoadingSpinner label={t('common.loading')} />
     )
   }
 

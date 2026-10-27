@@ -51,3 +51,16 @@ HTTP 與 Bookmarks 共用小型 `useContainerWidth` hook，使用 `clientWidth` 
 
 這是 macOS 原始碼建置的實際 Electron 驗收，不等同 Windows／Linux 原生或安裝包驗收；
 也不代表 Spec 064 全部完成。本輪不重跑或變更擷取及匯出整套驗收。
+
+## Read-state recovery follow-up
+
+獨立後續分支 `codex/layout-state-recovery` 補載入／空白／讀取失敗的操作驗收。
+Bookmarks 原本將初次讀取顯示成空資料，且拒絕未處理；現保留原資料、明確顯示錯誤並提供 Retry，重試成功清除錯誤。技術錯誤單行截斷但可查看完整值，不讓長路徑擠走操作。
+HTTP 和 Screenshots 沿用共同載入元件；載入狀態有可讀名稱。
+
+`e2e/layout-read-states.spec.ts` 在單一隔離程序故意延遲／拒絕讀取，避免污染真實擷取測試。
+英文與繁中均檢查三頁載入不顯示空資料、空狀態、錯誤後重試，以及 1280×800/100%、800×600/200% 的操作可達性；另檢查 FilterBar 列表載入失敗後的重試。故障由 main-process IPC handler 注入，透過真實 preload 呼叫到 renderer，不使用 renderer 假錯誤。
+
+最終狀態 journey 已通過（7.3秒）；發現截圖載入只有無文字 spinner，已統一使用共用載入名稱。截圖保存於 `test-results/layout-read-states-*/`。這不是擷取 producer 或原生系統權限驗收。
+
+後續推送前五道檢查全部通過，完整 unit 為 4,342 passed / 28 skipped（134.94s）；production build 通過。

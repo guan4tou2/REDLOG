@@ -8,6 +8,7 @@ import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
+import { LoadingSpinner } from './Feedback'
 import { Flag, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from './Button'
 
@@ -39,6 +40,8 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
     }
   }, [narrow, detailOpen])
   const [marks, setMarks] = useState<Bookmark[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Bookmark | null>(null)
   const [creating, setCreating] = useState(false)
   const [browserTab, setBrowserTab] = useState<BrowserTabInfo | null>(null)
@@ -93,8 +96,16 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
     onEscape: () => setSelected(null)
   })
 
-  const refresh = useCallback(() => {
-    window.redlog.bookmarks.list().then(setMarks)
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      setMarks(await window.redlog.bookmarks.list())
+      setLoadError(null)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -159,6 +170,14 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             />
           </div>
         )}
+        {loadError && (
+          <div data-testid="bookmarks-load-error" role="alert" className="min-h-0 overflow-auto p-3 text-xs text-redlog-danger [overflow-wrap:anywhere]">
+            <div>{t('bookmarks.loadFailed')}</div>
+            <div className="mt-1 truncate font-mono text-redlog-text-dim" title={loadError}>{loadError}</div>
+            <Button size="compact" level="quiet" onClick={() => void refresh()} disabled={loading}>{t('common.retry')}</Button>
+          </div>
+        )}
+        {loading && <LoadingSpinner label={t('common.loading')} />}
         <div ref={listRef} onScroll={() => {
           if (!narrow || !detailOpen) listPosition.current = listRef.current?.scrollTop ?? 0
         }} className="flex-1 min-h-0 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
@@ -194,7 +213,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             )
           })}
           <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
-          {filteredMarks.length === 0 && !creating && (
+          {!loading && !loadError && filteredMarks.length === 0 && !creating && (
             marks.length === 0 ? (
               <EmptyState
                 icon={Flag}
