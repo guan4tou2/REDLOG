@@ -179,6 +179,15 @@ export function findEventContent(request: ContentFindRequest): ContentResult<Con
   })
 }
 
+/** Clipboard transfer is bounded; larger versions remain available as files. */
+export function readContentForClipboard(ref: ContentRef): ContentResult<{text:string;bytes:number}> {
+  return access(ref,source=>{
+    if(source.format==='binary')throw new ContentAccessError('unsupported','Binary content is available as a file')
+    if(source.bytes>1024*1024)throw new ContentAccessError('unsupported','clipboard-limit')
+    return {text:new TextDecoder('utf-8',{fatal:true}).decode(source.read(0,source.bytes)),bytes:source.bytes}
+  })
+}
+
 /** Validate and hash a small exact byte range; never persist raw excerpts by default. */
 export function createContentAnchor(request: import('./content-contract').ContentAnchorRequest): ContentResult<import('./content-contract').ContentAnchor> {
   return access(request?.ref, source=>{

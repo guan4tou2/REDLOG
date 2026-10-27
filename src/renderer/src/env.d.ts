@@ -210,6 +210,8 @@ interface RedLogAPI {
     pickPath: (title?: string) => Promise<string | null>
   }
   content: {
+    copySaved: (ref: import('../../core/content-contract').ContentRef) => Promise<import('../../core/content-contract').ContentResult<{bytes:number}>>
+    save: (ref: import('../../core/content-contract').ContentRef) => Promise<import('../../core/content-contract').ContentResult<{path:string;bytes:number}|null>>
     anchor: (req: import('../../core/content-contract').ContentAnchorRequest) => Promise<import('../../core/content-contract').ContentResult<import('../../core/content-contract').ContentAnchor>>
     resolveAnchor: (req: import('../../core/content-contract').ContentAnchor) => Promise<import('../../core/content-contract').ContentResult<{ text: string; offset: number }>>
 

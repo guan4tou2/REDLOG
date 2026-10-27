@@ -93,3 +93,7 @@ T014／T018 僅新增閱讀入口整合，不將 Session 完整選擇、Markdown
 - [x] T040 更新需求追溯／驗證紀錄，完成相關 gates、單次 App 的 Session→Reader→片段→匯出→導覽整合流程及原生版面檢查。
 
 T019 僅完成保存 UTF-8 文字的原始 byte 座標；ANSI 不剝除或猜測映射，binary／Markdown 渲染／cast 時間片段座標尚未對等。T025 的主選單整理已落地，舊視圖程式退場仍受完整 parity gate 約束。其餘複合任務與原生平台／五人任務量測不借本批結果勾選。
+
+## 2026-10-27 — complete saved-content delivery
+
+- [x] T041 C3／FR-023／051：區分視窗複製、1 MiB 上限的完整保存文字複製及有界另存 bytes；驗證原件版本、專案切換、取消、目的檔保護／失敗清理與大型成品讀回。

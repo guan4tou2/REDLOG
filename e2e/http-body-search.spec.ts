@@ -44,6 +44,15 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event')).toBeVisible()
     await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
+    await page.getByRole('button',{name:'Copy saved content',exact:true}).click()
+    await expect(page.getByRole('alert')).toContainText('Saved content exceeds 1 MiB')
+    // Only the native destination picker is stubbed; the UI, content IPC,
+    // version checks and byte-for-byte file delivery are real.
+    const savedBody=join(tmpHome,'saved-body.txt')
+    await app.evaluate(({dialog},filePath)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath})},savedBody)
+    await page.getByRole('button',{name:'Save source content…',exact:true}).click()
+    await expect.poll(()=>{try{return readFileSync(savedBody).length}catch{return 0}}).toBe(17*1024*1024+1+marker.length)
+    expect(readFileSync(savedBody,'utf8')).toBe(`${'x'.repeat(17*1024*1024)} ${marker}`)
     await page.getByRole('searchbox', { name: 'Find in content' }).fill(marker)
     await page.getByRole('button', { name: 'Find in content', exact: true }).click()
     await expect(page.locator('pre:visible')).toContainText(marker)

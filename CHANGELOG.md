@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Saved-content readers distinguish copying the current window from copying
+  the saved version (up to 1 MiB). Larger or binary content can be saved through
+  the native file dialog in bounded chunks, with source/project checks,
+  existing-file protection and cleanup on failed delivery. This retrieves a
+  local source field; it does not apply evidence-bundle export policies.
+
 - I/O and AI reading modes can select a stored source Session, with separate
   Claude Code/Codex selection. Session reading and export share a fixed dataset;
   new arrivals require explicit refresh. The catalog is paged and ordered by

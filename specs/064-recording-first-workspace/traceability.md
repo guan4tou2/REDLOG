@@ -82,3 +82,7 @@
 - FR-022／023／035／051／052 → content-contract.ts、evidence-content.ts、content IPC／marker:create、EventContentReader、EventMarker、ContentAnchorView／MarkerDetail：原件版本、UTF-8 bytes、片段摘要、選取／回看／錯誤、全寬與 Find 保持；evidence-content、marker-create-causes、evidence-content-reader 及同一 Electron journey。來源原文不額外複製進 marker。
 - FR-002／007／040／043 → App、Sidebar、sidebarOrder、CommandPalette、shortcuts、既有工作頁面：五主工作區／備用終端／Settings，組內頁籤及命令面板保持完整功能可達。shortcuts／sidebar／narrow tests、chrome-selection 與工作區 journey 驗證；不等於泳道／連續逐字稿程式已移除。
 - 本批不聲稱 raw AI JSONL／一般附件全文索引、Markdown／ANSI-normalized／cast 座標對等、來源故障矩陣、所有平台真機或五人量測完成。
+
+## Complete saved-content delivery slice
+
+- FR-023／044／051、C3 → evidence-content.ts／saved-content-delivery.ts、content IPC／preload、EventContentReader：視窗與全份保存內容複製分開；1 MiB 剪貼簿限制、binary 另存、版本／project 邊界、64 KiB 分段寫入、目的檔保護及失敗清理。evidence-content／content-delivery-ipc／evidence-content-reader 故障案例，以及 http-body-search 的 17 MiB 成品比對；macOS 原生選檔取消／成功保存另行記錄於 verification。

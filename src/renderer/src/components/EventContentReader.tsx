@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
+import { toast } from './Toast'
 
 /** The field owns its byte position; switching sources cannot reuse a cursor. */
 function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded = false, onMark, fragment }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor }): JSX.Element {
@@ -19,6 +20,22 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   const [notFound, setNotFound] = useState(false)
   const pre=useRef<HTMLPreElement>(null)
   const [selection,setSelection]=useState<{start:number;end:number}|null>(null)
+  const [delivery,setDelivery]=useState<'copy'|'save'|null>(null)
+  const [deliveryError,setDeliveryError]=useState<string|null>(null)
+  const deliver=async(action:'copy'|'save'):Promise<void>=>{
+    if(!descriptor.ref||delivery)return
+    setDelivery(action);setDeliveryError(null)
+    try{
+      const reply=action==='copy' ? await globalThis.window.redlog.content.copySaved(descriptor.ref) : await globalThis.window.redlog.content.save(descriptor.ref)
+      if(!alive.current)return
+      if(!reply.ok){
+        const key=reply.message==='clipboard-limit'?'content.clipboardLimit':reply.message==='destination-exists'?'content.destinationExists':reply.message==='project-destination'?'content.projectDestination':reply.status==='failed'?(action==='save'?'content.saveFailed':'common.copyFailed'):`content.status.${reply.status}`
+        setDeliveryError(t(key));return
+      }
+      if(reply.value)toast(action==='copy'?t('common.copied'):t('content.savedTo',{path:'path' in reply.value?reply.value.path:''}),'success')
+    }catch(error){if(alive.current)setDeliveryError(String(error))}
+    finally{if(alive.current)setDelivery(null)}
+  }
   const captureSelection=():void=>{
     const selected=globalThis.window.getSelection(),root=pre.current
     if(!selected||!root||!window||selected.isCollapsed||!selected.rangeCount){setSelection(null);return}
@@ -102,8 +119,11 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
       {busy && <Button onClick={() => { generation.current++; setBusy(false) }}>{t('content.cancel')}</Button>}
       {selection && <Button disabled={busy||selection.end-selection.start>16384} onClick={()=>void mark()}>{t('content.markSelection')}</Button>}
       {window && <CopyButton text={window.text} label={t(window.offset > 0 || window.hasMore ? 'content.copyWindow' : 'firstRun.copy')} />}
+      {window && (window.offset>0||window.hasMore) && descriptor.format!=='binary' && <Button disabled={busy||delivery!==null} aria-busy={delivery==='copy'} onClick={()=>void deliver('copy')}>{t('content.copySaved')}</Button>}
+      <Button disabled={busy||delivery!==null} aria-busy={delivery==='save'} onClick={()=>void deliver('save')}>{t(delivery==='save'?'marker.saving':'content.saveSaved')}</Button>
     </div>
     {selection && selection.end-selection.start>16384 && <p role="status" className="text-xs text-amber-300">{t('content.selectionTooLarge')}</p>}
+    {deliveryError && <p role="alert" className="text-xs text-amber-300">{deliveryError}</p>}
     {error && <div role="alert" className="text-xs text-amber-300 break-words">{error} <Button onClick={() => changed ? onReload() : void read(window?.offset ?? 0)}>{t('common.retry')}</Button></div>}
     {notFound && <p role="status" className="text-xs text-redlog-text-dim">{t('content.notFound')}</p>}
     {descriptor.capture === 'partial' && <p role="status" className="text-xs text-amber-300">{t('content.partial')}</p>}

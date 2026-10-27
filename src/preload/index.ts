@@ -101,6 +101,8 @@ const api: RedLogAPI = {
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   content: {
+    copySaved: (ref: import('../core/content-contract').ContentRef) => ipcRenderer.invoke('content:copySaved', ref) as Promise<import('../core/content-contract').ContentResult<{bytes:number}>>,
+    save: (ref: import('../core/content-contract').ContentRef) => ipcRenderer.invoke('content:save', ref) as Promise<import('../core/content-contract').ContentResult<{path:string;bytes:number}|null>>,
     anchor: (req: import('../core/content-contract').ContentAnchorRequest) => ipcRenderer.invoke('content:anchor', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentAnchor>>,
     resolveAnchor: (req: import('../core/content-contract').ContentAnchor) => ipcRenderer.invoke('content:resolveAnchor', req) as Promise<import('../core/content-contract').ContentResult<{ text: string; offset: number }>>,
 

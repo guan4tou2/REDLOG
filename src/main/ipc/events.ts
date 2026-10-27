@@ -1,5 +1,7 @@
 import { querySourceSessions, type SourceSessionRequest } from '../../core/source-sessions'
-import { describeEventContent, readEventContent, findEventContent, createContentAnchor, resolveContentAnchor } from '../../core/evidence-content'
+import { describeEventContent, readEventContent, findEventContent, createContentAnchor, resolveContentAnchor, readContentForClipboard } from '../../core/evidence-content'
+import { saveEventContent } from '../../core/saved-content-delivery'
+import { clipboard, dialog } from 'electron'
 import type { ContentReadRequest, ContentFindRequest } from '../../core/content-contract'
 import { queryActivityPage, queryActivityMembers } from '../../core/db/activity-queries'
 import type { ActivityRequest, ActivityMembersRequest } from '../../core/activity-contract'
@@ -87,6 +89,23 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     contentAllowed(req?.ref?.projectId) ? createContentAnchor(req) : deniedContent())
   ipcMain.handle('content:resolveAnchor', (_e, req: import('../../core/content-contract').ContentAnchor) =>
     contentAllowed(req?.ref?.projectId) ? resolveContentAnchor(req) : deniedContent())
+  ipcMain.handle('content:copySaved', (_e, ref: import('../../core/content-contract').ContentRef) => {
+    if(!contentAllowed(ref?.projectId))return deniedContent()
+    const result=readContentForClipboard(ref)
+    if(!result.ok)return result
+    try{clipboard.writeText(result.value.text);return {ok:true,value:{bytes:result.value.bytes}}}
+    catch(error){return {ok:false,status:'failed',message:String(error)}}
+  })
+  ipcMain.handle('content:save', async (_e, ref: import('../../core/content-contract').ContentRef) => {
+    if(!contentAllowed(ref?.projectId))return deniedContent()
+    const checked=readEventContent({ref,limit:4})
+    if(!checked.ok)return checked
+    const options={defaultPath:`${ref.eventId.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80)}-${ref.field}.${checked.value.format==='binary'?'bin':'txt'}`}
+    const win=ctx.getMainWindow()
+    const chosen=win ? await dialog.showSaveDialog(win,options) : await dialog.showSaveDialog(options)
+    if(chosen.canceled||!chosen.filePath)return {ok:true,value:null}
+    return saveEventContent(ref,chosen.filePath,()=>contentAllowed(ref.projectId))
+  })
 
 
   // Spec 038. The Timeline's total and "earlier matches", and the check of
