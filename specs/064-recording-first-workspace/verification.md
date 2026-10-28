@@ -460,3 +460,15 @@ Base: merged main `b9284706`; closeout branch `codex/ui-closeout`.
 - This closes the three requested issues only. No refreshed installation package,
   Windows/Linux native-dialog acceptance or wider Spec parity completion is
   claimed. No real shell profile, CA trust or system proxy setting was changed.
+
+### PR #452 — responsive test synchronization
+
+Initial head `8f9222ee` passed macOS/Ubuntu/Windows unit/build and Linux/Windows
+installation smoke. Full Ubuntu E2E passed 159 cases with 7 prerequisite skips,
+but the settings journey selected the old compact dropdown while Normal scale's
+ResizeObserver update replaced it with the category list. The trace identifies
+the detached control, not a source/Reader failure. That transition now waits for
+the real category control before navigation; no product code, timeout, assertion
+or skip changed. The sole affected local journey passed **1/1 (7.3s)** in both
+locales at all original zooms. Log:
+`/private/tmp/redlog-ui-closeout-responsive-e2e-20261028.log`.

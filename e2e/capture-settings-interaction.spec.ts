@@ -95,6 +95,9 @@ test.describe('settings interaction journey', () => {
       await win.evaluate(w => w.webContents.setZoomFactor(1))
       await openSettingsPage(page, 'general')
       await page.getByRole('button', { name: locale === 'en' ? 'Normal' : '正常', exact: true }).click()
+      // Normal scale restores the category list through ResizeObserver.
+      // Wait for that layout before choosing the next category.
+      await expect(page.locator('[data-settings-page="hooks"]')).toBeVisible()
       const proxy = await page.evaluate(async () => (await window.redlog.hooks.detect()).find(hook => hook.id === 'mitmproxy'))
       expect(proxy).toBeTruthy()
       await openSettingsPage(page, 'hooks')
