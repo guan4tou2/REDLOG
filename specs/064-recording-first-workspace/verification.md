@@ -397,3 +397,42 @@ Head `2d80a94a`: macOS and Ubuntu unit/build jobs and Windows install smoke pass
 - A focused search/navigation batch found the related external-Session fixture's old numeric shortcut and a palette invocation while a text input still held focus. The helper now moves focus to the actual active Sidebar control before invoking the palette, respecting the existing typing guard rather than changing it. Standalone AI Transcript assertions scope to its visible body. The four affected external PTY / Claude / Codex / privacy cases passed together in 33.2s; personal-traffic visibility also passed in the initial batch.
 - These repairs change test routing/locators/newline handling, not capture behavior or the product keyboard contract. The first CI failure is preserved here, and the next remote head must be assessed independently before readiness or merge.
 - Second remote head `e240abc6`: all three unit/build jobs and both installed package smoke jobs passed. Full E2E ran and reported 157 passed, 7 skipped, 1 not run, 2 failed: the project shortcut journey still expected the retired primary route order, and the bookmark matrix assumed a fixed 80px position after repeated native resizes and Playwright auto-scrolling the first row. Updated the shortcut expectations to all six current workspaces plus pinned Settings. The bookmark matrix now keeps the same fourth bookmark/draft, establishes a reachable nonzero position at each narrow size, and compares the actual position before opening detail with the position after returning; no tolerance, skip or product behavior was changed. Local shortcut/project journey passed all three cases, and the full bilingual 120-layout matrix passed in 30.9s. New-head remote checks remain required.
+
+## 2026-10-28 — Windows native acceptance of the internal candidate (T043)
+
+Host: Windows 11 Pro 26300 x64, two displays, the RedLog window on the 125% one. Installed from PR #448's **Windows install smoke** artifact, not a local build.
+
+- First pass, head `97775fd6`: CI run `40481761792`, build `1ab280ca` (`refs/pull/448/merge`), `RedLog.Setup.0.18.3.exe` SHA-256 `e9128cde42caec3c7ae45940ef90df526b77ff3d26ee09a23a7af6f384f25aa3`.
+- Recheck, head `af88b238` (the fixes below, plus #449 and #450 merged in): CI run `40618912665`, build `98e1814c`, SHA-256 `6444b183b5bf0b1267ed75c39b821d0885388ef6a9338eeb71f01f3341e24b63`; installed with `/S` over the running first-pass install, which the installer closed itself.
+
+Driven through the UI Automation tree (Open Computer Use) on the real desktop, with the operator typing the PowerShell commands. Synthetic project `spec064-acceptance` only; the user's own profile was backed up first, and no system proxy or CA was changed (`ProxyEnable=0` throughout).
+
+### Passed
+
+- Install and first run: project created and opened; Settings opened with no first-run error.
+- PowerShell enrollment: Settings installed the prompt hook into the pwsh profile; the operator ran the canary `Write-Output redlog-ok-895e0a99` in a new pwsh window and the panel turned verified. A follow-up command with stdout, stderr, `cmd /c "exit 7"` and `$LASTEXITCODE` was recorded with its command line, cwd and exit status. PowerShell output is not captured by default, and I/O says so ("未捕獲輸出") rather than showing it empty.
+- Reading modes, project `spec064-acceptance`, query `acc-stdout`: Activity listed the operations and opened the source event; I/O showed 2 round trips; AI conversation showed its empty state ("尚未捕獲任何內容…"); raw events listed the 4 events with the shell facet.
+- Settings in five groups (擷取來源, 專案與範圍, 資料與隱私, 介面與操作, 進階與系統), each page opened; search found fields by label and hint (`HUD`, among others).
+- DPI: maximized on the 125% display, a UIA sweep found no element outside the window, in Activity, Settings and the reading modes.
+- Quit from the tray asked for confirmation (live sources listed). "停止並結束" ended every RedLog process and closed the API port. A first attempt left the app running, and a repeat with that button explicitly named quit it; treated as the "留在背景" button, not a defect.
+- Restart: the project picker listed `spec064-acceptance` (40.2 MB); reopening it showed 677 events (669 before quit, plus lifecycle events) and the same 4 `acc-stdout` hits.
+- Upgrade in place: `/S` over the running install closed it, kept the project, and the new build showed Codex's five primary workspaces.
+
+### Defects found, fixed, rechecked on the installed build
+
+- **Each PowerShell command listed twice in Activity** (`其他事件`, one per start/end). The prompt hook sent neither a source session nor a command id, so nothing could pair them. Fixed in `c559dfe8` with `test/powershell-hook-pairing.test.ts` (RED first, on pwsh 7 and Windows PowerShell 5.1). On build `98e1814c`: two commands showed as "2 個操作 · 命中 4 筆事件", each a `指令操作` with 2 events.
+- **HUD settings hints named the macOS menu bar and ⌘⇧P, and settings search offered the Dock option** on Windows. Fixed in `471cbc88`. Rechecked: both hints name the tray and Ctrl+Shift+P, and a search for `HUD` returns no Dock, ⌘ or menu-bar entry.
+- **The HUD's own hide button and click-through hints said menu bar on Windows** (found after restart; the English hide button said tray on macOS). Fixed in `af88b238` with a per-platform overlay test (RED first). Rechecked: "隱藏 HUD(從系統匣重新開啟)" and "…按 Ctrl+Shift+P 或用系統匣選單還原".
+
+### Found, not fixed here
+
+- **An upgrade does not refresh an enrolled shell's hook copy.** The profile dot-sources `~/.redlog/shell-hook.ps1`, written once at install (`hooks-manager.ts`); the new app neither rewrites it nor marks it stale. After the `/S` upgrade the copy was still the first-pass hook with no `command_id`, Settings still read "已安裝", and "驗證／修復" passed because the old hook passes the canary. The pairing recheck above ran after copying the bundled hook over it, which is what a fresh install does. The same applies to the bash/zsh copies. Until this is fixed, a hook fix reaches only testers who enroll after upgrading.
+- After the `/S` upgrade, the first launch had no visible window until a second launch focused it. Seen once; not investigated.
+
+### Local gates for the fixes
+
+Typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed on each commit. Full unit on Windows after #449: **4,266 passed / 1 failed** and **4,265 / 4**; every failing file passed alone (96/96) and none was touched here. `mark-assets` failed in both full runs but never alone: load-sensitive, not counted as a pass.
+
+### NOT RUN
+
+Uninstall on this machine; the Windows output pack (PowerShell stdout/stderr); Claude Code/Codex capture on this host (it would read real transcripts); HTTP capture through the managed proxy; the formal T004/T008 Windows rows (UX-01–05, UX-13/14); a 100% or 150% display; e2e for the integrated head beyond CI.

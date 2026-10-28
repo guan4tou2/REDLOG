@@ -103,3 +103,9 @@ T019 僅完成保存 UTF-8 文字的原始 byte 座標；ANSI 不剝除或猜測
 - [x] T042 將 shared reading workspace、無專案時不包 PTY 指令、#432 剩餘的 first-run mock 修正合成單一候選 `integrate/spec064-internal`；在 Windows 跑四道 gate、完整 unit、WSL 完整 e2e、NSIS 打包與 installed smoke，失敗項以 main 同環境對照，記 verification.md。
 
 T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShell 接入 canary、閱讀模式、DPI）。那些及 T004／T008 的 Windows 列仍 NOT RUN。（原記為 T037，與同日 Session／Reader 批次撞號，整合時改號。）
+
+## 2026-10-28 — Windows native acceptance
+
+- [x] T043 以 PR #448 的 Windows install smoke 安裝包做原生驗收：安裝、PowerShell 接入 canary、四種閱讀模式、Settings 五類與搜尋、125% DPI、系統匣結束確認、重開保留、`/S` 原地升級。發現並修正 PowerShell 指令未配對、HUD 與設定的 macOS 文案三項，於重建安裝包上複驗，記 verification.md。
+
+升級不會更新已接入 shell 的 hook 副本（`~/.redlog/`），記為已知缺口，不在 T043 內修。T004／T008 的正式 Windows 列仍 NOT RUN。
