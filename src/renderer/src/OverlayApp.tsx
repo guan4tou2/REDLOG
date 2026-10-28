@@ -223,7 +223,10 @@ export default function OverlayApp(): JSX.Element {
   // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
   const alarm = safety === 'exposed' && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
-  const ptChord = navigator.platform?.includes('Mac') ? '⌘⇧P' : 'Ctrl+Shift+P'
+  const isMac = navigator.platform?.includes('Mac')
+  const ptChord = isMac ? '⌘⇧P' : 'Ctrl+Shift+P'
+  // RedLog lives in the menu bar on macOS and in the tray elsewhere.
+  const placeKey = (key: string): string => isMac ? key : `${key}Tray`
 
   const bracket = (pos: React.CSSProperties): JSX.Element => (
     <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...noDrag, ...pos }} />
@@ -478,13 +481,13 @@ export default function OverlayApp(): JSX.Element {
                   data-testid="hud-pass-through"
                   onClick={() => window.redlog.overlay.setPassThrough!(true)}
                   style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}
-                  title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint', { chord: ptChord })}`}
+                  title={`${t('overlay.passThrough')} — ${t(placeKey('overlay.passThroughHint'), { chord: ptChord })}`}
                 >
                   {t('overlay.passThrough')}
                 </button>
               </div>
               <p data-testid="hud-pass-through-hint" style={{ ...noDrag, margin: '4px 0 0', fontSize: fs(10), color: MUTED }}>
-                {t('overlay.passThroughHint', { chord: ptChord })}
+                {t(placeKey('overlay.passThroughHint'), { chord: ptChord })}
               </p>
             </div>
           )}
@@ -513,7 +516,7 @@ export default function OverlayApp(): JSX.Element {
                 (§21 — icon-only controls must be focusable; the focus ring is
                 the .hudBtn rule in the <style> block). */}
             <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
-            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
+            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t(placeKey('overlay.hide'))} aria-label={t(placeKey('overlay.hide'))}>✕</button>
           </div>
         </div>
 
@@ -523,7 +526,7 @@ export default function OverlayApp(): JSX.Element {
         {ptHint && (
           <div style={{ position: 'absolute', left: 0, right: 0, bottom: 6, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30, ...noDrag }}>
             <span style={{ padding: '3px 10px', fontSize: fs(9.5), fontWeight: 600, letterSpacing: '0.04em', color: '#d6f7fd', background: 'rgba(7,12,17,0.92)', border: `1px solid ${hexA(CYAN, 0.6)}`, clipPath: BTN_CLIP, boxShadow: `0 0 8px ${hexA(CYAN, 0.3)}` }}>
-              {t('overlay.passThroughActive', { chord: ptChord })}
+              {t(placeKey('overlay.passThroughActive'), { chord: ptChord })}
             </span>
           </div>
         )}

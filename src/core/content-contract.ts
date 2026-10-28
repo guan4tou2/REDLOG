@@ -59,3 +59,14 @@ export type ContentResult<T> = {
   status: ContentUnavailable
   message: string
 }
+
+export interface ContentAnchorRequest {
+  ref: ContentRef
+  start: number
+  end: number
+}
+export interface ContentAnchor extends ContentAnchorRequest {
+  v: 1
+  coordinate: 'utf8-bytes'
+  sha256: string
+}

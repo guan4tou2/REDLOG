@@ -31,12 +31,15 @@ mkdir -p "$3"
 _redlog_divert "$3"
 print -r -- "rc=$?"
 ZEOF
-zsh -f "$work/probe.zsh" ${hookPath(target!, 'shell-zsh-hook.zsh')} "$work/relay.py" "$work/dir" >"$work/out" 2>"$work/err"
+# A HOME of its own and no WSL: otherwise the hook resolves the machine's
+# \`.redlog\` before defining anything, and under WSL with no RedLog behind it
+# goes dormant — \`_redlog_divert\` is then "command not found", not a result.
+HOME="$work" WSL_DISTRO_NAME= zsh -f "$work/probe.zsh" ${hookPath(target!, 'shell-zsh-hook.zsh')} "$work/relay.py" "$work/dir" >"$work/out" 2>"$work/err"
 echo "OUT<$(cat "$work/out")>"
 echo "ERR<$(cat "$work/err")>"
 `
     const run = await runInShell(target!, script, { timeoutMs: 60_000 })
     expect(run.stdout).toMatch(/OUT<[^>]*rc=1>/)
     expect(run.stdout).toContain('ERR<>')
-  }, 90_000)
+  }, 300_000) // includes the queue for the WSL lock when run from Windows
 })

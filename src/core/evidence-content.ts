@@ -178,3 +178,33 @@ export function findEventContent(request: ContentFindRequest): ContentResult<Con
     return { match: null, searchedThrough: through, total: source.bytes, hasMore: through < source.bytes, nextCursor: through < source.bytes ? { version: request.ref.version, offset: through, query } : null }
   })
 }
+
+/** Clipboard transfer is bounded; larger versions remain available as files. */
+export function readContentForClipboard(ref: ContentRef): ContentResult<{text:string;bytes:number}> {
+  return access(ref,source=>{
+    if(source.format==='binary')throw new ContentAccessError('unsupported','Binary content is available as a file')
+    if(source.bytes>1024*1024)throw new ContentAccessError('unsupported','clipboard-limit')
+    return {text:new TextDecoder('utf-8',{fatal:true}).decode(source.read(0,source.bytes)),bytes:source.bytes}
+  })
+}
+
+/** Validate and hash a small exact byte range; never persist raw excerpts by default. */
+export function createContentAnchor(request: import('./content-contract').ContentAnchorRequest): ContentResult<import('./content-contract').ContentAnchor> {
+  return access(request?.ref, source=>{
+    const {start,end}=request
+    if(source.format==='binary')throw new ContentAccessError('unsupported','Binary selection has no text coordinate map')
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<=start||end>source.bytes||end-start>16384)throw new ContentAccessError('failed','Selection must be an exact range of at most 16 KiB')
+    const bytes=source.read(start,end-start)
+    try{new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch{throw new ContentAccessError('unsupported','Selection splits a UTF-8 codepoint')}
+    const {projectId,eventId,field,version}=request.ref
+    return {v:1,coordinate:'utf8-bytes',ref:{projectId,eventId,field,version},start,end,sha256:createHash('sha256').update(bytes).digest('hex')}
+  })
+}
+
+export function resolveContentAnchor(anchor: import('./content-contract').ContentAnchor): ContentResult<{text:string;offset:number}> {
+  if(anchor?.v!==1||anchor.coordinate!=='utf8-bytes'||typeof anchor.sha256!=='string')return {ok:false,status:'unsupported',message:'Unsupported evidence coordinate'}
+  const verified=createContentAnchor(anchor)
+  if(!verified.ok)return verified
+  if(verified.value.sha256!==anchor.sha256)return {ok:false,status:'changed',message:'Evidence fragment digest does not match'}
+  return access(anchor.ref,source=>({text:new TextDecoder('utf-8',{fatal:true}).decode(source.read(anchor.start,anchor.end-anchor.start)),offset:anchor.start}))
+}

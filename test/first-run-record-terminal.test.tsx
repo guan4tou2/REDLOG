@@ -515,7 +515,14 @@ describe('first run: HTTP(S) card', () => {
 describe('first run: HTTP(S) card reports its own failures (UI/UX audit F6/F7)', () => {
   it('a rejected start shows the failure and offers a retry instead of resetting silently', async () => {
     install()
-    bridge.proxyStart.mockRejectedValueOnce(new Error('port 8080 in use'))
+    // Like the real backend: once a start has been refused, status reports
+    // `failed` with the reason. A mock that kept answering `stopped` let a
+    // status response arriving after the failure wipe it, which is what failed
+    // main on windows-latest even with a 5 s budget (#431).
+    bridge.proxyStart.mockImplementationOnce(async () => {
+      bridge.proxyStatus.mockResolvedValue({ state: 'failed', url: null, error: 'port 8080 in use' })
+      throw new Error('port 8080 in use')
+    })
     draw()
     // 5 s, not the default 1 s: on a loaded runner the rejected start took
     // just over a second to show, failing main and a PR within minutes.

@@ -235,6 +235,11 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
           port: deadPort, token: 'nobody-home',
           identity: { engagementId: 'eng-spool', operatorId: 'op-spool' }
         },
+        // The spool asserted here is the native one, in this HOME. Under WSL
+        // a `.redlog` whose port answers nothing is abandoned for the Windows
+        // profile's (#326), so the command is kept there or not at all — never
+        // here. On CI the variable is unset already.
+        env: { WSL_DISTRO_NAME: '' },
         timeoutSeconds: 90
       })
       payloads = run.steps[1].output

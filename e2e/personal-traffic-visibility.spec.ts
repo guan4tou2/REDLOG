@@ -24,6 +24,7 @@ test.describe.serial('personal traffic visibility', () => {
       expect(response.status).toBe(201)
     }
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
   })
 
   test.afterAll(async () => { if (app) await app.close() })

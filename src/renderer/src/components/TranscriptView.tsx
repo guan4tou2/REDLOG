@@ -17,6 +17,7 @@ import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { blockToMarkdown, blocksToMarkdown } from '../lib/transcriptSnippet'
 import { summarizeLateOutput, type LateOutputSummary } from '../lib/lateOutput'
 import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcriptPicks'
+import { EventContentReader } from './EventContentReader'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -367,14 +368,18 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-export default function TranscriptView({ onOpenInTimeline }: {
+export default function TranscriptView({ onOpenInTimeline, active = true, reading, externalQuery, sessionExport }: {
   onOpenInTimeline?: (id: string, ts: number) => void
+  active?: boolean
+  reading?: 'io' | 'ai'
+  externalQuery?: string
+  sessionExport?: Extract<ExportRequest['subset'],{kind:'session'}>
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
   const unsupportedExport = useMemo<ExportRequest>(() => ({ format: 'json', subset: { kind: 'selection', projection: 'events', filter: toEventFilter(sharedFilter) } }), [sharedFilter])
   // Blocks, pair completion and picked steps are not a raw event predicate.
-  useContributeExport({ label: t('export.current'), request: unsupportedExport, disabledReason: t('export.transcriptLimit') })
+  useContributeExport(active ? sessionExport ? {label:t('activity.export.session'),request:{format:'json',subset:sessionExport}} : { label: t('export.current'), request: unsupportedExport, disabledReason: t('export.transcriptLimit') } : null)
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
@@ -400,9 +405,10 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [unseen, setUnseen] = useState(0)
 
   useEffect(() => {
-    const id = setTimeout(() => setActiveQuery(query), 300)
+    if (!active) return
+    const id = setTimeout(() => setActiveQuery(externalQuery ?? query), 300)
     return () => clearTimeout(id)
-  }, [query])
+  }, [query, externalQuery, active])
 
   // Spec 017: the parse happens here, so the surface can show how it read the
   // query and a half-typed condition never becomes a store query at all.
@@ -413,15 +419,17 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const backendQuery = parse?.ok ? parse.parsed : null
   const parseFailed = parse !== null && !parse.ok
 
-  const buckets = useMemo(() => sharedFilter.agentType
-    ? TRANSCRIPT_BUCKETS.filter((bucket) => bucket.agentType === sharedFilter.agentType)
-    : TRANSCRIPT_BUCKETS, [sharedFilter.agentType])
+  const buckets = useMemo(() => TRANSCRIPT_BUCKETS.filter(bucket =>
+    (!sharedFilter.agentType || bucket.agentType === sharedFilter.agentType)
+    && (!reading || (reading === 'ai' ? bucket.agentType === 'agent' : ['shell', 'scanner'].includes(bucket.agentType)))
+  ), [sharedFilter.agentType, reading])
 
   // One page of one bucket: the newest when there is no cursor.
   const fetchPage = useCallback(async (bucket: { agentType: string; limit: number }, cursor?: string | null): Promise<EventPage> => (
     backendQuery
       ? await window.redlog.events.runQuery({
         parsed: backendQuery,
+        ...(sessionExport ? {snapshot:sessionExport.snapshot} : {}),
         filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
         limit: bucket.limit,
         ...(cursor ? { cursor } : {})
@@ -433,7 +441,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
         excludeHousekeeping: true,
         ...(cursor ? { cursor } : {})
       })
-  ) as EventPage, [backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  ) as EventPage, [backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, sessionExport?.snapshot])
 
   // Read by the async merges, which must see the rows of the moment they
   // finish rather than the render that started them.
@@ -468,13 +476,14 @@ export default function TranscriptView({ onOpenInTimeline }: {
       if (seq !== loadSeqRef.current) return
       completed.sort((a, b) => a.timestamp - b.timestamp)
       setEvents(completed)
+      if (reading) setExpanded(prev => new Set([...prev, ...completed.map(event => event.id)]))
       setBucketPages(pages)
     } catch (error: unknown) {
       if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, fetchPage])
+  }, [buckets, fetchPage, reading])
 
   // A new batch re-reads the newest page of each bucket and merges it in.
   // Clearing and reloading everything blanked the list, threw away the older
@@ -552,7 +561,15 @@ export default function TranscriptView({ onOpenInTimeline }: {
       setNames(m)
     }).catch(() => {})
   }, [])
-  useEffect(() => window.redlog.events.onNewBatch(() => { void refreshHead() }), [refreshHead])
+  const headStale = useRef(false)
+  useEffect(() => window.redlog.events.onNewBatch(() => {
+    if(sessionExport)return
+    if (active) void refreshHead()
+    else headStale.current = true
+  }), [refreshHead, active, sessionExport])
+  useEffect(() => {
+    if (active && headStale.current) { headStale.current = false; void refreshHead() }
+  }, [active, refreshHead])
 
   // What background commands printed after their prompt came back. It belongs
   // to the command's own block, so it is read per command rather than listed.
@@ -754,7 +771,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   return (
     <div className="h-full flex flex-col">
       <div className="flex flex-wrap items-center gap-2 gap-y-1 px-4 py-2 border-b border-redlog-border/60 shrink-0">
-        <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>
+        {!reading && <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>}
         <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
         {!loading && (!loadError || events.length > 0) && (
           <span data-testid="transcript-completeness" className={`text-xs ${hasMore ? 'text-amber-400' : 'text-emerald-500'}`}>
@@ -763,14 +780,14 @@ export default function TranscriptView({ onOpenInTimeline }: {
               : (hasMore ? 'transcript.recentSubset' : 'transcript.complete'))}
           </span>
         )}
-        <input
+        {externalQuery === undefined && <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('transcript.filter')}
           className="min-w-[min(12rem,100%)] flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
-        />
-        <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
-        <div className="flex gap-1">
+        />}
+        {(!reading || (parse?.ok && parse.parsed.conditions.length > 0)) && <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />}
+        {!reading && <div className="flex gap-1">
           {KINDS.map((k) => (
             <button
               key={k}
@@ -785,7 +802,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
               {t(`transcript.kind.${k}`)}
             </button>
           ))}
-        </div>
+        </div>}
         <Button size="compact" level="quiet"
           type="button"
           data-testid="transcript-picked-only"
@@ -840,7 +857,9 @@ export default function TranscriptView({ onOpenInTimeline }: {
         )}
         {loading && <p className="text-xs text-redlog-text-faint">{t('transcript.loading')}</p>}
         {!loading && !loadError && shown.length === 0 && (
-          buckets.length === 0
+          reading && buckets.length === 0 && TRANSCRIPT_BUCKETS.some(bucket => bucket.agentType === sharedFilter.agentType)
+            ? <p role="status" className="text-xs text-redlog-text-dim">{t('workspace.noScopeMatches')}</p>
+            : buckets.length === 0
             ? (
               <UnappliedFilterNotice
                 title={t('filter.unappliedTitle', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}
@@ -866,6 +885,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
           const body = revealed ? (big ? b.output?.slice(0, MAX_INLINE) : b.output) : undefined
           const fullyExpanded = expanded.has(`${b.id}:full`)
           const displayBody = fullyExpanded && b.output ? b.output : body
+          const savedSource = [...b.events].reverse().find(event => typeof event.engagementId === 'string' && event.engagementId)
+          const readerOpen = expanded.has(`${b.id}:reader`)
           // Source time and receipt time (Domain Invariant #8). They are equal
           // for anything captured live, which is almost everything — so the row
           // shows one time, and the second only earns its place in the row when
@@ -1024,6 +1045,17 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {b.outputNote === 'pending' ? '⏳ ' : ''}{t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
+              {savedSource && (big || b.outputNote === 'recorded' || reading) && <div className="px-2.5 pb-2 min-w-0">
+                <Button size="compact" level="quiet" aria-expanded={readerOpen}
+                  onClick={() => setExpanded(prev => {
+                    const next = new Set(prev)
+                    if (readerOpen) next.delete(`${b.id}:reader`); else next.add(`${b.id}:reader`)
+                    return next
+                  })}>{t('content.savedContent')}</Button>
+                <div hidden={!readerOpen}>
+                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} />}
+                </div>
+              </div>}
             </div>
           )
         })}

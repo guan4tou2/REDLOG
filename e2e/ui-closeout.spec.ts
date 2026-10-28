@@ -68,6 +68,7 @@ test.describe.serial('read failures and a small window (#298)', () => {
     await failChannel('casts:status', 'casts db locked')
     await failChannel('events:distinctAgentTypes', 'facet query failed')
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('nothing-matches-this')
 
     const index = page.getByTestId('search-index-status')

@@ -17,7 +17,7 @@ describe('shared event filter wiring', () => {
     const source = read('src/renderer/src/components/SearchPanel.tsx')
     const loadMore = source.slice(source.indexOf('const loadMore'), source.indexOf('useEffect(() => {', source.indexOf('const loadMore')))
     expect(loadMore).toMatch(/const opts = buildSearchOpts\(\)/)
-    expect(loadMore).toMatch(/filter: opts, limit: PAGE_SIZE, cursor: nextCursor/)
+    expect(loadMore).toMatch(/readProjectPage\(outcome\.parsed,opts,nextCursor\)/)
   })
 
   it('Transcript sends shared predicates with each bounded backend bucket', () => {

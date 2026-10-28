@@ -24,19 +24,19 @@
 | FR-012 | 順序與晚到 | TimelineEventLog、TranscriptView；query cursor | C1 | UX-04/10；CT-01 | S2 |
 | FR-013 | 配對／執行狀態 | TranscriptView、TimelineEventDetails；來源結果欄位 | C1 | UX-04/08；CT-02/10 | S2 |
 | FR-014 | 未知來源可讀 | TimelineEventDetails、TranscriptView；原始 Event | C1 | UX-09；CT-02/10 | S2 |
-| FR-015 | 單一查詢入口 | SearchPanel、FilterBar、FilterContext；query/contract | C2 | UX-06；CT-04 | S2 |
+| FR-015 | 單一查詢入口 | RecordingWorkspace／SearchPanel、FilterBar、FilterContext；query/contract | C2 | UX-06；CT-04 | S2 |
 | FR-016 | 條件語意 | FilterContext；query/contract、event-queries | C2 | UX-06；CT-04 | S2 |
-| FR-017 | 整案求值／cursor | SearchPanel；query/contract、event-queries | C1/C2 | UX-06/18；CT-01/04 | S2 |
-| FR-018 | 命中／群組／背景數量 | TimelineEventLog、SearchPanel、ExportMenu；投影及 plan counts | C1/C2/C5 | UX-06/13；CT-01/04 | S2–S3 |
-| FR-019 | 命中展開／查詢狀態 | SearchPanel、TimelineEventInspector；query/contract | C2 | UX-06/18；CT-03/04 | S2 |
+| FR-017 | 整案求值／cursor | RecordingWorkspace／SearchPanel；query/contract、event-queries | C1/C2 | UX-06/18；CT-01/04 | S2 |
+| FR-018 | 命中／群組／背景數量 | TimelineEventLog、RecordingWorkspace／SearchPanel、ExportMenu；投影及 plan counts | C1/C2/C5 | UX-06/13；CT-01/04 | S2–S3 |
+| FR-019 | 命中展開／查詢狀態 | RecordingWorkspace／SearchPanel、TimelineEventInspector；query/contract | C2 | UX-06/18；CT-03/04 | S2 |
 | FR-020 | cast／長內容搜尋 | SearchPanel、ReplayCommand；cast-index、http-body-index | C2/C3 | UX-18；CT-03/04/11 | S2–S3 |
-| FR-021 | 同查詢／舊回覆失效 | FilterContext、SearchPanel、App；query/contract、export-plan | C2/C5 | UX-06/10；CT-04 | S2–S3 |
-| FR-022 | 詳情與來源附近開啟 | TimelineEventInspector、TimelineEventDetails、TranscriptView、ReplayCommand | C3 | UX-07/10；CT-11/12 | S3 |
-| FR-023 | 有界讀取／內容 Find | ReplayCommand、TranscriptView；既有 body/cast readers | C2/C3 | UX-07/18；CT-11/12 | S3 |
+| FR-021 | 同查詢／舊回覆失效 | FilterContext、RecordingWorkspace／SearchPanel、App；query/contract、export-plan | C2/C5 | UX-06/10；CT-04 | S2–S3 |
+| FR-022 | 詳情與來源附近開啟 | TimelineEventInspector、TimelineEventDetails、RecordingWorkspace／TranscriptView、ReplayCommand | C3 | UX-07/10；CT-11/12 | S3 |
+| FR-023 | 有界讀取／內容 Find | ReplayCommand、RecordingWorkspace／TranscriptView；既有 body/cast readers | C2/C3 | UX-07/18；CT-11/12 | S3 |
 | FR-024 | 預覽／保存／可用性 | TimelineEventDetails、ReplayCommand；Evidence ref、reader、retention | C3/C4/C5/C6 | UX-05/07；CT-06/11/14/16 | S1/S3 |
 | FR-025 | 輸出方向與 PTY | TranscriptView、SessionReplayPlayer；來源 stream metadata | C3 | UX-04/07；CT-12 | S1/S3 |
-| FR-026 | 增量及閱讀位置 | Timeline、TranscriptView、SessionReplayPlayer | C1/C3 | UX-10/18；CT-12 | S2–S3 |
-| FR-027 | AI 內容／Thinking | TranscriptView、AgentsPanel；Claude/Codex adapters | C1/C3 | UX-08；CT-10/12 | S3 |
+| FR-026 | 增量及閱讀位置 | Timeline、RecordingWorkspace／TranscriptView、SessionReplayPlayer | C1/C3 | UX-10/18；CT-12 | S2–S3 |
+| FR-027 | AI 內容／Thinking | RecordingWorkspace／TranscriptView、AgentsPanel；Claude/Codex adapters | C1/C3 | UX-08；CT-10/12 | S3 |
 | FR-028 | 真實來源動作 | HooksPanel、BrowserPage、CaptureControlPage；來源 lifecycle | UX/C6 | UX-01/02/15 | S1/S4 |
 | FR-029 | 安裝／授權／落盤證明 | CaptureHealth、RecordTerminalFlow、HttpCaptureStep、AgentsPanel | C6 | UX-01/02/05；CT-08/16 | S1 |
 | FR-030 | AI opt-in 及授權 | AgentsPanel、PluginsPanel；agent-capture-policy、tailer-host | C6 | UX-14；CT-15/16 | S1 |
@@ -75,3 +75,14 @@
 - FR-047 → http-body-index.ts／http-body-search.test.ts／evidence-content.test.ts：超過 16 MiB 的 body 分段全文覆蓋，來源版本及同 ref 交集；raw JSONL／一般附件／Cast 的其他限制保留。
 - FR-037–039／FR-048 → export-plan.ts／export-selection.ts／export-attachments.ts／data-export.ts／ExportMenu.tsx／ActivityResults.tsx：固定 Activity／Session 成員、保守錄影、逐項 opt-in、成品內容核對；filtered-export.test.ts 及 macOS Electron 成品讀回。
 - UX-16／17 → http-body-search.spec.ts：原生 resize + root／status-bar 填滿驗收，避免 viewport emulation 的假通過。完整平台／使用者矩陣未完成。
+
+## Session / Reader / fragment / navigation slice
+
+- FR-009／017／026／048／053 → source-sessions.ts、dataset-snapshot.ts、query/contract.ts、event-queries.ts、SourceSessionPicker、RecordingWorkspace、TranscriptView：整案 Session catalog、provider／完整 namespace、固定讀取／匯出邊界與明確 refresh；activity-query、source-session-picker 及 http-body-search 整合案例。
+- FR-022／023／035／051／052 → content-contract.ts、evidence-content.ts、content IPC／marker:create、EventContentReader、EventMarker、ContentAnchorView／MarkerDetail：原件版本、UTF-8 bytes、片段摘要、選取／回看／錯誤、全寬與 Find 保持；evidence-content、marker-create-causes、evidence-content-reader 及同一 Electron journey。來源原文不額外複製進 marker。
+- FR-002／007／040／043 → App、Sidebar、sidebarOrder、CommandPalette、shortcuts、既有工作頁面：五主工作區／備用終端／Settings，組內頁籤及命令面板保持完整功能可達。shortcuts／sidebar／narrow tests、chrome-selection 與工作區 journey 驗證；不等於泳道／連續逐字稿程式已移除。
+- 本批不聲稱 raw AI JSONL／一般附件全文索引、Markdown／ANSI-normalized／cast 座標對等、來源故障矩陣、所有平台真機或五人量測完成。
+
+## Complete saved-content delivery slice
+
+- FR-023／044／051、C3 → evidence-content.ts／saved-content-delivery.ts、content IPC／preload、EventContentReader：視窗與全份保存內容複製分開；1 MiB 剪貼簿限制、binary 另存、版本／project 邊界、64 KiB 分段寫入、目的檔保護及失敗清理。evidence-content／content-delivery-ipc／evidence-content-reader 故障案例，以及 http-body-search 的 17 MiB 成品比對；macOS 原生選檔取消／成功保存另行記錄於 verification。

@@ -1,3 +1,5 @@
+import { resolveContentAnchor } from '../../core/evidence-content'
+import type { ContentAnchor } from '../../core/content-contract'
 import fs from 'fs'
 import path from 'path'
 import { createHash } from 'crypto'
@@ -62,8 +64,16 @@ export function registerMarkersIpc(
     const proj = ctx.getActiveProject()
     if (!proj) return null
     const config = loadConfig(getProjectDir(proj))
+    const anchor=data.contentAnchor as ContentAnchor | undefined
+    if(anchor){
+      if(anchor.ref?.projectId!==config.engagement.id)throw new Error('Evidence fragment project changed')
+      const verified=resolveContentAnchor(anchor)
+      if(!verified.ok)throw new Error(verified.message)
+    }
+    const causes=markerCauses([...(Array.isArray(data.causes)?data.causes:[]),...(anchor?[anchor.ref.eventId]:[])])
     const at = data.atTimestamp
     const event = ingestEvent('marker', redactFields({
+      ...(anchor ? { contentAnchor: {v:anchor.v,coordinate:anchor.coordinate,ref:{projectId:anchor.ref.projectId,eventId:anchor.ref.eventId,field:anchor.ref.field,version:anchor.ref.version},start:anchor.start,end:anchor.end,sha256:anchor.sha256} } : {}),
       title: data.title,
       notes: data.notes,
       severity: data.severity ?? 'info',
@@ -74,7 +84,7 @@ export function registerMarkersIpc(
         : {}),
       // #225: a step picked in the transcript cites the events it is about.
       // The marker is a new chained row; the cited events are not touched.
-      ...(markerCauses(data.causes).length > 0 ? { _causes: markerCauses(data.causes) } : {})
+      ...(causes.length > 0 ? { _causes: causes } : {})
     }, MARKER_TEXT_FIELDS), {
       engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true,
       ...(typeof data.targetId === 'string' && data.targetId.trim() ? { targetId: data.targetId.trim().slice(0, 253) } : {})

@@ -692,6 +692,35 @@ export function invalidateHooksCache(): void {
   _detectCache = null
 }
 
+/** Bring every enrolled shell's ~/.redlog copy up to the hook this app ships.
+ *  The copy is written once at install and sourced from there, so without this
+ *  an upgrade left the shell on the old hook while Settings said "installed".
+ *  Only copies an rc or profile already sources are touched; nothing is
+ *  enrolled here. Returns the ids whose files were rewritten. */
+export function refreshInstalledHooks(): string[] {
+  const refreshed: string[] = []
+  for (const plugin of allManifests()) {
+    const files = plugin.installMethod === 'shell-source' ? getHookInstallPlan(plugin.id)
+      : plugin.installMethod === 'powershell-profile' ? [{ source: srcPathFor(plugin), target: installTargetFor(plugin) }]
+      : null
+    if (!files || !checkInstalled(plugin)) continue
+    let changed = false
+    for (const file of files) {
+      try {
+        if (!existsSync(file.source)) continue
+        const want = readFileSync(file.source)
+        if (existsSync(file.target) && readFileSync(file.target).equals(want)) continue
+        writeFileSync(file.target, want)
+        changed = true
+      } catch (e) {
+        console.warn(`[hooks] could not refresh ${file.target}: ${(e as Error).message}`)
+      }
+    }
+    if (changed) refreshed.push(plugin.id)
+  }
+  return refreshed
+}
+
 export function installHook(pluginId: string): { success: boolean; message: string } {
   const plugin = allManifests().find((p) => p.id === pluginId)
   if (!plugin) return { success: false, message: `Unknown plugin: ${pluginId}` }

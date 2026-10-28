@@ -20,13 +20,14 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
   return <p role="status" className="mb-2 text-xs text-amber-300">{issues.join(' · ')}</p>
 }
 
-function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
-  item: ActivitySummary; request: ActivityRequest; snapshot: ActivityPage['snapshot']; onRefresh: () => void
+function ActivitySources({ item, request, snapshot, onOpen, onRefresh, active }: {
+  active: boolean; item: ActivitySummary; request: ActivityRequest; snapshot: ActivityPage['snapshot']; onRefresh: () => void
   onOpen?: (id: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const read = useReadState(() => window.redlog.events.activityMembers({ ...request, ref: item, snapshot, limit: 50, matchesFirst: true }))
+  const read = useReadState(() => window.redlog.events.activityMembers({ ...request, ref: item, snapshot, limit: 50, matchesFirst: true }), true, [snapshot])
   const [selected, setSelected] = useState<string | null>(null)
+  const [visited, setVisited] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const live = useRef(true)
@@ -48,7 +49,11 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
     ?? sources[0]
   // Pick once before committing the first source. A later page must not
   // replace the content the operator is already reading.
-  if (selected === null && current) setSelected(current.event.id)
+  useEffect(() => {
+    if (!current) return
+    if (selected === null) setSelected(current.event.id)
+    setVisited(prev => prev.has(current.event.id) ? prev : new Set([...prev, current.event.id]))
+  }, [current?.event.id])
   return <div className="p-3 space-y-3 min-w-0 bg-redlog-elevated/40">
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(error || read.state.phase === 'failed') && <div role="alert" className="text-xs text-amber-300">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={onRefresh}>{t('activity.refresh')}</Button></div>}
@@ -67,13 +72,16 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
         {onOpen && <Button onClick={() => onOpen(current.event.id, current.event.timestamp)}>{t('activity.original')}</Button>}
       </div>
       {read.state.value?.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('activity.moreSources')}</Button>}
-      <EventContentReader key={current.event.id} projectId={request.projectId} eventId={current.event.id} />
+      {sources.filter(source => visited.has(source.event.id) || source.event.id === current.event.id).map(source =>
+        <div key={source.event.id} hidden={source.event.id !== current.event.id}>
+          <EventContentReader active={active} projectId={request.projectId} eventId={source.event.id} />
+        </div>)}
     </>}
   </div>
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection }: { onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+export function ActivityResults({ request, onOpen, onExportSelection, active = true }: { active?: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -83,15 +91,16 @@ export function ActivityResults({ request, onOpen, onExportSelection }: { onExpo
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} />
 }
-function ActivityList({ request, onOpen, onExportSelection }: { onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, active }: { active: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [newEvents, setNewEvents] = useState(false)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const more = async (): Promise<void> => {
@@ -104,16 +113,18 @@ function ActivityList({ request, onOpen, onExportSelection }: { onExportSelectio
     } catch (e) { if (alive.current) setError(String(e)) }
     finally { if (alive.current) setBusy(false) }
   }
-  const refresh = (): void => { setError(null); setExpanded(null); read.retry() }
+  useEffect(() => window.redlog.events.onNewBatch(() => setNewEvents(true)), [])
+  const refresh = (): void => { setNewEvents(false); setError(null); read.retry() }
   const page = read.state.value
   const selectedActivity = page?.items.find(item=>item.id===expanded)
   const anchorId = selectedActivity?.anchor.id
   const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
   useEffect(()=>{
-    onExportSelection?.(anchorId && page ? {kind:exportKind==='session' && hasSession ? 'session' : 'activity',projectId:request.projectId,anchorEventId:anchorId,snapshot:page.snapshot} : null)
+    onExportSelection?.(active && anchorId && page ? {kind:exportKind==='session' && hasSession ? 'session' : 'activity',projectId:request.projectId,anchorEventId:anchorId,snapshot:page.snapshot} : null)
     return ()=>onExportSelection?.(null)
-  },[anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
+  },[active,anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
+    {newEvents && <Button size="compact" level="quiet" onClick={refresh}>{t('workspace.newActivity')}</Button>}
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
     {page && <>
@@ -133,7 +144,7 @@ function ActivityList({ request, onOpen, onExportSelection }: { onExportSelectio
             <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
           </button>
           {expanded === item.id && <div className="flex justify-end gap-2 py-2"><select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select></div>}
-          {expanded === item.id && <ActivitySources key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
+          {expanded === item.id && <ActivitySources active={active} key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
         </div>)}
       </div>
       {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}

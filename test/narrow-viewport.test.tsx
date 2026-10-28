@@ -106,8 +106,8 @@ describe('the main sidebar in a narrow layout', () => {
     resizeTo(NARROW)
     draw()
     expect(screen.queryByText('儀表板')).toBeNull()
-    const row = document.querySelector('[data-view-btn="timeline"]') as HTMLElement
-    expect(row.getAttribute('aria-label')).toContain('時間軸')
+    const row = document.querySelector('[data-view-btn="search"]') as HTMLElement
+    expect(row.getAttribute('aria-label')).toContain('活動紀錄')
     expect(screen.queryByTestId('sidebar-collapse')).toBeNull()
   })
 

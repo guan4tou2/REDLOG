@@ -22,6 +22,13 @@ $script:_RedLogSpoolDir  = Join-Path $script:_RedLogDir  'pending'
 $script:_RedLogLastId    = 0
 $script:_RedLogMaxBytes  = 102400   # 100 KB per stream (parity with bash hook)
 $script:_RedLogSpoolCap  = 5000     # protects against a runaway loop while RedLog is offline
+# This shell's source session, minted here as the POSIX adapters do
+# (_REDLOG_SESSION_ID). Without it, and without a per-command id below, the
+# app could not pair a command's start with its end and listed every
+# PowerShell command twice. A built-in pane keeps the id the app gave it.
+$script:_RedLogSessionId = if ($env:REDLOG_TERMINAL_ID) { $env:REDLOG_TERMINAL_ID } else { "ps-$PID-$([guid]::NewGuid().ToString('N'))" }
+
+function _RedLogNewCommandId { [guid]::NewGuid().ToString('N') }
 
 function _RedLogTerminalAllowed {
     $file = Join-Path $script:_RedLogDir 'terminal-app'
@@ -91,7 +98,7 @@ function _RedLogBuildPayload {
         pid     = $PID
     }
     if ($env:REDLOG_TERMINAL -eq '1') { $data['source'] = 'builtin-terminal' }
-    if ($env:REDLOG_TERMINAL_ID)      { $data['terminalId'] = $env:REDLOG_TERMINAL_ID }
+    $data['terminalId'] = $script:_RedLogSessionId
     foreach ($k in $Extra.Keys) { $data[$k] = $Extra[$k] }
     $payload = @{ agent_type = 'shell'; data = $data }
     # Embed active project identity for spool attribution.
@@ -167,14 +174,17 @@ function prompt {
         # the same reason (shell-common.sh).
         $startedAt = ([DateTimeOffset]$entry.StartExecutionTime).ToUnixTimeMilliseconds()
         $endedAt   = ([DateTimeOffset]$entry.EndExecutionTime).ToUnixTimeMilliseconds()
+        $commandId = _RedLogNewCommandId
         _RedLogSendEvent -Subtype 'command_start' -Command $cmd -Extra @{
             cwd = (Get-Location).Path
             source_timestamp = $startedAt
+            command_id = $commandId
         }
         _RedLogSendEvent -Subtype 'command_end' -Command $cmd -Extra @{
             exit_code = $exitCode
             duration_sec = $duration
             source_timestamp = $endedAt
+            command_id = $commandId
         }
         $script:_RedLogLastId = $entry.Id
     }
@@ -237,9 +247,11 @@ function Redlog-Run {
     }
 
     # Emit command_start so the timeline shows the row entering flight.
+    $commandId = _RedLogNewCommandId
     _RedLogSendEvent -Subtype 'command_start' -Command $cmdString -Extra @{
         cwd         = (Get-Location).Path
         captured_by = 'redlog-run'
+        command_id  = $commandId
     }
 
     # Run the command with stream splitting. PowerShell doesn't have a clean
@@ -321,6 +333,7 @@ function Redlog-Run {
         stdout_truncated = $so.Truncated
         stderr_truncated = $se.Truncated
         captured_by      = 'redlog-run'
+        command_id       = $commandId
     }
 
     try { Remove-Item -Path $stdoutFile -Force -ErrorAction SilentlyContinue } catch {}

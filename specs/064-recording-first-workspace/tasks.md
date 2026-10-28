@@ -40,7 +40,7 @@
 
 ## S4 — US5／US6／US7
 
-- [ ] T024 [US5] 於 Settings.tsx 及既有設定頁整理五類／唯一入口／搜尋直達，不改儲存 ownership 或 AI 授權邊界。
+- [x] T024 [US5] 於 Settings.tsx 及既有設定頁整理五類／唯一入口／搜尋直達，不改儲存 ownership 或 AI 授權邊界。
 - [ ] T025 [US6] 於 App.tsx／sidebarOrder.ts 整併五主入口、目標／證據，待前段 parity 成立才移除舊 Search／Transcript 導覽。
 - [ ] T026 [US7] 同步 docs/UIUX-STANDARD.md、指令面板／快捷鍵及受影響導覽測試，不加舊入口 shim。
 - [ ] T027 [US7] 於 styles/index.css 與受影響元件驗 UX-16／17：窄窗、高縮放、語系、鍵盤、HUD、狀態及必要安全警告。
@@ -75,3 +75,41 @@ T001→T002–T008→T009–T015→T016–T023→T024–T028→T029。共用 fix
 - [x] T032 修正 Activity E2E 的 viewport emulation：使用原生視窗 800×700／1600×1000，核對原生 content size、root／status bar 右下邊界及 overflow；保存截圖並實際查看。
 
 T021 的核心實作已完成。T012–T018、T020／T022／T023 仍為複合任務，不能因這輪功能完成便宣告所有 reader、anchor、一般附件／raw AI 搜尋、C5 全矩陣或跨平台人工驗收已齊。本輪交付到既有候選分支；合併、安裝包與發版狀態另行驗收。
+
+## 2026-10-27 — shared reading workspace integration
+
+- [x] T033 沿既有 Search 入口提供共用搜尋框、操作／輸入輸出／AI 對話／原始事件；空查詢可瀏覽，保留 Cast 深搜、內容 Find、Activity／Session 匯出與原始 Event 返回。
+- [x] T034 保留已開啟讀取模式、來源 Event 與 stdout／stderr 各自的內容視窗及 Find；隱藏 reader 延後 live refresh，舊 export contribution 清理不得清掉新 owner。
+- [x] T035 Settings 五類使用原有 routes、欄位搜尋及保存 ownership；不新增來源開關或安裝生命週期。
+- [x] T036 本批 native 視窗／高縮放／雙語實際截圖及相關回歸驗收；記錄具體覆蓋與未完成 gate。
+
+T014／T018 僅新增閱讀入口整合，不將 Session 完整選擇、Markdown／raw 座標映射、所有檔案索引及 S2／S3 contract 矩陣宣告完成。T025 主導覽退場仍等待原定 parity gate；本批不藉由減少選單繞過 gate。
+
+## 2026-10-27 — Session / Reader / fragment / primary navigation
+
+- [x] T037 由整案儲存事件分頁列出 Shell／AI Session，分離 project／capture／provider namespace；Claude Code／Codex 選擇沿共同查詢引擎求值，Reader／Session 匯出共用快照；晚到資料只由明確更新納入。
+- [x] T038 共用 Reader 原地放大、Escape／焦點返回、欄位 Find／位置保留；UTF-8 byte 片段標記經主程序驗證來源版本與摘要，再存 append-only marker。重開片段高亮原文，missing／changed／denied 不以相近文字替代。
+- [x] T039 五主工作區＋備用 Terminal；目標／範圍與截圖／戰利品／書籤使用既有路由頁籤，同步命令面板、數字快捷鍵及共用 E2E 導覽 helper。原始事件 Timeline／連續 Transcript 仍是可達的真實頁面，沒有舊路由 shim。
+- [x] T040 更新需求追溯／驗證紀錄，完成相關 gates、單次 App 的 Session→Reader→片段→匯出→導覽整合流程及原生版面檢查。
+
+T019 僅完成保存 UTF-8 文字的原始 byte 座標；ANSI 不剝除或猜測映射，binary／Markdown 渲染／cast 時間片段座標尚未對等。T025 的主選單整理已落地，舊視圖程式退場仍受完整 parity gate 約束。其餘複合任務與原生平台／五人任務量測不借本批結果勾選。
+
+## 2026-10-27 — complete saved-content delivery
+
+- [x] T041 C3／FR-023／051：區分視窗複製、1 MiB 上限的完整保存文字複製及有界另存 bytes；驗證原件版本、專案切換、取消、目的檔保護／失敗清理與大型成品讀回。
+
+## 2026-10-27 — Windows internal candidate
+
+- [x] T042 將 shared reading workspace、無專案時不包 PTY 指令、#432 剩餘的 first-run mock 修正合成單一候選 `integrate/spec064-internal`；在 Windows 跑四道 gate、完整 unit、WSL 完整 e2e、NSIS 打包與 installed smoke，失敗項以 main 同環境對照，記 verification.md。
+
+T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShell 接入 canary、閱讀模式、DPI）。那些及 T004／T008 的 Windows 列仍 NOT RUN。（原記為 T037，與同日 Session／Reader 批次撞號，整合時改號。）
+
+## 2026-10-28 — Windows native acceptance
+
+- [x] T043 以 PR #448 的 Windows install smoke 安裝包做原生驗收：安裝、PowerShell 接入 canary、四種閱讀模式、Settings 五類與搜尋、125% DPI、系統匣結束確認、重開保留、`/S` 原地升級。發現並修正 PowerShell 指令未配對、HUD 與設定的 macOS 文案三項，於重建安裝包上複驗，記 verification.md。
+
+- [x] T044 App 啟動時將已接入 shell 的 `~/.redlog/` hook 副本更新為內建版本（bash／zsh 含支援檔、PowerShell），只動 rc／profile 已載入的副本、不新增接入；以真實 `/S` 升級複驗。WSL distro 內的 hook 不在範圍內。
+
+- [x] T045 主視窗只在 `ready-to-show` 顯示；本機 GPU 合成下從未顯示過的視窗不會繪製，事件不來，凡非最大化啟動皆隱藏（升級與非正常結束只是巧合）。改為頁面載入後 500 ms 仍隱藏即顯示，以 `/S` 升級與無狀態檔啟動複驗。
+
+T004／T008 的正式 Windows 列仍 NOT RUN。

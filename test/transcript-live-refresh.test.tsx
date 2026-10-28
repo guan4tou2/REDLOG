@@ -221,3 +221,19 @@ describe('the reader keeps their place', () => {
     expect(body.scrollTop).toBe(0)
   })
 })
+
+it('defers hidden reader refreshes and catches up once when the reading mode returns', async () => {
+  let head: Page = {items:[row('before',1)],hasMore:false,nextCursor:null}
+  const {queryPage,emit}=installBridge(()=>head)
+  const {default:TranscriptView}=await import('../src/renderer/src/components/TranscriptView')
+  const view=render(<TranscriptView active />)
+  await screen.findByText('message before')
+  const initial=headCalls(queryPage)
+  view.rerender(<TranscriptView active={false} />)
+  head={items:[row('before',1),row('after',2)],hasMore:false,nextCursor:null}
+  act(()=>{emit();emit();emit()})
+  expect(headCalls(queryPage)).toBe(initial)
+  view.rerender(<TranscriptView active />)
+  await screen.findByText('message after')
+  expect(headCalls(queryPage)).toBe(initial+1)
+})

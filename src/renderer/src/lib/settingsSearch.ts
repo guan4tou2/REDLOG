@@ -8,6 +8,18 @@ export interface SettingsHit {
   text: string
 }
 
+// Rendered only on macOS (`isMacOS` in the pages), or only elsewhere. The index
+// is generated from page sources and so holds both sides of each branch; a hit
+// for the other platform's wording leads to a field that page never shows.
+const MAC_ONLY = new Set([
+  'settings.showWifiNameHint',
+  'settings.overlayShowInDock',
+  'settings.overlayShowInDockHint',
+  'settings.overlayAutoShowHint',
+  'settings.overlayPassThroughHint'
+])
+const NOT_MAC = new Set(['settings.overlayAutoShowHintTray', 'settings.overlayPassThroughHintTray'])
+
 /** Every setting whose rendered text contains `query`, page by page. The box
  *  used to match page names only, so "proxy" or "保留" found nothing unless it
  *  happened to be a page name. */
@@ -24,6 +36,7 @@ export function searchSettings(
   for (const [page, keys] of Object.entries(SETTINGS_SEARCH_KEYS) as Array<[SettingsPage, readonly string[]]>) {
     for (const key of keys) {
       if (platform !== 'win32' && key.startsWith('settings.wsl.')) continue
+      if ((platform === 'darwin' ? NOT_MAC : MAC_ONLY).has(key)) continue
       // A template is a runtime state, not a field label. CA has a stable
       // target even before its path is generated; no literal {{path}} leaks.
       if (key === 'httpCapture.caMissing') continue

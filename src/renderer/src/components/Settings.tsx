@@ -213,7 +213,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
       heading: t('settings.groupScope'),
       pages: [
         { id: 'scope', label: t('settings.pageScope') },
-        { id: 'network', label: t('settings.pageNetwork') },
+        { id: 'network', label: t('settings.pageNetwork') }
+      ]
+    },
+    {
+      heading: t('settings.groupData'),
+      pages: [
         // Spec 049: neither answers "what is being recorded". Loot detection
         // classifies what already was; retention decides what stops being
         // kept. Both sat under Capture sources, and retention — a deletion
@@ -232,7 +237,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
       heading: t('settings.groupApp'),
       pages: [
         { id: 'general', label: t('settings.pageGeneral') },
-        { id: 'hud', label: t('settings.pageHud') },
+        { id: 'hud', label: t('settings.pageHud') }
+      ]
+    },
+    {
+      heading: t('settings.groupSystem'),
+      pages: [
         { id: 'plugins', label: t('settings.pagePlugins') },
         { id: 'about', label: t('settings.pageAbout') }
       ]

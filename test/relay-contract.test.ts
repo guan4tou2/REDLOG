@@ -251,6 +251,10 @@ done
 exit 0
 SHIM
 chmod +x "\$H/bin/curl"
+# The shim answers every probe with nothing, so under WSL the hook would judge
+# this HOME's token stale and look in the Windows profile (#326). This is the
+# native scenario test/shell-redlog-run.test.ts runs; CI has no such variable.
+unset WSL_DISTRO_NAME
 export HOME="\$H"
 export PATH="\$H/bin:\$PATH"
 export REDLOG_TEST_PAYLOADS="\$H/payloads.jsonl"

@@ -27,7 +27,9 @@ export default function HudPage({
           onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: on } })}
           label={t('settings.overlayAutoShow')}
         />
-        <p className="text-xs text-redlog-text-faint mb-2">{t('settings.overlayAutoShowHint')}</p>
+        <p className="text-xs text-redlog-text-faint mb-2">
+          {isMacOS ? t('settings.overlayAutoShowHint') : t('settings.overlayAutoShowHintTray')}
+        </p>
         <CheckRow
           checked={config.overlay?.showMarkButton !== false}
           onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: on } })}
@@ -102,7 +104,9 @@ export default function HudPage({
           onChange={setPassThrough}
           label={t('settings.overlayPassThrough')}
         />
-        <p className="text-xs text-redlog-text-faint">{t('settings.overlayPassThroughHint')}</p>
+        <p className="text-xs text-redlog-text-faint">
+          {isMacOS ? t('settings.overlayPassThroughHint') : t('settings.overlayPassThroughHintTray')}
+        </p>
         {config.overlay?.passThrough === true && (
           <div className="mt-2 flex items-center gap-3 pl-6">
             <span className="text-xs text-redlog-text-dim">{t('settings.overlayPassThroughOpacity')}</span>

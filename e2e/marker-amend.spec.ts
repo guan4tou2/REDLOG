@@ -135,6 +135,7 @@ test.describe.serial('amending a marker', () => {
 
   test('searching the old title still finds the finding, reading as it does now', async () => {
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.fill('[data-testid="search-input"]', 'original title')
     await page.waitForTimeout(1200)
     const rows = page.locator('[data-testid="marker-amend-count"]')

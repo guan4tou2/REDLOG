@@ -100,6 +100,9 @@ describeShell(`a command with a large body (${target?.label ?? 'no zsh reachable
           port: deadPort, token: 'nobody-home',
           identity: { engagementId: 'eng-large', operatorId: 'op-large' }
         },
+        // The native spool, in this HOME: under WSL a dead port sends the hook
+        // to the Windows profile instead (#326). Unset on CI already.
+        env: { WSL_DISTRO_NAME: '' },
         timeoutSeconds: 90
       })
     }, 300_000)

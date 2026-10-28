@@ -49,7 +49,7 @@ async function appRegion(sel: string): Promise<string | null> {
 
 test.describe('chrome is not selectable, content is', () => {
   test('dragging across the sidebar does not select its labels', async () => {
-    expect(await userSelect('[data-view-btn="timeline"]')).toBe('none')
+    expect(await userSelect('[data-view-btn="search"]')).toBe('none')
   })
 
   test('the title bar does not select', async () => {

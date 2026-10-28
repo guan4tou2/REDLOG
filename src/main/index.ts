@@ -53,7 +53,7 @@ import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
-import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { mergeClassPolicy } from '../core/terminal-class'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
@@ -1208,6 +1208,11 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
   debugLog('app', 'start', `version=${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} platform=${process.platform}-${process.arch} packaged=${app.isPackaged}`)
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
+
+  // Before any terminal opens: an enrolled shell sources ~/.redlog, and an
+  // upgrade does not touch it otherwise.
+  const refreshedHooks = refreshInstalledHooks()
+  if (refreshedHooks.length) debugLog('hooks', 'refreshed', refreshedHooks.join(','))
 
   startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
 

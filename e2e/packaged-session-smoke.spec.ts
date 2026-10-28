@@ -53,8 +53,12 @@ done`], {
       expect(boundary.find(e => e.data.subtype === 'session_end')?.data.outputBytes).toBeGreaterThan(0)
     }
     await openView(page, 'search')
+    await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('packaged-pty-canary')
-    for (let n = 1; n <= 5; n++) await expect(page.getByText(new RegExp(`^PTY #1: packaged-pty-canary-${n}\\s*$`))).toBeVisible()
+    // Hidden visited readers keep the same title mounted; match the raw event row.
+    const results=page.getByTestId('search-results')
+    await expect(results).toHaveAttribute('aria-busy','false')
+    for (let n = 1; n <= 5; n++) await expect(results.getByRole('option').getByText(new RegExp(`^PTY #1: packaged-pty-canary-${n}\\s*$`))).toBeVisible()
     // Read the exact profile the installer wrote and let a new interactive
     // Zsh source it. This proves ordinary commands, not only an explicit helper.
     const shell = findShellTarget()

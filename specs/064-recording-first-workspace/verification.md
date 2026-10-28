@@ -270,3 +270,167 @@ Windows／Linux installed workflow 路徑補 core／main／preload／optional pa
 ### Test consolidation submission — 2026-10-27
 
 本批15個路徑獨立收尾：依序通過 typecheck、verify:specs、verify:architecture、verify:i18n 與完整 npm test（4,347 passed / 28 skipped，121.76s）。未啟動 GUI；新 smoke selector 的實際安裝包執行將沿用合併後候選，避免另外啟動一次只驗證 selector。
+
+
+## 2026-10-27 — shared reading workspace candidate
+
+Base: `main/37b6d74f`; branch `codex/recording-workspace-integration`. This is a source UI candidate, not the previously delivered installed DMG and not a public release.
+
+### Implemented scope
+
+- `RecordingWorkspace`: one query and keyboard-accessible reading tabs over the existing Search entry. Empty queries browse Activities. Raw Events and Cast results retain the same store query and coverage restrictions.
+- `TranscriptView`: I/O and AI modes constrain source buckets before database pagination. Workspace reads open saved results on load, including matching Tool Results. Standalone continuous Transcript remains reachable until parity.
+- `ActivityResults`／`EventContentReader`: visited reading modes, source events and output fields retain their individual windows and Find text. New batches signal refresh without replacing the active Activity snapshot. Hidden narrative readers catch up on return instead of querying every incoming batch.
+- `exportScope`: only the owner may clear its contribution; an older reader unmount cannot erase the active reader selection. Query transitions discard stale operation selection and preview the latest typed query through ExportPlan, without freezing a transient searching state. Operation/session export still uses the canonical frozen ExportPlan.
+- `Settings`: five groups, unchanged routes, field search, auto-save, project ownership and source permissions. No new integration lifecycle or duplicate source switch.
+
+### Automated evidence so far
+
+- Workspace test began RED because the new module did not exist; the shared-query/mode/reader-preservation journey passes after implementation.
+- Focused behavioral checks: 56 passed in 10 files before final layout checks, including source-field restoration, scoped backend queries, inactive-reader refresh and export ownership.
+- Full unit suite: 4,354 passed, 28 skipped. The previous source-regex test requiring unconditional `current = null` was removed and replaced by an actual two-reader ownership/unmount test. The single-control API-call-site guard remains.
+- Electron saved-content journey passed after catching and fixing a real collapsed matching Tool Result. Its final native-size/zoom capture and expanded regression are recorded below when complete.
+
+### Boundaries
+
+This batch does not claim complete C2–C4 parity, a finished Session selector, generalized Markdown/raw coordinate maps, raw AI JSONL/general attachment full-text indexing, S1 source failure matrices, other-OS native acceptance or five-user task metrics. Existing main Timeline/Transcript routes are retained as required by the retirement gate; no old-hook or schema compatibility shim was added. Spec remains Draft and the compound tasks remain unchecked.
+
+
+### Final automated / visual results for this slice
+
+- `typecheck`, `verify:specs`, `verify:architecture`, `verify:i18n`, production build passed. Full unit suite: 4,354 passed / 28 skipped; later query/export refinements additionally passed 12 focused cases. No skip was counted as a pass.
+- 14 distinct Electron cases across `capture-settings-interaction`, `filtered-export` (both locales), `http-body-search`, `layout-reliability`, `search-query-contract`, and `transcript-view` passed. The first batch passed 12; failed export cases were diagnosed and rerun with the shared saved-content journey, all 3 then passed. No automatic retry masked these failures.
+- The export failures exposed a real transient-state freeze; latest typed query now goes directly through the canonical preview. Raw result locators were also narrowed to visible semantic rows; hidden visited readers remain mounted intentionally.
+- The saved-content journey uses one App for raw body search beyond 16 MiB, Activity source selection, full-content Find, original Event/back, stdout/stderr, selected Activity/Session export with artifact readback, all reading modes, empty-query browsing, and native 800×600 / 150% zoom.
+- Captured native zoom screenshot with `BrowserWindow.capturePage()` after sidebar transition settles. Chromium `page.screenshot` at non-default Electron zoom clipped the frame and was not used as native layout proof. Reviewed wide and native narrow screenshots directly; shared tabs, search, status bar and actions fit. Generated artifacts are under ignored `dist/uiqa-workspace-20261027/`, not committed.
+- The five-component layout matrix also passed 120 native size/zoom/locale combinations. Settings interaction checks passed English/Traditional Chinese at 800px and 100/150/200% zoom.
+- A separate isolated source-build window with synthetic Shell and Claude data is open for native interaction. CUA reported the Mac locked; requested unlock. Native clicks are NOT RUN until unlock, and this is not presented as installed-package acceptance.
+
+
+### Native interaction follow-up — completed after unlock
+
+Same isolated source-build process, synthetic Shell and Claude events, Traditional Chinese. No second App launch was needed; one renderer reload loaded the small cleanup built during this check. This is native interaction through CUA, not Playwright driving the following actions.
+
+- Typed `synthetic-output`, expanded its Activity, searched its saved content, opened the original Event and returned. Query, selected source, content Find text and highlight remained present.
+- Switched I/O and AI modes. Both displayed saved output immediately. Chose stderr via the native dropdown, then returned to stdout; the Find input and output selection were preserved. Arrow keys switched AI/Raw tabs, and Cmd+F selected the common query field.
+- Inspected the five Settings categories at the original window size. Used macOS Window > Move & Resize > Left to resize the actual window, then increased zoom until the source settings switched to the compact category dropdown. Source cards and primary actions remained readable and reachable.
+- Found and removed legacy Transcript heading and unrelated kind buttons inside scoped I/O/AI modes. Standalone Transcript retains its mixed-type controls. Shortened the coverage warning to reflect saved body indexing and the separate recording-search path. `typecheck`, 25 affected unit cases and production build passed after this cleanup; reloaded and inspected the result natively.
+- Opened the selected Claude operation's actual Export dialog. The preview showed exactly its two source events and the selected operation boundary; canceled the preview without writing another artifact.
+- Saved `native-settings-narrow.png`, `native-ai-reading.png`, `native-export-preview.png` under ignored `dist/uiqa-workspace-20261027/`. These synthetic-project screenshots remain local, not public fixtures.
+- Quit the isolated App through Cmd+Q. CUA returned `App quit`. No user shell profile, official project, system proxy preference or system CA was changed. The source window used E2E mode for synthetic seeding, so this quit is cleanup, not a replacement for production native-exit acceptance.
+
+T036 is complete for this bounded UI integration. The broader compound tasks and unsupported/unrun platform and user studies remain unchanged; this does not upgrade the whole Spec to Verified.
+
+## 2026-10-27 — Windows internal candidate `42601438` (T042)
+
+Product commit `4260143897ffe732b61662c4ae2cc483e1db243d` on `integrate/spec064-internal`: `main/37b6d74f` + `codex/recording-workspace-integration` (e7dbf331) + `codex/session-without-project` (960ff12c) + the part of `fix/windows-followups` (#432) not already on main — only the first-run rejected-start mock. Its WSL token probe and stdin payload reached main separately. This record is a docs-only commit on top; the installer was not rebuilt for it.
+
+Host: Windows 11 Pro 26300 x64, Node 22.23.1; e2e in WSL kali-linux under `xvfb-run`, as CI does.
+
+### Gates and suites
+
+- `typecheck`, `verify:specs`, `verify:architecture` (341 files), `verify:i18n` (9 removed strings, none asserted): passed on Windows.
+- Unit, Windows: **4,191 passed / 51 failed / 148 skipped** (435 files, 443 s). All 51 failures are in 10 files that drive zsh through `wsl -d kali-linux` (`zsh-*.pty`, `zsh-builtin-source`, `zsh-divert-missing-pts`, `zsh-pty-harness`, `relay-contract`); every other file passed. Rerun alone: same 10 files fail. Run natively inside kali (no `wsl.exe` hop) they fail too, and `zsh-pty-harness`/`zsh-redlog-command`/`relay-contract` fail **15/25 on both main `37b6d74f` and this candidate**. Main CI (ubuntu unit + e2e) is green on `37b6d74f`. The likely cause is `WSL_DISTRO_NAME` steering the hook to the Windows profile (`hooks/shell-common.sh`) instead of the harness collector; not proven. Counted as environment, **not** as a pass.
+- e2e, full suite in WSL: **150 passed / 3 failed / 7 skipped** (12.2 min). The 3 failures — `dependency-cancel` (prepare button never clickable), `export-preview:26` (`record-terminal-verified` absent), one `layout-reliability` bookmarks scroll case at 200% (size combination differs per run) — reproduce alone with `--retries=0`, and reproduce identically on main `37b6d74f` in the same distro. Not regressions of this candidate; also not a pass.
+
+### Windows package
+
+- Local VS 2026 lacks the Spectre-mitigated libraries (MSB8040), so `node-pty` cannot rebuild from source here. Packaged with `-c.npmRebuild=false`: `node-pty` 1.1.0 loads its N-API prebuild, `better-sqlite3` 13 is N-API. This differs from CI packaging, which rebuilds; the PR's `Windows install smoke` artifact is the authoritative installer.
+- `RedLog.Setup-0.18.3-internal-42601438.exe` SHA-256 `d9355641411b7f1c715b05ce2daab646771ed593e69aa2a54c2c6787391b2e87`; `app.asar` SHA-256 `71411e2a72223c90706c58402e2b6021406e56dff7aaaa7deef746ef0743fac2`. Not committed.
+- `verify:package-resources` passed on `dist/win-unpacked`.
+- `npm run e2e:smoke` against `dist/win-unpacked/RedLog.exe`, `REDLOG_EXPECTED_BUILD=42601438`: **1 passed**, strict report: no skipped tests or not-exercised steps. `packaged-session-smoke` is POSIX-only and skipped on win32 by design.
+
+### NOT RUN
+
+Silent install/uninstall on this machine (CI does it on a clean runner), native manual Windows interaction — PowerShell enrollment canary, the three reading modes, Settings five groups, display DPI — and T004/T008 Windows rows. The local Windows→WSL zsh harness needs its own fix before it can say anything about the adapter on this host.
+
+## 2026-10-27 — Session / Reader / fragment / navigation candidate
+
+Base: `e7dbf331` on `codex/recording-workspace-integration`. The preceding integration commit was already pushed before this slice. These results describe source builds with synthetic evidence, not a new installed release.
+
+### Scope / contracts
+
+- Source Session catalog reads the full stored project before grouping/paging (50 default, 100 maximum), newest activity first. The key includes project, capture binding, source kind, provider/shell and producer Session; no PID/text similarity fallback. Unknown Session identity remains available in All Sessions without fabricated grouping. Provider/source conditions use the shared SQL query engine.
+- I/O and Claude Code/Codex readers can select a Session. Reader and whole-Session export use the catalog's frozen dataset. Incoming events offer explicit refresh; refresh updates the selection boundary even when the selected Session is outside the first catalog page. An obsolete Load More response cannot overwrite the refreshed catalog. Failure retains the selected value and offers retry.
+- The same saved-content reader expands in place, traps keyboard focus, closes with Escape and keeps field/Find/window state. Hidden readers release expanded focus. Text selection maps to saved UTF-8 bytes; the main process verifies source version and fragment digest before marker creation. The marker stores canonical metadata and source `_causes`, not a duplicate plaintext excerpt. Selection over 16 KiB is explicitly refused rather than silently shortened.
+- Reopening a marker verifies and highlights the saved fragment. Unicode/emoji, CRLF and raw ANSI byte ranges are covered; split UTF-8, stale version, missing file, digest mismatch and foreign-project references fail explicitly. A one-byte fragment remains valid. Binary, rendered Markdown/normalized ANSI and cast coordinates are not claimed as implemented.
+- Primary navigation groups Dashboard, Activity, HTTP, Targets/Scope and Evidence, plus optional Terminal; shortcuts are Cmd/Ctrl+1–6 and Settings +9. Existing Targets/Scope and Screenshots/Loot/Bookmarks pages are reachable via tabs. Original-event Timeline and continuous Transcript remain real routes in the command palette/evidence links pending the full retirement gate; no compatibility alias or removed capability is hidden behind a renamed row.
+
+### Automated checks
+
+- Focused core anchor/Session/marker checks: 35 passed. Additional reader/catalog/error/keyboard/copy regression: 51 passed in six files. These include rejected marker writes leaving Event counts unchanged, snapshot paging, refresh-vs-paging races and preserving a selected Session on read failure.
+- One Electron journey passed for saved-body search beyond 16 MiB, Activity/source lookup, full-content Find, original Event/back, stdout/stderr, operation/Session export artifact readback, all reading modes, reader expand/Escape/Find preservation, selected text→marker→verified source highlight, Session pinned during a late arrival→explicit refresh→three-event artifact, Evidence/Targets tabs, and native 800×600/150% zoom. The six chrome-selection cases also passed. Locator mistakes in the new journey were corrected and only the failed journey was rerun; there was no automatic retry.
+- The first unrestricted full unit run identified an outdated guard expecting at least nine primary Sidebar entries. The guard now discovers all route types, so secondary list pages retain keyboard-contract coverage instead of reducing the required count. The restricted run before it had stalled without test results and was stopped; it is not counted as a pass. Final results and native inspection follow below.
+
+### Remaining boundaries
+
+This slice completes T037–T039, not the entire Spec. Raw AI JSONL/general attachment full-text indexing, complete C2/C3 parity across every reader, transformed/cast anchors, source fault/platform matrices, installed-package acceptance and five-user task measurements remain open. Primary grouping does not authorize deleting the still-needed original-event or continuous Transcript implementations.
+
+### Final results / native follow-up
+
+- Ordered typecheck, Spec, architecture and i18n gates passed. Final full unit run: **4,364 passed / 28 skipped** in 123.08s. Subsequent local Reader keyboard refinements passed 15 focused UI/copy checks and typecheck/build; the later App return-state correction was additionally checked by the affected Electron journey and native interaction rather than another full unit run.
+- **10 distinct Electron cases passed** across chrome-selection (6), saved-content/Session/fragment/export (1), query contract (1), continuous Transcript (2). The query test now waits for the actual read-state completion and checks the exact one-row result; a parse explanation is not proof the debounced query finished. After the native return-state fix, only the affected saved-content journey reran and passed (11.6s), now asserting its query survives Evidence/Targets navigation.
+- One isolated source-build App, synthetic Shell/Claude data, Traditional Chinese: selected the terminal Session via the native dropdown; opened saved stdout, typed content Find, expanded the same reader, used Cmd+F to select its content search and Escape to return with text/window preserved. Selected Claude Code and its separate AI Session. Used macOS Window > Move & Resize > Left, then increased Electron zoom until the Sidebar became a rail. Selectors, reading controls, status and source content fit; no claim is made about exact zoom percentages from the native menu steps.
+- Checked Evidence tabs (Screenshots/Loot/Bookmarks), Targets/Scope tabs, and Left-arrow selection/focus. Native inspection exposed a real loss of Activity mode/Session on ordinary cross-workspace navigation. App now retains the visited workspace for the same project and unmounts on project change; hidden readers remain inactive. Rebuilt and reloaded this **same** App, then confirmed AI mode and the selected Session survived Evidence→Activity. No second native App launch was needed for that fix.
+- Native screenshots: `native-session-reader-expanded.png`, `native-session-ai-narrow.png`, `native-session-return-preserved.png` in ignored `dist/uiqa-workspace-20261027/`. They remain local and are not public fixtures. Quit the isolated App via Cmd+Q (`App quit`); no production project, shell profile, CA trust or system proxy preference was edited.
+- T040 is complete for this bounded slice. Spec remains Draft, with the explicitly listed compound/platform/parity gates still open. These results do not describe a distributed installation package or a public release.
+
+## 2026-10-27 — complete saved-content delivery
+
+Base `97d66465`, same candidate branch. T041 is complete for saved Event fields, not for the whole C3 contract.
+
+- Added bounded whole-version clipboard copying (1 MiB UTF-8 maximum) and native file delivery. Existing window Copy remains a distinct operation. Binary is saved as original bytes rather than the reader's base64 window. Source hash/version and current project are rechecked; cancel is not an error or success delivery. Existing files are not overwritten, and destinations inside the source project are refused. Explicit failures remove only the file this operation still owns, not a replacement created by somebody else.
+- Tests started RED on the two missing delivery functions. Typecheck, Spec, architecture and i18n gates passed, then full unit suite **4,369 passed / 28 skipped** (141.20s). Final focused checks passed **27 cases**, including injected write failure after creation, version change, project switch during transfer, clipboard failure, dialog cancel and unchanged visible reader content after clipboard refusal. Production build passed.
+- The existing one-App Electron journey passed in **10.1s**. It refused the 17 MiB clipboard transfer with an actionable limit, saved the full version, and compared every byte against the original synthetic body. Only the native destination dialog was stubbed in that automated case; content IPC, validation, file writes, Session/fragment/export flow and native resize remained real.
+- Separate native CUA inspection used one isolated source-build App and synthetic Shell output. Opened the real macOS Save dialog, canceled, confirmed the original reader remained available, reopened, selected `/private/tmp`, and saved a uniquely named text file. The App showed the actual saved path. Filesystem readback confirmed exactly `synthetic-output\n` (17 bytes), mode `0600`. No production evidence or user file was overwritten. AX incorrectly marked the native Save control disabled while its rendered primary button was operable; the successful native click, app completion and filesystem readback establish the result.
+- Used macOS Window > Move & Resize > Left and increased zoom; source selection, Find, Copy, Save and source text remained reachable. Captured `native-source-save-controls.png` in ignored `dist/uiqa-workspace-20261027/`, inspected directly, and quit the isolated App. No shell profile, system CA or system proxy preference was modified.
+- NOT RUN: Windows/Linux native Save-dialog acceptance, abrupt-process-termination cleanup, all normalized/cast readers, general attachment/raw-AI full-text indexing and broader Spec/platform/user-study gates. A locally saved field is not a sanitized delivery bundle, and a partial capture remains partial.
+- Final error-copy cleanup distinguishes a destination write failure from a source read failure; its retry/location guidance and preserved reader passed 14 focused UI/copy checks. Typecheck, three gates and production build passed after that copy-only refinement; the App was not reopened for it.
+- Publication review follow-up: destination identity uses BigInt filesystem stats, preserving full device/inode precision. The real-file fault case now replaces the destination after the first chunk and verifies a changed result while the replacement's bytes survive cleanup. All 17 core content cases passed; this does not stand in for Windows/Linux native-dialog acceptance.
+
+## PR #450 — first remote checks and test-contract repairs
+
+Head `2d80a94a`: macOS and Ubuntu unit/build jobs and Windows install smoke passed. Windows unit failed only because the route-inventory parser assumed LF blank lines; Linux installed smoke passed five cases but failed the Session case on a global text locator matching both retained Activity content and the Raw Events row. E2E was skipped behind the Windows unit failure, so it was not counted as passed.
+
+- Route discovery now accepts LF and CRLF and explicitly tests both; it retains all secondary-route keyboard coverage and the minimum-count guards. The local complete suite passed 4,371 cases / 28 skipped after those cases were added.
+- Installed Session assertions wait for query completion and target the actual raw-result options, still checking each of the five PTY outputs. Built a separate ad-hoc-signed macOS arm64 `.app` under ignored `dist/pr450-smoke-candidate/`, verified its real packaged resources, and passed this packaged Session/automatic Zsh/profile restoration case in 11.2s. This candidate has the same product code as the head plus test-only working changes; it is not a public or notarized release.
+- A focused search/navigation batch found the related external-Session fixture's old numeric shortcut and a palette invocation while a text input still held focus. The helper now moves focus to the actual active Sidebar control before invoking the palette, respecting the existing typing guard rather than changing it. Standalone AI Transcript assertions scope to its visible body. The four affected external PTY / Claude / Codex / privacy cases passed together in 33.2s; personal-traffic visibility also passed in the initial batch.
+- These repairs change test routing/locators/newline handling, not capture behavior or the product keyboard contract. The first CI failure is preserved here, and the next remote head must be assessed independently before readiness or merge.
+- Second remote head `e240abc6`: all three unit/build jobs and both installed package smoke jobs passed. Full E2E ran and reported 157 passed, 7 skipped, 1 not run, 2 failed: the project shortcut journey still expected the retired primary route order, and the bookmark matrix assumed a fixed 80px position after repeated native resizes and Playwright auto-scrolling the first row. Updated the shortcut expectations to all six current workspaces plus pinned Settings. The bookmark matrix now keeps the same fourth bookmark/draft, establishes a reachable nonzero position at each narrow size, and compares the actual position before opening detail with the position after returning; no tolerance, skip or product behavior was changed. Local shortcut/project journey passed all three cases, and the full bilingual 120-layout matrix passed in 30.9s. New-head remote checks remain required.
+
+## 2026-10-28 — Windows native acceptance of the internal candidate (T043)
+
+Host: Windows 11 Pro 26300 x64, two displays, the RedLog window on the 125% one. Installed from PR #448's **Windows install smoke** artifact, not a local build.
+
+- First pass, head `97775fd6`: CI run `40481761792`, build `1ab280ca` (`refs/pull/448/merge`), `RedLog.Setup.0.18.3.exe` SHA-256 `e9128cde42caec3c7ae45940ef90df526b77ff3d26ee09a23a7af6f384f25aa3`.
+- Recheck, head `af88b238` (the fixes below, plus #449 and #450 merged in): CI run `40618912665`, build `98e1814c`, SHA-256 `6444b183b5bf0b1267ed75c39b821d0885388ef6a9338eeb71f01f3341e24b63`; installed with `/S` over the running first-pass install, which the installer closed itself.
+
+Driven through the UI Automation tree (Open Computer Use) on the real desktop, with the operator typing the PowerShell commands. Synthetic project `spec064-acceptance` only; the user's own profile was backed up first, and no system proxy or CA was changed (`ProxyEnable=0` throughout).
+
+### Passed
+
+- Install and first run: project created and opened; Settings opened with no first-run error.
+- PowerShell enrollment: Settings installed the prompt hook into the pwsh profile; the operator ran the canary `Write-Output redlog-ok-895e0a99` in a new pwsh window and the panel turned verified. A follow-up command with stdout, stderr, `cmd /c "exit 7"` and `$LASTEXITCODE` was recorded with its command line, cwd and exit status. PowerShell output is not captured by default, and I/O says so ("未捕獲輸出") rather than showing it empty.
+- Reading modes, project `spec064-acceptance`, query `acc-stdout`: Activity listed the operations and opened the source event; I/O showed 2 round trips; AI conversation showed its empty state ("尚未捕獲任何內容…"); raw events listed the 4 events with the shell facet.
+- Settings in five groups (擷取來源, 專案與範圍, 資料與隱私, 介面與操作, 進階與系統), each page opened; search found fields by label and hint (`HUD`, among others).
+- DPI: maximized on the 125% display, a UIA sweep found no element outside the window, in Activity, Settings and the reading modes.
+- Quit from the tray asked for confirmation (live sources listed). "停止並結束" ended every RedLog process and closed the API port. A first attempt left the app running, and a repeat with that button explicitly named quit it; treated as the "留在背景" button, not a defect.
+- Restart: the project picker listed `spec064-acceptance` (40.2 MB); reopening it showed 677 events (669 before quit, plus lifecycle events) and the same 4 `acc-stdout` hits.
+- Upgrade in place: `/S` over the running install closed it, kept the project, and the new build showed Codex's five primary workspaces.
+
+### Defects found, fixed, rechecked on the installed build
+
+- **Each PowerShell command listed twice in Activity** (`其他事件`, one per start/end). The prompt hook sent neither a source session nor a command id, so nothing could pair them. Fixed in `c559dfe8` with `test/powershell-hook-pairing.test.ts` (RED first, on pwsh 7 and Windows PowerShell 5.1). On build `98e1814c`: two commands showed as "2 個操作 · 命中 4 筆事件", each a `指令操作` with 2 events.
+- **HUD settings hints named the macOS menu bar and ⌘⇧P, and settings search offered the Dock option** on Windows. Fixed in `471cbc88`. Rechecked: both hints name the tray and Ctrl+Shift+P, and a search for `HUD` returns no Dock, ⌘ or menu-bar entry.
+- **The HUD's own hide button and click-through hints said menu bar on Windows** (found after restart; the English hide button said tray on macOS). Fixed in `af88b238` with a per-platform overlay test (RED first). Rechecked: "隱藏 HUD(從系統匣重新開啟)" and "…按 Ctrl+Shift+P 或用系統匣選單還原".
+- **An upgrade left an enrolled shell on its old hook.** The profile dot-sources `~/.redlog/shell-hook.ps1`, a copy written at install. After the `/S` upgrade it was still the first-pass hook with no `command_id`, and Settings read "已安裝". Expanding "驗證／修復" reruns the install (`RecordTerminalFlow` → `hooks.install`) and rewrote it — which is why the pairing recheck above already ran on a current copy — but nothing after an upgrade says to do that. The same holds for bash/zsh. Fixed in `22c972e0` with `test/hook-refresh.test.ts` (RED first): at launch, before any terminal opens, every copy an rc or profile already sources is rewritten when its bytes differ from the bundled hook; nothing is enrolled, a current copy is untouched. Rechecked as a real upgrade: put the pre-fix hook (`97775fd6`) back as the copy, installed CI run `40622149829` (build `4e97c897`, SHA-256 `ea6d7ab73032485b52d8e3d87211d76f9d3ee1aa18500cbc1f8836fff865e376`) with `/S` — copy still stale — then launched: the copy matched the bundled hook byte for byte. Hooks installed inside a WSL distro are not covered.
+
+- **The main window stayed hidden on every launch not restored maximized.** First seen after each `/S` upgrade, then reproduced with no installer: a force kill and a relaunch, a saved state with `isMaximized:false`, and no state file at all all stayed hidden; `isMaximized:true` showed. So the upgrade and the unclean exit were incidental — the launches that showed were maximized, and Electron's `maximize()` shows a window itself. Over CDP the hidden renderer had loaded the project picker but recorded no paint entry, and `requestAnimationFrame` never ran, so `ready-to-show`, which the window waited on, never fired. `--disable-gpu` showed the window; `--disable-features=CalculateNativeWinOcclusion` did not. Host GPU: Intel Iris Xe 32.0.101.7088, GPU compositing and DirectComposition on, Windows 11 26300. Fixed in `905c49b7` with `test/window-show.test.ts` (RED first): still shown on `ready-to-show`, and also 500 ms after the page finishes loading if still hidden. Rechecked on CI run `40625462219` (build `515c74f8`, SHA-256 `f8b9c1ab231ed4d50ec3e2a94ccc868dfa063593cc27e500351e2a71a56a9ef8`): a `/S` upgrade then a launch with `isMaximized:false`, and a launch with no state file, both showed the rendered project picker by themselves. Whether other Windows hosts never paint a hidden window is not known; the fallback does not depend on it.
+
+### Local gates for the fixes
+
+Typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed on each commit. Full unit on Windows after #449: **4,266 passed / 1 failed** and **4,265 / 4**; every failing file passed alone (96/96) and none was touched here. `mark-assets` failed in both full runs but never alone: load-sensitive, not counted as a pass. With the hook refresh: **4,273 passed / 0 failed / 147 skipped**; with the window fix, **4,277 / 0 / 147**. CI's first run of `hook-refresh` failed on ubuntu only because ext4 returned a set mtime as `…529.999` ms; fixed in `79f71856`, and 2,000 whole-second round-trips on ext4 in WSL had no mismatch.
+
+### NOT RUN
+
+Uninstall on this machine; the Windows output pack (PowerShell stdout/stderr); Claude Code/Codex capture on this host (it would read real transcripts); HTTP capture through the managed proxy; the formal T004/T008 Windows rows (UX-01–05, UX-13/14); a 100% or 150% display; e2e for the integrated head beyond CI.

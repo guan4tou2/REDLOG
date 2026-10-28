@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { attachContextMenu } from './context-menu'
+import { showWhenReady } from './window-show'
 import { HUD_INITIAL_H, defaultOverlayBounds } from '../core/overlay-layout'
 
 const isMac = process.platform === 'darwin'
@@ -74,7 +75,7 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   // down never reached the size they were asking for.
   //
   // One zoom now, and it is the one on the screen.
-  win.on('ready-to-show', () => win.show())
+  showWhenReady(win)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

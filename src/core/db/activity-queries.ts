@@ -1,3 +1,4 @@
+import { readActivitySnapshot } from './dataset-snapshot'
 import { bodySearchCoverage, type BodySearchCoverage } from '../http-body-index'
 import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './index'
@@ -41,18 +42,7 @@ function register(): ReturnType<typeof getReadonlyDB> {
   }
   return db
 }
-function snapshot(db: ReturnType<typeof getReadonlyDB>, old?: ActivitySnapshot): ActivitySnapshot {
-  if (old && (!Number.isSafeInteger(old.chainedMaxRowId) || old.chainedMaxRowId < 0 || !Number.isSafeInteger(old.loggedMaxRowId) || old.loggedMaxRowId < 0 || !Number.isFinite(old.takenAt))) throw new Error('Invalid Activity dataset snapshot')
-  const read = (table: string, max?: number): { max: number; count: number; tail: string | null } => {
-    const where = max == null ? '' : ' WHERE rowid <= ?'
-    const row = db.prepare(`SELECT COALESCE(MAX(rowid),0) AS max,COUNT(*) AS count FROM ${table}${where}`).get(...(max == null ? [] : [max])) as { max: number; count: number }
-    const tail = row.max ? (db.prepare(`SELECT id FROM ${table} WHERE rowid=?`).get(row.max) as { id: string }).id : null
-    return { ...row, tail }
-  }
-  const chained = read('events', old?.chainedMaxRowId), logged = read('events_logged', old?.loggedMaxRowId)
-  if (old && (chained.count !== old.chainedCount || logged.count !== old.loggedCount || chained.tail !== old.chainedTailId || logged.tail !== old.loggedTailId)) throw new Error('Activity dataset changed by retention; refresh the query')
-  return old ?? { chainedMaxRowId: chained.max, loggedMaxRowId: logged.max, chainedCount: chained.count, loggedCount: logged.count, chainedTailId: chained.tail, loggedTailId: logged.tail, takenAt: Date.now() }
-}
+
 interface Cursor {
   v: 1; kind: 'groups' | 'members'; q: string; s: ActivitySnapshot; p: ParsedQuery; body: string
   ts: number; key: string; matched?: number; toolSession?: ActivityPage['toolSession']
@@ -90,7 +80,7 @@ function setup(req: ActivityRequest, kind: Cursor['kind'], ref?: string): {
 } {
   const db = register(), q = requestKey(req, ref), cursor = req.cursor ? decode(req.cursor, kind, q) : null
   if (cursor && req.snapshot && fingerprint(req.snapshot) !== fingerprint(cursor.s)) throw new Error('Activity cursor snapshot changed')
-  const boundary = snapshot(db, cursor?.s ?? req.snapshot)
+  const boundary = readActivitySnapshot(db, cursor?.s ?? req.snapshot)
   const selection = compileEventSelection({ ...req, snapshot: boundary, parsed: cursor?.p ?? req.parsed })
   const bodyIds = selection.bodyMatchIds.length ? (db.prepare(`SELECT id FROM events WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) UNION SELECT id FROM events_logged WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(boundary.chainedMaxRowId, JSON.stringify(selection.bodyMatchIds), boundary.loggedMaxRowId, JSON.stringify(selection.bodyMatchIds)) as { id: string }[]).map(r => r.id) : []
   const coverage = req.parsed.text.trim() ? bodySearchCoverage(boundary, req.projectId) : undefined
@@ -102,14 +92,14 @@ function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
   const before = indexed.get(db)
   let boundary: ActivitySnapshot
   try {
-    if (before) snapshot(db, before)
-    boundary = snapshot(db)
+    if (before) readActivitySnapshot(db, before)
+    boundary = readActivitySnapshot(db)
   } catch {
     // Retention can remove/reuse rowids; discard this derived index rather
     // than attaching a replacement row to a stale Activity.
     db.exec('DELETE FROM temp.activity_projection_v1')
     indexed.delete(db)
-    boundary = snapshot(db)
+    boundary = readActivitySnapshot(db)
   }
   const prior = indexed.get(db)
   for (const [table, tier, max, oldMax] of [
