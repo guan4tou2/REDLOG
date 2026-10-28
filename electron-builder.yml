@@ -7,6 +7,7 @@ files:
   - out/**/*
   - "!out/optional-ai/**/*"
   - resources/**/*
+  - "!resources/installer.nsh"
 # Ship the hook scripts alongside the app so the packaged build can point at
 # them when it installs a hook. (The stdio MCP bridge that used to ride along
 # here was removed in 2026-08 — `mcp/` no longer exists and every build was
@@ -71,6 +72,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  # Removes shell enrolments on uninstall (not on upgrade); see the file.
+  include: resources/installer.nsh
 linux:
   # DEB requires a maintainer email; package.json's author is only a name.
   # Use the repository's public maintainer identity for the installed package.

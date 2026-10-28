@@ -53,6 +53,10 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
       title: text('quit.title'), message: text('quit.message'), terminals: text('quit.terminals'),
       proxy: text('quit.proxy'), external: text('quit.external'), externalLive: text('quit.externalLive'), stay: text('quit.stay'), quit: text('quit.quit')
     })
+    window.redlog?.app?.setTrayText?.({
+      show: text('tray.show'), addMarker: text('tray.addMarker'), pause: text('tray.pause'), resume: text('tray.resume'),
+      toggleHud: text('tray.toggleHud'), releaseHud: text('tray.releaseHud'), quit: text('tray.quit')
+    })
   }, [locale])
 
   return (

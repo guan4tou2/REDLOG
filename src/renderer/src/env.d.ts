@@ -150,6 +150,7 @@ interface RedLogAPI {
     onUpdateStatus: (cb: (status: import('../../main/services/update-status').UpdateStatus) => void) => () => void
     openExternal: (url: string) => Promise<void>
     setQuitText: (text: Record<string, string>) => void
+    setTrayText: (text: Record<string, string>) => void
   }
   debug: {
     status: () => Promise<{ enabled: boolean; path: string }>

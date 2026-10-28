@@ -83,3 +83,16 @@ describe('quitting RedLog (#346)', () => {
     expect(isQuitAllowed()).toBe(true)
   })
 })
+
+// On Windows a dialog with custom buttons draws them as large command links
+// unless told not to — not the two buttons the operator expects from a
+// confirmation, and not what macOS shows. Plain buttons on every platform.
+describe('the quit confirmation', () => {
+  it('uses plain buttons, with staying first and the default', () => {
+    const d = quitDialog(quitImpact({ terminals: 1, proxyState: 'stopped', project: null })!, defaultQuitText('zh-TW'))
+    expect(d.noLink).toBe(true)
+    expect(d.buttons).toEqual(['留在背景', '停止並結束'])
+    expect(d.defaultId).toBe(0)
+    expect(d.cancelId).toBe(0)
+  })
+})

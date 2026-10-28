@@ -98,7 +98,7 @@ export function parseQuitText(raw: unknown): QuitText | null {
 }
 
 export function quitDialog(impact: QuitImpact, text: QuitText): {
-  title: string; message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number
+  title: string; message: string; detail: string; buttons: string[]; defaultId: number; cancelId: number; noLink: boolean
 } {
   const lines: string[] = []
   if (impact.terminals > 0) lines.push(`• ${text.terminals.replace('{{count}}', String(impact.terminals))}`)
@@ -114,6 +114,8 @@ export function quitDialog(impact: QuitImpact, text: QuitText): {
     // The safe choice is first, default and what Escape means.
     buttons: [text.stay, text.quit],
     defaultId: 0,
-    cancelId: 0
+    cancelId: 0,
+    // Windows otherwise draws custom buttons as large command links.
+    noLink: true
   }
 }

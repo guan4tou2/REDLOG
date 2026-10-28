@@ -443,8 +443,10 @@ function isClaudeSettingsInstalled(matcher: string): boolean {
   }
 }
 
-function isShellSourceInstalled(rcFile: string, hookPath: string): boolean {
-  if (!existsSync(hookPath)) return false
+// `requireCopy: false` asks only whether the rc still sources the hook, which
+// is what removal needs: the copy may already have been deleted by hand.
+function isShellSourceInstalled(rcFile: string, hookPath: string, requireCopy = true): boolean {
+  if (requireCopy && !existsSync(hookPath)) return false
   const rcPath = join(homedir(), rcFile)
   if (!existsSync(rcPath)) return false
   const content = readFileSync(rcPath, 'utf-8')
@@ -476,8 +478,8 @@ function psProfileLine(hookName: string): string {
   return `. "$HOME\\.redlog\\${hookName}"`
 }
 
-function isPowershellProfileInstalled(hookPath: string): boolean {
-  if (!existsSync(hookPath)) return false
+function isPowershellProfileInstalled(hookPath: string, requireCopy = true): boolean {
+  if (requireCopy && !existsSync(hookPath)) return false
   const hookName = hookPath.split(/[\\/]/).pop() ?? ''
   const needle = `.redlog\\${hookName}`
   return Object.values(powershellProfilePaths()).some((profile) => {
@@ -719,6 +721,25 @@ export function refreshInstalledHooks(): string[] {
     if (changed) refreshed.push(plugin.id)
   }
   return refreshed
+}
+
+/** What the uninstaller's `--remove-hooks` run does on this side: take every
+ *  enrolment out of the rc or profile that holds it. The uninstaller keeps
+ *  ~/.redlog, so without this a PowerShell profile went on dot-sourcing the
+ *  hook copy there for an app that was gone. Returns the ids removed. */
+export function removeInstalledHooks(): string[] {
+  const removed: string[] = []
+  for (const plugin of allManifests()) {
+    // The line is what has to go, so ask whether it is there — not whether
+    // the copy it names still is (the operator may have cleared ~/.redlog).
+    const sourced = plugin.installMethod === 'shell-source'
+      ? isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin), false)
+      : plugin.installMethod === 'powershell-profile'
+        ? isPowershellProfileInstalled(installTargetFor(plugin), false)
+        : false
+    if (sourced && uninstallHook(plugin.id).success) removed.push(plugin.id)
+  }
+  return removed
 }
 
 export function installHook(pluginId: string): { success: boolean; message: string } {

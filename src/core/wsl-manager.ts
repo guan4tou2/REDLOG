@@ -227,6 +227,49 @@ const RC_INSTALL_SCRIPT = [
   'printf \'\\n# RedLog WSL hook\\n%s\\n\' "$line" >> "$rc" && echo installed'
 ].join('\n')
 
+// Uninstall: take this build's line out of ~/.bashrc and ~/.zshrc. $1 and $2
+// are the bash and zsh hook paths; a line for another build stays, being some
+// other install's to remove. The marker goes with the last hook line, and an
+// rc left with nothing but whitespace was created by install and is deleted.
+// POSIX sh, because a distro need not have bash. Prints each rc it changed.
+const RC_REMOVE_SCRIPT = [
+  'for name in .bashrc .zshrc; do',
+  '  rc="$HOME/$name"; tmp="$rc.redlog-tmp"',
+  '  [ -f "$rc" ] || continue',
+  '  grep -qxF -e "source \\"$1\\"" -e "source \\"$2\\"" "$rc" || continue',
+  '  grep -vxF -e "source \\"$1\\"" -e "source \\"$2\\"" "$rc" > "$tmp"',
+  '  [ $? -le 1 ] || { rm -f "$tmp"; continue; }',
+  '  if ! grep -qE "shell-(bash|zsh)-hook" "$tmp"; then',
+  '    grep -vxF "# RedLog WSL hook" "$tmp" > "$tmp.2"; mv -f "$tmp.2" "$tmp"',
+  '  fi',
+  '  if grep -q "[^[:space:]]" "$tmp"; then cat "$tmp" > "$rc"; else rm -f "$rc"; fi',
+  '  rm -f "$tmp"; echo "$name"',
+  'done'
+].join('\n')
+
+/**
+ * Remove this build's hook from every WSL distro, running or not — the
+ * uninstaller's `--remove-hooks` run, which happens once. Returns
+ * `<distro>: ~/<rc>` for each rc changed.
+ */
+export async function removeWslHooks(): Promise<string[]> {
+  if (process.platform !== 'win32') return []
+  const listing = await runWsl(['-l', '-q'])
+  if (listing.status !== 0) return []
+  const distros = listing.stdout.toString('utf16le').replace(/\x00/g, '')
+    .split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const paths = (['bash', 'zsh'] as const).map((s) => windowsPathToWsl(resolveHookPath(s)))
+  const removed: string[] = []
+  for (const distro of distros) {
+    const r = await runWsl(['-d', distro, '-e', '/bin/sh', '-c', RC_REMOVE_SCRIPT, 'redlog', ...paths])
+    for (const rc of r.stdout.toString().split('\n').map((l) => l.trim()).filter(Boolean)) {
+      removed.push(`${distro}: ~/${rc}`)
+    }
+  }
+  invalidateWslCache()
+  return removed
+}
+
 /**
  * Check hook status for a specific distro.
  * Returns install status per shell. Installed means the rc sources this

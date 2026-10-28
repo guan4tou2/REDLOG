@@ -121,3 +121,7 @@ T004／T008 的正式 Windows 列仍 NOT RUN。
 ## 2026-10-28 — WSL hook line for another build
 
 - [x] T047 WSL rc 那行指向其他 build（別的安裝位置、dev checkout）時，狀態不再算「已安裝」，安裝／驗證修復會換成目前路徑、保留 rc 其餘內容；兩段腳本以 `wsl.exe -e` 執行並以位置參數傳路徑。先寫 RED 測試，並在 Ubuntu 26.04 與 kali 實跑。
+
+## 2026-10-28 — uninstall removes enrolments; tray speaks the app's language
+
+- [x] T049 Windows 解除安裝前以 `RedLog.exe --remove-hooks` 移除 PowerShell profile 與各 WSL 發行版 rc 中本 build 的接入行（hook 副本已被手動刪除也照樣移除；保留使用者自己的內容；升級時不執行）；系統匣選單隨 App 語言，結束確認改為一般按鈕；內測說明補升級、結束、無視窗與移除。先寫 RED 測試，並以實際安裝包在本機跑安裝 → 原地升級 → 解除安裝。
