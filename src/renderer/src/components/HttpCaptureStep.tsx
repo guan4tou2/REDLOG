@@ -246,6 +246,11 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors)
     ? t('firstRun.http.captureBrowserCaveat')
     : undefined
+  // Two facts, not one. An HTTPS report proves the exchange reached the proxy;
+  // it does not prove the client trusts the CA when the capture browser is the
+  // one that ignores certificate errors. The status label must not read
+  // "verified" while the caveat below it says the trust was not shown.
+  const trustVerified = verified && !httpsCaveat
   const os = thisOs()
   // A check belongs to its endpoint, CA and client policy. Historical success
   // must not light a restarted or reconfigured proxy with the old nonce.
@@ -271,9 +276,12 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
         <span
           data-testid="first-run-http-status"
-          className={verified ? 'text-emerald-500' : 'text-redlog-text-faint'}
+          data-ca-trust={verified ? (trustVerified ? 'proven' : 'unproven') : 'none'}
+          className={verified ? (trustVerified ? 'text-emerald-500' : 'text-amber-300') : 'text-redlog-text-faint'}
         >
-          {verified ? t('firstRun.core.verified') : t('firstRun.core.pending')}
+          {verified
+            ? (trustVerified ? t('firstRun.core.verified') : t('firstRun.core.capturedTrustUnproven'))
+            : t('firstRun.core.pending')}
         </span>
       </div>
       {preflightFailed && (

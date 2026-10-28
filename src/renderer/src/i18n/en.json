@@ -1427,6 +1427,7 @@
   "httpCapture.caUntrust": "And remove that trust when the engagement ends",
   "firstRun.core.pending": "○ Not verified",
   "firstRun.core.verified": "✓ Verified",
+  "firstRun.core.capturedTrustUnproven": "◐ Captured · CA unverified",
   "firstRun.core.ready": "✓ Core capture is ready",
   "firstRun.core.start": "Start working",
   "firstRun.core.later": "Finish later",
