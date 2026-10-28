@@ -146,6 +146,16 @@ jobs:
             $token = (Get-Content "$rl\api-token" -Raw).Trim()
             $res = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/health" -Headers @{ Authorization = "Bearer $token" }
             Write-Host "health: $($res | ConvertTo-Json -Compress)"
+
+            # The main window must come up by itself. It is created hidden and
+            # once waited only on ready-to-show, which never fired on a host
+            # whose GPU path does not paint a hidden window: every launch not
+            # restored maximized stayed hidden (2026-10-28). This runner has no
+            # saved window state, so this is such a launch.
+            $deadline = (Get-Date).AddSeconds(30)
+            do { $proc.Refresh(); if ($proc.MainWindowTitle -eq 'RedLog') { break }; Start-Sleep -Seconds 1 } while ((Get-Date) -lt $deadline)
+            if ($proc.MainWindowTitle -ne 'RedLog') { throw "the main window never became visible (MainWindowTitle='$($proc.MainWindowTitle)')" }
+            Write-Host 'main window visible'
           } finally {
             # RedLog hides to the tray on window close, so end it by process.
             Get-Process -Name RedLog -ErrorAction SilentlyContinue | Stop-Process -Force
