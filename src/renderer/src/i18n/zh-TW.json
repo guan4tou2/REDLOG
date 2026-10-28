@@ -1746,6 +1746,7 @@
   "content.copyWindow": "複製這一段",
   "content.copySaved": "複製保存內容",
   "content.saveSaved": "另存來源內容…",
+  "content.saveBoundary": "另存來源內容不套用網頁 scope 或敏感資訊遮蔽。",
   "content.clipboardLimit": "保存內容超過 1 MiB，請另存成檔案。",
   "content.destinationExists": "檔案已存在，請選擇其他檔名。",
   "content.projectDestination": "請選擇來源專案以外的位置。",

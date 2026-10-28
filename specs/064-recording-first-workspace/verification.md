@@ -434,3 +434,29 @@ Typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed on each c
 ### NOT RUN
 
 Uninstall on this machine; the Windows output pack (PowerShell stdout/stderr); Claude Code/Codex capture on this host (it would read real transcripts); HTTP capture through the managed proxy; the formal T004/T008 Windows rows (UX-01–05, UX-13/14); a 100% or 150% display; e2e for the integrated head beyond CI.
+## 2026-10-28 — bounded Reader / source-settings closeout (T046)
+
+Base: merged main `b9284706`; closeout branch `codex/ui-closeout`.
+
+- Saved-content controls show the explicit scope/redaction boundary before Save.
+  Opening the saved Reader hides the inline output only; command and exit status
+  remain visible, and closing the Reader restores the inline output.
+- Commands and terminals exclude mitmproxy. Browser and HTTP capture retains its
+  optional setup and teardown, read failure/retry and existing preparation flow.
+  Settings search indexes the relocated manual controls as well as their label.
+- Ordered typecheck, Spec, architecture and i18n gates passed. Full unit suite:
+  **4,387 passed / 31 skipped**, 435 passing files / 6 skipped (126.03s).
+  The initial restricted run stalled in terminal fixtures and was stopped; only
+  the subsequent unrestricted run is counted. Log:
+  `/private/tmp/redlog-ui-closeout-unit-native-20261028.log`.
+- Production build passed. Two affected Electron journeys passed **2/2 (14.7s)**:
+  saved-content search/byte-for-byte 17 MiB Save/Reader toggle/command and exit
+  preservation at native 800×700 and 1600×1000; settings in both locales at
+  800px and zoom 1/1.5/2, including relocated proxy setup and teardown. Desktop
+  and narrow captured screenshots were inspected. Only the native destination
+  picker was stubbed; IPC, content validation and file writes were real. Log:
+  `/private/tmp/redlog-ui-closeout-e2e-20261028.log`. Node SQLite was restored and
+  an in-memory query passed after the Electron run.
+- This closes the three requested issues only. No refreshed installation package,
+  Windows/Linux native-dialog acceptance or wider Spec parity completion is
+  claimed. No real shell profile, CA trust or system proxy setting was changed.

@@ -26,7 +26,7 @@ export const PAGE_SOURCES = {
   ],
   loot: [{ file: 'settings/LootRulesGroup.tsx' }],
   retention: [{ file: 'settings/RetentionPage.tsx' }],
-  browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }, { file: 'HttpCaptureStep.tsx' }, { file: 'CapturePreparation.tsx' }],
+  browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }, { file: 'settings/ManualStepList.tsx' }, { file: 'HttpCaptureStep.tsx' }, { file: 'CapturePreparation.tsx' }],
   scope: [{ file: 'settings/ScopePage.tsx' }, { file: 'settings/ProjectSettings.tsx' }],
   network: [{ file: 'settings/NetworkPage.tsx' }],
   integrity: [{ file: 'settings/IntegrityPanel.tsx' }],

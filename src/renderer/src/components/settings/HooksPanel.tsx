@@ -63,7 +63,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
   const [savingApp, setSavingApp] = useState(false)
   const [appError, setAppError] = useState('')
   const [connecting, setConnecting] = useState<string | null>(null)
-  const [preparing, setPreparing] = useState<'commands' | 'web' | null>(null)
+  const [preparing, setPreparing] = useState<'commands' | null>(null)
   const read = useReadState(async () => {
     const found = await window.redlog.hooks.detect()
     if (!Array.isArray(found)) throw new Error('invalid-hook-list')
@@ -100,17 +100,13 @@ export default function HooksPanel({ hooks, setHooks, t }: {
   }
 
   const platform = (window as { redlog?: { platform?: string } }).redlog?.platform
-  const builtinHooks = hooks.filter((hook) => hook.builtin)
+  const builtinHooks = hooks.filter((hook) => hook.builtin && hook.id !== 'mitmproxy')
   const otherHooks = builtinHooks.filter((hook) => isForeignShellHook(hook, platform))
   const mainHooks = builtinHooks.filter((hook) => !isForeignShellHook(hook, platform))
 
   // A function that returns JSX, called below — not a component, so nothing
   // remounts. The same row serves the main list and the "other platforms" group.
   const renderRow = (hook: HookInfo): JSX.Element => {
-      // "Manual" means RedLog cannot set it up for you. mitmproxy no
-      // longer qualifies — it is installed in one click and started when
-      // a project opens — so its remaining steps are an optional extra,
-      // and saying "manual setup" would claim work that is not needed.
       const isManual = hook.installMethod === 'manual' && !hook.stepsAreOptional
       const hasSteps = !!hook.manualSteps?.length
       const isOpen = expanded === hook.id
@@ -159,11 +155,6 @@ export default function HooksPanel({ hooks, setHooks, t }: {
                 {t('settings.hookDisable')}
               </Button>
             )}
-            {hook.id === 'mitmproxy' && !hook.available && (
-              <Button size="compact" data-testid="hook-install-mitmproxy" onClick={() => setPreparing('web')}>
-                {t('captureSetup.install')}
-              </Button>
-            )}
             {hasSteps && (
               <Button size="compact"
                 aria-expanded={isOpen}
@@ -188,8 +179,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
               {/* Shared with the external-capture group, so a teardown
                   written in core reaches the operator wherever the
                   source is listed. `removalSteps` used to render
-                  nowhere at all — including the mitmproxy CA removal,
-                  the longest-lived thing RedLog leaves on a machine. */}
+                  nowhere at all. */}
               <SetupAndTeardown
                 setup={hook.manualSteps}
                 teardown={hook.removalSteps}

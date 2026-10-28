@@ -144,6 +144,7 @@ it('keeps the read window when whole-content copy is refused and offers a cancel
   fireEvent.click(screen.getByRole('button',{name:'content.copySaved'}))
   expect((await screen.findByRole('alert')).textContent).toBe('content.clipboardLimit')
   expect(copySaved).toHaveBeenCalledWith(ref)
+  expect(screen.getByText('content.saveBoundary')).toBeTruthy()
   fireEvent.click(screen.getByRole('button',{name:'content.saveSaved'}))
   await waitFor(()=>expect(save).toHaveBeenCalledWith(ref))
   await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull())
