@@ -69,10 +69,11 @@ describe('an enrolled hook copy follows the app', () => {
   it('does not rewrite a copy that is already current', async () => {
     enrollPowerShell()
     write('.redlog/shell-hook.ps1', bundled('shell-hook.ps1'))
-    const old = new Date(Date.now() - 60_000)
+    // Whole seconds: ext4 hands a set time back as …529.999 ms.
+    const old = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000)
     fs.utimesSync(path.join(home, '.redlog', 'shell-hook.ps1'), old, old)
     const { refreshInstalledHooks } = await load()
     expect(refreshInstalledHooks()).toEqual([])
-    expect(fs.statSync(path.join(home, '.redlog', 'shell-hook.ps1')).mtimeMs).toBe(old.getTime())
+    expect(Math.round(fs.statSync(path.join(home, '.redlog', 'shell-hook.ps1')).mtimeMs)).toBe(old.getTime())
   })
 })
