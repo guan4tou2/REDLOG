@@ -53,6 +53,22 @@ describe('HUD: add marker', () => {
     expect(overlay.setPassThrough).not.toHaveBeenCalled()
   })
 
+  // Found in Windows acceptance: the HUD sent Windows users to a menu bar it
+  // does not have. The tray is where RedLog lives there.
+  it.each([
+    ['Win32', /tray|系統匣/, /menu bar|選單列/],
+    ['MacIntel', /menu bar|選單列/, /tray|系統匣/]
+  ])('on %s, names where the HUD comes back from', async (platform, here, elsewhere) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
+    install(vi.fn())
+    await expanded()
+    const texts = [screen.getByTestId('hud-pass-through-hint').textContent, screen.getByTestId('hud-hide').getAttribute('title')]
+    for (const text of texts) {
+      expect(text).toMatch(here)
+      expect(text).not.toMatch(elsewhere)
+    }
+  })
+
   it('saves with an empty title on Enter, timed at the click and not at save', async () => {
     const addMarker = vi.fn().mockResolvedValue({ ok: true, id: 'm1' })
     install(addMarker)
