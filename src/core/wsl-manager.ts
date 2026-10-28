@@ -198,9 +198,39 @@ async function detectShells(distro: string): Promise<string[]> {
   return shells
 }
 
+// The rc line sources the bundled hook in place, so an upgrade into the same
+// install directory updates what it runs. What can go stale is the path: a line
+// left by a build that lived somewhere else (another install location, a dev
+// checkout) still mentions `shell-<shell>-hook`, and matching on that name alone
+// reported it installed and made install a no-op. Both scripts compare the
+// whole line instead. Arguments arrive as $1 rc file, $2 hook path, $3 shell —
+// positional, never spliced into the script, so a path cannot inject.
+//
+// Both run with `wsl.exe -e`, not `--`. After `--` the rest of the command line
+// is read again by the distro's default shell, which expands `$1` and `$HOME`
+// before this bash sees them: measured on Ubuntu 26.04, `$1` arrived empty.
+// `-e` execs bash directly and hands over argv untouched.
+const RC_STATUS_SCRIPT = [
+  'rc="$HOME/$1"; line="source \\"$2\\""',
+  'if grep -qxF "$line" "$rc" 2>/dev/null; then echo installed; else echo not-installed; fi'
+].join('\n')
+
+const RC_INSTALL_SCRIPT = [
+  'rc="$HOME/$1"; line="source \\"$2\\""',
+  'if grep -qxF "$line" "$rc" 2>/dev/null; then echo present; exit 0; fi',
+  // Drop any earlier RedLog line for this shell. `cat >` rather than a rename
+  // keeps the rc's own inode, so a symlinked dotfile stays a symlink.
+  'if [ -f "$rc" ]; then',
+  '  grep -vE "RedLog WSL hook|shell-$3-hook" "$rc" > "$rc.redlog-tmp"',
+  '  cat "$rc.redlog-tmp" > "$rc" && rm -f "$rc.redlog-tmp" || exit 1',
+  'fi',
+  'printf \'\\n# RedLog WSL hook\\n%s\\n\' "$line" >> "$rc" && echo installed'
+].join('\n')
+
 /**
  * Check hook status for a specific distro.
- * Returns install status per shell.
+ * Returns install status per shell. Installed means the rc sources this
+ * build's hook; a line for another build is not-installed, so install fixes it.
  */
 export async function checkHookStatus(
   distro: string,
@@ -214,11 +244,10 @@ export async function checkHookStatus(
     if (!available.includes(shell)) return 'no-shell'
     const rcFile = shell === 'bash' ? '.bashrc' : '.zshrc'
     const result = await runWsl([
-      '-d', distro, '--', '/bin/bash', '-c',
-      `grep -c "shell-${shell}-hook" ~/${rcFile} 2>/dev/null || echo 0`
+      '-d', distro, '-e', '/bin/bash', '-c', RC_STATUS_SCRIPT,
+      'redlog', rcFile, windowsPathToWsl(resolveHookPath(shell)), shell
     ])
-    const count = parseInt(result.stdout.toString().trim() || '0', 10)
-    return count > 0 ? 'installed' : 'not-installed'
+    return result.stdout.toString().trim() === 'installed' ? 'installed' : 'not-installed'
   }
 
   return {
@@ -285,29 +314,22 @@ export async function installHook(
   const wslHookPath = windowsPathToWsl(hookPath)
   const rcFile = shell === 'bash' ? '.bashrc' : '.zshrc'
 
-  // Check if already installed
-  const checkResult = await runWsl([
-    '-d', distro, '--', '/bin/bash', '-c',
-    `grep -c "shell-${shell}-hook" ~/${rcFile} 2>/dev/null || echo 0`
+  const result = await runWsl([
+    '-d', distro, '-e', '/bin/bash', '-c', RC_INSTALL_SCRIPT,
+    'redlog', rcFile, wslHookPath, shell
   ])
-  const count = parseInt(checkResult.stdout.toString().trim() || '0', 10)
-  if (count > 0) {
+  const outcome = result.stdout.toString().trim()
+  if (outcome === 'present') {
     return { success: true, message: `Hook already installed in ~/${rcFile}` }
   }
-
-  // Append hook source line
-  const appendResult = await runWsl([
-    '-d', distro, '--', '/bin/bash', '-c',
-    `printf '\\n# RedLog WSL hook\\nsource "${wslHookPath}"\\n' >> ~/${rcFile}`
-  ])
 
   // The rc file just changed, so the cached hookStatus is wrong.
   invalidateWslCache()
 
-  if (appendResult.status === 0) {
+  if (result.status === 0 && outcome === 'installed') {
     return { success: true, message: `Hook installed in ~/${rcFile}` }
   }
-  return { success: false, message: `Failed to write to ~/${rcFile}: ${appendResult.stderr}` }
+  return { success: false, message: `Failed to write to ~/${rcFile}: ${result.stderr}` }
 }
 
 /**
