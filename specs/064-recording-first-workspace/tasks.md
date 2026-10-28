@@ -110,4 +110,6 @@ T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShel
 
 - [x] T044 App 啟動時將已接入 shell 的 `~/.redlog/` hook 副本更新為內建版本（bash／zsh 含支援檔、PowerShell），只動 rc／profile 已載入的副本、不新增接入；以真實 `/S` 升級複驗。WSL distro 內的 hook 不在範圍內。
 
-`/S` 升級後首次啟動主視窗未顯示（兩次皆然），記為已知問題，未追查。T004／T008 的正式 Windows 列仍 NOT RUN。
+- [x] T045 主視窗只在 `ready-to-show` 顯示；本機 GPU 合成下從未顯示過的視窗不會繪製，事件不來，凡非最大化啟動皆隱藏（升級與非正常結束只是巧合）。改為頁面載入後 500 ms 仍隱藏即顯示，以 `/S` 升級與無狀態檔啟動複驗。
+
+T004／T008 的正式 Windows 列仍 NOT RUN。
