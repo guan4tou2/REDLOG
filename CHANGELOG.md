@@ -5,6 +5,29 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.4 — 2026-10-28
+
+Prerelease for internal testing.
+
+- Uninstalling on Windows takes RedLog's lines back out of the PowerShell
+  profiles and of every WSL distro's rc, even when `~/.redlog` was already
+  cleared. Upgrades keep them. Project data is still kept.
+- The tray menu follows the app's language, and the quit confirmation shows
+  plain buttons on Windows.
+- A WSL rc line that points at another build (moved install, dev checkout) is
+  no longer reported as installed, and install replaces it. The WSL scripts
+  run with `wsl.exe -e`, so the distro's own shell no longer swallows their
+  arguments.
+- The main window shows itself once its page has loaded, even when the GPU
+  never paints a hidden window. Before, every launch not restored maximized
+  stayed hidden on such hosts.
+- At launch, an enrolled shell's hook copy under `~/.redlog` is rewritten when
+  it differs from the bundled hook, so an upgrade no longer leaves the shell on
+  the old hook while Settings says installed.
+- PowerShell commands pair their start and end, so one command is one row.
+- Windows wording: the HUD, its settings and settings search name the tray and
+  Ctrl+Shift+P instead of the macOS menu bar and ⌘⇧P.
+
 - Search includes verified saved text attachments and confirmed AI JSONL
   prefixes, with source coverage and filter restrictions. Recording hits bind
   complete frames to a source version and physical byte range; rewritten or
