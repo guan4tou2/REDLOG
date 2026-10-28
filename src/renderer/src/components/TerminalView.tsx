@@ -8,6 +8,7 @@ import { takePendingCommand, onRunInTerminal } from '../lib/terminalRunner'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
 import { usePersistentState } from '../lib/usePersistentState'
+import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 
 interface Tab {
   id: string
@@ -56,7 +57,6 @@ function disposePaneRuntime(id: string): void {
 let tabCounter = 0
 
 const FONT_SIZE_KEY = 'redlog-terminal-fontsize'
-const DEFAULT_FONT_SIZE = 13
 const SHELL_KEY = 'redlog-terminal-shell'
 
 interface ShellOption {
@@ -68,11 +68,12 @@ interface ShellOption {
 export default function TerminalView({ allowNew = true }: { allowNew?: boolean }): JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
-  // Persist font-size across sessions; ⌘+ / ⌘- adjust it live.
+  // Persist font-size across sessions; ⌘+ / ⌘− step it and ⌘0 resets it.
+  // These move xterm's fontSize, not the window's zoom.
   const [fontSize, setFontSize] = usePersistentState<number>(FONT_SIZE_KEY, DEFAULT_FONT_SIZE, {
     parse: (raw) => {
       const saved = parseInt(raw || '')
-      return Number.isFinite(saved) && saved >= 8 && saved <= 32 ? saved : DEFAULT_FONT_SIZE
+      return Number.isFinite(saved) && saved >= FONT_MIN && saved <= FONT_MAX ? saved : DEFAULT_FONT_SIZE
     }
   })
   // In-buffer search (per active pane): the input toggles + a small state
@@ -233,6 +234,21 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
       else if (e.shiftKey && (e.key === '[' || e.key === '{')) {
         e.preventDefault()
         setTabs((prev) => { const i = prev.findIndex((t) => t.id === activeTab); if (i >= 0 && prev.length > 1) setActiveTab(prev[(i - 1 + prev.length) % prev.length].id); return prev })
+      }
+      // Terminal font size, not window zoom: this is xterm's fontSize option,
+      // not Chromium's page zoom. `=` covers ⌘= on a US layout and `+` covers
+      // layouts and keyboards that send the shifted character.
+      else if (!e.altKey && (e.key === '=' || e.key === '+')) {
+        e.preventDefault()
+        setFontSize((size) => clampFontSize(size + 1))
+      }
+      else if (!e.altKey && e.key === '-') {
+        e.preventDefault()
+        setFontSize((size) => clampFontSize(size - 1))
+      }
+      else if (!e.altKey && e.key === '0') {
+        e.preventDefault()
+        setFontSize(DEFAULT_FONT_SIZE)
       }
     }
     window.addEventListener('keydown', onKeyDown)
