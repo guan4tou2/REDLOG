@@ -108,4 +108,6 @@ T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShel
 
 - [x] T043 以 PR #448 的 Windows install smoke 安裝包做原生驗收：安裝、PowerShell 接入 canary、四種閱讀模式、Settings 五類與搜尋、125% DPI、系統匣結束確認、重開保留、`/S` 原地升級。發現並修正 PowerShell 指令未配對、HUD 與設定的 macOS 文案三項，於重建安裝包上複驗，記 verification.md。
 
-升級不會更新已接入 shell 的 hook 副本（`~/.redlog/`），記為已知缺口，不在 T043 內修。T004／T008 的正式 Windows 列仍 NOT RUN。
+- [x] T044 App 啟動時將已接入 shell 的 `~/.redlog/` hook 副本更新為內建版本（bash／zsh 含支援檔、PowerShell），只動 rc／profile 已載入的副本、不新增接入；以真實 `/S` 升級複驗。WSL distro 內的 hook 不在範圍內。
+
+`/S` 升級後首次啟動主視窗未顯示（兩次皆然），記為已知問題，未追查。T004／T008 的正式 Windows 列仍 NOT RUN。
