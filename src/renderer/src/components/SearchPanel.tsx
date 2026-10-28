@@ -119,6 +119,11 @@ async function resolveAndFold(
 
 const PAGE_SIZE = 100
 
+function readProjectPage(parsed: import('../../../core/query/contract').ParsedQuery, filter: ReturnType<typeof toEventFilter>, cursor?: string | null): ReturnType<typeof window.redlog.events.runQuery> {
+  if(!parsed.text.trim() && !parsed.conditions.length) return window.redlog.events.queryPage({...filter,limit:PAGE_SIZE,...(cursor?{cursor}:{})}).then(page=>({...page,bodyCoverage:undefined,toolSession:undefined}))
+  return window.redlog.events.runQuery({parsed,filter,limit:PAGE_SIZE,...(cursor?{cursor}:{})})
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error)
 }
@@ -244,9 +249,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
       opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly || opts.hidePersonal || opts.tier || outcome.parsed.conditions.length
     )
     setCastsRestricted(eventFilterActive)
-    if (mode === 'events') window.redlog.events.runQuery({
-      parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE
-    }).then(async (page) => {
+    if (mode === 'events') readProjectPage(outcome.parsed,opts).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       const { rows, newFolds } = await resolveAndFold(page.items)
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
@@ -294,9 +297,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
     try {
       const outcome = parseQuery(queryRef.current)
       if (!outcome.ok) return
-      const page = await window.redlog.events.runQuery({
-        parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE, cursor: nextCursor
-      })
+      const page = await readProjectPage(outcome.parsed,opts,nextCursor)
       const { rows, newFolds } = await resolveAndFold(page.items)
       if (seq !== searchSeqRef.current) return
       setBodyCoverage(page.bodyCoverage)
@@ -354,7 +355,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
       </div>}
 
-      <div className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
+      <div data-testid="search-results" className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
         {parse && (
           <div className="mb-2">
             <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />

@@ -1,3 +1,4 @@
+import type { ContentAnchor } from '../../core/content-contract'
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
 import { useNarrowViewport } from './hooks/useNarrowViewport'
@@ -84,6 +85,16 @@ export default function App(): JSX.Element {
   // A target picked on the Targets page is the shared filter's (spec 038),
   // set there and shown as the FilterBar chip on every view that honours it.
   const [showMarker, setShowMarker] = useState(false)
+  const [contentAnchor,setContentAnchor]=useState<ContentAnchor|undefined>()
+  const [workspaceProject,setWorkspaceProject]=useState<string|null>(null)
+  useEffect(()=>{
+    setWorkspaceProject(previous=>view==='search' ? project?.id??null : previous===project?.id ? previous : null)
+  },[view,project?.id])
+  useEffect(()=>{
+    const open=(event:Event):void=>{setContentAnchor((event as CustomEvent<ContentAnchor>).detail);setShowMarker(true)}
+    window.addEventListener('redlog:mark-content',open)
+    return ()=>window.removeEventListener('redlog:mark-content',open)
+  },[])
   // Feeds the export menu's "N events · about X" line. Refreshed on view
   // changes rather than per event — the preview exists to catch "I meant the
   // slice, not all 28,000", and that answer does not move by one.
@@ -217,6 +228,7 @@ export default function App(): JSX.Element {
     )
   }
 
+  const workspacePages = ['targets','scope'].includes(view) ? ['targets','scope'] : ['screenshots','loot','bookmarks'].includes(view) ? ['screenshots','loot','bookmarks'] : []
   const showFilterBar = ['search', 'transcript', 'http_history', 'timeline', 'loot'].includes(view)
 
   return (
@@ -355,6 +367,11 @@ export default function App(): JSX.Element {
         />
 
         <div className="flex-1 min-w-0 select-text flex flex-col" data-testid="view-root" data-view={view}>
+          {workspacePages.length>0 && <div role="tablist" aria-label={t(view==='targets'||view==='scope'?'sidebar.targetsScope':'sidebar.evidence')} className="shrink-0 flex flex-wrap gap-1 px-4 pt-2 border-b border-redlog-border">
+            {workspacePages.map((page,index)=><button key={page} data-view-btn={page} role="tab" aria-selected={view===page} tabIndex={view===page?0:-1}
+              onKeyDown={e=>{const next=e.key==='ArrowRight'?workspacePages[(index+1)%workspacePages.length]:e.key==='ArrowLeft'?workspacePages[(index+workspacePages.length-1)%workspacePages.length]:undefined;if(next){e.preventDefault();navigate(next);document.querySelector<HTMLButtonElement>(`button[role="tab"][data-view-btn="${next}"]`)?.focus()}}}
+              onClick={()=>navigate(page)} className={`px-3 py-2 text-xs border-b-2 ${view===page?'border-redlog-accent text-redlog-text':'border-transparent text-redlog-text-dim'}`}>{t(`sidebar.${page==='screenshots'?'screens':page}`)}</button>)}
+          </div>}
           {showFilterBar && <FilterBar />}
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
@@ -394,7 +411,7 @@ export default function App(): JSX.Element {
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || (view === 'timeline' && returnTo === 'search')) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
+            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
@@ -410,7 +427,7 @@ export default function App(): JSX.Element {
           playing here when the operator switches views (§14). */}
       <ReplayDrawer />
       <StatusBar />
-      {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined); setMarkerHeldFrame(undefined) }} atTimestamp={markerAtTs} heldFrame={markerHeldFrame} />}
+      {showMarker && <EventMarker onClose={() => { setShowMarker(false); setContentAnchor(undefined); setMarkerAtTs(undefined); setMarkerHeldFrame(undefined) }} atTimestamp={markerAtTs} heldFrame={markerHeldFrame} contentAnchor={contentAnchor} />}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

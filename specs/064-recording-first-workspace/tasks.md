@@ -85,8 +85,21 @@ T021 的核心實作已完成。T012–T018、T020／T022／T023 仍為複合任
 
 T014／T018 僅新增閱讀入口整合，不將 Session 完整選擇、Markdown／raw 座標映射、所有檔案索引及 S2／S3 contract 矩陣宣告完成。T025 主導覽退場仍等待原定 parity gate；本批不藉由減少選單繞過 gate。
 
+## 2026-10-27 — Session / Reader / fragment / primary navigation
+
+- [x] T037 由整案儲存事件分頁列出 Shell／AI Session，分離 project／capture／provider namespace；Claude Code／Codex 選擇沿共同查詢引擎求值，Reader／Session 匯出共用快照；晚到資料只由明確更新納入。
+- [x] T038 共用 Reader 原地放大、Escape／焦點返回、欄位 Find／位置保留；UTF-8 byte 片段標記經主程序驗證來源版本與摘要，再存 append-only marker。重開片段高亮原文，missing／changed／denied 不以相近文字替代。
+- [x] T039 五主工作區＋備用 Terminal；目標／範圍與截圖／戰利品／書籤使用既有路由頁籤，同步命令面板、數字快捷鍵及共用 E2E 導覽 helper。原始事件 Timeline／連續 Transcript 仍是可達的真實頁面，沒有舊路由 shim。
+- [x] T040 更新需求追溯／驗證紀錄，完成相關 gates、單次 App 的 Session→Reader→片段→匯出→導覽整合流程及原生版面檢查。
+
+T019 僅完成保存 UTF-8 文字的原始 byte 座標；ANSI 不剝除或猜測映射，binary／Markdown 渲染／cast 時間片段座標尚未對等。T025 的主選單整理已落地，舊視圖程式退場仍受完整 parity gate 約束。其餘複合任務與原生平台／五人任務量測不借本批結果勾選。
+
+## 2026-10-27 — complete saved-content delivery
+
+- [x] T041 C3／FR-023／051：區分視窗複製、1 MiB 上限的完整保存文字複製及有界另存 bytes；驗證原件版本、專案切換、取消、目的檔保護／失敗清理與大型成品讀回。
+
 ## 2026-10-27 — Windows internal candidate
 
-- [x] T037 將 shared reading workspace、無專案時不包 PTY 指令、#432 剩餘的 first-run mock 修正合成單一候選 `integrate/spec064-internal`；在 Windows 跑四道 gate、完整 unit、WSL 完整 e2e、NSIS 打包與 installed smoke，失敗項以 main 同環境對照，記 verification.md。
+- [x] T042 將 shared reading workspace、無專案時不包 PTY 指令、#432 剩餘的 first-run mock 修正合成單一候選 `integrate/spec064-internal`；在 Windows 跑四道 gate、完整 unit、WSL 完整 e2e、NSIS 打包與 installed smoke，失敗項以 main 同環境對照，記 verification.md。
 
-T037 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShell 接入 canary、閱讀模式、DPI）。那些及 T004／T008 的 Windows 列仍 NOT RUN。
+T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShell 接入 canary、閱讀模式、DPI）。那些及 T004／T008 的 Windows 列仍 NOT RUN。（原記為 T037，與同日 Session／Reader 批次撞號，整合時改號。）

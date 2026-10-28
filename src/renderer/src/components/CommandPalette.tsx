@@ -8,7 +8,7 @@ import {
 import { useI18n } from '../i18n'
 import type { HostAggregate } from '../../../core/db/events'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { DEFAULT_ORDER, NUMBERED_SLOTS } from '../lib/sidebarOrder'
+import { DEFAULT_ORDER, primaryLabelKey, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
@@ -186,10 +186,10 @@ export function CommandPalette({
     const out: Item[] = []
 
     for (const [i, view] of DEFAULT_ORDER.entries()) {
-      const label = t(`sidebar.${view === 'screenshots' ? 'screens' : view}`)
+      const label = t(primaryLabelKey(view))
       out.push({
         id: `nav:${view}`, section: 'nav', icon: NAV_ICONS[view] ?? Gauge, label,
-        // Only the first eight are numbered. ⌘9 belongs to Settings, which is
+        // Only primary workspaces are numbered. ⌘9 belongs to Settings, which is
         // pinned outside the reorderable run — the ninth sidebar row has no
         // chord, and claiming one here would advertise a key that does
         // something else.
@@ -197,6 +197,7 @@ export function CommandPalette({
         run: () => onNavigate(view)
       })
     }
+    for(const view of ['timeline','transcript','scope','loot','bookmarks'])out.push({id:`nav:${view}`,section:'nav',icon:NAV_ICONS[view],label:t(`sidebar.${view}`),run:()=>onNavigate(view)})
     out.push({
       id: 'nav:settings', section: 'nav', icon: SettingsIcon,
       label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings')
@@ -376,6 +377,7 @@ export function CommandPalette({
                 )}
                 <button
                   id={`palette-opt-${i}`}
+                  data-command-id={item.id}
                   role="option"
                   aria-selected={i === cursor}
                   onMouseMove={() => setCursor(i)}

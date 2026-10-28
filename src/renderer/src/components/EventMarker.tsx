@@ -1,3 +1,4 @@
+import type { ContentAnchor } from '../../../core/content-contract'
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -20,16 +21,17 @@ interface EventMarkerProps {
   // moment for Timeline rendering.
   atTimestamp?: number
   /** A frame the shortcut took before RedLog came forward (UI/UX audit F2). */
+  contentAnchor?: ContentAnchor
   heldFrame?: string
 }
 
-export default function EventMarker({ onClose, atTimestamp, heldFrame }: EventMarkerProps): JSX.Element {
+export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAnchor }: EventMarkerProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [url, setUrl] = useState('')
   const [severity, setSeverity] = useState<string>('info')
   const [category, setCategory] = useState<string>('custom')
-  const [withScreenshot, setWithScreenshot] = useState(true)
+  const [withScreenshot, setWithScreenshot] = useState(!contentAnchor)
   const [saving, setSaving] = useState(false)
   const { t } = useI18n()
 
@@ -70,6 +72,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame }: EventMa
       markerEvent = await window.redlog.marker.create({
         title: title.trim() || t('marker.defaultTitle', { time: ts }),
         notes, severity, category,
+        ...(contentAnchor ? { contentAnchor } : {}),
         ...(url.trim() ? { url: url.trim() } : {}),
         ...(atTimestamp ? { atTimestamp } : {})
       }) as { id?: string } | null

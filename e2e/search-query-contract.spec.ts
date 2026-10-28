@@ -28,7 +28,9 @@ test('Search executes and explains the shared event query contract', async () =>
     await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('session:session-e2e contract')
     await expect(page.getByTestId('search-query-parse')).toContainText('session:session-e2e')
-    await expect(page.getByRole('option')).toContainText('contract evidence')
+    await expect(page.getByTestId('search-results')).toHaveAttribute('aria-busy','false')
+    await expect(page.getByTestId('search-results').getByRole('option')).toHaveCount(1)
+    await expect(page.getByTestId('search-results').getByRole('option')).toContainText('contract evidence')
   } finally {
     await app.close()
   }

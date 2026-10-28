@@ -2,7 +2,7 @@
 //
 // This used to be a user-reorderable list persisted to localStorage, with
 // load/save/subscribe machinery and a drag gesture in the sidebar. §5.3 fixes
-// it instead: ⌘1..9 always means the same view, and the number is printed on
+// it instead: ⌘1..6 and ⌘9 always mean the same view, and the number is printed on
 // the row.
 //
 // Those two facts depend on each other. While rows could be dragged, the
@@ -20,34 +20,24 @@ export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
   | 'targets' | 'scope' | 'loot' | 'bookmarks' | 'search' | 'http_history'
 
-// `transcript` sits next to `timeline` — same events, read the other way, and
-// `search` between them because finding evidence afterwards is a core use
-// rather than a detour.
-//
-// Eleven entries, eight numbered slots (⌘9 is Settings), so the last three —
-// `scope`, `loot` and `bookmarks` — carry no chord. That is a real cost and it is
-// taken deliberately: all three are reachable from the sidebar and from ⌘K, and
-// none is somewhere an operator jumps mid-keystroke the way they jump to the
-// timeline or to search.
+// Five daily workspaces plus the optional built-in terminal. Detail routes
+// stay addressable for evidence links; they do not take primary shortcuts.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'bookmarks'
+  'dashboard', 'search', 'http_history', 'targets', 'screenshots', 'terminal'
 ]
+export const NUMBERED_SLOTS = 6
 
-/** ⌘1..⌘8 belong to views; ⌘9 is pinned to Settings, which sits outside this
- *  list. */
-export const NUMBERED_SLOTS = 8
+export function primaryViewFor(view: string): string {
+  if(view==='timeline'||view==='transcript')return 'search'
+  if(view==='scope')return 'targets'
+  if(view==='loot'||view==='bookmarks')return 'screenshots'
+  return view
+}
 
-/**
- * The number a view wears, or null when it has no chord.
- *
- * Derived from the view's position in DEFAULT_ORDER, never from where it
- * happens to be rendered. Those were the same thing while every row was always
- * shown, and the sidebar printed the rendered index — which is why it has been
- * printing 9, 10 and 11 beside three rows that have no chord at all, and a
- * second "9" beside Settings' own. Once rows can be hidden the two diverge
- * completely: the chord would keep opening the timeline while the row beside it
- * claimed a different number.
- */
+export function primaryLabelKey(view: string): string {
+  return view==='screenshots'?'sidebar.evidence':view==='targets'?'sidebar.targetsScope':view==='http_history'?'sidebar.httpHistory':`sidebar.${view}`
+}
+
 export function shortcutNumberFor(id: SidebarViewId): number | null {
   const i = DEFAULT_ORDER.indexOf(id)
   return i >= 0 && i < NUMBERED_SLOTS ? i + 1 : null

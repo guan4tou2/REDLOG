@@ -1,8 +1,8 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { SIDEBAR_COLLAPSED_EVENT, setSidebarCollapsed, storedSidebarCollapsed } from '../lib/sidebarCollapsed'
 import {
-  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
-  Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
+  Gauge, ChevronRight, Files, Crosshair,
+  Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
@@ -32,7 +32,7 @@ const NAV_ICON_STROKE = 1.5
 
 // Shared with App.tsx's ⌘1..9 shortcut handler so the printed number and the
 // key that works can never disagree. See src/renderer/src/lib/sidebarOrder.ts.
-import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sidebarOrder'
+import { DEFAULT_ORDER, primaryViewFor, primaryLabelKey, shortcutNumberFor, type SidebarViewId } from '../lib/sidebarOrder'
 import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
@@ -60,22 +60,13 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   const itemMap: Record<string, NavItem> = {
     dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
     terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
-    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
-    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: AlignLeft },
-    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: Image },
-    targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel: t('sidebar.violationsBadge', { count: scopeViolations }) },
-    loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', { count: lootCount }) },
-    bookmarks: { id: 'bookmarks', label: t('sidebar.bookmarks'), icon: Bookmark },
+    screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', {count:lootCount}) },
+    targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.violationsBadge',{count:scopeViolations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
-  // Every view, always. Pages used to appear as the record grew the data each
-  // one was named after (§22), which cost a hint line here explaining the
-  // absence, a checkbox in Settings to undo it, and two occasions on which the
-  // app's own author asked why his new project had three rows. Eleven rows was
-  // never the problem it was solving.
+  // Secondary views remain inside their workspace; primary rows never depend on data volume.
   const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)
 
   // Collapsed, the sidebar is an icon rail. §3.5 allows icon-only here and
@@ -119,7 +110,7 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
           scroll, then the hint, then the footer. */}
       <div className="flex-1 min-h-0 overflow-y-auto rl-thin-scroll space-y-0.5">
         {items.map((item) => {
-          const isActive = active === item.id
+          const isActive = primaryViewFor(active) === item.id
           // The view's own number, never its position in what happens to be
           // rendered — a hidden row must not renumber the ones below it.
           const chord = shortcutNumberFor(item.id as SidebarViewId)

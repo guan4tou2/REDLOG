@@ -42,7 +42,7 @@ export function QueryReadout({ outcome, testId, unparsableTitle }: {
               ? 'text-redlog-cyan border-redlog-cyan/40 bg-redlog-cyan/10'
               : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'
           }`}
-        >{token.raw}</span>
+        >{token.read === 'condition' && token.raw.startsWith('source:') ? t('query.sourceSession') : token.raw}</span>
       ))}
     </div>
   )

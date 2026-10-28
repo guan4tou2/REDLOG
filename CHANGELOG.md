@@ -5,6 +5,28 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Saved-content readers distinguish copying the current window from copying
+  the saved version (up to 1 MiB). Larger or binary content can be saved through
+  the native file dialog in bounded chunks, with source/project checks,
+  existing-file protection and cleanup on failed delivery. This retrieves a
+  local source field; it does not apply evidence-bundle export policies.
+
+- I/O and AI reading modes can select a stored source Session, with separate
+  Claude Code/Codex selection. Session reading and export share a fixed dataset;
+  new arrivals require explicit refresh. The catalog is paged and ordered by
+  recent activity, with project/provider/capture namespaces kept separate.
+- Saved-content readers expand without losing Find or position. Selected text
+  can be saved as an evidence marker with its source version, UTF-8 byte range
+  and digest. Reopening verifies the original; missing or changed evidence is
+  reported rather than reattached. Binary and transformed coordinates are not
+  guessed.
+- Primary navigation now groups five workspaces plus the optional terminal.
+  Targets/Scope and Screenshots/Loot/Bookmarks retain their existing pages as
+  workspace tabs. Original-event Timeline and continuous Transcript remain
+  available through evidence links and the command palette pending full parity.
+  Returning from another workspace preserves the Activity query, reading mode,
+  Session and visited readers within the same project.
+
 - The Activity workspace shares one project search across Operations, Input /
   Output, AI Conversations and Raw Events. Empty queries browse the record;
   source output, recording-index search and operation/session export remain

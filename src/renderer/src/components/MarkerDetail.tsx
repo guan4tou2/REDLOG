@@ -1,3 +1,5 @@
+import { ContentAnchorView } from './ContentAnchorView'
+import type { ContentAnchor } from '../../../core/content-contract'
 // The Inspector body for a marker (design turn 8b).
 //
 // Amending is a first-level action with no undo, and that is deliberate: the
@@ -92,6 +94,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
 
   return (
     <div className="mt-2 space-y-3">
+      {data.contentAnchor && typeof data.contentAnchor==='object' ? <ContentAnchorView key={event.id} anchor={data.contentAnchor as ContentAnchor} /> : null}
       {editing ? (
         <div className="space-y-2" onKeyDown={onKeyDown} data-testid="marker-amend-form">
           <input

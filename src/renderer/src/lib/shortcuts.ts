@@ -1,3 +1,4 @@
+import { primaryLabelKey } from './sidebarOrder'
 // Shared source of truth for the keyboard-shortcut cheatsheet, in the same
 // spirit as sidebarOrder.ts. The Dashboard used to hand-write its own list of
 // key/label pairs, so every shortcut added to App.tsx's keydown handler after
@@ -96,7 +97,7 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
     keys: `${m}${i + 1}`,
     // The sidebar calls the screenshots view "screens"; the i18n keys follow
     // the sidebar, not the view id.
-    label: `sidebar.${view === 'screenshots' ? 'screens' : view}`,
+    label: primaryLabelKey(view),
     scope: 'nav',
     match: (e) => plainMod(e) && e.key === String(i + 1)
   }))

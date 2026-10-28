@@ -18,9 +18,9 @@
 /** Fields that resolve against a stored value rather than matching text.
  *  `operator` is the recorded operator id (spec 038): names can change, and
  *  the text index does not hold the operator at all. */
-export type QueryField = 'event' | 'session' | 'transcript' | 'tool' | 'operator'
+export type QueryField = 'event' | 'session' | 'transcript' | 'tool' | 'operator' | 'source' | 'provider'
 
-export const QUERY_FIELDS: readonly QueryField[] = ['event', 'session', 'transcript', 'tool', 'operator']
+export const QUERY_FIELDS: readonly QueryField[] = ['event', 'session', 'transcript', 'tool', 'operator', 'source', 'provider']
 
 export interface QueryCondition {
   field: QueryField

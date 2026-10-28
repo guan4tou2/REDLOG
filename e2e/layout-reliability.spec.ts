@@ -132,7 +132,7 @@ test('five workspaces remain usable across native size, zoom and language change
       const search = page.getByPlaceholder(strings['bookmarks.searchPlaceholder'])
       await search.fill('Layout mark')
       const list = page.getByRole('listbox')
-      const row = list.getByRole('option').first()
+      const row = list.getByRole('option').nth(3)
       await row.click()
       await page.getByRole('button', { name: strings['bookmarks.edit'], exact: true }).click()
       const note = page.getByRole('textbox', { name: strings['bookmarks.fieldNote'], exact: true })
@@ -144,7 +144,15 @@ test('five workspaces remain usable across native size, zoom and language change
           await expect(page.getByTestId('bookmarks-back')).toBeVisible()
           await page.getByTestId('bookmarks-back').click()
           await expect(search).toHaveValue('Layout mark')
-          expect(await list.evaluate(el => el.scrollTop)).toBeCloseTo(80, 0)
+          // Resize changes row geometry and may clamp scrollTop. Establish a
+          // reachable position at this size, then verify detail/back restores it.
+          await list.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event('scroll')) })
+          await row.scrollIntoViewIfNeeded()
+          const position = await list.evaluate(el => el.scrollTop)
+          expect(position).toBeGreaterThan(0)
+          await row.click()
+          await page.getByTestId('bookmarks-back').click()
+          await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeCloseTo(position, 0)
           await row.click()
         }
         await expect(note).toHaveValue('unsaved layout draft')

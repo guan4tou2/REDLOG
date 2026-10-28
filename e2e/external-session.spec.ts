@@ -21,7 +21,7 @@ test('external PTY output remains searchable and exportable while paused', async
     expect(code, diagnostics).toBe(0)
     await page.getByTestId('status-bar-recording').click()
     await expect(page.getByTestId('status-bar-recording')).toHaveAttribute('data-recording', 'off')
-    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+4`)
+    await openView(page,'transcript')
     await expect(page.locator('[data-view="transcript"]')).toBeVisible()
     await page.getByRole('button', { name: '▶ 19 B' }).click()
     await expect(page.getByText('external-pty-canary', { exact: true })).toBeVisible()
@@ -30,7 +30,7 @@ test('external PTY output remains searchable and exportable while paused', async
     await page.getByTestId('search-input').fill('external-pty-canary')
     // Visited readers stay mounted while hidden, so the same title also exists
     // in the Activity tab; the raw event row is the one this tab shows.
-    await expect(page.getByRole('option').filter({ hasText: /PTY #1: external-pty-canary/ })).toBeVisible()
+    await expect(page.getByTestId('search-results').getByRole('option').getByText(/PTY #1: external-pty-canary/)).toBeVisible()
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export range', { exact: true }).selectOption('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()

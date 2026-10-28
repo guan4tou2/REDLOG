@@ -52,8 +52,8 @@ describe('the sidebar rail', () => {
     expect(screen.queryByText('儀表板')).toBeNull()
     // ...but not from the row: the chord is still in its accessible name.
     const row = screen.getByTestId('sidebar-collapse').closest('nav')!
-      .querySelector('[data-view-btn="timeline"]') as HTMLElement
-    expect(row.getAttribute('aria-label')).toContain('時間軸')
+      .querySelector('[data-view-btn="search"]') as HTMLElement
+    expect(row.getAttribute('aria-label')).toContain('活動紀錄')
     expect(row.getAttribute('title')).toMatch(/⌘2|Ctrl\+2/)
   })
 

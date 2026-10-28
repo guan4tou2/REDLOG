@@ -6,6 +6,7 @@ import RecordingWorkspace from '../src/renderer/src/components/RecordingWorkspac
 
 vi.mock('../src/renderer/src/components/SearchPanel', () => ({ SearchPanel: ({ controlledQuery, viewMode, active, browse }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse}>{controlledQuery}</div> }))
 vi.mock('../src/renderer/src/components/TranscriptView', () => ({ default: ({ reading, externalQuery, active }: any) => <div data-testid={`workspace-${reading}`} data-active={active}><input aria-label={`position-${reading}`} defaultValue="" />{externalQuery}</div> }))
+vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: () => null}))
 afterEach(cleanup)
 
 describe('recording workspace', () => {

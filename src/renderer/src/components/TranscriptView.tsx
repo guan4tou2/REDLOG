@@ -368,17 +368,18 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-export default function TranscriptView({ onOpenInTimeline, active = true, reading, externalQuery }: {
+export default function TranscriptView({ onOpenInTimeline, active = true, reading, externalQuery, sessionExport }: {
   onOpenInTimeline?: (id: string, ts: number) => void
   active?: boolean
   reading?: 'io' | 'ai'
   externalQuery?: string
+  sessionExport?: Extract<ExportRequest['subset'],{kind:'session'}>
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
   const unsupportedExport = useMemo<ExportRequest>(() => ({ format: 'json', subset: { kind: 'selection', projection: 'events', filter: toEventFilter(sharedFilter) } }), [sharedFilter])
   // Blocks, pair completion and picked steps are not a raw event predicate.
-  useContributeExport(active ? { label: t('export.current'), request: unsupportedExport, disabledReason: t('export.transcriptLimit') } : null)
+  useContributeExport(active ? sessionExport ? {label:t('activity.export.session'),request:{format:'json',subset:sessionExport}} : { label: t('export.current'), request: unsupportedExport, disabledReason: t('export.transcriptLimit') } : null)
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
@@ -428,6 +429,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
     backendQuery
       ? await window.redlog.events.runQuery({
         parsed: backendQuery,
+        ...(sessionExport ? {snapshot:sessionExport.snapshot} : {}),
         filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
         limit: bucket.limit,
         ...(cursor ? { cursor } : {})
@@ -439,7 +441,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
         excludeHousekeeping: true,
         ...(cursor ? { cursor } : {})
       })
-  ) as EventPage, [backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
+  ) as EventPage, [backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, sessionExport?.snapshot])
 
   // Read by the async merges, which must see the rows of the moment they
   // finish rather than the render that started them.
@@ -561,9 +563,10 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
   }, [])
   const headStale = useRef(false)
   useEffect(() => window.redlog.events.onNewBatch(() => {
+    if(sessionExport)return
     if (active) void refreshHead()
     else headStale.current = true
-  }), [refreshHead, active])
+  }), [refreshHead, active, sessionExport])
   useEffect(() => {
     if (active && headStale.current) { headStale.current = false; void refreshHead() }
   }, [active, refreshHead])
@@ -1050,7 +1053,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                     return next
                   })}>{t('content.savedContent')}</Button>
                 <div hidden={!readerOpen}>
-                  {readerOpen && <EventContentReader projectId={savedSource.engagementId!} eventId={savedSource.id} />}
+                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} />}
                 </div>
               </div>}
             </div>

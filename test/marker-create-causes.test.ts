@@ -8,9 +8,10 @@ import path from 'path'
 vi.mock('electron', () => ({}))
 
 import { initDB, closeDB } from '../src/core/db/index'
-import { insertEvent, queryEventById } from '../src/core/db/events'
+import { insertEvent, queryEventById, getEventCount } from '../src/core/db/events'
 import { _resetIngest } from '../src/core/ingest'
 import { registerMarkersIpc } from '../src/main/ipc/markers'
+import { createContentAnchor, describeEventContent } from '../src/core/evidence-content'
 import type { IpcContext } from '../src/main/ipc/types'
 
 type Handler = (_e: unknown, ...args: unknown[]) => unknown
@@ -48,5 +49,20 @@ describe('marker:create with causes', () => {
   it('creates a plain marker unchanged when no causes are given', () => {
     const marker = handlers.get('marker:create')!({}, { title: 'note' }) as { data: Record<string, unknown> }
     expect(marker.data._causes).toBeUndefined()
+  })
+  it('verifies fragment ownership and digest before writing a marker, retaining only canonical metadata',()=>{
+    const step=insertEvent('shell',{subtype:'command_end',stdout:'safe snippet'},{engagementId:'eng-1',operatorId:'op-1'})!
+    const fields=describeEventContent('eng-1',step.id)
+    if(!fields.ok)throw new Error(fields.message)
+    const anchor=createContentAnchor({ref:fields.value.find(f=>f.field==='stdout')!.ref!,start:0,end:4})
+    if(!anchor.ok)throw new Error(anchor.message)
+    const create=handlers.get('marker:create')!
+    const marker=create({},{title:'fragment',contentAnchor:{...anchor.value,excerpt:'not evidence',ref:{...anchor.value.ref,extra:'not evidence'}}}) as {data:Record<string,unknown>}
+    expect(marker.data.contentAnchor).toEqual(anchor.value)
+    expect(marker.data._causes).toEqual([step.id])
+    const count=getEventCount()
+    expect(()=>create({},{contentAnchor:{...anchor.value,sha256:'0'.repeat(64)}})).toThrow('digest')
+    expect(()=>create({},{contentAnchor:{...anchor.value,ref:{...anchor.value.ref,projectId:'foreign'}}})).toThrow('project')
+    expect(getEventCount()).toBe(count)
   })
 })

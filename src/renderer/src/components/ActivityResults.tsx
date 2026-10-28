@@ -20,8 +20,8 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
   return <p role="status" className="mb-2 text-xs text-amber-300">{issues.join(' · ')}</p>
 }
 
-function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
-  item: ActivitySummary; request: ActivityRequest; snapshot: ActivityPage['snapshot']; onRefresh: () => void
+function ActivitySources({ item, request, snapshot, onOpen, onRefresh, active }: {
+  active: boolean; item: ActivitySummary; request: ActivityRequest; snapshot: ActivityPage['snapshot']; onRefresh: () => void
   onOpen?: (id: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
@@ -74,7 +74,7 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh }: {
       {read.state.value?.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('activity.moreSources')}</Button>}
       {sources.filter(source => visited.has(source.event.id) || source.event.id === current.event.id).map(source =>
         <div key={source.event.id} hidden={source.event.id !== current.event.id}>
-          <EventContentReader projectId={request.projectId} eventId={source.event.id} />
+          <EventContentReader active={active} projectId={request.projectId} eventId={source.event.id} />
         </div>)}
     </>}
   </div>
@@ -144,7 +144,7 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
             <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
           </button>
           {expanded === item.id && <div className="flex justify-end gap-2 py-2"><select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select></div>}
-          {expanded === item.id && <ActivitySources key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
+          {expanded === item.id && <ActivitySources active={active} key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
         </div>)}
       </div>
       {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}

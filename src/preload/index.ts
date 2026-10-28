@@ -101,6 +101,11 @@ const api: RedLogAPI = {
     pickPath: (title?: string) => ipcRenderer.invoke('hookConfig:pickPath', title) as Promise<string | null>
   },
   content: {
+    copySaved: (ref: import('../core/content-contract').ContentRef) => ipcRenderer.invoke('content:copySaved', ref) as Promise<import('../core/content-contract').ContentResult<{bytes:number}>>,
+    save: (ref: import('../core/content-contract').ContentRef) => ipcRenderer.invoke('content:save', ref) as Promise<import('../core/content-contract').ContentResult<{path:string;bytes:number}|null>>,
+    anchor: (req: import('../core/content-contract').ContentAnchorRequest) => ipcRenderer.invoke('content:anchor', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentAnchor>>,
+    resolveAnchor: (req: import('../core/content-contract').ContentAnchor) => ipcRenderer.invoke('content:resolveAnchor', req) as Promise<import('../core/content-contract').ContentResult<{ text: string; offset: number }>>,
+
     list: (req: { projectId: string; eventId: string }) => ipcRenderer.invoke('content:list', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentDescriptor[]>>,
     read: (req: import('../core/content-contract').ContentReadRequest) => ipcRenderer.invoke('content:read', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentWindow>>,
     find: (req: import('../core/content-contract').ContentFindRequest) => ipcRenderer.invoke('content:find', req) as Promise<import('../core/content-contract').ContentResult<import('../core/content-contract').ContentFindResult>>
@@ -120,6 +125,7 @@ const api: RedLogAPI = {
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
+    sourceSessions: (req: import('../core/source-sessions').SourceSessionRequest) => ipcRenderer.invoke('events:sourceSessions', req) as Promise<import('../core/source-sessions').SourceSessionPage>,
     activityPage: (req: import('../core/activity-contract').ActivityRequest) =>
       ipcRenderer.invoke('events:activityPage', req) as Promise<import('../core/activity-contract').ActivityPage>,
     activityMembers: (req: import('../core/activity-contract').ActivityMembersRequest) =>
