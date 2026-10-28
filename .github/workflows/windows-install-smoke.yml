@@ -177,6 +177,17 @@ jobs:
         # runner) and is not annotated.
         run: node scripts/verify-smoke-report.mjs test-results/packaged-smoke.json
 
+      - name: Enrol PowerShell the way the app does
+        # Uninstall has to take this back out (resources/installer.nsh). Written
+        # in the shape installHook writes, next to a line of the operator's own
+        # that has to survive. No hook copy: removal must not depend on it.
+        run: |
+          foreach ($dir in 'WindowsPowerShell', 'PowerShell') {
+            $p = Join-Path $env:USERPROFILE "Documents\$dir\Microsoft.PowerShell_profile.ps1"
+            New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null
+            Set-Content -Path $p -Value @('Set-Alias redlog-smoke-own Get-Date', '# RedLog PowerShell hook', '. "$HOME\.redlog\shell-hook.ps1"')
+          }
+
       - name: Silent uninstall
         run: |
           $uninstaller = '${{ steps.install.outputs.uninstaller }}'
@@ -204,7 +215,15 @@ jobs:
           )) {
             if (Test-Path $lnk) { $problems += "shortcut still present: $lnk" }
           }
+          foreach ($dir in 'WindowsPowerShell', 'PowerShell') {
+            $p = Join-Path $env:USERPROFILE "Documents\$dir\Microsoft.PowerShell_profile.ps1"
+            if (-not (Test-Path $p)) { $problems += "profile deleted with the operator's own line in it: $p"; continue }
+            $text = Get-Content $p -Raw
+            if ($text -match 'shell-hook\.ps1|# RedLog PowerShell hook') { $problems += "uninstall left the RedLog hook in $p" }
+            if ($text -notmatch 'redlog-smoke-own') { $problems += "uninstall removed the operator's own line from $p" }
+          }
           if ($problems) { throw ($problems -join '; ') }
+          Write-Host 'PowerShell profiles: RedLog lines removed, own line kept'
 
           # Not a failure: report anything else left in the install directory so
           # a regression from "a few empty folders" to "the whole app" is visible.

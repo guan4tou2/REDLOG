@@ -523,3 +523,24 @@ Scope: C2／CT-03–04、FR-015–021／047。Spec 064 保持 Draft。此批只�
 - Clarify：無新產品歧義，採既定已保存／確認 prefix、unsupported filters、binary 無 OCR 邊界。Checklist：沿 requirements 16／16 品質檢查，不當產品完成率。
 - Analyze：交叉核對 8 項 FR、CT-03／04、canonical query／Reader／retention 及四項增量設計；不改來源 Event 意義、不讓查詢／計數或 Reader 讀取不同版本。Constitution I–IV、VI–IX 已核對，V 的既有 export 選取流程未改。
 - Scoped Converge：執行 prerequisites，讀 spec／plan／tasks／constitution，核對 T012／T013／T048 的來源種類、版本、條件、分頁、清理及 UI 證據，**converged，無新增任務**。其餘已記錄未完成項目不重複開 task；這不是整份 Spec 064 converged。`.specify/extensions.yml` 不存在，沒有 hooks。
+
+## 2026-10-28 — uninstall removes enrolments; tray language (T049)
+
+**Uninstall left every enrolment behind.** The uninstaller keeps `~/.redlog`, so the PowerShell profile went on dot-sourcing the hook copy there for an app that was gone, and a WSL rc went on sourcing a hook file the uninstaller had just deleted. The NSIS `customUnInstall` macro (`resources/installer.nsh`) now runs the installed app once with `--remove-hooks` before the files go, and skips it when the uninstall is the hand-off of an upgrade (`isUpdated`). That run takes no window and no single-instance lock, removes every rc/profile line that sources a RedLog hook — judged by the line, not by whether the copy it names still exists, because the operator may have cleared `~/.redlog` first — and, in every WSL distro, this build's `source` line and its marker. Lines for another build, and the operator's own content, stay. RED first: `test/uninstall-removes-hooks.test.ts` (functions absent; then 1 of 4 for the deleted-copy case) and three removal cases in `test/wsl-hook-rc.test.ts`.
+
+Real run on this machine with a locally packaged installer from this branch (`npm run build` + `electron-builder --win nsis`, `npmRebuild=false`). `USERPROFILE` pointed at a throwaway home for the installer, the upgrade and the uninstaller — NSIS resolves the per-user Programs folder through it, so the app itself was installed there — with both PowerShell profiles holding a line of the operator's own plus RedLog's two lines, and Ubuntu 26.04's real `~/.bashrc` (byte copy taken first) holding the marker and the `source` line for that install directory:
+
+| Step | PowerShell profiles | Ubuntu `~/.bashrc` RedLog lines |
+|---|---|---|
+| enrolled | own line + RedLog's two | 2 |
+| `/S` install | unchanged | 2 |
+| `/S` install over it (old uninstaller runs with `--updated`) | unchanged | 2 |
+| `/currentuser /S` uninstall | own line only | 0 |
+
+Afterwards `~/.bashrc` was restored and hashed identical to before, the operator's real pwsh profile still hashed `34DCFF6F…`, no `Documents\WindowsPowerShell` appeared in the real profile, and no RedLog Uninstall entry remained. CI's Windows install smoke now writes the same profile lines before its uninstall and fails if they survive or the operator's line does not.
+
+**The tray menu was English in every language**, so a zh-TW operator chose "Quit" and then read a Chinese dialog. It now follows the text the renderer sends (`app:setTrayText`, as the quit dialog already did) and keeps the recording item's state when it rebuilds. The quit confirmation sets `noLink`, so Windows draws two plain buttons instead of command links; staying stays first, default and Escape. The first tray quit in T043 that did not quit was not reproduced and its cause is not known; this removes two ways to misread that dialog, not a proven fault.
+
+Not covered: the tray menu in the installed app (unit-tested only); zsh rc lines in a real distro; uninstall in a distro that is stopped and slow to start (each `wsl.exe` call is bounded at 10 s).
+
+Gates: typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed. Full unit on Windows: **4,293 passed / 1 failed / 147 skipped**; the failure was `mark-assets` timing out at 15 s under load, 35/35 alone.

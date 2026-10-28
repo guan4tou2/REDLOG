@@ -7,7 +7,7 @@ import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { visibleWindowBounds } from './window-bounds'
 import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
-import { createTray, setTrayRecording } from './tray'
+import { createTray, setTrayRecording, setTrayText } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
@@ -53,10 +53,10 @@ import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
-import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { mergeClassPolicy } from '../core/terminal-class'
-import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
+import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
@@ -1171,11 +1171,23 @@ if (process.env.REDLOG_E2E === '1') {
   app.setPath('userData', path.join(homedir(), '.electron-user-data'))
 }
 
+// The uninstaller runs the installed app once with this flag, before it deletes
+// the files the hooks point at (resources/installer.nsh): take every enrolment
+// out of its rc or profile, then exit. No window, no lock — whether another
+// RedLog is still running does not change what has to be removed.
+const removingHooks = process.argv.includes('--remove-hooks')
+if (removingHooks) {
+  void removeWslHooks()
+    .then((wsl) => debugLog('hooks', 'removed on uninstall', [...removeInstalledHooks(), ...wsl].join(',') || 'none'))
+    .catch((e) => debugLog('hooks', 'remove on uninstall failed', (e as Error).message))
+    .finally(() => app.exit(0))
+}
+
 // One RedLog at a time. Two instances race for port 6660 and clobber each
 // other's ~/.redlog/api-token, which breaks hooks/CLI/MCP and can wedge the UI.
 // A second launch just focuses the window that's already open.
-const gotSingleInstanceLock = app.requestSingleInstanceLock()
-if (!gotSingleInstanceLock) {
+const gotSingleInstanceLock = !removingHooks && app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock && !removingHooks) {
   app.quit()
 }
 
@@ -1917,6 +1929,7 @@ app.whenReady().then(() => {
     const parsed = parseQuitText(raw)
     if (parsed) quitText = parsed
   })
+  ipcMain.on('app:setTrayText', (_e, raw: unknown) => { setTrayText(tray, raw) })
   // The OS going down is not the operator choosing to quit.
   powerMonitor.on('shutdown', () => { allowQuit() })
   // Renderer needs a way to open a URL in the operator's real browser (marks

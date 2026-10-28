@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as cp from 'child_process'
+import { EventEmitter } from 'events'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -20,6 +21,16 @@ const haveBash = fs.existsSync(BASH)
 let home = ''
 const wslCalls: string[][] = []
 
+// `wsl.exe -l -q` answers in UTF-16LE, one distro name per line.
+function fakeListing(): EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void } {
+  const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), kill: (): void => {} })
+  setImmediate(() => {
+    child.stdout.emit('data', Buffer.from('Ubuntu\r\n', 'utf16le'))
+    child.emit('close', 0)
+  })
+  return child
+}
+
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>()
   return {
@@ -27,13 +38,14 @@ vi.mock('child_process', async (importOriginal) => {
     spawn: vi.fn((cmd: string, args: string[], opts?: cp.SpawnOptions) => {
       if (cmd !== 'wsl.exe') return actual.spawn(cmd, args, opts ?? {})
       wslCalls.push(args)
+      if (args[0] === '-l') return fakeListing()
       const [, ...rest] = args.slice(args.indexOf('-e') + 1)
       return actual.spawn(BASH, rest, { ...opts, env: { ...process.env, HOME: home } })
     })
   }
 })
 
-const { installHook, checkHookStatus, invalidateWslCache, windowsPathToWsl } = await import('../src/core/wsl-manager')
+const { installHook, checkHookStatus, invalidateWslCache, windowsPathToWsl, removeWslHooks } = await import('../src/core/wsl-manager')
 
 function pretendPlatform(p: NodeJS.Platform): () => void {
   const original = Object.getOwnPropertyDescriptor(process, 'platform')!
@@ -60,7 +72,7 @@ describe.skipIf(!haveBash)('a WSL rc line that points at another build', () => {
     // The scripts take their rc, path and shell as $1–$3. Behind `--` the
     // distro's default shell expands those to nothing before bash runs, which
     // this fake cannot reproduce, so pin the flag that avoids it.
-    for (const args of wslCalls) expect(args.slice(0, 4)).toEqual(['-d', 'Ubuntu', '-e', '/bin/bash'])
+    for (const args of wslCalls.filter((a) => a[0] === '-d')) expect(args.slice(0, 3)).toEqual(['-d', 'Ubuntu', '-e'])
   })
 
   it('is not reported as installed', async () => {
@@ -91,5 +103,48 @@ describe.skipIf(!haveBash)('a WSL rc line that points at another build', () => {
   it('installs into a distro with no rc yet', async () => {
     expect((await installHook('Ubuntu', 'bash')).success).toBe(true)
     expect(sourceLines()).toEqual([`source "${current}"`])
+  })
+})
+
+// Uninstall runs the installed app with --remove-hooks, which takes this
+// build's line out of every distro. A line for another build is not this
+// uninstall's to remove.
+describe.skipIf(!haveBash)('removing this build\'s WSL hook on uninstall', () => {
+  let restore: () => void
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-wsl-rc-'))
+    wslCalls.length = 0
+    invalidateWslCache()
+    restore = pretendPlatform('win32')
+  })
+  afterEach(() => {
+    restore()
+    fs.rmSync(home, { recursive: true, force: true })
+    for (const args of wslCalls.filter((a) => a[0] === '-d')) expect(args.slice(0, 3)).toEqual(['-d', 'Ubuntu', '-e'])
+  })
+
+  it('takes out the line and its marker and keeps the rest of the rc', async () => {
+    fs.writeFileSync(rc(), "alias ll='ls -l'\nexport EDITOR=vim\n")
+    expect((await installHook('Ubuntu', 'bash')).success).toBe(true)
+
+    expect(await removeWslHooks()).toEqual(['Ubuntu: ~/.bashrc'])
+    const text = fs.readFileSync(rc(), 'utf8')
+    expect(text).toContain("alias ll='ls -l'")
+    expect(text).toContain('export EDITOR=vim')
+    expect(text).not.toContain('shell-bash-hook')
+    expect(text).not.toContain('RedLog WSL hook')
+  })
+
+  it('removes an rc that held nothing but the hook', async () => {
+    expect((await installHook('Ubuntu', 'bash')).success).toBe(true)
+    expect(await removeWslHooks()).toEqual(['Ubuntu: ~/.bashrc'])
+    expect(fs.existsSync(rc())).toBe(false)
+  })
+
+  it('leaves a line for another build, and an rc with no hook, untouched', async () => {
+    const before = `alias ll='ls -l'\n\n# RedLog WSL hook\nsource "${elsewhere}"\n`
+    fs.writeFileSync(rc(), before)
+    expect(await removeWslHooks()).toEqual([])
+    expect(fs.readFileSync(rc(), 'utf8')).toBe(before)
   })
 })

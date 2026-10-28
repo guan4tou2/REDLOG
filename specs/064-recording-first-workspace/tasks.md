@@ -127,3 +127,7 @@ T004／T008 的正式 Windows 列仍 NOT RUN。
 - [x] T048 接入已保存文字附件與已確認 AI JSONL prefix 的索引／原文讀取；保留原件雜湊、專案邊界、binary／未確認內容及不適用條件的實際覆蓋狀態。修正 Cast 追加／改寫／清理的版本與實體分段定位，將 query cursor 綁 dataset／索引 revision；完成故障回歸、相關 gates／build 與既有搜尋 Electron 流程，記錄邊界。
 
 T012／T013 本批完成（macOS source build＋DB／unit，見最新 verification）；搜尋仍沿既定 token／prefix 語意及明示限制，不承諾 binary／OCR／未確認 bytes。T015 的效能與完整 S2 gate、C3/C4 的跨 Reader／轉換座標及其餘平台／人工驗收不由本批代勾。
+
+## 2026-10-28 — uninstall removes enrolments; tray speaks the app's language
+
+- [x] T049 Windows 解除安裝前以 `RedLog.exe --remove-hooks` 移除 PowerShell profile 與各 WSL 發行版 rc 中本 build 的接入行（hook 副本已被手動刪除也照樣移除；保留使用者自己的內容；升級時不執行）；系統匣選單隨 App 語言，結束確認改為一般按鈕；內測說明補升級、結束、無視窗與移除。先寫 RED 測試，並以實際安裝包在本機跑安裝 → 原地升級 → 解除安裝。

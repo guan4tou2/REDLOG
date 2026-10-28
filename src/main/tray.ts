@@ -76,6 +76,27 @@ function stopBlink(): void {
 // state change, whichever control made it — not only after a tray click.
 const menuBuilders = new WeakMap<Tray, (recording?: boolean) => void>()
 
+// The menu speaks the language chosen in the app; the renderer sends it, as it
+// does for the quit dialog. English until it arrives.
+export interface TrayText { show: string; addMarker: string; pause: string; resume: string; toggleHud: string; releaseHud: string; quit: string }
+const TRAY_TEXT_KEYS: Array<keyof TrayText> = ['show', 'addMarker', 'pause', 'resume', 'toggleHud', 'releaseHud', 'quit']
+let trayText: TrayText = {
+  show: 'Show RedLog', addMarker: '⚑ Add Marker…', pause: '⏸ Pause Recording', resume: '⏺ Resume Recording',
+  toggleHud: 'Toggle HUD', releaseHud: 'Release HUD Click-through', quit: 'Quit'
+}
+const lastRecording = new WeakMap<Tray, boolean | undefined>()
+
+/** Accepts only a complete set of plain non-empty strings, so a malformed IPC
+ *  payload cannot blank an item. */
+export function setTrayText(tray: Tray | null, raw: unknown): void {
+  if (!raw || typeof raw !== 'object') return
+  const r = raw as Record<string, unknown>
+  const ok = TRAY_TEXT_KEYS.every((k) => typeof r[k] === 'string' && (r[k] as string).trim() !== '' && (r[k] as string).length <= 100)
+  if (!ok) return
+  trayText = Object.fromEntries(TRAY_TEXT_KEYS.map((k) => [k, r[k]])) as unknown as TrayText
+  if (tray) menuBuilders.get(tray)?.(lastRecording.get(tray))
+}
+
 export function setTrayRecording(tray: Tray, recording: boolean | null): void {
   menuBuilders.get(tray)?.(recording ?? undefined)
   stopBlink()
@@ -109,9 +130,10 @@ export function createTray(
   const tray = new Tray(getTemplateIcon())
 
   const buildMenu = (recording?: boolean): void => {
+    lastRecording.set(tray, recording)
     const items: Electron.MenuItemConstructorOptions[] = [
       {
-        label: 'Show RedLog',
+        label: trayText.show,
         click: () => {
           mainWindow.show()
           mainWindow.focus()
@@ -124,7 +146,7 @@ export function createTray(
       // name for that and an ellipsis; "Quick Mark" read as the HUD's instant
       // mark, which files one without asking.
       items.push({
-        label: '⚑ Add Marker…',
+        label: trayText.addMarker,
         accelerator: QUICK_MARK_ACCELERATOR,
         click: () => onBookmark()
       })
@@ -132,13 +154,13 @@ export function createTray(
 
     if (onToggleRecording) {
       items.push({
-        label: recording ? '⏸ Pause Recording' : '⏺ Resume Recording',
+        label: recording ? trayText.pause : trayText.resume,
         click: () => setTrayRecording(tray, onToggleRecording())
       })
     }
 
     items.push({
-      label: 'Toggle HUD',
+      label: trayText.toggleHud,
       click: () => {
         if (!overlayWindow) return
         if (overlayWindow.isVisible()) {
@@ -156,14 +178,14 @@ export function createTray(
       // while ghosted, so its own toggle can't turn it back off. Both only
       // release; it used to toggle while showing ⌘⇧P, which does not.
       items.push({
-        label: 'Release HUD Click-through',
+        label: trayText.releaseHud,
         accelerator: HUD_PASSTHROUGH_ACCELERATOR,
         click: () => onReleasePassThrough()
       })
     }
 
     items.push({ type: 'separator' })
-    items.push({ label: 'Quit', role: 'quit' })
+    items.push({ label: trayText.quit, role: 'quit' })
 
     tray.setContextMenu(Menu.buildFromTemplate(items))
   }

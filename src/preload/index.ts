@@ -30,7 +30,8 @@ const api: RedLogAPI = {
       return () => ipcRenderer.removeListener('app:updateStatusChanged', handler)
     },
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
-    setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text)
+    setQuitText: (text: Record<string, string>) => ipcRenderer.send('app:setQuitText', text),
+    setTrayText: (text: Record<string, string>) => ipcRenderer.send('app:setTrayText', text)
   },
   debug: {
     status: () => ipcRenderer.invoke('debug:status'),

@@ -30,6 +30,19 @@ Gatekeeper 提示仍須另外驗收；本機候選正常啟動不代表這項已
 - 沒走 HTTP 代理的流量不會自動出現；nmap SYN、SMB、LDAP、RDP 不因此被解密。
 - 網頁 scope 不篩指令。錄影可能含操作員資料或其他目標，交付前逐份檢查／排除。
 
+## 升級、結束與移除
+
+- 升級：直接執行新的安裝包（Windows 可 `/S`）。App 下次啟動時會把已接入
+  shell 的 hook 換成新版，但升級前就開著的終端分頁仍是舊 hook，要重開。
+- 結束：關閉視窗只會縮到系統匣／選單列並繼續記錄。從系統匣選「結束」後，
+  有東西在記錄時會出現確認視窗，選「停止並結束」才退出；「留在背景」是取消。
+- 開啟後沒有視窗：從系統匣選「顯示 RedLog」。仍沒有畫面時，以
+  `RedLog.exe --disable-gpu` 啟動試試，並回報顯示卡型號與 Windows 版本。
+- 移除（Windows）：解除安裝會先拿掉 PowerShell profile 與各 WSL 發行版 rc
+  裡的 RedLog 那一行，升級則不會。專案資料**不會**刪除，交戰結束後依規定自行
+  刪除 `%USERPROFILE%\.redlog` 與 `%APPDATA%\redlog`。macOS／Linux 沒有解除
+  安裝程式，先在「設定 → 指令與終端」移除 hook，再刪 App 與 `~/.redlog`。
+
 ## 回報問題
 
 附候選 commit、OS／架構／shell、操作步驟、預期與實際結果，以及是在安裝、
