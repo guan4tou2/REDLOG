@@ -39,3 +39,13 @@
 登錄的 UTF-8 body refs 不再因單份超過 16 MiB 而整份略過。衍生索引升為 v4，自動重建，來源 Event／body 不改寫；每次讀入最多 1 MiB，以 tokenizer 邊界分段並保留有界重疊。巨大單一 token 沿 SQLite FTS5 自身 32768-byte 上限處理，不將 token 尾端另造假命中。多關鍵字交集可跨同一 body 的各段，不能把同 Event 的 stdout／stderr 不同檔案湊成同份全文命中。
 
 每次查詢仍核對來源版本，遺失／改寫保留 coverage 錯誤並移除舊命中；binary 不冒充文字索引。這不新增 AI raw JSONL、一般附件、圖片 OCR 或所有 Cast 的全文覆蓋承諾。
+
+## 2026-10-28 implemented slice — saved source coverage
+
+- 沿用 body FTS，衍生 schema v6；只重建 cache。一般附件只讀 `artifact_added` 登錄的專案 `artifacts/` 副本，核對完整 size／SHA-256；不追讀原始匯入路徑。UTF-8 文字可搜，binary／圖片不做 OCR 或格式解析。小型 inline base64（encoded ≤16 KiB）與 Reader 共用解碼；超限明示 limited，不把編碼字串冒充解碼全文。
+- AI raw 只讀 `transcript_snapshot` 確認的專案 `agent-transcripts/` prefix，核對 cumulative bytes／hash；每個 dataset 內每實體檔案只索引最新確認 prefix，避免累積 snapshots 重複全文。舊查詢沿其 snapshot 選舊 prefix；明選舊 Event 仍可讀其確認版本。capture_started 無確認 prefix、尚未確認的追加尾端維持 pending，不讀 vendor 檔案或追補排除區間。
+- Raw prefix 只有檔案精度，不能證明其中每行的 target／時間／tool／event／operator／source／scope／privacy／tier 歸屬；這些條件排除 raw 全文匹配並回 unsupported filters。已保存 Event 的對應欄位仍依 canonical query 求值，不因此整案失敗。Session／provider 等可靠擁有者條件仍依 owning Event 求值。
+- Coverage 列出 project／dataset、events／saved body／artifact／raw 的 representation、revision、來源與索引 bytes、適用條件、定位精度及 covered／partial／pending／unsupported／failed／unavailable。完整成功時維持安靜；失敗、缺件、binary、pending 與超限顯示必要狀態。Event 與 Activity 的文字查詢 cursor 固定 dataset 與 coverage revision，count 同邊界；範圍內來源改變要求 refresh，新增範圍外 Event 不混入舊頁。
+- Cast schema v2 只索引 newline 完整 frame 的確認 prefix，命中綁 prefix hash／bytes 與實體 part 的 raw byte range；開啟前後再驗版本。追加尾端 partial／pending，同大小改寫與缺檔清掉舊全文；清理保留無全文的 unavailable metadata，不冒充全部就緒。保留既有每檔 60 MiB 上限，單行緩衝超過 1 MiB 明示 unsupported；壞 JSON／UTF-8 failed。AND 可跨同一實體錄影片段，不能跨檔湊命中；frame 切點不另造 token 邊界。
+
+這一批不改 SQLite FTS token／prefix 語意，不新增文件解析器，也不宣告 C3/C4 全閱讀模式／轉換座標對等或整份 Spec 064 Verified。

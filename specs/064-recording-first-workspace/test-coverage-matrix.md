@@ -7,7 +7,7 @@
 | Shell I/O／UX-01、04、05 | ingest、external-session、relay-late-output、terminal-origin | d291 DMG：真實外部來源 recovery、內建終端 exit／cast、bundle verifier、重啟讀回 | Windows／WSL／Kali 新候選 NOT RUN；多終端全部邊界未完成 |
 | HTTP(S)／UX-02 | http-verify、managed-http-capture、http-body-store | d291 DMG：真實 loopback HTTP、HTTPS nonce，client --cacert | 系統 CA／下載 Gatekeeper／真實瀏覽器 trust 人工 NOT RUN；不能用 curl 信任代替 |
 | AI／UX-08、14 | agent policy、parser／durability／Session boundaries | d291 DMG：Claude Code／Codex 合成 JSONL、選裝／授權／排除／移除 | 真實 AI 客戶端完整人工流程 NOT RUN；不把 fixture 當真人對話 |
-| Activity query／UX-06、CT-01–04 | activity-query、http-body-search | d291 DMG：17 MiB body、匹配/context、來源內容、原始 Event 返回 | Cast generation、raw JSONL／一般附件覆蓋尚缺 |
+| Activity query／UX-06、CT-01–04 | activity-query、http-body-search、cast-index、query-page、read-state | d291 DMG：17 MiB body、匹配/context、來源內容、原始 Event 返回；2026-10-28 source build：保存文字附件／AI prefix／cast 搜尋與原文讀回 | 新增搜尋範圍尚未做安裝包／其他 OS 驗收；binary 不做 OCR／格式解析 |
 | Reader／UX-07、10、CT-11–14 | evidence-content、ContentRef 與來源版本 | d291 DMG：有界視窗、Find、stdout／stderr、原生 resize | 全閱讀模式位置復原／fragment anchor 尚缺 |
 | Activity／Session export／UX-13、CT-05–07 | filtered-export、export-plan、export-attachment-freeze | d291 DMG：JSON／Bundle、附件 opt-in／prefix、成品讀回；NDJSON 固定成員及部分故障由 DB／IPC 測驗證 | 完整 C5／全部平台／跨來源矩陣未齊 |
 | 安裝與首次接入／UX-01、03 | build-source-status、來源設定狀態測試 | d291 DMG：mount／ditto 安裝副本、About exact Build、FirstRun 11 cases | 全新使用者無人協助完成率與 OS 權限 NOT RUN |

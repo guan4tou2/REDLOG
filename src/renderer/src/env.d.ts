@@ -258,10 +258,10 @@ interface RedLogAPI {
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts: (query: string, limit?: number) => Promise<Array<{
-      castRel: string; tMs: number; off: number; len: number; snippet: string
+      castRel: string; tMs: number; off: number; len: number; snippet: string; version?:string
     }>>
-    castIndexStatus: () => Promise<{ total: number; indexed: number; pending: number }>
-    readCastRange: (castRel: string, off: number, len: number) => Promise<{
+    castIndexStatus: () => Promise<import('../../core/cast-index').BackfillStatus>
+    readCastRange: (castRel: string, off: number, len: number, version?:string) => Promise<{
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>

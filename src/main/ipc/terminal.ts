@@ -6,7 +6,7 @@ import { queryEventById } from '../../core/db/events'
 import { queryBuiltinTerminalSessionStart, queryBuiltinTerminalSessions } from '../../core/db/events'
 import { getProjectDir } from '../../core/db/index'
 import { readCastRange, readCastSlice } from '../../core/cast-slice'
-import { castIndexStatus, searchCasts } from '../../core/cast-index'
+import { castIndexStatus, searchCasts, backfillCastIndex, readIndexedCastRange } from '../../core/cast-index'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal, listTerminals,
   discoverShells, cachedShells
@@ -120,14 +120,18 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // exists so the UI can say which of those it is, rather than returning zero
   // hits and letting the operator conclude the bytes are missing.
   ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
-    if (!ctx.getActiveProject()) return []
-    return searchCasts(query, limit)
+    const project=ctx.getActiveProject()
+    if (!project) return []
+    const dir=getProjectPath(project)
+    await backfillCastIndex(dir)
+    if(ctx.getActiveProject()?.id!==project.id)throw new Error('Recording search project changed')
+    return searchCasts(query, limit,dir)
   })
   ipcMain.handle('casts:status', async () => {
     if (!ctx.getActiveProject()) return { total: 0, indexed: 0, pending: 0 }
     return castIndexStatus()
   })
-  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
+  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number, version?:string) => {
     const project = ctx.getActiveProject()
     if (!project) return null
     // castRel comes from a search hit, but the hit came from a DB the renderer
@@ -137,6 +141,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const castsDir = path.join(getProjectPath(project), 'casts')
     const full = path.resolve(castsDir, castRel)
     if (!isInsideDir(castsDir, full)) return null
+    if(version)return readIndexedCastRange(castRel,off,len,version,getProjectPath(project))
     return readCastRange(full, off, len)
   })
 }

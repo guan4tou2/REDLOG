@@ -45,6 +45,19 @@ describe.skipIf(!available)('cast full-text index', () => {
 
   const cast = (name: string): string => path.join(castsDir, name)
 
+  it('keeps a not-yet-complete first frame pending, then indexes its confirmed lines', async () => {
+    fs.writeFileSync(cast('starting.cast'),'')
+    await mod!.backfillCastIndex(dir)
+    expect(mod!.castIndexStatus(dir)).toMatchObject({total:1,pending:1,failed:0})
+    fs.writeFileSync(cast('starting.cast'),'{"version":2')
+    await mod!.backfillCastIndex(dir)
+    expect(mod!.castIndexStatus(dir)).toMatchObject({pending:1,failed:0})
+    writeCast(cast('starting.cast'),1700000000,[[0.1,'STARTINGCANARY\r\n']])
+    await mod!.backfillCastIndex(dir)
+    expect(mod!.searchCasts('STARTINGCANARY',10,dir)).toHaveLength(1)
+    expect(mod!.castIndexStatus(dir)).toMatchObject({indexed:1,pending:0,failed:0})
+  })
+
   it('finds a port number in scan output', async () => {
     writeCast(cast('a.cast'), 1_700_000_000, [
       [0.1, 'nmap -sV 10.0.0.5\r\n'],
@@ -136,6 +149,22 @@ describe.skipIf(!available)('cast full-text index', () => {
     expect(mod!.searchCasts('gobus', 10, dir).length).toBe(1)
   })
 
+  it('intersects query terms across chunks of one physical recording, never across unrelated files', async () => {
+    writeCast(cast('terms.cast'),1_700_000_000,[[0.1,'FIRSTTERM '+ 'padding '.repeat(400)],[0.2,'LASTTERM\r\n']])
+    writeCast(cast('first.cast'),1_700_000_000,[[0.1,'FIRSTTERM\r\n']])
+    writeCast(cast('last.cast'),1_700_000_000,[[0.1,'LASTTERM\r\n']])
+    await mod!.backfillCastIndex(dir)
+    const hits=mod!.searchCasts('FIRSTTERM LASTTERM',10,dir)
+    expect(hits.length).toBeGreaterThan(0)
+    expect(new Set(hits.map(h=>h.castRel))).toEqual(new Set(['terms.cast']))
+  })
+
+  it('does not invent a word boundary when a long token spans output frames', async () => {
+    writeCast(cast('token.cast'),1_700_000_000,[[0.1,'a'.repeat(1900)],[0.2,'SPLITTOKEN\r\n']])
+    await mod!.indexCast(cast('token.cast'),dir)
+    expect(mod!.searchCasts('SPLITTOKEN',10,dir)).toHaveLength(0)
+  })
+
   it('skips a re-index when the recording has not changed', async () => {
     writeCast(cast('g.cast'), 1_700_000_000, [[0.1, 'hello world\r\n']])
     const first = await mod!.indexCast(cast('g.cast'), dir)
@@ -145,6 +174,50 @@ describe.skipIf(!available)('cast full-text index', () => {
     expect(second.chunks).toBe(first.chunks)
     // And re-indexing has not doubled the hits.
     expect(mod!.searchCasts('hello', 10, dir).length).toBe(1)
+  })
+
+  it('invalidates a same-size rewrite before returning a stale hit', async () => {
+    writeCast(cast('rewrite.cast'),1_700_000_000,[[0.1,'OLDMARKER']])
+    await mod!.indexCast(cast('rewrite.cast'),dir)
+    writeCast(cast('rewrite.cast'),1_700_000_000,[[0.1,'NEWMARKER']])
+    expect(mod!.searchCasts('OLDMARKER',10,dir)).toHaveLength(0)
+    expect(mod!.castIndexStatus(dir)).toMatchObject({pending:1})
+    await mod!.backfillCastIndex(dir)
+    expect(mod!.searchCasts('NEWMARKER',10,dir)).toHaveLength(1)
+  })
+
+  it('binds opening a hit to its physical part and confirmed version', async () => {
+    writeCast(cast('parts.cast'),1_700_000_000,[[0.1,'base output\r\n']])
+    writeCast(cast('parts.part000001.cast'),1_700_000_001,[[0.1,'PARTONLY\r\n']])
+    await mod!.backfillCastIndex(dir)
+    const [hit]=mod!.searchCasts('PARTONLY',10,dir)
+    expect((await mod!.readIndexedCastRange(hit.castRel,hit.off,hit.len,hit.version,dir))?.text).toContain('PARTONLY')
+    writeCast(cast('parts.part000001.cast'),1_700_000_001,[[0.1,'REPLACED\r\n']])
+    expect(await mod!.readIndexedCastRange(hit.castRel,hit.off,hit.len,hit.version,dir)).toBeNull()
+  })
+
+  it('keeps CRLF byte ranges readable and reports malformed complete lines as failed', async () => {
+    const lines=[JSON.stringify({version:2,width:80,height:24,timestamp:1_700_000_000}),JSON.stringify([0.1,'o','中文 CRLFMARKER\r\n'])]
+    fs.writeFileSync(cast('crlf.cast'),lines.join('\r\n')+'\r\n')
+    await mod!.indexCast(cast('crlf.cast'),dir)
+    const [hit]=mod!.searchCasts('CRLFMARKER',10,dir)
+    expect((await mod!.readIndexedCastRange(hit.castRel,hit.off,hit.len,hit.version,dir))?.text).toContain('中文 CRLFMARKER')
+    fs.writeFileSync(cast('bad.cast'),lines[0]+'\n{broken complete line}\n')
+    await mod!.indexCast(cast('bad.cast'),dir)
+    expect(mod!.castIndexStatus(dir).failed).toBe(1)
+  })
+
+  it('indexes complete frames only and marks an appended tail as pending', async () => {
+    writeCast(cast('live.cast'),1_700_000_000,[[0.1,'SAVEDFRAME\r\n']])
+    fs.appendFileSync(cast('live.cast'),'[0.2,"o","PARTIALFRAME"]')
+    await mod!.indexCast(cast('live.cast'),dir)
+    expect(mod!.searchCasts('PARTIALFRAME',10,dir)).toHaveLength(0)
+    expect(mod!.searchCasts('SAVEDFRAME',10,dir)).toHaveLength(1)
+    expect(mod!.castIndexStatus(dir).pending).toBe(1)
+    fs.appendFileSync(cast('live.cast'),'\n')
+    await mod!.backfillCastIndex(dir)
+    expect(mod!.searchCasts('PARTIALFRAME',10,dir)).toHaveLength(1)
+    expect(mod!.castIndexStatus(dir).pending).toBe(0)
   })
 
   it('re-indexes without duplicating when the recording grew', async () => {
@@ -175,15 +248,17 @@ describe.skipIf(!available)('cast full-text index', () => {
     fs.unlinkSync(cast('j.cast'))
     const r = await mod!.backfillCastIndex(dir)
     expect(r.pruned).toBe(1)
+    expect(mod!.castIndexStatus(dir)).toMatchObject({total:1,indexed:0,unavailable:1})
+    expect((await mod!.backfillCastIndex(dir)).pruned).toBe(0)
     expect(mod!.searchCasts('ghost-text', 10, dir).length).toBe(0)
   })
 
   it('reports how much is still unindexed', async () => {
     writeCast(cast('k.cast'), 1_700_000_000, [[0.1, 'one\r\n']])
     writeCast(cast('l.cast'), 1_700_000_000, [[0.1, 'two\r\n']])
-    expect(mod!.castIndexStatus(dir)).toEqual({ total: 2, indexed: 0, pending: 2 })
+    expect(mod!.castIndexStatus(dir)).toMatchObject({ total: 2, indexed: 0, pending: 2 })
     await mod!.backfillCastIndex(dir)
-    expect(mod!.castIndexStatus(dir)).toEqual({ total: 2, indexed: 2, pending: 0 })
+    expect(mod!.castIndexStatus(dir)).toMatchObject({ total: 2, indexed: 2, pending: 0 })
   })
 
   it('survives a truncated or malformed recording', async () => {

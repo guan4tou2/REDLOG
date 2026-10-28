@@ -1791,11 +1791,11 @@
   "activity.tool.browse": "Browser action",
   "activity.tool.custom": "Custom tool",
   "activity.tool.unknown": "Unrecognized tool",
-  "activity.coverage.missing": "Missing outputs: {{count}}",
+  "activity.coverage.missing": "Missing saved sources: {{count}}",
   "activity.coverage.limited": "Above full-text index limit: {{count}}",
-  "activity.coverage.pending": "Pending output indexes: {{count}}",
-  "activity.coverage.binary": "Unindexed binary outputs: {{count}}",
-  "activity.coverage.failed": "Changed or unreadable outputs: {{count}}",
+  "activity.coverage.pending": "Pending source indexes: {{count}}",
+  "activity.coverage.binary": "Unindexed binary sources: {{count}}",
+  "activity.coverage.failed": "Changed or unreadable sources: {{count}}",
   "activity.commandResult": "Command result",
   "activity.matchLabel": "Match",
   "activity.contextLabel": "Context",
@@ -1824,5 +1824,10 @@
   "sidebar.evidence": "Evidence",
   "sidebar.targetsScope": "Targets & scope",
   "workspace.searchCoverage": "Search coverage",
-  "workspace.notIndexed": "AI raw JSONL and general attachment contents are not searched."
+  "workspace.coverageBoundary": "Content search covers verified saved text, confirmed AI prefixes and complete recording frames. Binary content and unconfirmed tails are excluded; filters can further restrict coverage.",
+  "content.field.artifact": "Saved attachment",
+  "content.field.ai_raw": "Saved AI source (JSONL)",
+  "activity.coverage.unsupported": "Source contents excluded by these filters: {{count}}",
+  "castSearch.coverageFailures": "Recording indexes: {{failed}} failed · {{unsupported}} unsupported · {{unavailable}} unavailable",
+  "activity.coverage.body": "Saved output"
 }

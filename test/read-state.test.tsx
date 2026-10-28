@@ -80,6 +80,11 @@ describe('indexStatusOf', () => {
     expect(indexStatusOf(readFailed(readSucceeded({ pending: 0 }), 'x')).kind).toBe('failed')
   })
 
+  it('does not declare unsupported or unavailable recordings fully indexed', () => {
+    expect(indexStatusOf(readSucceeded({pending:0,unsupported:1})).kind).toBe('partial')
+    expect(indexStatusOf(readSucceeded({pending:0,unavailable:1})).kind).toBe('partial')
+  })
+
   it('a malformed answer is a failure, never ready', () => {
     for (const bad of [null, undefined, {}, { pending: '0' }, { pending: NaN }, { pending: -1 }]) {
       expect(indexStatusOf(readSucceeded(bad as never)).kind).toBe('failed')
