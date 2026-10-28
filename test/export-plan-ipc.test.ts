@@ -64,6 +64,22 @@ describe('export plan IPC contract', () => {
     expect(result).toMatchObject({ ok: false })
   })
 
+  // P1-1a. `export-capabilities.ts` declares piiScrubbing per format, but until
+  // now nothing asserted that the declaration is enforced: the plan resolver
+  // could have accepted the flag for bundle/HAR and exported unscubbed bytes
+  // under a manifest that says nothing about it. The refusal is the contract,
+  // so it is what gets tested — not whether scrubbing "works" on a format that
+  // has no scrubbing.
+  it.each(['bundle', 'har'])('refuses operator-PII scrubbing on %s rather than exporting unscubbed', format => {
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    expect(result).toEqual({ ok: false, error: `unsupported-policy: ${format} cannot scrub operator PII` })
+  })
+
+  it.each(['json', 'ndjson', 'timeline'])('accepts operator-PII scrubbing on %s', format => {
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    expect(result).toMatchObject({ ok: true })
+  })
+
   it.each(['json', 'ndjson', 'timeline'])('exports every matching row beyond the first page, frozen at preview, as %s', format => {
     const wanted = Array.from({ length: 1005 }, (_, n) => `selected-${n}`)
     getDB().transaction(() => {
