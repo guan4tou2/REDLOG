@@ -153,8 +153,10 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   // Index completeness is a read that can fail or not have answered yet, and
   // neither is "fully indexed" (#298): ready / pending / unknown / failed.
   const castStatus = useReadState(() => window.redlog.events.castIndexStatus())
+  const castStatusPhase=useRef(castStatus.state.phase)
+  castStatusPhase.current=castStatus.state.phase
   const indexStatus = indexStatusOf(castStatus.state)
-  const castPending = indexStatus.kind === 'pending' ? indexStatus.pending : 0
+  const castPending = indexStatus.kind === 'pending'||indexStatus.kind==='partial' ? indexStatus.pending : 0
   // Facets refresh with every result set. A failed read is not "no types".
   const typesRead = useReadState(() => window.redlog.events.distinctAgentTypes(), true, [results])
   const knownTypes = typesRead.state.value ?? []
@@ -279,6 +281,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
           if (castSeq !== searchSeqRef.current) return
           setCastHits(r ?? [])
           setCastError(null)
+          if(castStatusPhase.current==='loaded')castStatus.retry()
         })
         .catch((error: unknown) => {
           if (castSeq !== searchSeqRef.current) return
@@ -409,6 +412,9 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
             </button>
           </div>
         )}
+        {searched && indexStatus.kind==='partial' && <p role="status" className="mb-2 text-xs text-amber-300">
+          {t('castSearch.coverageFailures',indexStatus)}
+        </p>}
         <div hidden={mode !== 'events'}>
         {!searched && !searching && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">

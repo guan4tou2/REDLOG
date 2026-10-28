@@ -22,8 +22,8 @@
 - [ ] T009 [US3] 在 test/timeline-events.test.ts 先驗 CT-01／02：穩定 ID、跨頁配對、亂序／重送／衝突與來源 fallback。
 - [ ] T010 [US3] 於 src/core/ 與 src/renderer/src/lib/timelineEvents.ts 接入 C1 canonical 投影；查詢層解析跨頁群組，不更改原始 Event。
 - [ ] T011 [US4] 於 optional-plugins/claude-code/adapter.ts、codex/adapter.ts 與共用投影驗 CT-10，實作非 Shell toolAction／unknown。
-- [ ] T012 [US3] 在 test/ 搜尋整合案例先驗 CT-03／04；各內容覆蓋、索引 revision、條件限制、失敗及陳舊命中。
-- [ ] T013 [US3] 於 src/core/query/contract.ts、db/event-queries.ts、http-body-index.ts、cast-index.ts 接 C2 覆蓋／cursor／統計。
+- [x] T012 [US3] 在 test/ 搜尋整合案例先驗 CT-03／04；各內容覆蓋、索引 revision、條件限制、失敗及陳舊命中。
+- [x] T013 [US3] 於 src/core/query/contract.ts、db/event-queries.ts、http-body-index.ts、cast-index.ts 接 C2 覆蓋／cursor／統計。
 - [ ] T014 [US3] 於 Timeline／SearchPanel／FilterContext 整合單一查詢及 Activity 列表，保留舊深搜能力到對等 gate。
 - [ ] T015 [US3] 依 acceptance.md 完成 S2 查詢正確性、CT-01–04／10 及大量資料效能，記 verification.md。
 
@@ -121,6 +121,12 @@ T004／T008 的正式 Windows 列仍 NOT RUN。
 ## 2026-10-28 — WSL hook line for another build
 
 - [x] T047 WSL rc 那行指向其他 build（別的安裝位置、dev checkout）時，狀態不再算「已安裝」，安裝／驗證修復會換成目前路徑、保留 rc 其餘內容；兩段腳本以 `wsl.exe -e` 執行並以位置參數傳路徑。先寫 RED 測試，並在 Ubuntu 26.04 與 kali 實跑。
+
+## 2026-10-28 — search coverage (C2 / CT-03–04)
+
+- [x] T048 接入已保存文字附件與已確認 AI JSONL prefix 的索引／原文讀取；保留原件雜湊、專案邊界、binary／未確認內容及不適用條件的實際覆蓋狀態。修正 Cast 追加／改寫／清理的版本與實體分段定位，將 query cursor 綁 dataset／索引 revision；完成故障回歸、相關 gates／build 與既有搜尋 Electron 流程，記錄邊界。
+
+T012／T013 本批完成（macOS source build＋DB／unit，見最新 verification）；搜尋仍沿既定 token／prefix 語意及明示限制，不承諾 binary／OCR／未確認 bytes。T015 的效能與完整 S2 gate、C3/C4 的跨 Reader／轉換座標及其餘平台／人工驗收不由本批代勾。
 
 ## 2026-10-28 — uninstall removes enrolments; tray speaks the app's language
 

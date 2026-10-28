@@ -58,10 +58,12 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // query was read without a round trip and a parse failure never becomes a
   // query. Scope is still attached here: a renderer-supplied predicate narrows,
   // it never widens past the active project's scope snapshot.
-  ipcMain.handle('events:runQuery', (_e, req: EventQueryRequest) =>
-    ctx.getActiveProject()
-      ? executeEventQuery({ ...req, filter: withActiveScope(req.filter ?? {}) })
-      : { items: [], hasMore: false, nextCursor: null })
+  ipcMain.handle('events:runQuery', (_e, req: EventQueryRequest) => {
+    if(!ctx.getActiveProject())return {items:[],hasMore:false,nextCursor:null}
+    const result=executeEventQuery({...req,filter:withActiveScope(req.filter??{})})
+    if(result.bodyCoverage)result.bodyCoverage.projectId=ctx.getCurrentEngagementId()
+    return result
+  })
 
   // A delayed renderer request must not run against a newly opened database.
   const activityRequest = <T extends ActivityRequest>(req: T): T => {

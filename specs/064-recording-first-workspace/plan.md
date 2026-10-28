@@ -20,6 +20,12 @@ TypeScript／React／Electron／SQLite、現有 Python POSIX relay 及 PowerShel
 
 由 C1 穩定來源鍵與已知工具分類取代 PID＋文字配對。於既有 query 層解析投影、群組 cursor／計數；同一查詢供列表、三閱讀模式與匯出。已量測的十萬筆反覆重算成本，以目前 read connection 的 SQLite TEMP 衍生索引收斂；只存群組鍵、分類及 payload digest，增量補新 row，retention／失敗後重建、closeDB 時丟棄，不新增證據表或持久化 schema。C2 的覆蓋回報沿現有索引逐類附 metadata，不能用 React 對當頁假全文查詢。
 
+### 2026-10-28 C2 search coverage increment
+
+沿既有 body FTS 索引接入 `artifact_added` 保存副本與 `transcript_snapshot` 的雜湊／長度固定 JSONL prefix，不掃 vendor 路徑或未經來源事件確認的檔案。原件驗證與 Reader 共用同一讀取邊界；binary／圖片保留 metadata 搜尋，不承諾 OCR／新解析器。Raw JSONL 不具逐訊息 target／time／tool 座標，相關條件排除此來源並回報 unsupported。
+
+Cast 索引只納入完整行，記錄每個實體分段的確認 prefix／hash；搜尋、狀態與開啟命中均核對版本。索引可重建，來源 Event／檔案不變。搜尋頁的 cursor 綁 dataset／query／索引 revision；覆蓋清單區分各內容類型、bytes、條件適用、pending／partial／failed／unavailable／unsupported。CT-03／04 先以真實暫存檔重現，再用一個既有 Electron 搜尋流程驗證原文讀回。
+
 ## S3 Reading & Evidence
 
 沿現有 readers 補來源版本、有界 read/find/copy 與 C4 anchor；介面重用現有控制，避免建立萬用巨型元件。C5 在 canonical ExportPlan 固定 Activity／Session 原始 IDs、companion、附件 prefix／digest；跨目標錄影另選，不在 renderer 製造另一規則。

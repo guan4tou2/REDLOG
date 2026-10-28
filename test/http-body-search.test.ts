@@ -4,6 +4,13 @@ import type { EventFilter } from '../src/core/db/event-queries'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { createHash } from 'node:crypto'
+import { addArtifact } from '../src/core/artifacts'
+import { describeEventContent, readEventContent } from '../src/core/evidence-content'
+import { sweepRetention } from '../src/core/retention'
+import Database from 'better-sqlite3'
+import { readActivitySnapshot } from '../src/core/db/dataset-snapshot'
+import { getReadonlyDB } from '../src/core/db/index'
 
 let initDB: typeof import('../src/core/db').initDB
 let closeDB: typeof import('../src/core/db').closeDB
@@ -96,6 +103,138 @@ describeDB('HTTP body search', () => {
     const id = response('f1', 'BODYMARKER-9182')
     const page = searchPage({ query: 'BODYMARKER-9182', limit: 10 })
     expect(page.items.map((event) => event.id)).toEqual([id])
+  })
+
+  it('searches decoded small inline base64 bodies using the same bytes as the Reader', () => {
+    const data=Buffer.from('SMALLBASE64ONLY 中文').toString('base64')
+    const event=insertEvent('scanner',{subtype:'http_response',response_body:{data,encoding:'base64'}},{engagementId:'eng',operatorId:'op'})!
+    expect(searchPage({query:'SMALLBASE64ONLY'}).items.map(e=>e.id)).toEqual([event.id])
+    const described=describeEventContent('eng',event.id)
+    if(!described.ok)throw new Error(described.message)
+    expect(readEventContent({ref:described.value.find(f=>f.field==='response_body')!.ref!})).toMatchObject({ok:true,value:{text:'SMALLBASE64ONLY 中文'}})
+  })
+
+  it('finds saved text attachments and opens their verified source, never their original path', () => {
+    const original = path.join(dir, 'report.txt')
+    fs.writeFileSync(original, 'saved attachment tail ATTACHMENTONLY')
+    const added = addArtifact(dir, original)
+    if (!added.ok) throw new Error('fixture copy failed')
+    const event = insertEvent('file_transfer', { subtype: 'artifact_added', stored: added.stored,
+      sha256: added.sha256, size: added.bytes, path: original }, { engagementId: 'eng', operatorId: 'op' })!
+    fs.writeFileSync(original, 'UNSAVEDORIGINAL')
+    expect(searchPage({query:'ATTACHMENTONLY'}).items.map(e=>e.id)).toEqual([event.id])
+    expect(searchPage({query:'UNSAVEDORIGINAL'}).items).toHaveLength(0)
+    const described = describeEventContent('eng', event.id)
+    expect(described.ok).toBe(true)
+    if (!described.ok) return
+    const field = described.value.find(f => f.field === 'artifact' as string)
+    expect(field?.ref).toBeTruthy()
+    expect(readEventContent({ref:field!.ref!})).toMatchObject({ok:true,value:{text:'saved attachment tail ATTACHMENTONLY'}})
+    fs.writeFileSync(path.join(dir,added.stored), 'tampered attachment')
+    const page = searchPage({query:'ATTACHMENTONLY'})
+    expect(page.items).toHaveLength(0)
+    expect(page.bodyCoverage?.failed).toBe(1)
+  })
+
+  it('searches only a confirmed AI raw prefix and rejects changed bytes or unsupported time filters', () => {
+    const folder = path.join(dir, 'agent-transcripts'); fs.mkdirSync(folder)
+    const file = path.join(folder, 'claude-session.jsonl')
+    const saved = '{"hidden_field":"RAWPREFIXONLY"}\n'
+    fs.writeFileSync(file, saved)
+    const event = insertEvent('agent', { subtype:'transcript_snapshot',agent:'claude-code',session_id:'conversation',
+      snapshot_path:file,cumulative_bytes:Buffer.byteLength(saved),cumulative_sha256:createHash('sha256').update(saved).digest('hex') }, {engagementId:'eng',operatorId:'op'})!
+    fs.appendFileSync(file, '{"unconfirmed":"UNCONFIRMEDTAIL"}\n')
+    expect(searchPage({query:'RAWPREFIXONLY'}).items.map(e=>e.id)).toEqual([event.id])
+    expect(searchPage({query:'UNCONFIRMEDTAIL'}).items).toHaveLength(0)
+    const restricted = searchPage({query:'RAWPREFIXONLY',since:1})
+    expect(restricted.items).toHaveLength(0)
+    expect(restricted.bodyCoverage?.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({kind:'ai-raw',status:'unsupported',unsupported:1,indexedBytes:0})
+    ]))
+    const described = describeEventContent('eng',event.id)
+    if (!described.ok) throw new Error(described.message)
+    const raw = described.value.find(f=>f.field==='ai_raw' as string)
+    expect(raw?.ref).toBeTruthy()
+    expect(readEventContent({ref:raw!.ref!})).toMatchObject({ok:true,value:{text:saved,total:Buffer.byteLength(saved)}})
+    fs.writeFileSync(file,saved.replace('RAWPREFIXONLY','OTHERCONTENTX'))
+    const page = searchPage({query:'RAWPREFIXONLY'})
+    expect(page.items).toHaveLength(0)
+    expect(page.bodyCoverage?.failed).toBe(1)
+  })
+
+  it('binds raw-event paging to the query dataset and saved-content revision', () => {
+    insertEvent('marker',{title:'pagecanary'},{engagementId:'eng',operatorId:'op'})
+    insertEvent('marker',{title:'pagecanary'},{engagementId:'eng',operatorId:'op'})
+    const original=path.join(dir,'page.txt');fs.writeFileSync(original,'other saved content')
+    const added=addArtifact(dir,original)
+    if(!added.ok)throw new Error('fixture copy failed')
+    insertEvent('file_transfer',{subtype:'artifact_added',stored:added.stored,sha256:added.sha256,size:added.bytes},{engagementId:'eng',operatorId:'op'})
+    const first=searchPage({query:'pagecanary',limit:1})
+    expect(first.nextCursor).toBeTruthy()
+    insertEvent('marker',{title:'pagecanary'},{engagementId:'eng',operatorId:'op'})
+    expect(searchPage({query:'pagecanary',limit:1,cursor:first.nextCursor}).items).toHaveLength(1)
+    fs.unlinkSync(path.join(dir,added.stored))
+    expect(()=>searchPage({query:'pagecanary',limit:1,cursor:first.nextCursor})).toThrow(/coverage|source|changed/i)
+  })
+
+  it('reports unconfirmed AI bytes as pending without searching them, then admits the confirmed prefix', () => {
+    fs.mkdirSync(path.join(dir,'agent-transcripts'))
+    const file=path.join(dir,'agent-transcripts','pending.jsonl'),text='{"value":"CONFIRMEDLATER"}\n'
+    fs.writeFileSync(file,text)
+    insertEvent('agent',{subtype:'transcript_capture_started',agent:'codex',session_id:'pending',sidecar_file:'pending.jsonl'}, {engagementId:'eng',operatorId:'op'})
+    const pending=searchPage({query:'CONFIRMEDLATER'})
+    expect(pending.items).toHaveLength(0)
+    expect(pending.bodyCoverage?.sources).toEqual(expect.arrayContaining([expect.objectContaining({kind:'ai-raw',status:'pending',pending:1})]))
+    const event=insertEvent('agent',{subtype:'transcript_snapshot',agent:'codex',session_id:'pending',snapshot_path:file,
+      cumulative_bytes:Buffer.byteLength(text),cumulative_sha256:createHash('sha256').update(text).digest('hex')},{engagementId:'eng',operatorId:'op'})!
+    const ready=searchPage({query:'CONFIRMEDLATER'})
+    expect(ready.items.map(e=>e.id)).toEqual([event.id])
+    expect(ready.bodyCoverage?.sources).toEqual(expect.arrayContaining([expect.objectContaining({kind:'ai-raw',status:'covered',pending:0,indexed:1})]))
+  })
+
+  it('distinguishes binary contents from filename search and refuses references outside saved folders', () => {
+    const original=path.join(dir,'sample.png');fs.writeFileSync(original,Buffer.concat([Buffer.from([0,255]),Buffer.from('BINARYONLY')]))
+    const added=addArtifact(dir,original)
+    if(!added.ok)throw new Error('fixture copy failed')
+    const binary=insertEvent('file_transfer',{subtype:'artifact_added',stored:added.stored,sha256:added.sha256,size:added.bytes},{engagementId:'eng',operatorId:'op'})!
+    expect(searchPage({query:'sample.png'}).items.map(e=>e.id)).toEqual([binary.id])
+    const page=searchPage({query:'BINARYONLY'})
+    expect(page.items).toHaveLength(0)
+    expect(page.bodyCoverage?.sources).toEqual(expect.arrayContaining([expect.objectContaining({kind:'artifact',status:'unsupported',binary:1,indexedBytes:0})]))
+    const outside=path.join(dir,'outside.jsonl'),text='EXTERNALONLY';fs.writeFileSync(outside,text)
+    insertEvent('agent',{subtype:'transcript_snapshot',snapshot_path:outside,cumulative_bytes:text.length,
+      cumulative_sha256:createHash('sha256').update(text).digest('hex')},{engagementId:'eng',operatorId:'op'})
+    expect(searchPage({query:'EXTERNALONLY'}).items).toHaveLength(0)
+    expect(searchPage({query:'EXTERNALONLY'}).bodyCoverage?.failed).toBe(1)
+  })
+
+  it('removes AI raw full text from the derived database at retention time', () => {
+    fs.mkdirSync(path.join(dir,'agent-transcripts'))
+    const file=path.join(dir,'agent-transcripts','prune.jsonl'),text='{"saved":"PRIVACYRETENTION"}\n'
+    fs.writeFileSync(file,text)
+    insertEvent('agent',{subtype:'transcript_snapshot',snapshot_path:file,cumulative_bytes:Buffer.byteLength(text),
+      cumulative_sha256:createHash('sha256').update(text).digest('hex')},{engagementId:'eng',operatorId:'op'})
+    expect(searchPage({query:'PRIVACYRETENTION'}).items).toHaveLength(1)
+    const old=new Date(Date.now()-10*86400000);fs.utimesSync(file,old,old)
+    expect(sweepRetention({retention:{agentTranscripts:{keepDays:1}}},{engagementId:'eng',operatorId:'op'}).agentTranscripts).toBe(1)
+    const cache=new Database(path.join(dir,'http-body-index.db'),{readonly:true})
+    try { expect(cache.prepare("SELECT count(*) AS n FROM body_fts WHERE body_fts MATCH 'PRIVACYRETENTION'").get()).toEqual({n:0}) }
+    finally {cache.close()}
+  })
+
+  it('indexes the latest confirmed file prefix once and respects an older query dataset', () => {
+    fs.mkdirSync(path.join(dir,'agent-transcripts'))
+    const file=path.join(dir,'agent-transcripts','versions.jsonl')
+    let text='',firstId='',lastId='',old:ReturnType<typeof readActivitySnapshot>|undefined
+    for(let i=0;i<20;i++){
+      text+=`{"message":"VERSIONCANARY ${i}"}\n`;fs.writeFileSync(file,text)
+      const event=insertEvent('agent',{subtype:'transcript_snapshot',snapshot_path:file,cumulative_bytes:Buffer.byteLength(text),
+        cumulative_sha256:createHash('sha256').update(text).digest('hex')},{engagementId:'eng',operatorId:'op'})!
+      if(i===0){firstId=event.id;old=readActivitySnapshot(getReadonlyDB())}lastId=event.id
+    }
+    expect(searchPage({query:'VERSIONCANARY'}).items.map(e=>e.id)).toEqual([lastId])
+    const parsed=parseQuery('VERSIONCANARY');if(!parsed.ok)throw new Error('fixture query failed')
+    expect(executeEventQuery({parsed:parsed.parsed,snapshot:old}).items.map(e=>e.id)).toEqual([firstId])
   })
 
   it('applies target filtering before the page limit and deduplicates metadata matches', () => {

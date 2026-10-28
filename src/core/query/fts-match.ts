@@ -6,12 +6,14 @@
  *  Event, HTTP body and recording search all read text this way
  *  (docs/domain/SPEC-search-query-semantics.md). */
 export function toFtsMatch(raw: string): string | null {
+  return ftsTerms(raw).join(' ') || null
+}
+
+export function ftsTerms(raw:string):string[] {
   const terms = raw.trim().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return null
   return terms
     .map((term, i) => {
       const quoted = `"${term.replace(/"/g, '""')}"`
       return i === terms.length - 1 ? `${quoted}*` : quoted
     })
-    .join(' ')
 }

@@ -153,8 +153,8 @@ const api: RedLogAPI = {
     // and this product cannot let that read as "nothing there".
     searchCasts: (query: string, limit?: number) => ipcRenderer.invoke('casts:search', query, limit),
     castIndexStatus: () => ipcRenderer.invoke('casts:status'),
-    readCastRange: (castRel: string, off: number, len: number) =>
-      ipcRenderer.invoke('casts:readRange', castRel, off, len),
+    readCastRange: (castRel: string, off: number, len: number, version?:string) =>
+      ipcRenderer.invoke('casts:readRange', castRel, off, len, version),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     commandOutput: (commandId: string) => ipcRenderer.invoke('events:commandOutput', commandId) as Promise<import('../core/db/events').CommandOutputPage>,
     commandEnds: (commandIds: string[]) => ipcRenderer.invoke('events:commandEnds', commandIds) as Promise<RedLogEvent[]>,
