@@ -5,6 +5,7 @@ import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { makeTempHome, openView, expectAppBuild } from './helpers'
 import { readCastSlice } from '../src/core/cast-slice'
+import { operationPairKey } from '../src/core/operation-pair-key'
 
 // Smoke test for a PACKAGED build, run against the executable rather than the
 // source tree. Source-only launches cannot see what packaging changes —
@@ -33,7 +34,7 @@ import { readCastSlice } from '../src/core/cast-slice'
 const exe = process.env.REDLOG_PACKAGED_APP
 const wslDistro = process.env.REDLOG_PACKAGED_WSL_DISTRO
 
-interface Ev { agentType: string; data: Record<string, unknown> }
+interface Ev { engagementId?: string; sessionId?: string; agentType: string; data: Record<string, unknown> }
 
 async function launch(home: string): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
@@ -60,6 +61,9 @@ const events = (page: Page): Promise<Ev[]> =>
 
 const shellEnd = (list: Ev[], command: string): Ev | undefined =>
   list.find((e) => e.agentType === 'shell' && e.data.subtype === 'command_end' && e.data.command === command)
+
+const shellStart = (list: Ev[], command: string): Ev | undefined =>
+  list.find((e) => e.agentType === 'shell' && e.data.subtype === 'command_start' && e.data.command === command)
 
 const toWsl = (p: string): string =>
   p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_m, d: string) => `/mnt/${d.toLowerCase()}`)
@@ -163,6 +167,15 @@ test.describe('packaged app', () => {
           // A failing command must not be recorded as success. The shipped hook
           // once read $LASTEXITCODE before $? and recorded 0 for everything.
           expect(shellEnd(list, 'cmd /c exit 3')?.data.exit_code).toBe(3)
+          // Each command is one operation. The hook once sent neither a source
+          // session nor a command id, so start and end could not pair and
+          // Activity listed every PowerShell command twice (2026-10-28).
+          for (const command of ['echo pkg-win-canary', 'cmd /c exit 3']) {
+            const key = operationPairKey(shellStart(list, command) ?? { agentType: 'shell' })
+            expect(key, `${command}: command_start carries a pair key`).not.toBeNull()
+            expect(operationPairKey(shellEnd(list, command)!), `${command}: start and end pair`).toBe(key)
+          }
+          expect(operationPairKey(shellEnd(list, 'echo pkg-win-canary')!)).not.toBe(operationPairKey(shellEnd(list, 'cmd /c exit 3')!))
 
           const un = await page.evaluate(async () => window.redlog.hooks.uninstall('shell-powershell'))
           expect((un as { success: boolean }).success).toBe(true)
