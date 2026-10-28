@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { launchWithTempHome, openTestProject, openView, resizeMainWindow, expectAppBuild } from './helpers'
 
@@ -10,7 +11,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.waitForLoadState('domcontentloaded')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     if (process.env.REDLOG_PACKAGED_APP) expect(await app.evaluate(({app})=>app.isPackaged)).toBe(true)
-    await openTestProject(page, 'http-body-search')
+    const project=await openTestProject(page, 'http-body-search')
     if (process.env.REDLOG_EXPECTED_BUILD) {
       await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
       await page.screenshot({path:testInfo.outputPath('installed-build-id.png')})
@@ -250,6 +251,71 @@ test('Search opens indexed Activity output and returns from original evidence wi
     const capture=await win.evaluate(async w=>(await w.capturePage()).toPNG().toString('base64'))
     writeFileSync(testInfo.outputPath('workspace-narrow-150.png'),Buffer.from(capture,'base64'))
 
+    // The same app searches saved attachment bytes and confirmed AI raw bytes.
+    // Only OS file pickers are substituted; copying, indexing and Reader IPC are real.
+    await win.evaluate(w=>w.webContents.setZoomFactor(1))
+    await resizeMainWindow(app,1200,900)
+    const picked=join(tmpHome,'search-coverage.txt'),attachmentText='saved report ATTACHMENT-CONTENT-694'
+    writeFileSync(picked,attachmentText)
+    await app.evaluate(({dialog},filePath)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[filePath]})},picked)
+    await page.getByTestId('titlebar-add-file').click()
+    await openView(page,'search')
+    await page.getByRole('tab',{name:'Operations',exact:true}).click()
+    await page.getByTestId('search-input').fill('ATTACHMENT-CONTENT-694')
+    await expect(page.getByTestId('activity-row')).toHaveCount(1)
+    await page.getByTestId('activity-row').click()
+    await expect(page.locator('pre:visible')).toHaveText(attachmentText)
+    const projectDir=join(tmpHome,'.redlog','projects',project.id)
+    const rawDir=join(projectDir,'agent-transcripts');mkdirSync(rawDir,{recursive:true})
+    const rawFile=join(rawDir,'coverage.jsonl'),rawText='{"saved":"RAW-CONTENT-695"}\n'
+    writeFileSync(rawFile,rawText)
+    expect((await fetch(`${base}/api/events/seed`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},
+      body:JSON.stringify({agent_type:'agent',data:{subtype:'transcript_snapshot',agent:'codex',session_id:'coverage',snapshot_path:rawFile,
+        cumulative_bytes:Buffer.byteLength(rawText),cumulative_sha256:createHash('sha256').update(rawText).digest('hex')}})})).ok).toBe(true)
+    appendFileSync(rawFile,'{"unsnapshotted":"UNCONFIRMED-CONTENT-696"}\n')
+    const privacy=page.getByRole('button',{name:'Non-work hidden',exact:true})
+    if(await privacy.count())await privacy.click()
+    const chained=page.getByRole('button',{name:/Chained only/})
+    if(await chained.getAttribute('aria-pressed')==='true')await chained.click()
+    await page.getByTestId('search-input').fill('RAW-CONTENT-695')
+    await expect(page.getByTestId('activity-row')).toHaveCount(1)
+    await page.getByTestId('activity-row').click()
+    await expect(page.locator('pre:visible')).toHaveText(rawText)
+    await expect(page.getByText(/Saved AI source.*Pending source indexes/)).toBeVisible()
+    await page.screenshot({path:testInfo.outputPath('search-saved-raw-coverage.png')})
+    await page.locator('summary').filter({hasText:'Search coverage'}).click()
+    await expect(page.getByText('Content search covers verified saved text, confirmed AI prefixes and complete recording frames. Binary content and unconfirmed tails are excluded; filters can further restrict coverage.',{exact:true})).toBeVisible()
+    await resizeMainWindow(app,800,700)
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)
+    await page.screenshot({path:testInfo.outputPath('search-saved-coverage-narrow.png')})
+    await resizeMainWindow(app,1200,900)
+    await page.getByTestId('search-input').fill('UNCONFIRMED-CONTENT-696')
+    await expect(page.getByTestId('activity-row')).toHaveCount(0)
+    await expect(page.getByText(/Saved AI source.*Pending source indexes/)).toBeVisible()
+
+    const castsDir=join(projectDir,'casts');mkdirSync(castsDir,{recursive:true})
+    const castFile=join(castsDir,'coverage.cast')
+    const writeRecording=(text:string):void=>writeFileSync(castFile,[JSON.stringify({version:2,width:80,height:24,timestamp:1700000000}),JSON.stringify([0.1,'o',text+'\r\n'])].join('\n')+'\n')
+    writeRecording('CAST-CONTENT-697')
+    appendFileSync(castFile,'[1,"o","UNFINISHED-CAST-698')
+    await page.getByTestId('search-input').fill('CAST-CONTENT-697')
+    const castOutput=page.getByTitle('Show the surrounding output', {exact:true})
+    await expect(castOutput).toHaveCount(1)
+    await castOutput.click()
+    await expect(page.locator('pre:visible')).toContainText('CAST-CONTENT-697')
+    await expect(page.locator('pre:visible')).not.toContainText('UNFINISHED-CAST-698')
+    await page.getByTestId('search-input').fill('UNFINISHED-CAST-698')
+    await expect(castOutput).toHaveCount(0)
+    writeRecording('CAST-REPLACED-699')
+    await page.getByTestId('search-input').fill('CAST-REPLACED-699')
+    await expect(castOutput).toHaveCount(1)
+    await castOutput.click()
+    await expect(page.locator('pre:visible')).toContainText('CAST-REPLACED-699')
+    await page.screenshot({path:testInfo.outputPath('search-cast-coverage.png')})
+
+  } catch(error) {
+    console.log(`[search coverage] ${(error as Error).message}`)
+    throw error
   } finally {
     await app.close()
   }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './db/index'
-import { withVerifiedBody, ContentAccessError, type ByteSource } from './body-source'
+import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource } from './body-source'
 import type { BodyRef } from './http-body-store'
 import type { ContentField, ContentDescriptor, ContentRef, ContentReadRequest, ContentFindRequest, ContentWindow, ContentFindResult, ContentResult } from './content-contract'
 const FIELDS: Array<{
@@ -12,6 +12,7 @@ const FIELDS: Array<{
   { field: 'command', path: '$.command' }, { field: 'stdout', path: '$.stdout', ref: '$.stdout_ref' },
   { field: 'stderr', path: '$.stderr', ref: '$.stderr_ref' }, { field: 'full', path: '$.full' },
   { field: 'preview', path: '$.preview' }, { field: 'tool_input', path: '$.tool_input' }, { field: 'output', path: '$.output' },
+  { field: 'artifact', path: '$.stored' }, { field: 'ai_raw', path: '$.snapshot_path' },
   ...(['request_body', 'response_body', 'ws_body', 'tcp_body', 'output_body'] as const).map(field => ({ field, path: `$.${field}.data`, ref: `$.${field}_ref`, encoding: `$.${field}.encoding` }))
 ]
 const WINDOW = 65536, SCAN = 1024 * 1024
@@ -51,6 +52,15 @@ function probe(o: Owner, field: typeof FIELDS[number]) {
   }
 }
 function withSource<T>(o: Owner, field: typeof FIELDS[number], use: (source: ByteSource, partial: boolean) => T): T {
+  if (field.field === 'artifact' || field.field === 'ai_raw') {
+    const row = o.db.prepare(`SELECT json_object('subtype',subtype,'stored',json_extract(data,'$.stored'),
+      'sha256',json_extract(data,'$.sha256'),'size',json_extract(data,'$.size'),
+      'snapshot_path',json_extract(data,'$.snapshot_path'),'cumulative_sha256',json_extract(data,'$.cumulative_sha256'),
+      'cumulative_bytes',json_extract(data,'$.cumulative_bytes')) AS data FROM ${o.tab} WHERE rowid=?`).get(o.rowid) as {data:string}
+    const ref = savedFileRefs({agentType:o.agent_type,data:JSON.parse(row.data)}).find(ref=>ref.field===field.field)
+    if (!ref) throw new ContentAccessError('denied','This Event has no saved content reference')
+    return withVerifiedSavedFile(ref, source=>use(source,false))
+  }
   const p = probe(o, field)
   if (p.ref) {
     const ref = JSON.parse(p.ref) as BodyRef
@@ -71,19 +81,8 @@ function withSource<T>(o: Owner, field: typeof FIELDS[number], use: (source: Byt
     return row.chunk
   }
   if (p.encoding === 'base64') {
-    if (size > 16384)
-      throw new ContentAccessError('unsupported', 'Large inline base64 must be stored as a body reference')
-    const buf = Buffer.from(read(0, size).toString('utf8'), 'base64')
-    let text = true
-    try {
-      new TextDecoder('utf-8', { fatal: true }).decode(buf)
-    }
-    catch {
-      text = false
-    }
-    if (buf.includes(0))
-      text = false
-    return use({ bytes: buf.length, digest: createHash('sha256').update(buf).digest('hex'), format: text ? 'utf8' : 'binary', read: (start, len) => buf.subarray(start, start + len) }, p.truncated === 1)
+    if (size > 16384) throw new ContentAccessError('unsupported','Large inline base64 must be stored as a body reference')
+    return withInlineBase64(read(0,size).toString('utf8'),source=>use(source,p.truncated===1))
   }
   const hash = createHash('sha256')
   let text = true

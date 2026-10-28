@@ -13,9 +13,14 @@ import { EventContentReader } from './EventContentReader'
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
   if (!coverage) return null
-  const issues = (['missing', 'limited', 'pending', 'binary', 'failed'] as const)
-    .filter(status => coverage[status] > 0)
-    .map(status => t(`activity.coverage.${status}`, {count: coverage[status]}))
+  const describe=(counts:Partial<BodySearchCoverage>):string[] => (['missing','limited','pending','binary','failed','unsupported'] as const)
+    .filter(status=>(counts[status]??0)>0).map(status=>t(`activity.coverage.${status}`,{count:counts[status]??0}))
+  const issues=coverage.sources?.flatMap(source=>{
+    const states=describe(source)
+    if(!states.length)return []
+    const label=source.kind==='ai-raw'?t('content.field.ai_raw'):source.kind==='artifact'?t('content.field.artifact'):t('activity.coverage.body')
+    return [`${label}: ${states.join(' · ')}`]
+  })??describe(coverage)
   if (!issues.length) return null
   return <p role="status" className="mb-2 text-xs text-amber-300">{issues.join(' · ')}</p>
 }

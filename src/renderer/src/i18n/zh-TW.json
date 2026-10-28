@@ -1824,5 +1824,10 @@
   "sidebar.evidence": "證據",
   "sidebar.targetsScope": "目標與範圍",
   "workspace.searchCoverage": "搜尋範圍",
-  "workspace.notIndexed": "不搜尋 AI 原始 JSONL 與一般附件內文。"
+  "workspace.coverageBoundary": "內文搜尋涵蓋可驗證的保存文字、AI 已確認範圍與完整錄影影格。不含二進位內容與未確認尾端；篩選條件可能進一步限制範圍。",
+  "content.field.artifact": "保存附件",
+  "content.field.ai_raw": "AI 保存原文（JSONL）",
+  "activity.coverage.unsupported": "不適用目前條件的來源內容 {{count}}",
+  "castSearch.coverageFailures": "錄影索引：失敗 {{failed}} · 不支援 {{unsupported}} · 原件不可用 {{unavailable}}",
+  "activity.coverage.body": "保存輸出"
 }

@@ -83,7 +83,7 @@ function setup(req: ActivityRequest, kind: Cursor['kind'], ref?: string): {
   const boundary = readActivitySnapshot(db, cursor?.s ?? req.snapshot)
   const selection = compileEventSelection({ ...req, snapshot: boundary, parsed: cursor?.p ?? req.parsed })
   const bodyIds = selection.bodyMatchIds.length ? (db.prepare(`SELECT id FROM events WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) UNION SELECT id FROM events_logged WHERE rowid<=? AND id IN (SELECT value FROM json_each(?)) ORDER BY id`).all(boundary.chainedMaxRowId, JSON.stringify(selection.bodyMatchIds), boundary.loggedMaxRowId, JSON.stringify(selection.bodyMatchIds)) as { id: string }[]).map(r => r.id) : []
-  const coverage = req.parsed.text.trim() ? bodySearchCoverage(boundary, req.projectId) : undefined
+  const coverage = req.parsed.text.trim() ? bodySearchCoverage(boundary, req.projectId, {parsed:selection.resolved,filter:req.filter}) : undefined
   const body = fingerprint([bodyIds, coverage?.revision ?? null])
   if (cursor && cursor.body !== body) throw new Error('Activity search index coverage changed; refresh the query')
   return { db, boundary, cursor, q, sql: selection.sql, params: selection.params, resolved: selection.resolved, body, coverage, toolSession: cursor?.toolSession ?? selection.toolSession }

@@ -1,18 +1,19 @@
 import { readActivitySnapshot } from './dataset-snapshot'
+import { createHash } from 'node:crypto'
 import type { ActivitySnapshot } from '../activity-contract'
 import { decodeSourceSession } from '../source-sessions'
-import { getDB, getReadonlyDB } from './index'
+import { getDB, getReadonlyDB, getProjectDir } from './index'
 import type { EventCausalChain, EventCausalEdge, RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
 import { _getCachedEventCount, _setCachedEventCount } from './event-write'
 import {
-  decodeCursor, buildPerArmCursorWhere, toQueryPage,
+  decodeCursor, encodeCursor, buildPerArmCursorWhere, toQueryPage,
   TIER_RANK_CHAINED, TIER_RANK_LOGGED, CANONICAL_ORDER,
   type QueryPage, type CursorKey
 } from '../query-page'
 import type { ExportSnapshot } from '../export-plan'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
-import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds } from '../http-body-index'
+import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
 
@@ -431,7 +432,7 @@ interface PreparedQuery {
 const isEmptyQuery = (parsed: ParsedQuery): boolean =>
   parsed.conditions.length === 0 && parsed.text.trim() === ''
 
-function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery): PreparedQuery {
+function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery, filter?: EventFilter,snapshot?:ExportSnapshot): PreparedQuery {
   // A bare tool-use condition has to choose a session, because the id is
   // unique only within one. Choosing silently would let pair completion join
   // a call from one session to a result from another, so the choice and the
@@ -448,7 +449,7 @@ function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery)
     }
   }
   const match = parsed.text.trim() ? toFtsMatch(parsed.text) : null
-  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(parsed.text)) : null
+  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(parsed.text, undefined, rawTranscriptFiltersUnsupported(conditions,filter),snapshot)) : null
   return { conditions, match, bodyIdsJson, ...(toolSession ? { toolSession } : {}) }
 }
 
@@ -569,7 +570,7 @@ export function compileEventSelection(request: Omit<EventQueryRequest, 'limit' |
   sql: string; params: unknown[]; resolved: ParsedQuery; toolSession?: ToolSessionResolution; bodyMatchIds: string[]
 } {
   const db = getReadonlyDB()
-  const query = prepareQuery(db, request.parsed)
+  const query = prepareQuery(db, request.parsed, request.filter,request.snapshot)
   const input: TierWhereInput = { query, filter: request.filter, snapshot: request.snapshot, excludeHousekeeping: request.excludeHousekeeping }
   const chained = buildTierWhere('chained', input), logged = buildTierWhere('logged', input)
   return {
@@ -582,6 +583,7 @@ export function compileEventSelection(request: Omit<EventQueryRequest, 'limit' |
 }
 
 export interface EventCountRequest {
+  snapshot?: ExportSnapshot
   /** Omitted: count what the filter admits, as `queryEventsPage` pages it. */
   parsed?: ParsedQuery
   filter?: EventFilter
@@ -603,10 +605,17 @@ export function countEvents(req: EventCountRequest): number {
     if (!cursor) throw new Error('countEvents: unreadable cursor')
   }
   const input: TierWhereInput = {
-    query: req.parsed ? prepareQuery(db, req.parsed) : undefined,
+    query: req.parsed ? prepareQuery(db, cursor?.search?.parsed??req.parsed, req.filter,cursor?.search?.snapshot??req.snapshot) : undefined,
     filter: req.filter,
     cursor,
-    excludeHousekeeping: req.excludeHousekeeping
+    excludeHousekeeping: req.excludeHousekeeping,
+    snapshot:cursor?.search?.snapshot??req.snapshot
+  }
+  if(cursor?.search){
+    readActivitySnapshot(db,cursor.search.snapshot)
+    if(!req.parsed||searchRequestKey({...req,parsed:req.parsed})!==cursor.search.key
+      ||bodySearchCoverage(cursor.search.snapshot,undefined,{parsed:cursor.search.parsed,filter:req.filter}).revision!==cursor.search.revision)
+      throw new Error('Search index coverage or query changed; refresh the query')
   }
   const chained = buildTierWhere('chained', input)
   const logged = buildTierWhere('logged', input)
@@ -620,6 +629,7 @@ export function countEvents(req: EventCountRequest): number {
 export const MATCH_EVENT_IDS_MAX = 1000
 
 export interface EventMatchRequest {
+  snapshot?:ExportSnapshot
   ids: string[]
   /** Omitted: check the filter only. */
   parsed?: ParsedQuery
@@ -640,9 +650,10 @@ export function matchEventIds(req: EventMatchRequest): string[] {
   if (req.parsed && isEmptyQuery(req.parsed)) return []
   const db = getReadonlyDB()
   const input: TierWhereInput = {
-    query: req.parsed ? prepareQuery(db, req.parsed) : undefined,
+    query: req.parsed ? prepareQuery(db, req.parsed, req.filter,req.snapshot) : undefined,
     filter: req.filter,
     excludeHousekeeping: req.excludeHousekeeping,
+    snapshot:req.snapshot,
     ids: req.ids
   }
   const chained = buildTierWhere('chained', input)
@@ -1167,12 +1178,30 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
   if(request.snapshot && 'chainedCount' in request.snapshot)readActivitySnapshot(db,request.snapshot as ActivitySnapshot)
   const limit = request.limit ?? 100
   const cursor: CursorKey | null = request.cursor ? decodeCursor(request.cursor) : null
-  const query = prepareQuery(db, request.parsed)
+  if(request.cursor&&!cursor)throw new Error('Unreadable search cursor')
+  const key=searchRequestKey(request)
+  if(cursor?.search&&cursor.search.key!==key)throw new Error('Search query changed; refresh the query')
+  const snapshot=cursor?.search?.snapshot??request.snapshot??readActivitySnapshot(db)
+  if('chainedCount' in snapshot)readActivitySnapshot(db,snapshot as ActivitySnapshot)
+  const parsed=cursor?.search?.parsed??request.parsed
+  const query = prepareQuery(db, parsed, request.filter,snapshot)
+  const resolved={...parsed,conditions:query.conditions}
+  const coverage=request.parsed.text.trim()?bodySearchCoverage(snapshot,undefined,{parsed:resolved,filter:request.filter}):undefined
+  if(cursor?.search&&cursor.search.revision!==coverage?.revision)throw new Error('Search index coverage changed; refresh the query')
   const input: TierWhereInput = {
-    query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping, snapshot: request.snapshot
+    query, filter: request.filter, cursor, excludeHousekeeping: request.excludeHousekeeping, snapshot
   }
   const page = queryTierPage(db, buildTierWhere('chained', input), buildTierWhere('logged', input), limit)
-  return { ...page, bodyCoverage: request.parsed.text.trim() ? bodySearchCoverage(request.snapshot) : undefined, ...(query.toolSession ? { toolSession: query.toolSession } : {}) }
+  const toolSession=cursor?.search?.toolSession??query.toolSession
+  if(page.nextCursor&&coverage&&'chainedCount' in snapshot){
+    page.nextCursor=encodeCursor({...decodeCursor(page.nextCursor)!,search:{key,revision:coverage.revision,snapshot:snapshot as ActivitySnapshot,
+      parsed:resolved,...(toolSession?{toolSession}:{})}})
+  }
+  return { ...page, bodyCoverage:coverage, ...(toolSession ? { toolSession } : {}) }
+}
+
+function searchRequestKey(request:Pick<EventQueryRequest,'parsed'|'filter'|'excludeHousekeeping'>):string {
+  return createHash('sha256').update(JSON.stringify([getProjectDir(),request.parsed.text,request.parsed.conditions,request.filter??{},request.excludeHousekeeping??false])).digest('hex')
 }
 
 /** Identifies one tool exchange. Unique only as a pair; see ToolSessionResolution. */

@@ -18,7 +18,7 @@ import { pruneCast } from './cast-index'
 import { BODY_REF_FIELDS } from './http-body-store'
 import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
-import { pruneHttpBodyIndex } from './http-body-index'
+import { pruneHttpBodyIndex, pruneSavedFileIndex } from './http-body-index'
 import type { RedLogConfig } from './config'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
@@ -92,6 +92,9 @@ function sweepDir(
       }
       if (auditSubtype === 'http_body_pruned') {
         try { pruneHttpBodyIndex(path.basename(name, '.body')) } catch (e) { noteDbError('retention-body-index', e) }
+      }
+      if(auditSubtype==='agent_transcript_pruned'){
+        try{pruneSavedFileIndex(full)}catch(error){noteDbError('retention-transcript-index',error)}
       }
       try {
         const ev = insertEvent('system', {

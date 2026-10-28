@@ -20,7 +20,7 @@ typed text
   → executeEventQuery()                  src/core/db/event-queries.ts
       countEvents() and matchEventIds() build the same per-tier WHERE
       per tier (events, events_logged), AND-ed inside that tier's own SQL:
-        text           FTS MATCH on stored content, or a hit in the HTTP body index
+        text           FTS MATCH on stored Event content, or verified saved-source bytes
         conditions     exact match on stored fields
         shared filter  agent type, time range, target, scope, personal traffic, tier
         cursor         keyset position
@@ -71,7 +71,8 @@ typed text
    `10.0.0.5`, `-sV` and `/etc/passwd` match as typed. The last term is
    prefix-matched, so a half-typed word still matches. Terms combine with AND
    and need not be adjacent — including the words inside one quoted run. Text
-   matches stored event content, or an indexed HTTP body the event references.
+   matches stored event content, or indexed saved content the Event references
+   (body, text artifact, or a confirmed AI raw prefix; see Coverage).
    Event, HTTP body and recording search share this translation
    (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
    Event indexes tokenize decoded JSON values and property names, not JSON
@@ -103,6 +104,10 @@ typed text
     last row's `(timestamp, rowid, tier)`, versioned and opaque, and is pushed
     into each tier so a per-tier limit cannot drop rows. `hasMore` comes from
     fetching one row past the limit.
+    Text-search cursors also pin the dataset, resolved query and saved-source
+    coverage revision. Counts using that cursor share the boundary. New Events
+    outside it do not enter later pages; changed or removed sources inside it
+    require an explicit refresh rather than silently changing the answer.
 11. **Failure is not absence.** Evaluation does not catch errors, and neither
     does recording search. A failed query reaches the surface as a failure (UI:
     failure with retry; API: 500), distinct from no match and from unparsable
@@ -130,14 +135,35 @@ typed text
 
 ## Coverage
 
-- Text covers stored event content and indexed HTTP bodies. Output held only in
+- Text covers stored Event content and verified saved body/artifact bytes.
+  Artifacts use the registered project copy and full size/hash, never the
+  original import path. UTF-8 text is searchable; binary/images are unsupported
+  for content search. Small inline base64 uses the Reader's decoded bytes;
+  encoded data over 16 KiB requires a saved reference and reports limited.
+- AI raw search admits only the latest `transcript_snapshot` prefix per saved
+  project file within the query dataset, with matching cumulative size/hash.
+  Opening an older snapshot still reads that confirmed prefix. Capture-start
+  without a snapshot and extra unconfirmed bytes are pending; no vendor path is
+  scanned. Raw files have file precision, not per-message attribution. Tool,
+  transcript, Event, operator, source, target, time, scope, privacy and tier
+  conditions exclude raw full-text matches with unsupported coverage. Stored
+  Event matches continue through the canonical predicates.
+- Each query reports source classes, representation, revision, byte coverage,
+  filter applicability and pending/partial/unsupported/failed/unavailable
+  states. Missing or changed sources lose their derived full text. Output held only in
   a terminal recording is outside it, so an unmatched term is not proof that the
   output never contained it. The Transcript discloses this where the query is
   typed.
 - Terminal recordings are searched separately by `searchCasts`
   (`src/core/cast-index.ts`): its own index, no time range, its own
-  not-yet-indexed state. Search shows cast hits beside event results; they are
-  never part of a `QueryPage`.
+  not-yet-indexed state. Complete newline-terminated frames form a confirmed
+  prefix, with hash and physical-part byte ranges attached to each hit. Opening
+  verifies that version; same-size rewrites invalidate old hits. Extra bytes
+  remain partial/pending, invalid frames fail, and oversized files/frames are
+  unsupported. Retention clears full text and retains only unavailable metadata.
+  Search excludes recordings when Event conditions/filters cannot be applied,
+  and discloses its 50-hit subset. Cast status carries its own revision/byte
+  coverage; cast hits are never part of an Event `QueryPage` or its count.
 - The ⌘K palette and `/api/events/search` search the whole project. They apply
   no shared filter.
 - The Timeline joined the contract in Spec 038. Its `/` box is a query: the
@@ -259,3 +285,5 @@ For every query Q and shared-filter dataset D:
 - Spec 038: the Timeline on the contract and the shared filter. `operator:`
   joined the conditions, the tier joined the shared filter, and
   `countEvents` / `matchEventIds` joined the readers.
+- 2026-10-28, Spec 064 T048: verified saved text artifacts and AI prefixes,
+  per-source coverage, pinned text-query cursors and versioned physical cast hits.

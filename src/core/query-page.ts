@@ -5,6 +5,8 @@
 //
 // _row is SQLite rowid, which is per-table. Two rows from different tiers
 // can share the same (timestamp, _row), so tier is the final tie-break.
+import type { ActivitySnapshot } from './activity-contract'
+import type { ParsedQuery } from './query/contract'
 
 export interface QueryPage<T> {
   items: T[]
@@ -16,6 +18,10 @@ export interface CursorKey {
   ts: number
   row: number
   tier: 'chained' | 'logged'
+  search?: {
+    key:string;revision:string;snapshot:ActivitySnapshot;parsed:ParsedQuery
+    toolSession?:{toolUseId:string;sessionId:string;otherSessionIds:string[]}
+  }
 }
 
 const TIER_RANK: Record<string, number> = { chained: 1, logged: 0 }
@@ -33,7 +39,8 @@ export function decodeCursor(opaque: string): CursorKey | null {
     if (!Number.isSafeInteger(parsed.ts) || parsed.ts < 0) return null
     if (!Number.isSafeInteger(parsed.row) || parsed.row < 1) return null
     if (parsed.tier !== 'chained' && parsed.tier !== 'logged') return null
-    return { ts: parsed.ts, row: parsed.row, tier: parsed.tier }
+    if(parsed.search && (typeof parsed.search.key!=='string'||typeof parsed.search.revision!=='string'||!parsed.search.snapshot||!parsed.search.parsed))return null
+    return { ts: parsed.ts, row: parsed.row, tier: parsed.tier, ...(parsed.search?{search:parsed.search}:{}) }
   } catch {
     return null
   }

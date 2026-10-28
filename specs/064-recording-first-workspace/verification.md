@@ -2,6 +2,8 @@
 
 **Date**: 2026-10-26。Feature 保持 Draft；這是局部實作與驗證 checkpoint，不是整份 Spec 064 完成。
 
+最新搜尋批次：2026-10-28 的 T012／T013／T048 已完成，見本文件末節；下列各日期的未完成狀態是當時紀錄。
+
 ## RED
 
 - `test/terminal-origin.test.ts` 初跑 4 failed／1 passed：系統無法證明 origin 時，TERM_PROGRAM、WT_SESSION 及 REDLOG_TERMINAL 仍能放行；corrupt preference 也被旗標繞過。
@@ -486,3 +488,38 @@ Real distros: the shipped scripts, spawned as `wsl-manager` spawns them, against
 Not covered: enrolling through the app's own UI in a distro, and zsh rc lines (same scripts, `$3` selects the name).
 
 Gates: typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed. Full unit on Windows: **4,283 passed / 1 failed / 147 skipped**; the failure was `mark-assets`, which then passed alone (35/35) — the load-sensitive file noted above, not touched here.
+
+## 2026-10-28 — search coverage / T012, T013, T048
+
+Scope: C2／CT-03–04、FR-015–021／047。Spec 064 保持 Draft。此批只完成搜尋覆蓋，不代勾 T015 的整體 S2 效能／驗收、C3/C4 全閱讀面／轉換座標、來源平台與五人任務。
+
+### Implemented / boundaries
+
+- 已保存 UTF-8 附件可全文搜尋並以共用 Reader 讀回，核對專案副本 size／SHA-256；不追讀外部原路徑。AI JSONL 只讀來源 Event 確認的專案 prefix，各 dataset 每檔只索引最新確認版本；capture-start／未確認尾端 pending，binary 不解析。小型 inline base64 與 Reader 共用解碼，超過既定 16 KiB encoded 邊界明示 limited。
+- 來源覆蓋區分 events／body／artifact／raw 的表示、版本、bytes、條件及精度。Raw 缺逐訊息 metadata 的條件排除原文匹配並回 unsupported；原 Event 仍正常求值。詳細條件與限制見 C2 契約及 canonical `docs/domain/SPEC-search-query-semantics.md`。
+- Event／Activity 文字查詢固定 dataset／coverage revision；翻頁與 count 同邊界，範圍外新資料不混入，範圍內來源失效要求 refresh。Cast 分開保留自己的 revision／byte coverage，既有 50 筆顯示上限與條件排除仍明示，不列入 Event count。
+- Cast 僅索引完整行、版本綁確認 prefix 與實體 part raw byte range。開啟命中核對版本；同大小改寫、缺檔及清理移除舊全文，保留無全文的 unavailable metadata。剛建立／第一行尚未完成是 pending；完整壞 JSON／UTF-8 為 failed，超限 unsupported。保留既有 60 MiB 檔案上限，單行緩衝超過 1 MiB 亦 unsupported。
+- 更新雙語搜尋範圍說明及 CHANGELOG；完整覆蓋不新增常駐說明列。
+
+### RED → GREEN
+
+- 保存附件／確認 raw prefix、來源改寫／未確認尾端、inline base64、raw retention、累積 snapshot 去重與舊 dataset 先以真實暫存檔／SQLite 重現，後接共用驗證讀取及現有 FTS。
+- Cast 同大小改寫、跨實體 part 的版本讀回、CRLF／中文 offsets、未完成尾端、跨 chunk AND、frame 切點誤造 token 邊界先失敗。完整回歸亦找到循環 import 初始化讀取 `BODY_REF_FIELDS` 的問題，已延後到呼叫時求值；附件／匯出相關三檔重跑通過。
+- 缺檔清理後 coverage 假就緒：`/private/tmp/redlog-search-cast-missing-red.log`；保留 unavailable metadata 後相關回歸通過。空檔／未完成第一行誤報 failed：`/private/tmp/redlog-search-cast-start-red.log`，修正 pending 後通過。
+- 最終相關回歸 **7 files／333 passed**：http-body-search、cast-index、activity-query、search-pagination、read-state、query-text-matching、query-page。Log：`/private/tmp/redlog-search-coverage-final-focused.log`。
+- Ordered typecheck → verify:specs → verify:architecture → verify:i18n 通過；build 通過。全套先於最後邊界修正通過 **4402 passed／31 skipped**（435 passed files／6 skipped），log `/private/tmp/redlog-search-coverage-verified-unit.log`。
+- 最終候選全套 **4402 passed／1 failed／31 skipped**（`/private/tmp/redlog-search-coverage-final-all-unit.log`）：唯一失敗是未修改的 bash-redlog-command PTY 出現 `child setpgid: Operation not permitted` 額外訊息，符合 CLAUDE.md 已知偶發形狀。依規範單獨重跑整檔 **13 passed**（`/private/tmp/redlog-search-coverage-pty-rerun.log`）；不將重跑結果寫成全套第一次即綠。
+
+### Operational verification
+
+- 最終 source build 的 macOS Electron 同一 App 流程 **1 passed／16.1s**，log `/private/tmp/redlog-search-coverage-final-e2e.log`。除既有 17 MiB body／Reader／Session export 成品讀回外，實際走 UI 匯入文字附件 → 搜尋 → Reader 原文；以合成 raw snapshot 確認 hash／bytes → 確認字串命中並讀回完整 prefix → 未確認尾端零命中但 pending；合成 cast 完整 frame 命中／開啟 → 未完成 frame 不命中 → 改寫後開啟新版本。
+- 展開新的範圍說明，原生 800×700 無整頁橫向 overflow；既有流程亦涵蓋 1600×1000 與高縮放。已查看 `test-results/http-body-search-Search-op-c05e0-ce-without-losing-the-query/` 下 raw／cast／narrow coverage 截圖。
+- 只替代 OS 檔案選擇對話框；copy、query、IPC、來源驗證、Reader 與 disk 實際執行。API seeded AI／cast fixture 不宣稱真實 AI 客戶端或 PTY producer 擷取驗證。測試 home 與檔案獨立，不改正式專案／profile／CA／proxy。
+- Electron 後已還原 Node SQLite。此批未重新打包、未做其他 OS／安裝版驗收，也未提交／push／建立 PR／合併；分支 `codex/search-coverage`，單一 primary worktree。
+
+### Workflow gates / convergence
+
+- Specify／Plan／Tasks：沿既有 064 的 C2 與使用者「先做搜尋覆蓋」，補增量計畫及 T048，未加入新引擎／producer／文件解析器。
+- Clarify：無新產品歧義，採既定已保存／確認 prefix、unsupported filters、binary 無 OCR 邊界。Checklist：沿 requirements 16／16 品質檢查，不當產品完成率。
+- Analyze：交叉核對 8 項 FR、CT-03／04、canonical query／Reader／retention 及四項增量設計；不改來源 Event 意義、不讓查詢／計數或 Reader 讀取不同版本。Constitution I–IV、VI–IX 已核對，V 的既有 export 選取流程未改。
+- Scoped Converge：執行 prerequisites，讀 spec／plan／tasks／constitution，核對 T012／T013／T048 的來源種類、版本、條件、分頁、清理及 UI 證據，**converged，無新增任務**。其餘已記錄未完成項目不重複開 task；這不是整份 Spec 064 converged。`.specify/extensions.yml` 不存在，沒有 hooks。

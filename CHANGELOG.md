@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Search includes verified saved text attachments and confirmed AI JSONL
+  prefixes, with source coverage and filter restrictions. Recording hits bind
+  complete frames to a source version and physical byte range; rewritten or
+  missing sources lose stale hits. Text-query paging keeps a fixed dataset and
+  coverage revision. Binary content and unconfirmed tails remain outside text search.
+
 - Saved-content readers distinguish copying the current window from copying
   the saved version (up to 1 MiB). Larger or binary content can be saved through
   the native file dialog in bounded chunks, with source/project checks,

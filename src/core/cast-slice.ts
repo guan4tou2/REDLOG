@@ -128,7 +128,7 @@ async function readSingleCastSlice(castPath: string, startMs: number, endMs: num
  *  writes rather than on line boundaries. Partial lines at either edge are
  *  dropped — a partial JSON array is not parseable and the loss is bounded by
  *  one write chunk. */
-async function readSingleCastRange(castPath: string, off: number, len: number): Promise<CastSlice | null> {
+export async function readSingleCastRange(castPath: string, off: number, len: number): Promise<CastSlice | null> {
   if (!Number.isFinite(off) || !Number.isFinite(len) || off < 0 || len <= 0) return null
   if (len > MAX_CAST_BYTES) return null
   let stat: fs.Stats

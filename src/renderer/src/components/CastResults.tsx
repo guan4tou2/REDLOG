@@ -21,6 +21,7 @@ export interface CastHit {
   off: number
   len: number
   snippet: string
+  version?: string
 }
 
 interface Props {
@@ -40,11 +41,11 @@ function CastRow({ hit, onOpenAt }: { hit: CastHit; onOpenAt?: (tMs: number) => 
     if (!open || body !== null || failed) return
     let live = true
     window.redlog.events
-      .readCastRange(hit.castRel, hit.off, hit.len)
+      .readCastRange(hit.castRel, hit.off, hit.len, hit.version)
       .then((r) => { if (live) { if (r) setBody(r.text); else setFailed(true) } })
       .catch(() => { if (live) setFailed(true) })
     return () => { live = false }
-  }, [open, body, failed, hit.castRel, hit.off, hit.len])
+  }, [open, body, failed, hit.castRel, hit.off, hit.len, hit.version])
 
   return (
     <div className="rounded border border-redlog-border-subtle">
@@ -108,7 +109,7 @@ export function CastResults({ hits, pending, onOpenAt }: Props): JSX.Element | n
 
       <div className="space-y-1">
         {paged.visible.map((h) => (
-          <CastRow key={`${h.castRel}:${h.off}`} hit={h} onOpenAt={onOpenAt} />
+          <CastRow key={`${h.castRel}:${h.off}:${h.version??''}`} hit={h} onOpenAt={onOpenAt} />
         ))}
         <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
       </div>

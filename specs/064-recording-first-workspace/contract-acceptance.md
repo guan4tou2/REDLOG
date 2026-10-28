@@ -6,8 +6,8 @@
 | --- | --- | --- | --- |
 | CT-01 · S2 | 同一來源有 command／tool ID；Result 晚到、重送、跨頁，切換查詢／閱讀模式再重建投影。 | Activity ID 不變、沒有第二次操作；原 Event 深連結可達；全量翻頁命中／群組集合正確。新資料不搶閱讀位置。 | C1 · FR-008/010/012/017/018/046 · PARTIAL：query／IPC 已驗，閱讀錨點未驗 |
 | CT-02 · S2 | Result 先到、缺鍵孤立、同 ID 跨 provider／Session、同鍵不同 payload；後來取得可靠來源關聯。 | 有鍵可補同組，無鍵不猜配對；衝突可查原版本；原 Event 仍能定位，缺 Result 不當 running／failed。 | C1 · FR-009/010/013/014/046 · PARTIAL：query／IPC 已驗，完整 UI 未驗 |
-| CT-03 · S2 | 關鍵字分別只在 Event、文字 body／stdout／stderr ref、base64 解碼內容、AI raw JSONL、cast 尾端、一般附件及圖片。 | 每類回實際 covered／partial／pending／unsupported 等狀態與版本／範圍；可讀不冒充可搜，未索引不說零證據；命中定位精度真實。 | C2 · FR-019/020/047 · NOT RUN |
-| CT-04 · S2 | 同查詢套 target／來源／時間條件；部分 cast 缺 metadata，索引失敗、追加、改寫或 retention，並有新事件與慢舊回覆。 | 條件先於分頁，不混未篩選結果；watermark／cursor／計數同邊界，陳舊命中如實處理；新查詢不被舊回覆覆蓋。 | C2 · FR-015–021/047 · NOT RUN |
+| CT-03 · S2 | 關鍵字分別只在 Event、文字 body／stdout／stderr ref、base64 解碼內容、AI raw JSONL、cast 尾端、一般附件及圖片。 | 每類回實際 covered／partial／pending／unsupported 等狀態與版本／範圍；可讀不冒充可搜，未索引不說零證據；命中定位精度真實。 | C2 · FR-019/020/047 · PASS：2026-10-28 DB／unit＋macOS source Electron；只含確認保存範圍、binary 不解析，見 verification |
+| CT-04 · S2 | 同查詢套 target／來源／時間條件；部分 cast 缺 metadata，索引失敗、追加、改寫或 retention，並有新事件與慢舊回覆。 | 條件先於分頁，不混未篩選結果；watermark／cursor／計數同邊界，陳舊命中如實處理；新查詢不被舊回覆覆蓋。 | C2 · FR-015–021/047 · PASS：2026-10-28 query／pagination／read-state／retention＋macOS source Electron；新安裝包及其他 OS 未驗 |
 | CT-05 · S3 | 預覽固定 Event／附件，接著 Result、stdout chunk、cast 新分段到達，原檔只追加。 | 成品只含確認時 IDs／必要 companions／附件 prefix；後到內容不加入，原 prefix hash 相符；更新預覽才擴大集合。 | C5 · FR-037/038/048 · NOT RUN |
 | CT-06 · S3 | 預覽後附件同大小改寫、截短、同名替換、清理；讀取到複製間改寫，或政策收緊／切專案。 | 具體失敗或重新確認，不無聲少交／換件；不能繞過收緊政策；已執行 A 不改歸 B，失敗成品不冒充成功。 | C5 · FR-024/038/048 · NOT RUN |
 | CT-07 · S3 | 一段 PTY 含 A／B 目標及無歸屬片段；只選 A 的事件，或明確選整 Session。 | 子集合匯出不預選跨目標／未知整段 cast；可逐項加入並重新確認。整 Session 明示範圍及政策限制，無法裁切不宣稱 scope-clean。 | C5 · FR-037–039/048 · NOT RUN |
