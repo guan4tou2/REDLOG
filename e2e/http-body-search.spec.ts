@@ -44,6 +44,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('activity-row').click()
     await expect(page.getByLabel('Source event')).toBeVisible()
     await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
+    await expect(page.getByText('Saved source content does not apply web scope or sensitive-data redaction.', { exact: true })).toBeVisible()
     await page.getByRole('button',{name:'Copy saved content',exact:true}).click()
     await expect(page.getByRole('alert')).toContainText('Saved content exceeds 1 MiB')
     // Only the native destination picker is stubbed; the UI, content IPC,
@@ -151,8 +152,20 @@ test('Search opens indexed Activity output and returns from original evidence wi
     // must preserve a visited reader instead of reopening the application.
     await page.getByRole('tab', {name:'Input / output',exact:true}).click()
     await expect(page.locator('[data-block-id]')).toContainText(['shell-e2e-input'])
+    const ioBlock = page.locator('[role="tabpanel"]:visible [data-block-id]').first()
+    await expect(ioBlock.getByTestId('transcript-meta')).toContainText('exit 7')
     await page.getByRole('button',{name:'Saved content',exact:true}).first().click()
     await expect(page.getByRole('searchbox',{name:'Find in content'})).toBeVisible()
+    for (const [width, height] of [[800, 700], [1600, 1000]]) {
+      await resizeMainWindow(app, width, height)
+      await expect(ioBlock.locator('pre').filter({ hasText: shellMarker })).toHaveCount(1)
+      await expect(ioBlock.locator('pre').filter({ hasText: '$ printf shell-e2e-input' })).toBeVisible()
+      await expect(ioBlock.getByTestId('transcript-meta')).toContainText('exit 7')
+    }
+    await ioBlock.getByRole('button', { name: 'Saved content', exact: true }).click()
+    await expect(ioBlock.getByRole('searchbox', { name: 'Find in content' })).toHaveCount(0)
+    await expect(ioBlock.locator('pre').filter({ hasText: shellMarker })).toHaveCount(1)
+    await ioBlock.getByRole('button', { name: 'Saved content', exact: true }).click()
     await page.getByRole('searchbox',{name:'Find in content'}).fill('saved-reader-position')
     await page.getByRole('tab',{name:'Raw events',exact:true}).click()
     await expect(page.getByTestId('search-input')).toHaveValue('shell-e2e-input')

@@ -113,3 +113,7 @@ T042 是自動化與打包驗收，不是 Windows 原生人工操作（PowerShel
 - [x] T045 主視窗只在 `ready-to-show` 顯示；本機 GPU 合成下從未顯示過的視窗不會繪製，事件不來，凡非最大化啟動皆隱藏（升級與非正常結束只是巧合）。改為頁面載入後 500 ms 仍隱藏即顯示，以 `/S` 升級與無狀態檔啟動複驗。
 
 T004／T008 的正式 Windows 列仍 NOT RUN。
+
+## 2026-10-28 — bounded Reader / source-settings closeout
+
+- [x] T046 在另存來源內容前保留未套用 scope／遮蔽的提醒；開啟 saved Reader 時收起重複輸出，保留指令／結果狀態並於關閉時恢復；mitmproxy 設定與移除步驟集中至瀏覽器與 HTTP 擷取，同步設定搜尋及受影響的雙語窄窗／另存驗收。

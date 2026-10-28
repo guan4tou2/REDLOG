@@ -1746,6 +1746,7 @@
   "content.copyWindow": "Copy this window",
   "content.copySaved": "Copy saved content",
   "content.saveSaved": "Save source content…",
+  "content.saveBoundary": "Saved source content does not apply web scope or sensitive-data redaction.",
   "content.clipboardLimit": "Saved content exceeds 1 MiB. Save it to a file instead.",
   "content.destinationExists": "That file already exists. Choose another filename.",
   "content.projectDestination": "Choose a location outside the source project.",

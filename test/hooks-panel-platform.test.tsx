@@ -46,10 +46,12 @@ describe('the hooks panel on macOS', () => {
     }
     const hooks = [
       hook('shell-zsh', { name: 'Zsh adapter' }),
+      hook('mitmproxy', { name: 'Web proxy adapter' }),
       hook('shell-powershell', { name: 'PowerShell adapter', available: false }),
       hook('shell-wsl', { name: 'WSL adapter', available: false })
     ]
     render(<HooksPanel hooks={hooks} setHooks={() => {}} t={(k) => k} />)
+    expect(screen.queryByText('Web proxy adapter')).toBeNull()
     const other = screen.getByTestId('hooks-other-platforms')
     expect(within(other).getByText('PowerShell adapter')).toBeTruthy()
     expect(within(other).getByText('WSL adapter')).toBeTruthy()

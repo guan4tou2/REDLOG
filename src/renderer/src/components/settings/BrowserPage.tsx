@@ -5,6 +5,9 @@ import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT } from '../../lib/defaults'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import BrowserPanel from './BrowserPanel'
+import { useReadState } from '../../lib/readState'
+import { SetupAndTeardown } from './ManualStepList'
+import { Button } from '../Button'
 
 // The browser RedLog launches, and the HTTP capture proxy it wires that
 // browser to, are capture sources: they decide what ends up in the record.
@@ -20,6 +23,7 @@ export default function BrowserPage({
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
   const [preparing, setPreparing] = useState(false)
+  const hook = useReadState(async () => (await window.redlog.hooks.detect()).find(item => item.id === 'mitmproxy') ?? null)
   const [verify, setVerify] = useState(false)
   return (
     <>
@@ -29,6 +33,13 @@ export default function BrowserPage({
       </details>
       {preparing && <RuntimePreparation source="web" onClose={() => setPreparing(false)} />}
       <BrowserPanel t={t} config={config} setConfig={setConfig} />
+      {hook.state.phase === 'failed' && <div role="alert" className="text-xs text-redlog-danger">
+        {hook.state.error} <Button size="compact" level="quiet" onClick={hook.retry}>{t('common.retry')}</Button>
+      </div>}
+      {hook.state.value && <details className="mb-4">
+        <summary className="min-h-8 cursor-pointer text-xs text-redlog-text content-center">{t('settings.hookOptionalSteps')}</summary>
+        <SetupAndTeardown setup={hook.state.value.manualSteps} teardown={hook.state.value.removalSteps} t={t} />
+      </details>}
       <FieldGroup title={t('settings.cdp')}>
         <p className="text-xs text-redlog-text-faint mb-2">
           {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}

@@ -1019,7 +1019,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                   ? (b.kind === 'agent-tool' ? b.input.replace(/\n\s*/g, ' ') : b.input.split('\n')[0]).slice(0, 200)
                   : b.input}
               </pre>
-              {revealed && displayBody && (
+              {revealed && !readerOpen && displayBody && (
                 <pre className="mx-2.5 mb-2 px-2 py-1.5 bg-redlog-surface/60 rounded border border-redlog-border/60 text-xs text-redlog-text-dim font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
                   {displayBody}
                   {big && !fullyExpanded && (

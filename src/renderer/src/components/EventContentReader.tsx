@@ -122,6 +122,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
       {window && (window.offset>0||window.hasMore) && descriptor.format!=='binary' && <Button disabled={busy||delivery!==null} aria-busy={delivery==='copy'} onClick={()=>void deliver('copy')}>{t('content.copySaved')}</Button>}
       <Button disabled={busy||delivery!==null} aria-busy={delivery==='save'} onClick={()=>void deliver('save')}>{t(delivery==='save'?'marker.saving':'content.saveSaved')}</Button>
     </div>
+    <p className="text-xs text-redlog-text-dim">{t('content.saveBoundary')}</p>
     {selection && selection.end-selection.start>16384 && <p role="status" className="text-xs text-amber-300">{t('content.selectionTooLarge')}</p>}
     {deliveryError && <p role="alert" className="text-xs text-amber-300">{deliveryError}</p>}
     {error && <div role="alert" className="text-xs text-amber-300 break-words">{error} <Button onClick={() => changed ? onReload() : void read(window?.offset ?? 0)}>{t('common.retry')}</Button></div>}

@@ -15,6 +15,8 @@ vi.mock('../src/renderer/src/i18n/I18nContext', () => ({
   useI18n: () => ({ t: (key: string) => key })
 }))
 
+vi.mock('../src/renderer/src/components/EventContentReader', () => ({ EventContentReader: () => <div>saved-reader</div> }))
+
 vi.mock('../src/renderer/src/components/Toast', () => ({ toast: vi.fn() }))
 
 const emptyPage = { items: [], hasMore: false, nextCursor: null }
@@ -76,4 +78,19 @@ describe('Transcript completeness UI', () => {
     await waitFor(() => expect(clipboardWrite).toHaveBeenCalled())
     expect(clipboardWrite.mock.calls[0][0]).toContain('transcript.partialMarkdown')
   })
+  it('replaces the inline output with the saved reader and restores it when closed', async () => {
+    const shellEvent = { ...event, id: 'shell-end', engagementId: 'eng', agentType: 'shell',
+      data: { subtype: 'command_end', command: 'printf result', stdout: 'shell-output', exit_code: 0 } }
+    installBridge(vi.fn().mockImplementation((opts: { agentType: string }) =>
+      Promise.resolve(opts.agentType === 'shell' ? { ...emptyPage, items: [shellEvent] } : emptyPage)))
+    render(<TranscriptView reading="io" />)
+    await screen.findByText('shell-output')
+    fireEvent.click(screen.getByRole('button', { name: 'content.savedContent' }))
+    expect(await screen.findByText('saved-reader')).toBeTruthy()
+    expect(screen.queryByText('shell-output')).toBeNull()
+    expect(screen.getByText('$ printf result')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'content.savedContent' }))
+    expect(await screen.findByText('shell-output')).toBeTruthy()
+  })
+
 })
