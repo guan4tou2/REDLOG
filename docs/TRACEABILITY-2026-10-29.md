@@ -26,7 +26,7 @@
 | P1-1b | Cast 只複製核准前綴，且不做內容裁切 | #436；Spec 064 C5 | `src/core/bundle-export.ts:438–441, 453` | 無 | 前綴長度與 manifest `attachments.casts` 一致性 | 實作存在／NOT RUN |
 | P1-3a | 忽略憑證錯誤不得算作 CA 信任 | #289 | `src/core/http-verify.ts`；`HttpCaptureStep.tsx:253` 的 `trustVerified`，狀態列分 `proven`／`unproven` | `test/http-verification.test.ts:47`（邏輯）、`test/http-ca-trust-label.test.tsx`（標籤） | 驗證結果的持久化與失效判定（P1-3b） | 實作存在／NOT RUN |
 | P1-3b | 驗證結果需持久化並綁定 client／endpoint／CA／routing | #289、#434 | 無持久化 | 無 | 7 狀態模型、跨重啟與跨專案失效判定 | 未實作／NOT RUN |
-| P1-4 | DB 無法開啟時的呈現與安全失敗 | `UIUX-STANDARD.md` §12 2g | `src/main` 無 `SQLITE_BUSY`／`SQLITE_CORRUPT` 專門處理 | 無 | 開啟失敗的呈現路徑待調查 | 待調查／NOT RUN |
+| P1-4 | DB 無法開啟時的呈現與安全失敗 | `UIUX-STANDARD.md` §12 2g | 錯誤經 toast 可達 UI（`ProjectPicker.tsx:79`、`CommandPalette.tsx:121`）；但 `startProject` 在 `initDB` 拋錯前已設定 `activeProject`（`src/main/index.ts:668, 682`），失敗後 `project:active` 說謊、`getDB()` 全拋 | 無 | 失敗回滾（`activeProject = null`）＋可測接縫（handler 內嵌，現不可單測） | 已調查：狀態不一致／NOT RUN |
 | P1-5a | 終端錄製徽章不得讓「錄 cast」被讀成「指令與輸出已保存」 | §12 2b | `TerminalView.tsx:258–268` | `test/terminal-cast-state.test.ts` | 文案語意真實性未驗 | 實作存在／NOT RUN |
 | P1-5b | `⌘+`／`⌘−`／`⌘0` 調整終端字級 | §12 2b | `TerminalView.tsx:220–250` 綁鍵；`src/renderer/src/lib/terminalFont.ts` 為共用範圍 | `test/terminal-font-size.test.ts` | 原生鍵位驗收（鍵盤配置、與 OS 快捷鍵共存） | 實作存在／NOT RUN |
 | P1-7 | 內容狀態為三軸，不得壓成單一值 | Spec 064 C3 §2 | `contracts/content-viewer.md` §2；`src/core/evidence-content.ts` | `test/evidence-content.test.ts` | Activity／I-O／AI／HTTP／Reader／Export 的跨面一致性 | 部分實作／NOT RUN |
@@ -46,7 +46,7 @@
 
 1. **P0-A 的 D1–D4／G1–G3** 在真機執行，回填 `ACCEPTANCE-326-345-2026-10-29.md`。
 2. **P1-3b** 驗證結果的持久化與失效判定——這是 B2a 剩下的部分，UI 標籤已拆。
-3. **P1-4** 需要先讀 `src/core/project-manager.ts` 與 DB 開啟路徑，再決定要不要畫面。
+3. **P1-4** 的回滾修正：`startProject` 的 `initDB` 失敗時 `activeProject = null` ＋ `clearSpoolIdentity()`，讓 `project:active` 回 null。需要先把 `project:open` handler 從 `src/main/index.ts` 抽成可註冊、可單測的接縫——修正本身很小，測不了就不能上。
 4. P2／P3 待 P1 的第一批證據出現後再建表。
 
 已於本批完成：P1-1a 的拒絕測試、P1-3a 的標籤拆分、P1-5b 的鍵位實作。

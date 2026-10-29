@@ -228,9 +228,28 @@ CA fingerprint 都沒變，但使用者改了瀏覽器的代理設定時，歷�
 
 | 欄位 | 內容 |
 |---|---|
-| 既有能力 | 初查：`src/main` 無 `SQLITE_BUSY`／`SQLITE_CORRUPT` 的專門處理；第二實例已擋、ErrorBoundary 是渲染層。ProjectManager／DB 開啟失敗如何呈現——**待調查** |
-| 尚缺能力 | 對證據工具而言這不是錯誤處理，是「暫時無法取回證據」的體驗設計（§12 2g：「RedLog 不會自行修復或覆寫證據檔」） |
+| 既有能力 | **已調查（2026-10-29，見下）**。開啟路徑：`ipcMain.handle('project:open')` → `startProject()` → `initDB()`。錯誤會到達使用者：兩條 UI 路徑（`ProjectPicker.handleOpen`、CommandPalette）都 catch 並以 toast 顯示原始訊息。`src/main` 無 `SQLITE_BUSY`／`SQLITE_CORRUPT` 專門處理；`getDB()` 在無 DB 時拋 `'Database not initialized'` |
+| 尚缺能力 | 對證據工具而言這不是錯誤處理，是「暫時無法取回證據」的體驗設計（§12 2g：「RedLog 不會自行修復或覆寫證據檔」）；**失敗後 main 的狀態回滾** |
 | 權威契約 | `UIUX-STANDARD.md` §12 2g |
+
+**調查發現（2026-10-29）：**
+
+`startProject()` 的順序是 `stopProject()`（關閉舊專案並清空）→ `activeProject = project`
+（`src/main/index.ts:668`）→ `writeSpoolIdentity` → `initDB`（`:682`）。`initDB` 在
+`new Database()` 拋錯時——損毀、權限、鎖定、磁碟滿——**`activeProject` 已指向新專案、
+舊 DB 已關閉、spool identity 已寫入**。此時：
+
+1. `project:active` 回報新專案為作用中，但 DB 是 null；所有 `getDB()` 都拋
+   `'Database not initialized'`。
+2. `currentDbPath` 已指向新專案，read-only 連線會開到一個初始化未完成的檔案。
+3. 使用者看到的是 toast 與原始 SQLite 訊息；重試同一專案會重跑 `stopProject()`（stop
+   均為冪等）再 `initDB`——鎖定與權限類失敗多數會成功復原，**損毀類會永遠失敗並停在
+   半開狀態**。
+
+結論：「有錯誤訊息」成立；「失敗後狀態一致」不成立。最小修正是 `initDB` 失敗時回滾
+（`activeProject = null`、`clearSpoolIdentity()`）再重新拋出，讓 `project:active`
+回 null、picker 回到列表。兩個 handler 內嵌在 `src/main/index.ts`，現狀不可單測——
+修正前需要一個可注入的接縫或整合測試。
 
 | 情境 | 預期 |
 |---|---|
