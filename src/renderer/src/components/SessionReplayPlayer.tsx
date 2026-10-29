@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useId } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -24,6 +24,7 @@ const SPEED_OPTIONS = [0.5, 1, 2, 4] as const
 // the bounded replay preview, independently of saved recording size.
 export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { events: Array<[number, 'o', string]>; truncated: boolean; initialSeekMs?: number }): JSX.Element {
   const { t } = useI18n()
+  const markerList = useId()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -174,7 +175,7 @@ export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { even
   return (
     <div className="mt-1.5 rounded border border-redlog-border bg-redlog-bg overflow-hidden">
       <div ref={wrapRef} className="h-[360px] w-full p-2" />
-      <div className="flex items-center gap-2 border-t border-redlog-border bg-redlog-surface/70 px-2 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-t border-redlog-border bg-redlog-surface/70 px-2 py-1.5 text-xs">
         <button
           onClick={() => (playing ? doPause() : doPlay())}
           className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40"
@@ -190,6 +191,7 @@ export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { even
         >{t('timeline.replay.stepForward')}</button>
         <input
           type="range"
+          list={initialSeekMs !== undefined ? markerList : undefined}
           min={0}
           max={totalMs}
           step={100}
@@ -198,6 +200,9 @@ export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { even
           onChange={(e) => onSeek(Number(e.target.value))}
           className="flex-1 accent-cyan-500"
         />
+        {initialSeekMs !== undefined && Number.isFinite(initialSeekMs) && initialSeekMs >= 0 && initialSeekMs <= totalMs && <datalist id={markerList}>
+          <option value={initialSeekMs} label={t('timeline.replay.markerAt', { time: fmtMMSS(initialSeekMs) })} />
+        </datalist>}
         <span className="font-mono tabular-nums text-redlog-text-dim whitespace-nowrap">{fmtMMSS(posMs)} / {fmtMMSS(totalMs)}</span>
         <label className="flex items-center gap-1 text-redlog-text-dim">
           <span>{t('timeline.replay.speed')}</span>

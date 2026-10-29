@@ -214,8 +214,8 @@ describe('the quit that an update ends with', () => {
 
   it('finishes terminal recordings while the database is still open', () => {
     const stop = index.slice(index.indexOf('function stopProject'))
-    expect(stop.indexOf('detachTerminalRecordings()')).toBeGreaterThan(-1)
-    expect(stop.indexOf('detachTerminalRecordings()')).toBeLessThan(stop.indexOf('closeDB()'))
+    expect(stop.indexOf('clean(detachTerminalRecordings)')).toBeGreaterThan(-1)
+    expect(stop.indexOf('clean(detachTerminalRecordings)')).toBeLessThan(stop.indexOf('clean(closeDB)'))
     const willQuit = index.slice(index.indexOf("app.on('will-quit'"))
     expect(willQuit.slice(0, 400)).toContain('stopProject()')
   })

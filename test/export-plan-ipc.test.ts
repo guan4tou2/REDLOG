@@ -99,6 +99,25 @@ describe('export plan IPC contract', () => {
     expect(rows.map((e: { id: string }) => e.id).sort()).toEqual(wanted.sort())
   })
 
+  it.each(['json', 'ndjson', 'timeline'])('applies only the approved operator-PII policy to actual %s bytes', format => {
+    const secret = 'TOKEN_not_automatically_sanitized'
+    const sensitive = `${os.homedir()}/evidence ${os.hostname()} Authorization: ${secret} Cookie: session=private query=private`
+    addEvent('events', 'sensitive-event', 1000, { data: { command: sensitive, stdout: sensitive } })
+    for (const scrubPii of [false, true]) {
+      const resolved = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii } as never) as { ok: boolean; plan: { id: string } }
+      expect(resolved.ok).toBe(true)
+      const result = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: boolean; artifactPath: string }
+      expect(result.ok).toBe(true)
+      const content = fs.readFileSync(result.artifactPath, 'utf8')
+      expect(content).toContain(secret) // PII scrubbing is not a secret detector.
+      if (scrubPii) {
+        expect(content).not.toContain(os.homedir())
+        expect(content).not.toContain(os.hostname())
+        expect(content).toContain('<home>')
+      } else expect(content).toContain(os.hostname())
+    }
+  })
+
   it('exports selected HTTP exchanges with late responses and the latest response update, frozen at preview', () => {
     const addFlow = (id: string, method: string, status: number, ts: number): void => {
       addEvent('events_logged', `${id}-req`, ts, { agentType: 'scanner', subtype: 'http_request_start', data: { flow_id: id, method, host: 'example.test', url: `http://example.test/needle/${id}` } })

@@ -1,3 +1,5 @@
+import { capturedContentIsPartial } from './content-contract'
+import { classifyScope } from './scope-evaluator'
 import type { ActivitySnapshot } from './activity-contract'
 import { parseQuery } from './query/contract'
 import type { EventFilter, HttpFlowQueryOptions } from './db/events'
@@ -56,6 +58,7 @@ export interface ExportCounts {
   included: number
   excludedDoNotExport: number
   excludedPersonal: number
+  outOfScopeHttpFlows?: number
   maskedOutOfScope: number
   sanitized: number
   attachmentsIncluded: number
@@ -80,23 +83,7 @@ export interface ExportAttachmentCounts {
 /** Events whose captured output or body was cut short. The Event is still
  *  exported; the reader needs to know the text they see is not all of it. */
 export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
-  let n = 0
-  for (const event of events) {
-    const d = event.data
-    let cut = d.stdout_truncated === true || d.stderr_truncated === true || d.truncated === true
-    if (!cut) {
-      const io = d.io as { truncated?: unknown } | undefined
-      cut = io?.truncated === true
-    }
-    if (!cut) {
-      for (const key of BODY_REF_FIELDS) {
-        const ref = d[key] as { truncated?: unknown } | undefined
-        if (ref && typeof ref === 'object' && ref.truncated === true) { cut = true; break }
-      }
-    }
-    if (cut) n++
-  }
-  return n
+  return events.filter(event => capturedContentIsPartial(event.data)).length
 }
 
 /** Recording pauses among these Events. Counts what the export carries: a
@@ -407,4 +394,20 @@ export function takeExportSnapshot(): ExportSnapshot {
     loggedMaxRowId: logged?.m ?? 0,
     takenAt: Date.now()
   }
+}
+
+/** Count exchanges, not request+response rows, against the frozen policy. */
+export function countOutOfScopeHttpFlows(events: readonly RedLogEvent[], scope: { targets: string[]; excludeTargets: string[] }): number {
+  const flows = new Set<string>()
+  for (const event of events) {
+    const d = event.data
+    if (!['http_request_start', 'http_response'].includes(String(d.subtype)) || typeof d.flow_id !== 'string' || typeof d.url !== 'string') continue
+    try {
+      const url = new URL(d.url)
+      if (!['http:', 'https:'].includes(url.protocol)) continue
+      const state = classifyScope(url.hostname, scope).status
+      if (state === 'out-of-scope' || state === 'excluded') flows.add(d.flow_id)
+    } catch { /* malformed target is unknown, not outside scope */ }
+  }
+  return flows.size
 }

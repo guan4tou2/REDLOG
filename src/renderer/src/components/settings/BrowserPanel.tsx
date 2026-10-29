@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { formatDateTime } from '../../lib/time'
 import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
@@ -168,6 +169,12 @@ export default function BrowserPanel({
                     : proxyStatus.state === 'failed' || proxyStatus.state === 'unavailable' ? t('common.retry') : t('httpCapture.start')}
         </button>
       </div>
+      {proxyKnown && proxyStatus.verificationState && (proxyStatus.verificationEvidence || proxyStatus.verificationState === 'unknown') && (
+        <p data-testid="http-verification-history" className="text-xs text-redlog-text-dim">
+          {t(`httpVerification.${proxyStatus.verificationState}`)}
+          {proxyStatus.verificationEvidence && <> · {proxyStatus.verificationEvidence.clientLabel} · <time dateTime={new Date(proxyStatus.verificationEvidence.verifiedAt).toISOString()}>{formatDateTime(proxyStatus.verificationEvidence.verifiedAt)}</time></>}
+        </p>
+      )}
       {proxyRead.state.phase === 'failed' && <p role="alert" className="text-xs text-red-400 break-all">{proxyRead.state.error}</p>}
       {proxyActionError && <p role="alert" className="text-xs text-red-400 break-all">{proxyActionError}</p>}
       {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}

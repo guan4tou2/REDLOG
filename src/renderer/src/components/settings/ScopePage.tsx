@@ -78,8 +78,9 @@ function ScopeTester({ targets, excludeTargets, t }: { targets: string[]; exclud
 }
 
 export default function ScopePage({
-  config, setConfig, t
+  config, setConfig, t, candidate
 }: {
+  candidate?: string
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -96,6 +97,8 @@ export default function ScopePage({
       </FieldGroup>
       <FieldGroup title={t('settings.inScopeTargets')}>
         <ListField
+          key={candidate ?? 'no-candidate'}
+          initialDraft={candidate}
           label={t('settings.targetsLabel')}
           items={config.scope.targets}
           onChange={(items) => setConfig({ ...config, scope: { ...config.scope, targets: items } })}

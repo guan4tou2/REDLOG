@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { SectionLabel } from './SectionLabel'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
@@ -94,6 +95,7 @@ export interface CommandPaletteProps {
   onNavigate: (view: string) => void
   onOpenEvent: (id: string, ts: number) => void
   recording: boolean
+  onProjectClosed?: () => void
 }
 
 
@@ -107,7 +109,8 @@ export interface CommandPaletteProps {
 // not the one that could skip it.
 async function switchProject(
   target: { id: string; name: string },
-  t: (k: string, v?: Record<string, string | number>) => string
+  t: (k: string, v?: Record<string, string | number>) => string,
+  onProjectClosed?: () => void
 ): Promise<void> {
   const current = await window.redlog.project.active().catch(() => null)
   // No active project means nothing is being stopped; the picker's own flow
@@ -119,12 +122,18 @@ async function switchProject(
     if (!opened) { toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') }); return }
     window.location.reload()
   } catch (err) {
+    // Main may have closed the old DB before the new one failed. Reflect the
+    // rollback in the workspace while keeping the error toast visible.
+    if (await window.redlog.project.active().catch(() => undefined) === null) {
+      // Mount the picker's toast container before publishing the failure.
+      flushSync(() => onProjectClosed?.())
+    }
     toast(t('project.openFailedTitle'), { type: 'error', why: t('project.openFailedWhy'), detail: err instanceof Error ? err.message : String(err) })
   }
 }
 
 export function CommandPalette({
-  open, onClose, onNavigate, onOpenEvent, recording
+  open, onClose, onNavigate, onOpenEvent, recording, onProjectClosed
 }: CommandPaletteProps): JSX.Element | null {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
@@ -236,7 +245,7 @@ export function CommandPalette({
       out.push({
         id: `project:${p.id}`, section: 'project', icon: FolderOpen,
         label: p.name, hint: formatTime(p.lastOpened),
-        run: () => { void switchProject({ id: p.id, name: p.name }, t) }
+        run: () => { void switchProject({ id: p.id, name: p.name }, t, onProjectClosed) }
       })
     }
 
@@ -285,7 +294,7 @@ export function CommandPalette({
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.i)
-  }, [query, events, projects, operators, hosts, recording, t, onNavigate, onOpenEvent])
+  }, [query, events, projects, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
 
   useEffect(() => { setCursor(0) }, [query])
   // Keep the keyboard selection on screen: ↓ past the fold used to move an

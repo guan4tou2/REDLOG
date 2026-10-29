@@ -89,6 +89,7 @@ export class ChainEmitter implements Surface {
             action: v.signal.action.slice(0, 200),
             source: v.signal.source,
             distance: v.distance,
+            ...(v.matchedBy ? { matched_by: v.matchedBy } : {}),
             ...(v.extractorPluginId ? {
               extractor_plugin_id: v.extractorPluginId,
               extractor_name: v.extractorName

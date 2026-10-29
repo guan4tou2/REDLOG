@@ -51,7 +51,8 @@ describe('bundle preview: per-attachment selection (#222)', () => {
     const list = await screen.findByTestId('export-attachments')
     const cross = within(list).getByTestId('export-attachment-casts/term-1.cast')
     expect(cross.textContent).toContain('several targets: a.test, b.test')
-    expect(list.textContent).toContain('never trimmed to scope')
+    expect(list.textContent).toContain('approved byte prefix')
+    expect(list.textContent).toContain('operator-PII scrubbing')
     expect(screen.getByText('Attachments')).toBeTruthy()
     expect(screen.queryByText('HTTP bodies')).toBeNull()
     // A missing file cannot be chosen.
@@ -74,7 +75,7 @@ describe('bundle preview: per-attachment selection (#222)', () => {
   })
 })
 
-it('does not warn about recordings when only a screenshot will be carried', async () => {
+it('warns that screenshot pixels are raw attachments too', async () => {
   const preview = plan([])
   preview.attachments = [{ id: 'screenshots/one.jpg', kind: 'screenshot', bytes: 10, targets: ['a.test'], attribution: 'target', status: 'included' }]
   preview.counts.attachmentsIncluded = 1
@@ -85,7 +86,7 @@ it('does not warn about recordings when only a screenshot will be carried', asyn
   fireEvent.click(screen.getByLabelText('Export'))
   fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'bundle' } })
   const list = await screen.findByTestId('export-attachments')
-  expect(list.textContent).not.toContain('never trimmed to scope')
+  expect(list.textContent).toContain('Raw attachments do not apply content-level scope filtering')
 })
 
 it('allows explicitly adding a recording excluded by the bounded-selection policy', async()=>{

@@ -288,6 +288,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
           action: row.action,
           source: row.source,
           distance: row.distance,
+          ...(verdict.matchedBy ? { matched_by: verdict.matchedBy } : {}),
           // Absence of these three is what makes every row already on disk read
           // as 當時就知道, with no migration.
           judged: 'retroactive',

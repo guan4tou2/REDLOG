@@ -31,7 +31,7 @@ describe.skipIf(process.env.REDLOG_PERF !== '1')('HTTP query budget with inline 
     it(`first 500 complete flows within 200 ms: ${name}`, () => {
       queryHttpFlowPage({ limit: 500, http })
       const times = []
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 30; i++) {
         const start = performance.now()
         const page = queryHttpFlowPage({ limit: 500, http })
         times.push(performance.now() - start)
@@ -39,8 +39,11 @@ describe.skipIf(process.env.REDLOG_PERF !== '1')('HTTP query budget with inline 
         expect(page.items).toHaveLength(1000)
         expect(page.items.find(event => event.data.subtype === 'http_response')?.data.response_body).toBe('response ' + 'y'.repeat(4000))
       }
-      const median = times.sort((a, b) => a - b)[2]
-      console.log(`HTTP 5000 flows/40MB body, ${name}, median of 5 warm runs: ${median.toFixed(1)} ms; ${os.cpus()[0]?.model}, ${os.platform()}, ${process.version}`)
+      times.sort((a, b) => a - b)
+      const median = (times[14] + times[15]) / 2
+      const p95 = times[28]
+      expect(p95).toBeLessThan(1000)
+      console.log(`HTTP 5000 flows/40MB body, ${name}, p95 of 30 warm runs: ${p95.toFixed(1)} ms; p50: ${median.toFixed(1)} ms; ${os.cpus()[0]?.model}, ${os.platform()}, ${process.version}`)
       expect(median).toBeLessThan(200)
     })
   }

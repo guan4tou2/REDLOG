@@ -3,6 +3,8 @@
 **基準：** `main` @ `55567a58`（v0.18.4），另含 `d1e6e363`／`cd0a8123`／`36287fa3`
 **範圍：** P0 與 P1 項目；P2／P3 尚未建表
 
+**後續核對與修復：** `2dd45465` 上的未提交工作區變更，見 [本次核對紀錄](REVIEW-FOLLOWUP-2026-10-29.md)。本次結果不覆蓋上述歷史測試基準。
+
 規則（提案排程原則 4）：**「應該做什麼」由已核准的 contract／Spec 決定；「實際做到
 什麼」由指定 commit 的程式碼與驗收證據決定。** 兩套不互換。
 
@@ -21,15 +23,15 @@
 |---|---|---|---|---|---|---|
 | P0-A1 | WSL 舊目錄不得遮蔽 Windows profile | #326；`docs/domain/SPEC-capture-source-lifecycle.md` | `hooks/shell-common.sh:18–53`（`/api/whoami` 探測） | `test/shell-wsl-directory.test.ts`（`down`／`live`／`stale-token`） | 真實 WSL、mirrored networking；D1–D4 未執行 | 實作存在／NOT RUN |
 | P0-A2 | 事件內容不得經由路徑交給 curl | #345 | `hooks/shell-common.sh:399–400`（`--data-binary @-`） | `test/hook-payload-stdin.test.ts`（`d1e6e363` 新增） | Windows Git Bash 實機；G1–G3 未執行 | 實作存在／NOT RUN |
-| P0-B | Spool／pause／project binding／gap | #291；Spec 064 CT-15／16 | `hooks/shell-common.sh` spool 區塊、`active-identity.json` 檢查 | `test/shell-spool-cap.test.ts`、`test/shell-spool-no-sidecar.test.ts` | 故障注入與跨專案驗收 | 部分實作／NOT RUN |
-| P1-1a | 匯出格式的 PII 清洗能力必須逐格式宣告且可拒絕 | #436；Spec 064 C5 | `src/core/export-capabilities.ts:18–22`；拒絕點 `src/main/ipc/data-export.ts:69` | `test/export-plan-ipc.test.ts`（bundle／har 拒絕、json／ndjson／timeline 接受）；`test/operator-pii.test.ts` 只測替換函式 | 原生／安裝包驗收 | 實作存在／NOT RUN |
-| P1-1b | Cast 只複製核准前綴，且不做內容裁切 | #436；Spec 064 C5 | `src/core/bundle-export.ts:438–441, 453` | 無 | 前綴長度與 manifest `attachments.casts` 一致性 | 實作存在／NOT RUN |
-| P1-3a | 忽略憑證錯誤不得算作 CA 信任 | #289 | `src/core/http-verify.ts`；`HttpCaptureStep.tsx:253` 的 `trustVerified`，狀態列分 `proven`／`unproven` | `test/http-verification.test.ts:47`（邏輯）、`test/http-ca-trust-label.test.tsx`（標籤） | 驗證結果的持久化與失效判定（P1-3b） | 實作存在／NOT RUN |
-| P1-3b | 驗證結果需持久化並綁定 client／endpoint／CA／routing | #289、#434 | 無持久化 | 無 | 7 狀態模型、跨重啟與跨專案失效判定 | 未實作／NOT RUN |
-| P1-4 | DB 無法開啟時的呈現與安全失敗 | `UIUX-STANDARD.md` §12 2g | 錯誤經 toast 可達 UI（`ProjectPicker.tsx:79`、`CommandPalette.tsx:121`）；但 `startProject` 在 `initDB` 拋錯前已設定 `activeProject`（`src/main/index.ts:668, 682`），失敗後 `project:active` 說謊、`getDB()` 全拋 | 無 | 失敗回滾（`activeProject = null`）＋可測接縫（handler 內嵌，現不可單測） | 已調查：狀態不一致／NOT RUN |
-| P1-5a | 終端錄製徽章不得讓「錄 cast」被讀成「指令與輸出已保存」 | §12 2b | `TerminalView.tsx:258–268` | `test/terminal-cast-state.test.ts` | 文案語意真實性未驗 | 實作存在／NOT RUN |
-| P1-5b | `⌘+`／`⌘−`／`⌘0` 調整終端字級 | §12 2b | `TerminalView.tsx:220–250` 綁鍵；`src/renderer/src/lib/terminalFont.ts` 為共用範圍 | `test/terminal-font-size.test.ts` | 原生鍵位驗收（鍵盤配置、與 OS 快捷鍵共存） | 實作存在／NOT RUN |
-| P1-7 | 內容狀態為三軸，不得壓成單一值 | Spec 064 C3 §2 | `contracts/content-viewer.md` §2；`src/core/evidence-content.ts` | `test/evidence-content.test.ts` | Activity／I-O／AI／HTTP／Reader／Export 的跨面一致性 | 部分實作／NOT RUN |
+| P0-B | Spool／pause／project binding／gap | #291；Spec 064 CT-15／16 | spool identity／cap、pause gate、project rollback | `shell-spool-cap`、`shell-spool-no-sidecar`；`recording-pause`、`project-open-rollback`、`terminal-session-rotation` E2E | 真實 ENOSPC／程序中斷與其他平台 #457 | 部分驗收／Mac source PASS，完整 CT NOT RUN |
+| P1-1a | 逐格式 PII 能力宣告與拒絕 | #436；Spec 064 C5 | `export-capabilities.ts`；`data-export.ts` | `export-plan-ipc`：bundle／har 拒絕、json／ndjson／timeline 實際成品 × 開關 | 跨平台成品矩陣 #457；非 secret detector | 實作存在／本機 PASS |
+| P1-1b | Cast 只複製核准前綴，不做內容裁切 | #436；Spec 064 C5 | `bundle-export.ts`、`export-attachment-freeze.ts` | `export-plan-ipc` 實際 cast 原始 byte 前綴／PII 保留；`export-attachment-freeze`、`bundle-export` hash／manifest | 跨平台原生成品 #457 | 實作存在／本機 PASS |
+| P1-3a | 忽略憑證錯誤不得算作 CA 信任 | #289 | `http-verify.ts`、`HttpCaptureStep.tsx`、FirstRun capture readiness | `http-verification`、`http-ca-trust-label`、`first-run-record-terminal`；真實 HTTPS E2E | 原生 client CA trust 與其他平台 #457 | 實作存在／本機 PASS |
+| P1-3b | 驗證結果需持久化並綁定 client／endpoint／CA／routing | #289、#434 | `http-verification-evidence.ts`、`http-verification-history.ts`、main status wrapper | `http-verification-history`；`uiux-convergence` 真實 HTTPS／restart／project／routing | 原生 client identity／CA trust 不憑 UA 推定；其他平台待 #457 | 實作存在／macOS source PASS |
+| P1-4 | DB 無法開啟時的呈現與安全失敗 | `UIUX-STANDARD.md` §12 2g | `startProject` 設定預備、DB 初始化與資源啟動失敗回滾；`stopProject` 完整清理；命令面板反映 main 的 active 狀態 | `e2e/project-open-rollback.spec.ts` 4 PASS（設定寫入、DB open／pragma、來源設定；含跨專案 spool、既有事件與原始檔保留）；`test/readonly-db.test.ts`、`test/command-palette.test.tsx` | 安裝包／Windows 故障驗收、真實磁碟滿與程序中斷 | 實作存在／原始碼 macOS E2E PASS；安裝包 NOT RUN |
+| P1-5a | Cast badge 不等於 shell command／output proof | §12 2b | `TerminalView.tsx`；獨立 capture source／cast 狀態 | `terminal-cast-state`；`terminal-session-rotation` E2E | 真人理解與其他平台 #457 | 實作存在／本機 PASS，真人 NOT RUN |
+| P1-5b | 終端字級鍵位與輸入焦點／Electron zoom 分離 | §12 2b | `TerminalView.tsx`、`terminalFont.ts` | `terminal-font-size`；`uiux-convergence` 原生鍵盤 | Windows／其他鍵盤配置 #457 | 實作存在／Mac PASS |
+| P1-7 | 內容 capture／availability／read window 三軸分離 | Spec 064 C3 §2 | `content-contract.ts`、`evidence-content.ts`；HTTP／Shell 共用 Reader | `evidence-content` 三類 17 MiB、`http-detail-tabs`、`late-output-detail`、`transcript-completeness-ui`、export counts | 完整跨平台 CT-11／12 #457；不把 hasMore 當 capture loss | 實作存在／本機 PASS |
 
 ## 已確認過期的現況宣告
 
@@ -42,11 +44,12 @@
 | 「HTTP 驗證只有一個成功狀態」 | v0.18.4 時邏輯層已分開、UI 層合併；現已拆成 `proven`／`unproven` | `HttpCaptureStep.tsx:145, 253` |
 | 「2b per-pane 記錄 chip 未實作」 | 已實作 | `TerminalView.tsx:258–268` |
 
-## 下一步
+## 本次收斂與待驗收
 
-1. **P0-A 的 D1–D4／G1–G3** 在真機執行，回填 `ACCEPTANCE-326-345-2026-10-29.md`。
-2. **P1-3b** 驗證結果的持久化與失效判定——這是 B2a 剩下的部分，UI 標籤已拆。
-3. **P1-4** 的回滾修正：`startProject` 的 `initDB` 失敗時 `activeProject = null` ＋ `clearSpoolIdentity()`，讓 `project:active` 回 null。需要先把 `project:open` handler 從 `src/main/index.ts` 抽成可註冊、可單測的接縫——修正本身很小，測不了就不能上。
-4. P2／P3 待 P1 的第一批證據出現後再建表。
+本表已按本次實作更新；歷史核對依據與尚未取得的原生證據分開記錄。所有 P0–P3 的最新逐項對帳、實際匯出政策矩陣與性能量測統一見 [UIUX 完成紀錄](UIUX-COMPLETION-2026-10-29.md)。
 
-已於本批完成：P1-1a 的拒絕測試、P1-3a 的標籤拆分、P1-5b 的鍵位實作。
+- P1-1 增加三格式 × PII 開關實際成品驗證、附件 raw boundary 與範圍外 exchanges 計數。
+- P1-7／P3 Reader：HTTP／Shell 改走既有版本化 content API；17 MiB Shell／AI／HTTP 資料測有界搜尋，避免把讀取分頁當作 capture partial。
+- P2：HTTP 歷史狀態、Transcript 有界預覽、HTTP scope、完整違規詳情與顯式候選規則、終端焦點快捷鍵已有實作及回歸。
+- P3：回放只標示已知 anchor；設定徽章／額外關聯圖經必要性檢查未新增；不以行數為由拆分。
+- Windows／WSL／Git Bash／Linux、真實磁碟滿／中斷、完整真人 UX 與五位使用者量測統一追蹤 [#457](https://github.com/guan4tou2/REDLOG/issues/457)。Spec 064 保持 Draft。

@@ -4,7 +4,9 @@
 // Commands and HTTP(S) are both core. Neither is a prerequisite for the other,
 // and neither is a "mode" the operator picks: an engagement that only ever
 // proves one of them is an engagement recorded with a hole in it. So each has
-// its own verification, and "core capture ready" means both.
+// its own verification, and "core capture ready" means both delivered evidence.
+// HTTP readiness proves capture, not CA trust. HttpCaptureStep reports that
+// separate client-specific fact on its status label.
 //
 // What counts as verified is an event that actually arrived, not a process
 // that is running or a hook that is installed on disk.

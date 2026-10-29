@@ -31,7 +31,7 @@ export type SettingsPage =
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
-export default function Settings({ request = null }: { request?: { page: SettingsPage } | null } = {}): JSX.Element {
+export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string } | null } = {}): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
   const [tab, setTab] = useState<SettingsPage>(request?.page ?? 'hooks')
   useEffect(() => { if (request) setTab(request.page) }, [request])
@@ -378,7 +378,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
-        {tab === 'scope' && <><ScopePage config={config} setConfig={setConfig} t={t} /><ProjectSettings config={config} setConfig={setConfig} /></>}
+        {tab === 'scope' && <><ScopePage candidate={request?.scopeCandidate} config={config} setConfig={setConfig} t={t} /><ProjectSettings config={config} setConfig={setConfig} /></>}
         {tab === 'hooks' && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} t={t} />

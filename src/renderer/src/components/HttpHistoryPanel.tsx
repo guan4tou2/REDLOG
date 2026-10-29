@@ -1,3 +1,6 @@
+import { httpScopeState } from '../lib/scope'
+import { useReadState } from '../lib/readState'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { LoadingSpinner } from './Feedback'
 import { useContainerWidth } from '../hooks/useContainerWidth'
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -103,6 +106,11 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
+  const scopeRead = useReadState(() => window.redlog.scope.policy())
+  useRevalidateOnFocus(scopeRead.retry)
+  useEffect(() => window.redlog.events.onNewBatch(events => {
+    if (events.some(event => event.data.subtype === 'config_changed' || event.data.subtype === 'scope_recomputed')) scopeRead.retry()
+  }), [scopeRead.retry])
   const [flows, setFlows] = useState<HttpFlow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -114,7 +122,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<'timestamp' | 'status' | 'size' | 'durationMs'>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
-  const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
+  const [detailEvent, setDetailEvent] = useState<{ id: string; projectId: string; data: Record<string, unknown> } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
   // The detail pane docks under the table or beside it — the SAME choice the
@@ -141,7 +149,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
     setDetailLoading(true)
     window.redlog.events.getById([eventId]).then(evts => {
       const evt = evts?.[0]
-      if (evt) setDetailEvent({ id: evt.id, data: evt.data })
+      if (evt) setDetailEvent({ id: evt.id, projectId: evt.engagementId, data: evt.data })
       else setDetailEvent(null)
       setDetailLoading(false)
     }).catch(() => { setDetailLoading(false) })
@@ -276,7 +284,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 29,
+    estimateSize: () => 42,
     overscan: 12
   })
 
@@ -484,6 +492,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                 // anything, so red on it spends the colour that has to mean
                 // "look here".
                 const methodClass = 'text-redlog-text-dim'
+                const scopeState = httpScopeState(f.url, scopeRead.state.phase === 'failed' ? null : scopeRead.state.value ?? null)
                 const eventId = f.responseEventId ?? f.requestEventId
                 const urlPath = (() => {
                   try { return new URL(f.url).pathname + (new URL(f.url).search || '') }
@@ -495,14 +504,17 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                     key={f.flowId}
                     {...rowProps}
                     ref={(el) => rowProps.ref(el as unknown as HTMLElement | null)}
-                    style={{ height: 29 }}
+                    style={{ height: 42 }}
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
                     <td className="px-2 py-1 text-redlog-text-faint tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
                     <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
                     <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim max-w-[160px] truncate" title={f.host}>{f.host}</td>
+                    <td className="px-2 py-1 text-redlog-text-dim max-w-[160px]">
+                      <span className="block truncate" title={f.host}>{f.host}</span>
+                      {scopeState !== 'in-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                    </td>
                     <td className="px-2 py-1 text-redlog-text max-w-[400px] truncate" title={f.url}>{urlPath}</td>
                     <td className="px-2 py-1 text-redlog-text-dim max-w-[120px] truncate" title={f.contentType}>
                       {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
@@ -622,7 +634,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                 </div>
               ) : detailEvent ? (
                 <div className="px-3 py-2">
-                  <HttpDetail data={detailEvent.data} eventId={detailEvent.id} />
+                  <HttpDetail projectId={detailEvent.projectId} data={detailEvent.data} eventId={detailEvent.id} />
                 </div>
               ) : null}
             </div>

@@ -88,7 +88,7 @@ function AttachmentList({ rows, onToggle, busy, t }: {
   return (
     <div data-testid="export-attachments" className="px-3 py-1 border-t border-redlog-border mt-1 text-xs">
       <p className="text-redlog-text-dim mb-1">{t('export.attachments.title')}</p>
-      {rows.some(a => a.kind === 'cast' && a.status === 'included') && <p className="text-redlog-text-faint mb-1">{t('export.attachments.castNote')}</p>}
+      {rows.some(a => a.status === 'included') && <p className="text-redlog-text-faint mb-1">{t('export.attachments.rawBoundary')}</p>}
       <ul className="max-h-48 overflow-auto space-y-0.5">
         {rows.map((a) => {
           const selectable = a.status === 'included' || a.status === 'excluded-by-operator' || a.status === 'excluded-by-policy'
@@ -571,6 +571,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     {resolvedPlan.request.subset.kind !== 'all' && <p data-testid="export-projection-notice" className="px-3 py-2 text-xs text-amber-400">{t('export.projectionNotice')}</p>}
                     {resolvedPlan.counts.exchanges !== undefined && <p className="px-3 text-xs">{t('export.exchanges', { count: resolvedPlan.counts.exchanges })}</p>}
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
+                    {(resolvedPlan.counts.outOfScopeHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.outOfScopeHttp')} value={resolvedPlan.counts.outOfScopeHttpFlows!} warn />}
                     {planScopeSet(resolvedPlan) && <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />}
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
                     <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />

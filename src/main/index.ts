@@ -20,7 +20,9 @@ import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, openBrowserTab } from './services/cdp-connector'
-import { isVerifyNonce, verifyUrl } from '../core/http-verify'
+import { isVerifyNonce, verifyUrl, clientLabel } from '../core/http-verify'
+import { httpVerificationState, type HttpVerificationContext, type HttpVerificationEvidence } from '../core/http-verification-evidence'
+import { HttpVerificationHistory } from './services/http-verification-history'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -75,7 +77,7 @@ import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBr
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
-import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
+import { managedProxyUrl, isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
@@ -254,7 +256,35 @@ function stopManagedHttpCapture(record = true): ManagedProxyStatus {
   return status
 }
 
-configureManagedProxyHealth(() => managedHttpProxy.status())
+const httpVerificationHistory = new HttpVerificationHistory()
+
+function verificationContext(config: RedLogConfig, status: ManagedProxyStatus): HttpVerificationContext {
+  return {
+    projectId: activeProject?.id ?? '',
+    endpoint: managedProxyUrl(managedProxyEndpoint(config)),
+    caFingerprint: status.caFingerprint?.sha256 ?? null,
+    routing: JSON.stringify([config.httpCapture?.routeTerminals === true, config.browser?.proxy ?? '', config.browser?.ignoreCertErrors ?? DEFAULT_BROWSER.ignoreCertErrors]),
+    sourceInstance: status.sourceInstance ?? null,
+    running: status.state === 'running', failed: status.state === 'failed',
+    // The addon observes UA, not a trustworthy process/client identity.
+    clientIdentity: null
+  }
+}
+
+function httpCaptureStatus(): ManagedProxyStatus {
+  const status = managedHttpProxy.status()
+  if (!activeProject) return status
+  const projectDir = getProjectPath(activeProject)
+  const context = verificationContext(loadConfig(projectDir), status)
+  try {
+    const evidence = httpVerificationHistory.read(projectDir).filter(row => row.projectId === context.projectId).at(-1) ?? null
+    return { ...status, verificationEvidence: evidence, verificationState: httpVerificationState(evidence, context) }
+  } catch {
+    return { ...status, verificationEvidence: null, verificationState: 'unknown' }
+  }
+}
+
+configureManagedProxyHealth(httpCaptureStatus)
 managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
@@ -665,11 +695,28 @@ function startProject(project: ProjectMeta): void {
   // it needs queues behind this function. A number in the log is what turns
   // "it hung for a few seconds" into a phase to look at.
   const openedAt = Date.now()
-  if (activeProject) stopProject()
-  activeProject = project
+  // Prepare configuration before closing the current project. A failed read
+  // or write must not leave a new binding (or discard the usable old one).
   const projectDir = getProjectPath(project)
   const config = loadConfig(projectDir)
   saveConfig(projectDir, config)
+  if (activeProject) stopProject()
+  try {
+    initDB(projectDir)
+    activeProject = project
+    startProjectResources(project, projectDir, config)
+    // Publish the shell identity only after synchronous initialization succeeds.
+    writeSpoolIdentity(config.engagement.id, config.operator.id)
+  } catch (error) {
+    try { stopProject() } catch (cleanupError) {
+      console.error('[project] rollback failed:', cleanupError)
+    }
+    throw error
+  }
+  console.log(`[project] opened in ${Date.now() - openedAt}ms`)
+}
+
+function startProjectResources(project: ProjectMeta, projectDir: string, config: RedLogConfig): void {
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
   showWifiName = config.network?.showWifiName === true
@@ -677,22 +724,6 @@ function startProject(project: ProjectMeta): void {
   const operatorId = config.operator.id
   currentEngagementId = engagementId
   currentOperatorId = operatorId
-
-  writeSpoolIdentity(engagementId, operatorId)
-  initDB(projectDir)
-
-  // Bring the recording index up to date in the background. Idempotent and
-  // cheap when nothing changed — it hashes each cast and skips matches — so
-  // running it on every open is what keeps a project that was recorded by an
-  // older build, restored from a backup, or written to while RedLog was shut
-  // searchable without anyone having to know to ask.
-  //
-  // Not awaited: a first index of an engagement's worth of recordings takes
-  // real time, and holding project-open on it would trade a visible stall for
-  // an invisible one. The UI reads `casts:status` and says how much is still
-  // pending, which is the honest version of the same information.
-  void backfillCastIndex(projectDir)
-    .catch(() => { /* index is rebuildable; never block opening a project */ })
 
   screenshotAgent.configure({
     engagementId,
@@ -751,33 +782,6 @@ function startProject(project: ProjectMeta): void {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
   })
-  // Capture starts with the project.
-  //
-  // This line used to read "capture starts only through an explicit operator
-  // action", and that rule only ever applied to HTTP: the shell hook records
-  // from the moment a project is open and has never asked. HTTP asked because
-  // starting it spawns mitmdump and binds a port — a cost to RedLog and to
-  // nothing else, because the system proxy settings are never touched. No
-  // traffic on this machine moves until the operator launches the capture
-  // browser or opts their terminals in. docs/UIUX-CONTROLS-AND-COPY.md §5.
-  //
-  // One attempt per open, after the login PATH lands (a Dock-launched app
-  // cannot see ~/.local/bin before then, and would call mitmproxy missing).
-  // A failure publishes its event and shows on the card; repeating it on every
-  // open would report the same thing to an operator who has already read it.
-  {
-    const openedFor = project.id
-    void loginPathReady
-      .then(() => {
-        if (activeProject?.id !== openedFor) return
-        if (!shouldAutoStartHttpCapture({
-          mitmdumpOnPath: isOnPath('mitmdump'),
-          state: managedHttpProxy.status().state
-        })) return
-        return startManagedHttpCapture().then(() => undefined)
-      })
-      .catch((e) => console.error('[http-capture] auto-start failed:', e))
-  }
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
@@ -987,6 +991,20 @@ function startProject(project: ProjectMeta): void {
     // record.
     httpVerifySink: (report) => {
       managedHttpProxy.noteVerification(report)
+      const status = managedHttpProxy.status()
+      if (report.scheme === 'https' && activeProject?.id === project.id && status.httpsVerification?.receivedAt === report.receivedAt && status.httpsVerification?.nonce === report.nonce
+        && !report.rejected && status.caFingerprint && status.url && status.sourceInstance) {
+        const context = verificationContext(loadConfig(projectDir), status)
+        const evidence: HttpVerificationEvidence = {
+          version: 1, projectId: project.id, clientIdentity: null, clientLabel: clientLabel(report.userAgent),
+          endpoint: status.url, caFingerprint: status.caFingerprint.sha256, routing: context.routing,
+          sourceInstance: status.sourceInstance, verifiedAt: report.receivedAt, captureVerified: true,
+          // An unidentifiable client can prove capture without granting durable CA trust.
+          caTrustVerified: false
+        }
+        try { httpVerificationHistory.append(projectDir, evidence) }
+        catch (error) { console.error('[http-verification] history not saved:', error) }
+      }
       send(mainWindow, 'httpCapture:verify', report)
     }
   })
@@ -1123,40 +1141,91 @@ function startProject(project: ProjectMeta): void {
     }
   }
 
-  console.log(`[project] opened in ${Date.now() - openedAt}ms`)
+  // Capture starts with the project.
+  //
+  // This line used to read "capture starts only through an explicit operator
+  // action", and that rule only ever applied to HTTP: the shell hook records
+  // from the moment a project is open and has never asked. HTTP asked because
+  // starting it spawns mitmdump and binds a port — a cost to RedLog and to
+  // nothing else, because the system proxy settings are never touched. No
+  // traffic on this machine moves until the operator launches the capture
+  // browser or opts their terminals in. docs/UIUX-CONTROLS-AND-COPY.md §5.
+  //
+  // One attempt per open, after the login PATH lands (a Dock-launched app
+  // cannot see ~/.local/bin before then, and would call mitmproxy missing).
+  // A failure publishes its event and shows on the card; repeating it on every
+  // open would report the same thing to an operator who has already read it.
+  {
+    const openedFor = project.id
+    void loginPathReady
+      .then(() => {
+        if (activeProject?.id !== openedFor) return
+        if (!shouldAutoStartHttpCapture({
+          mitmdumpOnPath: isOnPath('mitmdump'),
+          state: managedHttpProxy.status().state
+        })) return
+        return startManagedHttpCapture().then(() => undefined)
+      })
+      .catch((e) => console.error('[http-capture] auto-start failed:', e))
+  }
+  // Bring the recording index up to date in the background. Idempotent and
+  // cheap when nothing changed — it hashes each cast and skips matches — so
+  // running it on every open is what keeps a project that was recorded by an
+  // older build, restored from a backup, or written to while RedLog was shut
+  // searchable without anyone having to know to ask.
+  //
+  // Not awaited: a first index of an engagement's worth of recordings takes
+  // real time, and holding project-open on it would trade a visible stall for
+  // an invisible one. The UI reads `casts:status` and says how much is still
+  // pending, which is the honest version of the same information.
+  void backfillCastIndex(projectDir)
+    .catch(() => { /* index is rebuildable; never block opening a project */ })
 }
 
 function stopProject(): void {
-  stopManagedHttpCapture(false)
-  stopAnchorLoop()
-  stopNtpLoop()
+  // Every cleanup must run even if an earlier source or partially initialized
+  // store throws. In particular, never retain an API/spool binding after a
+  // failed open. Preserve the first error for the caller.
+  let failed = false
+  let firstError: unknown
+  const clean = (action: () => unknown): void => {
+    try { action() } catch (error) {
+      if (!failed) { failed = true; firstError = error }
+      console.error('[project] cleanup failed:', error)
+    }
+  }
+  clean(onApiProjectClose)
+  clean(clearSpoolIdentity)
+  clean(() => stopManagedHttpCapture(false))
+  clean(stopAnchorLoop)
+  clean(stopNtpLoop)
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
   if (loggedTierTimer) { clearInterval(loggedTierTimer); loggedTierTimer = null }
   if (spoolDrainTimer) { clearInterval(spoolDrainTimer); spoolDrainTimer = null }
-  onApiProjectClose()
-  alertRuntime.stop()
-  stopClipboardMonitor()
-  stopFileWatcher()
-  stopProcessMonitor()
-  stopConnectionMonitor()
-  stopPowershellTranscript()
-  stopAgentTailer()
-  stopCdpMonitor()
-  stopOpsecMonitor()
-  screenshotAgent.stop()
-  closeCastIndex()
-  closeHttpBodyIndex()
-  // Finish each old project binding while its DB is open. The shell and its
-  // display survive; the next project opens a distinct recording segment.
-  detachTerminalRecordings()
-  closeDB()
-  resetBodiesDirCache()
-  clearSpoolIdentity()
+  if (recomputeTimer) { clearTimeout(recomputeTimer); recomputeTimer = null }
+  recomputePending = null
+  clean(() => alertRuntime.stop())
+  clean(stopClipboardMonitor)
+  clean(stopFileWatcher)
+  clean(stopProcessMonitor)
+  clean(stopConnectionMonitor)
+  clean(stopPowershellTranscript)
+  clean(stopAgentTailer)
+  clean(stopCdpMonitor)
+  clean(stopOpsecMonitor)
+  clean(() => screenshotAgent.stop())
+  clean(closeCastIndex)
+  clean(closeHttpBodyIndex)
+  // Finish each binding while its DB is still open; the shell survives.
+  clean(detachTerminalRecordings)
+  clean(closeDB)
+  clean(resetBodiesDirCache)
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
-  resetCausesResolver()
-  configureIngest({ activeTarget: null })
+  clean(resetCausesResolver)
+  clean(() => configureIngest({ activeTarget: null }))
+  if (failed) throw firstError
 }
 
 // e2e only: keep Electron's own state under the temp HOME. `HOME` does not
@@ -1603,6 +1672,13 @@ app.whenReady().then(() => {
   // The scope file merged into the lists, as the app enforces it. Only the
   // path saved in this project's config is read: the renderer never supplies a
   // path, so this cannot be used to read an arbitrary file.
+  ipcMain.handle('scope:policy', () => {
+    if (!activeProject) return null
+    const config = loadConfig(getProjectPath(activeProject))
+    if (config.scope.scopeFile && !readScopeFile(config.scope.scopeFile).ok) throw new Error('Scope file unavailable')
+    const scope = snapshotScope(config)
+    return { targets: scope.targets, excludeTargets: scope.excludeTargets }
+  })
   ipcMain.handle('scope:fileInForce', () => {
     if (!activeProject) return null
     const file = loadConfig(getProjectPath(activeProject)).scope?.scopeFile
@@ -1643,7 +1719,7 @@ app.whenReady().then(() => {
   // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
   // --- Proxied browser ---
-  ipcMain.handle('httpCapture:status', () => managedHttpProxy.status())
+  ipcMain.handle('httpCapture:status', httpCaptureStatus)
   ipcMain.handle('httpCapture:start', () => {
     const status = startManagedHttpCapture()
     debugLog('httpCapture', 'start', `state=${(status as { state?: string }).state ?? '?'}`)

@@ -221,7 +221,11 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       const cmd = e.ctrlKey || e.metaKey
-      if (!cmd) return
+      if (!cmd || e.defaultPrevented || e.isComposing) return
+      // xterm's textarea owns terminal shortcuts; ordinary fields retain their
+      // editing/browser commands (including the terminal search input).
+      const target = e.target instanceof Element ? e.target : null
+      if (target?.closest('input, select, textarea, [contenteditable="true"]') && !target.closest('.xterm')) return
       if (e.key === 't' && !e.shiftKey && !e.altKey) { e.preventDefault(); addTab() }
       else if (e.key === 'w' && !e.shiftKey && !e.altKey) {
         e.preventDefault()

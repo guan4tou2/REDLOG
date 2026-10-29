@@ -10,8 +10,8 @@ import type { ContentDescriptor } from '../src/core/content-contract'
 let dir: string
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-content-')); initDB(dir); })
 afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }); })
-function event(id: string, data: Record<string, unknown>, tier = 'events'): void {
-  getDB().prepare(`INSERT INTO ${tier} (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at${tier === 'events' ? ',hash' : ''}) VALUES (?,1,'project','capture','operator','shell','command_end','host',?,1${tier === 'events' ? ",'hash'" : ''})`).run(id, JSON.stringify(data))
+function event(id: string, data: Record<string, unknown>, tier = 'events', agentType = 'shell', subtype = 'command_end'): void {
+  getDB().prepare(`INSERT INTO ${tier} (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at${tier === 'events' ? ',hash' : ''}) VALUES (?,1,'project','capture','operator',?,?,'host',?,1${tier === 'events' ? ",'hash'" : ''})`).run(id, agentType, subtype, JSON.stringify(data))
 }
 function body(bytes: Buffer, encoding: 'text' | 'base64' = 'text') {
   const sha256 = createHash('sha256').update(bytes).digest('hex'), file = sha256 + '.body'
@@ -69,12 +69,14 @@ describe('saved content windows', () => {
     expect(out).not.toContain('�')
     expect(readEventContent({ ref: descriptor('utf8', 'stderr').ref!, cursor: { version: d.ref!.version, offset: 7 } })).toMatchObject({ ok: false, status: 'changed' })
   })
-  it('finds indexed text at the tail beyond one reader scan budget without treating a scan budget as zero results', () => {
+  it.each(['stdout', 'output_body', 'response_body'] as const)('finds the full saved %s tail beyond one scan budget, independently of capture completeness', (field) => {
     const text = 'x'.repeat(17 * 1024 * 1024 - 4) + ' needle尾端', ref = body(Buffer.from(text))
-    event('large', { stdout_ref: ref })
+    event('large', { [`${field}_ref`]: ref }, 'events', field === 'stdout' ? 'shell' : field === 'output_body' ? 'agent' : 'scanner', field === 'stdout' ? 'command_end' : field === 'output_body' ? 'tool_result' : 'http_response')
     expect(searchHttpBodyEventIds('needle尾端')).toEqual(['large'])
     expect(bodySearchCoverage()).toMatchObject({limited:0,indexed:1})
-    const d = descriptor('large', 'stdout')
+    const d = descriptor('large', field)
+    expect(d.capture).toBe('unknown')
+    expect(readEventContent({ ref: d.ref!, limit: 65536 })).toMatchObject({ ok: true, value: { hasMore: true } })
     let cursor
     let pages = 0
     let hit: null | {

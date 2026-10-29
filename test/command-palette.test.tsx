@@ -15,8 +15,14 @@ vi.mock('../src/renderer/src/components/Toast', async (importOriginal) => ({
   toastUndo: vi.fn()
 }))
 
+vi.mock('../src/renderer/src/lib/leaveProject', () => ({ confirmLeaveProject: vi.fn(async () => true) }))
+
 const bridge = {
-  project: { list: vi.fn(async () => []), open: vi.fn(async () => null) },
+  project: {
+    list: vi.fn(async (): Promise<Array<{ id: string; name: string; lastOpened: number }>> => []),
+    active: vi.fn(async (): Promise<{ id: string; name: string } | null> => null),
+    open: vi.fn(async () => null)
+  },
   events: {
     runQuery: vi.fn(async () => ({ items: [], hasMore: false, nextCursor: null })),
     distinctHosts: vi.fn(async () => [])
@@ -33,6 +39,9 @@ const bridge = {
 beforeEach(() => {
   ;(window as unknown as { redlog: typeof bridge }).redlog = bridge
   vi.clearAllMocks()
+  bridge.project.list.mockResolvedValue([])
+  bridge.project.active.mockResolvedValue(null)
+  bridge.project.open.mockResolvedValue(null)
 })
 afterEach(() => {
   cleanup()
@@ -68,6 +77,18 @@ const type = (value: string): void => {
 }
 
 describe('command palette', () => {
+  it.each([true, false])('updates the workspace only if a failed switch closed the old project (closed=%s)', async (closed) => {
+    const current = { id: 'a', name: 'project-a' }
+    bridge.project.active.mockResolvedValueOnce(current).mockResolvedValueOnce(closed ? null : current)
+    bridge.project.list.mockResolvedValue([{ id: 'b', name: 'project-b', lastOpened: 1 }])
+    bridge.project.open.mockRejectedValueOnce(new Error('database unavailable'))
+    const onProjectClosed = vi.fn()
+    open({ onProjectClosed })
+    fireEvent.click(await screen.findByText('project-b'))
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ type: 'error', detail: 'database unavailable' })))
+    expect(onProjectClosed).toHaveBeenCalledTimes(closed ? 1 : 0)
+  })
+
   it('lists every view with its number, so the shortcut is learnable from here', async () => {
     open()
     const options = await screen.findAllByRole('option')

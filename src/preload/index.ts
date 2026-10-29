@@ -211,6 +211,7 @@ const api: RedLogAPI = {
     // renderer. The main-process handler is dropped in the same commit.
   },
   scope: {
+    policy: () => ipcRenderer.invoke('scope:policy'),
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
     isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
