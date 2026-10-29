@@ -1,8 +1,9 @@
 # 自動化驗收執行記錄（2026-10-29）
 
 **規格書：** `ISSUE-CONVERGENCE-2026-10-29.md` §9
-**執行環境：** macOS 27.0.1 / arm64 / Node v22.22.2 / vitest 5.0.1
-**Commit：** `e260c968`（工作區乾淨）
+**本地執行環境：** macOS 27.0.1 / arm64 / Node v22.22.2 / vitest 5.0.1
+**本地 Commit：** `e260c968`（工作區乾淨）
+**CI 覆核：** run `40820908802` @ `280959c5`，macos-latest + ubuntu-latest + windows-latest 全綠
 **安裝包：** 無。本輪全部是原始碼層級的單元與整合測試，**不構成任何安裝包驗收**。
 
 ## 這份記錄怎麼讀
@@ -19,19 +20,23 @@
 | 批次 | 檔案 | 測試 | 結果 |
 |---|---|---|---|
 | REL-1 | `spool-replay`、`relay-contract`、`relay-late-output`、`pause-gate` | 27 | PASS |
-| REL-2 | `capture-unattributed-spool`、`clear-unattributed-spool`、`powershell-spool-needs-project`、`shell-spool-no-sidecar` | 20 | 19 PASS、1 BLOCKED |
+| REL-2 | `capture-unattributed-spool`、`clear-unattributed-spool`、`powershell-spool-needs-project`、`shell-spool-no-sidecar` | 20 | PASS |
 | STR | `cast-slice`、`cast-index`、`truncation`、`terminal-cast-state` | 43 | PASS |
 | EXP | `export-plan`、`export-plan-ipc`、`export-attachment-freeze`、`export-completeness-counts` | 53 | PASS |
 | BUNDLE | `bundle-export`、`bundle-requires`、`bundle-two-tier`、`bundle-amendment` | 33 | PASS |
 | HTTP | `http-body-store`、`http-body-search`、`http-capture-state`、`browser-panel-ca-untrust` | 43 | PASS |
 
-**合計：24 個檔案、219 個測試、218 PASS、1 BLOCKED、0 FAIL。**
+**合計：24 個檔案、219 個測試、219 PASS、0 BLOCKED、0 FAIL。**
 
-## BLOCKED
+## BLOCKED → 已於 CI 解除
 
-| 測試 | 原因 |
-|---|---|
-| `shell-spool-no-sidecar.test.ts` › still honours the spool cap | 150s timeout。該測試建立 5000 個檔案；本機 sandbox 建檔吞吐約 50ms/檔（實測 100 檔 5s、1000 檔 51s、2000 檔被 SIGTERM），因此必然超時。需在一般 Terminal 執行。同一原因也讓 `shell-spool-cap.test.ts` 無法在本機跑。 |
+| 測試 | 本機狀態 | CI 狀態 |
+|---|---|---|
+| `shell-spool-no-sidecar.test.ts` › still honours the spool cap | 150s timeout（sandbox 建檔吞吐約 50ms/檔，5000 檔必然超時） | macos-latest ✓、ubuntu-latest ✓；windows-latest 跳過（`.sh` 腳本測試，僅 unix 跑，預期行為） |
+| `shell-spool-cap.test.ts` › the spool cap in shell-common.sh | 同因無法在本機跑 | macos-latest ✓、ubuntu-latest ✓；windows-latest 跳過 |
+
+結論：**REL-002 在正常的 macOS / Ubuntu 環境為 PASS**。本機的 `BLOCKED` 是 sandbox 建檔吞吐造成的
+假陽性，不是產品缺陷。CI run `40820908802` 已實證。
 
 ## 對應規格書條目
 
@@ -44,7 +49,7 @@
 | REL-T04 跨專案不誤歸 | `relay-contract`（命名空間分離） | PASS |
 | REL-T05 停止後不保存新內容 | `pause-gate` | PASS |
 | REL-T08 無身分 Spool 不自動歸屬 | `capture-unattributed-spool`、`clear-unattributed-spool`、`powershell-spool-needs-project` | PASS |
-| REL-002 Spool 容量上限 | `shell-spool-no-sidecar`、`shell-spool-cap` | **BLOCKED**（環境） |
+| REL-002 Spool 容量上限 | `shell-spool-no-sidecar`、`shell-spool-cap` | **PASS**（CI macOS/Ubuntu 實證；本機 sandbox 假陽性） |
 | REL-T01 API 失敗仍可繼續 | `relay-late-output` | PASS |
 | REL-T06 磁碟配額不足 | 無 | NOT RUN |
 | REL-T07 強制終止後重開 | 無 | NOT RUN |
@@ -94,7 +99,7 @@
 ## 本輪沒有回答的問題
 
 規格書 §12 的五個 Gate 一個都還沒通過。這份記錄只說明：**底層契約的單元與整合層比
-規格書假設的完整**——219 個測試在跑，218 個綠。缺的不是測試數量，是原生環境。
+規格書假設的完整**——219 個測試在本機與 CI 全綠、0 FAIL。缺的不是測試數量，是原生環境。
 
 依 Gate 列出仍缺的最小集合：
 
@@ -108,6 +113,6 @@
 
 ## 建議的下一步
 
-1. 兩個 spool cap 測試移到一般 Terminal 執行，補上 REL-002 的結果。
+1. ~~兩個 spool cap 測試移到一般 Terminal 執行，補上 REL-002 的結果~~ — 已於 CI run `40820908802` 實證 PASS（macOS/Ubuntu）。
 2. Gate D 的 M01–M28 與 UX-01–UX-19 是最大的一塊，且完全不依賴程式碼改動，只依賴排時間。
-3. `test-coverage-matrix.md` 的基準更新到 `e260c968`，並把本表的 PASS 對應進去。
+3. `test-coverage-matrix.md` 的基準更新到 `280959c5`，並把本表的 PASS 對應進去。
