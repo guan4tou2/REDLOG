@@ -35,13 +35,18 @@
 - FirstRun 父子整合測試：HTTPS capture 與 CA trust 分開；未證明 CA 信任時核心擷取就緒仍只代表 capture，重試撤銷 readiness。
 - 安裝包／Windows／WSL／Git Bash、真實磁碟滿及程序中斷矩陣仍 NOT RUN；本次不將 CT-15／16 或 UX-01–19 整體改為 PASS。
 
-完整執行證據與限制見 [核對與修復紀錄](../../docs/REVIEW-FOLLOWUP-2026-10-29.md)。
+完整執行證據與限制見 [核對與修復紀錄](../../docs/records/2026-10-29/REVIEW-FOLLOWUP-2026-10-29.md)。
 
 
 ## 2026-10-29 UIUX v3.2 工作區候選
 
-詳細逐項結果、格式／載體政策矩陣、30 次 warm 效能 p50／p95 與最終執行結果見 [UIUX 完成紀錄](../../docs/UIUX-COMPLETION-2026-10-29.md)。本候選以 `2dd45465` 加未提交修改建立，不沿用歷史 DMG 的 SHA-256 或原生驗收狀態。
+詳細逐項結果、格式／載體政策矩陣、30 次 warm 效能 p50／p95 與最終執行結果見 [UIUX 完成紀錄](../../docs/records/2026-10-29/UIUX-COMPLETION-2026-10-29.md)。本候選以 `2dd45465` 加未提交修改建立，不沿用歷史 DMG 的 SHA-256 或原生驗收狀態。
 
 新增涵蓋 HTTP 驗證歷史與失效、HTTPS 真實 capture、跨專案隔離；scope 讀取失敗狀態與規則候選顯式確認；三類 17 MiB 內容與共用 Reader；三格式實際 PII 成品、原始附件警告及終端焦點／zoom。既有 pause／rotation／export／causal graph／rollback 依變更重測。
 
 Windows／WSL／Git Bash／Linux、五位使用者任務、原生權限與真實 ENOSPC／程序中斷統一由 [#457](https://github.com/guan4tou2/REDLOG/issues/457) 追蹤；未執行格維持 NOT RUN／BLOCKED，Spec 064 不改為 Verified。
+
+
+## 可檢查的 CT 映射
+
+[coverage-manifest.json](coverage-manifest.json) 連結全部 CT-01–16 與既有測試、平台限制及原驗收證據。`npm run verify:specs` 會檢查 ID 完整性、檔案存在與 `contract-acceptance.md` 狀態一致。此檢查不是執行測試、不判定原生 PASS，也不從這張能力盤點反推完整 CT 通過。

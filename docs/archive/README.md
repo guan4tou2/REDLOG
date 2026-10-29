@@ -1,5 +1,7 @@
 # Archive
 
+目前執行順序見 [工作計畫](../WORK-PLAN.md)，正式 feature 狀態見 [Spec 索引](../../specs/README.md)。當次實測與尚有驗收用途的日期紀錄放 [records/](../records/README.md)，不因搬檔視為撤回需求。
+
 Design documents that were written but whose subject was **never built**, or
 was built in a different shape than described. They are kept because the
 reasoning is worth reading in the form it was argued; they are moved here so

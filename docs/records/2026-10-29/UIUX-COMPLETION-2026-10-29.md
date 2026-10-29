@@ -76,3 +76,8 @@ Apple M2 Pro、10 threads、16 GiB、macOS（Darwin 27）、Node v26.13.0。使�
 - 同目錄 `source-manifest.json` 記錄基準 commit、本次變更檔案 hash 與產物 hash；`.workbuddy-ai/` 不屬本次變更，未納入。
 
 上述驗證完成後，依使用者授權將修復與文件提交並推送。DMG 仍是驗證時的 `2dd45465+local` 候選，不冒稱為後續提交重新建置的產物；未發布 release。跨平台與真人項目仍由 #457 追蹤。
+
+
+## 後續提交識別
+
+上述工作區修復已提交並推送為 `ae0544b5`。CI 結果見 [目前狀態](../../CURRENT-STATUS.md)；此識別補註不改變上列 `2dd45465+local` DMG 的來源或驗收範圍。

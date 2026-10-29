@@ -1,6 +1,6 @@
 # RedLog UIUX 改善提案（2026-10-29，v3.2）
 
-**狀態：本機實作與驗證已收斂，跨平台及真人驗收待完成。** 逐項結果、格式／載體矩陣與必要性裁定見 [完成紀錄](UIUX-COMPLETION-2026-10-29.md)；原生與使用者量測由 [#457](https://github.com/guan4tou2/REDLOG/issues/457) 追蹤。以下保留提案要求與歷史基準，不代表所有驗收均已通過。規則沿用 [`DESIGN-OPEN-ITEMS.md`](DESIGN-OPEN-ITEMS.md)。
+**狀態：本機實作與驗證已收斂，跨平台及真人驗收待完成。** 逐項結果、格式／載體矩陣與必要性裁定見 [完成紀錄](UIUX-COMPLETION-2026-10-29.md)；原生與使用者量測由 [#457](https://github.com/guan4tou2/REDLOG/issues/457) 追蹤。以下保留提案要求與歷史基準，不代表所有驗收均已通過。規則沿用 [`DESIGN-OPEN-ITEMS.md`](../../DESIGN-OPEN-ITEMS.md)。
 
 - 基準：`main` @ `55567a58`（v0.18.4）
 - 版本沿革：v1（首版，含誤判）→ v2（修正四處沿用 2026-09-09 舊稽核的誤判，見附錄 A）→
@@ -32,7 +32,7 @@
    Workspace 導覽與 Reader 重設計。
 2. 順序：**契約可靠 → 呈現準確 → 元件架構**。不把「小、可平行」當優先條件——
    看起來小的修改可能直接影響保存、隱私與驗證契約（P1-1、B2a、C4b 皆屬此類）。
-3. 每項過 [`UIUX-CONTROLS-AND-COPY.md`](UIUX-CONTROLS-AND-COPY.md) §2 必要性測試。
+3. 每項過 [`UIUX-CONTROLS-AND-COPY.md`](../../UIUX-CONTROLS-AND-COPY.md) §2 必要性測試。
 4. 規格與驗收分開看權威：**「應該做什麼」**由已核准的 domain contracts／Spec 062/064
    與 `UIUX-STANDARD.md` 仍有效的規則決定；**「實際做到什麼」**由指定 commit 的程式碼
    與對應版本／平台的驗收證據決定——兩套不可互換、不排成一條序列（見 P1-6）。Spec 064

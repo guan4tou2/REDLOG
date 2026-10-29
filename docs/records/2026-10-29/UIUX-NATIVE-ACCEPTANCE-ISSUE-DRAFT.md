@@ -1,17 +1,17 @@
 # 驗收追蹤：UIUX v3.2 跨平台與使用者量測門檻
 
-已經使用者確認後公開發布：[guan4tou2/REDLOG #457](https://github.com/guan4tou2/REDLOG/issues/457)。以下保留發布內容。
+已經使用者確認後公開發布：[guan4tou2/REDLOG #457](https://github.com/guan4tou2/REDLOG/issues/457)。以下保留發布內容；文件搬移後的 repo 路徑已更新，GitHub issue 內文未在本次整理中改寫。
 此草稿只引用已公開提案及既有 issue 的驗收要求；不包含本機路徑、工作區變更內容、憑證或私人環境資料。
 
 ---
 
 ## 範圍
 
-追蹤 `docs/UIUX-PROPOSAL-2026-10-29.md`、Spec 064 acceptance／contract-acceptance 尚待取得的跨平台與使用者實證。這是驗收協調單，不重報既有缺陷，也不把 CI 或單平台 E2E 當成全部完成。
+追蹤 `docs/records/2026-10-29/UIUX-PROPOSAL-2026-10-29.md`、Spec 064 acceptance／contract-acceptance 尚待取得的跨平台與使用者實證。這是驗收協調單，不重報既有缺陷，也不把 CI 或單平台 E2E 當成全部完成。
 
 ## 待執行
 
-- [ ] Windows＋WSL：依 `docs/ACCEPTANCE-326-345-2026-10-29.md` 執行 D1–D4。重點為 health 200／whoami 401 舊 token，以及 503 無法判定 token 的限制。缺陷沿 #326。
+- [ ] Windows＋WSL：依 `docs/records/2026-10-29/ACCEPTANCE-326-345-2026-10-29.md` 執行 D1–D4。重點為 health 200／whoami 401 舊 token，以及 503 無法判定 token 的限制。缺陷沿 #326。
 - [ ] Windows Git Bash：G1–G3，含 `MSYS_NO_PATHCONV=1`、預設環境及 App 重啟；記錄直送延遲、pending 變化與 Event 歸屬。缺陷沿 #345。
 - [ ] Windows PowerShell 5.1／7：候選 installer、實際 edition／profile、stdout／stderr／exit、重開讀回。沿 #434／#226。
 - [ ] Kali／Linux：候選 installer、外部 Bash／Zsh、HTTP(S)、保存失敗／重啟、搜尋、匯出與獨立 verifier。CT-15／16 邊界沿 #291。

@@ -1,5 +1,8 @@
 # REDLOG v0.18.4 — 未結 Issues 處理規格書
 
+> 歷史提案：以下的 18 issues／commit／建議順序是 2026-10-29 當時快照。2026-10-30 已由 [工作計畫](../../WORK-PLAN.md) 接續執行排序，feature 狀態見 [Spec 索引](../../../specs/README.md)。文中的 SPEC-* 是提案章節標籤，不新增平行的 canonical contract；各領域與 feature 原契約仍優先。
+
+
 **審查基準：** `main@55567a58` / `v0.18.4`
 **規格版本：** Draft 1.0
 **審查日期：** 2026-10-29
