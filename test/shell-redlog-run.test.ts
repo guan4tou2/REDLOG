@@ -87,7 +87,9 @@ exit $?
     // when the full suite starts many workers concurrently.
     expect(finishedAt - firstSeenAt!).toBeGreaterThan(200)
 
-    const payloads = fs.readFileSync(payloadFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    // A body may end in a newline: the hook hands curl a here-string, which
+    // costs no fork under Git Bash, and JSON allows the trailing whitespace.
+    const payloads = fs.readFileSync(payloadFile, 'utf8').split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line))
     const end = payloads.find((payload) => payload.data?.subtype === 'command_end')
     expect(end?.data).toMatchObject({
       exit_code: 7,
