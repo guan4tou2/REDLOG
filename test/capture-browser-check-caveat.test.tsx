@@ -56,6 +56,7 @@ describe('an HTTPS check, now that the capture browser trusts the CA by itself',
     deliver(httpsFrom(CHROME))
     expect(screen.getByTestId('first-run-http-check-https').dataset.verified).toBe('true')
     expect(screen.getByTestId('first-run-http-check-https-caveat')).toBeTruthy()
+    expect(screen.getByTestId('first-run-http-status').dataset.caTrust).toBe('unproven')
   })
 
   it('from the operator\'s own browser carries no such caveat', async () => {
@@ -66,5 +67,6 @@ describe('an HTTPS check, now that the capture browser trusts the CA by itself',
     deliver(httpsFrom(CHROME))
     expect(screen.getByTestId('first-run-http-check-https').dataset.verified).toBe('true')
     expect(screen.queryByTestId('first-run-http-check-https-caveat')).toBeNull()
+    expect(screen.getByTestId('first-run-http-status').dataset.caTrust).toBe('proven')
   })
 })

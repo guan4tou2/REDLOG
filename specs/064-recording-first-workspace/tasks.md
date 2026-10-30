@@ -132,6 +132,10 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 
 - [x] T049 Windows 解除安裝前以 `RedLog.exe --remove-hooks` 移除 PowerShell profile 與各 WSL 發行版 rc 中本 build 的接入行（hook 副本已被手動刪除也照樣移除；保留使用者自己的內容；升級時不執行）；系統匣選單隨 App 語言，結束確認改為一般按鈕；內測說明補升級、結束、無視窗與移除。先寫 RED 測試，並以實際安裝包在本機跑安裝 → 原地升級 → 解除安裝。
 
+## 2026-10-30 — the capture browser trusts the managed CA by itself
+
+- [x] T050 RedLog 擷取瀏覽器經 managed proxy 時，以 `--ignore-certificate-errors-spki-list` 只信任這張 CA 的公鑰（僅 RedLog 自己的 profile；其他憑證照常檢查；不動系統信任清單），HTTPS 不必再先 `certutil -addstore`。在擷取瀏覽器開的檢查因此不再證明系統信任 CA：提醒與「已擷取 · CA 未驗證」標籤改以「本次在擷取瀏覽器開啟」判定。先寫 RED 測試，並以 source build 實開 `https://example.com/`。
+
 ## 2026-10-30 排程與文件整理
 
 依 [工作計畫](../../docs/WORK-PLAN.md) 對帳後接續原 S1→S2→S3→S4；本次不代勾完整 gate。
