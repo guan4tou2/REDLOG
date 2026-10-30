@@ -1867,5 +1867,8 @@
   "timeline.replay.markerAt": "標記 {{time}}",
   "export.attachments.rawBoundary": "原始附件不做內容層級的範圍裁切或操作者資訊清洗；cast 只複製核准的固定前綴。",
   "http.streamCaptureUnknown": "串流使用分段紀錄；完整性未確認。",
-  "http.streamCapturePartial": "串流中斷，或有區段未排入保存。"
+  "http.streamCapturePartial": "串流中斷，或有區段未排入保存。",
+  "http.streamEndObserved": "串流已結束；{{saved}} 個區段全部保存。",
+  "http.streamMissingSegments": "{{observed}} 個串流區段中有 {{missing}} 個未保存。",
+  "http.streamNoEnd": "沒有紀錄到串流結束：可能仍在進行，或擷取先停止了。"
 }

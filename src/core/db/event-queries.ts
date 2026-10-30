@@ -12,6 +12,7 @@ import {
   type QueryPage, type CursorKey
 } from '../query-page'
 import type { ExportSnapshot } from '../export-plan'
+import type { StreamSegments } from '../stream-completion'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
 import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
@@ -988,6 +989,30 @@ export function queryByFlowId(flowId: string): RedLogEvent[] {
      ORDER BY timestamp ASC LIMIT 10`
   ).all(flowId) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
+}
+
+/** What one streamed flow kept: distinct chunks and messages, so a retried
+ *  row is not counted twice, and its newest close. Both IN lists are the
+ *  partial indexes' own (see db/index.ts). */
+export function queryStreamSegments(flowId: string): StreamSegments {
+  const db = getReadonlyDB()
+  const STREAM = `agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error')
+    AND json_extract(data, '$.flow_id') = ?`
+  const HTTP = `agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')
+    AND json_extract(data, '$.flow_id') = ?`
+  const counts = db.prepare(`SELECT
+      COUNT(DISTINCT CASE WHEN subtype = 'http_response_chunk' THEN json_extract(data, '$.seq') END) AS chunks,
+      COUNT(DISTINCT CASE WHEN subtype = 'ws_message' THEN COALESCE(json_extract(data, '$.message_count'), id) END) AS messages
+    FROM events_logged WHERE ${STREAM}`).get(flowId) as { chunks: number; messages: number }
+  const newest = (where: string, closing: string) => db.prepare(`SELECT data, timestamp FROM events_logged
+    WHERE ${where} AND subtype IN (${closing}) AND json_extract(data, '$.streamed') = 1
+    ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get(flowId) as { data: string; timestamp: number } | undefined
+  const closes = [newest(STREAM, `'websocket_end', 'http_error'`), newest(HTTP, `'http_response'`)]
+    .filter((row): row is { data: string; timestamp: number } => !!row)
+    .sort((a, b) => b.timestamp - a.timestamp)
+  let terminal: Record<string, unknown> | null = null
+  if (closes[0]) { try { terminal = JSON.parse(closes[0].data) as Record<string, unknown> } catch { terminal = null } }
+  return { terminal, savedChunks: counts.chunks, savedMessages: counts.messages }
 }
 
 /** The output a command printed after its prompt came back, in the order it was

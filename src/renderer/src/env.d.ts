@@ -269,6 +269,8 @@ interface RedLogAPI {
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
+    /** What a streamed flow's saved rows prove about its end; null for an ordinary flow (#291). */
+    streamCompletion: (flowId: string) => Promise<import('../../core/stream-completion').StreamCompletion | null>
     commandOutput: (commandId: string) => Promise<import('../../core/db/events').CommandOutputPage>
     commandEnds: (commandIds: string[]) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
