@@ -132,6 +132,10 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
     // B is recording from both producers, so an absence below means something.
     await expect.poll(async () => [(await urls('b-managed')).length > 0, (await urls('b-external')).length > 0], { timeout: 20_000 }).toEqual([true, true])
     await page.waitForTimeout(3_000)
+    // Refusals for A after the first are counted a window at a time; once the
+    // window has run, the producer's next send writes them.
+    expect(await viaProxy(externalUrl, `http://127.0.0.1:${upPort}/fast?owner=b-flush`)).toBe(200)
+    await page.waitForTimeout(1_000)
 
     const bEvents = await scanner()
     expect(bEvents.filter(e => /owner=a-/.test(String(e.data.url ?? '')) || JSON.stringify(e.data).includes(MARKER))).toEqual([])
@@ -144,13 +148,29 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
     const spoolForB = spool.filter(file => { try { return JSON.parse(readFileSync(file, 'utf8'))._identity?.engagementId === b.id } catch { return false } })
     expect(spoolForB).toEqual([])
 
+    // What A could not be given is said in A: a gap with a count and a window,
+    // and nothing of what was refused.
+    const switchGaps = (rows: Awaited<ReturnType<typeof scanner>>) =>
+      rows.filter(e => e.data.subtype === 'capture_gap' && e.data.reason === 'project-switched')
+    expect(switchGaps(bEvents)).toEqual([])
+    const spoolForA = spool.filter(file => { try { return JSON.parse(readFileSync(file, 'utf8'))._identity?.engagementId === a.id } catch { return false } })
+    expect(spoolForA.length).toBeGreaterThan(0)
+
     await page.evaluate(id => window.redlog.project.open(id), a.id)
+    await expect.poll(async () => switchGaps(await scanner()).length, { timeout: 30_000 }).toBeGreaterThan(0)
+    const aGaps = switchGaps(await scanner())
+    expect(aGaps.every(g => g.engagementId === a.id && Number(g.data.skipped_units) > 0
+      && Number(g.data.gap_started_at) <= Number(g.data.gap_ended_at))).toBe(true)
+    expect(JSON.stringify(aGaps)).not.toContain(MARKER)
+    expect(JSON.stringify(aGaps)).not.toMatch(/owner=a-|127\.0\.0\.1/)
+    const aGapUnits = aGaps.reduce((n, g) => n + Number(g.data.skipped_units), 0)
     console.log(`[459] mitmdump ${mitmVersion()} on ${process.platform}.`
       + ` App's producer ${managedAliveAfterSwitch ? 'still alive' : 'gone'} after the switch; its late answer reached the client as ${managedOutcome}.`
       + ` External producer alive across the switch; its late answer reached the client as ${externalOutcome}.`
       + ` B holds 0 of A's events; 0 of ${bFiles.length} B files and 0 of ${spool.length} spool files carry A's bytes.`
       + ` A holds managed ${JSON.stringify(await urls('a-managed'))}, external ${JSON.stringify(await urls('a-external'))},`
-      + ` swept after the switch ${JSON.stringify(await urls('a-ttl'))}, swept before it ${JSON.stringify(await urls('a-same'))}.`)
+      + ` swept after the switch ${JSON.stringify(await urls('a-ttl'))}, swept before it ${JSON.stringify(await urls('a-same'))};`
+      + ` A holds ${aGaps.length} project-switched gap(s) for ${aGapUnits} refused event(s), B holds none.`)
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
     console.log(`[DBG] external producer output tail: ${externalOutput.slice(-1500)}`)

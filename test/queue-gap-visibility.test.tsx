@@ -45,6 +45,18 @@ describe('a gap the addon could not write', () => {
     expect(proxy.status().unsavedGapEvents).toBe(5)
   })
 
+  // The app puts an unsaved gap in the project open now. A project-switched
+  // gap belongs to the project that was closed, so its line is not counted.
+  it('does not count an unsaved project-switched gap against the open project', async () => {
+    const child = new FakeChild()
+    const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists: () => true, fingerprint: () => null,
+      readinessTimeoutMs: 100, probe: async () => true })
+    await proxy.start({ addonPath: '/addon.py', port: 6661 })
+    child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] project-switch gap not saved: 2 event(s) for a closed project are not recorded anywhere\n'))
+    expect(proxy.status().unsavedGapEvents).toBeUndefined()
+    proxy.stop()
+  })
+
   it('is on the Capture Health card while it is there', () => {
     localStorage.setItem('redlog-locale', 'en')
     ;(window as unknown as { redlog: unknown }).redlog = { config: { get: async () => ({}), save: async () => true } }
@@ -72,6 +84,12 @@ describe('a capture gap on the Timeline', () => {
   it('names an unconfirmed delivery as one, without a count it does not have', () => {
     const title = eventTitle(ev('scanner', { subtype: 'capture_gap', source: 'mitmproxy', reason: 'delivery-unconfirmed' }))
     expect(title).not.toMatch(/\[capture_gap\]|undefined/)
+  })
+
+  it('says how many events arrived after their project was closed', () => {
+    const title = eventTitle(ev('scanner', { subtype: 'capture_gap', source: 'mitmproxy', reason: 'project-switched', skipped_units: 3 }))
+    expect(title).toMatch(/3/)
+    expect(title).not.toMatch(/\[capture_gap\]/)
   })
 
   it('names refusals that could not be recorded even as a gap', () => {
