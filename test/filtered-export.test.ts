@@ -10,6 +10,8 @@ import { parseQuery } from '../src/core/query/contract'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import { addExportEvent as insertFixture } from './helpers/export-fixtures'
+import { storeBody } from '../src/core/http-body-store'
+import crypto from 'node:crypto'
 function addExportEvent(table: 'events' | 'events_logged', id: string, ts: number, targetId: string, data: Record<string, unknown> = {}): void {
  insertFixture(table, id, ts, { targetId, agentType: String(data.subtype ?? '').startsWith('http_') ? 'scanner' : 'shell', subtype: String(data.subtype ?? 'command_end'), data })
 }
@@ -251,4 +253,24 @@ it('previews stream-only flows and applies do-not-export and scope masking to th
  expect(flows['in-flow'].streamChunks[0].body.text).toBe('aW4x')
  expect(JSON.stringify(flows['out-flow'])).not.toContain('T1VU')
  expect(log.entries).toHaveLength(1)
+})
+// #461: a segment whose bytes live in a sidecar is delivered as the bytes the
+// event recorded — checked by their hash — and a sidecar changed on disk after
+// the preview fails the export rather than shipping other bytes under the
+// original event's name.
+it('delivers sidecar stream segments by their recorded hash, and refuses changed bytes', () => {
+ const bytes=crypto.randomBytes(6000)
+ const ref=storeBody({data:bytes.toString('base64'),encoding:'base64',size:bytes.length,sha256:''})!
+ insertFixture('events_logged','big-1',1000,{targetId:'example.com',agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:'big',seq:1,offset:0,url:'https://example.com/stream',response_body_ref:ref}})
+ const intact=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const delivered=JSON.parse(fs.readFileSync(execute(intact.plan.id).artifactPath,'utf8')).log._redlog.partialFlows[0].streamChunks[0]
+ expect(delivered.eventId).toBe('big-1')
+ expect(crypto.createHash('sha256').update(Buffer.from(delivered.body.text,'base64')).digest('hex')).toBe(ref.sha256)
+ const changed=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const sidecar=path.join(dir,'http-bodies',ref.file)
+ fs.chmodSync(sidecar,0o644); fs.writeFileSync(sidecar,Buffer.alloc(bytes.length))
+ const result=execute(changed.plan.id)
+ expect(result.ok).toBe(false)
+ expect(result.error).toBe('source-unavailable')
 })

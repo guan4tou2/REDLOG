@@ -86,7 +86,7 @@ export function storeBody(body: {
   return { sha256, size: rawBytes.length, file: filename, encoding: body.encoding }
 }
 
-export function readBody(ref: BodyRef): string | null {
+function readRaw(ref: BodyRef): Buffer | null {
   try {
     const dir = bodiesDir()
     const filePath = path.join(dir, ref.file)
@@ -95,14 +95,29 @@ export function readBody(ref: BodyRef): string | null {
     // via httpBody:read.
     if (!isInsideDir(dir, filePath)) return null
     if (!fs.existsSync(filePath)) return null
-    const raw = fs.readFileSync(filePath)
-    if (ref.encoding === 'base64') {
-      return raw.toString('base64')
-    }
-    return raw.toString('utf-8')
+    return fs.readFileSync(filePath)
   } catch {
     return null
   }
+}
+
+function encodeRaw(raw: Buffer, ref: BodyRef): string {
+  return ref.encoding === 'base64' ? raw.toString('base64') : raw.toString('utf-8')
+}
+
+export function readBody(ref: BodyRef): string | null {
+  const raw = readRaw(ref)
+  return raw ? encodeRaw(raw, ref) : null
+}
+
+/** As `readBody`, for a delivery: null when the file is gone, and a throw when
+ *  it no longer holds the bytes its ref was written for. An export must not
+ *  ship other bytes under the original event's name (#461). */
+export function readBodyForDelivery(ref: BodyRef): string | null {
+  const raw = readRaw(ref)
+  if (!raw) return null
+  if (crypto.createHash('sha256').update(raw).digest('hex') !== ref.sha256) throw new Error('source-unavailable')
+  return encodeRaw(raw, ref)
 }
 
 export function shouldExternalize(body: { data: string } | undefined): boolean {
