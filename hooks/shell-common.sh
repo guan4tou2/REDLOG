@@ -47,8 +47,12 @@ _redlog_resolve_dir() {
     esac
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-    local win_profile
-    win_profile=$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+    # appendWindowsPath=false in /etc/wsl.conf leaves cmd.exe off PATH, and
+    # then nothing resolved here and every event was dropped. wslpath maps the
+    # drive through whatever automount root is configured.
+    local win_profile win_cmd
+    win_cmd=$(command -v cmd.exe) || win_cmd=$(wslpath -u 'C:\Windows\System32\cmd.exe' 2>/dev/null)
+    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
     if [[ -n "$win_profile" ]]; then
       local wsl_path
       wsl_path=$(wslpath "$win_profile" 2>/dev/null)
