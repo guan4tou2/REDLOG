@@ -311,6 +311,43 @@ describe('managed HTTP proxy', () => {
     expect(child.killed).toBe(true)
   })
 
+  // A project switch stops A's proxy and auto-starts B's within milliseconds.
+  // mitmdump holds the port until it has exited, so the start's port preflight
+  // found it held — by our own outgoing process — and B recorded no HTTP.
+  it('is released only once the stopped child has exited', async () => {
+    class LingeringChild extends FakeChild {
+      kill(): boolean { this.killed = true; return true }
+    }
+    const child = new LingeringChild()
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100 })
+    await expect(proxy.released(50)).resolves.toBeUndefined()
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    proxy.stop()
+    let released = false
+    const waiting = proxy.released(10_000).then(() => { released = true })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(released).toBe(false)
+    child.exitCode = 0
+    child.emit('exit', null, 'SIGTERM')
+    await waiting
+    expect(released).toBe(true)
+  })
+
+  it('stops waiting for a child that never exits', async () => {
+    class StuckChild extends FakeChild {
+      kill(): boolean { this.killed = true; return true }
+    }
+    const child = new StuckChild()
+    const proxy = createProxy({ spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100 })
+    const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+    child.stderr.emit('data', Buffer.from('proxy server listening'))
+    await started
+    proxy.stop()
+    await expect(proxy.released(30)).resolves.toBeUndefined()
+  })
+
   it('does not turn a cancelled startup into a failed state', async () => {
     const child = new FakeChild()
     const proxy = createProxy({

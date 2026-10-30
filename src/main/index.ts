@@ -167,7 +167,19 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
   }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
 }
 
-async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
+// One start at a time. Opening a project auto-starts capture, and a start from
+// the operator or the capture browser can arrive while that one is still
+// probing the port. The probe binds the port to test it, so two at once each
+// found the port held — by the other's probe — and both failed with no holder
+// named. Queued, the second finds the first's proxy up and returns it.
+let managedStartQueue: Promise<unknown> = Promise.resolve()
+function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
+  const run = managedStartQueue.then(startManagedHttpCaptureNow, startManagedHttpCaptureNow)
+  managedStartQueue = run.catch(() => undefined)
+  return run
+}
+
+async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
   // Every failure below goes through `noteStartFailure`, so it reaches the
   // status every surface polls. These used to return a failed status object
   // that nothing recorded: the proxy's snapshot stayed `stopped`, and the
@@ -187,6 +199,11 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   const stillOpen = (): boolean => opening !== null && projectRuntime.isCurrent(opening)
   // mitmdump is spawned by bare name; look it up on the operator's PATH.
   await loginPathReady
+  // A proxy just stopped — closing the last project stops it, and opening the
+  // next one auto-starts this — can still hold the port for a few hundred
+  // milliseconds, and the probe below would report our own outgoing process
+  // as the holder.
+  await managedHttpProxy.released()
   if (!stillOpen()) return managedHttpProxy.status()
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
