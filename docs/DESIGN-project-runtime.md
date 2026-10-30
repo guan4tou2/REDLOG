@@ -30,11 +30,14 @@ continuations that outlive `startProject` turned it into two defects:
   the first project's engagement id and event ids — into the second project's
   chain. `test/scope-recompute-run.test.ts` "a project switch while it runs"
   reproduced it (`ran: true` against the second database) before the fix.
-- **Cast backfill closed the next project's index.** The cast index is one
-  handle per process. `backfillCastIndex` kept going after its project closed,
-  and each `indexCast(file, oldDir)` reopened the old index, closing the
-  handle the new project was using. `test/cast-index.test.ts` "stops a
-  backfill at the next file once its project has closed" reproduced it.
+- **Cast backfill — corrected in R1c.** R1a said the backfill could outlive
+  its project and close the next project's index handle. It could not:
+  `indexCast` is synchronous, so the loop's `await` only yields to
+  microtasks and a switch (an IPC, a later turn) cannot land inside it. R1a's
+  test aborted in the same turn, which no real switch does. What was real is
+  the cost of that: the whole backfill ran in one turn right after an open and
+  held the main process. R1c makes it yield between files, which opens the
+  switch window for real, and closes it with the signal and `dbGeneration`.
 
 And one weaker case: the HTTP auto-start guard compared project ids, so after
 A → B → A the first A's continuation counted as the second A's attempt.
@@ -77,6 +80,46 @@ What it deliberately is not, yet:
   one. A failed open is cleaned up and reported; it does not restore the old
   project. That was already true and is now stated.
 
+## 2b. R1c: the write guard, and what the await audit found
+
+**Guard.** `bindDBEngagement(id)` right after `initDB` in `startProject`;
+`closeDB` forgets it. From then, `insertEvent` refuses a row whose explicit
+`engagementId` is not the bound one, for both tiers, with a `console.error` —
+not `noteDbError`, which would turn the open project's verdict dark when its
+own log is fine. An omitted id is stored as `default` as before. In memory,
+no schema change. It covers rows only: `chain_anchors`, bookmarks and the
+other direct-SQL tables are guarded at their writers below.
+
+It found one legitimate writer first: the updater's restart marker spelled
+`engagementId: 'default'` out, which the guard would have refused in every
+open project. It now passes the id it was given (none).
+
+**`dbGeneration()`.** Moves on every `closeDB`. Core code that reads, awaits,
+then writes and has no runtime signal takes it before the await and compares
+after.
+
+**Audit.** Every read → await → write in `src/core` and `src/main`, checked
+against a switch landing in the await. Fixed here, each with a test that fails
+on `main`:
+
+| Path | What a switch did | Now |
+|---|---|---|
+| `anchorNow` (anchor loop, `chain:anchorNow`, `POST /api/anchors`) | wrote A's head into B's `chain_anchors` after up to 15 s of calendar waits; B's verify then reads tampering | generation check, returns null |
+| anchor and NTP loops' first tick | never stored, so never cancelled: a switch to an air-gapped project inside 30 s / 5 s still sent its chain head to the public calendars, or a time query | stored, cleared by stop |
+| CDP navigation poll | the stopped monitor kept A's identity: the navigation was written into B under A's engagement, and the same poll opened tab sockets that kept writing the console into B | stop clears the identity |
+| screenshot capture | B got a frame taken in A, `_causes` pointing at A's event, or a row pointing into A's `screenshots/` | generation checked after the grab and after the write; file removed |
+| `startManagedHttpCapture` | a start cancelled by the switch was published as B's `http_proxy_failed` | checks its open after each of four waits |
+| `/api/marker`, `/api/bookmarks`, `/api/sanitize` | wrote into B after reading a slow body, with A's operator | same 409 recheck `/api/events` has |
+| `bookmarks:create` IPC | a bookmark saved in A landed in B after the 2 s browser query | checks its open after the query |
+| cast backfill | see §1 | yields; signal + generation |
+
+Held by the audit: the spool, retention and sample timers (runtime-owned),
+process/connection/file/PowerShell monitors (generation guards, identity read
+at write time), tailer timers (cleared on stop), clipboard (synchronous read),
+IP checks (machine data), `/api/events` and artifact add (already recheck).
+`upgradeAnchor` fails closed by accident — its captured handle is closed —
+and is left for R1b to make deliberate.
+
 ## 3. Order, and what each step must not break
 
 Carried over from the proposal with one change: R1 splits, because the defect
@@ -87,7 +130,7 @@ it was meant to prevent is real and smaller than the whole lifecycle.
 | R0 | real-source e2e runs in CI (#464) | a skipped real-source spec fails the job |
 | **R1a** | runtime generation, signal, owned timers; the two defects above | done — see §4 |
 | R1b | services onto `onStop`, one per change; identity from `current()` | `stopProject` order unchanged, each move pinned by a test |
-| R1c | a write guard below `getDB()`: refuse a row whose engagement is not the open database's | the last line of defence for anything R1a/b missed |
+| **R1c** | write guard, `dbGeneration`, the audit's switch-time writes | done — see §2b |
 | R2 | ingest stages made explicit (policy, identity, provenance, enrichment, write, derive, notify) | A→B binding, pause, queue-full gap, unconfirmed delivery, dedup, hash chain — as characterization tests first |
 | R3 | `api-server.ts` split by capability, no framework | loopback/host/token/size/project-identity checks stay in one unskippable entry |
 | R4 | Timeline query + live admission controller | same query and snapshot give the same rows |
@@ -99,8 +142,9 @@ evidence-schema change during a refactor.
 
 ## 4. Snapshot (2026-10-30)
 
-- R1a is on `refactor/project-runtime`.
-- Still unguarded by the runtime: `casts:reindex` in `main/ipc/terminal.ts`
-  calls `backfillCastIndex(dir)` without a signal (it has no runtime access
-  yet — R1b), and `insertEvent` itself has no project guard (R1c).
+- R1a merged (#466). R1c is on `refactor/write-guard`.
+- Open for R1b: `upgradeAnchor` fails closed only by accident; the capture
+  browser's CDP monitor is not restarted for the next project (it stops at a
+  switch and starts again only with a new launch); `activeProject` /
+  `currentEngagementId` still sit beside the runtime.
 - R0 (#464) is in progress on its own branch.

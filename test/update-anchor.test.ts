@@ -57,6 +57,20 @@ describeDB('anchorBeforeRestart (5a backend)', () => {
     expect(evs[0].tier).toBe('chained')  // update_pending is NOT in LOGGED_TIER
   })
 
+  it('records the marker in a database bound to its project', async () => {
+    // The updater names no engagement. Passing `default` for it made the row
+    // name a foreign one, which the bound database refuses — and the restart
+    // then had no record of its gap.
+    const dbMod = await import('../src/core/db/index')
+    dbMod.bindDBEngagement('eng-open')
+    const res = await ua.anchorBeforeRestart(
+      { fromVersion: '0.15.1', toVersion: '0.16.0' },
+      { anchorNow: fakeAnchor('complete', 'deadbeef') }
+    )
+    expect(res.localError).toBeNull()
+    expect(pendingEvents()).toHaveLength(1)
+  })
+
   it('partial anchor still counts as anchored', async () => {
     const res = await ua.anchorBeforeRestart(
       { fromVersion: '0.15.1' }, { anchorNow: fakeAnchor('partial', 'abc') }

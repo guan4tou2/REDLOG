@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { eventBus } from '../event-bus'
 import os from 'os'
-import { getDB } from './index'
+import { getDB, dbEngagement } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
 import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
@@ -413,6 +413,18 @@ export function insertEvent(
   // `system`/`marker` are exempt and why the gate lives here instead of
   // at the 46 call sites.
   if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !opts?.bypassPause && eventBus.paused) return null
+
+  // A row for another engagement is work that outlived its project: it read
+  // one database and is now writing to the next. Refused for both tiers, and
+  // loudly — not through noteDbError, which would turn the open project's
+  // verdict dark when its own log is fine. Only an explicit id is judged: an
+  // omitted one is stored as `default`, as before, which names no owner rather
+  // than a foreign one.
+  const bound = dbEngagement()
+  if (bound !== null && opts?.engagementId !== undefined && opts.engagementId !== bound) {
+    console.error(`[db] refused a ${agentType} row for engagement ${opts.engagementId}: the open database belongs to ${bound}`)
+    return null
+  }
 
   // v0.13.0: two-tier dispatch. The chained arm is the ENTIRE historical
   // body of insertEvent (hash + Ed25519 sign + INSERT into `events`). The

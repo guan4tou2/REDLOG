@@ -42,7 +42,7 @@ vi.mock('../src/core/ingest', () => ({
   ingestEvent: (type: string, data: Record<string, unknown>) => { h.events.push({ type, data }); return { id: 'e1' } }
 }))
 vi.mock('../src/core/event-bus', () => ({ eventBus: { paused: false } }))
-vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir }))
+vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir, dbGeneration: () => 0 }))
 vi.mock('../src/core/capture-health', () => ({ noteCaptureError: () => {}, clearCaptureError: () => {}, noteDbError: () => {} }))
 
 import { ScreenshotAgent } from '../src/main/services/screenshot-agent'
