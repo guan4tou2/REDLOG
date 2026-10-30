@@ -1320,6 +1320,7 @@
   "eventTitle.droppedAfter": "{{age}} 後被丟棄",
   "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} 已輪替",
   "eventTitle.gapQueueFull": "[缺口] Proxy 佇列已滿，拒收 {{count}} 筆 HTTP 事件",
+  "eventTitle.gapProjectSwitched": "[缺口] 已切換專案，拒收 {{count}} 筆 HTTP 事件",
   "eventTitle.gapDeliveryUnconfirmed": "[缺口] HTTP 事件未確認送達",
   "eventTitle.gapUnsaved": "[缺口] {{count}} 筆 HTTP 事件遺失，缺口也未能寫入",
   "filter.title": "篩選",

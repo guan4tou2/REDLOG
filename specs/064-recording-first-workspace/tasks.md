@@ -145,6 +145,7 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 - [x] T055 HAR 預覽與交付：時間範圍 HAR 預覽列出純串流 flow 數，do-not-export／scope 遮罩同樣作用於它們；HTTP 檢視的 HAR 預覽說明有幾個純串流 flow 不在此 HAR；sidecar bytes 依 ref 的 sha256 核對，預覽後被改的 bytes 使匯出失敗（`source-unavailable`）。先寫 RED 測試（#461）。
 - [x] T056 以真 mitmdump 與真 app 做故障注入（`e2e/capture-gap-acceptance.spec.ts`）：app 自有 proxy 與切換後仍存活的外部 producer、晚到 response／cookie／TTL sweep，B 的 Event／檔案／spool 不含 A；同專案逾時仍留 dropped marker；佇列塞滿、暫停、spool 不可寫、強制終止後重開，記錄版本、佇列上限與實際結果。addon 接受 `REDLOG_PENDING_TTL_SEC`（#459、#460）。
 - [x] T057 真 app 核對：Timeline 的 gap 標題、HTTP 檢視 HAR 預覽列、以 app 自有 mitmdump 觸發的健康卡未保存 gap 列與 Timeline 紀錄（#460、#461）。
+- [x] T058 專案切換後因身分不符而拒收的 event，替原專案寫入 spool 的 `capture_gap`（reason `project-switched`）：固定 event 自己的身分，帶時間窗、精確拒收數與宣告的 body bytes，不含 URL／headers／body；與 `queue-full` 同樣每專案每窗一筆，但目前專案的送出不提前結束它；寫不出時的 log 不被 managed proxy 記到目前專案。Timeline 標題寫出拒收數。先寫 RED 測試，並以真 mitmdump 驗證 A 重開後持有 gap、B 仍無 A 的任何東西（#459）。
 
 ## 2026-10-30 排程與文件整理
 

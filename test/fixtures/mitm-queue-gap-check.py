@@ -6,9 +6,9 @@ import ast, json, shutil, sys, tempfile, pathlib, time, types, urllib.request
 # Runs the production transport functions without mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 functions = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog',
-             '_write_spool_record', '_note_queue_rejection', '_flush_queue_gaps', '_declared_body_bytes',
-             '_queue_gap_record', '_save_queue_gaps'}
-assigns = {'_QUEUE_GAP_FLUSH_MS', '_QUEUE_GAPS', '_QUEUE_GAP_LOCK'}
+             '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes',
+             '_gap_record', '_save_gaps'}
+assigns = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT'}
 body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in functions)
         or (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in assigns for t in n.targets))
         or (isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in assigns)]
@@ -87,9 +87,9 @@ with tempfile.TemporaryDirectory() as directory:
     assert send(event(3)) is False
     assert send(event(4)) is False
     count = len(gaps())
-    ns['_flush_queue_gaps']()
+    ns['_flush_gaps']()
     assert len(gaps()) == count + 1 and gaps()[-1]['data']['skipped_units'] == 1
-    ns['_flush_queue_gaps']()
+    ns['_flush_gaps']()
     assert len(gaps()) == count + 1, 'an empty flush wrote a record'
 
     # Another project's event is refused by identity, not counted as A's gap.
@@ -98,6 +98,11 @@ with tempfile.TemporaryDirectory() as directory:
     clock[0] += 5
     assert send({'_identity': A, 'agent_type': 'scanner', 'data': {}}) is False
     assert len(gaps()) == before
+    # It is A's project-switched gap instead (#459), which is not this file's
+    # subject: leave only queue-full records for the reader below.
+    switched = [p for p in ns['SPOOL_DIR'].glob('*.json') if json.loads(p.read_text())['data'].get('reason') == 'project-switched']
+    assert len(switched) == 1, switched
+    switched[0].unlink()
 
     # Leave what the production code wrote for a reader on the app side.
     if len(sys.argv) > 1:
