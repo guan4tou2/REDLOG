@@ -8,8 +8,8 @@
 // Now each attempt has a nonce, and only a request for that nonce on the
 // reserved verification host counts (core/http-verify.ts). HTTP and HTTPS are
 // verified separately, and each says which client sent it: an HTTPS check from
-// RedLog's own browser, which ignores certificate errors, is not evidence that
-// anything else on the machine trusts the CA.
+// RedLog's own browser, which trusts the CA by itself, is not evidence that
+// anything else on the machine trusts it.
 
 import { clientLabel, verifyUrl, type HttpVerifyReport, type VerifyScheme } from '../../../core/http-verify'
 
@@ -21,10 +21,13 @@ export interface VerifyAttempt {
   /** a client refused RedLog's certificate for the verification host, during
    *  this attempt and before HTTPS verified */
   rejectedAt: number | null
+  /** the check was opened in RedLog's capture browser, which trusts the
+   *  managed CA by its key whatever the OS trusts */
+  inCaptureBrowser: boolean
 }
 
 export function newAttempt(nonce: string, now: number = Date.now()): VerifyAttempt {
-  return { nonce, startedAt: now, http: null, https: null, rejectedAt: null }
+  return { nonce, startedAt: now, http: null, https: null, rejectedAt: null, inCaptureBrowser: false }
 }
 
 /** Fold one report into the attempt. A report for another nonce — an earlier
@@ -39,10 +42,11 @@ export function applyVerifyReport(a: VerifyAttempt, r: HttpVerifyReport): Verify
   return a.https ? a : { ...a, https: r, rejectedAt: null }
 }
 
-/** Only RedLog's capture browser is launched with certificate errors ignored,
- *  so an HTTPS check it passed says nothing about the CA being trusted. */
-export function httpsProvesTrust(report: HttpVerifyReport, captureBrowserIgnoresCertErrors: boolean): boolean {
-  return !(captureBrowserIgnoresCertErrors && clientLabel(report.userAgent) === 'Chromium')
+/** RedLog's capture browser accepts the managed CA without the OS trusting it
+ *  — by its key, or with every certificate error ignored — so an HTTPS check
+ *  it passed says nothing about the CA being trusted. */
+export function httpsProvesTrust(report: HttpVerifyReport, captureBrowserSkipsTrust: boolean): boolean {
+  return !(captureBrowserSkipsTrust && clientLabel(report.userAgent) === 'Chromium')
 }
 
 /** A check to run from a terminal. No `-k`: an HTTPS check that skips

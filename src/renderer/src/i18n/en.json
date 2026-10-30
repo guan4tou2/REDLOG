@@ -1439,7 +1439,7 @@
   "capture.core.heading": "Core capture",
   "firstRun.http.verifiedVia": "✓ verified via {{client}}",
   "firstRun.http.rejected": "✗ a client refused RedLog’s certificate — it does not trust the CA",
-  "firstRun.http.captureBrowserCaveat": "RedLog’s capture browser ignores certificate errors, so this does not show that other tools trust the CA.",
+  "firstRun.http.captureBrowserCaveat": "RedLog’s capture browser trusts this CA by itself, so this does not show that other tools trust it.",
   "firstRun.http.verifyInBrowser": "Check in the capture browser",
   "firstRun.http.newCheck": "New check",
   "firstRun.http.verifyFromTool": "Or check the tool you will actually use:",

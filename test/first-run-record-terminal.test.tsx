@@ -717,15 +717,16 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     await waitFor(() => expect(verifyListeners.length).toBe(0))
   })
 
-  it('shows HTTPS from the capture browser, with the caveat only when it is set to ignore certificate errors', async () => {
-    // Off by default: the default route trusts the CA, so a pass is a real one.
+  it('shows HTTPS from Chromium without a caveat unless the capture browser could have sent it', async () => {
+    // No check was opened in the capture browser and certificate errors are not
+    // ignored, so a pass is a real one (capture-browser-check-caveat.test.tsx).
     install({ proxy: RUNNING })
     draw()
     const nonce = await shownNonce()
     await report({ scheme: 'https', nonce, userAgent: 'Mozilla/5.0 (X11) AppleWebKit/537.36 Chrome/140.0 Safari/537.36' })
     const https = await screen.findByTestId('first-run-http-check-https')
     await waitFor(() => expect(https.textContent).toContain('Chromium'))
-    expect(https.textContent).not.toContain('忽略憑證錯誤')
+    expect(https.textContent).not.toContain('自行信任')
     // HTTPS is the principal proof; HTTP is not a prerequisite.
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
   })
@@ -740,7 +741,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const https = await screen.findByTestId('first-run-http-check-https')
     // 5 s, not the default 1 s: on a loaded macOS runner the verification
     // report took just over a second and failed #391 and #395 in CI.
-    await waitFor(() => expect(https.textContent).toContain('忽略憑證錯誤'), { timeout: 5000 })
+    await waitFor(() => expect(https.textContent).toContain('自行信任'), { timeout: 5000 })
   })
 
   it('says when a client refused the certificate', async () => {

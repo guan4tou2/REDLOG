@@ -74,7 +74,7 @@ import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError, pendingSpoolDirectory, clearUnattributedCommands } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, onBrowserExit } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
-import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
+import { managedHttpProxy, readCaSpki, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
@@ -1675,14 +1675,18 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
+    // Through RedLog's own proxy the browser trusts that proxy's CA by its key,
+    // so HTTPS works without a root certificate in the OS trust store.
+    let trustSpki: string | null = null
     if (isManagedProxy(browserCfg.proxy, managedProxyEndpoint(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
         return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
       }
       browserCfg.proxy = proxy.url ?? browserCfg.proxy
+      trustSpki = proxy.caPath ? readCaSpki(proxy.caPath) : null
     }
-    const result = launchBrowser(browserCfg, projectDir)
+    const result = launchBrowser(browserCfg, projectDir, { trustSpki })
 
     if (result.ok) {
       setCdpPort(browserCfg.cdpPort)
