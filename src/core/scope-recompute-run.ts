@@ -174,7 +174,8 @@ export function hydrateCorpus(targets: ReadonlySet<string>): CorpusEvent[] {
 
 export interface RecomputeResult {
   ran: boolean
-  reason?: 'unconfigured' | 'unchanged'
+  /** `superseded`: the project it was reading closed while it yielded. */
+  reason?: 'unconfigured' | 'unchanged' | 'superseded'
   summaryId?: string
   plan?: RecomputePlan
 }
@@ -188,6 +189,10 @@ export interface RunOptions {
   scopeFile?: { path: string; sha256: string | null; entries: number } | null
   /** Injected for tests; production passes nothing and gets Date.now. */
   now?: () => number
+  /** The opening project's runtime signal. Every read and the write go
+   *  through getDB(), which a switch repoints; once this aborts, nothing read
+   *  so far belongs to the database that is open now. */
+  signal?: AbortSignal
 }
 
 export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResult> {
@@ -211,6 +216,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
 
   const { candidates, scanned } = scanCandidates()
   await yieldToLoop()
+  if (opts.signal?.aborted) return { ran: false, reason: 'superseded' }
 
   // Only targets whose verdict actually moved are worth hydrating. A boundary
   // change is what this feature reports on; re-judging a target nothing
@@ -229,6 +235,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
 
   const corpus = hydrateCorpus(moved)
   await yieldToLoop()
+  if (opts.signal?.aborted) return { ran: false, reason: 'superseded' }
 
   const plan = planScopeRecompute({
     corpus, existing, after, classify: distanceAfter, cap: MAX_RETRO_ROWS

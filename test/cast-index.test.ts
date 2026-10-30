@@ -288,4 +288,25 @@ describe.skipIf(!available)('cast full-text index', () => {
     await mod!.indexCast(cast('o.cast'), dir)
     expect(fs.existsSync(path.join(dir, 'cast-index.db'))).toBe(true)
   })
+
+  it('stops a backfill at the next file once its project has closed', async () => {
+    // The index handle is one per process. A backfill that ran on after its
+    // project closed reopened that project's index for every remaining file,
+    // and each reopen closed the handle the newly opened project was using.
+    for (const n of ['a', 'b', 'c']) writeCast(cast(`${n}.cast`), 1_700_000_000, [[0.1, `${n}\r\n`]])
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-castidx-b-'))
+    try {
+      const closed = new AbortController()
+      const run = mod!.backfillCastIndex(dir, undefined, closed.signal)
+      closed.abort()
+      mod!.closeCastIndex()
+      const next = mod!.getCastIndex(other)
+      const result = await run
+      expect(next.open).toBe(true)
+      expect(result.indexed).toBeLessThan(3)
+    } finally {
+      mod!.closeCastIndex()
+      fs.rmSync(other, { recursive: true, force: true })
+    }
+  })
 })
