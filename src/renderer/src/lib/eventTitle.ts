@@ -103,6 +103,10 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
           const tcpDir = d.direction === 'client' ? '▲' : '▼'
           return `[TCP ${tcpDir}] ${d.host || ''}:${d.port || '?'} (${formatBytes(d.size as number ?? 0)})`.trim()
         }
+        case 'capture_gap':
+          if (d.reason === 'queue-full') return t('eventTitle.gapQueueFull', { count: String(d.skipped_units ?? '?') })
+          if (d.reason === 'delivery-unconfirmed') return t('eventTitle.gapDeliveryUnconfirmed')
+          return `[${d.subtype}] ${d.description || ''}`.trim()
         case 'cookie_change':
           return t('eventTitle.cookieRotated', { domain: String(d.domain || '?'), name: String(d.cookie_name || '?') }).trim()
         case 'connection': {
@@ -212,6 +216,7 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
       }
       if (d.subtype === 'secret_revealed') return t('eventTitle.secretRevealed', { fields: (d.fields as string[])?.join(', ') || t('eventTitle.secretRevealedUnknown') })
       if (d.subtype === 'connection_capture_started') return t('eventTitle.connectionCaptureOn')
+      if (d.subtype === 'capture_gap' && d.reason === 'gap-unsaved') return t('eventTitle.gapUnsaved', { count: String(d.skipped_units ?? '?') })
       if (d.subtype === 'connection_monitor_saturated') return t('eventTitle.connectionSaturated', { count: String(d.count ?? '?') })
       return `${event.agentType}: ${d.subtype || ''}`
     default:

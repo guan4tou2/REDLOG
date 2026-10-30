@@ -10,6 +10,8 @@ import { parseQuery } from '../src/core/query/contract'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import { addExportEvent as insertFixture } from './helpers/export-fixtures'
+import { storeBody } from '../src/core/http-body-store'
+import crypto from 'node:crypto'
 function addExportEvent(table: 'events' | 'events_logged', id: string, ts: number, targetId: string, data: Record<string, unknown> = {}): void {
  insertFixture(table, id, ts, { targetId, agentType: String(data.subtype ?? '').startsWith('http_') ? 'scanner' : 'shell', subtype: String(data.subtype ?? 'command_end'), data })
 }
@@ -229,4 +231,61 @@ it('delivers a stream-only flow in the HAR it previewed, and nothing saved after
  const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
  expect(flows.lone.streamChunks.map((c:any)=>[c.eventId,c.body.text])).toEqual([['lone-1','ZGF0YQ==']])
  expect(Buffer.from(flows['lone-socket'].webSocketMessages[0].body.text,'base64')).toEqual(Buffer.from([0,255]))
+})
+// #461: the preview of such a HAR names the stream-only flows, and the same
+// exclusions hold for them as for any exchange — do-not-export removes a
+// segment, scope masking replaces an out-of-scope segment's bytes.
+it('previews stream-only flows and applies do-not-export and scope masking to them', () => {
+ fs.writeFileSync(path.join(dir,'config.yaml'),'scope:\n  targets: [in.test]\n')
+ const chunk=(id:string,ts:number,flow:string,host:string,seq:number,data:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:flow,seq,offset:0,url:`https://${host}/events`,response_body:{data,encoding:'base64',size:3}}})
+ chunk('in-1',1000,'in-flow','in.test',1,'aW4x')
+ chunk('in-2',1001,'in-flow','in.test',2,'aW4y')
+ chunk('out-1',1002,'out-flow','out.test',1,'T1VU')
+ addExportEvent('events_logged','req',1003,'in.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://in.test/'})
+ getDB().prepare('INSERT INTO do_not_export(event_id,created_at) VALUES(?,?)').run('in-2',Date.now())
+ const r=resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
+ expect(r.ok).toBe(true)
+ expect(r.plan.counts).toMatchObject({included:3,excludedDoNotExport:1,partialHttpFlows:2})
+ const log=JSON.parse(fs.readFileSync(execute(r.plan.id).artifactPath,'utf8')).log
+ const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
+ expect(flows['in-flow'].streamChunks.map((c:any)=>c.eventId)).toEqual(['in-1'])
+ expect(flows['in-flow'].streamChunks[0].body.text).toBe('aW4x')
+ expect(JSON.stringify(flows['out-flow'])).not.toContain('T1VU')
+ expect(log.entries).toHaveLength(1)
+})
+// #461: the HAR the HTTP view offers is built from requests and responses, so
+// a stream-only flow is not in it. The preview counts the ones its filter
+// would have reached instead of leaving them out silently.
+it('counts the stream-only flows an HTTP-view HAR leaves out, by the filter they can answer', () => {
+ const chunk=(id:string,ts:number,flow:string,host:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:flow,seq:1,offset:0,url:`https://${host}/events`,response_body:{data:'eA==',encoding:'base64',size:1}}})
+ chunk('a-1',1000,'a-flow','a.test'); chunk('a-2',1001,'a-flow','a.test'); chunk('b-1',1002,'b-flow','b.test')
+ addExportEvent('events_logged','req',1003,'a.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://a.test/'})
+ addExportEvent('events_logged','res',1004,'a.test',{subtype:'http_response',flow_id:'whole',method:'GET',url:'https://a.test/',status:200})
+ const view=(http:Record<string,string>)=>resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{text:'',...http}}})
+ expect(view({}).plan.counts).toMatchObject({exchanges:1,partialHttpFlows:0,partialHttpFlowsOutside:2})
+ expect(view({host:'b.test'}).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect(view({text:'a.test/ev'}).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect(view({method:'GET'}).plan.counts.partialHttpFlowsOutside).toBe(0)
+})
+// #461: a segment whose bytes live in a sidecar is delivered as the bytes the
+// event recorded — checked by their hash — and a sidecar changed on disk after
+// the preview fails the export rather than shipping other bytes under the
+// original event's name.
+it('delivers sidecar stream segments by their recorded hash, and refuses changed bytes', () => {
+ const bytes=crypto.randomBytes(6000)
+ const ref=storeBody({data:bytes.toString('base64'),encoding:'base64',size:bytes.length,sha256:''})!
+ insertFixture('events_logged','big-1',1000,{targetId:'example.com',agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:'big',seq:1,offset:0,url:'https://example.com/stream',response_body_ref:ref}})
+ const intact=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const delivered=JSON.parse(fs.readFileSync(execute(intact.plan.id).artifactPath,'utf8')).log._redlog.partialFlows[0].streamChunks[0]
+ expect(delivered.eventId).toBe('big-1')
+ expect(crypto.createHash('sha256').update(Buffer.from(delivered.body.text,'base64')).digest('hex')).toBe(ref.sha256)
+ const changed=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const sidecar=path.join(dir,'http-bodies',ref.file)
+ fs.chmodSync(sidecar,0o644); fs.writeFileSync(sidecar,Buffer.alloc(bytes.length))
+ const result=execute(changed.plan.id)
+ expect(result.ok).toBe(false)
+ expect(result.error).toBe('source-unavailable')
 })

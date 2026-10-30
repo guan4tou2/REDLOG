@@ -15,7 +15,8 @@ import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
+import { pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
 } from '../core/db/bookmarks'
@@ -288,6 +289,15 @@ configureManagedProxyHealth(httpCaptureStatus)
 managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
+  }
+  // The addon could not write the gap itself, so its log line is all there
+  // is. Put the loss on the Timeline too, where an export will carry it.
+  const unsaved = (next.unsavedGapEvents ?? 0) - (previous.unsavedGapEvents ?? 0)
+  if (unsaved > 0 && currentEngagementId && currentOperatorId) {
+    ingestEvent('system', {
+      subtype: 'capture_gap', source: 'managed-http-proxy', reason: 'gap-unsaved', skipped_units: unsaved,
+      description: `${unsaved} HTTP event(s) refused at a full proxy queue; the addon could not record the gap`
+    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
   }
 })
 
@@ -877,7 +887,14 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
     if (!currentEngagementId || !currentOperatorId) return
     if (eventBus.paused) return
-    const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
+    let pauses: ReturnType<typeof pauseIntervals> | null = null
+    const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
+      // A queue-full gap is judged against the pauses before it lands: one
+      // counted entirely while paused is not a loss, and is done with (#460).
+      const data = spooled.reason === 'queue-full'
+        ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
+        : spooled
+      if (!data) return true
       // Through ingest(), like every other producer. This called insertEvent
       // directly, so an event the hook had spooled because RedLog was
       // unreachable skipped the entire pipeline: no causal links, no target

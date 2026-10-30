@@ -67,6 +67,8 @@ interface ResolvedExportPlan {
     unsupported: number
     truncatedOutputs?: number
     pauseWindows?: number
+    partialHttpFlows?: number
+    partialHttpFlowsOutside?: number
   }
   attachments: ExportAttachmentRow[]
 }
@@ -617,6 +619,7 @@ interface ManagedProxyStatus {
   verificationEvidence?: import('../../core/http-verification-evidence').HttpVerificationEvidence | null
   verificationState?: import('../../core/http-verification-evidence').HttpVerificationState
   httpsVerification?: import('../../core/http-verify').HttpVerifyReport
+  unsavedGapEvents?: number
 }
 
 interface OperatorInfo {

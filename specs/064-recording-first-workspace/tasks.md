@@ -141,6 +141,10 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 - [x] T051 HAR 匯出保留只有 SSE chunks／WebSocket messages、沒有已保存 request 與 response 的 flow：放在 `log._redlog.partialFlows`（Event ID、順序、原始 bytes、觀測到的 URL；一律 incomplete），不偽造 request／status／時間；request＋chunks 無 response、WS 無終止事件維持 incomplete entry。先寫 RED 測試，並以真實 ExportPlan 讀回成品（#461）。
 - [x] T052 mitmproxy addon 的 pending entry 固定 flow 的原始身分；TTL dropped marker、`cookie_change` 與 DNS answer 沿用 flow 自己的身分，無身分者拒收、不在送出時補綁目前專案。先寫 RED 測試，以 production `RedLogAddon` 實跑 A 開始 → B active → 清理（#459）。
 - [x] T053 送出 queue 已滿的拒收寫入 spool 的 `capture_gap`（reason `queue-full`）：固定原始專案，帶時間窗、精確拒收數與宣告的 body bytes，不含 URL／headers／body；第一筆立即落盤、之後每窗最多一筆，queue 恢復與正常關閉時補寫，寫不出時記錄。先寫 RED 測試，並經 app 的 spool 重放與 ingest 讀回專案資料庫（#460）。
+- [x] T054 queue-full gap 讓操作者看得到：addon 寫不出的 gap 由 managed proxy 從輸出讀出、跨重啟累計，顯示在擷取健康卡並記一筆 system `capture_gap`（`gap-unsaved`）；Timeline 標題寫出拒收數或「未確認送達」；暫停期間計的 gap 重放時丟棄，跨暫停邊界者保留並標 `overlaps_pause`。先寫 RED 測試（#460）。
+- [x] T055 HAR 預覽與交付：時間範圍 HAR 預覽列出純串流 flow 數，do-not-export／scope 遮罩同樣作用於它們；HTTP 檢視的 HAR 預覽說明有幾個純串流 flow 不在此 HAR；sidecar bytes 依 ref 的 sha256 核對，預覽後被改的 bytes 使匯出失敗（`source-unavailable`）。先寫 RED 測試（#461）。
+- [x] T056 以真 mitmdump 與真 app 做故障注入（`e2e/capture-gap-acceptance.spec.ts`）：app 自有 proxy 與切換後仍存活的外部 producer、晚到 response／cookie／TTL sweep，B 的 Event／檔案／spool 不含 A；同專案逾時仍留 dropped marker；佇列塞滿、暫停、spool 不可寫、強制終止後重開，記錄版本、佇列上限與實際結果。addon 接受 `REDLOG_PENDING_TTL_SEC`（#459、#460）。
+- [x] T057 真 app 核對：Timeline 的 gap 標題、HTTP 檢視 HAR 預覽列、以 app 自有 mitmdump 觸發的健康卡未保存 gap 列與 Timeline 紀錄（#460、#461）。
 
 ## 2026-10-30 排程與文件整理
 

@@ -14,7 +14,7 @@ vi.mock('../src/core/db/events', () => ({
 }))
 
 vi.mock('../src/core/http-body-store', () => ({
-  readBody: mockReadBody
+  readBodyForDelivery: mockReadBody
 }))
 
 vi.mock('../src/core/redact-export', () => ({
@@ -259,7 +259,7 @@ describe('har-export', () => {
     expect(postData.text).toBe('{"user":"admin"}')
   })
 
-  it('resolves body from a bodyRef via readBody when inline is absent', () => {
+  it('resolves body from a bodyRef via the checked read when inline is absent', () => {
     const ref = { sha256: 'a'.repeat(64), size: 5, file: 'abc.body', encoding: 'text' as const }
     mockReadBody.mockReturnValue('hello')
 

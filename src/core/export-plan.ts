@@ -71,6 +71,12 @@ export interface ExportCounts {
   truncatedOutputs?: number
   /** recording pauses among the exported Events: stretches nothing was recorded */
   pauseWindows?: number
+  /** HAR only: flows with stream segments and no saved request or response,
+   *  carried beside the HAR entries rather than as one (#461) */
+  partialHttpFlows?: number
+  /** HAR of the HTTP view only: stream-only flows the view, and so the HAR,
+   *  leaves out (#461) */
+  partialHttpFlowsOutside?: number
 }
 
 export interface ExportAttachmentCounts {
@@ -90,6 +96,57 @@ export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
  *  selection that filters system Events out will not show its pauses. */
 export function countPauseWindows(events: readonly RedLogEvent[]): number {
   return events.filter(e => e.agentType === 'system' && e.data.subtype === 'recording_paused').length
+}
+
+/** Flows among these Events that have SSE chunks or WebSocket messages and
+ *  neither a request nor a response — what a HAR holds in `partialFlows`. */
+export function countPartialHttpFlows(events: readonly RedLogEvent[]): number {
+  return partialHttpFlowSegments(events).size
+}
+
+function partialHttpFlowSegments(events: readonly RedLogEvent[]): Map<string, RedLogEvent[]> {
+  const segmented = new Map<string, RedLogEvent[]>()
+  const exchanged = new Set<string>()
+  for (const event of events) {
+    const flowId = event.data.flow_id
+    if (typeof flowId !== 'string' || !flowId) continue
+    if (event.data.subtype === 'http_response_chunk' || event.data.subtype === 'ws_message') {
+      segmented.set(flowId, [...(segmented.get(flowId) ?? []), event])
+    } else if (event.data.subtype === 'http_request_start' || event.data.subtype === 'http_response') exchanged.add(flowId)
+  }
+  for (const flowId of exchanged) segmented.delete(flowId)
+  return segmented
+}
+
+/** Stream-only flows a HAR of the HTTP view leaves out. That view is built
+ *  from requests and responses, so these flows are in neither it nor its HAR;
+ *  the preview says how many rather than dropping them silently (#461). Only
+ *  the predicates a segment can answer are applied: a method or status filter
+ *  cannot match a flow that has neither, and neither can a host or text filter
+ *  a flow whose segments name no URL. */
+export function countPartialHttpFlowsOutside(
+  snapshotEvents: readonly RedLogEvent[],
+  selectedIds: ReadonlySet<string>,
+  bounds: { since?: number; before?: number; targetId?: string; http?: { method?: string; statusPrefix?: string; host?: string; text?: string } },
+  excluded: (event: RedLogEvent) => boolean
+): number {
+  if (bounds.http?.method || bounds.http?.statusPrefix) return 0
+  let outside = 0
+  for (const segments of partialHttpFlowSegments(snapshotEvents).values()) {
+    if (segments.some(event => selectedIds.has(event.id)) || segments.every(excluded)) continue
+    const first = segments.reduce((a, b) => (b.timestamp < a.timestamp ? b : a))
+    if (bounds.since != null && first.timestamp < bounds.since) continue
+    if (bounds.before != null && first.timestamp > bounds.before) continue
+    if (bounds.targetId && first.targetId?.toLowerCase() !== bounds.targetId.toLowerCase()) continue
+    const url = segments.map(event => event.data.url).find((value): value is string => typeof value === 'string')
+    const host = bounds.http?.host?.toLowerCase()
+    const text = bounds.http?.text?.toLowerCase()
+    if ((host || text) && !url) continue
+    if (host) { try { if (new URL(url!).hostname.toLowerCase() !== host) continue } catch { continue } }
+    if (text && !url!.toLowerCase().includes(text)) continue
+    outside++
+  }
+  return outside
 }
 
 export function countReferencedAttachments(events: readonly RedLogEvent[]): number {

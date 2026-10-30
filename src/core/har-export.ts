@@ -1,6 +1,6 @@
 import { capturedContentIsPartial } from './content-contract'
 import { queryEvents, type RedLogEvent } from './db/events'
-import { readBody, type BodyRef } from './http-body-store'
+import { readBodyForDelivery, type BodyRef } from './http-body-store'
 import { redactEventsForExport, type RedactExportOpts } from './redact-export'
 import type { ScopeForSanitize } from './scope-sanitize'
 import type { ExportSnapshot } from './export-plan'
@@ -132,7 +132,7 @@ function resolveBody(
     }
   }
   if (bodyRef) {
-    const content = readBody(bodyRef)
+    const content = readBodyForDelivery(bodyRef)
     if (content !== null) {
       return {
         text: content,

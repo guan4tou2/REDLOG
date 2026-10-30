@@ -165,6 +165,13 @@ export function lastRecordingSubtype(): string | null {
   return row?.subtype ?? null
 }
 
+/** Every pause and resume, oldest first, for judging replayed gaps (#460). */
+export function recordingStateRows(): Array<{ subtype: string; timestamp: number }> {
+  return getReadonlyDB().prepare(`SELECT subtype, timestamp FROM events
+    WHERE agent_type = 'system' AND subtype IN ('recording_paused', 'recording_resumed')
+    ORDER BY timestamp ASC, rowid ASC`).all() as Array<{ subtype: string; timestamp: number }>
+}
+
 /** Durable stream boundary, including a resume before an app restart. Delayed
  * bytes from a closed recording interval may be omitted, never replayed. */
 export function lastRecordingResumeTime(): number {

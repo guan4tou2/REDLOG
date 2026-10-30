@@ -22,7 +22,14 @@ export interface ManagedProxyStatus {
   verificationState?: import('../../core/http-verification-evidence').HttpVerificationState
   sourceInstance?: string
   httpsVerification?: HttpVerifyReport
+  /** Events the addon refused at a full send queue and then could not record
+   *  even as a capture gap (#460). Present only when there are some. */
+  unsavedGapEvents?: number
 }
+
+/** The addon's line for a gap it could not write. Its log is the only place
+ *  that loss is said, so the proxy output is read for it. */
+const UNSAVED_GAP_LINE = /\[redlog\] capture gap not saved: (\d+) event/
 
 export interface CaFingerprint {
   /** uppercase hex, no separators — what certutil and `security -Z` take */
@@ -116,6 +123,8 @@ export class ManagedHttpProxy {
   private proof: { report: HttpVerifyReport; ca: string } | null = null
   private startedAt = 0
   private caPath: string | null = null
+  // Kept across restarts: a restart does not bring those events back.
+  private unsavedGapEvents = 0
   private readonly deps: Dependencies
 
   constructor(deps: Partial<Dependencies> = {}) {
@@ -123,13 +132,15 @@ export class ManagedHttpProxy {
   }
 
   status(): ManagedProxyStatus {
-    if (!this.caPath) return { ...this.snapshot, sourceInstance: this.sourceInstance }
+    const unsaved = this.unsavedGapEvents > 0 ? { unsavedGapEvents: this.unsavedGapEvents } : {}
+    if (!this.caPath) return { ...this.snapshot, sourceInstance: this.sourceInstance, ...unsaved }
     const certReady = this.deps.exists(this.caPath)
     const caFingerprint = certReady ? this.deps.fingerprint(this.caPath) : null
     if (this.proof && this.proof.ca !== caFingerprint?.sha256) this.proof = null
     return {
       ...this.snapshot,
       sourceInstance: this.sourceInstance,
+      ...unsaved,
       ...(this.snapshot.state === 'running' && this.proof ? { httpsVerification: this.proof.report } : {}),
       caPath: this.caPath,
       certReady,
@@ -180,6 +191,26 @@ export class ManagedHttpProxy {
     this.snapshot = next
     const current = this.status()
     for (const listener of this.listeners) listener(current, previous)
+  }
+
+  private noteUnsavedGap(events: number): void {
+    const previous = this.status()
+    this.unsavedGapEvents += events
+    const current = this.status()
+    for (const listener of this.listeners) listener(current, previous)
+  }
+
+  /** Splits a stream into lines, carrying a partial one into the next chunk. */
+  private gapLineReader(): (text: string) => void {
+    let pending = ''
+    return (text) => {
+      const lines = `${pending}${text}`.split(/\r?\n/)
+      pending = (lines.pop() ?? '').slice(-1_000)
+      for (const line of lines) {
+        const match = UNSAVED_GAP_LINE.exec(line)
+        if (match && Number(match[1]) > 0) this.noteUnsavedGap(Number(match[1]))
+      }
+    }
   }
 
   start(input: { addonPath: string; port: number; listenHost?: string; caPath?: string }): Promise<ManagedProxyStatus> {
@@ -242,13 +273,14 @@ export class ManagedHttpProxy {
           finish({ state: 'running', url, pid: child.pid })
         }
       }
-      const consume = (chunk: Buffer | string): void => {
+      const consume = (readGapLines: (text: string) => void) => (chunk: Buffer | string): void => {
         const text = String(chunk)
         diagnostics = `${diagnostics}${text}`.slice(-4_000)
+        readGapLines(text)
         void checkReady()
       }
-      child.stdout?.on('data', consume)
-      child.stderr?.on('data', consume)
+      child.stdout?.on('data', consume(this.gapLineReader()))
+      child.stderr?.on('data', consume(this.gapLineReader()))
       child.once('error', (error: NodeJS.ErrnoException) => {
         if (this.child === child) this.child = null
         finish({
