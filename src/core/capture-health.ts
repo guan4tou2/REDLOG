@@ -158,6 +158,8 @@ export interface CaptureHealth {
     caPath?: string
     certReady?: boolean
     httpsVerification?: import('./http-verify').HttpVerifyReport
+    /** Refused events the addon could not record even as a gap (#460). */
+    unsavedGapEvents?: number
   }
 }
 

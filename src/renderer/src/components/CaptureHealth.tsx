@@ -57,7 +57,7 @@ function proxyListenAddress(proxy: { state: string; url?: string | null } | unde
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, verification, onNavigate, age, t }: {
+function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
   /** host:port the managed proxy is listening on, or null when it is not up (#254). */
@@ -65,6 +65,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   source: CaptureSourceInfo | undefined
   sources: CaptureSourceInfo[]
   proxyError: string | undefined
+  unsavedGapEvents: number | undefined
   verification: ManagedProxyStatus['httpsVerification']
   onNavigate: (target: string) => void
   /** "8m ago" for a timestamp, or an empty string for a source that has never
@@ -144,6 +145,11 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
               {verification ? t('firstRun.http.verifiedVia', { client: clientLabel(verification.userAgent) }) : t('capture.httpsUnverified')}
             </span>}
             {proxyError &&<span className="block text-red-400">{proxyError}</span>}
+            {(unsavedGapEvents ?? 0) > 0 && (
+              <span data-testid="capture-http-gap-unsaved" className="block text-red-400">
+                {t('capture.http.gapUnsaved', { count: unsavedGapEvents ?? 0 })}
+              </span>
+            )}
             {source?.lastError && (
               <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
             )}
@@ -429,6 +435,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
           source={mitmSource}
           sources={sources}
           proxyError={capture.managedHttpProxy?.error}
+          unsavedGapEvents={capture.managedHttpProxy?.unsavedGapEvents}
           age={(ts) => (ts === null ? '' : fmtAge(ts, nowTick))}
           t={t}
         />
