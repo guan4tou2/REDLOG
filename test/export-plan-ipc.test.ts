@@ -217,7 +217,7 @@ describe('export plan IPC contract', () => {
     const file = addExportAttachment(dir, 'casts/frozen.cast', 'before')
     const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
     fs.writeFileSync(file, 'change')
-    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable', check: 'attachment-content' })
   })
 
   it('returns plan-expired and writes no artifact after the approval lifetime', () => {
@@ -242,7 +242,8 @@ describe('export plan IPC contract', () => {
     getDB().prepare('DELETE FROM events WHERE id = ?').run('will-disappear')
     expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({
       ok: false,
-      error: 'source-unavailable'
+      error: 'source-unavailable',
+      check: 'event-count'
     })
     expect(fs.existsSync(path.join(dir, 'exports'))).toBe(false)
   })
@@ -369,7 +370,7 @@ describe('export plan IPC contract', () => {
     addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
     const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
     fs.writeFileSync(castFile, '{"version":2}\n')
-    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
+    expect(handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable', check: 'attachment-content' })
   })
 
   it('carries an operator-added artifact with its event, and leaves it out when the operator does (#221)', () => {
