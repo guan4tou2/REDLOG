@@ -3,8 +3,8 @@ from unittest.mock import patch
 # Execute the production transport functions without requiring optional mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id',
-         '_write_spool_record', '_note_queue_rejection', '_flush_queue_gaps', '_declared_body_bytes', '_queue_gap_record', '_save_queue_gaps'}
-gap_state = {'_QUEUE_GAP_FLUSH_MS', '_QUEUE_GAPS', '_QUEUE_GAP_LOCK'}
+         '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps'}
+gap_state = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT'}
 ns = dict(json=json, time=__import__('time'), urllib=urllib, VERBOSE=False, threading=__import__('threading'))
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
@@ -31,7 +31,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert json.loads(rows[0].read_text())['data']['subtype']=='capture_gap'
     assert ns['_send_to_redlog']({'_identity':{'engagementId':'A','operatorId':'op-A'},'data':{}}) is False
     assert not pending
-    for f in rows:f.unlink()
+    # Refused for A while B is open: what A gets is a gap, not the event (#459).
+    switched=[json.loads(f.read_text()) for f in ns['SPOOL_DIR'].glob('*.json') if f not in rows]
+    assert [(r['_identity']['engagementId'], r['data']['reason']) for r in switched]==[('A','project-switched')], switched
+    for f in ns['SPOOL_DIR'].glob('*.json'):f.unlink()
     for code in (400,401,403,409,413,422,429):
         ns['_send_to_redlog']({'agent_type':'scanner','data':{}})
         with patch('urllib.request.urlopen',side_effect=urllib.error.HTTPError('http://local',code,'refused',{},None)):pending.pop()()

@@ -190,16 +190,24 @@ def _spool_payload(payload: dict):
     }})
 
 
-# #460: an event refused at a full send queue. The refusal used to leave a log
-# line and nothing else. Each project's refusals are counted, and written to
-# the spool — not to the full queue they describe — as a capture_gap with no
-# URL, header or body: the first refusal at once, then at most one record a
-# window, each counting only its own refusals. A window still open when the
-# queue recovers or the proxy stops is written then; one open when the
-# process is killed is lost, at most _QUEUE_GAP_FLUSH_MS of counts.
-_QUEUE_GAP_FLUSH_MS = 1000
-_QUEUE_GAPS: dict = {}
-_QUEUE_GAP_LOCK = threading.Lock()
+# #460 and #459: an event refused at a full send queue, or because its project
+# is no longer the one open. Each refusal used to leave a log line at most.
+# Each project's refusals are counted per reason, and written to the spool —
+# never to the send queue — as a capture_gap with no URL, header or body: the
+# first refusal at once, then at most one record a window, each counting only
+# its own refusals. A queue-full window still open when the queue recovers, a
+# project-switched one whose window has run by the next send, and any window
+# open when the proxy stops is written then; one open when the process is
+# killed is lost, at most _GAP_FLUSH_MS of counts. The app's spool drain keeps
+# a project's records until that project is open.
+_GAP_FLUSH_MS = 1000
+_GAP_WINDOWS: dict = {}
+_GAP_LOCK = threading.Lock()
+
+_GAP_TEXT = {
+    "queue-full": ("not-queued", "The proxy's send queue was full, so these events were not recorded."),
+    "project-switched": ("not-sent", "These events arrived after another project was opened, so they were not recorded."),
+}
 
 
 def _declared_body_bytes(data: dict) -> int:
@@ -213,53 +221,74 @@ def _declared_body_bytes(data: dict) -> int:
     return total
 
 
-def _queue_gap_record(window: dict, now_ms: int) -> dict:
+def _gap_record(window: dict, now_ms: int) -> dict:
+    delivery, cause = _GAP_TEXT[window["reason"]]
     return {"agent_type": "scanner", "_identity": window["identity"], "data": {
         "subtype": "capture_gap", "source": "mitmproxy",
-        "reason": "queue-full", "capture_delivery": "not-queued",
+        "reason": window["reason"], "capture_delivery": delivery,
         "gap_started_at": window["started"], "gap_ended_at": window["last"],
         "skipped_units": window["units"], "skipped_body_bytes": window["bytes"],
         "reported_at": now_ms,
-        "description": "The proxy's send queue was full, so these events were not recorded. "
-                       "The count is exact for this window; body bytes are those the events declared.",
+        "description": f"{cause} The count is exact for this window; body bytes are those the events declared.",
     }}
 
 
-def _save_queue_gaps(records: list):
+def _save_gaps(records: list):
     for record in records:
-        if not _write_spool_record(record):
-            ctx.log.warn(f"[redlog] capture gap not saved: {record['data']['skipped_units']} event(s) "
+        if _write_spool_record(record):
+            continue
+        units = record["data"]["skipped_units"]
+        # The managed proxy counts the queue-full line against the project
+        # open now. A project-switched gap is another project's, so its line
+        # must not read the same.
+        if record["data"]["reason"] == "queue-full":
+            ctx.log.warn(f"[redlog] capture gap not saved: {units} event(s) "
                          "refused at a full send queue are not recorded anywhere")
+        else:
+            ctx.log.warn(f"[redlog] project-switch gap not saved: {units} event(s) "
+                         "for a closed project are not recorded anywhere")
 
 
-def _note_queue_rejection(payload: dict):
+def _note_refusal(payload: dict, reason: str):
     ident = payload["_identity"]
-    key = (ident.get("engagementId"), ident.get("operatorId"))
+    key = (reason, ident.get("engagementId"), ident.get("operatorId"))
     now_ms = int(time.time() * 1000)
     record = None
-    with _QUEUE_GAP_LOCK:
-        window = _QUEUE_GAPS.setdefault(key, {"identity": ident, "units": 0, "bytes": 0, "flushed_at": None})
+    with _GAP_LOCK:
+        window = _GAP_WINDOWS.setdefault(key, {"reason": reason, "identity": ident, "units": 0, "bytes": 0, "flushed_at": None})
         if not window["units"]:
             window["started"] = now_ms
         window["units"] += 1
         window["bytes"] += _declared_body_bytes(payload.get("data") or {})
         window["last"] = now_ms
-        if window["flushed_at"] is None or now_ms - window["flushed_at"] >= _QUEUE_GAP_FLUSH_MS:
-            record = _queue_gap_record(window, now_ms)
+        if window["flushed_at"] is None or now_ms - window["flushed_at"] >= _GAP_FLUSH_MS:
+            record = _gap_record(window, now_ms)
             window.update(units=0, bytes=0, flushed_at=now_ms)
     if record:
-        _save_queue_gaps([record])
+        _save_gaps([record])
 
 
-def _flush_queue_gaps():
-    """Write every window that still holds refusals."""
+def _note_switch_refusal(payload: dict):
+    """A refusal by identity is a gap only for an event that has an owner."""
+    ident = payload.get("_identity")
+    if ident and ident.get("engagementId") and ident.get("operatorId"):
+        _note_refusal(payload, "project-switched")
+
+
+def _flush_gaps(sent: bool = False):
+    """Write every window that still holds refusals. After a send (`sent`),
+    the queue has recovered but the switch has not: a project-switched window
+    is left to run, so a project still sending does not cut it short."""
     now_ms = int(time.time() * 1000)
-    with _QUEUE_GAP_LOCK:
-        if not _QUEUE_GAPS:
-            return
-        records = [_queue_gap_record(w, now_ms) for w in _QUEUE_GAPS.values() if w["units"]]
-        _QUEUE_GAPS.clear()
-    _save_queue_gaps(records)
+    with _GAP_LOCK:
+        records = []
+        for key, window in list(_GAP_WINDOWS.items()):
+            if sent and window["reason"] == "project-switched" and now_ms - window["flushed_at"] < _GAP_FLUSH_MS:
+                continue
+            if window["units"]:
+                records.append(_gap_record(window, now_ms))
+            del _GAP_WINDOWS[key]
+    _save_gaps(records)
 
 
 _SEND_SLOTS = threading.BoundedSemaphore(64)
@@ -283,16 +312,17 @@ def _send_to_redlog(payload: dict):
     _embed_identity(payload)
     payload.setdefault("data", {}).setdefault("source_timestamp", int(time.time() * 1000))
     if not _identity_matches_active(payload):
+        _note_switch_refusal(payload)
         return False
     port, token = _get_redlog_connection()
     if not port or not payload.get("_identity"):
         return False
     if not _SEND_SLOTS.acquire(blocking=False):
         ctx.log.warn("[redlog] capture queue full; event not retained")
-        _note_queue_rejection(payload)
+        _note_refusal(payload, "queue-full")
         return False
-    if _QUEUE_GAPS:
-        _flush_queue_gaps()
+    if _GAP_WINDOWS:
+        _flush_gaps(sent=True)
 
     def _do_send():
         try:
@@ -396,6 +426,7 @@ def _send_to_redlog_and_get_id(payload: dict):
     """
     _embed_identity(payload)
     if not _identity_matches_active(payload):
+        _note_switch_refusal(payload)
         return None
     port, token = _get_redlog_connection()
     if not port or not payload.get("_identity"):
@@ -945,8 +976,8 @@ class RedLogAddon:
         self._cookie_jar: dict[str, dict[str, str]] = {}
 
     def done(self):
-        # A clean shutdown writes the refusals still being counted (#460).
-        _flush_queue_gaps()
+        # A clean shutdown writes the refusals still being counted (#459, #460).
+        _flush_gaps()
 
     def _track_cookies(self, domain: str, set_cookies: list[dict], identity: dict):
         """Track Set-Cookie headers in memory. When a session-like cookie
