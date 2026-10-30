@@ -86,7 +86,7 @@ export function storeBody(body: {
   return { sha256, size: rawBytes.length, file: filename, encoding: body.encoding }
 }
 
-function readRaw(ref: BodyRef): Buffer | null {
+function readStoredBytes(ref: BodyRef): Buffer | null {
   try {
     const dir = bodiesDir()
     const filePath = path.join(dir, ref.file)
@@ -106,7 +106,7 @@ function encodeRaw(raw: Buffer, ref: BodyRef): string {
 }
 
 export function readBody(ref: BodyRef): string | null {
-  const raw = readRaw(ref)
+  const raw = readStoredBytes(ref)
   return raw ? encodeRaw(raw, ref) : null
 }
 
@@ -114,7 +114,7 @@ export function readBody(ref: BodyRef): string | null {
  *  it no longer holds the bytes its ref was written for. An export must not
  *  ship other bytes under the original event's name (#461). */
 export function readBodyForDelivery(ref: BodyRef): string | null {
-  const raw = readRaw(ref)
+  const raw = readStoredBytes(ref)
   if (!raw) return null
   if (crypto.createHash('sha256').update(raw).digest('hex') !== ref.sha256) throw new Error('source-unavailable')
   return encodeRaw(raw, ref)
