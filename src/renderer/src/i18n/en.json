@@ -1320,6 +1320,7 @@
   "eventTitle.droppedAfter": "dropped after {{age}}",
   "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} rotated",
   "eventTitle.gapQueueFull": "[gap] {{count}} HTTP events refused at a full proxy queue",
+  "eventTitle.gapProjectSwitched": "[gap] {{count}} HTTP events refused after another project was opened",
   "eventTitle.gapDeliveryUnconfirmed": "[gap] HTTP event delivery not confirmed",
   "eventTitle.gapUnsaved": "[gap] {{count}} HTTP events lost, gap could not be saved",
   "filter.title": "Filter",
@@ -1866,5 +1867,8 @@
   "timeline.replay.markerAt": "Marker at {{time}}",
   "export.attachments.rawBoundary": "Raw attachments do not apply content-level scope filtering or operator-PII scrubbing; casts contain only the approved byte prefix.",
   "http.streamCaptureUnknown": "Stream content uses separate segments; completeness is unverified.",
-  "http.streamCapturePartial": "The stream was interrupted or some segments were not queued for capture."
+  "http.streamCapturePartial": "The stream was interrupted or some segments were not queued for capture.",
+  "http.streamEndObserved": "Stream ended; all {{saved}} segments saved.",
+  "http.streamMissingSegments": "{{missing}} of {{observed}} stream segments were not saved.",
+  "http.streamNoEnd": "No stream end recorded. It may still be open, or capture stopped first."
 }

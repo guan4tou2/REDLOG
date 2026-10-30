@@ -74,10 +74,14 @@ async function tick(): Promise<void> {
   }
 }
 
+// Kept so stop cancels it: a switch to an air-gapped project within 5 s
+// otherwise still sent the NTP query the previous project started.
+let firstQuery: ReturnType<typeof setTimeout> | null = null
+
 export function startNtpLoop(intervalMs = 5 * 60 * 1000): void {
   stopNtpLoop()
   queryTimer = setInterval(tick, intervalMs)
-  setTimeout(tick, 5_000)
+  firstQuery = setTimeout(tick, 5_000)
 }
 
 export function stopNtpLoop(): void {
@@ -85,4 +89,5 @@ export function stopNtpLoop(): void {
     clearInterval(queryTimer)
     queryTimer = null
   }
+  if (firstQuery) { clearTimeout(firstQuery); firstQuery = null }
 }

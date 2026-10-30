@@ -105,6 +105,7 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
         }
         case 'capture_gap':
           if (d.reason === 'queue-full') return t('eventTitle.gapQueueFull', { count: String(d.skipped_units ?? '?') })
+          if (d.reason === 'project-switched') return t('eventTitle.gapProjectSwitched', { count: String(d.skipped_units ?? '?') })
           if (d.reason === 'delivery-unconfirmed') return t('eventTitle.gapDeliveryUnconfirmed')
           return `[${d.subtype}] ${d.description || ''}`.trim()
         case 'cookie_change':

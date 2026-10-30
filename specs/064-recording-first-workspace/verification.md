@@ -590,3 +590,26 @@ Not covered: the end-to-end fault injection both #459 and #460 ask for — a pro
 - Spool records in the addon's format were replayed on reopen. The Timeline shows both gap titles and no `[capture_gap]`.
 - The HTTP-view HAR preview shows "Stream-only HTTP flows not in this HAR (they stay on the Timeline) 1".
 - With the app's own mitmdump pointed at a held API and an unwritable spool, 120 flows all completed. The status reported `unsavedGapEvents: 176`, the card read "176 HTTP events lost at a full proxy queue and not recorded as a gap", and the Timeline got two `gap-unsaved` rows (175 + 1).
+
+## 2026-10-30 — an answer refused at a project switch is a gap in its own project (T058)
+
+**A had no record of what it was refused (#459).** Since T052 an event pinned to A and sent after B was opened is refused by `_identity_matches_active`, so nothing of A's reaches B. The refusal left nothing: A kept `http_request_start` and no word of why the answer was missing. It now leaves A a `capture_gap` with reason `project-switched`, written with `_write_spool_record` and never through the send queue, pinned to the event's own identity, with `gap_started_at`/`gap_ended_at`, `skipped_units` and the declared `skipped_body_bytes`, and no URL, header or body. It shares the `queue-full` batching (the first refusal at once, then one record a window per project and reason), with one difference: a send that succeeds ends a `queue-full` window, because the queue has recovered, but leaves a `project-switched` window to run, so B's traffic does not turn A's refusals into a file each. An event pinned to no project leaves nothing. An unsaved one logs `project-switch gap not saved`, which the managed proxy does not count against the project open now. The Timeline titles it "[gap] N HTTP events refused after another project was opened". RED first: `test/fixtures/mitm-switch-gap-check.py` (run by `test/mitm-switch-gap.test.ts`, which also replays its spool through the app's drain: none for B, 1005 units for A) and a title case in `test/queue-gap-visibility.test.tsx`.
+
+**Real mitmdump, `e2e/capture-gap-acceptance.spec.ts` #459, mitmdump 12.2.3 on linux (WSL kali, xvfb).** At the RED commit it failed on "nothing spooled for A". At the fix: A held 3 `project-switched` gaps for 3 refused events after it reopened, none carrying the marker, `owner=a-` or the host; B held no gap, none of A's events, and nothing in the spool. Both #460 cases still passed. On Windows the test could not start the app's proxy: Burp Suite held the default port 8080.
+
+## 2026-10-30 — a stream's end is judged by what was saved (T059)
+
+**A killed stream read as unverified, the same as a finished one (#291).** Every streamed response showed "completeness is unverified", whether its close was seen and every chunk saved, or the producer died mid-stream. A stream whose producer died before any close had no line at all: the line was on the response row, and there was no response row. The addon already reports what it observed at the close (`stream_chunks_observed`, `message_count_observed`, `stream_state`, `stream_not_queued_bytes`). It cannot know what was saved (`capture_delivery: "unknown"`), but RedLog can count it. `src/core/stream-completion.ts` puts the two together:
+- **end-observed**: an `ended` close whose observed count equals the distinct chunks or messages saved.
+- **known-partial**: an interrupted close, unqueued or truncated bytes, or fewer saved than observed. The line says how many are missing.
+- **completion-unknown**: no close row at all. The stream may still be open, or its producer was stopped first; the saved rows cannot tell which.
+
+Nothing new is stored. `queryStreamSegments` counts distinct `seq` and `message_count`, so a retried row is counted once. It reads through a new partial index on stream rows instead of scanning every scanner row. `HttpDetail` shows one line for the whole flow, on the request as well as the response, and falls back to the row-only wording if the lookup fails. Tests: `test/stream-completion.test.ts`, `test/stream-segments-query.test.ts` (which also checks the index is used) and four cases in `test/http-detail-tabs.test.tsx`.
+
+**Real app, the app's own mitmdump on Windows.** Two SSE streams of three events each went through the proxy. `/done` ended; `/open` was still open when mitmdump was killed with `taskkill /F /T`.
+- `/done` returned `end-observed`, 3 saved, and its detail read "Stream ended; all 3 segments saved."
+- `/open` kept its three chunks and its request but no response. It returned `completion-unknown` with `closed: false`, and its detail read "No stream end recorded. It may still be open, or capture stopped first."
+
+Not covered:
+- The up to 64 queued events a hard kill loses (T054–T057) are still not counted.
+- A stream whose chunks were all lost and whose close never came leaves only its request, so it has no line.

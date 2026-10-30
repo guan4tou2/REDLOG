@@ -73,7 +73,7 @@ interface ResolvedExportPlan {
   attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
-type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[]; delivery: import('../../core/export-delivery').ExportDelivery } | { ok: false; error: string; planId?: string; fingerprint?: string }
+type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[]; delivery: import('../../core/export-delivery').ExportDelivery } | { ok: false; error: string; check?: string; planId?: string; fingerprint?: string }
 
 
 
@@ -269,6 +269,8 @@ interface RedLogAPI {
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
+    /** What a streamed flow's saved rows prove about its end; null for an ordinary flow (#291). */
+    streamCompletion: (flowId: string) => Promise<import('../../core/stream-completion').StreamCompletion | null>
     commandOutput: (commandId: string) => Promise<import('../../core/db/events').CommandOutputPage>
     commandEnds: (commandIds: string[]) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>

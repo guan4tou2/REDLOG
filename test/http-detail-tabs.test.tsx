@@ -155,3 +155,37 @@ it('shows known stream loss beside the response', () => {
   draw({ ...RESPONSE, streamed: true, stream_state: 'interrupted' })
   expect(screen.getByText('串流中斷，或有區段未排入保存。')).toBeTruthy()
 })
+
+// #291: with the flow's saved segments counted, the line says what they prove.
+describe('a streamed flow judged by what it kept', () => {
+  const withCompletion = (value: unknown): void => {
+    bridge(null)
+    ;(window as unknown as { redlog: { events: Record<string, unknown> } }).redlog.events.streamCompletion = vi.fn(async () => value)
+  }
+
+  it('confirms the end only when the close and the saved segments agree', async () => {
+    withCompletion({ state: 'end-observed', saved: 3 })
+    draw({ ...RESPONSE, streamed: true, stream_state: 'ended', capture_delivery: 'unknown' })
+    expect(await screen.findByText('串流已結束；3 個區段全部保存。')).toBeTruthy()
+  })
+
+  it('counts the segments that were never saved', async () => {
+    withCompletion({ state: 'known-partial', saved: 1, observed: 4, missing: 3 })
+    draw({ ...RESPONSE, streamed: true, stream_state: 'ended' })
+    expect(await screen.findByText('4 個串流區段中有 3 個未保存。')).toBeTruthy()
+  })
+
+  it('says no end was recorded on the request of a stream whose producer died', async () => {
+    // No response row exists, so the row itself carries no stream fields.
+    withCompletion({ state: 'completion-unknown', saved: 2, closed: false })
+    draw(REQUEST)
+    expect(await screen.findByText('沒有紀錄到串流結束：可能仍在進行，或擷取先停止了。')).toBeTruthy()
+  })
+
+  it('draws no line for an ordinary flow', async () => {
+    withCompletion(null)
+    draw(RESPONSE)
+    await waitFor(() => expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy())
+    expect(screen.queryByTestId('http-stream-status')).toBeNull()
+  })
+})

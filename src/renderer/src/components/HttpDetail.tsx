@@ -1,4 +1,5 @@
 import { capturedContentIsPartial } from '../../../core/content-contract'
+import type { StreamCompletion } from '../../../core/stream-completion'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
 import { useState, useEffect } from 'react'
@@ -131,6 +132,17 @@ export function MetadataGrid({ entries }: { entries: Array<[string, unknown]> })
 // HttpDetail — HTTP exchange detail, shared by Timeline and HttpHistoryPanel
 // ---------------------------------------------------------------------------
 
+/** One line for the whole flow: what its saved segments prove about its end.
+ *  Without the lookup, fall back to what this row alone says. */
+function streamStatus(t: (key: string, vars?: Record<string, string | number>) => string, completion: StreamCompletion | null, data: Record<string, unknown>): { text: string; settled: boolean } | null {
+  if (!completion) return data.streamed === true ? { text: t(capturedContentIsPartial(data) ? 'http.streamCapturePartial' : 'http.streamCaptureUnknown'), settled: false } : null
+  if (completion.state === 'end-observed') return { text: t('http.streamEndObserved', { saved: completion.saved }), settled: true }
+  if (completion.state === 'known-partial') {
+    return { text: completion.missing ? t('http.streamMissingSegments', { missing: completion.missing, observed: completion.observed ?? 0 }) : t('http.streamCapturePartial'), settled: false }
+  }
+  return { text: t(completion.closed ? 'http.streamCaptureUnknown' : 'http.streamNoEnd'), settled: false }
+}
+
 export function HttpDetail({ data, eventId, projectId }: { data: Record<string, unknown>; eventId: string; projectId: string }): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
@@ -143,8 +155,18 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   const [pairedLoading, setPairedLoading] = useState(false)
   const [pairedError, setPairedError] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [completion, setCompletion] = useState<{ flowId: string; value: StreamCompletion | null } | null>(null)
 
   useEffect(() => { setHalf(ownHalf) }, [ownHalf, eventId])
+  useEffect(() => {
+    if (!flowId) return
+    let cancelled = false
+    // A failed lookup leaves the row-level fallback, never a stale answer.
+    Promise.resolve().then(() => window.redlog.events.streamCompletion(flowId))
+      .then(value => { if (!cancelled) setCompletion({ flowId, value }) })
+      .catch(() => { if (!cancelled) setCompletion(null) })
+    return () => { cancelled = true }
+  }, [flowId, eventId, attempt])
   useEffect(() => {
     setPartner(null)
     setPairedError(false)
@@ -167,8 +189,10 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   // hid captured inline/sidecar bodies, cookies and capture truncation.
   const pairedData = partner?.eventId === eventId ? partner.data : null
   const selected = half !== ownHalf && pairedData ? pairedData : data
+  const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, selected)
   return (
     <div className="mt-2 space-y-1.5">
+      {stream && <p role="status" data-testid="http-stream-status" className={`text-xs ${stream.settled ? 'text-redlog-text-dim' : 'text-amber-400'}`}>{stream.text}</p>}
       {pairedData && (
         <div role="tablist" className="flex gap-1 border-b border-redlog-border/60 -mx-1 px-1">
           {(['request', 'response'] as const).map(side => (
@@ -253,7 +277,6 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
 
   const ownBlock = (
     <>
-      {data.streamed === true && <p role="status" className="text-xs text-amber-400">{t(capturedContentIsPartial(data) ? 'http.streamCapturePartial' : 'http.streamCaptureUnknown')}</p>}
       {isRequest && params && Object.keys(params).length > 0 && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestParams')}

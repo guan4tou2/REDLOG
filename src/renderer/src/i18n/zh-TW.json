@@ -1320,6 +1320,7 @@
   "eventTitle.droppedAfter": "{{age}} 後被丟棄",
   "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} 已輪替",
   "eventTitle.gapQueueFull": "[缺口] Proxy 佇列已滿，拒收 {{count}} 筆 HTTP 事件",
+  "eventTitle.gapProjectSwitched": "[缺口] 已切換專案，拒收 {{count}} 筆 HTTP 事件",
   "eventTitle.gapDeliveryUnconfirmed": "[缺口] HTTP 事件未確認送達",
   "eventTitle.gapUnsaved": "[缺口] {{count}} 筆 HTTP 事件遺失，缺口也未能寫入",
   "filter.title": "篩選",
@@ -1866,5 +1867,8 @@
   "timeline.replay.markerAt": "標記 {{time}}",
   "export.attachments.rawBoundary": "原始附件不做內容層級的範圍裁切或操作者資訊清洗；cast 只複製核准的固定前綴。",
   "http.streamCaptureUnknown": "串流使用分段紀錄；完整性未確認。",
-  "http.streamCapturePartial": "串流中斷，或有區段未排入保存。"
+  "http.streamCapturePartial": "串流中斷，或有區段未排入保存。",
+  "http.streamEndObserved": "串流已結束；{{saved}} 個區段全部保存。",
+  "http.streamMissingSegments": "{{observed}} 個串流區段中有 {{missing}} 個未保存。",
+  "http.streamNoEnd": "沒有紀錄到串流結束：可能仍在進行，或擷取先停止了。"
 }

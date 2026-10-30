@@ -16,6 +16,28 @@ let currentProjectDir: string | null = null
 // switch (which always goes through closeDB before reopening) never serves a
 // stale handle from the previous project.
 let roDb: Database.Database | null = null
+// The engagement the open database belongs to, as the main process opened it.
+// In memory, not in the file: it changes no schema, and closeDB forgets it, so
+// a switch can never carry one project's binding onto the next database.
+let boundEngagement: string | null = null
+
+/** Say which engagement the open database belongs to. From then until it
+ *  closes, a row that names another engagement is refused at insertEvent —
+ *  whichever path it came by. A database opened without this (tests, tools)
+ *  checks nothing. docs/DESIGN-project-runtime.md. */
+export function bindDBEngagement(engagementId: string): void {
+  if (!db) throw new Error('Database not initialized')
+  boundEngagement = engagementId
+}
+
+export function dbEngagement(): string | null { return boundEngagement }
+
+// Moves on every open and close. Core code that reads, awaits, then writes and
+// cannot see the main process's ProjectRuntime takes this before the await and
+// compares after: a different number means the database it read is not the one
+// it would write to.
+let generation = 0
+export function dbGeneration(): number { return generation }
 
 
 // Every nullable column of the two event tables, added to an older project
@@ -328,6 +350,12 @@ export function initDB(projectDir: string): Database.Database {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_http_flow
     ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
     WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)
+  // Stream segments and closes, for counting what a flow kept (#291). The
+  // reader repeats this IN list verbatim: SQLite uses a partial index only
+  // when the query's terms match it.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_stream_flow
+    ON events_logged(json_extract(data, '$.flow_id'))
+    WHERE agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error')`)
 
   // Spec 017: the query language's identifier conditions. The agent session
   // and tool-use id live in `data`, not in columns — `session_id` the COLUMN
@@ -456,6 +484,8 @@ export function closeDB(): void {
   // Revoke access first, even if closing a partially initialized handle fails.
   db = null
   roDb = null
+  boundEngagement = null
+  generation++
   currentProjectDir = null
   currentDbPath = null
   try { writable?.close() } finally { readonly?.close() }
