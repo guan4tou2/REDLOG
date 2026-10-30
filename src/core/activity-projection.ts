@@ -6,7 +6,7 @@ import type { ActivityAction, ActivityKind, ToolAction } from './activity-contra
 type Source = Pick<RedLogEvent, 'id' | 'engagementId' | 'sessionId' | 'agentType' | 'data'>
 const SHELL = new Set(['command_start', 'command_end', 'command_output', 'command'])
 const TOOLS = new Set(['tool_call', 'tool_result', 'tool_interrupted'])
-const HTTP = new Set(['http_request_start', 'http_response', 'http_error', 'websocket_message', 'websocket_start', 'websocket_end'])
+const HTTP = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error', 'websocket_message', 'ws_message', 'websocket_start', 'websocket_end'])
 const MESSAGES = new Set(['user_message', 'assistant_message', 'thinking', 'compact_summary', 'away_summary'])
 
 /** Derived identity only. Payload text, target, time, query, page and pairing state

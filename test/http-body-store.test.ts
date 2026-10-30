@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -80,6 +80,29 @@ describeDB('http-body-store', () => {
 
     it('returns null for empty data', () => {
       expect(store.storeBody({ data: '', encoding: 'text', size: 0, sha256: 'x' })).toBeNull()
+    })
+
+    it('does not publish a failed partial write and retries the complete bytes', () => {
+      const body = { data: 'complete after retry', encoding: 'text' as const, size: 20, sha256: '' }
+      const write = fs.writeFileSync
+      const failing = vi.spyOn(fs, 'writeFileSync').mockImplementationOnce((file, _data, options) => {
+        write(file, Buffer.from('partial'), options)
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' })
+      })
+      try { expect(() => store.storeBody(body)).toThrow('ENOSPC') }
+      finally { failing.mockRestore() }
+      expect(fs.readdirSync(path.join(tmpDir, 'http-bodies'))).toEqual([])
+      const ref = store.storeBody(body)!
+      expect(store.readBody(ref)).toBe(body.data)
+    })
+
+    it('refuses a corrupt existing hash-named body without overwriting evidence', () => {
+      const body = { data: 'original complete bytes', encoding: 'text' as const, size: 23, sha256: '' }
+      const ref = store.storeBody(body)!
+      const file = path.join(tmpDir, 'http-bodies', ref.file)
+      fs.writeFileSync(file, 'broken')
+      expect(() => store.storeBody(body)).toThrow('content hash')
+      expect(fs.readFileSync(file, 'utf8')).toBe('broken')
     })
 
     it('deduplicates by sha256 (same content writes once)', () => {

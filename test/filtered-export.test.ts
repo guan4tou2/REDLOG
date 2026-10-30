@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 vi.mock('electron', () => ({ shell: { showItemInFolder: vi.fn() } }))
 import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { queryByFlowId } from '../src/core/db/events'
 import { queryActivityPage } from '../src/core/db/activity-queries'
 import { parseQuery } from '../src/core/query/contract'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
@@ -193,4 +194,22 @@ it('keeps Claude Code and Codex sessions separate even when their session names 
  expect(r.ok).toBe(true);expect(r.plan.counts.included).toBe(2)
  const out=execute(r.plan.id);expect(out.ok).toBe(true)
  expect(JSON.parse(fs.readFileSync(out.artifactPath,'utf8')).events.map((e:any)=>e.id).sort()).toEqual(['claude-answer','claude-prompt'])
+})
+it('freezes SSE companions with their approved HTTP exchange', () => {
+ addExportEvent('events_logged','sse-request',1000,'example.com',{subtype:'http_request_start',flow_id:'sse',method:'GET',url:'https://example.com/events'})
+ addExportEvent('events_logged','sse-part-1',1001,'example.com',{subtype:'http_response_chunk',flow_id:'sse',seq:1,response_body:{data:'first',encoding:'text',size:5}})
+ const r=resolve({format:'json',subset:{kind:'selection',projection:'http',filter:{}}})
+ expect(r.ok).toBe(true);expect(r.plan.counts.included).toBe(2)
+ addExportEvent('events_logged','sse-part-2',1002,'example.com',{subtype:'http_response_chunk',flow_id:'sse',seq:2})
+ const result=execute(r.plan.id)
+ expect(result.ok).toBe(true)
+ const text=fs.readFileSync(result.artifactPath,'utf8')
+ expect(text).toContain('sse-part-1');expect(text).not.toContain('sse-part-2')
+})
+
+it('keeps the response pair reachable after more than ten SSE segments', () => {
+ addExportEvent('events_logged','pair-request',1000,'example.com',{subtype:'http_request_start',flow_id:'long-sse'})
+ for(let n=0;n<20;n++) addExportEvent('events_logged',`pair-part-${n}`,1001+n,'example.com',{subtype:'http_response_chunk',flow_id:'long-sse',seq:n+1})
+ addExportEvent('events_logged','pair-response',1030,'example.com',{subtype:'http_response',flow_id:'long-sse'})
+ expect(queryByFlowId('long-sse').map(event=>event.id)).toEqual(['pair-request','pair-response'])
 })

@@ -70,11 +70,13 @@ import os
 import sys
 import time
 import threading
+import queue
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 try:
     import urllib.request
+    import urllib.error
 except ImportError:
     pass
 
@@ -111,9 +113,12 @@ TEXT_CONTENT_TYPES = (
 def _get_redlog_connection():
     if not REDLOG_PORT_FILE.exists() or not REDLOG_TOKEN_FILE.exists():
         return None, None
-    port = REDLOG_PORT_FILE.read_text().strip()
-    token = REDLOG_TOKEN_FILE.read_text().strip()
-    return port, token
+    try:
+        port = REDLOG_PORT_FILE.read_text().strip()
+        token = REDLOG_TOKEN_FILE.read_text().strip()
+        return port, token
+    except OSError:
+        return None, None
 
 
 _IDENTITY_PATH = Path.home() / ".redlog" / "active-identity.json"
@@ -121,6 +126,8 @@ _IDENTITY_PATH = Path.home() / ".redlog" / "active-identity.json"
 
 def _embed_identity(payload: dict):
     """Embed the active project identity into a payload for spool attribution."""
+    if "_identity" in payload:
+        return
     try:
         ident = json.loads(_IDENTITY_PATH.read_text(encoding="utf-8"))
         if "engagementId" in ident:
@@ -129,21 +136,80 @@ def _embed_identity(payload: dict):
         pass
 
 
+def _identity_matches_active(payload):
+    try:
+        active = json.loads(_IDENTITY_PATH.read_text(encoding="utf-8"))
+        captured = payload.get("_identity")
+        return bool(captured and captured.get("engagementId") and captured.get("operatorId")
+                    and captured.get("engagementId") == active.get("engagementId")
+                    and captured.get("operatorId") == active.get("operatorId"))
+    except Exception:
+        return False
+
+
+_SPOOL_LOCK = threading.Lock()
+
+
 def _spool_payload(payload: dict):
     """Write a payload to the spool directory for later replay."""
-    _embed_identity(payload)
-    try:
-        SPOOL_DIR.mkdir(parents=True, exist_ok=True)
-        filename = f"{int(time.time() * 1000)}-{id(payload)}.json"
-        (SPOOL_DIR / filename).write_text(json.dumps(payload), encoding="utf-8")
-    except Exception:
-        pass
+    if not payload.get("_identity"):
+        return
+    with _SPOOL_LOCK:
+        try:
+            SPOOL_DIR.mkdir(parents=True, exist_ok=True)
+            # An unacknowledged POST cannot authorize raw offline capture:
+            # the app may have paused while the API was unreachable. Preserve
+            # only a project-bound delivery gap, never bodies, headers or URL.
+            gap = {"agent_type": "scanner", "_identity": payload["_identity"], "data": {
+                "subtype": "capture_gap", "source": "mitmproxy",
+                "reason": "delivery-unconfirmed", "capture_delivery": "unknown",
+                "reported_at": int(time.time() * 1000),
+                "description": "Proxy delivery was not confirmed; this spool contains no raw content."
+            }}
+            encoded = json.dumps(gap).encode("utf-8")
+            files = list(SPOOL_DIR.glob("*.json"))
+            if len(files) >= 5000 or sum(f.stat().st_size for f in files) + len(encoded) > 64 * 1024 * 1024:
+                return
+            filename = f"{time.time_ns()}-{id(payload)}.json"
+            temporary = SPOOL_DIR / (filename + ".tmp")
+            try:
+                with temporary.open("xb") as output:
+                    output.write(encoded)
+                temporary.replace(SPOOL_DIR / filename)
+            finally:
+                temporary.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+_SEND_SLOTS = threading.BoundedSemaphore(64)
+_SEND_QUEUE = queue.SimpleQueue()
+
+
+def _send_worker():
+    while True:
+        deliver = _SEND_QUEUE.get()
+        try:
+            deliver()
+        except Exception:
+            pass  # One logging or transport failure must not stop the worker.
+
+
+for _worker_number in range(4):
+    threading.Thread(target=_send_worker, daemon=True).start()
 
 
 def _send_to_redlog(payload: dict):
+    _embed_identity(payload)
+    payload.setdefault("data", {}).setdefault("source_timestamp", int(time.time() * 1000))
+    if not _identity_matches_active(payload):
+        return False
     port, token = _get_redlog_connection()
-    if not port:
-        return
+    if not port or not payload.get("_identity"):
+        return False
+    if not _SEND_SLOTS.acquire(blocking=False):
+        ctx.log.warn("[redlog] capture queue full; event not retained")
+        return False
 
     def _do_send():
         try:
@@ -158,12 +224,25 @@ def _send_to_redlog(payload: dict):
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=5)
+        except urllib.error.HTTPError as exc:
+            # A refusal (pause, identity, policy, malformed input or capacity)
+            # is not an outage and must never be replayed after recovery.
+            if exc.code >= 500:
+                _spool_payload(payload)
         except Exception as exc:
             if VERBOSE:
                 ctx.log.warn(f"[redlog] send failed: {exc}")
             _spool_payload(payload)
 
-    threading.Thread(target=_do_send, daemon=True).start()
+        finally:
+            _SEND_SLOTS.release()
+
+    try:
+        _SEND_QUEUE.put(_do_send)
+    except Exception:
+        _SEND_SLOTS.release()
+        return False
+    return True
 
 
 VERIFY_HOST = "redlog.verify.invalid"
@@ -232,8 +311,11 @@ def _send_to_redlog_and_get_id(payload: dict):
     Returns None on any error; the response then emits an empty _causes list
     rather than dropping the row.
     """
+    _embed_identity(payload)
+    if not _identity_matches_active(payload):
+        return None
     port, token = _get_redlog_connection()
-    if not port:
+    if not port or not payload.get("_identity"):
         return None
     try:
         data = json.dumps(payload).encode("utf-8")
@@ -250,6 +332,10 @@ def _send_to_redlog_and_get_id(payload: dict):
             body = resp.read().decode("utf-8", errors="replace")
         obj = json.loads(body)
         return obj.get("id") or (obj.get("event") or {}).get("id")
+    except urllib.error.HTTPError as exc:
+        if exc.code >= 500:
+            _spool_payload(payload)
+        return None
     except Exception:
         _spool_payload(payload)
         return None
@@ -347,7 +433,7 @@ def _capture_body(content: bytes | None, content_type: str, max_bytes: int) -> d
 
     if is_text:
         try:
-            text = content.decode("utf-8", errors="replace")
+            text = content.decode("utf-8", errors="strict")
             return {
                 "data": text,
                 "encoding": "text",
@@ -818,7 +904,7 @@ class RedLogAddon:
         now = time.time()
         stale_ids = [
             fid for fid, meta in self._request_times.items()
-            if now - meta["at"] > PENDING_TTL_SEC
+            if now - meta["at"] > PENDING_TTL_SEC and not meta.get("streaming")
         ]
         for fid in stale_ids:
             meta = self._request_times.pop(fid, None)
@@ -903,6 +989,9 @@ class RedLogAddon:
         if self._answer_verification(flow):
             return
         self._sweep_stale()
+        pinned = {}
+        _embed_identity(pinned)
+        flow.metadata["redlog_identity"] = pinned.get("_identity", {})
 
         url = flow.request.pretty_url
         method = flow.request.method
@@ -981,11 +1070,59 @@ class RedLogAddon:
             "target_id": target,
         }
 
+        payload["_identity"] = flow.metadata.get("redlog_identity", {})
         _send_to_redlog(payload)
 
         if VERBOSE:
             body_info = f" ({request_body['size']}B)" if request_body else ""
             ctx.log.info(f"[redlog] → {method} {url}{body_info}")
+
+    def responseheaders(self, flow: http.HTTPFlow):
+        # SSE is indefinite: capture bounded raw segments before response().
+        # Preserve compressed bytes and UTF-8 boundaries verbatim, without
+        # changing routing, headers or the bytes forwarded to the client.
+        if flow.request.pretty_host == VERIFY_HOST or not flow.response:
+            return
+        if "text/event-stream" not in flow.response.headers.get("content-type", "").lower():
+            return
+        if flow.response.stream:
+            return  # Do not replace another addon's streaming transform.
+        pinned = {"_identity": flow.metadata.get("redlog_identity", {})}
+        state = {"seq": 0, "bytes": 0, "ended": False, "not_queued_bytes": 0}
+        flow.metadata["redlog_stream"] = state
+        if flow.id in self._request_times:
+            self._request_times[flow.id]["streaming"] = True
+        def capture(chunk):
+            if not chunk:
+                state["ended"] = True
+                return chunk
+            for offset in range(0, len(chunk), 65536):
+                part = chunk[offset:offset + 65536]
+                state["seq"] += 1
+                payload = {
+                    "agent_type": "scanner",
+                    "_identity": pinned.get("_identity", {}),
+                    "target_id": urlparse(flow.request.pretty_url).hostname or "",
+                    "data": {
+                        "subtype": "http_response_chunk", "flow_id": flow.id,
+                        "url": flow.request.pretty_url, "method": flow.request.method,
+                        "seq": state["seq"], "offset": state["bytes"],
+                        "source_timestamp": int(time.time() * 1000),
+                        "content_type": flow.response.headers.get("content-type", ""),
+                        "content_encoding": flow.response.headers.get("content-encoding", "identity"),
+                        "response_body": {"data": base64.b64encode(part).decode("ascii"), "encoding": "base64", "size": len(part)},
+                        "streamed": True,
+                    },
+                }
+                state["bytes"] += len(part)
+                try:
+                    queued = _send_to_redlog(payload)
+                except Exception:
+                    queued = False
+                if not queued:
+                    state["not_queued_bytes"] += len(part)
+            return chunk
+        flow.response.stream = capture
 
     def response(self, flow: http.HTTPFlow):
         if flow.request.pretty_host == VERIFY_HOST:
@@ -1036,6 +1173,14 @@ class RedLogAddon:
             "response_headers": resp_headers,
         }
 
+        stream = flow.metadata.get("redlog_stream")
+        if stream:
+            event_data["streamed"] = True
+            event_data["stream_bytes_observed"] = stream["bytes"]
+            event_data["stream_chunks_observed"] = stream["seq"]
+            event_data["stream_not_queued_bytes"] = stream["not_queued_bytes"]
+            event_data["capture_delivery"] = "unknown"
+            event_data["stream_state"] = "ended" if stream["ended"] else "interrupted"
         if response_body_preview:
             event_data["response_preview"] = response_body_preview
         if response_body:
@@ -1076,6 +1221,7 @@ class RedLogAddon:
             "target_id": target,
         }
 
+        payload["_identity"] = flow.metadata.get("redlog_identity", {})
         _send_to_redlog(payload)
 
         if VERBOSE:
@@ -1266,7 +1412,11 @@ class RedLogAddon:
             "data": event_data,
             "target_id": target,
         }
-        _send_to_redlog(payload)
+        payload["_identity"] = flow.metadata.get("redlog_identity", {})
+        if ws_body and ws_body.get("truncated"):
+            flow.metadata["redlog_ws_truncated"] = True
+        if not _send_to_redlog(payload):
+            flow.metadata["redlog_ws_not_queued_bytes"] = flow.metadata.get("redlog_ws_not_queued_bytes", 0) + raw_size
 
         if VERBOSE:
             arrow = "▲" if msg.from_client else "▼"
@@ -1276,7 +1426,26 @@ class RedLogAddon:
                 f"#{len(flow.websocket.messages)})"
             )
 
+    def websocket_end(self, flow: http.HTTPFlow):
+        if flow.websocket is None:
+            return
+        code = getattr(flow.websocket, "close_code", None)
+        _send_to_redlog({
+            "agent_type": "scanner", "_identity": flow.metadata.get("redlog_identity", {}),
+            "target_id": urlparse(flow.request.pretty_url).hostname or "",
+            "data": {"subtype": "websocket_end", "flow_id": flow.id, "url": flow.request.pretty_url,
+                     "streamed": True, "stream_state": "ended" if code in (1000, 1001) else "interrupted",
+                     "close_code": code, "message_count_observed": len(flow.websocket.messages),
+                     "stream_not_queued_bytes": flow.metadata.get("redlog_ws_not_queued_bytes", 0),
+                     "truncated": flow.metadata.get("redlog_ws_truncated", False), "capture_delivery": "unknown"}
+        })
+
     # ─── TCP stream capture ───────────────────────────────────────────────
+
+    def tcp_start(self, flow: tcp.TCPFlow):
+        pinned = {}
+        _embed_identity(pinned)
+        flow.metadata["redlog_identity"] = pinned.get("_identity", {})
 
     def tcp_message(self, flow: tcp.TCPFlow):
         msg = flow.messages[-1]
@@ -1337,6 +1506,7 @@ class RedLogAddon:
             "data": event_data,
             "target_id": target,
         }
+        payload["_identity"] = flow.metadata.get("redlog_identity", {})
         _send_to_redlog(payload)
 
         if VERBOSE:
@@ -1397,12 +1567,21 @@ class RedLogAddon:
         }
         if duration_ms is not None:
             event_data["duration_ms"] = duration_ms
+        stream = flow.metadata.get("redlog_stream")
+        if stream:
+            event_data["streamed"] = True
+            event_data["stream_state"] = "interrupted"
+            event_data["stream_bytes_observed"] = stream["bytes"]
+            event_data["stream_chunks_observed"] = stream["seq"]
+            event_data["stream_not_queued_bytes"] = stream["not_queued_bytes"]
+            event_data["capture_delivery"] = "unknown"
 
         payload = {
             "agent_type": "scanner",
             "data": event_data,
             "target_id": parsed.hostname or "",
         }
+        payload["_identity"] = flow.metadata.get("redlog_identity", {})
         _send_to_redlog(payload)
 
         if VERBOSE:

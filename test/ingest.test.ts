@@ -294,6 +294,19 @@ describeDB('ingest', () => {
     expect(accepted.event).not.toBeNull()
   })
 
+  it.each(['http_response_chunk', 'ws_message', 'tcp_message'])('refuses delayed %s bytes before creating any body sidecar', async (subtype) => {
+    const { eventBus } = await import('../src/core/event-bus')
+    eventBus.pause('api'); eventBus.resume('api')
+    const bytes = Buffer.from('private SSE bytes')
+    const before = fs.existsSync(path.join(tmpDir, 'http-bodies')) ? fs.readdirSync(path.join(tmpDir, 'http-bodies')).sort() : []
+    const result = ingestMod.ingest({ ...base, agentType: 'scanner', data: {
+      subtype, flow_id: 'delayed-stream', source_timestamp: Date.now() - 10000,
+      response_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length }
+    } })
+    expect(result.skipped).toBe('paused')
+    expect(fs.readdirSync(path.join(tmpDir, 'http-bodies')).sort()).toEqual(before)
+  })
+
   it('a paused recording writes nothing and derives nothing', async () => {
     const { eventBus } = await import('../src/core/event-bus')
     eventBus.pause('api')

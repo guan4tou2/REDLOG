@@ -197,7 +197,9 @@
       "status": "NOT RUN",
       "tests": [
         "e2e/project-open-rollback.spec.ts",
-        "e2e/terminal-session-rotation.spec.ts"
+        "e2e/terminal-session-rotation.spec.ts",
+        "test/mitm-transport.test.ts",
+        "e2e/sse-preservation.spec.ts"
       ],
       "platform": "macOS source／DB／unit 的局部證據；其他平台及原生 gate 依 CT 原表，非跨平台 PASS",
       "evidence": [
@@ -211,7 +213,9 @@
       "status": "NOT RUN",
       "tests": [
         "e2e/recording-pause.spec.ts",
-        "e2e/official-agent-capture.spec.ts"
+        "e2e/official-agent-capture.spec.ts",
+        "test/ingest.test.ts",
+        "e2e/sse-preservation.spec.ts"
       ],
       "platform": "macOS source／DB／unit 的局部證據；其他平台及原生 gate 依 CT 原表，非跨平台 PASS",
       "evidence": [

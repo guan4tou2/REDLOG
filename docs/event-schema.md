@@ -369,3 +369,17 @@ Ghostwriter's Oplog CSV import maps directly onto these fields. Populating them 
 
 - [Agent integration](agent-integration.md) — how to actually POST an event
 - [Skill: redlog-pentest](skills/redlog-pentest.md) — flow that uses these keys
+
+## HTTP streaming segments
+
+`scanner.http_response_chunk` records bounded raw response segments for SSE before the HTTP response ends. These are byte segments, not inferred SSE message or packet boundaries. Each carries `flow_id`, `seq`, `offset`, `source_timestamp`, `content_type`, `content_encoding` and `response_body` (base64 bytes, or its normal saved-body ref after ingest). Offsets count the raw bytes observed, so compressed content remains compressed and UTF-8 sequences may span segments.
+
+The request pins project identity; later async sends or errors cannot rebind the flow. Pause rejects new bytes, including delayed segments observed before resume; rejection is never spooled for later replay. Transmission has four workers and at most 64 admitted events. Offline spool admission is bounded to 5,000 files / 64 MiB, and publication uses a temporary file followed by rename. An unacknowledged delivery stores only project-bound `scanner.capture_gap` metadata (`reason: delivery-unconfirmed`, `capture_delivery: unknown`); it never retains the original URL, headers or body for replay. This prevents transport failure during pause from saving refused raw content. It also means failed original content cannot be recovered from this spool. Explicit HTTP refusals are never spooled.
+
+Terminal response/error metadata records `stream_state`, `stream_bytes_observed`, `stream_chunks_observed`, `stream_not_queued_bytes` and `capture_delivery: unknown`. Observed counts are not acknowledged persistence counts. Known unqueued bytes or interruption mark partial capture; otherwise completeness remains unverified. A missing terminal event is not normal completion.
+
+HTTP selection exports include only the segments inside the approved snapshot. HAR keeps raw segment bodies in `_redlog.streamChunks` with event ID, sequence, offset and content encoding; it does not fabricate one fully decoded response. Bundle uses the existing Event/body-ref attachment contract. Reading and search remain per saved segment; no logical SSE parser or cross-segment text-search guarantee is introduced.
+
+`scanner.ws_message` retains observed order, direction, original message size and the bounded captured body. `scanner.websocket_end` records the close code, observed message count, known unqueued bytes and ended/interrupted state. HAR preserves captured messages in `_redlog.webSocketMessages` with raw binary bodies; a stream remains incomplete rather than implying the entire conversation was captured. This does not establish a bound for mitmproxy’s own WebSocket message history or certify multi-hour memory usage.
+
+HTTP body sidecars are written to a unique temporary file and published under their content hash only after the write succeeds. Existing content is verified before reuse; a partial or corrupt file cannot silently become successful evidence on retry.

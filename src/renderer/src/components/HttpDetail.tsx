@@ -1,3 +1,4 @@
+import { capturedContentIsPartial } from '../../../core/content-contract'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
 import { useState, useEffect } from 'react'
@@ -252,6 +253,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
 
   const ownBlock = (
     <>
+      {data.streamed === true && <p role="status" className="text-xs text-amber-400">{t(capturedContentIsPartial(data) ? 'http.streamCapturePartial' : 'http.streamCaptureUnknown')}</p>}
       {isRequest && params && Object.keys(params).length > 0 && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestParams')}

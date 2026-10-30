@@ -49,3 +49,19 @@
 T020 的視窗內恢復已完成。**T011 仍開啟**：全域按鍵註冊成功不等於真的送達，尚未確定是 OS／原生輸入工具還是 App 全域路徑造成；設定恢復路徑可用，不把它算成全域驗收通過。
 
 T009 保留尚未完成的完整設定／專案切換矩陣；T008、T010、T012 與 T013 也維持未完成。沒有將此 Mac 子流程改寫成 Windows/Linux 安裝、實際更新或完整跨平台驗收。
+
+
+## 2026-10-30：M16 的 Finder 全域退出穿透補驗
+
+候選 `9e648f7d+local`，隔離安裝副本（app.asar SHA-256 `f627b43c228bc54f271dec52aba70c6be72aa6ceddb5750ab347200ecffa7066`，這是 SSE 修正前的候選，不移植到後續候選）。
+
+1. 在隔離 HOME 建立專案並開啟 HUD 穿透；讀取 config 為 true。
+2. 確認本程序的 `CommandOrControl+Shift+P` 已註冊。
+3. 操作者切到 Finder，用實體鍵盤按 ⌘⇧P；操作者已明確確認此操作來源。
+4. 實際 App 的 config.get 與磁碟 config.yaml 都變為 false；自動觀測斷言通過。
+
+此子案例 **PASS**。前兩次 CUA 自動按鍵沒有觸發，保留為未通過的自動輸入觀察；不能據此判定實體按鍵也失敗。先前只在 RedLog 視窗內成功的 fallback 不再是唯一證據。
+
+M14–M16 的其他鍵盤配置、標記／焦點／切專案及其他平台未因此完成，T011 和整列跨平台 M16 仍保留原 gate。測試期間使用隔離資料，沒有改動日常專案。
+
+本輪另完成最終候選的 [Mac 手動替換與證據讀回](../061-capture-safe-updates/verification.md)、[SSE／WS 與真實 ENOSPC](../063-long-recording-segments/verification.md)。這些有各自候選 hash；Finder 實體快捷鍵的證據仍綁本節指定舊候選，不外推為新版全矩陣 PASS。

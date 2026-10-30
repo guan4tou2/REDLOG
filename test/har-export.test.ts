@@ -335,3 +335,33 @@ describe('har-export', () => {
     })
   })
 })
+
+it('preserves raw SSE segments in order without claiming a complete reconstructed response', () => {
+  const req = makeRequestEvent('sse')
+  const a = makeResponseEvent('sse', { subtype: 'http_response_chunk', seq: 1, offset: 0, response_body: { data: '5Lit', encoding: 'base64', size: 3 } })
+  const b = makeResponseEvent('sse', { subtype: 'http_response_chunk', seq: 2, offset: 3, response_body: { data: '5paH', encoding: 'base64', size: 3 } })
+  mockQueryEvents.mockReturnValue([b, req, a])
+  const entry = JSON.parse(exportHar()).log.entries[0]
+  expect(entry._redlog.incomplete).toBe(true)
+  expect(entry._redlog.streamChunks.map((part: { eventId: string }) => part.eventId)).toEqual([a.id, b.id])
+  expect(entry._redlog.streamChunks.map((part: { body: { text: string } }) => part.body.text)).toEqual(['5Lit', '5paH'])
+  expect(entry.response.content.text).toBeUndefined()
+})
+
+it('keeps bidirectional WebSocket messages and binary payloads in their observed order', () => {
+  const req = makeRequestEvent('ws')
+  const response = makeResponseEvent('ws', { status: 101 })
+  const client = makeResponseEvent('ws', { subtype: 'ws_message', message_count: 1, direction: 'client', message_type: 'text', size: 5, ws_body: { data: 'hello', encoding: 'text', size: 5 } })
+  const server = makeResponseEvent('ws', { subtype: 'ws_message', message_count: 2, direction: 'server', message_type: 'binary', size: 2, ws_body: { data: 'AP8=', encoding: 'base64', size: 2 } })
+  mockQueryEvents.mockReturnValue([server, response, client, req])
+  const entry = JSON.parse(exportHar()).log.entries[0]
+  expect(entry._redlog.incomplete).toBe(true)
+  expect(entry._redlog.webSocketMessages.map((message: { direction: string }) => message.direction)).toEqual(['client', 'server'])
+  const binary = entry._redlog.webSocketMessages[1]
+  expect(binary.observedSize).toBe(2)
+  expect(Buffer.from(binary.body.text, binary.body.encoding)).toEqual(Buffer.from([0, 255]))
+})
+it('marks a response with known capture truncation incomplete', () => {
+  mockQueryEvents.mockReturnValue([makeRequestEvent('cut'), makeResponseEvent('cut', { truncated: true })])
+  expect(JSON.parse(exportHar()).log.entries[0]._redlog.incomplete).toBe(true)
+})

@@ -15,7 +15,7 @@ describe('HTTP scope display and frozen preview', () => {
   it('counts a request/response exchange once, independently of masking', () => {
     const rows = [
       ['f1', 'http_request_start', 'https://other.test/'], ['f1', 'http_response', 'https://other.test/'],
-      ['f2', 'http_request_start', 'https://a.example.test/'], ['f3', 'http_response', 'bad url']
+      ['f1', 'http_response_chunk', 'https://other.test/'], ['f2', 'http_request_start', 'https://a.example.test/'], ['f3', 'http_response', 'bad url']
     ].map(([flow_id, subtype, url], i) => ({ id: String(i), data: { flow_id, subtype, url } }) as RedLogEvent)
     expect(countOutOfScopeHttpFlows(rows, policy)).toBe(1)
     expect(countOutOfScopeHttpFlows(rows, { targets: [], excludeTargets: [] })).toBe(0)

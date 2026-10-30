@@ -146,8 +146,9 @@ export function ingest(input: IngestInput): IngestResult {
   // whole mixed batch conservatively, before any sidecar or derivation.
   const outputAt = data.subtype === 'command_end' && data.output_streamed !== true
     ? data.output_started_at : data.source_timestamp
-  if (agentType === 'shell' && !input.bypassPause
-      && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype))
+  const delayedCapture = (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype)))
+    || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(String(data.subtype)))
+  if (delayedCapture && !input.bypassPause
       && typeof outputAt === 'number' && Number.isFinite(outputAt)
       && outputAt <= Math.max(eventBus.resumedAt, lastRecordingResumeTime())) {
     return { event: null, skipped: 'paused', companions: [] }

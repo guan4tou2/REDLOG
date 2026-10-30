@@ -59,6 +59,13 @@ export function resolveExportSelection(request: NormalizedExportRequest, snapsho
     if (typeof event.data.command_id !== 'string') continue
     events.push(...queryCommandOutput(event.data.command_id, -1, snapshot))
   }
+  // Stream companions belong to the approved HTTP exchange, bounded by the
+  // same snapshot. Later segments cannot leak into an existing approval.
+  if (subset.projection === 'http') {
+    const flowIds = new Set(events.filter(event => event.agentType === 'scanner').map(event => event.data.flow_id))
+    events.push(...queryEvents({ limit: -1, snapshot, agentType: 'scanner' }).filter(event =>
+      ['http_response_chunk', 'ws_message', 'websocket_end'].includes(String(event.data.subtype)) && flowIds.has(event.data.flow_id)))
+  }
   // Execution uses this same canonical order to compare the approved digest.
   const ids = new Set(events.map(event => event.id))
   return queryEvents({ limit: -1, snapshot }).filter(event => ids.has(event.id))

@@ -401,7 +401,7 @@ export function countOutOfScopeHttpFlows(events: readonly RedLogEvent[], scope: 
   const flows = new Set<string>()
   for (const event of events) {
     const d = event.data
-    if (!['http_request_start', 'http_response'].includes(String(d.subtype)) || typeof d.flow_id !== 'string' || typeof d.url !== 'string') continue
+    if (!['http_request_start', 'http_response', 'http_response_chunk'].includes(String(d.subtype)) || typeof d.flow_id !== 'string' || typeof d.url !== 'string') continue
     try {
       const url = new URL(d.url)
       if (!['http:', 'https:'].includes(url.protocol)) continue

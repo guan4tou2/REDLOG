@@ -79,6 +79,7 @@ export const BODY_REF_FIELDS = [
 
 /** Capture loss is independent of how many bytes a reader has paged in. */
 export function capturedContentIsPartial(data: Record<string, unknown>): boolean {
+  if ((typeof data.stream_not_queued_bytes === 'number' && data.stream_not_queued_bytes > 0) || data.stream_state === 'interrupted') return true
   if (data.truncated === true || data.stdout_truncated === true || data.stderr_truncated === true
     || (data.io as { truncated?: boolean } | undefined)?.truncated === true) return true
   return BODY_REF_FIELDS.some(field => (data[field] as { truncated?: boolean } | undefined)?.truncated === true)

@@ -26,3 +26,7 @@
 每案記錄來源輸入／預期集合／實際 Event IDs、binding、檔案內容 hash／prefix、查詢覆蓋及必要成品。文件定義、合成 fixture、環境變數分支、單平台 CI 不能取代來源實跑或別的平台結果。
 
 失敗注入需區分缺少環境與產品缺陷；相同資料可合併為少量 table-driven／integration tests，不要求十六個 GUI 流程。平台不支援可信 App origin 時，CT-08／09 的安全降級可驗證，但該平台「只記 Warp」仍須標 UNSUPPORTED，不可混寫功能通過。
+
+## 2026-10-30 局部補驗
+
+CT-15／16 的 HTTP flow identity、暫停／延遲 segments、拒絕不 spool 與實際 ENOSPC 重試，以及 snapshot 內 SSE／WS HAR companions，已補 source／成品案例，來源 hash 與實際結果見 [063 verification](../063-long-recording-segments/verification.md)。這些是局部證據，不涵蓋表列所有來源與操作；原 CT 狀態保持。契約映射檢查只驗結構與文件存在，不執行測試或自行升級狀態。

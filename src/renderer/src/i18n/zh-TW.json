@@ -1858,5 +1858,7 @@
   "scope.commandPreview": "原始指令不可讀；以下為當時摘要",
   "scope.ruleUnavailable": "當時未記錄命中規則",
   "timeline.replay.markerAt": "標記 {{time}}",
-  "export.attachments.rawBoundary": "原始附件不做內容層級的範圍裁切或操作者資訊清洗；cast 只複製核准的固定前綴。"
+  "export.attachments.rawBoundary": "原始附件不做內容層級的範圍裁切或操作者資訊清洗；cast 只複製核准的固定前綴。",
+  "http.streamCaptureUnknown": "串流使用分段紀錄；完整性未確認。",
+  "http.streamCapturePartial": "串流中斷，或有區段未排入保存。"
 }

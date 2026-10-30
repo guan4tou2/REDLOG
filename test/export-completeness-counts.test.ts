@@ -19,6 +19,14 @@ describe('countTruncatedOutputs', () => {
     ])).toBe(5)
   })
 
+  it('counts observed stream capture loss without turning unknown delivery into proven loss', () => {
+    expect(countTruncatedOutputs([
+      ev('scanner', { stream_not_queued_bytes: 64 }),
+      ev('scanner', { stream_state: 'interrupted' }),
+      ev('scanner', { capture_delivery: 'unknown', stream_not_queued_bytes: 0 })
+    ])).toBe(2)
+  })
+
   it('does not count complete output', () => {
     expect(countTruncatedOutputs([
       ev('terminal', { stdout_truncated: false }),

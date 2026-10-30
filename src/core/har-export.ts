@@ -1,11 +1,22 @@
+import { capturedContentIsPartial } from './content-contract'
 import { queryEvents, type RedLogEvent } from './db/events'
 import { readBody, type BodyRef } from './http-body-store'
 import { redactEventsForExport, type RedactExportOpts } from './redact-export'
 import type { ScopeForSanitize } from './scope-sanitize'
 import type { ExportSnapshot } from './export-plan'
 
+interface HarWebSocketMessage {
+  eventId: string
+  seq: unknown
+  direction: unknown
+  messageType: unknown
+  observedSize: unknown
+  truncated: boolean
+  body: ReturnType<typeof resolveBody>
+}
+
 interface HarEntry {
-  _redlog: { flowId: string; requestEventId: string | null; responseEventId: string | null; incomplete: boolean }
+  _redlog: { flowId: string; requestEventId: string | null; responseEventId: string | null; incomplete: boolean; webSocketMessages?: HarWebSocketMessage[]; streamChunks?: Array<{ eventId: string; seq: unknown; offset: unknown; contentEncoding: unknown; body: ReturnType<typeof resolveBody> }> }
   startedDateTime: string
   time: number
   request: {
@@ -154,12 +165,22 @@ export function exportHar(opts?: {
 
   const requests = new Map<string, RedLogEvent>()
   const responses = new Map<string, RedLogEvent>()
+  const streamChunks = new Map<string, RedLogEvent[]>()
+  const webSocketMessages = new Map<string, RedLogEvent[]>()
 
   for (const ev of events) {
     const d = ev.data as Record<string, unknown> | undefined
     if (!d) continue
     const flowId = d.flow_id as string | undefined
     if (typeof flowId !== 'string' || !flowId) continue
+    if (d.subtype === 'ws_message') {
+      const messages = webSocketMessages.get(flowId) ?? []
+      messages.push(ev); webSocketMessages.set(flowId, messages)
+    }
+    if (d.subtype === 'http_response_chunk') {
+      const chunks = streamChunks.get(flowId) ?? []
+      chunks.push(ev); streamChunks.set(flowId, chunks)
+    }
     if (d.subtype === 'http_request_start') requests.set(flowId, ev)
     else if (d.subtype === 'http_response' && !responses.has(flowId)) responses.set(flowId, ev)
   }
@@ -184,7 +205,20 @@ export function exportHar(opts?: {
     const timing = rsd?.timing as Record<string, number> | undefined
 
     const entry: HarEntry = {
-      _redlog: { flowId, requestEventId: reqEv?.id ?? null, responseEventId: respEv?.id ?? null, incomplete: !reqEv || !respEv },
+      _redlog: { flowId, requestEventId: reqEv?.id ?? null, responseEventId: respEv?.id ?? null, incomplete: !reqEv || !respEv || rsd?.streamed === true || webSocketMessages.has(flowId) || capturedContentIsPartial(rd) || capturedContentIsPartial(rsd ?? {}),
+        ...(webSocketMessages.has(flowId) ? { webSocketMessages: webSocketMessages.get(flowId)!
+          .sort((a, b) => Number(a.data.message_count) - Number(b.data.message_count)).map(event => ({
+            eventId: event.id, seq: event.data.message_count, direction: event.data.direction, messageType: event.data.message_type, observedSize: event.data.size,
+            truncated: Boolean((event.data.ws_body as { truncated?: boolean } | undefined)?.truncated || (event.data.ws_body_ref as BodyRef | undefined)?.truncated),
+            body: resolveBody(event.data.ws_body as { data?: string; encoding?: string; size?: number }, event.data.ws_body_ref as BodyRef | undefined)
+          })) } : {}),
+        ...(streamChunks.has(flowId) ? {
+          streamChunks: streamChunks.get(flowId)!
+            .sort((a, b) => Number(a.data.seq) - Number(b.data.seq)).map(event => ({
+              eventId: event.id, seq: event.data.seq, offset: event.data.offset, contentEncoding: event.data.content_encoding ?? 'identity',
+              body: resolveBody(event.data.response_body as { data?: string; encoding?: string; size?: number }, event.data.response_body_ref as BodyRef | undefined)
+            }))
+        } : {}) },
       startedDateTime: new Date(reqEv?.timestamp ?? respEv!.timestamp).toISOString(),
       time: (rsd?.duration_ms as number) ?? -1,
       request: {

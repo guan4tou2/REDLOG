@@ -48,9 +48,11 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   // mitmproxy HTTP producer (agent_type=scanner)
   'scanner:http_request_start',
   'scanner:http_response',
+  'scanner:http_response_chunk',
   'scanner:http_error',
   'scanner:http_request_dropped',
   'scanner:ws_message',
+  'scanner:websocket_end',
   'scanner:tcp_message',
   'scanner:cookie_change',
   // CDP browser console. `browser_launched` + top-level navigation stay

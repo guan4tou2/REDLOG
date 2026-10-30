@@ -1858,5 +1858,7 @@
   "scope.commandPreview": "Original command unavailable; showing the recorded summary",
   "scope.ruleUnavailable": "Matched rule was not recorded",
   "timeline.replay.markerAt": "Marker at {{time}}",
-  "export.attachments.rawBoundary": "Raw attachments do not apply content-level scope filtering or operator-PII scrubbing; casts contain only the approved byte prefix."
+  "export.attachments.rawBoundary": "Raw attachments do not apply content-level scope filtering or operator-PII scrubbing; casts contain only the approved byte prefix.",
+  "http.streamCaptureUnknown": "Stream content uses separate segments; completeness is unverified.",
+  "http.streamCapturePartial": "The stream was interrupted or some segments were not queued for capture."
 }

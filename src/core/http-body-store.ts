@@ -59,8 +59,28 @@ export function storeBody(body: {
   const filename = `${sha256}.body`
   const filePath = path.join(bodiesDir(), filename)
 
-  if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, rawBytes, { mode: 0o600 })
+  const verifyExisting = (): void => {
+    const stat = fs.lstatSync(filePath)
+    if (!stat.isFile() || stat.size !== rawBytes.length || !fs.readFileSync(filePath).equals(rawBytes)) {
+      throw new Error('Saved body does not match its content hash')
+    }
+  }
+  if (fs.existsSync(filePath)) {
+    verifyExisting()
+  } else {
+    // A failed write must never publish a partial file under the complete
+    // content hash: later retries would mistake that file for saved evidence.
+    const temporary = `${filePath}.${crypto.randomUUID()}.tmp`
+    try {
+      fs.writeFileSync(temporary, rawBytes, { mode: 0o600, flag: 'wx' })
+      try { fs.linkSync(temporary, filePath) }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        verifyExisting()
+      }
+    } finally {
+      try { fs.unlinkSync(temporary) } catch { /* absent or filesystem unavailable */ }
+    }
   }
 
   return { sha256, size: rawBytes.length, file: filename, encoding: body.encoding }

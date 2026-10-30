@@ -144,3 +144,14 @@ describe('a flow with only one half', () => {
     expect(screen.queryByTestId('http-tab-request')).toBeNull()
   })
 })
+
+it('keeps stream completeness unknown instead of treating an ended response as complete', () => {
+  bridge(null)
+  draw({ ...RESPONSE, streamed: true, stream_state: 'ended', capture_delivery: 'unknown' })
+  expect(screen.getByText('串流使用分段紀錄；完整性未確認。')).toBeTruthy()
+})
+it('shows known stream loss beside the response', () => {
+  bridge(null)
+  draw({ ...RESPONSE, streamed: true, stream_state: 'interrupted' })
+  expect(screen.getByText('串流中斷，或有區段未排入保存。')).toBeTruthy()
+})

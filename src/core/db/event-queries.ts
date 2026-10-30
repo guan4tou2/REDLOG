@@ -977,6 +977,7 @@ export function queryByFlowId(flowId: string): RedLogEvent[] {
   const rows = db.prepare(
     `SELECT *, 'logged' AS tier FROM events_logged
      WHERE agent_type = 'scanner' AND json_extract(data, '$.flow_id') = ?
+       AND COALESCE(subtype, '') NOT IN ('http_response_chunk', 'ws_message', 'websocket_end')
      ORDER BY timestamp ASC LIMIT 10`
   ).all(flowId) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
