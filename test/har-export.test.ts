@@ -365,3 +365,63 @@ it('marks a response with known capture truncation incomplete', () => {
   mockQueryEvents.mockReturnValue([makeRequestEvent('cut'), makeResponseEvent('cut', { truncated: true })])
   expect(JSON.parse(exportHar()).log.entries[0]._redlog.incomplete).toBe(true)
 })
+
+// #461: entries were built from requests and responses only, so a flow whose
+// request and response were never saved — admission refused, the producer
+// killed mid-stream, or only its segments approved — vanished from the HAR
+// with its approved events in the selection. A HAR entry needs a request and
+// a status, and inventing them would be worse than losing the flow, so such a
+// flow is kept beside the entries, as observed and nothing more.
+describe('a flow with segments but no saved request or response (#461)', () => {
+  it('keeps approved SSE chunks without inventing an entry', () => {
+    const a = makeResponseEvent('orphan', { subtype: 'http_response_chunk', seq: 1, offset: 0, url: 'https://example.com/events', response_body: { data: 'ZGF0YTog', encoding: 'base64', size: 6 } })
+    const b = makeResponseEvent('orphan', { subtype: 'http_response_chunk', seq: 2, offset: 6, url: 'https://example.com/events', response_body: { data: 'MQ==', encoding: 'base64', size: 1 } })
+    mockQueryEvents.mockReturnValue([b, a])
+    const log = JSON.parse(exportHar({ includeEventIds: new Set([a.id, b.id]) })).log
+    expect(log.entries).toEqual([])
+    const [flow] = log._redlog.partialFlows
+    expect(flow).toMatchObject({ flowId: 'orphan', requestEventId: null, responseEventId: null, incomplete: true, url: 'https://example.com/events' })
+    expect(flow.streamChunks.map((c: { eventId: string }) => c.eventId)).toEqual([a.id, b.id])
+    expect(flow.streamChunks.map((c: { body: { text: string } }) => c.body.text)).toEqual(['ZGF0YTog', 'MQ=='])
+    expect(flow).not.toHaveProperty('request')
+    expect(flow).not.toHaveProperty('response')
+  })
+
+  it('keeps approved WebSocket messages, their direction, order and binary bytes', () => {
+    const server = makeResponseEvent('ws-orphan', { subtype: 'ws_message', message_count: 2, direction: 'server', message_type: 'binary', size: 2, ws_body: { data: 'AP8=', encoding: 'base64', size: 2 } })
+    const client = makeResponseEvent('ws-orphan', { subtype: 'ws_message', message_count: 1, direction: 'client', message_type: 'text', size: 2, ws_body: { data: 'hi', encoding: 'text', size: 2 } })
+    mockQueryEvents.mockReturnValue([server, client])
+    const log = JSON.parse(exportHar({ includeEventIds: new Set([server.id, client.id]) })).log
+    expect(log.entries).toEqual([])
+    const [flow] = log._redlog.partialFlows
+    expect(flow.incomplete).toBe(true)
+    expect(flow.webSocketMessages.map((m: { eventId: string; direction: string }) => [m.eventId, m.direction])).toEqual([[client.id, 'client'], [server.id, 'server']])
+    expect(Buffer.from(flow.webSocketMessages[1].body.text, 'base64')).toEqual(Buffer.from([0, 255]))
+  })
+
+  it('adds no partial-flow field when every flow has a request or response', () => {
+    mockQueryEvents.mockReturnValue([makeRequestEvent('f'), makeResponseEvent('f')])
+    expect(JSON.parse(exportHar()).log._redlog).toBeUndefined()
+  })
+
+  it('keeps a request with chunks and no response as an incomplete entry', () => {
+    const req = makeRequestEvent('cut-sse')
+    const chunk = makeResponseEvent('cut-sse', { subtype: 'http_response_chunk', seq: 1, offset: 0, response_body: { data: 'eA==', encoding: 'base64', size: 1 } })
+    mockQueryEvents.mockReturnValue([chunk, req])
+    const log = JSON.parse(exportHar()).log
+    expect(log.entries).toHaveLength(1)
+    expect(log.entries[0]._redlog).toMatchObject({ requestEventId: req.id, responseEventId: null, incomplete: true })
+    expect(log.entries[0]._redlog.streamChunks[0].eventId).toBe(chunk.id)
+    expect(log._redlog).toBeUndefined()
+  })
+
+  it('keeps a WebSocket request with messages and no end as incomplete, in order', () => {
+    const req = makeRequestEvent('ws-open')
+    const second = makeResponseEvent('ws-open', { subtype: 'ws_message', message_count: 2, direction: 'server', message_type: 'text', size: 1, ws_body: { data: 'b', encoding: 'text', size: 1 } })
+    const first = makeResponseEvent('ws-open', { subtype: 'ws_message', message_count: 1, direction: 'client', message_type: 'text', size: 1, ws_body: { data: 'a', encoding: 'text', size: 1 } })
+    mockQueryEvents.mockReturnValue([second, req, first])
+    const entry = JSON.parse(exportHar()).log.entries[0]
+    expect(entry._redlog.incomplete).toBe(true)
+    expect(entry._redlog.webSocketMessages.map((m: { eventId: string }) => m.eventId)).toEqual([first.id, second.id])
+  })
+})

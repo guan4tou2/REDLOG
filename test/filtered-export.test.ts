@@ -213,3 +213,20 @@ it('keeps the response pair reachable after more than ten SSE segments', () => {
  addExportEvent('events_logged','pair-response',1030,'example.com',{subtype:'http_response',flow_id:'long-sse'})
  expect(queryByFlowId('long-sse').map(event=>event.id)).toEqual(['pair-request','pair-response'])
 })
+// #461, through a real plan: a time-range HAR carries every logged scanner
+// row in the range, so segments whose request and response were never saved
+// reach the exporter. They used to be dropped there; the file now holds them,
+// and a segment saved after the preview stays out.
+it('delivers a stream-only flow in the HAR it previewed, and nothing saved after', () => {
+ addExportEvent('events_logged','lone-1',1000,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:1,offset:0,url:'https://example.com/events',response_body:{data:'ZGF0YQ==',encoding:'base64',size:4}})
+ insertFixture('events_logged','lone-ws',1001,{targetId:'example.com',agentType:'scanner',subtype:'ws_message',data:{flow_id:'lone-socket',message_count:1,direction:'server',message_type:'binary',size:2,ws_body:{data:'AP8=',encoding:'base64',size:2}}})
+ const r=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(2)
+ addExportEvent('events_logged','lone-2',1002,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:2,offset:4,response_body:{data:'eA==',encoding:'base64',size:1}})
+ const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const log=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).log
+ expect(log.entries).toEqual([])
+ const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
+ expect(flows.lone.streamChunks.map((c:any)=>[c.eventId,c.body.text])).toEqual([['lone-1','ZGF0YQ==']])
+ expect(Buffer.from(flows['lone-socket'].webSocketMessages[0].body.text,'base64')).toEqual(Buffer.from([0,255]))
+})
