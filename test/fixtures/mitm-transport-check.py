@@ -2,8 +2,10 @@ import ast, json, tempfile, pathlib, types, urllib.request, urllib.error
 from unittest.mock import patch
 # Execute the production transport functions without requiring optional mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text())
-names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id'}
-ns = dict(json=json, time=__import__('time'), urllib=urllib, VERBOSE=False)
+names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id',
+         '_write_spool_record', '_note_queue_rejection', '_flush_queue_gaps', '_declared_body_bytes', '_queue_gap_record', '_save_queue_gaps'}
+gap_state = {'_QUEUE_GAP_FLUSH_MS', '_QUEUE_GAPS', '_QUEUE_GAP_LOCK'}
+ns = dict(json=json, time=__import__('time'), urllib=urllib, VERBOSE=False, threading=__import__('threading'))
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     ns['_SPOOL_LOCK'] = __import__('threading').Lock()
@@ -11,9 +13,11 @@ with tempfile.TemporaryDirectory() as directory:
     ns.update(_IDENTITY_PATH=root/'identity', SPOOL_DIR=root/'pending')
     pending = []
     ns['_SEND_QUEUE'] = types.SimpleNamespace(put=pending.append)
-    ns['threading'] = types.SimpleNamespace(Thread=lambda target, daemon: types.SimpleNamespace(start=lambda: pending.append(target)))
+    ns['threading'] = types.SimpleNamespace(Lock=__import__('threading').Lock, Thread=lambda target, daemon: types.SimpleNamespace(start=lambda: pending.append(target)))
     ns['_get_redlog_connection'] = lambda: ('1234', 'original-token')
-    exec(compile(ast.Module(body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names], type_ignores=[]), '<production-transport>', 'exec'), ns)
+    exec(compile(ast.Module(body=[n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names)
+        or (isinstance(n, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id in gap_state for t in (n.targets if isinstance(n, ast.Assign) else [n.target])))],
+        type_ignores=[]), '<production-transport>', 'exec'), ns)
     identity = ns['_IDENTITY_PATH']
     identity.write_text(json.dumps({'engagementId':'A','operatorId':'op-A'}))
     payload={'agent_type':'scanner','data':{'flow_id':'old','url':'https://private.test/?token=SECRET','response_body':{'data':'PRIVATE-BYTES'},'headers':{'cookie':'SECRET'}}}

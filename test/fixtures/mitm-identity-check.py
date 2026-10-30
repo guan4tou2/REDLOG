@@ -5,8 +5,11 @@ from urllib.parse import urlparse
 # request they describe; each used to take whatever project was active then.
 # Runs the production RedLogAddon and transport functions without mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
-names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id', '_dns_type_name', '_dns_rcode_name'}
-body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names) or (isinstance(n, ast.ClassDef) and n.name == 'RedLogAddon')]
+names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id', '_dns_type_name', '_dns_rcode_name',
+         '_write_spool_record', '_note_queue_rejection', '_flush_queue_gaps', '_declared_body_bytes', '_queue_gap_record', '_save_queue_gaps'}
+gap_state = {'_QUEUE_GAP_FLUSH_MS', '_QUEUE_GAPS', '_QUEUE_GAP_LOCK'}
+body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names) or (isinstance(n, ast.ClassDef) and n.name == 'RedLogAddon')
+        or (isinstance(n, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id in gap_state for t in (n.targets if isinstance(n, ast.Assign) else [n.target])))]
 
 
 class Abort(Exception):
@@ -22,7 +25,7 @@ stub = types.SimpleNamespace(HTTPFlow=object, TCPFlow=object, TlsData=object, Cl
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     pending = []
-    ns = dict(json=json, time=time, hashlib=hashlib, urllib=urllib, urlparse=urlparse, VERBOSE=False, SKIP_STATIC=False,
+    ns = dict(json=json, time=time, hashlib=hashlib, urllib=urllib, urlparse=urlparse, VERBOSE=False, SKIP_STATIC=False, threading=__import__('threading'),
               PENDING_TTL_SEC=300, VERIFY_HOST='redlog.verify.invalid', PROXY_MODE='regular',
               http=stub, tcp=stub, tls=stub, ctx=types.SimpleNamespace(log=log),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
