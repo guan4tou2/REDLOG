@@ -1,6 +1,7 @@
 import { querySourceSessions, type SourceSessionRequest } from '../../core/source-sessions'
 import { describeEventContent, readEventContent, findEventContent, createContentAnchor, resolveContentAnchor, readContentForClipboard } from '../../core/evidence-content'
 import { saveEventContent } from '../../core/saved-content-delivery'
+import { streamCompletion } from '../../core/stream-completion'
 import { clipboard, dialog } from 'electron'
 import type { ContentReadRequest, ContentFindRequest } from '../../core/content-contract'
 import { queryActivityPage, queryActivityMembers } from '../../core/db/activity-queries'
@@ -8,7 +9,7 @@ import type { ActivityRequest, ActivityMembersRequest } from '../../core/activit
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryCommandOutput, queryCommandEnds, commandEvidence,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryStreamSegments, queryCommandOutput, queryCommandEnds, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, distinctAgentTypes, aggregateTargets,
@@ -142,6 +143,9 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) =>
     ctx.getActiveProject() ? queryByFlowId(flowId) : [])
+
+  ipcMain.handle('events:streamCompletion', (_e, flowId: string) =>
+    ctx.getActiveProject() && typeof flowId === 'string' && flowId ? streamCompletion(queryStreamSegments(flowId)) : null)
 
   ipcMain.handle('events:commandOutput', (_e, commandId: string) => {
     const rows = ctx.getActiveProject() && typeof commandId === 'string' && commandId ? queryCommandOutput(commandId, 2001) : []
