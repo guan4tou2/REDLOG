@@ -147,7 +147,8 @@ jobs:
         # when none is on PATH. Until this step existed they skipped on every
         # run, so the only executions they had ever had were on a developer's
         # machine. Same install as linux-install-smoke.yml; the version is
-        # printed so a failure says which mitmproxy it ran against.
+        # printed so a failure says which mitmproxy it ran against — on Python
+        # 3.11 pip resolves the 11.x line, not the 12.x a developer may have.
         run: |
           python -m pip install --quiet mitmproxy
           mitmdump --version
@@ -159,6 +160,12 @@ jobs:
       - name: Playwright for Electron
         # xvfb-run gives headless Ubuntu a display server so the Electron
         # BrowserWindow can create its GPU + WebContents surface.
+        #
+        # mitmdump is installed above, so a real-source spec that cannot find
+        # it is a broken install, not a reason to skip: fail it (see
+        # `requireMitmdump` in e2e/helpers.ts).
+        env:
+          REDLOG_E2E_REQUIRE_MITMDUMP: '1'
         run: xvfb-run --auto-servernum npm run e2e
 
       - name: Upload screenshots + report on failure

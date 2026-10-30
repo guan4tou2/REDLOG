@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createServer, get, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { launchWithTempHome, makeTempHome, REPO_ROOT } from './helpers'
+import { launchWithTempHome, makeTempHome, REPO_ROOT, requireMitmdump } from './helpers'
 import { ManagedHttpProxy, buildManagedProxyArgs, probeManagedProxy } from '../src/main/services/managed-http-proxy'
 
 // Acceptance for #459 and #460 against the real mitmdump and the real app.
@@ -12,7 +12,6 @@ import { ManagedHttpProxy, buildManagedProxyArgs, probeManagedProxy } from '../s
 // actually happened.
 
 const ADDON = join(REPO_ROOT, 'hooks', 'mitmproxy-addon.py')
-const hasMitmdump = (): boolean => spawnSync('mitmdump', ['--version'], { timeout: 10_000 }).status === 0
 const mitmVersion = (): string => String(spawnSync('mitmdump', ['--version'], { timeout: 10_000 }).stdout).split('\n')[0].trim()
 
 function listen(server: Server): Promise<number> {
@@ -53,7 +52,7 @@ function alive(pid: number): boolean {
 }
 
 test('#459 flows begun in project A and answered after the switch to B leave B nothing of A', async () => {
-  test.skip(!hasMitmdump(), 'Requires installed mitmdump for real source acceptance')
+  requireMitmdump()
   test.setTimeout(150_000)
   const MARKER = 'A-ONLY-7f3c9e'
   const held = new Map<string, ServerResponse>()
@@ -153,6 +152,7 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
       + ` swept after the switch ${JSON.stringify(await urls('a-ttl'))}, swept before it ${JSON.stringify(await urls('a-same'))}.`)
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+    console.log(`[DBG] app proxy status: ${JSON.stringify(await page.evaluate(() => window.redlog.httpCapture.status()).catch(err => String(err)))}`)
     console.log(`[DBG] external producer output tail: ${externalOutput.slice(-1500)}`)
     throw e
   } finally {
@@ -164,7 +164,7 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
 })
 
 test('#460 a full queue under real load: counted, not lost to a pause, said when unsaved, and partly lost to a kill', async () => {
-  test.skip(!hasMitmdump(), 'Requires installed mitmdump for real source acceptance')
+  requireMitmdump()
   test.setTimeout(240_000)
   const upstream = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok') })
   const upPort = await listen(upstream)

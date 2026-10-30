@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { createServer, get, type ServerResponse } from 'node:http'
-import { spawnSync } from 'node:child_process'
-import { launchWithTempHome } from './helpers'
+import { launchWithTempHome, requireMitmdump } from './helpers'
 
 test('SSE reaches persisted events before completion and pause refuses bytes without later replay', async () => {
-  test.skip(spawnSync('mitmdump', ['--version'], { timeout: 5000 }).status !== 0, 'Requires installed mitmdump for real source acceptance')
+  requireMitmdump()
   test.setTimeout(90000)
   const { app, page } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
   let output: ServerResponse | undefined
@@ -77,7 +76,7 @@ test('SSE reaches persisted events before completion and pause refuses bytes wit
 })
 
 test('WebSocket messages persist before close, retain binary bytes in HAR and record an abnormal close', async () => {
-  test.skip(spawnSync('mitmdump', ['--version'], { timeout: 5000 }).status !== 0, 'Requires installed mitmdump')
+  requireMitmdump()
   test.setTimeout(90000)
   const { WebSocket, WebSocketServer } = await import('ws')
   const { request } = await import('node:http')

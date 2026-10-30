@@ -1,4 +1,5 @@
-import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test'
+import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +21,22 @@ export interface RedLogBridge {
 
 export const REPO_ROOT = join(__dirname, '..')
 export const MAIN_ENTRY = join(REPO_ROOT, 'out', 'main', 'index.js')
+
+/**
+ * For a spec that drives the real mitmdump: skip where none is installed —
+ * except in a run that says it must be there (CI's e2e job sets
+ * `REDLOG_E2E_REQUIRE_MITMDUMP=1`), where a missing mitmdump fails instead.
+ *
+ * A skip is a green result that checked nothing. These specs skipped on every
+ * CI run for as long as the job did not install mitmproxy, and nothing said so.
+ */
+export function requireMitmdump(): void {
+  const found = spawnSync('mitmdump', ['--version'], { timeout: 10_000 }).status === 0
+  if (process.env.REDLOG_E2E_REQUIRE_MITMDUMP === '1') {
+    expect(found, 'REDLOG_E2E_REQUIRE_MITMDUMP=1, but `mitmdump --version` failed').toBe(true)
+  }
+  test.skip(!found, 'Requires installed mitmdump for real source acceptance')
+}
 
 /**
  * A fresh, isolated fake home for one Electron launch.

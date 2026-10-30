@@ -2,11 +2,11 @@ import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { launchWithTempHome, openView, openCaptureProof, resizeMainWindow } from './helpers'
+import { launchWithTempHome, openView, openCaptureProof, requireMitmdump, resizeMainWindow } from './helpers'
 
 test('real HTTPS evidence persists as history without restoring live proof after restart or crossing projects', async () => {
   test.skip(process.platform === 'win32', 'This native acceptance uses the installed POSIX curl/mitmdump')
-  test.skip(spawnSync('mitmdump', ['--version'], { timeout: 5000 }).status !== 0, 'Requires an existing mitmdump installation')
+  requireMitmdump()
   test.setTimeout(120_000)
   let { app, page, tmpHome } = await launchWithTempHome()
   try {
