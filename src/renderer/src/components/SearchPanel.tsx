@@ -321,6 +321,9 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
 
 
   useEffect(() => {
+    // A keystroke's pending search closed over the filter as it was. This
+    // search already uses the new one, so the old one must not land after it.
+    if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null }
     if (active && (query.length >= 1 || browse)) doSearch(query)
   }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, mode, active])
 
