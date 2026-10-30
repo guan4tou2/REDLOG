@@ -254,6 +254,21 @@ it('previews stream-only flows and applies do-not-export and scope masking to th
  expect(JSON.stringify(flows['out-flow'])).not.toContain('T1VU')
  expect(log.entries).toHaveLength(1)
 })
+// #461: the HAR the HTTP view offers is built from requests and responses, so
+// a stream-only flow is not in it. The preview counts the ones its filter
+// would have reached instead of leaving them out silently.
+it('counts the stream-only flows an HTTP-view HAR leaves out, by the filter they can answer', () => {
+ const chunk=(id:string,ts:number,flow:string,host:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:flow,seq:1,offset:0,url:`https://${host}/events`,response_body:{data:'eA==',encoding:'base64',size:1}}})
+ chunk('a-1',1000,'a-flow','a.test'); chunk('a-2',1001,'a-flow','a.test'); chunk('b-1',1002,'b-flow','b.test')
+ addExportEvent('events_logged','req',1003,'a.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://a.test/'})
+ addExportEvent('events_logged','res',1004,'a.test',{subtype:'http_response',flow_id:'whole',method:'GET',url:'https://a.test/',status:200})
+ const view=(http:Record<string,string>)=>resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{text:'',...http}}})
+ expect(view({}).plan.counts).toMatchObject({exchanges:1,partialHttpFlows:0,partialHttpFlowsOutside:2})
+ expect(view({host:'b.test'}).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect(view({text:'a.test/ev'}).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect(view({method:'GET'}).plan.counts.partialHttpFlowsOutside).toBe(0)
+})
 // #461: a segment whose bytes live in a sidecar is delivered as the bytes the
 // event recorded — checked by their hash — and a sidecar changed on disk after
 // the preview fails the export rather than shipping other bytes under the

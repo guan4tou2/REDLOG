@@ -20,6 +20,7 @@ import {
   countTruncatedOutputs,
   countPauseWindows,
   countPartialHttpFlows,
+  countPartialHttpFlowsOutside,
   createExportPlan,
   fingerprintValue,
   normalizeExportRequest,
@@ -147,7 +148,15 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents),
       truncatedOutputs: countTruncatedOutputs(selectedEvents),
       pauseWindows: countPauseWindows(selectedEvents),
-      ...(request.format === 'har' ? { partialHttpFlows: countPartialHttpFlows(selectedEvents) } : {})
+      ...(request.format === 'har' ? {
+        partialHttpFlows: countPartialHttpFlows(selectedEvents),
+        ...(request.subset.kind === 'selection' && request.subset.projection === 'http' ? {
+          partialHttpFlowsOutside: countPartialHttpFlowsOutside(
+            queryEvents({ limit: -1, snapshot, agentType: 'scanner', tier: 'logged' }), selectedIdSet,
+            { ...request.subset.filter, http: request.subset.http },
+            event => doNotExportIds.has(event.id) || isPersonalDomain(event.targetId, scope))
+        } : {})
+      } : {})
     },
     attachments,
     selectedEventIds,
