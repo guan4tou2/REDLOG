@@ -596,6 +596,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
                     <PreviewRow label={t('export.preview.truncatedOutputs')} value={resolvedPlan.counts.truncatedOutputs ?? 0} warn />
                     <PreviewRow label={t('export.preview.pauseWindows')} value={resolvedPlan.counts.pauseWindows ?? 0} warn />
+                    {(resolvedPlan.counts.partialHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.partialHttpFlows')} value={resolvedPlan.counts.partialHttpFlows!} warn />}
                     <div className="border-t border-redlog-border mt-1 pt-1">
                       <div className="flex justify-between text-xs px-3 py-0.5 font-medium">
                         <span className="text-redlog-text">{t('export.preview.included')}</span>

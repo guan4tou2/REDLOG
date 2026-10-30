@@ -19,6 +19,7 @@ import {
   countReferencedAttachments,
   countTruncatedOutputs,
   countPauseWindows,
+  countPartialHttpFlows,
   createExportPlan,
   fingerprintValue,
   normalizeExportRequest,
@@ -145,7 +146,8 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       attachmentsExcludedByOperator: attachmentCounts.excludedByOperator,
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents),
       truncatedOutputs: countTruncatedOutputs(selectedEvents),
-      pauseWindows: countPauseWindows(selectedEvents)
+      pauseWindows: countPauseWindows(selectedEvents),
+      ...(request.format === 'har' ? { partialHttpFlows: countPartialHttpFlows(selectedEvents) } : {})
     },
     attachments,
     selectedEventIds,

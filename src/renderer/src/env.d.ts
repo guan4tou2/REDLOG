@@ -67,6 +67,7 @@ interface ResolvedExportPlan {
     unsupported: number
     truncatedOutputs?: number
     pauseWindows?: number
+    partialHttpFlows?: number
   }
   attachments: ExportAttachmentRow[]
 }

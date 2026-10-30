@@ -230,3 +230,25 @@ it('delivers a stream-only flow in the HAR it previewed, and nothing saved after
  expect(flows.lone.streamChunks.map((c:any)=>[c.eventId,c.body.text])).toEqual([['lone-1','ZGF0YQ==']])
  expect(Buffer.from(flows['lone-socket'].webSocketMessages[0].body.text,'base64')).toEqual(Buffer.from([0,255]))
 })
+// #461: the preview of such a HAR names the stream-only flows, and the same
+// exclusions hold for them as for any exchange — do-not-export removes a
+// segment, scope masking replaces an out-of-scope segment's bytes.
+it('previews stream-only flows and applies do-not-export and scope masking to them', () => {
+ fs.writeFileSync(path.join(dir,'config.yaml'),'scope:\n  targets: [in.test]\n')
+ const chunk=(id:string,ts:number,flow:string,host:string,seq:number,data:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
+  data:{flow_id:flow,seq,offset:0,url:`https://${host}/events`,response_body:{data,encoding:'base64',size:3}}})
+ chunk('in-1',1000,'in-flow','in.test',1,'aW4x')
+ chunk('in-2',1001,'in-flow','in.test',2,'aW4y')
+ chunk('out-1',1002,'out-flow','out.test',1,'T1VU')
+ addExportEvent('events_logged','req',1003,'in.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://in.test/'})
+ getDB().prepare('INSERT INTO do_not_export(event_id,created_at) VALUES(?,?)').run('in-2',Date.now())
+ const r=resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
+ expect(r.ok).toBe(true)
+ expect(r.plan.counts).toMatchObject({included:3,excludedDoNotExport:1,partialHttpFlows:2})
+ const log=JSON.parse(fs.readFileSync(execute(r.plan.id).artifactPath,'utf8')).log
+ const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
+ expect(flows['in-flow'].streamChunks.map((c:any)=>c.eventId)).toEqual(['in-1'])
+ expect(flows['in-flow'].streamChunks[0].body.text).toBe('aW4x')
+ expect(JSON.stringify(flows['out-flow'])).not.toContain('T1VU')
+ expect(log.entries).toHaveLength(1)
+})

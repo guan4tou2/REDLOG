@@ -71,6 +71,9 @@ export interface ExportCounts {
   truncatedOutputs?: number
   /** recording pauses among the exported Events: stretches nothing was recorded */
   pauseWindows?: number
+  /** HAR only: flows with stream segments and no saved request or response,
+   *  carried beside the HAR entries rather than as one (#461) */
+  partialHttpFlows?: number
 }
 
 export interface ExportAttachmentCounts {
@@ -90,6 +93,20 @@ export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
  *  selection that filters system Events out will not show its pauses. */
 export function countPauseWindows(events: readonly RedLogEvent[]): number {
   return events.filter(e => e.agentType === 'system' && e.data.subtype === 'recording_paused').length
+}
+
+/** Flows among these Events that have SSE chunks or WebSocket messages and
+ *  neither a request nor a response — what a HAR holds in `partialFlows`. */
+export function countPartialHttpFlows(events: readonly RedLogEvent[]): number {
+  const segmented = new Set<string>()
+  const exchanged = new Set<string>()
+  for (const event of events) {
+    const flowId = event.data.flow_id
+    if (typeof flowId !== 'string' || !flowId) continue
+    if (event.data.subtype === 'http_response_chunk' || event.data.subtype === 'ws_message') segmented.add(flowId)
+    else if (event.data.subtype === 'http_request_start' || event.data.subtype === 'http_response') exchanged.add(flowId)
+  }
+  return [...segmented].filter(flowId => !exchanged.has(flowId)).length
 }
 
 export function countReferencedAttachments(events: readonly RedLogEvent[]): number {
