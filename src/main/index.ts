@@ -87,6 +87,7 @@ import { recordUpdateOutcome } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
+import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
@@ -134,15 +135,10 @@ let currentOperatorId: string | null = null
 let forceQuit = false
 // One owned install per dependency, including the wait for login PATH.
 const dependencyInstalls = new Map<PreflightCommand, AbortController>()
-// v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
-// is open to catch chain tampering silently — the on-demand verify button is
-// too easy to skip. Cleared in stopProject so a project switch stops the loop.
-let chainSampleTimer: ReturnType<typeof setInterval> | null = null
-/** v0.13.0: periodic logged-tier retention sweep. See DESIGN-logged-tier-
- *  retention.md §5.1 — 24h default cadence. `stopProject` clears on
- *  project close so the timer doesn't fire against a closed DB. */
-let loggedTierTimer: ReturnType<typeof setInterval> | null = null
-let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
+// Which open a timer or a late `.then` belongs to, and the stop that reaches
+// all of them. The chain sample, the logged-tier sweep and the spool drain
+// are its timers; stopProject closes it first. docs/DESIGN-project-runtime.md.
+const projectRuntime = new ProjectRuntime()
 
 function managedProxyPort(config: RedLogConfig): number {
   const fallback = DEFAULT_CONFIG.httpCapture.port
@@ -675,7 +671,8 @@ async function runPendingRecompute(): Promise<void> {
   // By id, not by object: renaming a project replaces `activeProject` with a
   // fresh object for the same engagement, and a reference test would read that
   // as a project switch and drop the queued recompute.
-  if (!activeProject || activeProject.id !== job.projectId) { recomputePending = null; return }
+  const running = projectRuntime.current()
+  if (!activeProject || activeProject.id !== job.projectId || !running) { recomputePending = null; return }
   recomputePending = null
   recomputeRunning = true
   try {
@@ -687,7 +684,10 @@ async function runPendingRecompute(): Promise<void> {
       engagementId: config.engagement.id,
       operatorId: config.operator.id,
       configChangedEventId: job.configChangedId,
-      scopeFile: snap.scopeFile ? { path: snap.scopeFile, sha256: snap.scopeFileSha256, entries: snap.scopeFileEntries } : null
+      scopeFile: snap.scopeFile ? { path: snap.scopeFile, sha256: snap.scopeFileSha256, entries: snap.scopeFileEntries } : null,
+      // It yields between reading and writing; a switch in between must not
+      // land this project's re-judgement in the next one's chain.
+      signal: running.signal
     })
   } catch (e) {
     // A recompute failure must never fail the save that triggered it.
@@ -711,12 +711,14 @@ function startProject(project: ProjectMeta): void {
   const config = loadConfig(projectDir)
   saveConfig(projectDir, config)
   if (activeProject) stopProject()
+  const opening = projectRuntime.begin({ projectId: project.id, engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
     activeProject = project
-    startProjectResources(project, projectDir, config)
+    startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
     writeSpoolIdentity(config.engagement.id, config.operator.id)
+    projectRuntime.activate(opening)
   } catch (error) {
     try { stopProject() } catch (cleanupError) {
       console.error('[project] rollback failed:', cleanupError)
@@ -726,7 +728,7 @@ function startProject(project: ProjectMeta): void {
   console.log(`[project] opened in ${Date.now() - openedAt}ms`)
 }
 
-function startProjectResources(project: ProjectMeta, projectDir: string, config: RedLogConfig): void {
+function startProjectResources(project: ProjectMeta, projectDir: string, config: RedLogConfig, opening: ProjectContext): void {
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
   showWifiName = config.network?.showWifiName === true
@@ -841,7 +843,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
       }
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
-    // Runs on project open AND periodically — see loggedTierTimer below.
+    // Runs on project open AND periodically — see the interval below.
     const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, { engagementId, operatorId })
     if (loggedSwept.deleted > 0) {
       console.log(`[retention] pruned ${loggedSwept.deleted} logged-tier row(s), freed ~${(loggedSwept.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
@@ -852,8 +854,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // a nine-hour engagement day. Every N hours we re-sweep in-process.
     const sweepIntervalHours = config.retention?.loggedTier?.sweepIntervalHours ?? 24
     if (sweepIntervalHours > 0) {
-      if (loggedTierTimer) clearInterval(loggedTierTimer)
-      loggedTierTimer = setInterval(() => {
+      projectRuntime.setInterval(opening, () => {
         if (!currentEngagementId || !currentOperatorId) return
         try {
           const tick = sweepLoggedTier(config.retention?.loggedTier, {
@@ -923,7 +924,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   }
   try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
-  spoolDrainTimer = setInterval(() => {
+  projectRuntime.setInterval(opening, () => {
     try { drainSpool(200) } catch { /* next interval retries preserved files */ }
   }, 30_000)
 
@@ -1104,8 +1105,9 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     }
   } catch (e) { console.error('[chain-sample] initial verify failed:', e) }
 
-  if (chainSampleTimer) clearInterval(chainSampleTimer)
-  chainSampleTimer = setInterval(() => {
+  // v0.6.89 P1-A: keep sampling while the project is open; the on-demand
+  // verify button is too easy to skip.
+  projectRuntime.setInterval(opening, () => {
     try {
       const result = verifyRandomSample(50)
       if (!result.ok) {
@@ -1173,10 +1175,11 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // A failure publishes its event and shows on the card; repeating it on every
   // open would report the same thing to an operator who has already read it.
   {
-    const openedFor = project.id
+    // By open, not by project id: after A → B → A the first A's attempt is
+    // not the second A's, and "one attempt per open" counts opens.
     void loginPathReady
       .then(() => {
-        if (activeProject?.id !== openedFor) return
+        if (!projectRuntime.isCurrent(opening)) return
         if (!shouldAutoStartHttpCapture({
           mitmdumpOnPath: isOnPath('mitmdump'),
           state: managedHttpProxy.status().state
@@ -1195,7 +1198,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // real time, and holding project-open on it would trade a visible stall for
   // an invisible one. The UI reads `casts:status` and says how much is still
   // pending, which is the honest version of the same information.
-  void backfillCastIndex(projectDir)
+  void backfillCastIndex(projectDir, undefined, opening.signal)
     .catch(() => { /* index is rebuildable; never block opening a project */ })
 }
 
@@ -1211,14 +1214,14 @@ function stopProject(): void {
       console.error('[project] cleanup failed:', error)
     }
   }
+  // First, so nothing this open started can begin anything new while the
+  // rest of it is taken down: aborts its signal and stops its timers.
+  clean(() => projectRuntime.close())
   clean(onApiProjectClose)
   clean(clearSpoolIdentity)
   clean(() => stopManagedHttpCapture(false))
   clean(stopAnchorLoop)
   clean(stopNtpLoop)
-  if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
-  if (loggedTierTimer) { clearInterval(loggedTierTimer); loggedTierTimer = null }
-  if (spoolDrainTimer) { clearInterval(spoolDrainTimer); spoolDrainTimer = null }
   if (recomputeTimer) { clearTimeout(recomputeTimer); recomputeTimer = null }
   recomputePending = null
   clean(() => alertRuntime.stop())

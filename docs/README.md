@@ -39,6 +39,7 @@
 
 - [Product positioning](PRODUCT-POSITIONING.md)：使用者與產品邊界。
 - [Capture trust](DESIGN-capture-trust.md)：擷取與保存的真實性要求，現況快照按日期閱讀。
+- [Project runtime](DESIGN-project-runtime.md)：重構順序（R0–R8）與專案生命週期邊界；R1a 已實作，§4 為日期快照。
 - [UIUX Standard](UIUX-STANDARD.md)、[Controls and copy](UIUX-CONTROLS-AND-COPY.md)：現行 UI／文案規則。
 - [Forensic Editorial](UIUX-FORENSIC-EDITORIAL.md)：尚未完成的全產品視覺與操作矩陣，由 Spec 062 承接。
 - [Alert roles](ALERT-ROLES.md)、[Layout reliability](LAYOUT-RELIABILITY.md)：警示語意與布局契約。

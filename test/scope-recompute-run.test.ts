@@ -261,6 +261,37 @@ describe.skipIf(!available)('running a scope recompute', () => {
     })
   })
 
+  describe('a project switch while it runs', () => {
+    // The run reads one project, yields to the loop twice, then writes through
+    // getDB(). A switch inside a yield used to land the first project's
+    // re-judgement, with its engagement and its event ids, in the second
+    // project's chain.
+    it('writes nothing into the project that is open when it resumes', async () => {
+      shell('evil.example')
+      const switched = new AbortController()
+      const run = runner!.runScopeRecompute({
+        before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS,
+        signal: switched.signal
+      })
+      // What a switch does, in its order: the runtime aborts, the old DB closes,
+      // the new one opens.
+      switched.abort()
+      dbmod!.closeDB()
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-recompute-b-'))
+      try {
+        dbmod!.initDB(other)
+        const before = events!.getEventCount()
+        expect(await run).toEqual({ ran: false, reason: 'superseded' })
+        expect(events!.getEventCount()).toBe(before)
+        expect(rowsOfSubtype('scope_recomputed')).toHaveLength(0)
+      } finally {
+        dbmod!.closeDB()
+        fs.rmSync(other, { recursive: true, force: true })
+        dbmod!.initDB(dir)
+      }
+    })
+  })
+
   describe('the read model the Scope page uses', () => {
     it('lists retroactive rows and marks the withdrawn ones', async () => {
       const e = shell('evil.example')

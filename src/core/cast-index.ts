@@ -349,9 +349,15 @@ export function castIndexStatus(projectDir?: string): BackfillStatus {
  * sweep from an older build leaves text behind. A backfill that only ever
  * adds would let those accumulate silently.
  */
+/** `signal` is the project's runtime signal. The index handle is one per
+ *  process, so a backfill that outlived its project would reopen that
+ *  project's index for each remaining file and close the one the next project
+ *  is using. It stops at the next file instead; the rest is picked up on the
+ *  next open, which is what an interrupted backfill already relied on. */
 export async function backfillCastIndex(
   projectDir?: string,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal
 ): Promise<{ indexed: number; pruned: number }> {
   const dir = projectDir ?? getProjectDir()
   const castsDir = path.join(dir, 'casts')
@@ -369,6 +375,7 @@ export async function backfillCastIndex(
 
   let indexed = 0
   for (let i = 0; i < names.length; i++) {
+    if (signal?.aborted) break
     const r = await indexCast(path.join(castsDir, names[i]), dir)
     if (r.skipped === null) indexed++
     onProgress?.(i + 1, names.length)
