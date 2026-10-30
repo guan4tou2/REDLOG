@@ -1,6 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { X509Certificate, randomBytes } from 'node:crypto'
+import { X509Certificate, createHash, randomBytes } from 'node:crypto'
 import http from 'node:http'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
 import { VERIFY_HOST, isVerifyNonce, type HttpVerifyReport } from '../../core/http-verify'
@@ -36,6 +36,18 @@ export function readCaFingerprint(caPath: string): CaFingerprint | null {
     const cert = new X509Certificate(readFileSync(caPath))
     const hex = (v: string): string => v.replace(/:/g, '').toUpperCase()
     return { sha1: hex(cert.fingerprint), sha256: hex(cert.fingerprint256) }
+  } catch {
+    return null
+  }
+}
+
+/** The CA's public-key pin in the form Chrome's
+ *  --ignore-certificate-errors-spki-list takes: base64 SHA-256 of the DER
+ *  SubjectPublicKeyInfo. Null when the file is missing or not a certificate. */
+export function readCaSpki(caPath: string): string | null {
+  try {
+    const spki = new X509Certificate(readFileSync(caPath)).publicKey.export({ type: 'spki', format: 'der' })
+    return createHash('sha256').update(spki).digest('base64')
   } catch {
     return null
   }

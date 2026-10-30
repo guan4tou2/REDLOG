@@ -108,7 +108,7 @@ function VerifyRow({ label, report, caveat, rejected, testId, t }: {
       {report ? (
         <span className="text-emerald-500">
           {t('firstRun.http.verifiedVia', { client: clientLabel(report.userAgent) })}
-          {caveat && <span className="block text-amber-400">{caveat}</span>}
+          {caveat && <span data-testid={`${testId}-caveat`} className="block text-amber-400">{caveat}</span>}
         </span>
       ) : rejected ? (
         <span className="text-amber-400">{t('firstRun.http.rejected')}</span>
@@ -221,6 +221,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
 
   const verifyInBrowser = async (): Promise<void> => {
     setVerificationStarted(n => n + 1)
+    setAttempt((a) => ({ ...a, inCaptureBrowser: true }))
     const r = await window.redlog.httpCapture.verifyInBrowser(attempt.nonce).catch((e) => ({ ok: false, error: String(e) }))
     if (!r.ok) { setVerificationStarted(0); toast(r.error || t('browser.failed'), 'error') }
   }
@@ -244,7 +245,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const unavailable = mitmMissing
   const browserCfg = (config?.browser ?? {}) as { ignoreCertErrors?: boolean }
   const ignoresCertErrors = browserCfg.ignoreCertErrors ?? DEFAULT_BROWSER.ignoreCertErrors
-  const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors)
+  const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors || attempt.inCaptureBrowser)
     ? t('firstRun.http.captureBrowserCaveat')
     : undefined
   // Two facts, not one. An HTTPS report proves the exchange reached the proxy;

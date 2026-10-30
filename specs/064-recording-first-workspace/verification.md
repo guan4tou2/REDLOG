@@ -544,3 +544,15 @@ Afterwards `~/.bashrc` was restored and hashed identical to before, the operator
 Not covered: the tray menu in the installed app (unit-tested only); zsh rc lines in a real distro; uninstall in a distro that is stopped and slow to start (each `wsl.exe` call is bounded at 10 s).
 
 Gates: typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed. Full unit on Windows: **4,293 passed / 1 failed / 147 skipped**; the failure was `mark-assets` timing out at 15 s under load, 35/35 alone.
+
+## 2026-10-30 — the capture browser trusts the managed CA by itself (T050)
+
+**HTTPS in the capture browser needed a root certificate in the OS trust store.** On the installed v0.18.4, `https://example.com/` in RedLog's capture browser failed with `net::ERR_CERT_AUTHORITY_INVALID` and recorded nothing until the operator ran `certutil -addstore`. The capture browser is the one client RedLog launches itself, so it now trusts the managed proxy's CA by its public key: `--ignore-certificate-errors-spki-list=<base64 SHA-256 of the DER SPKI>` (`readCaSpki` in `managed-http-proxy.ts`), passed only for RedLog's own profile and only when the browser goes through the managed proxy. Chrome honours the switch only with `--user-data-dir`, which only that profile passes. Every other certificate is still checked, the operator's own profile is never pinned, and nothing is added to any trust store. RED first: `test/capture-browser-ca-pin.test.ts` (3 of 4 failed; the pin is checked against openssl's, not this code's).
+
+Real run on this machine from the source build (`npm run build`, Electron with `out/main/index.js`, a throwaway `HOME`/`USERPROFILE`, so mitmproxy generated a CA no store had ever seen): Chrome 156 launched with the pin, `https://example.com/` returned **HTTP 200** "Example Domain", and the record held `http_request_start` + `http_response` for `/` and `/s.js`, each pair under one `flow_id`. The CA was not added to the Windows store.
+
+**A check passed in the capture browser stopped proving trust.** Until now only `ignoreCertErrors` let the capture browser through without OS trust, and the caveat keyed on it alone — so with the pin, a capture-browser check would have read "✓ Verified" while curl still refused the CA. The attempt now records that it was opened in the capture browser; the caveat (reworded to the new reason) and the "Captured · CA unverified" label from `6ae52b1f` follow it. A check opened in the operator's own browser is unchanged. RED first: `test/capture-browser-check-caveat.test.tsx` (1 of 2 failed: verified, no caveat).
+
+Gates: typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed (i18n: the two removed caveat strings are asserted nowhere). Full unit on Windows: **4,362 passed / 1 failed / 148 skipped**; the failure was `mark-assets` timing out at 15 s under load, 35/35 alone.
+
+Not covered: whether Chrome shows an "unsupported command-line flag" bar for the switch (the page screenshot does not include the browser's own toolbar); the installed package; macOS and Linux.

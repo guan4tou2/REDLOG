@@ -1440,7 +1440,7 @@
   "capture.core.heading": "核心擷取",
   "firstRun.http.verifiedVia": "✓ 已驗證（{{client}}）",
   "firstRun.http.rejected": "✗ 有 client 拒絕了 RedLog 的憑證——它還沒信任這張 CA",
-  "firstRun.http.captureBrowserCaveat": "RedLog 的擷取瀏覽器會忽略憑證錯誤，所以這不代表其他工具已信任這張 CA。",
+  "firstRun.http.captureBrowserCaveat": "RedLog 的擷取瀏覽器會自行信任這張 CA，所以這不代表其他工具已信任它。",
   "firstRun.http.verifyInBrowser": "用擷取瀏覽器驗證",
   "firstRun.http.newCheck": "重新驗證",
   "firstRun.http.verifyFromTool": "或用你實際會用的工具驗證：",

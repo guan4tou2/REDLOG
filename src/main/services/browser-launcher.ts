@@ -108,7 +108,12 @@ const QUIET_ARGS = [
   `--gcm-checkin-url=https://gcm.${OFFLINE_SUFFIX}/checkin`
 ]
 
-export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
+/** `trustSpki`: the managed proxy CA's public-key pin. RedLog's own profile
+ *  trusts that one CA by it, so HTTPS works without a root certificate in the
+ *  OS trust store. Every other certificate is still checked, and the operator's
+ *  own profile is never pinned. Chrome ignores the switch without
+ *  --user-data-dir, which only the isolated profile passes. */
+export function buildArgs(cfg: BrowserConfig, profileDir: string, opts: { trustSpki?: string | null } = {}): string[] {
   const args: string[] = []
   if (cfg.proxy) {
     args.push(`--proxy-server=${cfg.proxy}`)
@@ -126,6 +131,7 @@ export function buildArgs(cfg: BrowserConfig, profileDir: string): string[] {
     args.push(`--user-data-dir=${profileDir}`)
     args.push('--no-first-run', '--no-default-browser-check')
     args.push(...QUIET_ARGS)
+    if (opts.trustSpki) args.push(`--ignore-certificate-errors-spki-list=${opts.trustSpki}`)
   }
   if (cfg.ignoreCertErrors) args.push('--ignore-certificate-errors')
   args.push(...cfg.extraArgs.filter(Boolean))
@@ -177,7 +183,7 @@ export function isBrowserRunning(): boolean {
   return !!child && child.exitCode === null && !child.killed
 }
 
-export function launchBrowser(cfg: BrowserConfig, projectDir: string): LaunchResult {
+export function launchBrowser(cfg: BrowserConfig, projectDir: string, opts: { trustSpki?: string | null } = {}): LaunchResult {
   if (isBrowserRunning()) {
     return { ok: false, error: 'A RedLog browser is already running', pid: child?.pid }
   }
@@ -193,7 +199,7 @@ export function launchBrowser(cfg: BrowserConfig, projectDir: string): LaunchRes
   const profileDir = path.join(projectDir, 'browser-profile')
   if (cfg.isolateProfile) mkdirSync(profileDir, { recursive: true })
 
-  const args = buildArgs(cfg, profileDir)
+  const args = buildArgs(cfg, profileDir, opts)
 
   try {
     child = spawn(binary, args, { detached: true, stdio: 'ignore' })
