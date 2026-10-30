@@ -30,12 +30,16 @@ function bridge(partner: Record<string, unknown> | null): void {
     events: {
       queryByFlowId: vi.fn(async () => partner ? [{ id: 'other', data: partner }] : [])
     },
-    httpBody: { read: vi.fn(async () => null) }
+    httpBody: { read: vi.fn(async () => null) },
+    content: {
+      list: vi.fn(async ({ projectId, eventId }: { projectId: string; eventId: string }) => ({ ok: true, value: [{ field: 'response_body', status: 'available', ref: { projectId, eventId, field: 'response_body', version: 'saved' }, bytes: 42, format: 'utf8', capture: 'unknown' }] })),
+      read: vi.fn(async () => ({ ok: true, value: { offset: 0, end: 27, total: 27, text: 'complete paired sidecar END', format: 'utf8', hasMore: false, nextCursor: null } }))
+    }
   }
 }
 
 const draw = (data: Record<string, unknown>): void => {
-  render(<I18nProvider><HttpDetail data={data} eventId="self" /></I18nProvider>)
+  render(<I18nProvider><HttpDetail projectId="project" data={data} eventId="self" /></I18nProvider>)
 }
 
 beforeEach(() => localStorage.setItem('redlog-locale', 'zh-TW'))
@@ -71,12 +75,12 @@ describe('an HTTP flow with both halves', () => {
 
   it('can explicitly load the paired response sidecar', async () => {
     bridge({ ...RESPONSE, response_body_ref: { sha256: 'f'.repeat(64), file: 'http-bodies/test.txt', size: 42, encoding: 'text' } })
-    vi.mocked(window.redlog.httpBody.read).mockResolvedValue('complete paired sidecar END' as never)
     draw(REQUEST)
     fireEvent.click(await screen.findByTestId('http-tab-response'))
-    fireEvent.click(screen.getByText(/載入完整主體/))
+    fireEvent.click(screen.getByRole('button', { name: '已保存內容' }))
     expect(await screen.findByText('complete paired sidecar END')).toBeTruthy()
-    expect(window.redlog.httpBody.read).toHaveBeenCalled()
+    expect(window.redlog.content.list).toHaveBeenCalledWith({ projectId: 'project', eventId: 'other' })
+    expect(window.redlog.httpBody.read).not.toHaveBeenCalled()
   })
 
   it('keeps the selected half readable and offers retry when its partner cannot be queried', async () => {
@@ -113,7 +117,7 @@ describe('a flow with only one half', () => {
     bridge(null)
     draw({ ...RESPONSE, response_preview: 'binary preview', response_body: { data: 'AAEC', encoding: 'base64', size: 3 } })
     expect(screen.queryByText('AAEC')).toBeNull()
-    expect(screen.getByText(/載入完整主體/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '已保存內容' })).toBeTruthy()
   })
 
   it('shows an inline request body immediately and preserves its capture truncation warning', () => {

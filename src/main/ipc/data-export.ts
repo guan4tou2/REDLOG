@@ -1,3 +1,4 @@
+import { countOutOfScopeHttpFlows } from '../../core/export-plan'
 import { dialog, shell, type IpcMain } from 'electron'
 import { RecentExportStore } from '../services/recent-export'
 import type { ExportDelivery } from '../../core/export-delivery'
@@ -118,6 +119,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   } : request.format === 'bundle'
     ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
     : { included:0, missing:0, unattributed:0, excludedByOperator:0 }
+  const selectedIdSet = new Set(selectedEventIds)
   const plan = createExportPlan({
     projectId: project.id,
     request,
@@ -134,6 +136,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       included: selectedEventIds.length,
       excludedDoNotExport,
       excludedPersonal,
+      outOfScopeHttpFlows: countOutOfScopeHttpFlows(events.filter(event => selectedIdSet.has(event.id)), scope),
       maskedOutOfScope,
       sanitized,
       attachmentsIncluded: attachmentCounts.included,

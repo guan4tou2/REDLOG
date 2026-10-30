@@ -1,118 +1,51 @@
-# RedLog Docs
+# RedLog 文件入口
 
-Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
+文件按操作、工程、規格與歷史分流；此頁不宣告未經驗收的版本能力。RedLog 保存已接入來源能觀測到的操作與 HTTP(S) 證據；沒有事件不等於沒有操作，來源 running 也不等於完整擷取。
 
-## What RedLog is (and isn't)
+## 使用與接入
 
-**Core purpose:** a local audit log of a red-team engagement — recording every operator/agent action into a SHA-256 hash-chained SQLite DB, anchored hourly with OpenTimestamps, exportable as a signed evidence bundle. If it happened, RedLog captured it. If the timeline says nothing happened for 20 min, the timeline is *right* — either the operator was idle, or a `recording_paused` event is in the log.
+| 需求 | 文件 |
+|---|---|
+| 安裝、首次使用、日常記錄與交付 | [操作者手冊](USER-GUIDE.md)、[內測說明](INTERNAL-TESTING.md)、[專案 README](../README.md) |
+| Windows／WSL 設定與開發 | [Windows setup](windows-setup.md)、[Windows development](windows-development.md) |
+| 外部終端與顯式 session recording | [External session recording](external-session-recording.md)、[Agent integration](agent-integration.md) |
+| Agent、REST、外掛 | [Agent integration](agent-integration.md)、[API reference](api-reference.md)、[Plugin development](plugin-development.md) |
+| 證據鏈、事件與清洗 | [Audit trail](audit-trail.md)、[Event schema](event-schema.md)、[Redaction design](redaction-design.md)；設計頁的歷史說法需對照現行契約 |
 
-**Not RedLog's job** (do these downstream): report writing (Ghostwriter / HackerOne / Bugcrowd formats), STIX 2.1 / VECTR / adversary-emulation-plan export, opinionated MITRE ATT&CK tagging (moved to plugins in v0.6.15 — RedLog ships with none installed, install a `commandTags` plugin or let your SIEM tag). See [plugin-development.md](plugin-development.md#commandtags--stamp-fields-onto-shell-events-when-a-pattern-matches).
+## 接續工作
 
-## Start here
+| 需求 | 唯一入口 |
+|---|---|
+| 目前程式與候選成品的區別 | [目前狀態](CURRENT-STATUS.md) |
+| 待辦、issue 歸屬、依賴與驗收批次 | [工作計畫](WORK-PLAN.md) |
+| 全部 64 份 spec、正式狀態與舊任務對帳 | [Spec 索引](../specs/README.md) |
+| 最近一次修復與實測結果 | [2026-10-29 完成紀錄](records/2026-10-29/UIUX-COMPLETION-2026-10-29.md) |
+| 每次審查、提案、追溯及驗收快照 | [Records 索引](records/README.md) |
+| 已失效設計與早期 roadmap | [Archive 索引](archive/README.md)，不當作現況或開發清單 |
 
-- **[操作者手冊](USER-GUIDE.md)** — for the person *using* RedLog rather than building it: the first ten minutes, what each screen answers, how to wire the three capture sources that matter, how to export. 繁體中文, like the interface.
-- **Picking the work up?** Work is specified and tracked in [`specs/`](../specs/) (Spec Kit — one directory per change, each with spec, plan, tasks and verification); the rules every change is checked against are in [`.specify/memory/constitution.md`](../.specify/memory/constitution.md). [Architecture](ARCHITECTURE.md) is the current map of the code, and [Testing](TESTING.md) lists the current test layers, commands and coverage owners.
-- **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to driving RedLog from an agent.
+[DESIGN-OPEN-ITEMS](DESIGN-OPEN-ITEMS.md) 的原始 backlog 已標清空，保留設計推理；後續不是再從它的舊步驟開發。過去 audit 文件也只是其當時版本的發現，不能直接當成現在尚未修復。既有 [2026-08 correctness audit](AUDIT-2026-08-08.md)、[2026-08 UX audit](UX-AUDIT-2026-08.md)、[2026-09 AI log audit](AUDIT-2026-09-18-app-ai-log.md) 及 [回應](AUDIT-2026-09-18-RESPONSE.md)、[2026-09 findings](AUDIT-2026-09-19-current-findings.md)、[engineering review](AUDIT-2026-09-19-engineering-methods.md)、[Windows compatibility audit](WINDOWS_COMPAT_AUDIT.md) 保留舊位置供既有引用存查，不加入新排程。
 
-## Product & planning
+## 工程與驗證
 
-- **[Product positioning](PRODUCT-POSITIONING.md)** — the single source of truth for who RedLog is for (personas P1–P3 + the evidence-consumer stakeholder), the job to be done, the explicit non-goals, and where RedLog sits vs. Ghostwriter / RedEye / PwnDoc / manual oplogs.
-- **[Architecture](ARCHITECTURE.md)** — process/layer model, startup order, DB schema and migration strategy, the capture pipeline end to end, tailer host, evidence chain, export, plugin system, IPC conventions. Replaces the stale ASCII diagram in the README.
-- **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
-- **[UX & complexity audit 2026-08-10](UX-AUDIT-2026-08.md)** — persona-driven review of the renderer: where breadth has outrun the solo operator (Timeline 3,875 lines / Settings 2,681 lines), the first-run friction gap, and a prioritized backlog. Companion to the correctness audit above.
-- **[Core purpose and capture coverage](DESIGN-core-and-capture.md)** — the 2026-08-21 review that moved the core from *defensibility* to *knowability*, and what that does to capture: four gaps (non-HTTP traffic, remote commands, Windows output, queryable tool output), the point/span timeline model, and the purple-team activity record. Read alongside `PRODUCT-POSITIONING.md`, which it revised.
-- **[Capture trust contract](DESIGN-capture-trust.md)** — the 2026-10-24 rules for being honest about capture: progress follows persistence, pause keeps nothing new, output completeness states, HTTP(S)-first network scope, evidence levels, privacy at the capture boundary, reading back without losing place, and what is deliberately not built. Ends with a dated status snapshot.
-- **[Open items design](DESIGN-OPEN-ITEMS.md)** — 2026-09-06 work plan: every open item from the handover (bookmark retention, per-project token, scope-aware sanitize, env.d.ts derivation, QuickMark→Bookmark rename, single wordmark, Linux icons) turned into an executable design with problem / decision / steps / contract impact / status, ordered by value ÷ risk. Each is marked NOT-implemented until it ships. 繁體中文.
-- **[Plugin kernel](DESIGN-plugin-kernel.md)** — 2026-09-06 design note: a minimal core (store, chain, pause gate, redaction, schema + tiering, health, attribution, UI) with capture and normalization as plugins, and why a unified format does not distort the record — the envelope is unified, the raw bytes are kept verbatim and hashed onto the chain. 繁體中文.
-- **[Traffic attribution](DESIGN-traffic-attribution.md)** — 2026-09-06 design note answering "can traffic be recorded per tool?": what each tool actually emits, which of it RedLog sees today, and the socket→pid→command correlation that would let an nmap probe and a browser request land on their own command rows. 繁體中文.
-- **[UI/UX 標準](UIUX-STANDARD.md)** — the rule book UI code lands against, extracted from `src/renderer` itself: colour tokens, type scale, density, the component contract, UX principles, Timeline/HUD rules, and the three-phase checklist the PR templates in `.github/pull_request_template/` check against. Written and maintained in the Claude Design project — see [design-project-sync.md](design-project-sync.md) for the screen-to-source map and the last sync. The two app-icon masters it names live at [`design/assets/`](../design/assets/) — pulled in, not yet shipped (§16 ▲ 分歧).
+| 需求 | 文件 |
+|---|---|
+| 程式／檔案架構、責任與查找方式 | [Architecture](ARCHITECTURE.md) |
+| 詞彙與穩定領域契約 | [Glossary](domain/glossary.md)、[Capture lifecycle](domain/SPEC-capture-source-lifecycle.md)、[Scope](domain/SPEC-scope-evaluation.md)、[Query](domain/SPEC-search-query-semantics.md)、[Selection](domain/SPEC-export-event-selection.md)、[Target identity](domain/SPEC-target-identity.md) |
+| 測試分層、命令與驗收責任 | [Testing](TESTING.md)、[Packaged smoke](PACKAGED-SMOKE.md)、[CLAUDE.md](../CLAUDE.md) |
+| 發布、候選與安裝包檢查 | [Releasing](releasing.md)、[Release checklist](RELEASE_CHECKLIST.md)、[Release smoke](RELEASE-SMOKE-TEST.md)；`RELEASE-v*.md` 是版本紀錄 |
+| 開發／agent 工作規則 | [AGENTS.md](../AGENTS.md)、[CLAUDE.md](../CLAUDE.md)、[Constitution](../.specify/memory/constitution.md) |
 
-## Planning snapshots (archived 2026-09-23)
+## 產品與 UI
 
-Superseded by [`specs/`](../specs/) as the place work is planned, or describing
-code that has since changed. **Moved to [`archive/`](archive/README.md)** so
-nobody plans from them; the reasoning is kept.
+- [Product positioning](PRODUCT-POSITIONING.md)：使用者與產品邊界。
+- [Capture trust](DESIGN-capture-trust.md)：擷取與保存的真實性要求，現況快照按日期閱讀。
+- [UIUX Standard](UIUX-STANDARD.md)、[Controls and copy](UIUX-CONTROLS-AND-COPY.md)：現行 UI／文案規則。
+- [Forensic Editorial](UIUX-FORENSIC-EDITORIAL.md)：尚未完成的全產品視覺與操作矩陣，由 Spec 062 承接。
+- [Alert roles](ALERT-ROLES.md)、[Layout reliability](LAYOUT-RELIABILITY.md)：警示語意與布局契約。
+- [Design project sync](design-project-sync.md)：設計與來源對照；同步日期不代表整體驗收完成。
 
-- **[Roadmap](archive/ROADMAP.md)** · **[Handover 2026-09](archive/HANDOVER-2026-09.md)** · **[完善需求 PRD](archive/PRD-COMPLETION.md)** — status snapshots from v0.9–v0.14.
-- **[Timeline UX deep-dive](archive/UX-TIMELINE-2026-08.md)** · **[UX backlog tickets](archive/UX-BACKLOG-TICKETS.md)** · **[Timeline interaction redesign](archive/DESIGN-TIMELINE-INTERACTION.md)** — the timeline plan; T1–T3 unbuilt.
-- **[Capture onboarding requirements](archive/DEV-REQUIREMENTS-capture-onboarding.md)** · **[Timeline I/O visibility](archive/timeline-io-visibility.md)** · **[Design-system refactor](archive/DESIGN-SYSTEM-REFACTOR.md)** — shipped, mostly as described; the live rules are in [UIUX-STANDARD](UIUX-STANDARD.md) and `specs/`.
+## 文件放置規則
 
-## Subsystem decomposition (archived)
+`docs/` 根目錄保留跨版本的使用手冊、工程入口與標準。穩定語意放 `domain/`，跨 feature 的當次紀錄放 `records/YYYY-MM-DD/`，被取代的提案放 `archive/`，feature 的執行文件留在 `specs/NNN-slug/`。
 
-A framework and eleven applications of it, written 2026-08-11 → 08-15 and never
-merged. **Moved to [`archive/`](archive/README.md) on 2026-09-06** — they are
-proposals, not descriptions of the code, and sat beside the live docs at equal
-weight for three weeks. The three pages shipped code does cite stay here.
-
-- **[Method](archive/DECOMPOSITION-METHOD.md)** — how a subsystem gets decomposed, and the test for "provably complete".
-- **[Backlog](archive/DECOMPOSITION-BACKLOG.md)** — the gaps the eleven decompositions named, still open.
-- **[Design principles](DESIGN-PRINCIPLES.md)** — the durable laws. **§1 is superseded** by `DESIGN-core-and-capture.md`; the header says how.
-- **[Alert roles](ALERT-ROLES.md)** — self alarm vs target alarm, and the authority tiers that stop an inference reading as a fact. Cited by `src/core/alert/`.
-- **[Capture source taxonomy](archive/CAPTURE-SOURCE-TAXONOMY.md)** · **[Detector roles](archive/DETECTOR-ROLES.md)** · **[Plugin roles](archive/PLUGIN-ROLES.md)** · **[Event type vocabulary](archive/EVENT-TYPE-VOCABULARY.md)** — the four member catalogues.
-- **[Control plane faces](archive/CONTROL-PLANE-FACES.md)** · **[Delivery targets](archive/DELIVERY-TARGETS.md)** · **[Off-chain content stores](archive/OFF-CHAIN-CONTENT-STORES.md)** · **[Timeline elements](archive/TIMELINE-ELEMENTS.md)** — the four surface catalogues.
-- **[I/O sidecar](archive/SPEC-IO-SIDECAR.md)** · **[Scope-aware lifecycle](archive/SPEC-SCOPE-AWARE-LIFECYCLE.md)** · **[Timeline axis](archive/SPEC-TIMELINE-AXIS.md)** · **[AI-era plugins](archive/SPEC-AI-ERA-PLUGINS.md)** — four specs. Unbuilt; read as proposals, not as descriptions of the code.
-- **[Testing](TESTING.md)** — the test strategy the suite assumes: what belongs in a unit test, what needs the app in the loop, and why.
-
-## Integrations
-
-- **[Agent integration](agent-integration.md)** — the full surface: the capture model (hooks *log*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
-- **[REST API reference](api-reference.md)** — complete per-endpoint docs for all 37 HTTP endpoints: auth, request/response schemas, auto-processing behavior.
-- **[Proxied browser](agent-integration.md#proxied-browser)** — one-click Chromium through your mitmproxy, CDP enabled, project-local profile.
-
-## Operator identity
-
-
-## Capture surface
-
-What lands on the timeline without any operator/agent action (all detailed in [event-schema.md](event-schema.md)):
-
-- **Shell hook** (bash/zsh preexec) — every command with pid, exit, duration
-- **Built-in terminal** — same, plus asciinema `.cast` recording (SHA-256'd + size-capped)
-- **Pivot auto-detection** — ssh -D/-L/-R, chisel, ligolo, sshuttle, proxychains, socat → first-class `pivot` events. Foreground close detected via `command_end`; backgrounded ones drop off the HUD after 30 min of no re-detection.
-- **Cleanup auto-detection** — `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` → first-class `cleanup` events (NIST SP 800-86 anti-forensics tracking)
-- **File-transfer auto-detection** — `curl -o`, `wget -O`, `scp`, `rsync`, `python -m http.server` → first-class `file_transfer` events (T1105 ingress, T1041 exfil)
-- **Browser navigation** — CDP-connected built-in browser writes `http_navigation` per URL change (T1071.001)
-- **Clipboard** *(opt-in)* — SHA-256 + length always; loot detector runs on content; 120-char redacted preview optional
-- **Screenshot agent** — periodic + on-demand, SHA-256 in event
-- **IP monitor** — external IP + safety hysteresis, `system.ip_transition` on every change
-- **OPSEC state monitor** — VPN interfaces, DNS resolvers, primary MAC, hostname → `system.opsec_state_changed` on any change (30 s poll)
-- **Loot detector** — regex + entropy scan of shell output for credentials; plugin-extensible
-- **Scope monitor** — `system.scope_violation` (own `scope` lane) when a command's target is out of scope
-
-Drift-signals that make the log honest: `recording_paused` / `recording_resumed` (explains gaps), `config_changed` (with a from→to diff on scope / blacklist / enforcement).
-
-## Evidence & tamper-evidence
-
-- **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify (with wall-vs-monotonic clock-anomaly detection) + `.ots` bundle export + four-layer redaction. Threat model, what's detected, what isn't.
-- **[Event schema](event-schema.md)** — standard `agent_type` values and data keys (Ghostwriter-compatible). Read before designing a new event source.
-- **[Redaction design](redaction-design.md)** — design note (proposed, not yet implemented). Four-layer model: capture full → detect spans → mask in UI → sanitize on export. Why capture-time redaction is the wrong default for an evidence tool, and how the append-only chain makes deferred sanitization safe. Tracks [#6](https://github.com/guan4tou2/REDLOG/issues/6).
-
-## Extending RedLog
-
-- **[Plugin development](plugin-development.md)** — build a plugin: the manifest format, 🟢 declarative contributions (`lootPatterns`, `redaction`, `commandTags` for stamping MITRE/custom fields onto shell events, `targetExtractors`, `eventTypes`, `capture` integrations) and 🔴 `tailers` (bundled plugins only), behind the content-hash-pinned trust gate. RedLog ships with **no** `commandTags` — install per shop or let your SIEM tag downstream. Hot-reload via Settings ▸ Plugins ▸ Reload; drop plugin dirs into `~/.redlog/plugins/` (Open folder button).
-
-## Agent skills (drop-in)
-
-- **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill: hooks record, the API operates; session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.
-
-## Windows
-
-- **[Windows & WSL setup](windows-setup.md)** — build environment, PowerShell hooks, WSL2 mirrored networking, NTFS security advisory, operational isolation.
-- **[Windows compatibility audit](WINDOWS_COMPAT_AUDIT.md)** — POSIX assumptions that break on Windows. 14 original issues (P0–P2), plus 5 additional issues found and fixed during integration testing (path separators, CRLF, deferred trap arming).
-
-## Project ops
-
-- **[Releasing](releasing.md)** — two-phase cross-platform release via GitHub Actions (build matrix → single release job), plus the local `npm rebuild better-sqlite3` gotcha after packaging.
-
-## Machine-readable
-
-- **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema (18 functions, matches the control-plane API surface).
-
-## Related source
-
-- REST API server: [`src/core/api-server.ts`](../src/core/api-server.ts)
-- Hooks: [`hooks/`](../hooks/) and [`shell/`](../shell/)
-- Anchoring: [`src/core/chain-anchor.ts`](../src/core/chain-anchor.ts)
-- Operator model: [`src/core/db/operators.ts`](../src/core/db/operators.ts)
-- Browser launcher: [`src/main/services/browser-launcher.ts`](../src/main/services/browser-launcher.ts)
-- IP monitor (hysteresis): [`src/core/ip-monitor.ts`](../src/core/ip-monitor.ts)
+移動文件時修正本機相對連結及 inline repo 路徑，保留固定 commit／release URL、原始測試日期與 hash。不要為每次整理複製另一份 roadmap、狀態總表或測試矩陣；從本頁與工作計畫連到原權威來源。

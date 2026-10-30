@@ -134,6 +134,10 @@ function visit(candidate) {
 }
 for (const entry of executableRoots) visit(path.join(root, entry))
 
+try {
+  execFileSync(process.execPath, [path.join(root, 'scripts/verify-contract-coverage.mjs')], { cwd: root, stdio: 'inherit' })
+} catch { failures.push('Spec 064 contract coverage mapping failed') }
+
 if (failures.length) {
   console.error(failures.join('\n'))
   process.exit(1)

@@ -48,7 +48,7 @@ interface ManifestPayload {
    *  count the OTS anchor covers. `logged` is the events_logged row count. */
   tiers: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
   /** #222: what the operator left out, and which targets each included cast
-   *  spans. A cast is never trimmed; one that spans several targets says so
+   *  spans. Cast content is not rewritten (only its approved byte prefix is copied); one that spans several targets says so
    *  here rather than being presented as scope-clean. */
   attachments?: {
     excludedByOperator: string[]

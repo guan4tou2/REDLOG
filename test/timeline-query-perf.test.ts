@@ -22,16 +22,21 @@ const TYPES = [
   ['system', 'note'], ['marker', 'marker'], ['process', 'spawn'], ['browser', 'console']
 ] as const
 
-/** Median of five runs, after one to warm the page cache and the statement. */
+/** First call plus thirty warm samples; no claim that the OS disk cache is cold. */
+let lastSample = { firstCallMs: 0, p95Ms: 0 }
 function median(fn: () => unknown): number {
+  const first = performance.now()
   fn()
+  const firstCallMs = performance.now() - first
   const runs: number[] = []
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 30; i++) {
     const t = performance.now()
     fn()
     runs.push(performance.now() - t)
   }
-  return runs.sort((a, b) => a - b)[2]
+  runs.sort((a, b) => a - b)
+  lastSample = { firstCallMs, p95Ms: runs[28] }
+  return (runs[14] + runs[15]) / 2
 }
 
 const parsed = (q: string): ParsedQuery => {
@@ -42,8 +47,8 @@ const parsed = (q: string): ParsedQuery => {
 
 describe.skipIf(!PERF)('the Timeline query budget on 100,000 events', () => {
   let dir: string
-  const report: Array<{ name: string; ms: number }> = []
-  const record = (name: string, ms: number): number => { report.push({ name, ms }); return ms }
+  const report: Array<{ name: string; ms: number; firstCallMs: number; p95Ms: number }> = []
+  const record = (name: string, ms: number): number => { report.push({ name, ms, ...lastSample }); expect(lastSample.p95Ms).toBeLessThan(1000); return ms }
 
   beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-perf-'))
@@ -74,9 +79,9 @@ describe.skipIf(!PERF)('the Timeline query budget on 100,000 events', () => {
 
   afterAll(() => {
     const cpu = os.cpus()[0]?.model ?? 'unknown CPU'
-    const lines = report.map((r) => `  ${r.ms.toFixed(1).padStart(8)} ms  ${r.name}`)
+    const lines = report.map((r) => `  p50 ${r.ms.toFixed(1).padStart(8)} ms; p95 ${r.p95Ms.toFixed(1)} ms; first ${r.firstCallMs.toFixed(1)} ms  ${r.name}`)
     console.log([
-      `timeline-query-perf: ${N} events, median of 5 warm runs`,
+      `timeline-query-perf: ${N} events, 30 warm runs (p50 / p95; first call is not a cold-disk claim)`,
       `machine: ${cpu}, ${os.cpus().length} threads, ${Math.round(os.totalmem() / 2 ** 30)} GiB, ${os.platform()} ${os.release()}, node ${process.version}`,
       ...lines
     ].join('\n'))

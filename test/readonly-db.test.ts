@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -12,6 +12,8 @@ import os from 'os'
 //   4. a project switch invalidates it (old handle closed, new file served).
 
 let initDB: typeof import('../src/core/db/index').initDB
+let getDB: typeof import('../src/core/db/index').getDB
+let openReadOnlyDB: typeof import('../src/core/db/index').openReadOnlyDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getReadonlyDB: typeof import('../src/core/db/index').getReadonlyDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
@@ -22,6 +24,8 @@ try {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
+  getDB = dbMod.getDB
+  openReadOnlyDB = dbMod.openReadOnlyDB
   closeDB = dbMod.closeDB
   getReadonlyDB = dbMod.getReadonlyDB
   insertEventRaw = eventsMod.insertEvent
@@ -46,6 +50,28 @@ describeDB('getReadonlyDB', () => {
   afterEach(() => {
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('cannot reopen a read-only handle after the project closes', () => {
+    getReadonlyDB()
+    closeDB()
+    expect(() => getReadonlyDB()).toThrow('Database not initialized')
+  })
+
+  it('revokes all handles and still closes the reader if writable close fails', () => {
+    const writable = getDB()
+    const readonly = getReadonlyDB()
+    const close = vi.spyOn(writable, 'close').mockImplementationOnce(() => { throw new Error('close fault') })
+    try {
+      expect(() => closeDB()).toThrow('close fault')
+      expect(() => getDB()).toThrow('Database not initialized')
+      expect(() => getReadonlyDB()).toThrow('Database not initialized')
+      expect(() => openReadOnlyDB()).toThrow('Database not initialized')
+      expect(() => readonly.prepare('SELECT 1')).toThrow()
+    } finally {
+      close.mockRestore()
+      writable.close()
+    }
   })
 
   it('returns the same cached handle across calls', () => {

@@ -57,6 +57,7 @@ interface ResolvedExportPlan {
     included: number
     excludedDoNotExport: number
     excludedPersonal: number
+    outOfScopeHttpFlows?: number
     maskedOutOfScope: number
     sanitized: number
     attachmentsIncluded: number
@@ -300,6 +301,7 @@ interface RedLogAPI {
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
   }
   scope: {
+    policy: () => Promise<{ targets: string[]; excludeTargets: string[] } | null>
     getViolations: () => Promise<{
       rows: Array<{
         id: string; target: string; command: string; timestamp: number
@@ -611,6 +613,9 @@ interface ManagedProxyStatus {
   /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
   caFingerprint?: { sha1: string; sha256: string }
+  sourceInstance?: string
+  verificationEvidence?: import('../../core/http-verification-evidence').HttpVerificationEvidence | null
+  verificationState?: import('../../core/http-verification-evidence').HttpVerificationState
   httpsVerification?: import('../../core/http-verify').HttpVerifyReport
 }
 

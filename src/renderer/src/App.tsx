@@ -105,7 +105,7 @@ export default function App(): JSX.Element {
   const [markerHeldFrame, setMarkerHeldFrame] = useState<string | undefined>(undefined)
   const [dropping, setDropping] = useState(false)
   // The Settings page a link asked for; see lib/navigation.ts.
-  const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage } | null>(null)
+  const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage; scopeCandidate?: string } | null>(null)
   const { t } = useI18n()
   const narrow = useNarrowViewport()
 
@@ -127,8 +127,8 @@ export default function App(): JSX.Element {
   // Every link, the palette, the sidebar and the status bar go through here,
   // so a target that names a Settings page opens that page.
   const navigate = useCallback((target: string): void => {
-    const { view: next, settingsPage } = parseTarget(target)
-    setSettingsRequest(settingsPage ? { page: settingsPage } : null)
+    const { view: next, settingsPage, scopeCandidate } = parseTarget(target)
+    setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate } : null)
     setReturnTo(null)
     setView(next as View)
   }, [])
@@ -413,7 +413,7 @@ export default function App(): JSX.Element {
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}
@@ -434,6 +434,7 @@ export default function App(): JSX.Element {
         onNavigate={navigate}
         onOpenEvent={openInTimeline}
         recording={recordingOn}
+        onProjectClosed={() => setProject(null)}
       />
       <ToastContainer />
       <ConfirmDialogContainer />

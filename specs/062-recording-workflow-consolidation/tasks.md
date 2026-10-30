@@ -252,3 +252,14 @@ visual completion is implied by that bounded repair.
 
 
 - [x] T093 Narrow shipped optional AI capture to Claude Code then Codex: remove the OpenCode parser/manifest, executable example, source/health UI and obsolete provider tests; update active contracts/docs, reject removed-provider activation/install, and verify the built/package catalog contains exactly the two supported providers. Preserve stored evidence and generic reading/export semantics; do not delete user-installed files or add compatibility shims.
+
+## 2026-10-30 排程與文件整理
+
+後續執行依 [工作計畫](../../docs/WORK-PLAN.md)，本檔保留 task ID 與完整門檻：
+
+- T008–T010 依各來源先做必要原生／故障驗收，不等視覺改版才驗可靠性。
+- T011 HUD 與 T012 更新放在獨立原生批次；Spec 061 先核對已存在的實作。
+- T085／T087 保留未完成的 native resize，T091→T089→T088／T090→T092 沿 Forensic Editorial 全產品矩陣收斂；本次 UIUX v3.2 局部結果不代勾。
+- T013 最後彙整。跨平台與真人環境由 #457 協調；不得將 BLOCKED 改 PASS。
+
+本次沒有更動 feature 狀態或代勾 tasks。日期紀錄的新位置見 [records 索引](../../docs/records/README.md)，全專案 feature 導覽見 [Spec 索引](../README.md)。

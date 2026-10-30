@@ -83,6 +83,7 @@ export interface IPVerdict {
 import type { ScopeDistance } from '../scope-evaluator'
 
 export interface ScopeVerdict {
+  matchedBy?: string
   distance: ScopeDistance
   authority: Authority
   severity: Severity

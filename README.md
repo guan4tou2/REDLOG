@@ -315,7 +315,9 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 ### More reading
 
 - [操作者手冊 (User guide, zh-TW)](docs/USER-GUIDE.md) — first engagement in ten minutes: what to wire up, what each screen answers, how to export
-- [Docs index](docs/README.md) — every page, grouped
+- [Docs index](docs/README.md) — operator, engineering, specs and historical records
+- [Work plan](docs/WORK-PLAN.md) — remaining work, dependencies and acceptance owners
+- [Spec index](specs/README.md) — feature status and existing implementation to reconcile
 - [Agent integration](docs/agent-integration.md) — full REST + hook reference
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
@@ -324,123 +326,51 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 
 ## Architecture
 
-```
-Electron Main Process
-  ├── ProjectManager        per-engagement isolated storage (~/.redlog/projects/<id>/)
-  ├── SQLite DB (WAL)       events table + evidence chain table
-  ├── EventBus              pub/sub with pause/resume support
-  └── Services
-        ├── IPMonitor          external IP + safety hysteresis; emits system.ip_transition
-        ├── OpsecStateMonitor  VPN/DNS/MAC/hostname drift; emits system.opsec_state_changed (30s)
-        ├── ClipboardMonitor   opt-in; SHA-256 + length + loot scan; raw text never stored
-        ├── ScreenshotAgent    periodic + on-demand; SHA-256 on each capture
-        ├── ScopeMonitor       root-domain / CIDR matching; own `scope` timeline lane
-        ├── LootDetector       regex + entropy scan; plugin-extensible via lootPatterns
-        ├── CDPConnector       polls the built-in browser; emits http_navigation per URL change
-        ├── CommandTagger      plugin registry for stamping MITRE / custom fields on shell events
-        ├── PivotDetector      auto-detects tunnels from shell (ssh -D/-L/-R, chisel, ligolo, …)
-        ├── TechniqueTagger    auto-detects cleanup (T1070) + file-transfer (T1105/T1041)
-        ├── EvidenceChain      SHA-256 chain + OpenTimestamps anchor (hourly + on-demand)
-        └── APIServer          localhost HTTP: REST API for agents
-
-Renderer (React 19 + Tailwind CSS 4)
-  ├── ProjectPicker         create (with advanced scope setup) / open / delete
-  ├── Sidebar               navigation with live badges (loot, violations)
-  ├── Dashboard             stats + engagement info + keyboard shortcuts
-  ├── Timeline              custom swim-lane timeline (18 lanes in 4 bands, dynamic height)
-  ├── ScreenshotsView       thumbnail grid with lightbox
-  ├── TargetView            auto-cataloged targets with evidence drilldown
-  ├── ScopeStatus           violation log
-  ├── LootPanel             detected credentials/secrets
-  ├── SearchPanel           full-text search across all events
-  ├── Settings              YAML config editor + team profile sync
-  ├── StatusBar             recording toggle + VPN/scope/loot/uptime indicators
-  └── ErrorBoundary         per-view crash recovery
-
-Overlay Window
-  └── IP status always-on-top widget (click-through + draggable)
-
-Hooks
-  ├── shell-zsh-hook.zsh   zsh preexec/precmd, output relay, the `redlog` command
-  ├── shell-bash-hook.sh   bash DEBUG/PROMPT_COMMAND integration
-  ├── shell-common.sh      shared transport, spool and redlog-run
-  ├── redlog-relay.py      the output relay, the classifier, per-terminal state
-  └── command-class.json   which commands are relayed, PTY-recorded, or left alone
-
-```
+The renderer calls an explicit preload bridge; Electron main owns native
+capabilities and project lifecycle, while `src/core/` owns ingest, storage,
+query, content and export policies. Capture sources share the same ingest
+path. See [Architecture](docs/ARCHITECTURE.md) for the current responsibilities,
+project-open rollback, content interfaces and placement rules.
 
 ## Project Structure
 
-```
+```text
 src/
-  main/
-    index.ts                 app entry, IPC handlers, service lifecycle
-    windows.ts               BrowserWindow creation (main + overlay)
-    tray.ts                  system tray menu
-    db/
-      index.ts               SQLite init, schema, WAL mode
-      events.ts              insert/query/search events
-      findings.ts            QuickMarks CRUD
-    services/
-      api-server.ts          HTTP API (localhost:6660)
-      clipboard-monitor.ts   clipboard polling + redaction
-      config.ts              YAML config load/save
-      event-bus.ts           EventEmitter pub/sub with pause/resume
-      evidence-chain.ts      append-only event chain
-      file-transfer-tracker.ts  fs.watch on ~/Downloads
-      ip-monitor.ts          external IP check + VPN detection
-      loot-detector.ts       credential/secret pattern matching
-      project-manager.ts     per-project directory management
-      scope-monitor.ts       scope enforcement (root-domain matching)
-      screenshot-agent.ts    screen capture + dedup pipeline
-      target-extractor.ts    command parser for target/transfer detection
-  preload/
-    index.ts                 contextBridge API for main window
-    overlay.ts               contextBridge API for overlay
-  renderer/
-    src/
-      App.tsx                main app layout + routing
-      OverlayApp.tsx         IP overlay widget
-      components/            all UI components
-      i18n/                  en.json + zh-TW.json locale files
-      styles/index.css       Tailwind + custom scrollbar
-      env.d.ts               TypeScript declarations for preload API
-hooks/
-  shell-zsh-hook.zsh         zsh preexec/precmd → RedLog, with output
-  shell-bash-hook.sh         bash DEBUG/PROMPT_COMMAND → RedLog
-  shell-common.sh            shared POSIX transport and redlog-run
-  redlog-relay.py            output relay, classifier, per-terminal state
-  command-class.json         relayed / pty / native, one list for both readers
-plugins/                    bundled non-AI capture packs
-src/core/plugins/
-  official-agents.ts        validates and installs optional offline AI packages
-cli/
-  redlog-cli.js              CLI tool for external integration
-shell/
-  redlog-agent.sh            bash/zsh helper functions
-docs/
-  agent-integration.md       comprehensive agent integration guide
-  codex-tools.json           OpenAI function calling definitions
-design/
-  assets/redlog-mark.svg     the mark, 1024×1024 — source of truth
-  assets/redlog-mark-small.svg  ≤16px variant, ring collapsed to a dot
-tools/
-  make-icons.py              regenerates all of resources/ from those two
-  redlog-verify.py           offline evidence-bundle verifier
-resources/                   generated — edit the masters, not these
-  icon.svg / icon-small.svg  copies of the masters
-  icon.icns                  macOS app icon
-  icon.ico                   Windows, 16–256, each size its own render
-  icon-{16..1024}.png        all standard sizes
-  tray-icon.svg              menu bar glyph: ring and dot, no plate
-  tray-iconTemplate.png      menu bar, idle (+@2x)
-  tray-icon-rec.png          menu bar, recording (+@2x)
-  tray-icon-paused.png       menu bar, paused (+@2x)
+  core/                     domain policies, evidence, query, content and export
+    db/                     schema, writes, event/activity queries and bookmarks
+    query/                  shared query contract
+    alert/                  alert policy and projection
+    plugins/                manifest, trust and contribution handling
+  main/                     Electron app and project lifecycle
+    ipc/                    handlers grouped by behaviour
+    services/               native capture and integration adapters
+  preload/                  renderer bridge
+  renderer/src/             UI, pure view logic, locales and styles
+hooks/                      external shell and capture transport
+plugins/                    bundled declarations and producers
+optional-plugins/           opt-in Claude Code and Codex integrations
+cli/                        command-line integration
+shell/                      shell helpers
+specs/                      numbered feature contracts, tasks and verification
+docs/                       operator guides, standards and engineering entry points
+  domain/                   stable domain contracts
+  records/YYYY-MM-DD/       dated cross-feature reviews and acceptance evidence
+  archive/                  superseded proposals and planning snapshots
+test/                       unit, database and contract tests
+e2e/                        real Electron and installed-package journeys
+scripts/                    build and verification commands
+tools/                      offline verifier and asset tools
+design/                     design sources and icon masters
+resources/                  packaged resources and generated icon outputs
 ```
+
+`out/`, `dist/` and test reports are generated artifacts; they are not source
+or documentation. The [work plan](docs/WORK-PLAN.md) and [spec index](specs/README.md)
+point to existing work without creating parallel implementations.
 
 ## Data Model
 
-All data is stored in SQLite (`~/.redlog/projects/<id>/timeline.db`):
+Project event metadata is stored in SQLite (`~/.redlog/projects/<id>/timeline.db`); saved content also lives in referenced files. `events` is the chained tier, while `events_logged` is the logged tier. The following table is an overview; [the schema](src/core/db/index.ts) and [Architecture](docs/ARCHITECTURE.md#3-data-model) define the current model:
 
 ### events table
 
@@ -466,7 +396,9 @@ All data is stored in SQLite (`~/.redlog/projects/<id>/timeline.db`):
   config.yaml          engagement config
   timeline.db          SQLite database
   screenshots/         JPEG captures
-  terminal/            asciicast v2 recordings (.cast)
+  casts/               asciicast v2 recordings and bounded parts
+  http-bodies/         saved HTTP/content sidecars
+  agent-transcripts/   explicitly enabled AI source bytes
 ```
 
 ## Configuration

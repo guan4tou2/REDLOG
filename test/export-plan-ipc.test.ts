@@ -64,6 +64,22 @@ describe('export plan IPC contract', () => {
     expect(result).toMatchObject({ ok: false })
   })
 
+  // P1-1a. `export-capabilities.ts` declares piiScrubbing per format, but until
+  // now nothing asserted that the declaration is enforced: the plan resolver
+  // could have accepted the flag for bundle/HAR and exported unscubbed bytes
+  // under a manifest that says nothing about it. The refusal is the contract,
+  // so it is what gets tested — not whether scrubbing "works" on a format that
+  // has no scrubbing.
+  it.each(['bundle', 'har'])('refuses operator-PII scrubbing on %s rather than exporting unscubbed', format => {
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    expect(result).toEqual({ ok: false, error: `unsupported-policy: ${format} cannot scrub operator PII` })
+  })
+
+  it.each(['json', 'ndjson', 'timeline'])('accepts operator-PII scrubbing on %s', format => {
+    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    expect(result).toMatchObject({ ok: true })
+  })
+
   it.each(['json', 'ndjson', 'timeline'])('exports every matching row beyond the first page, frozen at preview, as %s', format => {
     const wanted = Array.from({ length: 1005 }, (_, n) => `selected-${n}`)
     getDB().transaction(() => {
@@ -81,6 +97,25 @@ describe('export plan IPC contract', () => {
     const content = fs.readFileSync(executed.artifactPath, 'utf8')
     const rows = format === 'ndjson' ? content.trim().split('\n').map(line => JSON.parse(line)) : JSON.parse(content).events
     expect(rows.map((e: { id: string }) => e.id).sort()).toEqual(wanted.sort())
+  })
+
+  it.each(['json', 'ndjson', 'timeline'])('applies only the approved operator-PII policy to actual %s bytes', format => {
+    const secret = 'TOKEN_not_automatically_sanitized'
+    const sensitive = `${os.homedir()}/evidence ${os.hostname()} Authorization: ${secret} Cookie: session=private query=private`
+    addEvent('events', 'sensitive-event', 1000, { data: { command: sensitive, stdout: sensitive } })
+    for (const scrubPii of [false, true]) {
+      const resolved = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii } as never) as { ok: boolean; plan: { id: string } }
+      expect(resolved.ok).toBe(true)
+      const result = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: boolean; artifactPath: string }
+      expect(result.ok).toBe(true)
+      const content = fs.readFileSync(result.artifactPath, 'utf8')
+      expect(content).toContain(secret) // PII scrubbing is not a secret detector.
+      if (scrubPii) {
+        expect(content).not.toContain(os.homedir())
+        expect(content).not.toContain(os.hostname())
+        expect(content).toContain('<home>')
+      } else expect(content).toContain(os.hostname())
+    }
   })
 
   it('exports selected HTTP exchanges with late responses and the latest response update, frozen at preview', () => {

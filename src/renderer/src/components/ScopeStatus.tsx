@@ -75,7 +75,7 @@ interface ViolationRow {
   cleared: boolean
 }
 
-export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: () => void } = {}): JSX.Element {
+export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
   const loadScope = async () => {
     const [configured, result, standing, chainLen, lastRecompute] = await Promise.all([
       window.redlog.scope.isConfigured(), window.redlog.scope.getViolations(),
@@ -91,6 +91,17 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   // navigation state — reopening the page starts from the active rows again,
   // which is what an operator wants under time pressure.
   const [showCleared, setShowCleared] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const detail = useReadState(async () => {
+    const [event] = await window.redlog.events.getById([expandedId!])
+    if (!event) throw new Error('Violation unavailable')
+    const ids = Array.isArray(event.data._causes) ? event.data._causes.filter((id): id is string => typeof id === 'string') : []
+    const causes = ids.length ? await window.redlog.events.getById(ids) : []
+    const source = causes.find(row => row.agentType === 'shell' && typeof row.data.command === 'string')
+    return { id: event.id, command: source?.data.command as string | undefined,
+      rule: typeof event.data.matched_by === 'string' ? event.data.matched_by : null }
+  }, expandedId !== null, [expandedId])
+
   // The store holds more violation records than the page read.
 
   // How many violations stand across the whole chain: the status bar's number.
@@ -188,7 +199,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <p className="text-redlog-text-dim text-xs">
               {t('scope.hint', { page: t('settings.pageScope') })}
             </p>
-            {onOpenSettings && <Button level="quiet" onClick={onOpenSettings}>{t('browser.openSettings')}</Button>}
+            {onOpenSettings && <Button level="quiet" onClick={() => onOpenSettings()}>{t('browser.openSettings')}</Button>}
           </div>
         )}
       </div>
@@ -211,12 +222,12 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
           {shownViolations.map((v, i) => {
             const rowProps = listNav.itemProps(i)
             return (
+            <div key={v.id}>
             <button
-              key={i}
               {...rowProps}
               ref={(el) => rowProps.ref(el)}
-              onClick={() => { rowProps.onClick(); onOpenInTimeline?.(v.timestamp) }}
-              disabled={!onOpenInTimeline}
+              onClick={() => { rowProps.onClick(); setExpandedId(previous => previous === v.id ? null : v.id) }}
+              aria-expanded={expandedId === v.id}
               className={`w-full text-left rounded p-2 border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 disabled:cursor-default transition-colors ${
                 v.cleared
                   ? 'bg-redlog-elevated/40 border-redlog-border hover:bg-redlog-elevated'
@@ -226,7 +237,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
               // norm, and §5.2 reports exceptions, not the rule. The attribute
               // is there so a test can tell the two apart.
               data-testid={v.judged === 'retroactive' ? 'scope-judged-retroactive' : 'scope-judged-live'}
-              title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
+
             >
               <div className="flex items-center gap-1.5">
                 <span className={`text-xs font-mono ${v.cleared ? 'text-redlog-text-dim' : 'text-red-300'}`}>{v.target}</span>
@@ -248,6 +259,19 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
                 {formatTime(v.sourceTs ?? v.timestamp, { seconds: true })}
               </div>
             </button>
+            {expandedId === v.id && <div className="px-3 py-2 space-y-2 text-xs" data-testid="scope-violation-detail">
+              <p className="text-redlog-text-dim">{t(`scope.distance.${['excluded', 'adjacent_domain', 'adjacent_subnet', 'unrelated'].includes(v.distance) ? v.distance : 'unknown'}`)}{detail.state.value?.id === v.id && detail.state.value.rule ? ` · ${detail.state.value.rule}` : ''}</p>
+              {detail.state.phase === 'loading' && <LoadingSpinner />}
+              {detail.state.phase === 'failed' && <div role="alert">{t('scope.detailFailed')} <Button level="quiet" size="compact" onClick={detail.retry}>{t('common.retry')}</Button></div>}
+              {detail.state.phase === 'loaded' && detail.state.value?.id === v.id && !detail.state.value.command && <p className="text-amber-400">{t('scope.commandPreview')}</p>}
+              {detail.state.phase === 'loaded' && v.distance === 'excluded' && detail.state.value?.id === v.id && !detail.state.value.rule && <p className="text-redlog-text-faint">{t('scope.ruleUnavailable')}</p>}
+              {detail.state.phase === 'loaded' && detail.state.value?.id === v.id && <pre className="font-mono whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{detail.state.value.command ?? v.command}</pre>}
+              <div className="flex flex-wrap gap-2">
+                {onOpenInTimeline && <Button level="quiet" size="compact" onClick={() => onOpenInTimeline(v.timestamp)}>{t('scope.openInTimeline')}</Button>}
+                {onOpenSettings && <Button level="quiet" size="compact" onClick={() => onOpenSettings(v.target)}>{t('scope.editRule')}</Button>}
+              </div>
+            </div>}
+            </div>
             )
           })}
           </div>

@@ -1,5 +1,6 @@
 import { Button } from './Button'
-import { useState, useEffect, useCallback } from 'react'
+import { EventContentReader } from './EventContentReader'
+import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 
@@ -7,7 +8,6 @@ import { toast } from './Toast'
 // Shared constants & helpers
 // ---------------------------------------------------------------------------
 
-export const BODY_GONE = '\u0000__redlog_body_gone__'
 
 export const STREAM_ACCENTS: Record<'emerald' | 'amber' | 'zinc', { label: string; bar: string; bg: string; badge: string }> = {
   emerald: { label: 'text-emerald-400', bar: 'border-emerald-600/40', bg: 'bg-emerald-900/10', badge: 'text-emerald-300 bg-emerald-900/30' },
@@ -130,7 +130,7 @@ export function MetadataGrid({ entries }: { entries: Array<[string, unknown]> })
 // HttpDetail — HTTP exchange detail, shared by Timeline and HttpHistoryPanel
 // ---------------------------------------------------------------------------
 
-export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
+export function HttpDetail({ data, eventId, projectId }: { data: Record<string, unknown>; eventId: string; projectId: string }): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isRequest = subtype === 'http_request_start'
@@ -138,7 +138,7 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
   const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
   const ownHalf = isRequest ? 'request' : 'response'
   const [half, setHalf] = useState<'request' | 'response'>(ownHalf)
-  const [partner, setPartner] = useState<{ eventId: string; data: Record<string, unknown> } | null>(null)
+  const [partner, setPartner] = useState<{ eventId: string; partnerId: string; data: Record<string, unknown> } | null>(null)
   const [pairedLoading, setPairedLoading] = useState(false)
   const [pairedError, setPairedError] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -156,7 +156,7 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
       const found = events.find(event => event.id !== eventId && (
         isRequest ? event.data?.subtype === 'http_response' : event.data?.subtype === 'http_request_start'
       ))
-      setPartner(found ? { eventId, data: found.data } : null)
+      setPartner(found ? { eventId, partnerId: found.id, data: found.data } : null)
     }).catch(() => { if (!cancelled) setPairedError(true) })
       .finally(() => { if (!cancelled) setPairedLoading(false) })
     return () => { cancelled = true }
@@ -182,7 +182,7 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
           ))}
         </div>
       )}
-      <HttpHalf key={`${eventId}:${half}`} data={selected} />
+      <HttpHalf key={`${eventId}:${half}`} data={selected} projectId={projectId} eventId={half !== ownHalf && pairedData ? partner!.partnerId : eventId} />
       {pairedLoading && <p role="status" className="text-xs text-redlog-text-dim">{t('http.loadingPaired')}</p>}
       {pairedError && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
         <span>{t('http.pairedFailed')}</span>
@@ -192,7 +192,7 @@ export function HttpDetail({ data, eventId }: { data: Record<string, unknown>; e
   )
 }
 
-function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
+function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
@@ -228,43 +228,15 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
   const wsBodyTruncated = inlineWsBody?.truncated === true || wsBodyRef?.truncated === true
   const tcpBodyTruncated = inlineTcpBody?.truncated === true || tcpBodyRef?.truncated === true
 
-  const [requestedReqBody, setLoadedReqBody] = useState<string | null>(null)
-  const [requestedRespBody, setLoadedRespBody] = useState<string | null>(null)
-  const [requestedWsBody, setLoadedWsBody] = useState<string | null>(null)
-  const [requestedTcpBody, setLoadedTcpBody] = useState<string | null>(null)
-  // Inline text has already arrived with the event. Render it immediately;
-  // the explicit load action is for sidecars and encoded binary payloads.
+  const [readerOpen, setReaderOpen] = useState(false)
+  // Inline previews are already on the Event. Sidecars always use the shared
+  // versioned window reader, never the legacy whole-body IPC.
   const inlineText = (body: { data?: string; encoding?: string } | undefined): string | null =>
-    body?.encoding === 'text' && typeof body.data === 'string' ? body.data : null
-  const loadedReqBody = inlineText(inlineReqBody) ?? requestedReqBody
-  const loadedRespBody = inlineText(inlineRespBody) ?? requestedRespBody
-  const loadedWsBody = inlineText(inlineWsBody) ?? requestedWsBody
-  const loadedTcpBody = inlineText(inlineTcpBody) ?? requestedTcpBody
-  const [loadingReq, setLoadingReq] = useState(false)
-  const [loadingResp, setLoadingResp] = useState(false)
-  const [loadingWs, setLoadingWs] = useState(false)
-  const [loadingTcp, setLoadingTcp] = useState(false)
-
-  const loadFullBody = useCallback(async (
-    ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined,
-    inline: { data?: string; encoding?: string; size?: number } | undefined,
-    setter: (v: string | null) => void,
-    setLoading: (v: boolean) => void
-  ) => {
-    if (inline?.data) {
-      setter(inline.encoding === 'base64'
-        ? `[base64, ${inline.size ?? inline.data.length} bytes]\n${inline.data}`
-        : inline.data)
-      return
-    }
-    if (!ref) return
-    setLoading(true)
-    try {
-      const content = await window.redlog.httpBody.read(ref)
-      setter(content === null ? BODY_GONE : content)
-    } catch { setter(BODY_GONE) }
-    setLoading(false)
-  }, [])
+    body?.encoding === 'text' && typeof body.data === 'string' && body.data.length <= 65536 ? body.data : null
+  const loadedReqBody = inlineText(inlineReqBody)
+  const loadedRespBody = inlineText(inlineRespBody)
+  const loadedWsBody = inlineText(inlineWsBody)
+  const loadedTcpBody = inlineText(inlineTcpBody)
 
   const headers = data.request_headers ?? data.response_headers
   const headersText = (() => {
@@ -298,16 +270,8 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
           startOpen
         />
       )}
-      {isRequest && hasFullReqBody && !loadedReqBody && (
-        <Button size="compact" level="quiet" className="font-mono"
-          onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
-          disabled={loadingReq}
-        >
-          {loadingReq ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
-        </Button>
-      )}
-      {isRequest && loadedReqBody && loadedReqBody !== BODY_GONE && (
+
+      {isRequest && loadedReqBody && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestBody')}
           content={loadedReqBody}
@@ -317,63 +281,39 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
           startOpen
         />
       )}
-      {isResponse && (preview.length > 0 || (loadedRespBody && loadedRespBody !== BODY_GONE)) && (
+      {isResponse && (preview.length > 0 || (loadedRespBody)) && (
         <CollapsibleStream
           label={t('timeline.detail.httpResponseBody')}
-          content={(loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview}
-          bytes={contentLength ?? ((loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview).length}
+          content={(loadedRespBody) ? loadedRespBody : preview}
+          bytes={contentLength ?? ((loadedRespBody) ? loadedRespBody : preview).length}
           truncated={respBodyTruncated}
           accent="emerald"
           startOpen
         />
       )}
-      {isResponse && hasFullRespBody && !loadedRespBody && (
-        <Button size="compact" level="quiet" className="font-mono"
-          onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
-          disabled={loadingResp}
-        >
-          {loadingResp ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
-        </Button>
-      )}
-      {isWs && (wsPreview.length > 0 || (loadedWsBody && loadedWsBody !== BODY_GONE)) && (
+
+      {isWs && (wsPreview.length > 0 || (loadedWsBody)) && (
         <CollapsibleStream
           label={t('timeline.detail.wsPayload')}
-          content={(loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview}
-          bytes={data.size as number ?? ((loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview).length}
+          content={(loadedWsBody) ? loadedWsBody : wsPreview}
+          bytes={data.size as number ?? ((loadedWsBody) ? loadedWsBody : wsPreview).length}
           truncated={wsBodyTruncated}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />
       )}
-      {isWs && hasFullWsBody && !loadedWsBody && (
-        <Button size="compact" level="quiet" className="font-mono"
-          onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
-          disabled={loadingWs}
-        >
-          {loadingWs ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
-        </Button>
-      )}
-      {isTcp && (tcpPreview.length > 0 || (loadedTcpBody && loadedTcpBody !== BODY_GONE)) && (
+
+      {isTcp && (tcpPreview.length > 0 || (loadedTcpBody)) && (
         <CollapsibleStream
           label={t('timeline.detail.tcpPayload')}
-          content={(loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview}
-          bytes={data.size as number ?? ((loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview).length}
+          content={(loadedTcpBody) ? loadedTcpBody : tcpPreview}
+          bytes={data.size as number ?? ((loadedTcpBody) ? loadedTcpBody : tcpPreview).length}
           truncated={tcpBodyTruncated}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />
       )}
-      {isTcp && hasFullTcpBody && !loadedTcpBody && (
-        <Button size="compact" level="quiet" className="font-mono"
-          onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
-          disabled={loadingTcp}
-        >
-          {loadingTcp ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineTcpBody?.size ?? tcpBodyRef?.size ?? 0)})
-        </Button>
-      )}
+
       {bodyless && (
         <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
           {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
@@ -381,11 +321,7 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
           })}
         </p>
       )}
-      {[loadedReqBody, loadedRespBody, loadedWsBody, loadedTcpBody].includes(BODY_GONE) && (
-        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-          {t('timeline.detail.httpBodyEvicted')}
-        </p>
-      )}
+
       {headersText && (
         <CollapsibleStream
           label={t('timeline.detail.httpHeaders')}
@@ -459,5 +395,8 @@ function HttpHalf({ data }: { data: Record<string, unknown> }): JSX.Element {
     </>
   )
 
-  return <div className="space-y-1.5">{ownBlock}</div>
+  return <div className="space-y-1.5">
+    {((hasFullReqBody && !loadedReqBody) || (hasFullRespBody && !loadedRespBody) || (hasFullWsBody && !loadedWsBody) || (hasFullTcpBody && !loadedTcpBody)) && <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>}
+    {readerOpen ? <EventContentReader projectId={projectId} eventId={eventId} /> : ownBlock}
+  </div>
 }

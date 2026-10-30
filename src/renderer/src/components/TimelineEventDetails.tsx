@@ -1,3 +1,6 @@
+import { useReadState } from '../lib/readState'
+import { EventContentReader } from './EventContentReader'
+import { Button } from './Button'
 // Structured detail-panel bodies for specific event types, pulled out of
 // Timeline.tsx. Each renders in the inspector when its event type is selected.
 // Reuses CollapsibleStream + MetadataGrid from HttpDetail for consistent
@@ -18,52 +21,6 @@ const asRef = (value: unknown): BodyRef | undefined => {
   return ref && typeof ref.file === 'string' ? ref : undefined
 }
 
-/** A stream whose bytes are in the project's body store rather than on the row.
- *
- *  Spec 052 relays every command, so `nmap -A` output arrives as a matter of
- *  course and anything over the inline threshold is kept whole on disk with a
- *  reference on the event (research.md T006). Declared at module scope, not
- *  inside CommandEndDetail: a component defined in another component's body is
- *  a new type on every render, and React remounts its subtree each time.
- */
-function RefBackedStream({ label, refValue, bytes, accent }: {
-  label: string
-  refValue: BodyRef
-  bytes?: number
-  accent: 'emerald' | 'amber'
-}): JSX.Element {
-  const { t } = useI18n()
-  const [content, setContent] = useState<string | null>(null)
-  useEffect(() => {
-    let live = true
-    window.redlog.httpBody.read(refValue)
-      .then((text) => { if (live) setContent(text) })
-      .catch(() => { if (live) setContent(null) })
-    return () => { live = false }
-  }, [refValue.sha256, refValue.file])
-
-  if (content === null) {
-    // Either still loading or gone from disk — retention and the disk-pressure
-    // sweep both reach these files. The event and its SHA-256 remain either
-    // way, which is what the note says.
-    return (
-      <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
-        {t('timeline.detail.httpBodyEvicted')}
-      </p>
-    )
-  }
-  return (
-    <CollapsibleStream
-      label={label}
-      content={content}
-      bytes={bytes ?? refValue.size}
-      truncated={refValue.truncated === true}
-      accent={accent}
-      startOpen={false}
-    />
-  )
-}
-
 /** What a command printed after its prompt came back — `sleep 30; echo done &`.
  *
  *  The relay keeps recording it as follow-up `command_output` rows tied to the
@@ -73,19 +30,9 @@ function RefBackedStream({ label, refValue, bytes, accent }: {
  */
 function LateOutput({ commandId }: { commandId: string }): JSX.Element {
   const { t } = useI18n()
-  const [rows, setRows] = useState<import('../../../core/db/events').CommandOutputPage | null>(null)
-
-  useEffect(() => {
-    let live = true
-    const load = (): void => {
-      window.redlog.events.commandOutput(commandId)
-        .then((r) => { if (live) setRows(r) })
-        .catch(() => { if (live) setRows({ items: [], hasMore: false }) })
-    }
-    load()
-    const unsub = window.redlog.events.onNewBatch(load)
-    return () => { live = false; unsub() }
-  }, [commandId])
+  const read = useReadState(() => window.redlog.events.commandOutput(commandId), true, [commandId])
+  const rows = read.state.value
+  useEffect(() => window.redlog.events.onNewBatch(read.retry), [commandId, read.retry])
 
   const { stdout, stderr, state, lateBytes, lostBytes: lost } = summarizeLateOutput(rows?.items ?? [], rows?.hasMore)
   const last = state !== 'running'
@@ -96,6 +43,7 @@ function LateOutput({ commandId }: { commandId: string }): JSX.Element {
 
   return (
     <div className="space-y-1.5" data-testid="late-output">
+      {read.state.phase === 'failed' && <div role="alert" className="text-xs text-amber-400">{t('content.status.failed')} <Button level="quiet" size="compact" onClick={read.retry}>{t('common.retry')}</Button></div>}
       <p className="text-xs text-redlog-text-dim font-mono">
         {t('timeline.detail.lateHeading')} · {status}
         {last && lateBytes > 0 ? ` · ${formatBytes(lateBytes)}` : ''}
@@ -112,8 +60,9 @@ function LateOutput({ commandId }: { commandId: string }): JSX.Element {
 }
 
 /** Structured detail body for a shell command_end event. */
-export function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+export function CommandEndDetail({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
   const { t } = useI18n()
+  const [readerOpen, setReaderOpen] = useState(false)
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
@@ -130,14 +79,7 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
-      {!hasStdout && stdoutRef && (
-        <RefBackedStream
-          label={t('timeline.detail.stdout')}
-          refValue={stdoutRef}
-          bytes={typeof data.stdout_bytes === 'number' ? data.stdout_bytes : undefined}
-          accent="emerald"
-        />
-      )}
+
       {hasStderr && (
         <CollapsibleStream
           label={t('timeline.detail.stderr')}
@@ -148,14 +90,11 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
-      {!hasStderr && stderrRef && (
-        <RefBackedStream
-          label={t('timeline.detail.stderr')}
-          refValue={stderrRef}
-          bytes={typeof data.stderr_bytes === 'number' ? data.stderr_bytes : undefined}
-          accent="amber"
-        />
-      )}
+
+      {(stdoutRef || stderrRef) && <>
+        <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} />}
+      </>}
       {(data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string' && (
         <LateOutput commandId={data.command_id} />
       )}

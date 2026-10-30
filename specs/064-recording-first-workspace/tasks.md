@@ -131,3 +131,14 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 ## 2026-10-28 — uninstall removes enrolments; tray speaks the app's language
 
 - [x] T049 Windows 解除安裝前以 `RedLog.exe --remove-hooks` 移除 PowerShell profile 與各 WSL 發行版 rc 中本 build 的接入行（hook 副本已被手動刪除也照樣移除；保留使用者自己的內容；升級時不執行）；系統匣選單隨 App 語言，結束確認改為一般按鈕；內測說明補升級、結束、無視窗與移除。先寫 RED 測試，並以實際安裝包在本機跑安裝 → 原地升級 → 解除安裝。
+
+## 2026-10-30 排程與文件整理
+
+依 [工作計畫](../../docs/WORK-PLAN.md) 對帳後接續原 S1→S2→S3→S4；本次不代勾完整 gate。
+
+- T004–T008：保留 origin／binding／pause／落盤的完整故障與原生門檻；本次 project-open rollback／spool E2E 是局部補強。
+- T009–T015：C1 投影與搜尋已有局部實作和性能證據，先核對配對／來源／非 Shell tool action 差額，再接 Activity parity。
+- T016–T023：HTTP／Shell 已接版本化 Reader，17 MiB／政策／實際成品已有補測；跨 Reader 的模式位置保持、fragment 座標及完整 CT-05–07／11–14 未因此完成。
+- T025–T029：前段 parity 成立後才切換五主入口／移除舊入口；全產品視覺基礎沿 062 T087–T092，不再複製成另一套設計計畫。
+
+本次已驗證範圍、精確候選與未測限制見 [2026-10-29 完成紀錄](../../docs/records/2026-10-29/UIUX-COMPLETION-2026-10-29.md)；正式 feature 狀態仍 Draft。#457 僅協調環境與真人量測，不能取代本 spec 的 CT／UX 原表。

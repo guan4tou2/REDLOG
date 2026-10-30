@@ -195,10 +195,10 @@ export function classifyScopeTarget(
   target: string,
   scope: Pick<ScopeSnapshot, 'targets' | 'excludeTargets'>,
   indexes?: ScopeIndexes
-): { distance: ScopeDistance; authority: Authority; severity: Severity } {
+): ScopeVerdict {
   const c = classifyScope(target, scope, indexes)
   switch (c.distance) {
-    case 'excluded': return { distance: 'excluded', authority: 'fact', severity: 'critical' }
+    case 'excluded': return { distance: 'excluded', authority: 'fact', severity: 'critical', matchedBy: c.matchedBy }
     case 'in_scope':
       return { distance: 'in_scope', authority: c.status === 'no-scope' ? 'unknown' : 'fact', severity: 'clean' }
     case 'adjacent_subnet':

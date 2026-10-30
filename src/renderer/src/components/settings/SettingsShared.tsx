@@ -147,7 +147,7 @@ export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text'
   )
 }
 
-export function ListField({ label, items, onChange, placeholder, parse }: {
+export function ListField({ label, items, onChange, placeholder, parse, initialDraft = '' }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
   /** Spec 037 FR: a field that takes pasted scope splits the text on newline,
    *  comma or space, validates each entry against the scope evaluator, and
@@ -155,10 +155,11 @@ export function ListField({ label, items, onChange, placeholder, parse }: {
    *  `10.0.0.0/33`, `host:8080`, a URL -- would be stored as a rule that
    *  silently never fires. Fields that are not scope leave this off and keep
    *  the one-entry-per-Enter behaviour. */
+  initialDraft?: string
   parse?: (text: string) => { valid: string[]; invalid: string[] }
 }): JSX.Element {
   const { t } = useI18n()
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(initialDraft)
   const [rejected, setRejected] = useState<string[]>([])
   const id = useId()
   const rejectedId = `${id}-rejected`

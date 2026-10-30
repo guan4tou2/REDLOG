@@ -1,3 +1,4 @@
+import { capturedContentIsPartial } from '../../../core/content-contract'
 import { operationPairKey } from '../../../core/operation-pair-key'
 import { buildToolPairIndex } from '../lib/toolPairing'
 import type { ToolPairKey } from '../../../core/db/events'
@@ -592,20 +593,6 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
   const blocks = useMemo(() => buildBlocks(events, names, t, lateOutput), [events, names, t, lateOutput])
   const hasMore = Object.values(bucketPages).some((page) => page.hasMore)
 
-  const autoExpandedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    const toExpand: string[] = []
-    for (const b of blocks) {
-      if (autoExpandedRef.current.has(b.id)) continue
-      autoExpandedRef.current.add(b.id)
-      if (b.kind === 'loot') { toExpand.push(b.id); continue }
-      if (b.kind === 'shell' && typeof b.exitCode === 'number' && b.exitCode !== 0) toExpand.push(b.id)
-    }
-    if (toExpand.length > 0) {
-      setExpanded((prev) => { const next = new Set(prev); for (const id of toExpand) next.add(id); return next })
-    }
-  }, [blocks])
-
   // #225: steps the operator picked — markers citing the events of a block.
   const picks = useMemo(() => pickedSteps(events), [events])
 
@@ -887,6 +874,11 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
           const displayBody = fullyExpanded && b.output ? b.output : body
           const savedSource = [...b.events].reverse().find(event => typeof event.engagementId === 'string' && event.engagementId)
           const readerOpen = expanded.has(`${b.id}:reader`)
+          const literal = backendQuery?.text ?? ''
+          const matchAt = literal && b.kind !== 'loot' ? (b.output ?? '').toLocaleLowerCase().indexOf(literal.toLocaleLowerCase()) : -1
+          const previewStart = matchAt >= 0 ? Math.max(0, matchAt - 40) : 0
+          const preview = b.output?.slice(previewStart, previewStart + 160).replace(/[\r\n]+/g, ' ')
+          const partial = b.events.some(event => capturedContentIsPartial(event.data ?? {}))
           // Source time and receipt time (Domain Invariant #8). They are equal
           // for anything captured live, which is almost everything — so the row
           // shows one time, and the second only earns its place in the row when
@@ -930,6 +922,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                   </span>
                 )}
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
+                {partial && <span data-testid="transcript-partial" className="text-xs text-amber-400">{t('content.partial')}</span>}
                 {b.meta && (
                   <span
                     data-testid="transcript-meta"
@@ -1019,6 +1012,14 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                   ? (b.kind === 'agent-tool' ? b.input.replace(/\n\s*/g, ' ') : b.input.split('\n')[0]).slice(0, 200)
                   : b.input}
               </pre>
+              {!revealed && b.kind === 'shell' && b.output && (
+                <pre data-testid="transcript-output-preview" className="mx-2.5 mb-2 text-xs text-redlog-text-dim font-mono truncate">
+                  {matchAt >= 0 ? preview : b.output.slice(0, 512).split(/\r?\n/, 1)[0].slice(0, 160)}
+                </pre>
+              )}
+              {!revealed && !b.output && b.outputNote === 'recorded' && (
+                <p className="mx-2.5 mb-2 text-xs text-redlog-text-dim">{t('transcript.note.recorded', { size: fmtBytes(b.outputBytes ?? 0) })}</p>
+              )}
               {revealed && !readerOpen && displayBody && (
                 <pre className="mx-2.5 mb-2 px-2 py-1.5 bg-redlog-surface/60 rounded border border-redlog-border/60 text-xs text-redlog-text-dim font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
                   {displayBody}

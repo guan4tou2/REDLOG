@@ -22,6 +22,7 @@ import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
+import { formatDateTime } from '../lib/time'
 import { requestRunInTerminal } from '../lib/terminalRunner'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { isMac, isWindows } from '../lib/platform'
@@ -119,7 +120,7 @@ function VerifyRow({ label, report, caveat, rejected, testId, t }: {
 }
 
 export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
-  /** Current HTTPS proof, including invalidation after restart or retry. */
+  /** HTTPS capture reached this attempt; CA trust is reported separately by the card. */
   onVerified?: (verified: boolean) => void
   onPrepare: () => void
   /** Recording is paused right now: no check can pass, so a timed-out check says so. */
@@ -247,10 +248,15 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   const httpsCaveat = attempt.https && !httpsProvesTrust(attempt.https, ignoresCertErrors || attempt.inCaptureBrowser)
     ? t('firstRun.http.captureBrowserCaveat')
     : undefined
+  // Two facts, not one. An HTTPS report proves the exchange reached the proxy;
+  // it does not prove the client trusts the CA when the capture browser is the
+  // one that ignores certificate errors. The status label must not read
+  // "verified" while the caveat below it says the trust was not shown.
+  const trustVerified = verified && !httpsCaveat
   const os = thisOs()
   // A check belongs to its endpoint, CA and client policy. Historical success
   // must not light a restarted or reconfigured proxy with the old nonce.
-  const verificationContext = JSON.stringify([running, status.url, status.caFingerprint?.sha256, ignoresCertErrors, routeTerminals])
+  const verificationContext = JSON.stringify([running, status.url, status.caFingerprint?.sha256, status.sourceInstance, ignoresCertErrors, routeTerminals])
   const [lastContext, setLastContext] = useState(verificationContext)
   if (lastContext !== verificationContext) {
     // Reset before committing the new endpoint/policy. An effect left one
@@ -272,11 +278,20 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
         <span
           data-testid="first-run-http-status"
-          className={verified ? 'text-emerald-500' : 'text-redlog-text-faint'}
+          data-ca-trust={verified ? (trustVerified ? 'proven' : 'unproven') : 'none'}
+          className={verified ? (trustVerified ? 'text-emerald-500' : 'text-amber-300') : 'text-redlog-text-faint'}
         >
-          {verified ? t('firstRun.core.verified') : t('firstRun.core.pending')}
+          {verified
+            ? (trustVerified ? t('firstRun.core.verified') : t('firstRun.core.capturedTrustUnproven'))
+            : t('firstRun.core.pending')}
         </span>
       </div>
+      {status.verificationState && (status.verificationEvidence || status.verificationState === 'unknown' || status.verificationState === 'invalidated') && (
+        <p data-testid="http-verification-history" className="text-redlog-text-faint">
+          {t(`httpVerification.${status.verificationState}`)}
+          {status.verificationEvidence && <> · {status.verificationEvidence.clientLabel} · <time dateTime={new Date(status.verificationEvidence.verifiedAt).toISOString()}>{formatDateTime(status.verificationEvidence.verifiedAt)}</time></>}
+        </p>
+      )}
       {preflightFailed && (
         <p data-testid="first-run-http-preflight-failed" role="status" className="text-amber-300">
           {t('firstRun.http.preflightFailed')}{' '}
@@ -290,6 +305,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
         </div>
       ) : status.state === 'running' ? (
         <div className="space-y-2">
+          <div hidden={verified}>
           <div role="group" aria-label={t('firstRun.http.browserChoice')} className="flex flex-wrap gap-2">
             <Button level="secondary" className="aria-pressed:border-redlog-accent aria-pressed:bg-redlog-accent/10" aria-pressed={browserPath === 'own'} onClick={() => setBrowserPath('own')}>
               {t('firstRun.http.ownBrowser')}
@@ -374,6 +390,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
             </div>
           )}
           </div>}
+          </div>
           <ul data-testid="first-run-http-checks" className="space-y-1">
             <VerifyRow
               label="HTTPS"
@@ -395,7 +412,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {browserPath === 'capture' && <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
+            {browserPath === 'capture' && !verified && <Button level="secondary" onClick={() => void verifyInBrowser()} data-testid="first-run-http-verify-browser">
               {t('firstRun.http.verifyInBrowser')}
             </Button>}
             {(attempt.http || attempt.https || attempt.rejectedAt !== null || timedOut) && (

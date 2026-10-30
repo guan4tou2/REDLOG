@@ -16,10 +16,8 @@ const INLINE_THRESHOLD = 4096
  *  Spec 052 added the last two, when command output started taking the same
  *  path HTTP bodies already took.
  */
-export const BODY_REF_FIELDS = [
-  'request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref',
-  'stdout_ref', 'stderr_ref', 'output_body_ref'
-] as const
+import { BODY_REF_FIELDS } from './content-contract'
+export { BODY_REF_FIELDS } from './content-contract'
 
 export interface BodyRef {
   sha256: string

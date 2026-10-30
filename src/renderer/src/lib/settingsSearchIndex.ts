@@ -253,6 +253,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'firstRun.http.captureBrowserCaveat',
     'firstRun.http.title',
     'firstRun.core.verified',
+    'firstRun.core.capturedTrustUnproven',
     'firstRun.http.preflightFailed',
     'firstRun.http.missing',
     'captureSetup.openPreparation',

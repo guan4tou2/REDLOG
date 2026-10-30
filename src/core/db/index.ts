@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { BODY_SOURCE_PREDICATE } from '../content-contract'
 import path from 'path'
 import fs from 'fs'
 import { resetSession, assertEventsAppendOnly } from './events'
@@ -317,6 +318,10 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_events_logged_agent_subtype_ts ON events_logged(agent_type, subtype, timestamp DESC);
   `)
 
+  for (const table of ['events', 'events_logged']) {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_content_refs ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
+  }
+
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
@@ -446,14 +451,14 @@ export function getReadonlyDB(): Database.Database {
 }
 
 export function closeDB(): void {
-  db?.close()
+  const writable = db
+  const readonly = roDb
+  // Revoke access first, even if closing a partially initialized handle fails.
   db = null
-  // v0.15: the cached read-only handle is bound to currentDbPath — close it
-  // here so a project switch (initDB → closeDB → reopen) re-creates it against
-  // the new file instead of serving reads from the previous project's db.
-  roDb?.close()
   roDb = null
   currentProjectDir = null
+  currentDbPath = null
+  try { writable?.close() } finally { readonly?.close() }
 }
 
 export function getProjectDir(): string {

@@ -18,6 +18,9 @@ export interface ManagedProxyStatus {
   /** The CA's own fingerprints, so trust can be removed by identity rather
    *  than by the name "mitmproxy", which other tools' CAs share (#220). */
   caFingerprint?: CaFingerprint
+  verificationEvidence?: import('../../core/http-verification-evidence').HttpVerificationEvidence | null
+  verificationState?: import('../../core/http-verification-evidence').HttpVerificationState
+  sourceInstance?: string
   httpsVerification?: HttpVerifyReport
 }
 
@@ -107,6 +110,7 @@ export class ManagedHttpProxy {
   private snapshot: ManagedProxyStatus = { state: 'stopped', url: null }
   private startPromise: Promise<ManagedProxyStatus> | null = null
   private cancelStart: (() => void) | null = null
+  private sourceInstance: string | undefined
   private generation = 0
   private listeners = new Set<StatusListener>()
   private proof: { report: HttpVerifyReport; ca: string } | null = null
@@ -119,12 +123,13 @@ export class ManagedHttpProxy {
   }
 
   status(): ManagedProxyStatus {
-    if (!this.caPath) return { ...this.snapshot }
+    if (!this.caPath) return { ...this.snapshot, sourceInstance: this.sourceInstance }
     const certReady = this.deps.exists(this.caPath)
     const caFingerprint = certReady ? this.deps.fingerprint(this.caPath) : null
     if (this.proof && this.proof.ca !== caFingerprint?.sha256) this.proof = null
     return {
       ...this.snapshot,
+      sourceInstance: this.sourceInstance,
       ...(this.snapshot.state === 'running' && this.proof ? { httpsVerification: this.proof.report } : {}),
       caPath: this.caPath,
       certReady,
@@ -171,7 +176,7 @@ export class ManagedHttpProxy {
   private update(next: ManagedProxyStatus): void {
     const previous = this.status()
     if (next.state !== 'running') this.proof = null
-    if (next.state === 'starting') this.startedAt = Date.now()
+    if (next.state === 'starting') { this.startedAt = Date.now(); this.sourceInstance = randomBytes(16).toString('hex') }
     this.snapshot = next
     const current = this.status()
     for (const listener of this.listeners) listener(current, previous)

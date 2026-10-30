@@ -46,6 +46,22 @@ beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => cleanup())
 
 describe('Scope & Evidence page', () => {
+  it('expands the recorded basis and full source command without silently changing scope', async () => {
+    installBridge({ rows: [row('v1')], truncated: false }, 1)
+    const full = 'curl https://v1.example/' + 'argument'.repeat(100)
+    window.redlog.events.getById = vi.fn(async ids => ids[0] === 'v1'
+      ? [{ id: 'v1', data: { matched_by: '*.example', _causes: ['source'] } }]
+      : [{ id: 'source', agentType: 'shell', data: { command: full } }]) as never
+    const onOpenSettings = vi.fn()
+    render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
+    fireEvent.click(await screen.findByTestId('scope-judged-live'))
+    expect(await screen.findByText(full)).toBeTruthy()
+    expect(screen.getByText(/Matched exclusion rule.*\*\.example/)).toBeTruthy()
+    expect(onOpenSettings).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit related scope rules' }))
+    expect(onOpenSettings).toHaveBeenCalledWith('v1.example')
+  })
+
   it.each(['getViolations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
     installBridge({ rows: [], truncated: false }, 0)
     vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))

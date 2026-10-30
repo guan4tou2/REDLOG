@@ -1,310 +1,147 @@
 # Architecture
 
-Current as of **v0.9.3**. This page is the map the README's ASCII diagram
-stopped being (that diagram predates the tailer host and plugin host).
-Read `event-schema.md` for what lands on the
-timeline and `audit-trail.md` for why it can't be quietly edited.
+核對日期：2026-10-30；來源基準 `ae0544b5`。本頁描述目前責任與檔案位置，feature 完成度見 [Spec 索引](../specs/README.md)，後續順序見 [工作計畫](WORK-PLAN.md)。不以檔案行數、資料夾數量或舊版本能力宣告取代契約與驗收。
 
 ## 1. Process / layer model
 
-```
-┌─ renderer (React 18, sandbox:true, contextIsolation:true, no nodeIntegration) ─┐
-│  App.tsx · Timeline · TerminalView · Settings · OverlayApp (2nd window)        │
-│  talks only through window.redlog.*                                            │
-└──────────────▲──── ipcRenderer.invoke / on ───────────────────────────────────┘
-┌──────────────┴─ preload (src/preload/index.ts, overlay.ts) ───────────────────┐
-│  contextBridge.exposeInMainWorld('redlog', …) — pure forwarding, zero logic    │
-│  24 namespaces, ~100 methods; every subscribe returns an unsubscribe closure   │
-└──────────────▲────────────────────────────────────────────────────────────────┘
-┌──────────────┴─ main (src/main/) — needs Electron ────────────────────────────┐
-│  index.ts        composition root + every ipcMain handler (~1900 LOC)          │
-│  windows · tray · terminal-manager (node-pty) · clipboard-monitor              │
-│  services/  screenshot-agent · cdp-connector · browser-launcher · file-watcher │
-│             process-monitor · opsec-state · network-info · updater             │
-│             tailer-host + optional parsers/{claude-code,codex}                │
-└──────────────▲────────────────────────────────────────────────────────────────┘
-┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
-│  db/{index,events,operators,findings}   event-bus   clock   signing            │
-│  chain-anchor   evidence-chain   bundle-export   sanitize   redaction          │
-│  api-server (REST)   capture-health                                           │
-│  loot- / pivot- / technique- / command- / target- detectors   scope-monitor    │
-│  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
-└───────────────────────────────────────────────────────────────────────────────┘
-        ▲ HTTP 127.0.0.1:6660 (Bearer)         ▲ file watch
-   hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex
-   mitmproxy addon · VPS reverse tunnel
+```text
+renderer（React 19；主視窗／HUD）
+  ↓ window.redlog.*
+preload（contextBridge；明確暴露可用操作）
+  ↓ Electron IPC
+main（App／專案生命週期、視窗、原生能力、services 與 IPC 接線）
+  ↓ 核心 Interface／注入的協作者
+core（ingest、資料庫、證據鏈、query、content、export 與領域政策）
+  ↑ REST／hook／選配來源送入同一 ingest
+hooks、CLI、bundled producers、optional AI integrations
 ```
 
-**Why `core/` exists.** Anything that does not need an Electron API lives
-there, so the same function backs the REST route, the CLI subcommand and the
-vitest file. `test/` has 40 files against `core/`; the
-`main/` layer is deliberately thin glue (and, as a consequence, mostly
-untested — see `AUDIT-2026-08-08.md` §4).
+- [src/main/index.ts](../src/main/index.ts) 是 composition root，仍有部分 IPC；已拆出的 handlers 位於 [src/main/ipc/](../src/main/ipc/)。不要再寫成「所有 IPC 都在 index」。
+- [src/preload/](../src/preload/) 與 [env.d.ts](../src/renderer/src/env.d.ts) 共同形成 renderer 的 Interface；目前型別有明列定義，不能宣稱已全面自動推導。新增 IPC 要同步其契約與測試。
+- [src/core/](../src/core/) 保留不依賴 Electron 的領域行為；平台能力由 main 注入。renderer 可用純資料契約，不能從閱讀面直接取得 Node／檔案系統能力。
+- 原生 capture implementations 位於 main services／hooks；多個 Adapter 沿現有 seam 接入，不能每來源複製 ingest／pause／export 政策。
 
 ## 2. Startup order
 
 ### App level (`src/main/index.ts`)
 
-1. `:58` Windows-only Chromium switches.
-2. `:708` `requestSingleInstanceLock()` — second instance quits rather than
-   fight over port 6660 and `~/.redlog/api-token`.
-3. `:724` `protocol.registerSchemesAsPrivileged(['redlog-screenshot'])` —
-   must run **before** `whenReady`.
-4. `app.whenReady()` → screenshot protocol handler (path-traversal guarded
-   by `isInsideDir`), permission handler (geolocation only), main window +
-   tray, **all ipcMain handlers**, `Cmd/Ctrl+Shift+M` global marker, update
-   check after 5 s.
+App 初始化註冊 protocol／視窗／tray／IPC，管理 API server 與來源生命周期；啟動 App、開專案、來源 Running、收到實際證據是不同狀態。精確註冊與先後以 composition root 為準，本頁不保存易漂移的行號或 namespace 數量。
 
-### Project level (`startProject()` `:347-684`)
+### Project level (`startProject()`)
 
-```
-loadConfig → initDB(projectDir)               timeline.db, WAL, triggers
-→ configure ip / screenshot / scope / loot / redaction
-→ setPluginHost → setTailerContributionSink → initPlugins()
-→ setVpnAdapters · configureTerminal
-→ sweepRetention()            expire .cast / screenshots, emit *_pruned events
-→ recoverOrphanSessions()     LEFT JOIN to close terminals killed by a crash
-→ replay ~/.redlog/pending/*  shell-hook offline spool
-→ start ip / link / opsec / clipboard / fileWatcher / processMonitor / tailer
-→ configureApi → startApiServer(6660) → system.api_started
-→ autoUpgradeInstalledHooks()
-→ insertEvent(system.session_start)
-→ startAnchorLoop() + startNtpLoop()
-→ verifyRandomSample(100), then 50 every 5 min
-→ create overlay window
-```
+1. 先讀取並準備候選專案設定；此步失敗仍保留舊專案。
+2. 已有 active project 時執行 `stopProject()`，再初始化候選 DB。
+3. 設定 active project，初始化來源／監視器、政策、恢復及查詢資源；同步初始化成功後才發布 spool identity。
+4. 任一步初始化失敗，盡力完成全部 cleanup 並保留原錯誤；不可留下 API、spool 或 renderer 的假 active 狀態。
 
-Shutdown (`stopProject()` / `will-quit`) kills terminals **before** closing the
-DB so `session_end` still writes, then unwinds every monitor and calls `closeDB()`.
+`stopProject()` 撤銷 API／spool binding，停止各來源、timer、索引及讀取資源；terminal recording 在 DB 關閉前 detach，shell 可以存活但不能繼續寫進舊專案。不是「關專案必定殺死所有 terminal」。
+
+對應驗證：[project-open rollback E2E](../e2e/project-open-rollback.spec.ts)、[terminal rotation E2E](../e2e/terminal-session-rotation.spec.ts)。
 
 ## 3. Data model
 
-`<projectDir>/timeline.db`, `journal_mode=WAL`, `foreign_keys=ON`.
+每個專案使用 `timeline.db`（WAL）；[db/index.ts](../src/core/db/index.ts) 管 schema、主連線與唯讀連線，關閉或開啟失敗時撤銷專案連線身分。
 
-| Table | Purpose |
+| 資料 | 責任 |
 |---|---|
-| `events` | The only evidence table. Append-only, hash-chained, Ed25519-signed. |
-| `operators` | `token_hash` (sha256 of the bearer token) + `signer_pub_key`. |
-| `chain_anchors` | OpenTimestamps anchors + calendar receipts. |
-| `sanitized_events` | Layer-4 redaction: `(source_event_id, field) → replacement`. Never an UPDATE on `events`. |
-| `bookmarks` | Private bookmarks — the 書籤 page. Not chained, not signed, not attributed, editable in place, and not evidence. |
-| `event_annotations` | Created but currently unused — no read/write path exists. |
-
-Indexes: `timestamp`, `agent_type`, `engagement_id`, `target_id`,
-`created_at`, plus one each on bookmarks / operator token / anchors /
-sanitized source.
+| `events` | append-only、hash chain 的證據事件；不改歷史 hash inputs |
+| `events_logged` | 較高流量的 logged tier，與 chained tier 一起納入查詢／固定選取；不能假裝每列都上鏈 |
+| `operators`／`chain_anchors` | 操作者公開驗證資料與證據鏈錨定；token 不放交付公開欄位 |
+| `sanitized_events`／`do_not_export` | 交付轉換與排除政策，保留原件 |
+| `bookmarks`／`event_notes` | 可編輯的私有書籤／註記，不能與原始 Event 混為同一證據承諾 |
+| cast／HTTP body／AI raw／手動附件 | 檔案內容及事件參照；原始 bytes、版本、hash 與可讀投影分開 |
 
 ### Migration strategy
 
-No version table. Every open runs idempotent DDL (`CREATE TABLE IF NOT
-EXISTS`), then probes `PRAGMA table_info` and `ALTER TABLE ADD COLUMN` for
-`prev_hash` / `monotonic_ns` / `ntp_offset_ms` / `signature` /
-`signer_pub_key`. All added columns are nullable and **never backfilled** —
-backfilling would change historical hash inputs.
-
-`assertEventsAppendOnly()` drops and recreates two triggers on every open:
-
-- `no_delete_events` — any DELETE raises ABORT.
-- `no_update_events_hash` — UPDATE of any hash-covered column raises ABORT.
+沿既有 idempotent DDL、欄位探測與 append-only 檢查；不為搬目錄重建資料庫或回填原始事件內容。saved-content partial indexes 由 SQLite 維護，協助排除沒有內容來源的 rows；索引不是另一份證據。
 
 ### Event envelope
 
-Fixed columns carry identity and integrity; semantics live in the free-form
-`data` JSON, keyed to stay Ghostwriter-Oplog-compatible (`command`, `output`,
-`dest_ip`, `dest_host`, `mitre_ttp`, `description`, `sha256`, `severity`, …).
-
-Two reserved internal keys:
-
-- `_causes: string[]` — causal edges, resolved in `causes-resolver.ts` by
-  `flow_id` (HTTP) or `terminalId|pid|command` (shell) through a bounded
-  in-memory map (cap 10 000).
-- `_clock_anomaly` — stamped at write time and folded into the hash input, so
-  it cannot be removed after the fact.
-
-18 lanes render from `agent_type` (+ `subtype` routing): `shell`, `agent`,
-`http_navigation`, `scanner`, `browser`, `dns`, `pivot`, `screenshot`,
-`clipboard`, `file_transfer`, `credential_use`, `c2_checkin`, `marker`,
-`loot`, `cleanup`, `scope`, `process`, `system`.
+固定欄位保存專案／操作者／來源／時間等身分；語意在 `data`。來源配對與 `_causes` 不得退化成同 PID、文字或 host 就當作同一操作。領域契約見 [target identity](domain/SPEC-target-identity.md)、[query semantics](domain/SPEC-search-query-semantics.md)。
 
 ### Activity query projection (Spec 064)
 
-`activity-projection.ts` derives versioned operation identity without changing
-Events. `db/activity-queries.ts` groups matches before paging and distinguishes
-matching Events from source context. Its SQLite TEMP index belongs to the
-project's read connection, stores metadata/digests only, updates incrementally,
-and is rebuilt after retention or failed reads. Closing the project drops it;
-it is neither a new evidence table nor an export attachment. IPC checks the
-active engagement and applies its scope before querying. Search offers an
-Operations view backed by this API alongside Raw events and Cast search.
-Main navigation remains until reading and search coverage reach parity.
+[activity-projection.ts](../src/core/activity-projection.ts) 與 [db/activity-queries.ts](../src/core/db/activity-queries.ts) 衍生操作身分／分組／背景，不改 Events。匹配事件與脈絡分開、先定群組再分頁；來源 namespace、project、provider 與 snapshot 是查詢正確性的一部分。
 
-`content-contract.ts` defines the browser-safe saved-content references and
-bounded read/Find replies. `evidence-content.ts` binds them to the active
-project, owner Event, field and saved-content version. `body-source.ts` verifies
-fixed sidecar references before reading; missing, changed and inaccessible
-sources remain distinct from empty output. `EventContentReader` renders those
-windows without loading an entire large file into the renderer.
+[content-contract.ts](../src/core/content-contract.ts) 定義 ContentRef 與有界 Read／Find；[evidence-content.ts](../src/core/evidence-content.ts) 核對 project、Event、field 與來源版本，[body-source.ts](../src/core/body-source.ts) 讀回已保存內容。capture partial、來源 availability 與讀取 hasMore 是三個軸。HTTP／Shell refs 使用既有 [EventContentReader](../src/renderer/src/components/EventContentReader.tsx)，不能恢復整檔讀入 renderer 的平行路徑。
+
+Spec 064 整體仍 Draft；Activity 局部存在不代表所有 Reader、座標與五入口導覽已達 parity。
 
 ## 4. Capture pipeline
 
-The canonical path, shell hook → chain → UI:
+```text
+外部 producer → REST auth／專案 gate ┐
+                                   ├→ ingest → insertEvent → publish → UI／衍生資料
+main 內的 producer ─────────────────┘
+```
 
-```
-hooks/shell-zsh-hook.zsh     zsh preexec/precmd adapter
-hooks/shell-bash-hook.sh     bash DEBUG/PROMPT_COMMAND adapter
-hooks/shell-common.sh        shared transport, spool and redlog-run
-  ├ resolve ~/.redlog/{api-port,api-token}  (WSL: via cmd.exe + wslpath)
-  ├ python3 builds the JSON payload
-  ├ curl POST /api/events  --connect-timeout 1 --max-time 2
-  └ on failure → ~/.redlog/pending/<ns>.<pid>.json   (cap 5000, replayed at
-                                                      next startProject)
-POST /api/events (src/core/api-server.ts:334)
-  1  selfHealSidecarFiles()      rewrite token/port if deleted
-  2  Host allowlist (anti DNS-rebinding) + reflected Origin (never `*`)
-  3  Bearer → resolveOperatorByToken
-  4  resolveIncomingCauses → data._causes
-  5  STRIP any operator_id in the body — attribution comes from the token only
-  6  shell normalisation: tagCommand · detectCleanup · detectFileTransfer ·
-     detectPivot · extractTargetWithProvenance · scopeMonitor.checkTarget ·
-     lootDetector.findMatches(cmd + stdout + stderr + output)
-  7  redact() — marks spans into data.redactions; raw bytes are NOT altered
-  8  insertEvent()             ← the single write point
-  9  eventBus.publish() → lootDetector.emit(_causes = event.id)
- 10  companion events: pivot / cleanup / file_transfer / pivot-closed
-insertEvent (src/core/db/events.ts:230)
-  · 2 s dedupe (subtype + command + terminalId)
-  · prevHash from an in-memory cache; reset to sentinel if an INSERT fails
-  · operatorId required, else throw
-  · clock-anomaly detection folded into data
-  · canonicalStringify (recursive key sort) → SHA-256 → hash → Ed25519 sig
-main/index.ts:1063
-  · send 'events:new'          per event (HUD)
-  · batchBuffer + setImmediate → 'events:new-batch'  (one per frame)
-  · recompute getActivePivots() on pivot / command_end → 'pivots:changed'
-```
+[ingest.ts](../src/core/ingest.ts) 管 pause、來源／因果、enrichment、redaction spans、保存及 publish 的共通順序。[db/event-write.ts](../src/core/db/event-write.ts) 管底層寫入，不能繞過共通政策來建立第二個正式 producer 路徑。
 
 ### Sources
 
-| Source | Mechanism | Notes |
-|---|---|---|
-| shell preexec hook | bash/zsh/pwsh + curl | offline spool; **no stdout** unless prefixed with `redlog-run` |
-| `redlog-run` wrapper | temp files per stream | structured `stdout` / `stderr`, 100 KB each |
-| built-in terminal | node-pty | asciinema `.cast` per session, 50 MB cap, SHA-256 on `session_end` |
-| clipboard | Electron poll (**off by default**) | stores sha256 + length + lootTypes; raw text never persisted |
-| screenshot | desktopCapturer + JPEG | exact sha256 dedupe, then dHash Hamming < 5 |
-| browser CDP | `/json` poll 3 s + per-tab WebSocket | `http_navigation` + console/exception, 2 KB msg cap |
-| mitmproxy | `hooks/mitmproxy-addon.py` (604 LOC) | HTTP `scanner` + DNS `dns`; bodies capped at `REDLOG_MAX_BODY` (2048) |
-| IP monitor | DNS (OpenDNS/Google TXT) then HTTP echo | N-consecutive confirmation before a state change |
-| OPSEC monitor | `os.networkInterfaces()` + platform DNS, 30 s | VPN iface / resolver / MAC / hostname drift |
-| scope monitor | per-command target check | root-domain matched; **never blocks** |
-| loot detector | 10 built-in regexes + plugin patterns | `plugin_id` + `pattern_name` provenance since v0.9.0 |
-| pivot detector | command pattern match | ligolo / chisel / sshuttle / proxychains / ssh -D,-L,-R / socat |
-| file watcher | chokidar (**off by default**) | too noisy otherwise |
-| process monitor | `ps` poll 500 ms | not supported on Windows; saturation event above 1000/min |
-| agent tailer | chokidar over transcript files | see §5 |
+| 路徑 | 實作位置／重要限制 |
+|---|---|
+| 外部 Bash／Zsh／PowerShell | [hooks/](../hooks/)、[shell catalog](../src/core/shell-catalog.ts)、[hooks manager](../src/core/hooks-manager.ts)；接入、command proof、output proof 與來源存活分開，不再宣稱 hook 一律沒有輸出 |
+| 外部 relay／顯式 session | `hooks/redlog-relay.py` 與既有 session 路徑；專案身分、spool、pause、輸出邊界不由 UI 推測 |
+| 內建 terminal | [terminal-manager.ts](../src/main/terminal-manager.ts)；PTY、cast、session rotation，作外部終端以外的備用入口 |
+| HTTP／HTTPS／WS／TCP | [managed-http-proxy.ts](../src/main/services/managed-http-proxy.ts)、`hooks/mitmproxy-addon.py`；只宣稱實際經過來源的覆蓋，不等於全系統網路 |
+| HTTP 驗證歷史 | [http-verification-evidence.ts](../src/core/http-verification-evidence.ts)、[http-verification-history.ts](../src/main/services/http-verification-history.ts)；專案本地有界歷史，不用 UA 當穩定 client 身分，也不從歷史恢復目前 CA trust |
+| 截圖、clipboard、檔案／程序／連線 | main services 與 IPC；選用能力、讀取權限、觀測資訊與已保存原件分開 |
+| AI | optional packages → tailer host，見下一節；必須明確選用及有專案授權 |
+
+來源 lifecycle 的唯一語意見 [capture-source-lifecycle](domain/SPEC-capture-source-lifecycle.md)；沉默不當失敗，來源恢復不抹掉歷史缺口。支援平台與實測限制見各 spec／[packaged smoke](PACKAGED-SMOKE.md)，不在此抄一份綠燈矩陣。
 
 ## 5. Tailer host (AI agent capture)
 
-`tailer-host.ts` owns the generic pipeline; `TailerAdapter` implementations
-own the per-agent parsing. This is a capture source like any other — the
-shell hook records what the operator typed, the tailer records what the agent
-did. Same chain, same operator attribution, same pause semantics.
+[tailer-host.ts](../src/main/services/tailer-host.ts) 管來源讀取與保存，Adapter 管 provider 格式；選配整合位於 [optional-plugins/claude-code/](../optional-plugins/claude-code/) 與 [optional-plugins/codex/](../optional-plugins/codex/)。目前出貨選配僅這兩個，不恢復已移除的 OpenCode parser。
 
-- **Watch** — chokidar over `transcriptGlob` (JSONL append or
-  per-message directory).
-- **Sidecar** — appends source bytes to
-  `<projectDir>/agent-transcripts/<kind>-<session>.jsonl`; sidecar size is
-  the read offset, which makes crash recovery idempotent by construction. A
-  shrinking source means `/compact` → reset + `transcript_compacted`.
-- **Gates** — `.redlog-app-root` self-exclusion (RedLog's own repo carries
-  this marker), local `excludedPaths`, per-tool project directories and `eventBus.paused`.
-  AI recording also requires a locally installed active integration and a matching
-  project installation receipt. Empty paths deny capture; activation checkpoints
-  prevent silently importing existing JSONL history.
-- **Redaction** — `deepRedactStrings()` walks every string; sensitive paths
-  (`.ssh/`, `.env`, `.aws/`) suppress the output field entirely.
-- **Causality** — `redlogIdByUuid` is reseeded from the DB on project open;
-  late parents go into a pending buffer (cap 100, TTL 60 s) and flush
-  recursively.
-- **Integrity** — a `transcript_snapshot` (cumulative sidecar sha256) is
-  emitted on 15 s idle or session close, so bundles can omit the raw
-  transcript and still be verifiable.
-
-Adapters: `claude-code` (`~/.claude/projects/**/<session>.jsonl`), `codex`
-(`~/.codex/sessions/**/rollout-*.jsonl`, synthesises ids since Codex has no
-wire-level uuid).
+本機安裝、專案啟用與原始檔讀取授權分開；無有效 receipt／路徑不得因開設定就開始擷取。來源版本、snapshot／確認前綴、pause、自身專案排除與 redaction 要留在既有 host／policy。raw JSONL 與解析後事件是不同載體；匯出預設不等於交付 raw 對話。
 
 ## 6. Evidence chain
 
-Three layers, documented in full in `audit-trail.md`:
+[證據模型](audit-trail.md) 與 [evidence-chain.ts](../src/core/evidence-chain.ts) 描述 chained Events、簽章與錨定。完整鏈驗證、抽樣與錨定有不同保證；logged tier、書籤、UI 推導不能被稱作原始 chained Events。
 
-1. **Hash chain** — `canonicalStringify` (recursive key sort, array order
-   preserved, `undefined` skipped) → SHA-256; `prev_hash` points at the
-   previous row's `hash`. Detects deletion, edit and reorder; does **not**
-   detect a full rewrite by someone with the source.
-2. **Per-event Ed25519 signature** — key at `~/.redlog/keys/<op>.key`
-   (0600, dir 0700), public half mirrored into `operators.signer_pub_key` so
-   verification never touches disk. Missing key → row marked unsigned rather
-   than failing the write.
-3. **OpenTimestamps anchoring** — `computeChainHead() = SHA256(last.hash ‖
-   String(count))`, POSTed hourly to three public calendars; `partial` when
-   some fail, `system.anchor_failed` when all do. `chain upgrade` polls for
-   the Bitcoin-folded proof; `.ots` export produces a file any `ots verify`
-   accepts.
-
-**Verification has three gears**: `verifyLatestAnchor()` (O(1) count check),
-`verifyChainFullAsync()` (per-row re-walk, chunked so the main loop keeps running, 6 hash shapes tried
-newest-first, clock drift > 5 s reported), and `verifyRandomSample(K)`
-(100 at open, 50 every 5 min; failure flips capture-health to `dark` and
-writes `system.chain_sample_broken`).
+原始 bytes 的完整性與經清洗 projection 的交付完整性分開。hash 能驗成品未變，不自行證明投影等於原始事件；轉換與排除需有 provenance 與 manifest 說明。
 
 ## 7. Export & delivery
 
-`bundle-export.ts` streams to `<projectDir>/exports/bundle-<ts>/`:
+[export-plan.ts](../src/core/export-plan.ts) 與 [data-export IPC](../src/main/ipc/data-export.ts) 管核准的固定集合、政策與附件；preview 和 execute 沿同一計畫。來源變更／缺失或政策改變不能靜默產生不同成品。格式 writer 各有能力，不創建前端另一套統計。
 
-`events.jsonl` (sanitized replacements applied **to the export only**),
-`chain_anchors.json`, `operators.json` (public fields +
-pubkey, no token hashes), `screenshots/`, `casts/`, optional
-`agent-transcripts/` (**off by default** — raw agent chat may contain pasted
-secrets), a self-contained `redlog-verify.py` + `verify.sh` / `verify.cmd`,
-`manifest.json` (per-file sha256, chain head, last anchor), `manifest.sha256`
-and `manifest.hmac` (HMAC-SHA256 keyed by the primary operator's token_hash).
+Bundle／HAR 是主要交付入口；既有 JSON／NDJSON／Timeline 保留。operator PII 清洗不等於秘密偵測，Bundle／HAR 不支援的政策要明確拒絕。原始附件不做內容層 scope／PII 清洗；cast 可僅複製核准 byte prefix，不能宣稱完整原檔或自行改寫內容。
 
-Cloud share wraps that in a zip + `bundle.json` behind a mandatory redaction
-review gate; the BYO Cloudflare Worker lives in `redlog-share-worker/`.
+選取契約見 [export-event-selection](domain/SPEC-export-event-selection.md)；產物／manifest／離線 verifier 及 restart 由 [packaged smoke](PACKAGED-SMOKE.md) 依實際格式驗證。[redlog-share-worker/](../redlog-share-worker/) 是獨立分享服務，不把本機交付驗收當成已部署或分享成功。
 
 ## 8. Plugin system
 
-Two tiers, decided by `manifest.ts:PRIVILEGED_KEYS`:
+[core/plugins/](../src/core/plugins/) 管 manifest、啟用與貢獻；[plugins/](../plugins/) 放 bundled 宣告／producer；[optional-plugins/](../optional-plugins/) 放明確選用的 AI 整合。
 
-| Tier | Contributions | Executes in RedLog? |
-|---|---|---|
-| 🟢 declarative | `lootPatterns`, `redaction`, `commandTags`, `targetExtractors`, `eventTypes`, `capture` | no |
-| 🔴 privileged | `tailers` (bundled only) | yes, in the main process |
-
-Privileged code — today only a bundled tailer — is loaded into the main
-process. There is no isolated process and no capability-scoped RPC: that host
-ran nothing after v0.12 (`mcpTools`, its only user, was retired in #88) and was
-removed in Spec 027, with the `exporters` and `monitors` contributions only it
-could have run. Because a tailer is not isolated, only bundled plugins may
-contribute one (see `AUDIT-2026-08-08.md` §2, P1-3).
-
-Trust is pinned to a content hash covering the manifest plus every privileged
-code file and capture hook; changing either the code or the requested
-capabilities revokes it automatically.
+受信任的 bundled tailer 與宣告式 contribution 有不同執行風險；不新增任意第三方 code host、商城或平行設定工作流。詳見 [plugin development](plugin-development.md)；舊 design 提案的能力清單不能取代當前 manifest 契約。
 
 ## 9. IPC conventions
 
-- `invoke`/`handle` for request-response; `send`/`on` for high-frequency or
-  fire-and-forget (`terminal:write/resize/kill`, `overlay:*`).
-- Channel names are `<namespace>:<verb>`; main→renderer pushes use a
-  noun/past-tense form (`events:new`, `pivots:changed`, `recording:changed`).
-- Per-pty dynamic channels: `terminal:data:<id>`, `terminal:exit:<id>`.
-- E2E-only handlers gate on `process.env.REDLOG_E2E === '1'`, never
-  `NODE_ENV`.
-- Renderer types are **hand-mirrored** in `src/renderer/src/env.d.ts` — there
-  is no automatic inference from preload, and it has drifted (§4 of the
-  audit).
+- renderer 經 preload 呼叫 main；`invoke`／`handle` 管 request-response，訂閱回傳 unsubscribe；專案切換與過時回覆不得沿用舊資料身分。
+- handlers 已按行為拆於 [main/ipc/](../src/main/ipc/)；`index.ts` 負責依賴注入與剩餘接線，不能為分類造沒有行為的轉送層。
+- 大內容用 versioned bounded content Interface，不以「詳情」操作整檔傳輸。
+- loading、empty、failed、unknown、stale 分開；來源失敗保留 query／已讀內容，重試不自動重播破壞性操作。
+- E2E-only 能力依既有 `REDLOG_E2E` gate，不當作正式模式或原生權限驗收。
+
+## 10. Repository layout and placement
+
+| 路徑 | 放什麼／不放什麼 |
+|---|---|
+| `src/core/`、`db/`、`query/`、`alert/`、`plugins/` | 領域 Module、純契約、持久化與查詢；不引入 Electron 來方便 UI |
+| `src/main/`、`ipc/`、`services/` | Electron／OS Adapter、生命週期與 seam 接線；不複製 core 政策 |
+| `src/preload/` | renderer 可呼叫的明確 Interface；同步型別與授權／錯誤語意 |
+| `src/renderer/src/components/`、`lib/`、`i18n/` | 既有閱讀／設定／操作、純投影與兩語系；沿用 controls／tokens |
+| `hooks/`、`shell/`、`cli/` | 外部接入、傳輸、工具入口；不另存一套 project identity 或 pause 契約 |
+| `plugins/`、`optional-plugins/`、`resources/` | bundled 貢獻、選配整合與打包靜態資源；runtime 可變設定不寫回這裡 |
+| `test/`、`e2e/`、`scripts/`、`tools/` | 行為測試、實際 App 任務、工程 gate、離線 verifier；沿用 fixture 與測試選取，不按新文件分類搬測試 |
+| `specs/NNN-slug/` | feature spec／plan／tasks／verification；穩定編號，不搬到 active／done 子目錄 |
+| `docs/`、`domain/`、`records/`、`archive/` | 長期入口／標準、領域契約、日期證據、過期提案；見 [文件入口](README.md) |
+| `design/`、`examples/` | 設計來源、可維護的公開範例；不是執行紀錄 |
+| `out/`、`dist/`、`test-results/` 等生成輸出 | build／候選／測試 artifacts；不當作來源或搬入 docs，依 `.gitignore` 管理 |
+
+本次實際調整的是文件入口與日期紀錄。產品來源保留原位置：只有觀測到同一知識跨多個呼叫點漂移，或兩個真實 Adapter 需要同一 Interface，才在相關 feature 批次調整 seam／Module。先畫責任與測試面，再做必要搬移；不按行數拆檔、不新增泛用 `common/`／barrel 只為讓目錄看起來整齊。
 
 ## 這個 codebase 會咬人的地方
 

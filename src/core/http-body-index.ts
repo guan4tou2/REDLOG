@@ -1,3 +1,4 @@
+import { BODY_SOURCE_PREDICATE } from './content-contract'
 import Database from 'better-sqlite3'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -129,9 +130,7 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {age
   })()
 }
 function rows(snapshot?: ExportSnapshot, projectId?: string) {
-  const source = getDB(), fields = [...BODY_REF_FIELDS.map(f => `json_extract(data,'$.${f}.sha256') IS NOT NULL`),
-    ...inlineBodyFields().map(field=>`json_extract(data,'$.${field}.encoding')='base64'`),
-    "(agent_type='file_transfer' AND subtype='artifact_added')", "(agent_type='agent' AND subtype IN ('transcript_snapshot','transcript_capture_started'))"].join(' OR ')
+  const source = getDB()
   // A snapshot is a cumulative prefix of one saved file. Index the latest
   // confirmed version inside this dataset, rather than copying every prefix.
   const latest=(source.prepare(`WITH versions AS (
@@ -143,7 +142,7 @@ function rows(snapshot?: ExportSnapshot, projectId?: string) {
     SELECT id FROM ranked WHERE n=1`).all(snapshot?.chainedMaxRowId??Number.MAX_SAFE_INTEGER,snapshot?.loggedMaxRowId??Number.MAX_SAFE_INTEGER) as {id:string}[]).map(row=>row.id)
   return (['events', 'events_logged'] as const).map((table, i) => {
     const max = snapshot ? (i === 0 ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId) : Number.MAX_SAFE_INTEGER
-    return source.prepare(`SELECT id,data,agent_type FROM ${table} WHERE rowid<=? ${projectId ? 'AND engagement_id=?' : ''} AND (${fields})
+    return source.prepare(`SELECT id,data,agent_type FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? ${projectId ? 'AND engagement_id=?' : ''} AND (${BODY_SOURCE_PREDICATE})
       AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid`).iterate(max, ...(projectId ? [projectId] : []),JSON.stringify(latest)) as IterableIterator<{
       id: string
       data: string
@@ -247,7 +246,7 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
     groups.set(kind,{kind,status:'covered',revision:'',indexed:0,missing:0,binary:0,pending:0,failed:0,unsupported:0,limited:0,indexedBytes:0,sourceBytes:0,
       representation:kind==='events'?'decoded-event-json':kind==='ai-raw'?'confirmed-jsonl-prefix':'saved-bytes',precision:kind==='events'?'event':'file',
       filters:{applied:applied.filter(key=>!unsupported.includes(key)),unsupported}})
-    hashes.set(kind,createHash('sha256').update('saved-index-v6').update(JSON.stringify([applied,unsupported])))
+    hashes.set(kind,createHash('sha256').update('saved-index-v7').update(JSON.stringify([applied,unsupported])))
   }
   const eventGroup=groups.get('events')!,eventHash=hashes.get('events')!
   for(const [table,max] of [['events',snapshot?.chainedMaxRowId],['events_logged',snapshot?.loggedMaxRowId]] as const){
@@ -255,15 +254,12 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
       WHERE rowid<=? ${projectId?'AND engagement_id=?':''}`).get(max??Number.MAX_SAFE_INTEGER,...(projectId?[projectId]:[])) as {n:number;tail:number}
     eventGroup.indexed+=row.n;eventHash.update(JSON.stringify([table,row.n,row.tail]))
   }
-  const confirmed=new Set<string>()
-  for(const tier of rows(snapshot,projectId))for(const row of tier)for(const ref of refsOf({agentType:row.agent_type,data:JSON.parse(row.data)}))
-    if(ref.kind==='ai-raw'&&!ref.pending)confirmed.add(path.resolve(getProjectDir(),ref.file))
+  const confirmed = new Set<string>()
+  const pending: Array<{ eventId: string; ref: ReturnType<typeof refsOf>[number] }> = []
   let lookup: Database.Statement | undefined
-  for (const tier of rows(snapshot, projectId)) for (const row of tier) {
-    for (const ref of refsOf({agentType:row.agent_type,data:JSON.parse(row.data) as Record<string,unknown>})) {
-      if(ref.kind==='ai-raw'&&ref.pending&&confirmed.has(path.resolve(getProjectDir(),ref.file)))continue
+  const record = (eventId: string, ref: ReturnType<typeof refsOf>[number]): void => {
       lookup ??= getIndex().prepare('SELECT status,indexed_bytes,reason,available_bytes FROM body_event_refs WHERE event_id=? AND sha256=?')
-      const indexed=lookup.get(row.id,ref.sha256) as {status:string;indexed_bytes:number;reason:string;available_bytes:number}|undefined
+      const indexed=lookup.get(eventId,ref.sha256) as {status:string;indexed_bytes:number;reason:string;available_bytes:number}|undefined
       const excluded=ref.kind==='ai-raw'&&rawUnsupported.length>0
       const key=excluded?'unsupported':indexed?.status??'pending'
       const group=groups.get(ref.kind)!
@@ -273,8 +269,21 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
       if(ref.kind==='ai-raw'&&!excluded&&indexed?.status==='indexed'&&indexed.available_bytes>bytes){
         group.pending++;group.sourceBytes+=indexed.available_bytes-bytes
       }
-      hashes.get(ref.kind)!.update(JSON.stringify([row.id,ref.file,ref.sha256,ref.size,key,indexed?.reason??'',indexed?.available_bytes??0]))
+      hashes.get(ref.kind)!.update(JSON.stringify([eventId,ref.file,ref.sha256,ref.size,key,indexed?.reason??'',indexed?.available_bytes??0]))
+  }
+  // Scan source metadata once. Only small pending-AI references need to wait
+  // for confirmed snapshots; retaining entire event bodies would be unbounded.
+  for (const tier of rows(snapshot, projectId)) for (const row of tier) {
+    for (const ref of refsOf({ agentType: row.agent_type, data: JSON.parse(row.data) })) {
+      if (ref.kind === 'ai-raw' && ref.pending) pending.push({ eventId: row.id, ref })
+      else {
+        if (ref.kind === 'ai-raw') confirmed.add(path.resolve(getProjectDir(), ref.file))
+        record(row.id, ref)
+      }
     }
+  }
+  for (const { eventId, ref } of pending) {
+    if (!confirmed.has(path.resolve(getProjectDir(), ref.file))) record(eventId, ref)
   }
   const hash=createHash('sha256')
   for(const group of groups.values()){

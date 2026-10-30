@@ -16,6 +16,17 @@ describe('scope and project identity entry', () => {
   // comes from an imported profile, covered in
   // test/project-picker-create-card.test.tsx.
 
+  it('prefills a linked candidate but saves it only after an explicit add', () => {
+    const setConfig = vi.fn()
+    const config = { scope: { targets: [], excludeTargets: [], personalDomains: [], scopeFile: '' } } as unknown as ConfigState
+    render(<I18nProvider><ScopePage config={config} setConfig={setConfig} candidate="api.example.test" t={key => key} /></I18nProvider>)
+    const field = screen.getByDisplayValue('api.example.test')
+    expect(setConfig).not.toHaveBeenCalled()
+    fireEvent.keyDown(field, { key: 'Enter', ctrlKey: true })
+    expect(setConfig).toHaveBeenCalledOnce()
+    expect(setConfig.mock.calls[0][0].scope.targets).toEqual(['api.example.test'])
+  })
+
   it('renders an existing engagement ID as read-only', () => {
     // Its own bridge: this used to run on whatever the previous test left on
     // `window`, which is why removing that test broke this one.

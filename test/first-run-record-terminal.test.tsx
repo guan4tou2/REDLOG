@@ -85,7 +85,7 @@ let bridge: {
   wslInstall: ReturnType<typeof vi.fn>
 }
 
-function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatus; distros?: WslDistro[] } = {}): void {
+function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatus; distros?: WslDistro[]; ignoreCertErrors?: boolean } = {}): void {
   listeners = []
   verifyListeners = []
   bridge = {
@@ -127,7 +127,7 @@ function install(opts: { rows?: Ev[]; pre?: Preflight; proxy?: ManagedProxyStatu
       onVerify: (cb: (r: Report) => void) => { verifyListeners.push(cb); return () => { verifyListeners = verifyListeners.filter((l) => l !== cb) } }
     },
     browser: { launch: bridge.launch },
-    config: { get: async () => ({ httpCapture: { port: 8080, routeTerminals: false } }), save: bridge.configSave },
+    config: { get: async () => ({ browser: { ignoreCertErrors: opts.ignoreCertErrors ?? false }, httpCapture: { port: 8080, routeTerminals: false } }), save: bridge.configSave },
     clipboard: { writeText: vi.fn(async () => true), readText: async () => '' },
     wsl: { listDistros: bridge.listDistros, installHook: bridge.wslInstall }
   }
@@ -245,6 +245,24 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     expect((await screen.findByTestId('first-run-core-ready')).textContent).toBe('✓ 核心擷取已就緒')
     fireEvent.click(screen.getByTestId('first-run-start-work'))
     expect(onNavigate).toHaveBeenCalledWith('timeline')
+  })
+
+  it.each([true, false])('HTTPS capture makes the parent ready while CA trust remains separate (ignoreCertErrors=%s)', async (ignoreCertErrors) => {
+    install({ proxy: RUNNING, ignoreCertErrors })
+    draw()
+    await waitFor(() => expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證'))
+    await screen.findByText('127.0.0.1:8080')
+    await report({ scheme: 'https', nonce: await shownNonce(), userAgent: 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36' })
+    const status = screen.getByTestId('first-run-http-status')
+    expect(status.getAttribute('data-ca-trust')).toBe(ignoreCertErrors ? 'unproven' : 'proven')
+    expect(status.textContent).toBe(ignoreCertErrors ? '◐ 已擷取 · CA 未驗證' : '✓ 已驗證')
+    expect(screen.getByTestId('first-run-strip').getAttribute('data-core-ready')).toBe('true')
+    expect(screen.getByTestId('first-run-core-ready').textContent).toBe('✓ 核心擷取已就緒')
+    // Starting a new check invalidates both the card and its parent's readiness.
+    fireEvent.click(screen.getByTestId('first-run-http-retry'))
+    await waitFor(() => expect(screen.getByTestId('first-run-strip').getAttribute('data-core-ready')).toBe('false'))
+    expect(screen.getByTestId('first-run-http-status').getAttribute('data-ca-trust')).toBe('none')
+    expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
   })
 
   it('lets the operator leave before both are done, saying the Dashboard keeps flagging it', async () => {

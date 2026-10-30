@@ -447,7 +447,7 @@ export function TimelineEventInspector({
       {event.agentType === 'shell'
         && event.data?.subtype === 'command_end'
         && (
-          <CommandEndDetail data={event.data as Record<string, unknown>} />
+          <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} />
         )}
       {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
           assistant_message / thinking) shown open by default via
@@ -468,7 +468,7 @@ export function TimelineEventInspector({
           the raw-JSON toggle: unformatted, redaction-masked, in a 120px
           box. Same treatment as shell and agent events now. */}
       {event.agentType === 'scanner' && (
-        <HttpDetail data={event.data as Record<string, unknown>} eventId={event.id} />
+        <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} />
       )}
       {event.agentType === 'browser' && (
         <BrowserConsoleDetail data={event.data as Record<string, unknown>} />

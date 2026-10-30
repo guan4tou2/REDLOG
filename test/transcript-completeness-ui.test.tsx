@@ -41,6 +41,20 @@ describe('Transcript completeness UI', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(cleanup)
 
+  it('keeps failed commands bounded and Loot sensitive text folded until requested', async () => {
+    const rows = [
+      { ...event, id: 'failed', agentType: 'shell', data: { subtype: 'command_end', command: 'scan', exit_code: 2, stdout: 'first output line\n' + 'large output '.repeat(1000) } },
+      { ...event, id: 'secret', agentType: 'loot', data: { matches: [{ type: 'password', value: 'SENSITIVE_LOOT' }] } }
+    ]
+    installBridge(vi.fn().mockImplementation((opts: { agentType: string }) => Promise.resolve({ ...emptyPage, items: rows.filter(row => row.agentType === opts.agentType) })))
+    render(<TranscriptView />)
+    expect((await screen.findByTestId('transcript-output-preview')).textContent).toBe('first output line')
+    expect(screen.getByText('transcript.metaExit')).toBeTruthy()
+    expect(screen.queryByText(/large output large output/)).toBeNull()
+    expect(screen.queryByText(/SENSITIVE_LOOT/)).toBeNull()
+    expect(screen.getAllByTestId('transcript-toggle').every(button => button.getAttribute('data-expanded') === 'false')).toBe(true)
+  })
+
   it('renders an initial query rejection as a retryable failure, not empty', async () => {
     installBridge(vi.fn().mockRejectedValue(new Error('database unavailable')))
     render(<TranscriptView />)

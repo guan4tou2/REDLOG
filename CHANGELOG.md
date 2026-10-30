@@ -18,6 +18,15 @@ Prerelease for internal testing.
   no longer reported as installed, and install replaces it. The WSL scripts
   run with `wsl.exe -e`, so the distro's own shell no longer swallows their
   arguments.
+- A leftover `~/.redlog` in a WSL distro is adopted only while its own token is
+  accepted. The resolver probes `/api/whoami` instead of `/api/health`, which
+  answers for any caller; under mirrored networking that port is the Windows
+  app, so a stale token sent every event to a spool nothing drains. A 503 (app
+  up, no project open) still keeps the native directory, because the token
+  cannot be judged then (#326).
+- The hook sends event bodies on stdin, so a native Windows curl never has to
+  resolve an MSYS path when `MSYS_NO_PATHCONV=1` is set. Such commands used to
+  reach the record about 30s late, through the spool (#345).
 - The main window shows itself once its page has loaded, even when the GPU
   never paints a hidden window. Before, every launch not restored maximized
   stayed hidden on such hosts.
