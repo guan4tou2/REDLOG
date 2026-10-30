@@ -185,6 +185,11 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!activeProject) return managedHttpProxy.noteStartFailure('No project open')
   // mitmdump is spawned by bare name; look it up on the operator's PATH.
   await loginPathReady
+  // A proxy just stopped — closing the last project stops it, and opening the
+  // next one auto-starts this — can still hold the port for a few hundred
+  // milliseconds, and the probe below would report our own outgoing process
+  // as the holder.
+  await managedHttpProxy.released()
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
   const config = loadConfig(getProjectPath(activeProject))

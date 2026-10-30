@@ -125,6 +125,12 @@ export class ManagedHttpProxy {
   private caPath: string | null = null
   // Kept across restarts: a restart does not bring those events back.
   private unsavedGapEvents = 0
+  // The child last told to stop, until it has exited. A kill is a request:
+  // mitmdump takes a few hundred milliseconds to let go of its port, and a
+  // start inside that window found the port held — by the process it had just
+  // replaced. A project switch is exactly that: close stops A's proxy, open
+  // auto-starts B's, and B reported the port in use.
+  private exiting: Promise<void> | null = null
   private readonly deps: Dependencies
 
   constructor(deps: Partial<Dependencies> = {}) {
@@ -178,6 +184,29 @@ export class ManagedHttpProxy {
    * A running proxy is never overwritten: a preflight that fails while the
    * thing is up is the preflight being wrong, not the proxy stopping.
    */
+  /**
+   * Resolves once the child the last stop signalled has exited, or after
+   * `timeoutMs`. A start's port preflight waits on this, so the port it probes
+   * is not still held by our own outgoing process. Past the timeout the
+   * preflight runs anyway and reports whoever holds the port.
+   */
+  async released(timeoutMs = 5_000): Promise<void> {
+    const exiting = this.exiting
+    if (!exiting) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([exiting, new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs) })])
+    clearTimeout(timer)
+  }
+
+  private terminate(child: ChildProcess): void {
+    if (child.exitCode !== null || child.killed) return
+    // Listen before signalling: an exit can be delivered synchronously.
+    const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
+    this.exiting = exited
+    void exited.then(() => { if (this.exiting === exited) this.exiting = null })
+    try { child.kill() } catch { /* already exited */ }
+  }
+
   noteStartFailure(error: string): ManagedProxyStatus {
     if (this.snapshot.state === 'running' || this.snapshot.state === 'starting') return this.status()
     this.update({ state: 'failed', url: null, error })
@@ -309,9 +338,7 @@ export class ManagedHttpProxy {
       timer = setTimeout(() => {
         finish({ state: 'failed', url: null, error: `mitmdump did not confirm owned readiness within ${this.deps.readinessTimeoutMs / 1000}s${diagnostics.trim() ? `: ${diagnostics.trim()}` : ''}` })
         if (this.child === child) this.child = null
-        if (child.exitCode === null && !child.killed) {
-          try { child.kill() } catch { /* already exited */ }
-        }
+        this.terminate(child)
       }, this.deps.readinessTimeoutMs)
       poll = setInterval(() => { void checkReady() }, 200)
       void checkReady()
@@ -330,9 +357,7 @@ export class ManagedHttpProxy {
     this.cancelStart = null
     this.update({ state: 'stopped', url: null })
     cancel?.()
-    if (child && child.exitCode === null && !child.killed) {
-      try { child.kill() } catch { /* already exited */ }
-    }
+    if (child) this.terminate(child)
     return this.status()
   }
 }
