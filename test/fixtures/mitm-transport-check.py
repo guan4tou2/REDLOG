@@ -1,7 +1,7 @@
 import ast, json, tempfile, pathlib, types, urllib.request, urllib.error
 from unittest.mock import patch
 # Execute the production transport functions without requiring optional mitmproxy.
-tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text())
+tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id',
          '_write_spool_record', '_note_queue_rejection', '_flush_queue_gaps', '_declared_body_bytes', '_queue_gap_record', '_save_queue_gaps'}
 gap_state = {'_QUEUE_GAP_FLUSH_MS', '_QUEUE_GAPS', '_QUEUE_GAP_LOCK'}
