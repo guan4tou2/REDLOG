@@ -30,11 +30,14 @@ suite('WSL shell directory selection', () => {
   for (const entry of ['common', 'sender'] as const) {
     // 'stale-token' is #326: with mirrored networking the native port answers,
     // because it is the Windows app, but it no longer accepts this token.
-    for (const variant of ['down', 'live', 'stale-token'] as const) {
+    // 'no-windows-path' is appendWindowsPath=false: cmd.exe is not on PATH and
+    // only wslpath can say where it is.
+    for (const variant of ['down', 'live', 'stale-token', 'no-windows-path'] as const) {
       const title = {
         down: 'does not let a stale native directory shadow the Windows app',
         live: 'keeps a live native app',
-        'stale-token': 'does not adopt a live port that refuses the native token'
+        'stale-token': 'does not adopt a live port that refuses the native token',
+        'no-windows-path': 'finds cmd.exe when the Windows PATH is not appended'
       }[variant]
       it(`${entry}: ${title}`, async () => {
         const native = await startCollector(variant === 'stale-token' ? 'rotated-token' : 'native-token')
@@ -42,15 +45,18 @@ suite('WSL shell directory selection', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-wsl-directory-'))
         temporary.push(root)
         const home = path.join(root, 'native-home'), winHome = path.join(root, 'windows-home'), bin = path.join(root, 'bin')
-        fs.mkdirSync(bin)
-        for (const [dir, token, port] of [[home, 'native-token', variant === 'down' ? 1 : native.port], [winHome, 'windows-token', windows.port]] as const) {
+        const system32 = variant === 'no-windows-path' ? path.join(root, 'System32') : bin
+        fs.mkdirSync(bin); fs.mkdirSync(system32, { recursive: true })
+        for (const [dir, token, port] of [[home, 'native-token', variant === 'down' || variant === 'no-windows-path' ? 1 : native.port], [winHome, 'windows-token', windows.port]] as const) {
           fs.mkdirSync(path.join(dir, '.redlog'), { recursive: true })
           fs.writeFileSync(path.join(dir, '.redlog', 'api-token'), token)
           fs.writeFileSync(path.join(dir, '.redlog', 'api-port'), String(port))
         }
-        fs.writeFileSync(path.join(bin, 'cmd.exe'), `#!/bin/sh\nprintf '%s\\n' ${quote(winHome)}\n`, { mode: 0o755 })
-        fs.writeFileSync(path.join(bin, 'wslpath'), '#!/bin/sh\nprintf "%s\\n" "$1"\n', { mode: 0o755 })
-        const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, WSL_DISTRO_NAME: 'test-kali', REDLOG_SHELL: 'bash' }
+        fs.writeFileSync(path.join(system32, 'cmd.exe'), `#!/bin/sh\nprintf '%s\\n' ${quote(winHome)}\n`, { mode: 0o755 })
+        fs.writeFileSync(path.join(bin, 'wslpath'), `#!/bin/sh\nif [ "$1" = -u ]; then printf '%s\\n' ${quote(path.join(system32, 'cmd.exe'))}; else printf '%s\\n' "$1"; fi\n`, { mode: 0o755 })
+        // A real WSL PATH may carry /mnt/c/Windows; this variant must not.
+        const basePath = variant === 'no-windows-path' ? '/usr/local/bin:/usr/bin:/bin' : process.env.PATH
+        const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, PATH: `${bin}:${basePath}`, WSL_DISTRO_NAME: 'test-kali', REDLOG_SHELL: 'bash' }
         delete env._REDLOG_DIR; delete env._REDLOG_HOST; delete env.REDLOG_EXTERNAL_SESSION
         const common = path.resolve('hooks/shell-common.sh'), sender = path.resolve('hooks/redlog-send.sh')
         const script = entry === 'common'

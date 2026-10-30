@@ -73,7 +73,7 @@ interface ResolvedExportPlan {
   attachments: ExportAttachmentRow[]
 }
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
-type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[]; delivery: import('../../core/export-delivery').ExportDelivery } | { ok: false; error: string; planId?: string; fingerprint?: string }
+type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[]; delivery: import('../../core/export-delivery').ExportDelivery } | { ok: false; error: string; check?: string; planId?: string; fingerprint?: string }
 
 
 

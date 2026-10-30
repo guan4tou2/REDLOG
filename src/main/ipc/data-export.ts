@@ -256,20 +256,21 @@ export function registerDataExportIpc(
     const claimed = exportPlans.claim(input.planId, project.id)
     if (!claimed.ok) return claimed
     const plan = claimed.plan
+    // `check` names which comparison refused. The operator sees `error`; a
+    // test that fails once in fourteen needs to know which of the three
+    // source-unavailable checks it was (#344).
+    const refused = (error: 'source-unavailable' | 'policy-changed', check: string) => ({ ok: false as const, error, check })
     try {
       const selectedIds = new Set(plan.selectedEventIds)
-      if ([...getDoNotExportIds()].some(id=>selectedIds.has(id))) return {ok:false as const,error:'policy-changed'}
+      if ([...getDoNotExportIds()].some(id=>selectedIds.has(id))) return refused('policy-changed', 'do-not-export')
       const available = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
       const planRedaction: RedactExportOpts = {
         scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
       }
       const approvedNow = redactEventsForExport(available, planRedaction)
-      if (approvedNow.length !== plan.selectedEventIds.length || fingerprintValue(approvedNow) !== plan.selectedEvidenceDigest) {
-        return { ok: false as const, error: 'source-unavailable' }
-      }
-      if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) {
-        return { ok: false as const, error: 'policy-changed' }
-      }
+      if (approvedNow.length !== plan.selectedEventIds.length) return refused('source-unavailable', 'event-count')
+      if (fingerprintValue(approvedNow) !== plan.selectedEvidenceDigest) return refused('source-unavailable', 'event-content')
+      if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) return refused('policy-changed', 'config')
       if (plan.request.format === 'bundle') {
         const bounded = plan.request.subset.kind === 'activity' || plan.request.subset.kind === 'session'
         const currentFiles = listExportAttachments(getProjectPath(project), approvedNow, {
@@ -278,7 +279,7 @@ export function registerDataExportIpc(
           context:bounded ? queryEvents({limit:-1,snapshot:plan.snapshot}) : undefined
         }).filter(a=>!bounded || plan.attachments.some(approved=>approved.id===a.id))
         if (exportAttachmentDigest(getProjectPath(project), withFrozenSizes(currentFiles, plan.attachments)) !== plan.attachmentDigest) {
-          return { ok: false as const, error: 'source-unavailable' }
+          return refused('source-unavailable', 'attachment-content')
         }
         const attachments = bounded ? {
           included:currentFiles.filter(a=>a.status==='included').length,
@@ -291,7 +292,7 @@ export function registerDataExportIpc(
           exclude: new Set(plan.request.excludeAttachments)
         })
         if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed || attachments.excludedByOperator !== plan.counts.attachmentsExcludedByOperator) {
-          return { ok: false as const, error: 'source-unavailable' }
+          return refused('source-unavailable', 'attachment-count')
         }
       }
       let artifactPath: string | null = null

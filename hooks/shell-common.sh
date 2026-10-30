@@ -47,8 +47,12 @@ _redlog_resolve_dir() {
     esac
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-    local win_profile
-    win_profile=$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+    # appendWindowsPath=false in /etc/wsl.conf leaves cmd.exe off PATH, and
+    # then nothing resolved here and every event was dropped. wslpath maps the
+    # drive through whatever automount root is configured.
+    local win_profile win_cmd
+    win_cmd=$(command -v cmd.exe) || win_cmd=$(wslpath -u 'C:\Windows\System32\cmd.exe' 2>/dev/null)
+    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
     if [[ -n "$win_profile" ]]; then
       local wsl_path
       wsl_path=$(wslpath "$win_profile" 2>/dev/null)
@@ -254,7 +258,24 @@ _redlog_build_payload_fast() {
   if [[ -n "$inner" ]]; then body+=",$inner"; else body+='}'; fi
   [[ -n "$ident" ]] && body+=',"_identity":'"$ident"
   body+='}'
-  printf '%s' "$body" > "$out" 2>/dev/null
+  # Left in `_redlog_payload` as well: the sender passes no file and takes it
+  # from there, so a delivered event needs no temporary file at all.
+  _redlog_payload=$body
+  [[ -z "$out" ]] || printf '%s' "$body" > "$out" 2>/dev/null
+}
+
+# POST one payload, read from stdin, to the running RedLog. stdin rather than
+# `@file`: bash opens the file itself, so the path never reaches a native
+# Windows curl, which cannot resolve an MSYS path like /tmp/x when
+# MSYS_NO_PATHCONV=1 (or an MSYS2_ARG_CONV_EXCL covering "@") turns argument
+# conversion off (#345). It stays out of argv, so the 128 KiB limit does not
+# apply either.
+_redlog_post() {
+  curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1/api/events" \
+    -H "Authorization: Bearer $2" \
+    -H "Content-Type: application/json" \
+    --data-binary @- \
+    --connect-timeout 1 --max-time 2 >/dev/null 2>&1
 }
 
 _redlog_send_event() {
@@ -275,7 +296,15 @@ _redlog_send_event() {
     port=$(<"$_REDLOG_DIR/api-port")
     token=$(<"$_REDLOG_DIR/api-token")
     if [[ -z "${_REDLOG_HOST:-}" ]]; then
-      _REDLOG_HOST=$(_redlog_resolve_host "$port")
+      # Outside WSL the answer is 127.0.0.1 whatever the probe says, so the
+      # probe — a curl, and the subshell around it — is only paid where there
+      # is a gateway to choose between. Each is a process, and under Git Bash
+      # starting one costs hundreds of milliseconds on the operator's prompt.
+      if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+        _REDLOG_HOST=$(_redlog_resolve_host "$port")
+      else
+        _REDLOG_HOST=127.0.0.1
+      fi
       export _REDLOG_HOST
     fi
   fi
@@ -295,14 +324,17 @@ _redlog_send_event() {
   # deliberately unrecorded there, including the transport spool.
   [[ "${REDLOG_TERMINAL:-}" == "1" && ! -s "$redlog_dir/active-identity.json" ]] && return 0
 
-  # The body travels in FILES, never as an argument. One argument is capped at
-  # 128 KiB by the kernel (MAX_ARG_STRLEN) and a command_end carries up to
-  # 8 MiB per stream, so `python3 -c ... "$extra"` and `curl -d "$payload"`
-  # both failed to exec for any command with a lot of output — and the failure
-  # was swallowed, leaving no event and nothing in the spool. `printf` is a
-  # builtin and has no such limit.
-  local work
-  work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+  # The body never travels as an argument. One argument is capped at 128 KiB
+  # by the kernel (MAX_ARG_STRLEN) and a command_end carries up to 8 MiB per
+  # stream, so `python3 -c ... "$extra"` and `curl -d "$payload"` both failed
+  # to exec for any command with a lot of output — and the failure was
+  # swallowed, leaving no event and nothing in the spool. The fast builder
+  # leaves it in a variable that reaches curl on stdin; the python builder
+  # writes FILES in a work directory made only for it. `printf` and a
+  # here-string are the shell's own and have no such limit, and neither starts
+  # a process: under Git Bash `mktemp` and `rm` were most of a delivered
+  # event's cost.
+  local work="" payload="" payload_file=""
 
   # Most events are plain enough to be written without starting anything, and
   # starting python3 here was ~40 ms, twice per command (#288). When the shell
@@ -319,9 +351,11 @@ _redlog_send_event() {
   local shell_name="$_redlog_shell"
 
   if [[ "${REDLOG_PAYLOAD_BUILDER:-}" != python ]] \
-     && _redlog_build_payload_fast "$subtype" "$command" "$extra" "$work/payload.json" "$shell_name"; then
-    :
+     && _redlog_build_payload_fast "$subtype" "$command" "$extra" "" "$shell_name"; then
+    payload=$_redlog_payload
   else
+  work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+  payload_file="$work/payload.json"
   printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
 
   python3 -c "
@@ -384,20 +418,18 @@ sys.stdout.write(json.dumps(d))
   # fails, write the payload to a spool file that RedLog replays on next
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
-  local spool_dir="$redlog_dir/pending"
-  # The body is read from stdin: bash opens the file itself, so the path never
-  # reaches a native Windows curl, which cannot resolve an MSYS path like
-  # /tmp/x when MSYS_NO_PATHCONV=1 (or an MSYS2_ARG_CONV_EXCL covering "@") turns
-  # argument conversion off. It stays out of argv, so the 128 KiB limit above
-  # still does not apply (#345).
+  local spool_dir="$redlog_dir/pending" delivered=0
   # Foreground POST with short deadline; if it fails — or there was nowhere to
   # send it — spool. The directory and the file's name are made only then: two
   # processes on every event that is delivered, for a spool it never touches.
-  if [[ "$reachable" != 1 ]] || ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
-        -H "Authorization: Bearer $token" \
-        -H "Content-Type: application/json" \
-        --data-binary @- \
-        --connect-timeout 1 --max-time 2 >/dev/null 2>&1 < "$work/payload.json"; then
+  if [[ "$reachable" == 1 ]]; then
+    if [[ -n "$payload_file" ]]; then
+      _redlog_post "$port" "$token" < "$payload_file" && delivered=1
+    else
+      _redlog_post "$port" "$token" <<<"$payload" && delivered=1
+    fi
+  fi
+  if [[ "$delivered" != 1 ]]; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
     # Only the files still waiting for replay. Replay renames what it cannot
@@ -412,20 +444,35 @@ sys.stdout.write(json.dumps(d))
     # reads. RedLog removes active-identity.json when the project closes, which
     # makes "no identity" the same thing as "no project to record into".
     if ! grep -qs '"engagementId"' "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" 2>/dev/null; then
-      rm -rf "$work"
+      [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
     mkdir -p "$spool_dir" 2>/dev/null
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
-      # The work directory is already unique, including on BSD date where
-      # %N is literal and several events share one second and shell PID.
-      spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
-      mv "$work/payload.json" "$spool_file" 2>/dev/null
+      if [[ -n "$work" ]]; then
+        # The work directory is already unique, including on BSD date where
+        # %N is literal and several events share one second and shell PID.
+        spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
+        mv "$payload_file" "$spool_file" 2>/dev/null
+      else
+        # No work directory to borrow a unique name from. noclobber makes the
+        # write fail rather than overwrite a name another event took, and it
+        # is written beside the spool under a name replay does not read, then
+        # renamed in whole: replay never sees half a file.
+        local try
+        for try in 1 2 3 4 5; do
+          spool_file="$spool_dir/$(date +%s%N).$$.redlog-send.${RANDOM}${RANDOM}.json"
+          if ( set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
+            mv "$spool_file.tmp" "$spool_file" 2>/dev/null
+            break
+          fi
+        done
+      fi
     fi
   fi
-  rm -rf "$work"
+  [[ -z "$work" ]] || rm -rf "$work"
 }
 
 # True only for something the relay can actually launch as a process. A path
