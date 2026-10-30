@@ -568,3 +568,25 @@ Not covered: whether Chrome shows an "unsupported command-line flag" bar for the
 Gates: typecheck, `verify:specs`, `verify:architecture`, `verify:i18n` passed. Full unit on Windows: **4,387 passed / 0 failed / 148 skipped**.
 
 Not covered: the end-to-end fault injection both #459 and #460 ask for — a producer that outlives a project switch, or a queue held full under real load and then killed — in the running app; how the Timeline shows a `queue-full` gap; the ExportPlan preview text for partial flows.
+
+## 2026-10-30 — capture gaps reach the operator; acceptance against the real mitmdump (T054–T057)
+
+**A queue-full gap was recorded but not seen (#460).** A gap the addon could not write left a log line no screen read; the Timeline titled the gap `[capture_gap]`; a gap counted while recording was paused was replayed as a loss. The managed proxy now reads its own output for `capture gap not saved: N event(s)`, line-buffered across chunks, and keeps the count across restarts; the Capture Health card shows it on the HTTP(S) row and a system `capture_gap` (`gap-unsaved`) goes on the Timeline. Titles say "[gap] N HTTP events refused at a full proxy queue" or "delivery not confirmed". The spool drain judges a `queue-full` gap against the `recording_paused`/`recording_resumed` intervals: inside one pause it is dropped, across a boundary it is kept and marked `overlaps_pause`. RED first: `test/queue-gap-visibility.test.tsx`.
+
+**A HAR shipped changed sidecar bytes and left stream-only flows out silently (#461).** A sidecar body was read back without checking its recorded sha256; one changed on disk after the preview was exported as the event's own bytes. It now fails the export as `source-unavailable`. The only HAR the interface offers comes from the HTTP view, built from requests and responses, so a stream-only flow is in neither; its preview now counts the ones the view's filter would reach. A time-range HAR's preview counts the stream-only flows it carries, and do-not-export and scope masking apply to them. RED first, in `test/filtered-export.test.ts`.
+
+**Fault injection, mitmdump 12.2.3 on Windows (`e2e/capture-gap-acceptance.spec.ts`).**
+
+- #459. The app's own proxy is gone after an A → B switch; its late answer reached the client as a reset. An external mitmdump with the same addon outlives the switch; its late answer (body and `Set-Cookie` carrying a marker) reached the client with 200. A TTL sweep after the switch (`REDLOG_PENDING_TTL_SEC=3`) found an unanswered A request. B then held none of A's events, none of 11 files under B's project directory held the marker, and nothing was spooled for B. Both producers still delivered B's own requests. A same-project timeout left `http_request_dropped` in A. Answers refused at the switch are not recorded in A either: A keeps only `http_request_start` for them.
+- #460. Setup: send queue of 64 slots and 4 workers, an API held so the queue fills, 120 concurrent flows per phase.
+  - Paused: 176 refused → 3 gap files, 176 units, all dropped on replay.
+  - Spool unwritable: 176 refused → the proxy counted 176 from the real output.
+  - Recording, producer killed hard: 176 refused → 155 and 133 units written in two runs; 21 and 43 lost with the open window.
+  - Every client flow completed (200) in every phase. After reopen only the killed phase's gaps were on the project.
+  - A hard kill also loses the up to 64 events accepted into the queue but not yet delivered. Nothing records them.
+
+**Real app.**
+
+- Spool records in the addon's format were replayed on reopen. The Timeline shows both gap titles and no `[capture_gap]`.
+- The HTTP-view HAR preview shows "Stream-only HTTP flows not in this HAR (they stay on the Timeline) 1".
+- With the app's own mitmdump pointed at a held API and an unwritable spool, 120 flows all completed. The status reported `unsavedGapEvents: 176`, the card read "176 HTTP events lost at a full proxy queue and not recorded as a gap", and the Timeline got two `gap-unsaved` rows (175 + 1).
