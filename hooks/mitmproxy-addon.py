@@ -52,6 +52,8 @@ Environment variables:
     REDLOG_SKIP_STATIC    Skip static assets like .css/.js/.png/.woff
                           (default false — Burp-like full capture by default)
     REDLOG_VERBOSE        Log every request/DNS message to stderr (default false)
+    REDLOG_PENDING_TTL_SEC  Seconds a request may wait for its response before
+                          it is recorded as dropped (default 300).
 
 Capture verification (#220):
     Requests to http(s)://redlog.verify.invalid/<nonce> are answered by this
@@ -932,7 +934,7 @@ def _extract_set_cookies(flow: http.HTTPFlow) -> list[dict] | None:
         return None
 
 
-PENDING_TTL_SEC = 300
+PENDING_TTL_SEC = int(os.environ.get("REDLOG_PENDING_TTL_SEC", "300"))
 
 
 class RedLogAddon:
