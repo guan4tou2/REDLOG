@@ -861,10 +861,11 @@ class RedLogAddon:
         self._ja3_cache: dict[str, dict] = {}
         self._cookie_jar: dict[str, dict[str, str]] = {}
 
-    def _track_cookies(self, domain: str, set_cookies: list[dict]):
+    def _track_cookies(self, domain: str, set_cookies: list[dict], identity: dict):
         """Track Set-Cookie headers in memory. When a session-like cookie
         changes value, emit a cookie_change event so the operator knows
-        a session was established or rotated."""
+        a session was established or rotated. `identity` is the project of
+        the flow that set it."""
         if domain not in self._cookie_jar:
             self._cookie_jar[domain] = {}
 
@@ -882,6 +883,7 @@ class RedLogAddon:
             if prev is not None and prev != value and name_lower in session_names:
                 _send_to_redlog({
                     "agent_type": "scanner",
+                    "_identity": identity or {},
                     "data": {
                         "subtype": "cookie_change",
                         "domain": domain,
@@ -915,6 +917,9 @@ class RedLogAddon:
             parsed = urlparse(url)
             payload = {
                 "agent_type": "scanner",
+                # Present even when empty, so a flow that started with no
+                # project is refused rather than bound to the current one.
+                "_identity": meta.get("identity") or {},
                 "data": {
                     "subtype": "http_request_dropped",
                     "flow_id": fid,
@@ -996,10 +1001,13 @@ class RedLogAddon:
         url = flow.request.pretty_url
         method = flow.request.method
 
+        # The project is fixed here, with the flow (#459). A marker the TTL
+        # sweep emits later carries this, not whatever is active by then.
         self._request_times[flow.id] = {
             "at": time.time(),
             "method": method,
             "url": url,
+            "identity": flow.metadata["redlog_identity"],
         }
 
         if SKIP_STATIC and _is_static(url):
@@ -1212,7 +1220,7 @@ class RedLogAddon:
         set_cookies = _extract_set_cookies(flow)
         if set_cookies:
             event_data["set_cookies"] = set_cookies
-            self._track_cookies(target, set_cookies)
+            self._track_cookies(target, set_cookies, flow.metadata.get("redlog_identity", {}))
 
         event_data["proxy_mode"] = PROXY_MODE
         payload = {
@@ -1302,7 +1310,10 @@ class RedLogAddon:
             'data': event_data,
             'target_id': query_name,
         }
-        self._dns_query_events[flow.id] = {'at': time.time(), 'event_id': None}
+        # The answer is sent later; it keeps the question's project (#459).
+        _embed_identity(payload)
+        payload.setdefault('_identity', {})
+        self._dns_query_events[flow.id] = {'at': time.time(), 'event_id': None, 'identity': payload['_identity']}
         event_id = _send_to_redlog_and_get_id(payload)
         entry = self._dns_query_events.get(flow.id)
         if entry is not None:
@@ -1350,6 +1361,8 @@ class RedLogAddon:
             'data': event_data,
             'target_id': query_name,
         }
+        if entry is not None:
+            payload['_identity'] = entry.get('identity') or {}
         _send_to_redlog(payload)
         if VERBOSE:
             ans_preview = ', '.join(f"{a['type']} {a['data']}" for a in answers[:3]) or '(no answers)'
