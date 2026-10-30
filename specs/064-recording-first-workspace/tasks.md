@@ -136,6 +136,12 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 
 - [x] T050 RedLog 擷取瀏覽器經 managed proxy 時，以 `--ignore-certificate-errors-spki-list` 只信任這張 CA 的公鑰（僅 RedLog 自己的 profile；其他憑證照常檢查；不動系統信任清單），HTTPS 不必再先 `certutil -addstore`。在擷取瀏覽器開的檢查因此不再證明系統信任 CA：提醒與「已擷取 · CA 未驗證」標籤改以「本次在擷取瀏覽器開啟」判定。先寫 RED 測試，並以 source build 實開 `https://example.com/`。
 
+## 2026-10-30 — capture gaps keep their project; HAR keeps stream-only flows (#459–#461)
+
+- [x] T051 HAR 匯出保留只有 SSE chunks／WebSocket messages、沒有已保存 request 與 response 的 flow：放在 `log._redlog.partialFlows`（Event ID、順序、原始 bytes、觀測到的 URL；一律 incomplete），不偽造 request／status／時間；request＋chunks 無 response、WS 無終止事件維持 incomplete entry。先寫 RED 測試，並以真實 ExportPlan 讀回成品（#461）。
+- [x] T052 mitmproxy addon 的 pending entry 固定 flow 的原始身分；TTL dropped marker、`cookie_change` 與 DNS answer 沿用 flow 自己的身分，無身分者拒收、不在送出時補綁目前專案。先寫 RED 測試，以 production `RedLogAddon` 實跑 A 開始 → B active → 清理（#459）。
+- [x] T053 送出 queue 已滿的拒收寫入 spool 的 `capture_gap`（reason `queue-full`）：固定原始專案，帶時間窗、精確拒收數與宣告的 body bytes，不含 URL／headers／body；第一筆立即落盤、之後每窗最多一筆，queue 恢復與正常關閉時補寫，寫不出時記錄。先寫 RED 測試，並經 app 的 spool 重放與 ingest 讀回專案資料庫（#460）。
+
 ## 2026-10-30 排程與文件整理
 
 依 [工作計畫](../../docs/WORK-PLAN.md) 對帳後接續原 S1→S2→S3→S4；本次不代勾完整 gate。

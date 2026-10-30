@@ -150,27 +150,17 @@ def _identity_matches_active(payload):
 _SPOOL_LOCK = threading.Lock()
 
 
-def _spool_payload(payload: dict):
-    """Write a payload to the spool directory for later replay."""
-    if not payload.get("_identity"):
-        return
+def _write_spool_record(record: dict) -> bool:
+    """Write one record to the spool directory for later replay. False when it
+    could not be written, including when the spool is at its cap."""
     with _SPOOL_LOCK:
         try:
             SPOOL_DIR.mkdir(parents=True, exist_ok=True)
-            # An unacknowledged POST cannot authorize raw offline capture:
-            # the app may have paused while the API was unreachable. Preserve
-            # only a project-bound delivery gap, never bodies, headers or URL.
-            gap = {"agent_type": "scanner", "_identity": payload["_identity"], "data": {
-                "subtype": "capture_gap", "source": "mitmproxy",
-                "reason": "delivery-unconfirmed", "capture_delivery": "unknown",
-                "reported_at": int(time.time() * 1000),
-                "description": "Proxy delivery was not confirmed; this spool contains no raw content."
-            }}
-            encoded = json.dumps(gap).encode("utf-8")
+            encoded = json.dumps(record).encode("utf-8")
             files = list(SPOOL_DIR.glob("*.json"))
             if len(files) >= 5000 or sum(f.stat().st_size for f in files) + len(encoded) > 64 * 1024 * 1024:
-                return
-            filename = f"{time.time_ns()}-{id(payload)}.json"
+                return False
+            filename = f"{time.time_ns()}-{id(record)}.json"
             temporary = SPOOL_DIR / (filename + ".tmp")
             try:
                 with temporary.open("xb") as output:
@@ -178,8 +168,96 @@ def _spool_payload(payload: dict):
                 temporary.replace(SPOOL_DIR / filename)
             finally:
                 temporary.unlink(missing_ok=True)
+            return True
         except Exception:
-            pass
+            return False
+
+
+def _spool_payload(payload: dict):
+    """Write a payload to the spool directory for later replay."""
+    if not payload.get("_identity"):
+        return
+    # An unacknowledged POST cannot authorize raw offline capture:
+    # the app may have paused while the API was unreachable. Preserve
+    # only a project-bound delivery gap, never bodies, headers or URL.
+    _write_spool_record({"agent_type": "scanner", "_identity": payload["_identity"], "data": {
+        "subtype": "capture_gap", "source": "mitmproxy",
+        "reason": "delivery-unconfirmed", "capture_delivery": "unknown",
+        "reported_at": int(time.time() * 1000),
+        "description": "Proxy delivery was not confirmed; this spool contains no raw content."
+    }})
+
+
+# #460: an event refused at a full send queue. The refusal used to leave a log
+# line and nothing else. Each project's refusals are counted, and written to
+# the spool — not to the full queue they describe — as a capture_gap with no
+# URL, header or body: the first refusal at once, then at most one record a
+# window, each counting only its own refusals. A window still open when the
+# queue recovers or the proxy stops is written then; one open when the
+# process is killed is lost, at most _QUEUE_GAP_FLUSH_MS of counts.
+_QUEUE_GAP_FLUSH_MS = 1000
+_QUEUE_GAPS: dict = {}
+_QUEUE_GAP_LOCK = threading.Lock()
+
+
+def _declared_body_bytes(data: dict) -> int:
+    """Body bytes a refused event said it carried. Headers and metadata are
+    not counted, so this is a known lower bound, not the event's size."""
+    total = 0
+    for key in ("request_body", "response_body", "ws_body"):
+        body = data.get(key)
+        if isinstance(body, dict) and isinstance(body.get("size"), int):
+            total += body["size"]
+    return total
+
+
+def _queue_gap_record(window: dict, now_ms: int) -> dict:
+    return {"agent_type": "scanner", "_identity": window["identity"], "data": {
+        "subtype": "capture_gap", "source": "mitmproxy",
+        "reason": "queue-full", "capture_delivery": "not-queued",
+        "gap_started_at": window["started"], "gap_ended_at": window["last"],
+        "skipped_units": window["units"], "skipped_body_bytes": window["bytes"],
+        "reported_at": now_ms,
+        "description": "The proxy's send queue was full, so these events were not recorded. "
+                       "The count is exact for this window; body bytes are those the events declared.",
+    }}
+
+
+def _save_queue_gaps(records: list):
+    for record in records:
+        if not _write_spool_record(record):
+            ctx.log.warn(f"[redlog] capture gap not saved: {record['data']['skipped_units']} event(s) "
+                         "refused at a full send queue are not recorded anywhere")
+
+
+def _note_queue_rejection(payload: dict):
+    ident = payload["_identity"]
+    key = (ident.get("engagementId"), ident.get("operatorId"))
+    now_ms = int(time.time() * 1000)
+    record = None
+    with _QUEUE_GAP_LOCK:
+        window = _QUEUE_GAPS.setdefault(key, {"identity": ident, "units": 0, "bytes": 0, "flushed_at": None})
+        if not window["units"]:
+            window["started"] = now_ms
+        window["units"] += 1
+        window["bytes"] += _declared_body_bytes(payload.get("data") or {})
+        window["last"] = now_ms
+        if window["flushed_at"] is None or now_ms - window["flushed_at"] >= _QUEUE_GAP_FLUSH_MS:
+            record = _queue_gap_record(window, now_ms)
+            window.update(units=0, bytes=0, flushed_at=now_ms)
+    if record:
+        _save_queue_gaps([record])
+
+
+def _flush_queue_gaps():
+    """Write every window that still holds refusals."""
+    now_ms = int(time.time() * 1000)
+    with _QUEUE_GAP_LOCK:
+        if not _QUEUE_GAPS:
+            return
+        records = [_queue_gap_record(w, now_ms) for w in _QUEUE_GAPS.values() if w["units"]]
+        _QUEUE_GAPS.clear()
+    _save_queue_gaps(records)
 
 
 _SEND_SLOTS = threading.BoundedSemaphore(64)
@@ -209,7 +287,10 @@ def _send_to_redlog(payload: dict):
         return False
     if not _SEND_SLOTS.acquire(blocking=False):
         ctx.log.warn("[redlog] capture queue full; event not retained")
+        _note_queue_rejection(payload)
         return False
+    if _QUEUE_GAPS:
+        _flush_queue_gaps()
 
     def _do_send():
         try:
@@ -861,10 +942,15 @@ class RedLogAddon:
         self._ja3_cache: dict[str, dict] = {}
         self._cookie_jar: dict[str, dict[str, str]] = {}
 
-    def _track_cookies(self, domain: str, set_cookies: list[dict]):
+    def done(self):
+        # A clean shutdown writes the refusals still being counted (#460).
+        _flush_queue_gaps()
+
+    def _track_cookies(self, domain: str, set_cookies: list[dict], identity: dict):
         """Track Set-Cookie headers in memory. When a session-like cookie
         changes value, emit a cookie_change event so the operator knows
-        a session was established or rotated."""
+        a session was established or rotated. `identity` is the project of
+        the flow that set it."""
         if domain not in self._cookie_jar:
             self._cookie_jar[domain] = {}
 
@@ -882,6 +968,7 @@ class RedLogAddon:
             if prev is not None and prev != value and name_lower in session_names:
                 _send_to_redlog({
                     "agent_type": "scanner",
+                    "_identity": identity or {},
                     "data": {
                         "subtype": "cookie_change",
                         "domain": domain,
@@ -915,6 +1002,9 @@ class RedLogAddon:
             parsed = urlparse(url)
             payload = {
                 "agent_type": "scanner",
+                # Present even when empty, so a flow that started with no
+                # project is refused rather than bound to the current one.
+                "_identity": meta.get("identity") or {},
                 "data": {
                     "subtype": "http_request_dropped",
                     "flow_id": fid,
@@ -996,10 +1086,13 @@ class RedLogAddon:
         url = flow.request.pretty_url
         method = flow.request.method
 
+        # The project is fixed here, with the flow (#459). A marker the TTL
+        # sweep emits later carries this, not whatever is active by then.
         self._request_times[flow.id] = {
             "at": time.time(),
             "method": method,
             "url": url,
+            "identity": flow.metadata["redlog_identity"],
         }
 
         if SKIP_STATIC and _is_static(url):
@@ -1212,7 +1305,7 @@ class RedLogAddon:
         set_cookies = _extract_set_cookies(flow)
         if set_cookies:
             event_data["set_cookies"] = set_cookies
-            self._track_cookies(target, set_cookies)
+            self._track_cookies(target, set_cookies, flow.metadata.get("redlog_identity", {}))
 
         event_data["proxy_mode"] = PROXY_MODE
         payload = {
@@ -1302,7 +1395,10 @@ class RedLogAddon:
             'data': event_data,
             'target_id': query_name,
         }
-        self._dns_query_events[flow.id] = {'at': time.time(), 'event_id': None}
+        # The answer is sent later; it keeps the question's project (#459).
+        _embed_identity(payload)
+        payload.setdefault('_identity', {})
+        self._dns_query_events[flow.id] = {'at': time.time(), 'event_id': None, 'identity': payload['_identity']}
         event_id = _send_to_redlog_and_get_id(payload)
         entry = self._dns_query_events.get(flow.id)
         if entry is not None:
@@ -1350,6 +1446,8 @@ class RedLogAddon:
             'data': event_data,
             'target_id': query_name,
         }
+        if entry is not None:
+            payload['_identity'] = entry.get('identity') or {}
         _send_to_redlog(payload)
         if VERBOSE:
             ans_preview = ', '.join(f"{a['type']} {a['data']}" for a in answers[:3]) or '(no answers)'

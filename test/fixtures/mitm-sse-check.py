@@ -1,5 +1,5 @@
 import ast, base64, time, types, pathlib, __future__
-source=ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text())
+source=ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 method=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='RedLogAddon')
 method.body=[n for n in method.body if isinstance(n,ast.FunctionDef) and n.name=='responseheaders']
 rows=[]
