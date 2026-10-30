@@ -3,7 +3,7 @@ import path from 'path'
 import crypto from 'crypto'
 import Database from 'better-sqlite3'
 import { stripAnsi, readSingleCastRange, type CastSlice } from './cast-slice'
-import { getProjectDir } from './db'
+import { getProjectDir, dbGeneration } from './db'
 import { ftsTerms } from './query/fts-match'
 
 // Full-text search over terminal recordings.
@@ -349,11 +349,16 @@ export function castIndexStatus(projectDir?: string): BackfillStatus {
  * sweep from an older build leaves text behind. A backfill that only ever
  * adds would let those accumulate silently.
  */
-/** `signal` is the project's runtime signal. The index handle is one per
- *  process, so a backfill that outlived its project would reopen that
- *  project's index for each remaining file and close the one the next project
- *  is using. It stops at the next file instead; the rest is picked up on the
- *  next open, which is what an interrupted backfill already relied on. */
+/** Yields to the loop between files. `indexCast` is synchronous, so without
+ *  that the whole backfill ran in one turn right after a project opened and
+ *  held the main process until it finished — every IPC waited behind it.
+ *
+ *  Yielding lets a project switch land mid-backfill, and the index handle is
+ *  one per process: carrying on would reopen this project's index for each
+ *  remaining file and close the one the next project is using. So it stops
+ *  at the next file once `signal` aborts or the database has changed (the
+ *  second covers callers with no runtime signal). The rest is picked up on
+ *  the next open, which an interrupted backfill already relied on. */
 export async function backfillCastIndex(
   projectDir?: string,
   onProgress?: (done: number, total: number) => void,
@@ -373,9 +378,11 @@ export async function backfillCastIndex(
     if (!present.has(row.cast_rel)&&row.status!=='unavailable') { pruneCast(row.cast_rel, dir); pruned++ }
   }
 
+  const opened = dbGeneration()
   let indexed = 0
   for (let i = 0; i < names.length; i++) {
-    if (signal?.aborted) break
+    if (i > 0) await new Promise<void>((resolve) => setImmediate(resolve))
+    if (signal?.aborted || dbGeneration() !== opened) break
     const r = await indexCast(path.join(castsDir, names[i]), dir)
     if (r.skipped === null) indexed++
     onProgress?.(i + 1, names.length)

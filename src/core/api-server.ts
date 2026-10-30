@@ -449,7 +449,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/marker' && req.method === 'POST') {
       let body: Record<string, unknown>
+      const requestEngagement = engagementId
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      // Same recheck as /api/events: the body read yields to a project switch,
+      // and the token that authorised this belonged to the project open then.
+      if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; marker refused' }); return }
       const event = ingest({ agentType: 'marker', data: {
         title: body.title || 'Untitled',
         notes: body.notes || '',
@@ -544,7 +548,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/bookmarks' && req.method === 'POST') {
       let body: Record<string, unknown>
+      const requestEngagement = engagementId
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      // Same recheck as /api/events: the body read yields to a project switch,
+      // and the token that authorised this belonged to the project open then.
+      if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; bookmark refused' }); return }
       const mark = createBookmark({
         title: String(body.title ?? 'Untitled'),
         url: body.url as string | undefined,
@@ -696,7 +704,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // POST /api/sanitize { event_ids, fields, reason?, dry_run? }
     if (route === '/api/sanitize' && req.method === 'POST') {
       let body: Record<string, unknown>
+      const requestEngagement = engagementId
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      // Same recheck as /api/events: the body read yields to a project switch,
+      // and the token that authorised this belonged to the project open then.
+      if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; sanitize refused' }); return }
       try {
         const result = sanitize({
           eventIds: Array.isArray(body.event_ids) ? body.event_ids : [],

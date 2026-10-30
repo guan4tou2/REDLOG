@@ -289,24 +289,38 @@ describe.skipIf(!available)('cast full-text index', () => {
     expect(fs.existsSync(path.join(dir, 'cast-index.db'))).toBe(true)
   })
 
-  it('stops a backfill at the next file once its project has closed', async () => {
-    // The index handle is one per process. A backfill that ran on after its
-    // project closed reopened that project's index for every remaining file,
-    // and each reopen closed the handle the newly opened project was using.
-    for (const n of ['a', 'b', 'c']) writeCast(cast(`${n}.cast`), 1_700_000_000, [[0.1, `${n}\r\n`]])
-    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-castidx-b-'))
-    try {
-      const closed = new AbortController()
-      const run = mod!.backfillCastIndex(dir, undefined, closed.signal)
-      closed.abort()
-      mod!.closeCastIndex()
-      const next = mod!.getCastIndex(other)
-      const result = await run
-      expect(next.open).toBe(true)
-      expect(result.indexed).toBeLessThan(3)
-    } finally {
-      mod!.closeCastIndex()
-      fs.rmSync(other, { recursive: true, force: true })
-    }
+  // The backfill yields between files so an open does not hold the main
+  // process. A switch can therefore land mid-backfill — as an IPC, on a later
+  // turn — and the index handle is one per process: carrying on would reopen
+  // this project's index and close the one the next project is using.
+  for (const how of ['the runtime signal aborts', 'the database changes under a caller with no signal'] as const) {
+    it(`stops a backfill at the next file when ${how}`, async () => {
+      for (const n of ['a', 'b', 'c']) writeCast(cast(`${n}.cast`), 1_700_000_000, [[0.1, `${n}\r\n`]])
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-castidx-b-'))
+      try {
+        const closed = new AbortController()
+        const run = mod!.backfillCastIndex(dir, undefined, how === 'the runtime signal aborts' ? closed.signal : undefined)
+        // A switch arrives as its own turn, after the first file.
+        await new Promise((resolve) => setImmediate(resolve))
+        if (how === 'the runtime signal aborts') closed.abort()
+        else (await import('../src/core/db/index')).closeDB()
+        mod!.closeCastIndex()
+        const next = mod!.getCastIndex(other)
+        const result = await run
+        expect(next.open).toBe(true)
+        expect(result.indexed).toBeLessThan(3)
+      } finally {
+        mod!.closeCastIndex()
+        fs.rmSync(other, { recursive: true, force: true })
+      }
+    })
+  }
+
+  it('lets other work run while it indexes', async () => {
+    for (const n of ['a', 'b', 'c', 'd']) writeCast(cast(`${n}.cast`), 1_700_000_000, [[0.1, `${n}\r\n`]])
+    let ranDuring = false
+    const run = mod!.backfillCastIndex(dir).then((r) => { expect(ranDuring).toBe(true); return r })
+    setImmediate(() => { ranDuring = true })
+    expect((await run).indexed).toBe(4)
   })
 })

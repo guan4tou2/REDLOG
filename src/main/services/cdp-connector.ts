@@ -133,6 +133,12 @@ export function stopCdpMonitor(): void {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   lastTabUrls.clear()
   closeAllTabSockets()
+  // A poll already waiting on /json resumes after this. Without an identity
+  // it returns before writing or opening tab sockets; kept, it wrote the
+  // closed project's navigation into the next one. Every launch configures
+  // the identity again.
+  engagementId = ''
+  operatorId = ''
 }
 
 function closeAllTabSockets(): void {

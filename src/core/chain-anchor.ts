@@ -3,7 +3,7 @@ import { insertEvent } from './db/events'
 import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
-import { getDB, openReadOnlyDB } from './db/index'
+import { getDB, openReadOnlyDB, dbGeneration } from './db/index'
 import { canonicalStringify } from './db/events'
 import { verifyEventSignature } from './signing'
 
@@ -193,9 +193,14 @@ function insertAnchor(a: Omit<ChainAnchor, 'id'>): ChainAnchor {
 export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promise<ChainAnchor | null> {
   const head = computeChainHead()
   if (!head) return null
+  const opened = dbGeneration()
 
   const hashBytes = Buffer.from(head.hash, 'hex')
   const receipts = await Promise.all(calendars.map((cal) => postDigest(cal, hashBytes)))
+  // The calendars can take 15 s each. A project switched in the meantime has
+  // a different chain: this head written into its anchors table reads as
+  // tampering on its next verify. Its own loop anchors it.
+  if (dbGeneration() !== opened) return null
 
   const okCount = receipts.filter((r) => r.ok).length
   let status: ChainAnchor['status'] = 'failed'
@@ -238,6 +243,10 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
 let upgradeTimer: ReturnType<typeof setInterval> | null = null
+// The first tick of each, sooner than the interval. Kept so stop can cancel
+// them: untracked, a project switched to air-gap within 30 s had its chain
+// head posted to the public calendars by the previous project's first tick.
+let firstTicks: Array<ReturnType<typeof setTimeout>> = []
 
 export function startAnchorLoop(intervalMs = 60 * 60 * 1000, upgradeIntervalMs = 6 * 60 * 60 * 1000): void {
   stopAnchorLoop()
@@ -251,18 +260,20 @@ export function startAnchorLoop(intervalMs = 60 * 60 * 1000, upgradeIntervalMs =
     } catch { /* best effort */ }
   }
   loopTimer = setInterval(tick, intervalMs)
-  setTimeout(tick, 30_000)
+  firstTicks.push(setTimeout(tick, 30_000))
 
   const upgradeTick = async (): Promise<void> => {
     try { await upgradeAllPending() } catch { /* best effort */ }
   }
   upgradeTimer = setInterval(upgradeTick, upgradeIntervalMs)
-  setTimeout(upgradeTick, 2 * 60_000)
+  firstTicks.push(setTimeout(upgradeTick, 2 * 60_000))
 }
 
 export function stopAnchorLoop(): void {
   if (loopTimer) { clearInterval(loopTimer); loopTimer = null }
   if (upgradeTimer) { clearInterval(upgradeTimer); upgradeTimer = null }
+  for (const t of firstTicks) clearTimeout(t)
+  firstTicks = []
 }
 
 export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null; currentHead: string | null; noAnchor?: boolean } {

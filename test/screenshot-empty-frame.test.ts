@@ -21,7 +21,9 @@ const h = vi.hoisted(() => ({
   captureErrors: [] as Array<{ source: string; message: string }>,
   dbErrors: [] as string[],
   ingest: 'ok' as 'ok' | 'null' | 'throw',
-  dir: ''
+  dir: '',
+  generation: 0,
+  switchDuringGrab: false
 }))
 
 const fakeImage = {
@@ -40,7 +42,11 @@ vi.mock('electron', () => ({
     getAllDisplays: () => [{}, {}]
   },
   desktopCapturer: {
-    getSources: async () => Array.from({ length: h.sources }, () => ({ thumbnail: fakeImage }))
+    getSources: async () => {
+      // A project switch landing while the screen is being grabbed.
+      if (h.switchDuringGrab) h.generation++
+      return Array.from({ length: h.sources }, () => ({ thumbnail: fakeImage }))
+    }
   }
 }))
 vi.mock('../src/core/ingest', () => ({
@@ -52,7 +58,7 @@ vi.mock('../src/core/ingest', () => ({
   }
 }))
 vi.mock('../src/core/event-bus', () => ({ eventBus: { paused: false } }))
-vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir }))
+vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir, dbGeneration: () => h.generation }))
 vi.mock('../src/core/capture-health', () => ({
   noteCaptureError: (source: string, e: unknown) =>
     h.captureErrors.push({ source, message: e instanceof Error ? e.message : String(e) }),
@@ -73,6 +79,7 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     h.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-shot-'))
     h.events = []; h.captureErrors = []; h.dbErrors = []
     h.jpegBytes = 0; h.empty = true; h.sources = 1; h.ingest = 'ok'
+    h.generation = 0; h.switchDuringGrab = false
   })
   afterEach(() => { fs.rmSync(h.dir, { recursive: true, force: true }) })
 
@@ -97,6 +104,15 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     // `noteDbError` means evidence cannot be written at all and takes the
     // whole verdict dark. A blind camera is not that.
     expect(h.dbErrors).toEqual([])
+  })
+
+  it('records nothing when the project changed while the screen was grabbed', async () => {
+    // The frame is the previous project's; written now it would land in the
+    // next one, linked to an event that is not there.
+    h.jpegBytes = 4096; h.empty = false; h.switchDuringGrab = true
+    expect(await agent().captureNow('command', 'event-in-previous-project')).toBeNull()
+    expect(shots()).toEqual([])
+    expect(h.events).toEqual([])
   })
 
   it('still records a real frame', async () => {

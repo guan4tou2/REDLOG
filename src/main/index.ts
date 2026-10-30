@@ -14,7 +14,7 @@ import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfi
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
-import { initDB, closeDB, getProjectDir } from '../core/db/index'
+import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import {
@@ -179,8 +179,15 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   // began taking itself up at project open: a port already in use now means
   // an engagement that records no HTTP and never says why.
   if (!activeProject) return managedHttpProxy.noteStartFailure('No project open')
+  // Each await below can outlast the project that asked: mitmdump takes
+  // seconds to come up. A switch in between stops the proxy, which resolves
+  // this start as `stopped`, and that used to be published as the next
+  // project's `http_proxy_failed` — a start it never attempted.
+  const opening = projectRuntime.current()
+  const stillOpen = (): boolean => opening !== null && projectRuntime.isCurrent(opening)
   // mitmdump is spawned by bare name; look it up on the operator's PATH.
   await loginPathReady
+  if (!stillOpen()) return managedHttpProxy.status()
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
   const config = loadConfig(getProjectPath(activeProject))
@@ -220,6 +227,7 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
         holder = await whoHoldsPort(endpoint)
       }
     }
+    if (!stillOpen()) return managedHttpProxy.status()
     if (holder) {
       // The event was already written here; what was missing is the status.
       // An operator reading "stopped" has no reason to look for an event.
@@ -234,6 +242,7 @@ async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
     listenHost: endpoint.host,
     caPath: path.join(homedir(), '.mitmproxy', 'mitmproxy-ca-cert.pem')
   })
+  if (!stillOpen()) return status
   if (status.state === 'running') {
     // The proof a later launch needs before it may stop this process as ours.
     if (before !== 'running' && status.pid) {
@@ -714,6 +723,7 @@ function startProject(project: ProjectMeta): void {
   const opening = projectRuntime.begin({ projectId: project.id, engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
+    bindDBEngagement(config.engagement.id)
     activeProject = project
     startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
@@ -1719,8 +1729,12 @@ app.whenReady().then(() => {
   ipcMain.handle('bookmarks:list', () => activeProject ? listBookmarks() : [])
   ipcMain.handle('bookmarks:get', (_e, id: string) => activeProject ? getBookmark(id) : null)
   ipcMain.handle('bookmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
-    if (!activeProject) return null
+    const opening = projectRuntime.current()
+    if (!activeProject || !opening) return null
+    // Asking the browser can take two seconds. A bookmark saved in one project
+    // must not land in the one opened meanwhile.
     const browser = await getActiveBrowserTab()
+    if (!projectRuntime.isCurrent(opening)) return null
     const context = {
       browserUrl: browser.url || undefined,
       browserTitle: browser.title || undefined,

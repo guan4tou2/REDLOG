@@ -5,7 +5,7 @@ import fs from 'fs'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteCaptureError, clearCaptureError } from '../../core/capture-health'
-import { getProjectDir } from '../../core/db/index'
+import { getProjectDir, dbGeneration } from '../../core/db/index'
 import { dHashFromBgra, hammingDistance } from '../../core/dhash'
 
 // Triggers that represent someone asking for this exact frame, as opposed to
@@ -196,6 +196,11 @@ export class ScreenshotAgent {
     // no reason. Ambient triggers (periodic, idle, command) stay deduped.
     const deliberate = DELIBERATE_TRIGGERS.has(trigger)
     if (!deliberate && eventBus.paused) return null
+    // The grab and the write each wait. A project switched in between would
+    // get a frame the operator took in the previous one, linked by
+    // `_causes` to an event that is not in it — or an event pointing at a
+    // file in the previous project's folder.
+    const opened = dbGeneration()
     try {
       let frame = deliberate ? this.takeHeld(opts.heldFrame) : null
       const heldAt = frame ? frame.at : null
@@ -207,7 +212,7 @@ export class ScreenshotAgent {
           restore?.()
         }
       }
-      if (!frame) return null
+      if (!frame || dbGeneration() !== opened) return null
       const { image, jpeg, width, height } = frame
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
@@ -250,6 +255,10 @@ export class ScreenshotAgent {
       // trigger + marker + manual back-to-back) stacks into a jank spike.
       // fs.promises.writeFile off-loads the syscall to libuv's thread pool.
       await fs.promises.writeFile(filepath, jpeg)
+      if (dbGeneration() !== opened) {
+        await fs.promises.rm(filepath, { force: true }).catch(() => {})
+        return null
+      }
 
       let evt: ReturnType<typeof ingestEvent> = null
       try { evt = ingestEvent('screenshot', {

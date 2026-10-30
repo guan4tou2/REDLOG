@@ -117,6 +117,36 @@ describeDB('api-server', () => {
     }
   })
 
+  // The same switch, on the other routes that write after reading a body. The
+  // marker one wrote into the next project under the operator its token named
+  // in the previous one.
+  for (const [route, first, rest] of [
+    ['/api/marker', '{"title":', '"inflight marker"}'],
+    ['/api/bookmarks', '{"title":', '"inflight bookmark"}'],
+    ['/api/sanitize', '{"event_ids":', '[],"dry_run":false}']
+  ] as const) {
+    it(`refuses ${route} when its body spans a project switch`, async () => {
+      const before = getEventCount()
+      let finish!: () => void
+      const response = new Promise<number | undefined>((resolve, reject) => {
+        const req = request(`${base}${route}`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' } },
+          res => { res.resume(); resolve(res.statusCode) })
+        req.on('error', reject)
+        req.write(first)
+        finish = () => req.end(rest)
+      })
+      try {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        api.configureApi({ engagementId: 'eng-2', operatorId: 'op-primary', operatorName: 'Primary' })
+        finish()
+        expect(await response).toBe(409)
+        expect(getEventCount()).toBe(before)
+      } finally {
+        api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', operatorName: 'Primary' })
+      }
+    })
+  }
+
   it('refuses a queued payload captured for another engagement even without a pinned header', async () => {
     const before = getEventCount()
     const response = await fetch(`${base}/api/events`, {
