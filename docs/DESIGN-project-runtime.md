@@ -108,7 +108,7 @@ on `main`:
 | anchor and NTP loops' first tick | never stored, so never cancelled: a switch to an air-gapped project inside 30 s / 5 s still sent its chain head to the public calendars, or a time query | stored, cleared by stop |
 | CDP navigation poll | the stopped monitor kept A's identity: the navigation was written into B under A's engagement, and the same poll opened tab sockets that kept writing the console into B | stop clears the identity |
 | screenshot capture | B got a frame taken in A, `_causes` pointing at A's event, or a row pointing into A's `screenshots/` | generation checked after the grab and after the write; file removed |
-| `startManagedHttpCapture` | a start cancelled by the switch was published as B's `http_proxy_failed` | checks its open after each of four waits |
+| `startManagedHttpCapture` | a start cancelled by the switch was published as B's `http_proxy_failed` | checks its open after each wait, including the port-release wait #464 added |
 | `/api/marker`, `/api/bookmarks`, `/api/sanitize` | wrote into B after reading a slow body, with A's operator | same 409 recheck `/api/events` has |
 | `bookmarks:create` IPC | a bookmark saved in A landed in B after the 2 s browser query | checks its open after the query |
 | cast backfill | see §1 | yields; signal + generation |
@@ -127,10 +127,10 @@ it was meant to prevent is real and smaller than the whole lifecycle.
 
 | Step | Work | Must hold |
 |---|---|---|
-| R0 | real-source e2e runs in CI (#464) | a skipped real-source spec fails the job |
-| **R1a** | runtime generation, signal, owned timers; the two defects above | done — see §4 |
+| **R0** | real-source e2e runs in CI | done (#464) — a skipped real-source spec fails the job |
+| **R1a** | runtime generation, signal, owned timers; the two defects above | done (#466) — see §2 |
 | R1b | services onto `onStop`, one per change; identity from `current()` | `stopProject` order unchanged, each move pinned by a test |
-| **R1c** | write guard, `dbGeneration`, the audit's switch-time writes | done — see §2b |
+| **R1c** | write guard, `dbGeneration`, the audit's switch-time writes | done (#467) — see §2b |
 | R2 | ingest stages made explicit (policy, identity, provenance, enrichment, write, derive, notify) | A→B binding, pause, queue-full gap, unconfirmed delivery, dedup, hash chain — as characterization tests first |
 | R3 | `api-server.ts` split by capability, no framework | loopback/host/token/size/project-identity checks stay in one unskippable entry |
 | R4 | Timeline query + live admission controller | same query and snapshot give the same rows |
@@ -142,9 +142,18 @@ evidence-schema change during a refactor.
 
 ## 4. Snapshot (2026-10-30)
 
-- R1a merged (#466). R1c is on `refactor/write-guard`.
-- Open for R1b: `upgradeAnchor` fails closed only by accident; the capture
-  browser's CDP monitor is not restarted for the next project (it stops at a
-  switch and starts again only with a new launch); `activeProject` /
-  `currentEngagementId` still sit beside the runtime.
-- R0 (#464) is in progress on its own branch.
+- Merged: R0 (#464), R1a (#466), R1c (#467).
+- Next is R1b, one service per change, in this order:
+  1. `upgradeAnchor` fails closed only by accident (its captured handle is
+     closed). Make it check its open.
+  2. The capture browser's CDP monitor is not restarted for the next project:
+     it stops at a switch and starts again only with a new launch.
+  3. Identity from `projectRuntime.current()`, then retire `activeProject` /
+     `currentEngagementId` / `currentOperatorId`.
+- R1b and anything else that edits `src/main/index.ts` run one at a time: #464
+  and R1c met there in one function.
+- R2 is unblocked by R0. It starts with the characterization tests in §3, not
+  with moving code.
+- Beside the refactor, not in it: the rest of #291 (a hard kill loses up to
+  64 queued events with no record, the HAR does not carry a stream's end
+  state, soak runs). None of it needs `src/main/index.ts`.
