@@ -141,6 +141,17 @@ jobs:
             libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
             libgtk-3-0 libasound2t64 xvfb zsh
 
+      - name: Install mitmproxy
+        # The real-source acceptance specs (capture-gap-acceptance,
+        # sse-preservation, uiux-convergence) drive a real mitmdump and skip
+        # when none is on PATH. Until this step existed they skipped on every
+        # run, so the only executions they had ever had were on a developer's
+        # machine. Same install as linux-install-smoke.yml; the version is
+        # printed so a failure says which mitmproxy it ran against.
+        run: |
+          python -m pip install --quiet mitmproxy
+          mitmdump --version
+
       - name: Build the app the e2e test launches
         # Electron journeys launch out/main/index.js — build it first.
         run: npm run build
