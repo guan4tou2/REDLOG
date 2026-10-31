@@ -1246,6 +1246,11 @@ function stopProject(): void {
   clean(() => projectRuntime.close())
   clean(onApiProjectClose)
   clean(clearSpoolIdentity)
+  // The capture browser's profile is this project's (`<project>/browser-profile`):
+  // its cookies and sign-ins belong to this engagement. Left open, it sent the
+  // next project HTTP through the restarted proxy while its navigations went
+  // unrecorded. It closes with its project; the exit listener tells the UI.
+  clean(stopBrowser)
   clean(() => stopManagedHttpCapture(false))
   clean(stopAnchorLoop)
   clean(stopNtpLoop)
