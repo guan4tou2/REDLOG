@@ -67,3 +67,46 @@ Producer 固定 flow 的 project identity、傳送時 port/token 與觀察時間
 保存的 SSE bytes 不改寫壓縮／UTF-8；HTTP 查詢配對不被大量 chunks 擠出，核准匯出只帶 snapshot 內 companions。HAR 保留原始 SSE／WS segments，已知裁切或中斷與未知完整性不冒充完整 response。Body 先寫 temp 再發布，既存 hash 檔必須核對內容，部分寫入不能被下次重試當成成功。
 
 上述完成 T005／T006 的本機子項，並非整份 063 完成：多小時持續運行、mitmproxy 自身 WS history 的記憶體上限、全來源／跨平台故障矩陣與原生 Windows／WSL／Git Bash／Kali 仍未驗證；五位使用者量測也缺環境，沿 #457。保留原任務完整 gate 與 Draft 狀態。
+
+## 2026-10-31：#290 長時間 soak（SSE／WS 兩小時、PTY 一小時）
+
+工具與來源盤點見 [inventory.md](inventory.md)。以下兩個 soak 都是 opt-in 的 Playwright spec，使用本機測試服務，記憶體預算在執行前由環境變數固定（預設各 64 MiB，從前十分之一時間後的 warm-up 起算）；超過就失敗，不交由讀者判斷。逐分鐘樣本另存 `.samples.jsonl`。
+
+### SSE／雙向 WS：[stream-soak.spec.ts](../../e2e/stream-soak.spec.ts)，120 分鐘，PASS
+
+| 項目 | 值 |
+|---|---|
+| OS／Node | Windows 11 10.0.26300 x64／v22.23.1；未打包（`out/`），非 installer |
+| mitmdump | 12.2.3（Python 3.12.13，OpenSSL 4.0.1） |
+| commit／addon | `5dc69e6b`（含 #479 有界 history 與 #481 TCP 結束），tree 乾淨；addon SHA-256 `ad77051d…` |
+| 起迄 | 2026-10-31 11:32:16Z → 13:33:58Z |
+| 形狀 | SSE 每秒一則（512 B pad）；WS 伺服器每秒推 4 KiB binary，client 每 2 秒送中文文字、每 5 則加一個 binary |
+| 一次性形狀 | 16 MiB body 存 10,485,760 B 並標 truncated；慢 response（20 段）完成後保存；`/disconnect` 記一筆 error |
+| App RSS（所有 Electron process） | warm 528.9 → 末 521.8 MiB（−7.1），區間 496–560 |
+| mitmdump RSS | warm 109.7 → 末 72.4 MiB（−37.3），區間 72–116 |
+| 硬殺 mitmdump 後穩定值 | SSE 7,017 chunks、WS 15,469 messages；兩者 `completion-unknown`，不冒充結束 |
+| App 重啟讀回 | 同為 7,017／15,469；SSE seq 無缺口、無重複 |
+| 匯出 HAR | SSE 4,129,692 B，與 client 收到的 4,129,103 B 在共同長度內逐位相同（HAR 多 589 B，約一則 event 的長度，應是 client 計數之後才到的最後一則）；WS 15,469 則 |
+
+對照（5 分鐘、每 100 ms 推 64 KiB WS，同一 spec）：`main` 的 addon 使 mitmdump 由 129.8 增至 305.0 MiB（+175.2，線性上升），有界 history 版本 110.1 → 110.9 MiB（+0.8）。兩小時那次的負載較輕，用來量長時間穩定性，不用來證明有界；有界的證據是這組對照與 #479 的單元測試。
+
+### PTY：[terminal-soak.spec.ts](../../e2e/terminal-soak.spec.ts)，60 分鐘，資料 PASS、記憶體量法修正
+
+WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`，tree 乾淨。內建終端每 2 秒印 20 行帶序號的輸出，視窗每 15 秒在兩種大小間切換，最後 `exit`，從磁碟讀回 cast。
+
+- 1,792 個指令、35,840 行：讀回 35,840 行，全部出現一次且依序，無缺、無重。
+- 239 次 resize：cast 有 239 個 `r` frame。
+- cast 5,029,600 B，單一 part；bytes 與 SHA-256 均等於 `session_end` 宣稱值。
+- 1,792 筆 `command_end`；chain verify 通過（3,595 筆 event）。
+- 記憶體：session 期間 App RSS 由 752（第 6 分鐘）緩升至 803 MiB（第 59 分鐘），約 +51 MiB、每分鐘約 1 MiB，未見平台。該次以 `exit` 後、spec 自己三次讀入全部 shell event 之後的 961 MiB 判定（+208.9）而失敗；那是檢查本身的花費，已改為在 session 結束、讀回前判定，讀回後的值另列。**此修正未以 60 分鐘重跑確認**；session 期間的緩升是否在更長時間後收斂，仍未驗證。
+
+前兩次 60／30 分鐘 PTY 執行在第 13／2 分鐘中止，原因是同機另一工作階段對 WSL 執行 `wsl --shutdown`（模式切換驗收），不是 App 行為；同一時段 Windows 上 WSL 驅動的 zsh 單元測試也因此失敗，事後重跑通過。
+
+### 仍未完成
+
+- Pause／Resume、App 重啟（未殺 producer）、高負載、隔離 volume 容量逼近上限在長時間下的組合；本輪只做 producer 硬殺與 App 重啟。
+- mitmdump 硬殺時未送出的已排隊 event 仍會遺失，無記錄（#291）。
+- PTY 記憶體緩升未查原因；兩小時以上 PTY 未跑。
+- 原生 Windows PTY（PowerShell）、macOS、installer 版本均未跑此 soak。CI 的 e2e 使用 mitmproxy 11.0.2，本機為 12.2.3。
+
+T005 仍不勾。
