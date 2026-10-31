@@ -52,7 +52,9 @@ _redlog_resolve_dir() {
     # drive through whatever automount root is configured.
     local win_profile win_cmd
     win_cmd=$(command -v cmd.exe) || win_cmd=$(wslpath -u 'C:\Windows\System32\cmd.exe' 2>/dev/null)
-    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+    # </dev/null: interop hands this shell's stdin to cmd.exe, which ran while
+    # the hook was being sourced and swallowed every line piped in after it.
+    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' </dev/null 2>/dev/null | tr -d '\r')
     if [[ -n "$win_profile" ]]; then
       local wsl_path
       wsl_path=$(wslpath "$win_profile" 2>/dev/null)
