@@ -76,6 +76,69 @@ come from `SHA256SUMS.txt` only.
 - a native Kali desktop;
 - WSL NAT networking.
 
+### Follow-up the same day: real installs
+
+The first item above was then done on the operator's machines; the rest still
+stand.
+
+**Windows, upgrade from v0.18.4.** Both published installers were checked
+against their release's `SHA256SUMS.txt`. Steps:
+1. `RedLog.Setup.0.18.4.exe /S` installed to the default
+   `%LOCALAPPDATA%\Programs\RedLog`.
+2. `RedLog.Setup.0.18.5.exe /S` upgraded it in place to 0.18.5.
+3. The installed `RedLog.exe` ran `packaged-smoke`, `http-body-search`,
+   `first-run` and `filtered-export`: 17 passed.
+4. `Uninstall RedLog.exe /S` removed the folder, both registry keys and both
+   shortcuts. The PowerShell profile was unchanged, and no `~/.redlog` was
+   created in the real profile.
+
+What it leaves:
+- `%LOCALAPPDATA%\redlog-updater\installer.exe`. This is electron-builder's
+  installer copy for differential updates, and uninstall does not touch it.
+- The in-app updater does not offer this build to v0.18.4. It runs on Windows
+  only and leaves `allowPrerelease` at its default, so it only reads the Latest
+  release, v0.18.3. Testers upgrade by running the new installer, as
+  `INTERNAL-TESTING.md` says.
+
+**An install folder deeper than about 120 characters cannot be upgraded.** The
+first attempt installed under the session's scratch directory (135
+characters). The v0.18.5 upgrade then stopped on a dialog even under `/S`:
+"無法俺安裝舊的應用程式檔案。請嘗試再次執行安裝程式。: 2". The garbled
+「俺安裝」 is electron-builder's own zh-TW string.
+
+How it fails:
+- On an upgrade, the old uninstaller renames every file into
+  `$PLUGINSDIR\old-install`.
+- NSIS `Rename` is limited to `MAX_PATH`.
+- The deepest packaged files are 139 characters below the install root, so
+  the rename fails and the uninstaller aborts with code 2.
+- A plain uninstall from that folder leaves exactly those four files behind.
+
+The four files are MSBuild leftovers that serve no purpose at runtime:
+- `better-sqlite3/build/Release/obj/**/*.lastbuildstate`
+- `node-pty/.../winpty/src/Release/obj/**/*.tlog`
+
+Excluding them from the package would raise that limit. The default folder
+(43 characters) is far below it.
+
+**Kali, under WSL2.** `sudo dpkg -i redlog_0.18.5_amd64.deb` on kali-linux:
+- The install linked `/usr/bin/redlog` and installed the desktop entry.
+- `chrome-sandbox` was left `0755`, because user namespaces work there.
+- The installed `/opt/RedLog/redlog` ran without `ELECTRON_DISABLE_SANDBOX`.
+  Every Linux packaged spec, plus search, filtered export and first-run:
+  20 passed.
+- `dpkg -r` then `dpkg -P` removed the binary, the link, the desktop entry
+  and the package record.
+
+**The managed-proxy start failure did not recur.** On Kali, after the WSL
+page cache was dropped:
+- the first `mitmdump --version` took 7.4 s, against the 30 s readiness limit;
+- `packaged-smoke` passed four more cold runs.
+
+Counting the installed run above, that makes it one failure in nine runs, with
+the cause unknown. The spec now
+prints the proxy's `error` if it happens again.
+
 ## v0.18.2 distribution policy
 
 Supported downloads are NSIS, DEB and DMG. The macOS ZIP remains a supplementary
