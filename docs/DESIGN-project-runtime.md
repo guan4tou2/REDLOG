@@ -117,8 +117,8 @@ Held by the audit: the spool, retention and sample timers (runtime-owned),
 process/connection/file/PowerShell monitors (generation guards, identity read
 at write time), tailer timers (cleared on stop), clipboard (synchronous read),
 IP checks (machine data), `/api/events` and artifact add (already recheck).
-`upgradeAnchor` fails closed by accident — its captured handle is closed —
-and is left for R1b to make deliberate.
+`upgradeAnchor` failed closed by accident — its captured handle was closed,
+so the write threw. R1b made it deliberate: see §4.
 
 ## 3. Order, and what each step must not break
 
@@ -140,16 +140,23 @@ Not doing, as the proposal argues: Tauri, another database, microservices,
 plugin-izing the core, global state stores, a bulk move of `src/core/`, any
 evidence-schema change during a refactor.
 
-## 4. Snapshot (2026-10-30)
+## 4. Snapshot (2026-10-31)
 
 - Merged: R0 (#464), R1a (#466), R1c (#467).
-- Next is R1b, one service per change, in this order:
-  1. `upgradeAnchor` fails closed only by accident (its captured handle is
-     closed). Make it check its open.
-  2. The capture browser's CDP monitor is not restarted for the next project:
-     it stops at a switch and starts again only with a new launch.
-  3. Identity from `projectRuntime.current()`, then retire `activeProject` /
-     `currentEngagementId` / `currentOperatorId`.
+- R1b, one service per change:
+  1. **Done.** `upgradeAnchor` takes `dbGeneration` before the calendar waits,
+     as `anchorNow` does, and returns null when it moved. `upgradeAllPending`
+     stops walking the old project's list at the same point.
+  2. **Done, by closing rather than restarting.** The capture browser's profile
+     is `<project>/browser-profile`, so its cookies and sign-ins are the
+     launching engagement's. After a switch it kept sending HTTP into the next
+     project through the restarted proxy, while its navigations went
+     unrecorded. Re-attaching the CDP monitor would have recorded the next
+     project's evidence from the last one's sessions, so `stopProject` stops
+     the browser instead. `e2e/capture-browser-project-switch.spec.ts` pins
+     this; it is POSIX-only (a `#!/bin/sh` stand-in) and runs in CI.
+  3. Next: identity from `projectRuntime.current()`, then retire
+     `activeProject` / `currentEngagementId` / `currentOperatorId`.
 - R1b and anything else that edits `src/main/index.ts` run one at a time: #464
   and R1c met there in one function.
 - R2 is unblocked by R0. It starts with the characterization tests in §3, not

@@ -59,6 +59,21 @@ describe.skipIf(events === null)('work that outlives its project', () => {
     expect(events!.queryEvents({ limit: -1, tier: 'all' })).toHaveLength(0)
   })
 
+  // It held the handle it started with, so a switch made its write throw on a
+  // closed connection: closed by accident, and reported as an error.
+  it('an anchor upgrade that outlives its project stops, rather than throwing', async () => {
+    const receipts = [{ calendar: 'https://127.0.0.1:1', ok: true, receiptB64: 'AA==', upgraded: false }]
+    dbmod!.getDB().prepare(
+      `INSERT INTO chain_anchors (id, head_event_id, head_hash, event_count, calendar_receipts, status, created_at, completed_at)
+       VALUES ('anc-a', 'ev', ?, 1, ?, 'partial', 1, NULL)`
+    ).run('ab'.repeat(32), JSON.stringify(receipts))
+    const pending = anchor!.upgradeAnchor('anc-a')
+    dbmod!.closeDB()
+    open()
+    await expect(pending).resolves.toBeNull()
+    expect(anchorRows()).toBe(0)
+  })
+
   it('cancels the first anchor tick when the loop stops', () => {
     vi.useFakeTimers()
     events!.insertEvent('marker', { title: 'online project', severity: 'info' }, IDS)
