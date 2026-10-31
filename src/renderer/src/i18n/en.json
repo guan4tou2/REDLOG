@@ -909,6 +909,8 @@
   "project.leaveMessageCounted": "This recording stops. The {{count}} events already written stay in the project, and reopening it carries on from there.",
   "project.leaveNoCapture": "Nothing is recorded until a project is open again — commands, HTTP traffic and screenshots in between go nowhere.",
   "project.leaveTerminals": "{{count}} terminal panes and their running jobs stay open. Their recordings end here and resume in the next project.",
+
+  "project.leaveBrowser": "The RedLog browser closes. Its sign-ins stay in this project’s browser profile.",
   "project.leaveConfirm": "Stop recording and leave",
   "project.switchConfirm": "Stop recording and switch",
   "project.leaveCancel": "Keep recording",

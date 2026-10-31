@@ -21,14 +21,17 @@ export async function confirmLeaveProject(t: T, opts: LeaveProjectOpts): Promise
   // Both reads are decoration on a decision the operator can make without
   // them, so neither may block it: a failed count shows the dialog with one
   // line fewer, not a dialog that never opens.
-  const [panes, events] = await Promise.all([
+  const [panes, events, browser] = await Promise.all([
     window.redlog.terminal.list().then((l: unknown) => Array.isArray(l) ? l.length : 0).catch(() => 0),
-    window.redlog.events.getCount('all').catch(() => null)
+    window.redlog.events.getCount('all').catch(() => null),
+    Promise.resolve().then(() => window.redlog.browser.status()).then((s) => s.running).catch(() => false)
   ])
 
   const consequences = [
     t('project.leaveNoCapture'),
-    panes > 0 ? t('project.leaveTerminals', { count: panes }) : null
+    panes > 0 ? t('project.leaveTerminals', { count: panes }) : null,
+    // The capture browser closes with its project (stopProject): its pages go.
+    browser ? t('project.leaveBrowser') : null
   ].filter((c): c is string => c !== null)
 
   return confirmGraded({

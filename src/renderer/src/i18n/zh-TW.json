@@ -909,6 +909,8 @@
   "project.leaveMessageCounted": "這份記錄會停止。已經寫進去的 {{count}} 筆事件都留在專案裡，重新開啟就接著記。",
   "project.leaveNoCapture": "在重新開啟專案之前不會記錄任何東西 — 這段期間的指令、HTTP 流量和截圖都不會留下。",
   "project.leaveTerminals": "{{count}} 個終端機與正在執行的工作會保留。這個專案的錄製在此結束，開啟下一個專案後開始新的錄製區段。",
+
+  "project.leaveBrowser": "RedLog 瀏覽器會關閉，登入狀態保留在這個專案的瀏覽器設定檔中。",
   "project.leaveConfirm": "停止記錄並離開",
   "project.switchConfirm": "停止記錄並切換",
   "project.leaveCancel": "繼續記錄",

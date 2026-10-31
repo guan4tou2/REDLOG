@@ -23,9 +23,15 @@ const { confirmLeaveProject } = await import('../src/renderer/src/lib/leaveProje
 const t = (key: string, vars?: Record<string, string | number>): string =>
   vars ? `${key}:${JSON.stringify(vars)}` : key
 
-function installBridge(opts: { panes: number; count: number | 'fail' }): void {
+function installBridge(opts: { panes: number; count: number | 'fail'; browser?: boolean | 'fail' }): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     terminal: { list: async () => Array.from({ length: opts.panes }, (_v, i) => ({ id: `t${i}` })) },
+    browser: {
+      status: async () => {
+        if (opts.browser === 'fail') throw new Error('no bridge')
+        return { running: opts.browser === true }
+      }
+    },
     events: {
       getCount: async () => {
         if (opts.count === 'fail') throw new Error('db closed')
@@ -54,6 +60,21 @@ describe('confirmLeaveProject', () => {
     expect(shown[0].consequences).not.toContainEqual(expect.stringContaining('project.leaveTerminals'))
     // The one that is always true is always said.
     expect(shown[0].consequences).toContain('project.leaveNoCapture')
+  })
+
+  // stopProject closes the capture browser: its profile is the project's.
+  it('says the capture browser closes, only when one is open', async () => {
+    installBridge({ panes: 0, count: 1, browser: true })
+    await confirmLeaveProject(t, { projectName: 'acme', to: 'beta' })
+    expect(shown[0].consequences).toContain('project.leaveBrowser')
+
+    installBridge({ panes: 0, count: 1, browser: false })
+    await confirmLeaveProject(t, { projectName: 'acme', to: 'beta' })
+    expect(shown[1].consequences).not.toContain('project.leaveBrowser')
+
+    installBridge({ panes: 0, count: 1, browser: 'fail' })
+    await expect(confirmLeaveProject(t, { projectName: 'acme' })).resolves.toBe(true)
+    expect(shown[2].consequences).not.toContain('project.leaveBrowser')
   })
 
   it('names both projects when it is a switch', async () => {
