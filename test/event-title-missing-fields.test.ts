@@ -27,3 +27,22 @@ describe('a shell command row missing its fields', () => {
     expect(eventTitle(shell({ subtype: 'command_start', command: 'whoami' }))).toBe('$ whoami')
   })
 })
+
+// #290: a session recovered after a crash did not close; titling it
+// "terminal closed" reads as a normal end. It says the recording was
+// interrupted, and a command it left open says so too.
+describe('a terminal recording the app never closed', () => {
+  it('reads as interrupted, not closed', () => {
+    expect(eventTitle(shell({ subtype: 'session_end', source: 'builtin-terminal', reason: 'recovered-orphan', recovered: true, exitCode: null })))
+      .toBe('▪ terminal recording interrupted (app did not close it)')
+  })
+
+  it('names the command it left open as interrupted', () => {
+    expect(eventTitle(shell({ subtype: 'command_boundary', source: 'builtin-terminal', reason: 'recovered-orphan', command_id: 'c1' })))
+      .toBe('$ command interrupted: recording ended without its result')
+  })
+
+  it('still reads a normal close as closed', () => {
+    expect(eventTitle(shell({ subtype: 'session_end', source: 'builtin-terminal', reason: 'shell-exited', exitCode: 0 }))).toBe('▪ terminal closed (exit 0)')
+  })
+})

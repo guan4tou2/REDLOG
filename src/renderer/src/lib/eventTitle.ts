@@ -41,7 +41,9 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
       if (d.subtype === 'command' && d.command) return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'session_output') return `PTY #${String(d.sequence ?? '')}: ${String(d.stdout ?? '').slice(0, 100)}`
       if (d.subtype === 'session_start') return t('eventTitle.terminalOpened')
+      if (d.subtype === 'command_boundary' && d.reason === 'recovered-orphan') return t('eventTitle.commandInterrupted')
       if (d.subtype === 'session_end') {
+        if (d.recovered === true) return t('eventTitle.terminalInterrupted')
         if (d.source === 'external-session' && (Number(d.omittedBytes) > 0 || Number(d.pausedBytes) > 0 || d.incomplete)) {
           return t('eventTitle.sessionIncomplete', { code: String(d.exitCode ?? '?'), omitted: Number(d.omittedBytes ?? 0), paused: Number(d.pausedBytes ?? 0) })
         }

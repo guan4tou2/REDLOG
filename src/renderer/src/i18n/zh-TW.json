@@ -1280,6 +1280,8 @@
   "eventTitle.terminalOpened": "▸ 開啟終端機",
   "eventTitle.terminalClosed": "▪ 關閉終端機",
   "eventTitle.terminalClosedExit": "▪ 關閉終端機（結束碼 {{code}}）",
+  "eventTitle.terminalInterrupted": "▪ 終端錄製中斷（App 未正常關閉）",
+  "eventTitle.commandInterrupted": "$ 指令中斷：錄製結束時沒有結果",
   "eventTitle.shellEvent": "Shell 事件",
   "eventTitle.screenshot": "截圖（{{trigger}}）",
   "eventTitle.artifact": "證據檔案：{{name}}（{{size}}）· sha256 {{hash}}",

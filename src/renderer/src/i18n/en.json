@@ -1280,6 +1280,8 @@
   "eventTitle.terminalOpened": "▸ terminal opened",
   "eventTitle.terminalClosed": "▪ terminal closed",
   "eventTitle.terminalClosedExit": "▪ terminal closed (exit {{code}})",
+  "eventTitle.terminalInterrupted": "▪ terminal recording interrupted (app did not close it)",
+  "eventTitle.commandInterrupted": "$ command interrupted: recording ended without its result",
   "eventTitle.shellEvent": "Shell event",
   "eventTitle.screenshot": "Screenshot ({{trigger}})",
   "eventTitle.artifact": "Evidence file: {{name}} ({{size}}) · sha256 {{hash}}",
