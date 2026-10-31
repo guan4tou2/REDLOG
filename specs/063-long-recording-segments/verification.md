@@ -92,7 +92,7 @@ Producer 固定 flow 的 project identity、傳送時 port/token 與觀察時間
 
 ### PTY：[terminal-soak.spec.ts](../../e2e/terminal-soak.spec.ts)，60 分鐘，資料 PASS、記憶體量法修正
 
-WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`，tree 乾淨。內建終端每 2 秒印 20 行帶序號的輸出，視窗每 15 秒在兩種大小間切換，最後 `exit`，從磁碟讀回 cast。
+WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`（本 spec 在移到新 main 之前的本機 commit；產品碼為 `main@5e2533b8`，spec 內容除下述量法修正外相同），tree 乾淨。內建終端每 2 秒印 20 行帶序號的輸出，視窗每 15 秒在兩種大小間切換，最後 `exit`，從磁碟讀回 cast。
 
 - 1,792 個指令、35,840 行：讀回 35,840 行，全部出現一次且依序，無缺、無重。
 - 239 次 resize：cast 有 239 個 `r` frame。

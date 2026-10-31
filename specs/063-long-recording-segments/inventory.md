@@ -83,12 +83,12 @@ On `main`, mitmproxy keeps every relayed message on the flow, so mitmdump grows 
 
 Each item is a separate PR against `main` (Refs #290). Every PR adds a RED test first.
 
-1. **Inventory and harness** (this file), on `claude/capture-long-streams-290-fece23`. The local stream sources are `e2e/stream-sources.ts`: large body, slow response, SSE, bidirectional WS, binary frames and disconnect. The opt-in soak with a budget fixed beforehand is `e2e/stream-soak.spec.ts`.
-2. **WS/TCP memory**, on `claude/290-ws-tcp-history`. mitmproxy keeps every WebSocket/TCP message for the life of the flow, so an hours-long stream grows mitmdump without bound (measured above). `message_count` is that list's length.
-3. **Known total of a truncated body**, on `claude/290-body-known-total`. A body over `MAX_BODY` goes to the sidecar with `size` set to the stored bytes. The producer's known total is dropped, so the record says "10 MiB" where it should say "10 of 16 MiB". Observed in the soak: `/large` 16 MiB was saved as `size: 10485760, truncated: true`.
-4. **TCP lifecycle**, on `claude/290-tcp-lifecycle`, stacked on 2. A TCP stream has no end or interruption event.
-5. **PTY crash recovery**, on `claude/290-pty-recovery`. A recovered `session_end` should list the parts actually on disk, with their bytes and hashes computed at recovery and marked as such. Commands still open should be closed as interrupted.
-6. **Disclosure after the fact.** An ended terminal tab shows only `[process exited]`, and the export preview has no row for partial or recovered casts.
+1. **Inventory and harness** (this file). The local stream sources are `e2e/stream-sources.ts`: large body, slow response, SSE, bidirectional WS, binary frames and disconnect. The opt-in soaks with a budget fixed beforehand are `e2e/stream-soak.spec.ts` and, for PTY, `e2e/terminal-soak.spec.ts`. Results are in [verification.md](verification.md).
+2. **WS/TCP memory**, #479 (merged). mitmproxy keeps every WebSocket/TCP message for the life of the flow, so an hours-long stream grows mitmdump without bound (measured above). `message_count` is that list's length.
+3. **Known total of a truncated body**, #480 (merged). A body over `MAX_BODY` goes to the sidecar with `size` set to the stored bytes. The producer's known total is dropped, so the record says "10 MiB" where it should say "10 of 16 MiB". Observed in the soak: `/large` 16 MiB was saved as `size: 10485760, truncated: true`.
+4. **TCP lifecycle**, #481 (merged). A TCP stream had no end or interruption event.
+5. **PTY crash recovery**, #482 (merged, through #483). A recovered `session_end` should list the parts actually on disk, with their bytes and hashes computed at recovery and marked as such. Commands still open should be closed as interrupted.
+6. **Disclosure after the fact**, #483 (merged). An ended terminal tab showed only `[process exited]`, and the export preview had no row for partial or recovered casts.
 
 Not taken here:
 
