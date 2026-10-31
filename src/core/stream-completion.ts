@@ -33,9 +33,10 @@ export function streamCompletion({ terminal, savedChunks, savedMessages }: Strea
     const saved = savedChunks + savedMessages
     return saved > 0 ? { state: 'completion-unknown', saved, closed: false } : null
   }
-  const webSocket = terminal.subtype === 'websocket_end'
-  const saved = webSocket ? savedMessages : savedChunks
-  const reported = webSocket ? terminal.message_count_observed : terminal.stream_chunks_observed
+  // WebSocket and raw TCP number messages; SSE numbers chunks.
+  const byMessage = terminal.subtype === 'websocket_end' || terminal.subtype === 'tcp_end'
+  const saved = byMessage ? savedMessages : savedChunks
+  const reported = byMessage ? terminal.message_count_observed : terminal.stream_chunks_observed
   const observed = typeof reported === 'number' && Number.isFinite(reported) ? reported : undefined
   if (observed !== undefined && saved < observed) return { state: 'known-partial', saved, observed, missing: observed - saved }
   if (capturedContentIsPartial(terminal)) return { state: 'known-partial', saved }

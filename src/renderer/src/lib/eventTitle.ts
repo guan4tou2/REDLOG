@@ -103,6 +103,8 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
           const tcpDir = d.direction === 'client' ? '▲' : '▼'
           return `[TCP ${tcpDir}] ${d.host || ''}:${d.port || '?'} (${formatBytes(d.size as number ?? 0)})`.trim()
         }
+        case 'tcp_end':
+          return `[TCP end] ${d.host || ''}:${d.port || '?'} ${d.stream_state === 'interrupted' ? `interrupted: ${d.error || 'unknown'}` : 'closed'}`.trim()
         case 'capture_gap':
           if (d.reason === 'queue-full') return t('eventTitle.gapQueueFull', { count: String(d.skipped_units ?? '?') })
           if (d.reason === 'project-switched') return t('eventTitle.gapProjectSwitched', { count: String(d.skipped_units ?? '?') })

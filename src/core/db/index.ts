@@ -352,10 +352,12 @@ export function initDB(projectDir: string): Database.Database {
     WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)
   // Stream segments and closes, for counting what a flow kept (#291). The
   // reader repeats this IN list verbatim: SQLite uses a partial index only
-  // when the query's terms match it.
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_stream_flow
+  // when the query's terms match it. Raw TCP joined the list (#290); the
+  // index's name changed with it, since IF NOT EXISTS keeps an old predicate.
+  db.exec('DROP INDEX IF EXISTS idx_events_logged_stream_flow')
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_stream_flows
     ON events_logged(json_extract(data, '$.flow_id'))
-    WHERE agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error')`)
+    WHERE agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error', 'tcp_message', 'tcp_end')`)
 
   // Spec 017: the query language's identifier conditions. The agent session
   // and tool-use id live in `data`, not in columns — `session_id` the COLUMN
