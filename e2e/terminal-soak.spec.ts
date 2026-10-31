@@ -87,7 +87,8 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
       commands++
       if (Date.now() >= nextResize) {
         const [width, height] = sizes[++resizes % 2]
-        await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(size.width, size.height), { width, height })
+        // The window this page is in: the app also has an overlay window.
+        await (await app.browserWindow(page)).evaluate((win, size) => win.setSize(size.width, size.height), { width, height })
         nextResize += shape.resizeMs
       }
       if (Date.now() >= nextSample) {
