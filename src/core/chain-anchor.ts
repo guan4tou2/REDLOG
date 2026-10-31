@@ -343,9 +343,9 @@ function getTimestamp(calendarUrl: string, headHashHex: string): Promise<{ ok: b
 }
 
 export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
-  const db = getDB()
   const existing = getAnchorById(id)
   if (!existing) return null
+  const opened = dbGeneration()
 
   const receipts = await Promise.all(existing.calendarReceipts.map(async (r) => {
     if (!r.ok || r.upgraded) return r
@@ -364,6 +364,11 @@ export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
     }
     return { ...r, upgraded: false, upgradedAt: r.upgradedAt ?? null, error: res.error ?? r.error }
   }))
+  // Same window as anchorNow. This used to fail closed only because the
+  // handle it held had been closed by the switch — a throw, not a decision.
+  // The anchor id is the old project's; its own loop upgrades it next time.
+  if (dbGeneration() !== opened) return null
+  const db = getDB()
 
   const anyUpgraded = receipts.some((r) => r.upgraded)
   const allUpgraded = receipts.filter((r) => r.ok).every((r) => r.upgraded)
@@ -378,8 +383,11 @@ export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
 
 export async function upgradeAllPending(): Promise<{ upgraded: number; scanned: number }> {
   const anchors = listAnchors(1000).filter((a) => a.calendarReceipts.some((r) => r.ok && !r.upgraded))
+  const opened = dbGeneration()
   let upgraded = 0
   for (const a of anchors) {
+    // The list is the opening project's: the next project's ids are not in it.
+    if (dbGeneration() !== opened) break
     const result = await upgradeAnchor(a.id)
     if (result && result.calendarReceipts.some((r) => r.upgraded)) upgraded++
   }
