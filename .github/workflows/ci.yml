@@ -6,9 +6,13 @@ on:
     branches: [main]
 
 # Cancel superseded runs on the same PR — a fresh push shouldn't queue
-# behind a stale one.
+# behind a stale one. Not on main: there each push is a merge, and cancelling
+# left merged commits that never had a complete run (two merges a minute apart
+# cancelled the first one's). Grouping main by commit gives every merge its own
+# run. `cancel-in-progress: false` would not: a group holds one waiting run,
+# and a third push still replaces it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -113,8 +117,22 @@ jobs:
         run: npm run build
 
   e2e:
+    # No `needs: unit`. It used to wait for all three unit legs and was skipped,
+    # not queued, when any of them failed — so a red unit leg was also a
+    # blindfold: e2e/screenshot-capture.spec.ts was red on main for as long as
+    # the i18n gate was failing every PR, with no completed e2e run to show it.
+    # Run beside the unit legs, e2e always reports, and the run takes the
+    # longer of the two instead of their sum.
+    #
+    # Sharded across three runners, by spec file. One runner had a single
+    # worker (`workers: 1` — one Electron at a time), so ~7 minutes of specs
+    # ran end to end; separate runners need no change to that.
+    name: e2e (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v5
 
@@ -166,13 +184,14 @@ jobs:
         # `requireMitmdump` in e2e/helpers.ts).
         env:
           REDLOG_E2E_REQUIRE_MITMDUMP: '1'
-        run: xvfb-run --auto-servernum npm run e2e
+        run: xvfb-run --auto-servernum npm run e2e -- --shard=${{ matrix.shard }}/3
 
       - name: Upload screenshots + report on failure
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: e2e-artifacts
+          # Per-shard name: the shards would otherwise overwrite each other.
+          name: e2e-artifacts-${{ matrix.shard }}
           path: |
             e2e/screenshots/
             test-results/

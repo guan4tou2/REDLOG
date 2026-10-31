@@ -54,15 +54,21 @@ Two things follow for any gate that compares against another ref:
 
 ### A skipped gate hides what is behind it
 
-`e2e` is skipped, not queued, when an earlier gate fails — so a red gate is also
-a blindfold. While the i18n gate was failing on every PR,
-`e2e/screenshot-capture.spec.ts` was red on `main` and nobody saw it: there had
-not been a completed e2e run to look at. Both halves of that were found in one
-afternoon, and they were the same fault seen from two ends.
+`e2e` used to need every unit leg, and was skipped, not queued, when one failed
+— so a red gate was also a blindfold. While the i18n gate was failing on every
+PR, `e2e/screenshot-capture.spec.ts` was red on `main` and nobody saw it: there
+had not been a completed e2e run to look at. Both halves of that were found in
+one afternoon, and they were the same fault seen from two ends.
 
-When a gate has been red for a while, assume the ones after it have been
+So `e2e` no longer waits for `unit`: the two run side by side and each reports
+on its own. The steps *inside* a unit leg are still ordered — a typecheck
+failure stops that leg before Vitest — so within a leg the rule still holds:
+when a step has been red for a while, assume the ones after it have been
 reporting nothing, and read the first full run after the fix as new information
 rather than a regression.
+
+On a PR a new push cancels the run in progress. On `main` it does not: each
+merge gets its own run, so every commit on `main` has been checked whole.
 
 ### The known flake
 
@@ -80,13 +86,18 @@ CI runs e2e on **ubuntu only**, which means two things:
   fixtures. If you are on Windows and one fails on its fixture rather than on
   the behaviour, make the spec say so with `test.skip(process.platform === 'win32', …)`
   rather than leaving it failing locally.
-- e2e does **not** run when an earlier gate fails — it is skipped, not queued.
-  A branch can therefore accumulate contract changes that e2e has never once
-  checked. Run it yourself before a large branch goes up:
+- A spec that only fails on Windows or macOS never shows up in CI at all. Run
+  the spec yourself before a large branch goes up:
 
 ```bash
 npm run build && npx playwright test e2e/<spec>.spec.ts --reporter=line
 ```
+
+CI splits the suite by spec file across three runners, checks `e2e (1/3)` to
+`e2e (3/3)`, each with its own `e2e-artifacts-<n>` on failure. A failing shard
+names its spec; run that spec as above rather than the shard. A spec that
+passes alone and fails in its shard depends on an earlier spec's leftovers —
+`--shard=<n>/3` locally runs the same files in the same order.
 
 ### A bare "Test timeout exceeded" names nothing — make it name something
 

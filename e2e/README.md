@@ -108,14 +108,15 @@ CDP clicks and jsdom cannot establish native hit testing or visual quality.
 
 ## CI
 
-`.github/workflows/ci.yml` has an `e2e` job: `runs-on: ubuntu-latest`,
-`needs: unit`, and it runs `xvfb-run --auto-servernum npm run e2e` against a
-fresh build, uploading `e2e/screenshots/` as artifacts on failure.
+`.github/workflows/ci.yml` has an `e2e` job on `ubuntu-latest`, sharded three
+ways by spec file (`e2e (1/3)` … `e2e (3/3)`). Each shard runs
+`xvfb-run --auto-servernum npm run e2e -- --shard=<n>/3` against a fresh build
+and uploads `e2e/screenshots/` and the report as `e2e-artifacts-<n>` on failure.
 
-`needs: unit` is the part worth remembering: **e2e does not run when an earlier
-gate fails — it is skipped, not queued.** A branch can therefore accumulate
-contract changes that e2e has never once checked. Before a large branch goes
-up, run it locally.
+It does not wait for the `unit` job. It used to (`needs: unit`), and a red unit
+leg then skipped it — a spec could be red on `main` with nobody seeing it. Now
+both run side by side and both always report. CI is ubuntu only, so before a
+large branch goes up, still run the specs it touches locally.
 
 ## macOS launch environment
 
