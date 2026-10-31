@@ -25,6 +25,57 @@ The gate requires the current bash, zsh and PowerShell adapters, their shared
 runtime, the declarative starter pack and evidence verifier. It fails if any removed pre-release
 compatibility hook is present.
 
+## 2026-10-31 v0.18.5 prerelease (closed-beta candidate)
+
+Release commit `0b714911`. The published assets were downloaded and checked
+against the release's `SHA256SUMS.txt`:
+
+| Asset | SHA-256 | Checked |
+| --- | --- | --- |
+| `RedLog.Setup.0.18.5.exe` | `04984f0083ce7c121592cdd62359e3427ee6e4a9e1c2356f9f602e1e8a793576` | downloaded, matches |
+| `redlog_0.18.5_amd64.deb` | `ce300555e98bd75a3a2c9ebb90be8673fc0c669e7dca32d733383e7ef09468fc` | downloaded, matches |
+| `RedLog-0.18.5-arm64.dmg` | `1122d7f829a36680683bcbb66cf95bba900fe7737ed94c4ed79984aa68f23e4a` | listed only, not downloaded |
+| `RedLog-0.18.5-arm64-mac.zip` | `ab6cd4652d375c669a546d6fcbbf53fc0d9146fddfaa4a53a9a34f084bed231e` | listed only, not downloaded |
+
+**Windows x64.** The published NSIS installer was unpacked with 7-Zip
+(`$PLUGINSDIR/app-64.7z`), not installed, and `REDLOG_PACKAGED_APP` pointed at
+its `RedLog.exe`. `packaged-smoke` passed: health before a project is open,
+PowerShell capture with exit evidence, real mitmdump HTTP/HTTPS trusting only
+the test-profile CA, export through the shipped verifier, and search after a
+restart. `http-body-search`, `first-run` and `filtered-export` against the same
+executable: 16 passed. The installer, shortcuts and uninstall are what
+[windows-install-smoke run 41179031197](https://github.com/guan4tou2/REDLOG/actions/runs/41179031197)
+covers on the same commit (PASS). That run builds its own package from the
+commit; it does not install the published file.
+
+**Kali x64, under WSL2 (not a Kali desktop).** The published `.deb` was
+unpacked with `dpkg-deb -x` into a temp directory, not installed. Unpacked,
+`chrome-sandbox` is not setuid, so the runs set `ELECTRON_DISABLE_SANDBOX=1`;
+display was `xvfb-run`. Kali's apt ships mitmproxy 12.2.3 on Python 3.13,
+where CI's pip resolves 11.x.
+
+- `packaged-smoke` failed on its first run: the managed proxy reported
+  `state: 'failed'` inside the 45-second poll. Terminal capture in the same run
+  was recorded. Three later runs passed, one with an extra status read showing
+  `running` and `certReady`, two unmodified. The reason for the failure was not
+  captured, because the assertion did not print `error`; it does now. The
+  readiness limit is 30 seconds, so a cold first start of mitmproxy 12 is the
+  leading guess. It is not confirmed.
+- `packaged-session-smoke`, `packaged-command-integrity`, `packaged-nc-upgrade`,
+  `http-body-search`, `filtered-export` and `first-run`: 19 passed.
+- [linux-install-smoke run 41179031359](https://github.com/guan4tou2/REDLOG/actions/runs/41179031359)
+  on the same commit: PASS.
+
+**macOS.** Not run; no macOS host this round. The DMG and ZIP hashes above
+come from `SHA256SUMS.txt` only.
+
+**Not covered by any of the above:**
+- installing through the NSIS UI or `dpkg -i` on a desktop;
+- SmartScreen and Gatekeeper;
+- updating from v0.18.4 through electron-updater;
+- a native Kali desktop;
+- WSL NAT networking.
+
 ## v0.18.2 distribution policy
 
 Supported downloads are NSIS, DEB and DMG. The macOS ZIP remains a supplementary

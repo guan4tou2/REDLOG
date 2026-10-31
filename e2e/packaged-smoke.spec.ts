@@ -224,8 +224,16 @@ test.describe('packaged app', () => {
         test.info().annotations.push({ type: 'not-exercised', description: 'mitmdump is absent; HTTP/HTTPS capture was not exercised' })
       } else {
         await test.step('the managed proxy records a real flow and verifies HTTP/HTTPS without system trust changes', async () => {
+          // A failed start carries its reason in `error`, which toMatchObject's
+          // diff leaves out because it is not an expected key. Kali's mitmproxy
+          // 12 failed this way once on v0.18.5 and passed three times after,
+          // with nothing left to say why.
           await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status()), { timeout: 45_000 })
             .toMatchObject({ state: 'running', certReady: true })
+            .catch(async (e) => {
+              console.log(`[DBG] proxy status ${JSON.stringify(await page.evaluate(() => window.redlog.httpCapture.status()))}`)
+              throw e
+            })
           const status = await page.evaluate(() => window.redlog.httpCapture.status())
           const proxy = new URL(status.url!)
           const server = http.createServer((_req, res) => {
