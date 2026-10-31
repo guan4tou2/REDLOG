@@ -232,6 +232,12 @@ message in memory (#290). `tcp_message` numbers its messages the same way.
 | Subtype | When | Key fields |
 |---------|------|------------|
 | `tcp_message` | `tcp_message()` hook | `flow_id`, `host`, `port`, `direction`, `size`, `message_count`, `tls_version` (if TLS), `tcp_body` / `tcp_body_ref`, `tcp_preview` |
+| `tcp_end` | `tcp_end()` / `tcp_error()` hook, once per flow | `flow_id`, `host`, `port`, `streamed: true`, `stream_state` (`ended`, or `interrupted` when the connection carried an error or never opened), `error`, `message_count_observed`, `stream_not_queued_bytes`, `truncated`, `capture_delivery: "unknown"` |
+
+`tcp_end` is what the addon observed, as `websocket_end` is: RedLog judges the
+stream by comparing it with the `tcp_message` rows it saved. A flow with
+messages and no `tcp_end` reads as "no end recorded": it may still be open, or
+the producer stopped first.
 
 Requires mitmproxy `--mode tcp@port` or transparent mode.
 

@@ -48,6 +48,22 @@ describe('stream segments a flow kept', () => {
     expect(completionOf('ws')).toEqual({ state: 'end-observed', saved: 3 })
   })
 
+  // #290: raw TCP gets a close of its own (tcp_end) and is judged as a
+  // WebSocket is, by the messages it numbered.
+  it('judges a raw TCP stream by messages and its own close', () => {
+    for (let n = 1; n <= 2; n++) row(`t${n}`, 1000 + n, 'tcp_message', { flow_id: 'tcp', message_count: n })
+    row('t2-retry', 1002, 'tcp_message', { flow_id: 'tcp', message_count: 2 })
+    expect(completionOf('tcp')).toEqual({ state: 'completion-unknown', saved: 2, closed: false })
+    row('end', 1010, 'tcp_end', { flow_id: 'tcp', streamed: true, stream_state: 'ended', message_count_observed: 3, stream_not_queued_bytes: 0, truncated: false })
+    expect(completionOf('tcp')).toEqual({ state: 'known-partial', saved: 2, observed: 3, missing: 1 })
+  })
+
+  it('reads a TCP connection reset as interrupted', () => {
+    row('t1', 1001, 'tcp_message', { flow_id: 'tcp', message_count: 1 })
+    row('end', 1010, 'tcp_end', { flow_id: 'tcp', streamed: true, stream_state: 'interrupted', error: 'connection reset', message_count_observed: 1, stream_not_queued_bytes: 0, truncated: false })
+    expect(completionOf('tcp')).toEqual({ state: 'known-partial', saved: 1 })
+  })
+
   it('takes the newest close when a flow has more than one', () => {
     row('c1', 1001, 'http_response_chunk', { flow_id: 'sse', seq: 1, streamed: true })
     row('resp', 1003, 'http_response', { flow_id: 'sse', streamed: true, stream_state: 'ended', stream_chunks_observed: 1 })
@@ -63,8 +79,8 @@ describe('stream segments a flow kept', () => {
 
   it('reads through the stream index, not a scan of every scanner row', () => {
     const plan = getDB().prepare(`EXPLAIN QUERY PLAN SELECT COUNT(*) FROM events_logged
-      WHERE agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error')
+      WHERE agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error', 'tcp_message', 'tcp_end')
         AND json_extract(data, '$.flow_id') = ?`).all('sse') as Array<{ detail: string }>
-    expect(plan.map(step => step.detail).join(' ')).toContain('idx_events_logged_stream_flow')
+    expect(plan.map(step => step.detail).join(' ')).toContain('idx_events_logged_stream_flows')
   })
 })

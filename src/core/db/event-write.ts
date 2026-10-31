@@ -54,6 +54,7 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   'scanner:ws_message',
   'scanner:websocket_end',
   'scanner:tcp_message',
+  'scanner:tcp_end',
   'scanner:cookie_change',
   // CDP browser console. `browser_launched` + top-level navigation stay
   // CHAINED — they're session-genesis rows.

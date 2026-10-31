@@ -527,6 +527,18 @@ def _next_message_seq(flow, key: str, messages: list) -> int:
     return seq
 
 
+def _tcp_peer(flow) -> tuple[str, int]:
+    """The server end of a TCP flow as (host, port); ("", 0) when unknown."""
+    try:
+        addr = flow.server_conn.peername or flow.server_conn.address
+        if addr:
+            return (addr[0] if isinstance(addr, tuple) else str(addr),
+                    addr[1] if isinstance(addr, tuple) and len(addr) > 1 else 0)
+    except Exception:
+        pass
+    return "", 0
+
+
 def _is_text_content(content_type: str) -> bool:
     ct = content_type.lower()
     return any(t in ct for t in TEXT_CONTENT_TYPES)
@@ -1599,16 +1611,7 @@ class RedLogAddon:
         direction = "client" if msg.from_client else "server"
         content = msg.content
         raw_size = len(content) if content else 0
-
-        target = ""
-        port = 0
-        try:
-            addr = flow.server_conn.peername or flow.server_conn.address
-            if addr:
-                target = addr[0] if isinstance(addr, tuple) else str(addr)
-                port = addr[1] if isinstance(addr, tuple) and len(addr) > 1 else 0
-        except Exception:
-            pass
+        target, port = _tcp_peer(flow)
 
         tcp_body = None
         tcp_preview = ""
@@ -1654,11 +1657,41 @@ class RedLogAddon:
             "target_id": target,
         }
         payload["_identity"] = flow.metadata.get("redlog_identity", {})
-        _send_to_redlog(payload)
+        if tcp_body and tcp_body.get("truncated"):
+            flow.metadata["redlog_tcp_truncated"] = True
+        if not _send_to_redlog(payload):
+            flow.metadata["redlog_tcp_not_queued_bytes"] = flow.metadata.get("redlog_tcp_not_queued_bytes", 0) + raw_size
 
         if VERBOSE:
             arrow = "▲" if msg.from_client else "▼"
             ctx.log.info(f"[redlog] TCP {arrow} {target}:{port} ({raw_size}B, #{seq})")
+
+    def tcp_end(self, flow: tcp.TCPFlow):
+        # A reset reaches mitmproxy as a close; the connection keeps the error.
+        error = getattr(flow.server_conn, "error", None) or getattr(flow.client_conn, "error", None)
+        self._tcp_close(flow, error)
+
+    def tcp_error(self, flow: tcp.TCPFlow):
+        self._tcp_close(flow, getattr(flow.error, "msg", None) or "error")
+
+    def _tcp_close(self, flow: tcp.TCPFlow, error):
+        """The close of a raw TCP stream, as websocket_end is for WebSocket
+        (#290): what the addon observed, never what RedLog saved, so delivery
+        stays unknown. Once per flow, so a tcp_end after tcp_error cannot turn
+        a failed connection into a normal close."""
+        if flow.metadata.get("redlog_tcp_closed"):
+            return
+        flow.metadata["redlog_tcp_closed"] = True
+        target, port = _tcp_peer(flow)
+        data = {"subtype": "tcp_end", "flow_id": flow.id, "host": target, "port": port, "streamed": True,
+                "stream_state": "interrupted" if error else "ended",
+                "message_count_observed": flow.metadata.get("redlog_tcp_seq", 0),
+                "stream_not_queued_bytes": flow.metadata.get("redlog_tcp_not_queued_bytes", 0),
+                "truncated": flow.metadata.get("redlog_tcp_truncated", False), "capture_delivery": "unknown"}
+        if error:
+            data["error"] = str(error)
+        _send_to_redlog({"agent_type": "scanner", "_identity": flow.metadata.get("redlog_identity", {}),
+                         "target_id": target, "data": data})
 
     # ─── TLS ClientHello capture (JA3 fingerprint) ────────────────────────
 

@@ -9,7 +9,7 @@ source = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='
 wanted = {'websocket_message', 'websocket_end', 'tcp_start', 'tcp_message'}
 cls = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == 'RedLogAddon')
 cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
-helpers = [n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in ('_capture_body', '_is_text_content', '_truncate', '_next_message_seq')]
+helpers = [n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in ('_capture_body', '_is_text_content', '_truncate', '_next_message_seq', '_tcp_peer')]
 constants = [n for n in source.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'TEXT_CONTENT_TYPES' for t in n.targets)]
 rows = []
 stub = types.SimpleNamespace(HTTPFlow=object, TCPFlow=object)

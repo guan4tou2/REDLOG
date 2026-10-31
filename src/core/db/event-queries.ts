@@ -996,18 +996,18 @@ export function queryByFlowId(flowId: string): RedLogEvent[] {
  *  partial indexes' own (see db/index.ts). */
 export function queryStreamSegments(flowId: string): StreamSegments {
   const db = getReadonlyDB()
-  const STREAM = `agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error')
+  const STREAM = `agent_type = 'scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error', 'tcp_message', 'tcp_end')
     AND json_extract(data, '$.flow_id') = ?`
   const HTTP = `agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')
     AND json_extract(data, '$.flow_id') = ?`
   const counts = db.prepare(`SELECT
       COUNT(DISTINCT CASE WHEN subtype = 'http_response_chunk' THEN json_extract(data, '$.seq') END) AS chunks,
-      COUNT(DISTINCT CASE WHEN subtype = 'ws_message' THEN COALESCE(json_extract(data, '$.message_count'), id) END) AS messages
+      COUNT(DISTINCT CASE WHEN subtype IN ('ws_message', 'tcp_message') THEN COALESCE(json_extract(data, '$.message_count'), id) END) AS messages
     FROM events_logged WHERE ${STREAM}`).get(flowId) as { chunks: number; messages: number }
   const newest = (where: string, closing: string) => db.prepare(`SELECT data, timestamp FROM events_logged
     WHERE ${where} AND subtype IN (${closing}) AND json_extract(data, '$.streamed') = 1
     ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get(flowId) as { data: string; timestamp: number } | undefined
-  const closes = [newest(STREAM, `'websocket_end', 'http_error'`), newest(HTTP, `'http_response'`)]
+  const closes = [newest(STREAM, `'websocket_end', 'http_error', 'tcp_end'`), newest(HTTP, `'http_response'`)]
     .filter((row): row is { data: string; timestamp: number } => !!row)
     .sort((a, b) => b.timestamp - a.timestamp)
   let terminal: Record<string, unknown> | null = null
