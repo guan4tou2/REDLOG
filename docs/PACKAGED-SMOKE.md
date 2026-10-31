@@ -59,8 +59,8 @@ where CI's pip resolves 11.x.
   was recorded. Three later runs passed, one with an extra status read showing
   `running` and `certReady`, two unmodified. The reason for the failure was not
   captured, because the assertion did not print `error`; it does now. The
-  readiness limit is 30 seconds, so a cold first start of mitmproxy 12 is the
-  leading guess. It is not confirmed.
+  cause turned out to be a port collision with a concurrent Windows run (see
+  the follow-up below).
 - `packaged-session-smoke`, `packaged-command-integrity`, `packaged-nc-upgrade`,
   `http-body-search`, `filtered-export` and `first-run`: 19 passed.
 - [linux-install-smoke run 41179031359](https://github.com/guan4tou2/REDLOG/actions/runs/41179031359)
@@ -130,14 +130,33 @@ Excluding them from the package would raise that limit. The default folder
 - `dpkg -r` then `dpkg -P` removed the binary, the link, the desktop entry
   and the package record.
 
-**The managed-proxy start failure did not recur.** On Kali, after the WSL
-page cache was dropped:
+**The managed-proxy start failure was a port collision from the test run, not
+a cold start.** A cold start was ruled out on Kali, after the WSL page cache
+was dropped:
 - the first `mitmdump --version` took 7.4 s, against the 30 s readiness limit;
 - `packaged-smoke` passed four more cold runs.
 
-Counting the installed run above, that makes it one failure in nine runs, with
-the cause unknown. The spec now
-prints the proxy's `error` if it happens again.
+The timeline gave the real cause:
+- When the Kali run failed, Windows was running `http-body-search`,
+  `first-run` and `filtered-export` in the background against the Windows
+  build.
+- Those specs open a project, and opening a project starts the managed proxy
+  on `127.0.0.1:6661`.
+- This WSL uses mirrored networking, so the distro shares the Windows
+  loopback. Kali's mitmdump could not bind the port Windows already held.
+- Every Kali run that passed ran after the Windows runs had finished.
+
+Reproduced on purpose: a Windows listener on `127.0.0.1:6661` and the same Kali
+run gave `state: 'failed'` again, with terminal capture intact. This time the
+spec printed the reason: "127.0.0.1:6661 is already in use. Change the HTTP
+capture port in Settings → Browser, or stop what is using it."
+
+So the product behaved as designed: it refused the port it could not have and
+said why. Two consequences:
+- Under mirrored networking, a Windows RedLog and a WSL-native RedLog open at
+  the same time compete for one port. The second one has to move its HTTP
+  capture port.
+- Packaged runs on Windows and in a mirrored WSL distro must not overlap.
 
 ## v0.18.2 distribution policy
 
