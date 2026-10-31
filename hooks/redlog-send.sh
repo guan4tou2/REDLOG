@@ -45,7 +45,8 @@ _resolve_redlog_dir() {
     # appendWindowsPath=false leaves cmd.exe off PATH (see shell-common.sh).
     local win_profile win_cmd
     win_cmd=$(command -v cmd.exe) || win_cmd=$(wslpath -u 'C:\Windows\System32\cmd.exe' 2>/dev/null)
-    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+    # </dev/null: interop would hand the caller's stdin to cmd.exe (see shell-common.sh).
+    win_profile=$("${win_cmd:-cmd.exe}" /c 'echo %USERPROFILE%' </dev/null 2>/dev/null | tr -d '\r')
     if [[ -n "$win_profile" ]]; then
       local wsl_path
       wsl_path=$(wslpath "$win_profile" 2>/dev/null)

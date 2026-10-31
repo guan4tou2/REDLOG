@@ -37,7 +37,7 @@ fi
 
 # 2. Token path resolution
 step "Token Path Resolution"
-WIN_PROFILE=$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+WIN_PROFILE=$(cmd.exe /c 'echo %USERPROFILE%' </dev/null 2>/dev/null | tr -d '\r')
 if [[ -n "$WIN_PROFILE" ]]; then
   ok "Windows USERPROFILE: $WIN_PROFILE"
   WSL_PROFILE=$(wslpath "$WIN_PROFILE" 2>/dev/null)

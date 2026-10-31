@@ -76,5 +76,36 @@ suite('WSL shell directory selection', () => {
         } finally { await native.close(); await windows.close() }
       }, 15_000)
     }
+
+    // WSL interop hands the shell's stdin to cmd.exe. The common adapter asks
+    // cmd.exe for %USERPROFILE% while the hook is being sourced, so a script
+    // piped into an interactive shell lost every line to it, and the bash
+    // step of the packaged smoke recorded nothing. The stub reads stdin dry,
+    // as interop would.
+    it(`${entry}: leaves the shell's own stdin to the shell`, async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-wsl-stdin-'))
+      temporary.push(root)
+      const home = path.join(root, 'native-home'), winHome = path.join(root, 'windows-home'), bin = path.join(root, 'bin')
+      fs.mkdirSync(bin)
+      fs.mkdirSync(path.join(winHome, '.redlog'), { recursive: true })
+      fs.writeFileSync(path.join(winHome, '.redlog', 'api-token'), 'windows-token')
+      fs.writeFileSync(path.join(winHome, '.redlog', 'api-port'), '1')
+      fs.writeFileSync(path.join(bin, 'cmd.exe'), `#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' ${quote(winHome)}\n`, { mode: 0o755 })
+      fs.writeFileSync(path.join(bin, 'wslpath'), `#!/bin/sh\nprintf '%s\\n' "$1"\n`, { mode: 0o755 })
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, WSL_DISTRO_NAME: 'test-kali', REDLOG_SHELL: 'bash' }
+      delete env._REDLOG_DIR; delete env._REDLOG_HOST; delete env.REDLOG_EXTERNAL_SESSION
+      const script = entry === 'common'
+        ? `source ${quote(path.resolve('hooks/shell-common.sh'))}; _redlog_resolve_dir; IFS= read -r line; echo "kept=$line"`
+        : `source ${quote(path.resolve('hooks/redlog-send.sh'))} wsl-stdin-probe command_start; wait; IFS= read -r line; echo "kept=$line"`
+      let output = ''
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('bash', ['--norc', '-c', script], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+        child.stdout.on('data', d => { output += d }); child.stderr.on('data', d => { output += d })
+        const timer = setTimeout(() => { child.kill(); reject(new Error('stdin probe exceeded 10s')) }, 10_000)
+        child.on('error', reject); child.on('close', () => { clearTimeout(timer); resolve() })
+        child.stdin.end('echo wsl-canary\n')
+      })
+      expect(output).toContain('kept=echo wsl-canary')
+    }, 15_000)
   }
 })

@@ -69,6 +69,30 @@ where CI's pip resolves 11.x.
 **macOS.** Not run; no macOS host this round. The DMG and ZIP hashes above
 come from `SHA256SUMS.txt` only.
 
+**The bash hook inside WSL, mirrored and NAT.** `packaged-smoke` with
+`REDLOG_PACKAGED_WSL_DISTRO=kali-linux`, against the unpacked Windows build:
+
+- Under mirrored networking the step failed: `echo wsl-canary` and
+  `ls /nonexistent-path-zz` were never recorded. Sourcing the hook runs
+  `cmd.exe /c 'echo %USERPROFILE%'` to find the Windows profile, WSL interop
+  hands that `cmd.exe` the shell's stdin, and it read the piped script dry;
+  only `exit` reached bash. At a real terminal this needs input typed ahead of
+  the prompt; anything piped into an interactive bash hits it every time.
+  Fixed by giving each of those `cmd.exe` calls `</dev/null`.
+- The fixed `shell-common.sh` and `redlog-send.sh` copied over the build's own:
+  the WSL step passed under mirrored. That run then failed at the managed
+  proxy, which reported `127.0.0.1:6661` already held by another session's
+  mitmdump; nothing to do with the hook.
+- Then `networkingMode=nat` and `wsl --shutdown` (default gateway
+  `172.24.240.1`), with mitmdump left off `PATH`: the whole smoke passed, with
+  exit 0 for the canary and 2 for the `ls`.
+- Under NAT the API is not reachable from WSL at all. A probe listener on the
+  Windows loopback answered neither on `127.0.0.1` nor on the gateway, as
+  expected for an API bound to `127.0.0.1`. The events arrived through the
+  spool: the hook writes them to `.redlog/pending` in the Windows profile and
+  the app replays that every 30 seconds. So NAT captures, but late, and a
+  20-second poll in the smoke can lose that race.
+
 **Not covered by any of the above:**
 - installing through the NSIS UI or `dpkg -i` on a desktop;
 - SmartScreen and Gatekeeper;
