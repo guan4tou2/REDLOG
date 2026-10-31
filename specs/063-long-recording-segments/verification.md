@@ -98,7 +98,11 @@ WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`�
 - 239 次 resize：cast 有 239 個 `r` frame。
 - cast 5,029,600 B，單一 part；bytes 與 SHA-256 均等於 `session_end` 宣稱值。
 - 1,792 筆 `command_end`；chain verify 通過（3,595 筆 event）。
-- 記憶體：session 期間 App RSS 由 752（第 6 分鐘）緩升至 803 MiB（第 59 分鐘），約 +51 MiB、每分鐘約 1 MiB，未見平台。該次以 `exit` 後、spec 自己三次讀入全部 shell event 之後的 961 MiB 判定（+208.9）而失敗；那是檢查本身的花費，已改為在 session 結束、讀回前判定，讀回後的值另列。**此修正未以 60 分鐘重跑確認**；session 期間的緩升是否在更長時間後收斂，仍未驗證。
+- 記憶體：session 期間 App RSS 由 752（第 6 分鐘）緩升至 803 MiB（第 59 分鐘），約 +51 MiB、每分鐘約 1 MiB，未見平台。該次以 `exit` 後、spec 自己三次讀入全部 shell event 之後的 961 MiB 判定（+208.9）而失敗；那是檢查本身的花費，已改為在 session 結束、讀回前判定，讀回後的值另列。
+
+修正後重跑（本機 commit `5558f3ff`，產品碼 `main@5e2533b8`，spec 與本 PR 相同；2026-10-31 14:10:15Z → 15:10:21Z），**PASS**：同樣 1,792 指令／35,840 行全數依序、無重；239／239 resize frame；cast 5,029,868 B 與 `session_end` 的 bytes／SHA-256 一致；1,792 筆 `command_end`；chain verify 通過。App RSS warm 753.7 → session 結束 803.4 MiB（+49.6，預算 64 內），讀回後 948.4 MiB。
+
+**但曲線沒有平台**：兩次 60 分鐘都是約每分鐘 +1 MiB 的穩定上升（第 6 分鐘 754 → 第 59 分鐘 803）。照此斜率，約 70 分鐘會超過 64 MiB 預算；增長來源（renderer 的 xterm scrollback、Timeline 的 live event 或其他）未查。這是通過 60 分鐘的預算，不是有界的證明。
 
 前兩次 60／30 分鐘 PTY 執行在第 13／2 分鐘中止，原因是同機另一工作階段對 WSL 執行 `wsl --shutdown`（模式切換驗收），不是 App 行為；同一時段 Windows 上 WSL 驅動的 zsh 單元測試也因此失敗，事後重跑通過。
 
@@ -106,7 +110,7 @@ WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`�
 
 - Pause／Resume、App 重啟（未殺 producer）、高負載、隔離 volume 容量逼近上限在長時間下的組合；本輪只做 producer 硬殺與 App 重啟。
 - mitmdump 硬殺時未送出的已排隊 event 仍會遺失，無記錄（#291）。
-- PTY 記憶體緩升未查原因；兩小時以上 PTY 未跑。
+- PTY 的 App 記憶體每分鐘約 +1 MiB、未見平台，原因未查；兩小時以上 PTY 未跑，照斜率會超過 64 MiB 預算。
 - 原生 Windows PTY（PowerShell）、macOS、installer 版本均未跑此 soak。CI 的 e2e 使用 mitmproxy 11.0.2，本機為 12.2.3。
 
 T005 仍不勾。
