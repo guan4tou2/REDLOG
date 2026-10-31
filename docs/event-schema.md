@@ -221,6 +221,12 @@ The `timing` object:
 
 Each WebSocket frame is a separate event. Binary payloads use base64 encoding.
 
+`message_count` is the message's own sequence number in its flow, 1, 2, 3…,
+counted by the addon across both directions. It is not the length of
+mitmproxy's message list: once a message has been sent here the addon lets
+mitmproxy drop the ones before it, so an hours-long stream does not hold every
+message in memory (#290). `tcp_message` numbers its messages the same way.
+
 #### TCP subtype
 
 | Subtype | When | Key fields |

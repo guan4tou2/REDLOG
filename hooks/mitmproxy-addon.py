@@ -513,6 +513,20 @@ def _truncate(s: str, max_len: int) -> str:
     return s[:max_len] + f"...[truncated, {len(s)} total]"
 
 
+def _next_message_seq(flow, key: str, messages: list) -> int:
+    """Number the newest WebSocket/TCP message and let mitmproxy forget the
+    ones before it (#290). mitmproxy appends every relayed message to the flow
+    and drops none, so an hours-long stream held all of them in memory; each
+    one has already been sent here when its hook ran. The newest stays, since
+    mitmproxy's own dumper and any other addon read it as messages[-1]. The
+    sequence is per flow and counts every message once, so it no longer comes
+    from the list's length."""
+    seq = flow.metadata.get(key, 0) + 1
+    flow.metadata[key] = seq
+    del messages[:-1]
+    return seq
+
+
 def _is_text_content(content_type: str) -> bool:
     ct = content_type.lower()
     return any(t in ct for t in TEXT_CONTENT_TYPES)
@@ -1494,6 +1508,7 @@ class RedLogAddon:
     def websocket_message(self, flow: http.HTTPFlow):
         assert flow.websocket is not None
         msg = flow.websocket.messages[-1]
+        seq = _next_message_seq(flow, "redlog_ws_seq", flow.websocket.messages)
 
         url = flow.request.pretty_url
         parsed = urlparse(url)
@@ -1520,7 +1535,7 @@ class RedLogAddon:
             "direction": direction,
             "message_type": "text" if is_text else "binary",
             "size": raw_size,
-            "message_count": len(flow.websocket.messages),
+            "message_count": seq,
         }
 
         client_addr = _client_addr(flow)
@@ -1554,7 +1569,7 @@ class RedLogAddon:
             ctx.log.info(
                 f"[redlog] WS {arrow} {url} "
                 f"({raw_size}B {'text' if is_text else 'bin'}, "
-                f"#{len(flow.websocket.messages)})"
+                f"#{seq})"
             )
 
     def websocket_end(self, flow: http.HTTPFlow):
@@ -1566,7 +1581,7 @@ class RedLogAddon:
             "target_id": urlparse(flow.request.pretty_url).hostname or "",
             "data": {"subtype": "websocket_end", "flow_id": flow.id, "url": flow.request.pretty_url,
                      "streamed": True, "stream_state": "ended" if code in (1000, 1001) else "interrupted",
-                     "close_code": code, "message_count_observed": len(flow.websocket.messages),
+                     "close_code": code, "message_count_observed": flow.metadata.get("redlog_ws_seq", 0),
                      "stream_not_queued_bytes": flow.metadata.get("redlog_ws_not_queued_bytes", 0),
                      "truncated": flow.metadata.get("redlog_ws_truncated", False), "capture_delivery": "unknown"}
         })
@@ -1580,6 +1595,7 @@ class RedLogAddon:
 
     def tcp_message(self, flow: tcp.TCPFlow):
         msg = flow.messages[-1]
+        seq = _next_message_seq(flow, "redlog_tcp_seq", flow.messages)
         direction = "client" if msg.from_client else "server"
         content = msg.content
         raw_size = len(content) if content else 0
@@ -1610,7 +1626,7 @@ class RedLogAddon:
             "size": raw_size,
             "host": target,
             "port": port,
-            "message_count": len(flow.messages),
+            "message_count": seq,
         }
 
         client_addr = _client_addr(flow)
@@ -1642,7 +1658,7 @@ class RedLogAddon:
 
         if VERBOSE:
             arrow = "▲" if msg.from_client else "▼"
-            ctx.log.info(f"[redlog] TCP {arrow} {target}:{port} ({raw_size}B, #{len(flow.messages)})")
+            ctx.log.info(f"[redlog] TCP {arrow} {target}:{port} ({raw_size}B, #{seq})")
 
     # ─── TLS ClientHello capture (JA3 fingerprint) ────────────────────────
 
