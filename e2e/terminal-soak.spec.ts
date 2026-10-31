@@ -53,6 +53,16 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
   const save = (): void => fs.writeFileSync(out, JSON.stringify(result, null, 2))
 
   const { app, page, tmpHome } = await launchWithTempHome(process.env.REDLOG_PACKAGED_APP)
+  // A soak that dies part way must say how: the App's last output and what
+  // happened to the window, not only the next call's "page closed".
+  const lifecycle: string[] = []
+  const tail: string[] = []
+  const keep = (line: string): void => { tail.push(line); if (tail.length > 80) tail.shift() }
+  app.process().stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(keep))
+  app.process().stderr?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(l => keep(`[err] ${l}`)))
+  app.process().on('exit', (code, signal) => lifecycle.push(`${new Date().toISOString()} app exit code=${code} signal=${signal}`))
+  page.on('crash', () => lifecycle.push(`${new Date().toISOString()} renderer crashed`))
+  page.on('close', () => lifecycle.push(`${new Date().toISOString()} page closed`))
   try {
     fs.writeFileSync(path.join(tmpHome, '.zshrc'), '# Isolated terminal soak shell\n')
     result.shell = await page.evaluate(async () => {
@@ -149,6 +159,7 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
     result.error = (e as Error).message.split('\n').slice(0, 5).join(' | ')
+    Object.assign(result, { lifecycle, appOutputTail: tail })
     save()
     throw e
   } finally {
