@@ -1667,8 +1667,11 @@ class RedLogAddon:
             ctx.log.info(f"[redlog] TCP {arrow} {target}:{port} ({raw_size}B, #{seq})")
 
     def tcp_end(self, flow: tcp.TCPFlow):
-        # A reset reaches mitmproxy as a close; the connection keeps the error.
-        error = getattr(flow.server_conn, "error", None) or getattr(flow.client_conn, "error", None)
+        # A close with an error on either connection is an interruption. Seen
+        # with mitmproxy 12.2.3: a peer's RST arrives as an ordinary close with
+        # no error, so "ended" for TCP means the connection closed, cause
+        # unknown (e2e/tcp-lifecycle.spec.ts).
+        error =getattr(flow.server_conn, "error", None) or getattr(flow.client_conn, "error", None)
         self._tcp_close(flow, error)
 
     def tcp_error(self, flow: tcp.TCPFlow):
