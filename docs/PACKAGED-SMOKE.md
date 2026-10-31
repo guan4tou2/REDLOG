@@ -59,8 +59,8 @@ where CI's pip resolves 11.x.
   was recorded. Three later runs passed, one with an extra status read showing
   `running` and `certReady`, two unmodified. The reason for the failure was not
   captured, because the assertion did not print `error`; it does now. The
-  readiness limit is 30 seconds, so a cold first start of mitmproxy 12 is the
-  leading guess. It is not confirmed.
+  cause turned out to be a port collision with a concurrent Windows run (see
+  the follow-up below).
 - `packaged-session-smoke`, `packaged-command-integrity`, `packaged-nc-upgrade`,
   `http-body-search`, `filtered-export` and `first-run`: 19 passed.
 - [linux-install-smoke run 41179031359](https://github.com/guan4tou2/REDLOG/actions/runs/41179031359)
@@ -75,6 +75,88 @@ come from `SHA256SUMS.txt` only.
 - updating from v0.18.4 through electron-updater;
 - a native Kali desktop;
 - WSL NAT networking.
+
+### Follow-up the same day: real installs
+
+The first item above was then done on the operator's machines; the rest still
+stand.
+
+**Windows, upgrade from v0.18.4.** Both published installers were checked
+against their release's `SHA256SUMS.txt`. Steps:
+1. `RedLog.Setup.0.18.4.exe /S` installed to the default
+   `%LOCALAPPDATA%\Programs\RedLog`.
+2. `RedLog.Setup.0.18.5.exe /S` upgraded it in place to 0.18.5.
+3. The installed `RedLog.exe` ran `packaged-smoke`, `http-body-search`,
+   `first-run` and `filtered-export`: 17 passed.
+4. `Uninstall RedLog.exe /S` removed the folder, both registry keys and both
+   shortcuts. The PowerShell profile was unchanged, and no `~/.redlog` was
+   created in the real profile.
+
+What it leaves:
+- `%LOCALAPPDATA%\redlog-updater\installer.exe`. This is electron-builder's
+  installer copy for differential updates, and uninstall does not touch it.
+- The in-app updater does not offer this build to v0.18.4. It runs on Windows
+  only and leaves `allowPrerelease` at its default, so it only reads the Latest
+  release, v0.18.3. Testers upgrade by running the new installer, as
+  `INTERNAL-TESTING.md` says.
+
+**An install folder deeper than about 120 characters cannot be upgraded.** The
+first attempt installed under the session's scratch directory (135
+characters). The v0.18.5 upgrade then stopped on a dialog even under `/S`:
+"無法俺安裝舊的應用程式檔案。請嘗試再次執行安裝程式。: 2". The garbled
+「俺安裝」 is electron-builder's own zh-TW string.
+
+How it fails:
+- On an upgrade, the old uninstaller renames every file into
+  `$PLUGINSDIR\old-install`.
+- NSIS `Rename` is limited to `MAX_PATH`.
+- The deepest packaged files are 139 characters below the install root, so
+  the rename fails and the uninstaller aborts with code 2.
+- A plain uninstall from that folder leaves exactly those four files behind.
+
+The four files are MSBuild leftovers that serve no purpose at runtime:
+- `better-sqlite3/build/Release/obj/**/*.lastbuildstate`
+- `node-pty/.../winpty/src/Release/obj/**/*.tlog`
+
+Excluding them from the package would raise that limit. The default folder
+(43 characters) is far below it.
+
+**Kali, under WSL2.** `sudo dpkg -i redlog_0.18.5_amd64.deb` on kali-linux:
+- The install linked `/usr/bin/redlog` and installed the desktop entry.
+- `chrome-sandbox` was left `0755`, because user namespaces work there.
+- The installed `/opt/RedLog/redlog` ran without `ELECTRON_DISABLE_SANDBOX`.
+  Every Linux packaged spec, plus search, filtered export and first-run:
+  20 passed.
+- `dpkg -r` then `dpkg -P` removed the binary, the link, the desktop entry
+  and the package record.
+
+**The managed-proxy start failure was a port collision from the test run, not
+a cold start.** A cold start was ruled out on Kali, after the WSL page cache
+was dropped:
+- the first `mitmdump --version` took 7.4 s, against the 30 s readiness limit;
+- `packaged-smoke` passed four more cold runs.
+
+The timeline gave the real cause:
+- When the Kali run failed, Windows was running `http-body-search`,
+  `first-run` and `filtered-export` in the background against the Windows
+  build.
+- Those specs open a project, and opening a project starts the managed proxy
+  on `127.0.0.1:6661`.
+- This WSL uses mirrored networking, so the distro shares the Windows
+  loopback. Kali's mitmdump could not bind the port Windows already held.
+- Every Kali run that passed ran after the Windows runs had finished.
+
+Reproduced on purpose: a Windows listener on `127.0.0.1:6661` and the same Kali
+run gave `state: 'failed'` again, with terminal capture intact. This time the
+spec printed the reason: "127.0.0.1:6661 is already in use. Change the HTTP
+capture port in Settings → Browser, or stop what is using it."
+
+So the product behaved as designed: it refused the port it could not have and
+said why. Two consequences:
+- Under mirrored networking, a Windows RedLog and a WSL-native RedLog open at
+  the same time compete for one port. The second one has to move its HTTP
+  capture port.
+- Packaged runs on Windows and in a mirrored WSL distro must not overlap.
 
 ## v0.18.2 distribution policy
 
