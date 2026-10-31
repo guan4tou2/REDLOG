@@ -27,7 +27,10 @@ const shells = ['pwsh', 'powershell'].filter(
 interface Recorded { command: string; exit_code?: number }
 
 async function runInteractive(exe: string, home: string, commands: string[]): Promise<Recorded[]> {
-  const child = spawn(exe, ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `. '${HOOK}'`], {
+  // With stdin piped, PSReadLine's ReadLine fails after every prompt and adds
+  // an error no command made. A real console has no such error, and the hook
+  // reads `$Error` to tell a failed cmdlet from a repeated native code.
+  const child = spawn(exe, ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `Remove-Module PSReadLine -ErrorAction SilentlyContinue; . '${HOOK}'`], {
     env: { ...process.env, USERPROFILE: home, HOME: home },
     stdio: ['pipe', 'pipe', 'pipe']
   })
@@ -112,6 +115,26 @@ describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('th
     expect(byCommand.get(native)).toBe(5)
     expect(byCommand.get('Write-Output after')).toBe(0)
   }, 60_000)
+
+  it('does not carry a native code onto a later failing cmdlet', async () => {
+    // A failing cmdlet sets `$?` but leaves `$LASTEXITCODE` alone, so after
+    // `exit 3` a failed Get-Item was recorded as 3. Found by the packaged
+    // PowerShell matrix on v0.18.5, in both editions.
+    const native = (n: string): string => `& ${ps} -NoProfile -Command "exit 3" # ${n}`
+    const commands = [native('a'), 'Get-Item C:\\redlog-missing-a', native('b'), native('c'), 'Get-Item C:\\redlog-missing-b', 'Write-Output ok']
+    const recorded = await runInteractive(ps, home, [...commands, 'exit'])
+    expect(recorded.filter((r) => commands.includes(r.command)).map((r) => [r.command, r.exit_code])).toEqual([
+      [native('a'), 3],
+      ['Get-Item C:\\redlog-missing-a', 1],
+      // The same native code twice running is still that code: an unchanged
+      // `$LASTEXITCODE` means a failed cmdlet only when it left a new error.
+      [native('b'), 3],
+      [native('c'), 3],
+      ['Get-Item C:\\redlog-missing-b', 1],
+      ['Write-Output ok', 0]
+    ])
+  }, 60_000)
+
   it('stamps start and end with when they happened, not when the prompt drew', async () => {
     const before = Date.now()
     await runInteractive(ps, home, ['Start-Sleep -Seconds 2', 'exit'])

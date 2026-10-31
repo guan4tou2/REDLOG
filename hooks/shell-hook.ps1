@@ -153,6 +153,11 @@ if (-not $script:_RedLogOriginalPrompt) {
     $script:_RedLogOriginalPrompt = (Get-Item function:prompt).ScriptBlock
 }
 
+# What the previous prompt saw, so the next one can tell whether its command
+# set `$LASTEXITCODE` or only inherited it.
+$script:_RedLogPrevExit  = $global:LASTEXITCODE
+$script:_RedLogPrevError = if ($global:Error.Count) { $global:Error[0] } else { $null }
+
 function prompt {
     # `$?` first: it reports only the previous statement, so any statement
     # before it — even `$lastExit = $LASTEXITCODE` — makes it true and every
@@ -160,11 +165,20 @@ function prompt {
     $success = $?
     $lastExit = $LASTEXITCODE
 
+    # A failing cmdlet sets `$?` but leaves `$LASTEXITCODE` holding the last
+    # native command's code, so `cmd /c exit 3` and then a failed Get-Item was
+    # recorded as 3. The code is this command's only if it changed since the
+    # previous prompt, or if it did not and the command left no new error (the
+    # same native code twice). `$Error[0]` by reference, not `$Error.Count`,
+    # which stops growing at $MaximumErrorCount.
+    $newError = $global:Error.Count -gt 0 -and -not [object]::ReferenceEquals($global:Error[0], $script:_RedLogPrevError)
+    $nativeExit = $lastExit -and ($lastExit -ne $script:_RedLogPrevExit -or -not $newError)
+
     $entry = Get-History -Count 1 -ErrorAction SilentlyContinue
     if ($entry -and $entry.Id -ne $script:_RedLogLastId) {
         $cmd = $entry.CommandLine
         $duration = [int]($entry.EndExecutionTime - $entry.StartExecutionTime).TotalSeconds
-        $exitCode = if ($success) { 0 } else { if ($lastExit) { $lastExit } else { 1 } }
+        $exitCode = if ($success) { 0 } elseif ($nativeExit) { $lastExit } else { 1 }
 
         # WHEN each thing happened, not when this prompt drew. Both rows are
         # sent here, after the command finished, so without the history's own
@@ -192,7 +206,12 @@ function prompt {
     # Restore LASTEXITCODE so we don't pollute the user's session
     $global:LASTEXITCODE = $lastExit
     # Chain to the original prompt
-    & $script:_RedLogOriginalPrompt
+    $rendered = & $script:_RedLogOriginalPrompt
+    # Taken last: a failed send is caught but still lands in `$Error`, and
+    # must not read as the next command's error.
+    $script:_RedLogPrevExit  = $lastExit
+    $script:_RedLogPrevError = if ($global:Error.Count) { $global:Error[0] } else { $null }
+    $rendered
 }
 
 # v0.6.94 B: Opt-in structured capture wrapper — parity with the bash

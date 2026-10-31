@@ -91,6 +91,7 @@ A green local run is not full coverage. These are skipped by platform:
 | `packaged-session-smoke.spec.ts`, `packaged-command-integrity.spec.ts` | POSIX, Zsh and `REDLOG_PACKAGED_APP` | actual installed package; Linux install CI and macOS acceptance exercise them |
 | `packaged-nc-upgrade.spec.ts` | Linux and `REDLOG_PACKAGED_APP` | traditional netcat and real PTY job control |
 | `packaged-dependency-install.spec.ts` | macOS, installed package and `REDLOG_PACKAGED_INSTALL_DEPS=1` | explicitly downloads and installs public dependencies |
+| `packaged-powershell-matrix.spec.ts` | Windows and `REDLOG_PACKAGED_APP`; `REDLOG_PACKAGED_REAL_PROFILE=1` to go through the operator's real `$PROFILE` | Windows PowerShell 5.1 and PowerShell 7, each through the profile the install wrote; the real-profile mode restores both files byte for byte |
 | `export-preview.spec.ts` (write-permission case) | POSIX | real directory permissions; Windows ACL acceptance is separate |
 
 HUD geometry has no permanently skipped case. Platform skips are prerequisites,
