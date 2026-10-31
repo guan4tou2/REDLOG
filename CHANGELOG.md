@@ -5,6 +5,42 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.5 — 2026-10-31
+
+Prerelease for closed internal testing.
+
+- The capture browser trusts the managed proxy's CA by its key
+  (`--ignore-certificate-errors-spki-list`) in RedLog's own profile, so HTTPS
+  works through it without a root certificate in any trust store (#458).
+- HTTP events that arrive after a project switch stay with the flow's own
+  project: late answers, the TTL sweep's `http_request_dropped`, cookie
+  rotations and DNS answers. A refusal at the switch leaves the old project a
+  `project-switched` gap (#462, #465).
+- A refusal at a full proxy queue leaves a `queue-full` gap with an exact
+  count. A gap that could not be saved shows on the Capture Health card and
+  the Timeline. A gap entirely inside a pause is dropped (#462, #463).
+- A streamed flow's detail says whether its end was observed and every
+  segment saved, which segments were not, or that no end was recorded at all
+  (`completion-unknown`) — a forced kill no longer reads as complete (#469).
+- HAR export keeps stream-only flows in `log._redlog.partialFlows`, counts them
+  in the preview, and fails when a sidecar changed after the preview (#462,
+  #463).
+- The open database refuses a row for another engagement. Work that outlives
+  its project — anchoring and anchor upgrades, the anchor and NTP loops'
+  first ticks, screenshots, the CDP poll, bookmarks, `/api/marker`,
+  `/api/bookmarks`, `/api/sanitize` and scope recompute — no longer writes
+  into the next one (#466, #467, #471).
+- The capture browser closes with the project that launched it, since its
+  profile is that project's; the leave and switch confirmation says so
+  (#471).
+- Git Bash delivers directly instead of through the spool, and WSL finds the
+  Windows app when `appendWindowsPath=false` (#468).
+- A refused export names the check that refused it (`check`) (#468).
+- Search: a filter flipped within 0.3 s of typing is no longer overwritten by
+  the keystroke's pending search (#467).
+- One managed-capture start runs at a time, and a start waits for the
+  previous proxy to release its port (#464).
+
 ## v0.18.4 — 2026-10-28
 
 Prerelease for internal testing.
