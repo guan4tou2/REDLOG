@@ -62,11 +62,27 @@ const forbidden = [
   'plugin-runner.js'
 ]
 
+// MSBuild's intermediate tree (`build/**/obj`) from node-gyp builds. Nothing
+// loads it, and its deepest files sat 139 characters below the install root,
+// which an NSIS upgrade renames through MAX_PATH-bound calls.
+const buildLeftovers = []
+const walk = (dir, underBuild) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const child = path.join(dir, entry.name)
+    if (underBuild && entry.name === 'obj') buildLeftovers.push(path.relative(root, child))
+    else walk(child, underBuild || entry.name === 'build')
+  }
+}
+const unpackedModules = path.join(root, 'app.asar.unpacked', 'node_modules')
+if (fs.existsSync(unpackedModules)) walk(unpackedModules, false)
+
 const missing = required.filter((item) => !fs.existsSync(path.join(root, item)))
 const legacy = forbidden.filter((item) => fs.existsSync(path.join(root, item)))
-if (missing.length || legacy.length) {
+if (missing.length || legacy.length || buildLeftovers.length) {
   if (missing.length) console.error(`Missing packaged resources: ${missing.join(', ')}`)
   if (legacy.length) console.error(`Removed resources still packaged: ${legacy.join(', ')}`)
+  if (buildLeftovers.length) console.error(`Native build intermediates packaged: ${buildLeftovers.join(', ')}`)
   process.exit(1)
 }
 

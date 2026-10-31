@@ -8,6 +8,12 @@ files:
   - "!out/optional-ai/**/*"
   - resources/**/*
   - "!resources/installer.nsh"
+  # MSBuild's intermediate tree from node-gyp builds of node-pty and
+  # better-sqlite3: .tlog, .lastbuildstate and .recipe files nothing loads.
+  # Their deepest paths sit 139 characters below the install root. An NSIS
+  # upgrade renames every file through MAX_PATH-bound calls, so from an install
+  # folder deeper than about 120 characters, the upgrade aborted ("…: 2").
+  - "!**/node_modules/**/build/**/obj/**"
 # Ship the hook scripts alongside the app so the packaged build can point at
 # them when it installs a hook. (The stdio MCP bridge that used to ride along
 # here was removed in 2026-08 — `mcp/` no longer exists and every build was
