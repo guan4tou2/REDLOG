@@ -115,6 +115,10 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
       }
       await page.waitForTimeout(shape.commandMs)
     }
+    // The budget is judged here, at the end of the session: the read-back
+    // below loads every shell row into the renderer, and that is the soak's
+    // own cost, not the App's.
+    const atEnd = await appRss()
     const expectedLines = commands * shape.linesPerCommand
     Object.assign(result, { commands, resizes, expectedLines })
     save()
@@ -135,7 +139,7 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
     const commandEnds = await page.evaluate(async () => (await window.redlog.events.query({ agentType: 'shell', limit: -1 }))
       .filter(e => e.data.subtype === 'command_end' && String(e.data.command).includes('SOAK-')).length)
     const chain = await page.evaluate(() => window.redlog.chain.verify())
-    const final = await appRss()
+    const afterReadBack = await appRss()
     Object.assign(result, {
       endedAt: new Date().toISOString(),
       session: { reason: end.reason, castBytes: end.castBytes, castSha256: end.castSha256, parts: parts.length },
@@ -143,7 +147,12 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
       lines: { seen: seen.length, unique: new Set(seen).size, missing: missing.slice(0, 20), missingCount: missing.length },
       commandEnds,
       chain,
-      memory: { warmMiB: warm === undefined ? null : +(warm / MiB).toFixed(1), finalMiB: +(final / MiB).toFixed(1), growthMiB: warm === undefined ? null : +((final - warm) / MiB).toFixed(1) },
+      memory: {
+        warmMiB: warm === undefined ? null : +(warm / MiB).toFixed(1),
+        atEndMiB: +(atEnd / MiB).toFixed(1),
+        growthMiB: warm === undefined ? null : +((atEnd - warm) / MiB).toFixed(1),
+        afterReadBackMiB: +(afterReadBack / MiB).toFixed(1)
+      },
       samples: samples.length
     })
     save()
