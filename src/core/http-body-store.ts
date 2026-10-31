@@ -25,6 +25,10 @@ export interface BodyRef {
   file: string
   encoding: 'text' | 'base64'
   truncated?: boolean
+  /** The size the producer saw when it cut the body short (`size` is what
+   *  was stored). Absent when nobody reported one: an unknown total stays
+   *  unknown (#290). */
+  totalSize?: number
 }
 
 let _cachedDir: string | null = null
@@ -176,7 +180,10 @@ export function extractBodyToSidecar(
   const ref = storeBody(body)
   if (!ref) return
 
-  if (body.truncated) ref.truncated = true
+  if (body.truncated) {
+    ref.truncated = true
+    if (typeof body.size === 'number' && body.size > ref.size) ref.totalSize = body.size
+  }
 
   data[`${field}_ref`] = ref
   delete data[field]

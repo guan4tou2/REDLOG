@@ -244,6 +244,36 @@ describeDB('http-body-store', () => {
       expect(ref.truncated).toBe(true)
     })
 
+    // #290: the producer caps a body at MAX_BODY and reports the size it saw.
+    // The ref's `size` is what was stored; the total the producer saw must
+    // survive beside it, or a 16 MiB response reads as a 10 MiB one.
+    it('keeps the known total of a truncated body beside the bytes it stored', () => {
+      const stored = 'x'.repeat(5000)
+      const sha256 = crypto.createHash('sha256').update(Buffer.from(stored, 'utf-8')).digest('hex')
+      const data: Record<string, unknown> = {
+        response_body: { data: stored, encoding: 'text', size: 16 * 1024 * 1024, sha256, truncated: true }
+      }
+      store.extractBodyToSidecar(data, 'response_body')
+      const ref = data.response_body_ref as { size: number; totalSize?: number; truncated?: boolean }
+      expect(ref.size).toBe(5000)
+      expect(ref.totalSize).toBe(16 * 1024 * 1024)
+      expect(ref.truncated).toBe(true)
+    })
+
+    it('never invents a total it was not told', () => {
+      const stored = 'x'.repeat(5000)
+      const sha256 = crypto.createHash('sha256').update(Buffer.from(stored, 'utf-8')).digest('hex')
+      for (const body of [
+        { data: stored, encoding: 'text', sha256, truncated: true },
+        { data: stored, encoding: 'text', size: 5000, sha256, truncated: true },
+        { data: stored, encoding: 'text', size: 5000, sha256 }
+      ]) {
+        const data: Record<string, unknown> = { response_body: body }
+        store.extractBodyToSidecar(data, 'response_body')
+        expect((data.response_body_ref as { totalSize?: number }).totalSize).toBeUndefined()
+      }
+    })
+
     it('is a no-op when the field is absent', () => {
       const data: Record<string, unknown> = { other: 'stuff' }
       store.extractBodyToSidecar(data, 'request_body')
