@@ -151,4 +151,16 @@ describe('the export preview shows only what the plan measured', () => {
     expect(panel).toMatch(/Attachments missing/i)
     expect(panel).toMatch(/Attachments unattributed/i)
   })
+
+  // #290: a crash-recovered recording is cut off, not finished, and the
+  // preview says so before the operator hands it over.
+  it('names terminal recordings and commands a crash cut off, and only when there are any', async () => {
+    await draw(plan({ counts: { ...plan().counts, interruptedRecordings: 1, interruptedCommands: 2 } }))
+    const panel = screen.getByRole('dialog').textContent ?? ''
+    expect(panel).toMatch(/Terminal recordings cut off by a crash\s*1/)
+    expect(panel).toMatch(/Commands cut off without a result\s*2/)
+    cleanup()
+    await draw(plan())
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/cut off/)
+  })
 })

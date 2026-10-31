@@ -67,6 +67,8 @@ interface ResolvedExportPlan {
     unsupported: number
     truncatedOutputs?: number
     pauseWindows?: number
+    interruptedRecordings?: number
+    interruptedCommands?: number
     partialHttpFlows?: number
     partialHttpFlowsOutside?: number
   }

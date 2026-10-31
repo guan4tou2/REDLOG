@@ -161,6 +161,55 @@ describe('project recording rotation without killing the pane', () => {
     expect(recoverOrphanSessions()).toBe(0)
   })
 
+  // #290: after a crash the parts already written are the evidence. The
+  // recovered end used to name none of them, so a reader could not tell a
+  // two-part recording from an empty one, and a command left running stayed
+  // open forever. Hashes taken now are marked as taken at recovery: they
+  // prove what is on disk today, not what was written before the crash.
+  it('lists the parts a crashed recording left on disk and closes the commands it left open', () => {
+    const casts = path.join(getProjectDir(), 'casts')
+    fs.mkdirSync(casts, { recursive: true })
+    const castPath = path.join(casts, 'crashed.cast')
+    const header = JSON.stringify({ version: 2, width: 80, height: 24, timestamp: 1 }) + '\n'
+    const first = header + JSON.stringify([0.5, 'o', 'before 中文\r\n']) + '\n'
+    const second = header + JSON.stringify([1.25, 'o', 'after\r\n']) + '\n' + '[1.5, "o", "torn mid-wri'
+    fs.writeFileSync(castPath, first)
+    fs.writeFileSync(path.join(casts, 'crashed.part000002.cast'), second)
+    const start = ingestEvent('shell', { subtype: 'session_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', castPath }, { engagementId: 'A', operatorId: 'operator' })!
+    const open = ingestEvent('shell', { subtype: 'command_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'tail', command: 'tail -f log' }, { engagementId: 'A', operatorId: 'operator' })!
+    ingestEvent('shell', { subtype: 'command_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'done', command: 'id' }, { engagementId: 'A', operatorId: 'operator' })
+    ingestEvent('shell', { subtype: 'command_end', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'done', command: 'id', exit_code: 0 }, { engagementId: 'A', operatorId: 'operator' })
+    configureTerminal({ engagementId: 'A', projectId: 'A', operatorId: 'operator' })
+
+    expect(recoverOrphanSessions()).toBe(1)
+    const end = rows().find(row => row.data.subtype === 'session_end' && row.data.reason === 'recovered-orphan')!.data
+    const sha = (text: string): string => crypto.createHash('sha256').update(text).digest('hex')
+    expect(end).toMatchObject({
+      _causes: [start.id], recovered: true, castSha256: null, castPath,
+      castSegments: [
+        { path: castPath, bytes: Buffer.byteLength(first), sha256: sha(first) },
+        { path: path.join(casts, 'crashed.part000002.cast'), bytes: Buffer.byteLength(second), sha256: sha(second) }
+      ],
+      castBytes: Buffer.byteLength(first) + Buffer.byteLength(second),
+      castSegmentsHashedAt: 'recovery',
+      lastFrameSeconds: 1.25,
+      castTornBytes: Buffer.byteLength('[1.5, "o", "torn mid-wri')
+    })
+    const boundaries = rows().filter(row => row.data.subtype === 'command_boundary')
+    expect(boundaries.map(row => row.data)).toEqual([expect.objectContaining({ command_id: 'tail', reason: 'recovered-orphan', recordingId: 'crashed', _causes: [open.id] })])
+    expect(recoverOrphanSessions()).toBe(0)
+  })
+
+  it('recovers an orphan whose recording never opened without inventing parts', () => {
+    ingestEvent('shell', { subtype: 'session_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'never', castPath: path.join(getProjectDir(), 'casts', 'never.cast') }, { engagementId: 'A', operatorId: 'operator' })
+    configureTerminal({ engagementId: 'A', projectId: 'A', operatorId: 'operator' })
+    expect(recoverOrphanSessions()).toBe(1)
+    const end = rows().find(row => row.data.subtype === 'session_end' && row.data.reason === 'recovered-orphan')!.data
+    expect(end.castSegments).toEqual([])
+    expect(end.castBytes).toBe(0)
+    expect(end.lastFrameSeconds).toBeUndefined()
+  })
+
   it('honors a pane stop for raw cast bytes and preserves that choice across project rotation', () => {
     spawnTerminal('pane', 80, 24)
     const state = readTerminalEnrollment(root, 'pane')!

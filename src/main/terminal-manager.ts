@@ -6,7 +6,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import type { RedLogEvent } from '../core/db/events'
-import { TerminalRecording } from './terminal-recording'
+import { TerminalRecording, type TerminalRecordingSegment } from './terminal-recording'
 import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError, configureBuiltinTerminalHealth } from '../core/capture-health'
@@ -429,6 +429,53 @@ export function configureTerminal(opts: { engagementId: string; projectId: strin
 // tying the recording to the audit chain. Write a synthetic session_end
 // tagged `recovered=true` so operators can distinguish it from a normal
 // close and the chain gets its close signal.
+//
+// #290: the parts already written are the evidence of a crashed recording, so
+// the recovered end lists them, as a normal close does. Their hashes are taken
+// now and say so (`castSegmentsHashedAt: 'recovery'`): they prove what is on
+// disk today, not what was written before the crash, and the aggregate
+// `castSha256` stays null. `lastFrameSeconds` is where the recording stops;
+// `castTornBytes` is a last frame the crash cut mid-write.
+function recoveredCast(castPath: unknown): {
+  castSegments: TerminalRecordingSegment[]; castBytes: number; castSegmentsHashedAt?: 'recovery'; lastFrameSeconds?: number; castTornBytes?: number
+} {
+  const castSegments: TerminalRecordingSegment[] = []
+  if (typeof castPath !== 'string' || !castPath) return { castSegments, castBytes: 0 }
+  const ext = path.extname(castPath)
+  const stem = ext ? castPath.slice(0, -ext.length) : castPath
+  const chunk = Buffer.alloc(1 << 20)
+  for (let n = 1; ; n++) {
+    // Same names TerminalRecording gives its parts: the first keeps castPath.
+    const part = n === 1 ? castPath : `${stem}.part${String(n).padStart(6, '0')}${ext}`
+    let fd: number
+    try { fd = fs.openSync(part, 'r') } catch { break }
+    try {
+      const hash = crypto.createHash('sha256')
+      let bytes = 0
+      for (let read; (read = fs.readSync(fd, chunk, 0, chunk.length, bytes)) > 0; bytes += read) hash.update(chunk.subarray(0, read))
+      castSegments.push({ path: part, bytes, sha256: hash.digest('hex') })
+    } finally { fs.closeSync(fd) }
+  }
+  const castBytes = castSegments.reduce((sum, part) => sum + part.bytes, 0)
+  if (!castSegments.length) return { castSegments, castBytes }
+  const out: ReturnType<typeof recoveredCast> = { castSegments, castBytes, castSegmentsHashedAt: 'recovery' }
+  // The tail of the last part holds the last complete frame and any torn one.
+  const last = castSegments[castSegments.length - 1]
+  const tailBytes = Math.min(last.bytes, chunk.length)
+  const fd = fs.openSync(last.path, 'r')
+  try { fs.readSync(fd, chunk, 0, tailBytes, last.bytes - tailBytes) } finally { fs.closeSync(fd) }
+  const tail = chunk.subarray(0, tailBytes)
+  const end = tail.lastIndexOf(0x0a)
+  if (end < tail.length - 1) out.castTornBytes = tail.length - end - 1
+  if (end >= 0) {
+    try {
+      const frame = JSON.parse(tail.subarray(tail.lastIndexOf(0x0a, end - 1) + 1, end).toString('utf8'))
+      if (Array.isArray(frame) && typeof frame[0] === 'number') out.lastFrameSeconds = frame[0]
+    } catch { /* header only, or a line longer than the tail: no frame time to report */ }
+  }
+  return out
+}
+
 export function recoverOrphanSessions(): number {
   if (!operatorId) return 0
   let recovered = 0
@@ -454,12 +501,39 @@ export function recoverOrphanSessions(): number {
             AND EXISTS (SELECT 1 FROM json_each(e.data, '$._causes') c WHERE c.value = s.id)
         )
     `).all() as Array<{ start_id: string; start_data: string }>
+    // Commands of that recording that neither ended nor were closed at a boundary.
+    const openCommands = db.prepare(`
+      SELECT c.id, json_extract(c.data,'$.command_id') AS command_id
+      FROM events c
+      WHERE c.agent_type = 'shell'
+        AND c.subtype = 'command_start'
+        AND json_extract(c.data,'$.source') = 'builtin-terminal'
+        AND json_extract(c.data,'$.recordingId') = ?
+        AND json_extract(c.data,'$.command_id') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM events e
+          WHERE e.agent_type = 'shell'
+            AND e.subtype IN ('command_end', 'command_boundary')
+            AND json_extract(e.data,'$.recordingId') = json_extract(c.data,'$.recordingId')
+            AND json_extract(e.data,'$.command_id') = json_extract(c.data,'$.command_id')
+        )
+      ORDER BY c.rowid
+    `)
     for (const row of rows) {
       let start: Record<string, unknown>
       try { start = JSON.parse(row.start_data) } catch { continue }
       const tid = String(start.terminalId ?? '')
       if (!tid) continue
       try {
+        if (typeof start.recordingId === 'string' && start.recordingId) {
+          for (const command of openCommands.all(start.recordingId) as Array<{ id: string; command_id: string }>) {
+            ingestEvent('shell', {
+              subtype: 'command_boundary', source: 'builtin-terminal', terminalId: tid,
+              recordingId: start.recordingId, command_id: command.command_id,
+              reason: 'recovered-orphan', _causes: [command.id]
+            }, { engagementId, operatorId })
+          }
+        }
         const ev = ingestEvent('shell', {
           subtype: 'session_end',
           source: 'builtin-terminal',
@@ -469,6 +543,8 @@ export function recoverOrphanSessions(): number {
           reason: 'recovered-orphan',
           exitCode: null,
           castSha256: null,
+          castPath: typeof start.castPath === 'string' ? start.castPath : null,
+          ...recoveredCast(start.castPath),
           recovered: true,
           description: 'orphan session recovered on app start'
         }, { engagementId, operatorId })
