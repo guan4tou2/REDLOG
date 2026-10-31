@@ -580,6 +580,8 @@
   "timeline.detail.lateLost": "{{bytes}} not kept",
   "timeline.detail.truncated": "(truncated at 100 KB)",
   "timeline.detail.truncatedHint": "Stream exceeded the 100 KB cap — remainder discarded by the hook.",
+  "timeline.detail.bodySavedOf": "saved {{saved}} of {{total}}",
+  "timeline.detail.bodySavedTotalUnknown": "saved {{saved}} · total unknown",
   "timeline.detail.copyFull": "Copy full",
   "timeline.detail.copied": "Copied",
   "timeline.detail.previewCut": "… showing first {{shown}} of {{total}} · use Copy full for the rest",

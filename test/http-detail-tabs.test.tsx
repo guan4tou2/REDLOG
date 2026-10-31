@@ -65,11 +65,11 @@ describe('an HTTP flow with both halves', () => {
   })
 
   it('shows the paired full request body and its capture warning, not only a preview', async () => {
-    bridge({ ...REQUEST, request_body: { data: 'complete paired request END', encoding: 'text', size: 27, truncated: true } })
+    bridge({ ...REQUEST, request_body: { data: 'complete paired request END', encoding: 'text', size: 4096, truncated: true } })
     draw(RESPONSE)
     fireEvent.click(await screen.findByTestId('http-tab-request'))
     expect(await screen.findByText('complete paired request END')).toBeTruthy()
-    expect(screen.getByText(/已截斷/)).toBeTruthy()
+    expect(screen.getByText('已保存 27 B／共 4 KB')).toBeTruthy()
     expect(screen.queryByText('REQUEST-BODY-MARKER')).toBeNull()
   })
 
@@ -124,7 +124,8 @@ describe('a flow with only one half', () => {
     bridge(null)
     draw({ ...REQUEST, request_body: { data: 'saved request bytes', encoding: 'text', size: 19, truncated: true } })
     expect(screen.getByText('saved request bytes')).toBeTruthy()
-    expect(screen.getByText(/已截斷/)).toBeTruthy()
+    // The producer reported no size beyond what it kept: the total is unknown.
+    expect(screen.getByText('已保存 19 B・總量未知')).toBeTruthy()
     expect(screen.queryByText(/載入完整主體/)).toBeNull()
   })
 
@@ -187,5 +188,26 @@ describe('a streamed flow judged by what it kept', () => {
     draw(RESPONSE)
     await waitFor(() => expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy())
     expect(screen.queryByTestId('http-stream-status')).toBeNull()
+  })
+})
+
+// #290: a body cut at the capture cap says how much was kept and of how much,
+// and an unknown total says so instead of passing the stored size off as the
+// whole. The old badge named the shell hook's 100 KB cap for every body.
+describe('a body cut at the capture cap', () => {
+  const MiB = 1024 * 1024
+  it('says how much of the body was saved, of what total', async () => {
+    bridge(null)
+    draw({ ...RESPONSE, response_body_ref: { sha256: 'a'.repeat(64), size: 10 * MiB, file: 'x.body', encoding: 'base64', truncated: true, totalSize: 16 * MiB } })
+    await screen.findByText(/RESPONSE-BODY-MARKER/)
+    expect(screen.getByText('已保存 10.0 MB／共 16.0 MB')).toBeTruthy()
+    expect(screen.queryByText(/100 KB/)).toBeNull()
+  })
+
+  it('says the total is unknown when nobody reported one', async () => {
+    bridge(null)
+    draw({ ...RESPONSE, response_body_ref: { sha256: 'a'.repeat(64), size: 10 * MiB, file: 'x.body', encoding: 'base64', truncated: true } })
+    await screen.findByText(/RESPONSE-BODY-MARKER/)
+    expect(screen.getByText('已保存 10.0 MB・總量未知')).toBeTruthy()
   })
 })

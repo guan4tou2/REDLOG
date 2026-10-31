@@ -197,6 +197,11 @@ with a `BodyRef`:
 { "sha256": "a1b2c3...", "size": 81920, "file": "a1b2c3....body", "encoding": "text" }
 ```
 
+A body over `MAX_BODY` (10 MiB by default) is cut by the addon. Its ref then
+has `"truncated": true`, `size` is the bytes stored, and `totalSize` is the
+size the addon saw, when it reported one. Without `totalSize` the total is
+unknown: it is never filled in from `size`.
+
 The `tls` object (HTTPS only):
 ```json
 { "tls_version": "TLSv1.3", "cipher": "...", "alpn": "h2",

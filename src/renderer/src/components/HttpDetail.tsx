@@ -1,4 +1,4 @@
-import { capturedContentIsPartial } from '../../../core/content-contract'
+import { bodyTruncation, capturedContentIsPartial } from '../../../core/content-contract'
 import type { StreamCompletion } from '../../../core/stream-completion'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
@@ -36,6 +36,7 @@ export function CollapsibleStream({
   content,
   bytes,
   truncated,
+  truncatedLabel,
   accent,
   startOpen
 }: {
@@ -43,6 +44,8 @@ export function CollapsibleStream({
   content: string
   bytes?: number
   truncated?: boolean
+  /** Replaces the shell hook's 100 KB wording for content cut elsewhere. */
+  truncatedLabel?: string
   accent: 'emerald' | 'amber' | 'zinc'
   startOpen?: boolean
 }): JSX.Element {
@@ -73,7 +76,8 @@ export function CollapsibleStream({
         <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
           {formatBytes(shownBytes)}
         </span>
-        {truncated && (
+        {truncated && truncatedLabel && <span className="text-xs font-mono text-amber-400">{truncatedLabel}</span>}
+        {truncated && !truncatedLabel && (
           <span className="text-xs font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
             {t('timeline.detail.truncated')}
           </span>
@@ -238,10 +242,10 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
   const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
   const inlineWsBody = data.ws_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
   const inlineTcpBody = data.tcp_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
-  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
-  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
-  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
-  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
+  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean; totalSize?: number } | undefined
+  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean; totalSize?: number } | undefined
+  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean; totalSize?: number } | undefined
+  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean; totalSize?: number } | undefined
 
   const hasFullReqBody = !!(inlineReqBody?.data || reqBodyRef)
   const hasFullRespBody = !!(inlineRespBody?.data || respBodyRef)
@@ -252,6 +256,13 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
   const respBodyTruncated = inlineRespBody?.truncated === true || respBodyRef?.truncated === true
   const wsBodyTruncated = inlineWsBody?.truncated === true || wsBodyRef?.truncated === true
   const tcpBodyTruncated = inlineTcpBody?.truncated === true || tcpBodyRef?.truncated === true
+  const cutLabel = (inline: Parameters<typeof bodyTruncation>[0], ref: Parameters<typeof bodyTruncation>[1]): string | undefined => {
+    const cut = bodyTruncation(inline, ref)
+    if (!cut) return undefined
+    return cut.total === null
+      ? t('timeline.detail.bodySavedTotalUnknown', { saved: formatBytes(cut.saved) })
+      : t('timeline.detail.bodySavedOf', { saved: formatBytes(cut.saved), total: formatBytes(cut.total) })
+  }
 
   const [readerOpen, setReaderOpen] = useState(false)
   // Inline previews are already on the Event. Sidecars always use the shared
@@ -291,6 +302,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
           content={reqPreview}
           bytes={inlineReqBody?.size ?? reqPreview.length}
           truncated={reqBodyTruncated}
+          truncatedLabel={cutLabel(inlineReqBody, reqBodyRef)}
           accent="zinc"
           startOpen
         />
@@ -302,6 +314,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
           content={loadedReqBody}
           bytes={inlineReqBody?.size ?? reqBodyRef?.size}
           truncated={reqBodyTruncated}
+          truncatedLabel={cutLabel(inlineReqBody, reqBodyRef)}
           accent="zinc"
           startOpen
         />
@@ -312,6 +325,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
           content={(loadedRespBody) ? loadedRespBody : preview}
           bytes={contentLength ?? ((loadedRespBody) ? loadedRespBody : preview).length}
           truncated={respBodyTruncated}
+          truncatedLabel={cutLabel(inlineRespBody, respBodyRef)}
           accent="emerald"
           startOpen
         />
@@ -323,6 +337,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
           content={(loadedWsBody) ? loadedWsBody : wsPreview}
           bytes={data.size as number ?? ((loadedWsBody) ? loadedWsBody : wsPreview).length}
           truncated={wsBodyTruncated}
+          truncatedLabel={cutLabel(inlineWsBody, wsBodyRef)}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />
@@ -334,6 +349,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
           content={(loadedTcpBody) ? loadedTcpBody : tcpPreview}
           bytes={data.size as number ?? ((loadedTcpBody) ? loadedTcpBody : tcpPreview).length}
           truncated={tcpBodyTruncated}
+          truncatedLabel={cutLabel(inlineTcpBody, tcpBodyRef)}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />

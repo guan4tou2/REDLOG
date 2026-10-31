@@ -85,6 +85,21 @@ export function capturedContentIsPartial(data: Record<string, unknown>): boolean
   return BODY_REF_FIELDS.some(field => (data[field] as { truncated?: boolean } | undefined)?.truncated === true)
 }
 
+/** A body the producer cut short: the bytes that were stored and, only when
+ *  the producer reported it, the size it saw (#290). Null for a body that was
+ *  not cut. An unknown total is null, never the stored size. */
+export function bodyTruncation(
+  inline: { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined,
+  ref: { size: number; truncated?: boolean; totalSize?: number } | undefined
+): { saved: number; total: number | null } | null {
+  if (ref?.truncated) return { saved: ref.size, total: typeof ref.totalSize === 'number' && ref.totalSize > ref.size ? ref.totalSize : null }
+  if (!inline?.truncated || typeof inline.data !== 'string') return null
+  const saved = inline.encoding === 'base64'
+    ? Math.floor(inline.data.length * 3 / 4) - (inline.data.endsWith('==') ? 2 : inline.data.endsWith('=') ? 1 : 0)
+    : new TextEncoder().encode(inline.data).length
+  return { saved, total: typeof inline.size === 'number' && inline.size > saved ? inline.size : null }
+}
+
 /** Shared partial-index predicate: evidence rows without saved content stay off reader scans. */
 export const BODY_SOURCE_PREDICATE = `CASE WHEN json_valid(data) THEN (${[
   ...BODY_REF_FIELDS.map(field => `json_extract(data,'$.${field}.sha256') IS NOT NULL`),
