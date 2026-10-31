@@ -7,6 +7,7 @@ import { useI18n } from '../i18n'
 import { takePendingCommand, onRunInTerminal } from '../lib/terminalRunner'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
+import { castHistory, endedRecording, type CastHistory } from '../lib/terminalRecordingSummary'
 import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 
@@ -30,6 +31,7 @@ interface Tab {
   castPaused?: boolean
   recordingReason?: 'no-project' | 'recording-failed'
   recordingError?: string
+  castHistory?: CastHistory
 }
 
 interface PaneRuntime {
@@ -47,7 +49,25 @@ interface PaneRuntime {
 // Xterm owns its bounded 5,000-line screen/scrollback. Navigation can detach
 // its DOM without destroying that model, or replacing it with a short IPC tail.
 const paneRuntimes = new Map<string, PaneRuntime>()
+// [badge, tooltip] for an ended pane, by what its recording went through.
+const ENDED_LABELS: Record<NonNullable<ReturnType<typeof endedRecording>>, [string, string]> = {
+  'failed': ['terminal.ended.failedShort', 'terminal.ended.failed'],
+  'not-recorded': ['terminal.castNotRecordingShort', 'terminal.castNotRecording'],
+  'partly-unrecorded': ['terminal.ended.partlyUnrecordedShort', 'terminal.ended.partlyUnrecorded'],
+  'partly-paused': ['terminal.ended.partlyPausedShort', 'terminal.ended.partlyPaused']
+}
+
+// Kept at module scope like the runtimes, so a remount after navigation does
+// not forget a pause or failure the pane went through before it.
+const castHistories = new Map<string, CastHistory>()
+function recordCastState(id: string, state: TerminalCastState): CastHistory {
+  const next = castHistory(castHistories.get(id) ?? {}, state)
+  castHistories.set(id, next)
+  return next
+}
+
 function disposePaneRuntime(id: string): void {
+  castHistories.delete(id)
   const runtime = paneRuntimes.get(id)
   if (!runtime) return
   paneRuntimes.delete(id)
@@ -175,7 +195,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         setTabs(live.map((s, i) => ({
           id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
           castRecording: s.recording, castTruncated: s.castTruncated, castPaused: s.paused,
-          recordingReason: s.recordingReason, recordingError: s.recordingError
+          recordingReason: s.recordingReason, recordingError: s.recordingError, castHistory: recordCastState(s.id, s)
         })))
         setActiveTab(live[0].id)
         tabCounter = Math.max(tabCounter, live.length)
@@ -287,6 +307,12 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             {tab.alive && tab.castRecording === false && tab.castTruncated !== true && tab.castPaused !== true && (
               <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>{t('terminal.castNotRecordingShort')}</span>
             )}
+            {!tab.alive && (() => {
+              const ended = endedRecording(tab.castHistory ?? {})
+              return ended && (
+                <span data-testid="terminal-ended-recording" data-state={ended} className={`text-xs font-mono px-1 rounded ${ended === 'failed' ? 'text-red-400 bg-red-500/10' : 'text-amber-400/70 bg-amber-500/10'}`} title={t(ENDED_LABELS[ended][1])}>{t(ENDED_LABELS[ended][0])}</span>
+              )
+            })()}
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}
@@ -464,7 +490,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
-              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused, recordingReason: state.recordingReason, recordingError: state.recordingError } : t))}
+              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused, recordingReason: state.recordingReason, recordingError: state.recordingError, castHistory: recordCastState(tab.id, state) } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />

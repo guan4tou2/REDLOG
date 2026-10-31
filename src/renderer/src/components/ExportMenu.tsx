@@ -596,6 +596,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
                     <PreviewRow label={t('export.preview.truncatedOutputs')} value={resolvedPlan.counts.truncatedOutputs ?? 0} warn />
                     <PreviewRow label={t('export.preview.pauseWindows')} value={resolvedPlan.counts.pauseWindows ?? 0} warn />
+                    {(resolvedPlan.counts.interruptedRecordings ?? 0) > 0 && <PreviewRow label={t('export.preview.interruptedRecordings')} value={resolvedPlan.counts.interruptedRecordings!} warn />}
+                    {(resolvedPlan.counts.interruptedCommands ?? 0) > 0 && <PreviewRow label={t('export.preview.interruptedCommands')} value={resolvedPlan.counts.interruptedCommands!} warn />}
                     {(resolvedPlan.counts.partialHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.partialHttpFlows')} value={resolvedPlan.counts.partialHttpFlows!} warn />}
                     {(resolvedPlan.counts.partialHttpFlowsOutside ?? 0) > 0 && <PreviewRow label={t('export.preview.partialHttpFlowsOutside')} value={resolvedPlan.counts.partialHttpFlowsOutside!} warn />}
                     <div className="border-t border-redlog-border mt-1 pt-1">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countPauseWindows, countTruncatedOutputs } from '../src/core/export-plan'
+import { countInterrupted, countPauseWindows, countTruncatedOutputs } from '../src/core/export-plan'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 // The export preview must say when what a reader sees is not all of what
@@ -34,6 +34,21 @@ describe('countTruncatedOutputs', () => {
       ev('http', { response_body_ref: { sha256: 'a' } }),
       ev('terminal', {})
     ])).toBe(0)
+  })
+})
+
+// #290: a terminal recording the app never closed, and a command it left
+// running, are in the export as what they are: cut off, not finished.
+describe('countInterrupted', () => {
+  it('counts recordings recovered after a crash and the commands they left open', () => {
+    expect(countInterrupted([
+      ev('shell', { subtype: 'session_end', source: 'builtin-terminal', recovered: true, reason: 'recovered-orphan' }),
+      ev('shell', { subtype: 'session_end', source: 'builtin-terminal', reason: 'shell-exited', exitCode: 0 }),
+      ev('shell', { subtype: 'command_boundary', reason: 'recovered-orphan', command_id: 'a' }),
+      ev('shell', { subtype: 'command_boundary', reason: 'recovered-orphan', command_id: 'b' }),
+      ev('shell', { subtype: 'command_boundary', reason: 'project-switched', command_id: 'c' }),
+      ev('system', { subtype: 'session_end', recovered: true })
+    ])).toEqual({ recordings: 1, commands: 2 })
   })
 })
 

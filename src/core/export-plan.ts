@@ -71,6 +71,10 @@ export interface ExportCounts {
   truncatedOutputs?: number
   /** recording pauses among the exported Events: stretches nothing was recorded */
   pauseWindows?: number
+  /** terminal recordings the app never closed, recovered after a crash (#290) */
+  interruptedRecordings?: number
+  /** commands those recordings left running, closed without a result (#290) */
+  interruptedCommands?: number
   /** HAR only: flows with stream segments and no saved request or response,
    *  carried beside the HAR entries rather than as one (#461) */
   partialHttpFlows?: number
@@ -90,6 +94,19 @@ export interface ExportAttachmentCounts {
  *  exported; the reader needs to know the text they see is not all of it. */
 export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
   return events.filter(event => capturedContentIsPartial(event.data)).length
+}
+
+/** Terminal recordings among these Events that the app never closed, and the
+ *  commands they left running: recovered after a crash, so cut off rather than
+ *  finished (#290). */
+export function countInterrupted(events: readonly RedLogEvent[]): { recordings: number; commands: number } {
+  let recordings = 0, commands = 0
+  for (const e of events) {
+    if (e.agentType !== 'shell') continue
+    if (e.data.subtype === 'session_end' && e.data.recovered === true) recordings++
+    else if (e.data.subtype === 'command_boundary' && e.data.reason === 'recovered-orphan') commands++
+  }
+  return { recordings, commands }
 }
 
 /** Recording pauses among these Events. Counts what the export carries: a
