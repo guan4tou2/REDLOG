@@ -194,12 +194,16 @@ describe('the export preview names capture gaps', () => {
     await draw(plan({ counts: { ...plan().counts, captureGaps: [
       { reason: 'gap-unsaved', gaps: 1, skippedUnits: 4, unknownAmount: 0 },
       { reason: 'project-switched', gaps: 1, skippedUnits: 2, unknownAmount: 0 },
+      { reason: 'proxy-stopped', gaps: 1, skippedUnits: 3, unknownAmount: 0 },
+      { reason: 'delivery-interrupted', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
       { reason: 'some-new-reason', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
       { reason: 'unspecified', gaps: 1, skippedUnits: 9, unknownAmount: 0 }
     ] } }))
     const panel = screen.getByRole('dialog').textContent ?? ''
     expect(panel).toMatch(/Capture gaps \(gap could not be saved\)\s*1 gap\(s\) · 4 skipped/)
     expect(panel).toMatch(/Capture gaps \(another project was opened\)\s*1 gap\(s\) · 2 skipped/)
+    expect(panel).toMatch(/Capture gaps \(proxy stopped before sending\)\s*1 gap\(s\) · 3 skipped/)
+    expect(panel).toMatch(/Capture gaps \(proxy stopped while sending\)\s*1 gap\(s\) · amount unknown for 1/)
     expect(panel).toMatch(/Capture gaps \(some-new-reason\)\s*1 gap\(s\) · amount unknown for 1/)
     expect(panel).toMatch(/Capture gaps \(AI transcript lines skipped while paused\)\s*1 gap\(s\) · 9 skipped/)
   })

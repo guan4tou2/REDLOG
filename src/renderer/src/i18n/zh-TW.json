@@ -1435,6 +1435,8 @@
   "export.preview.captureGapProjectSwitched": "已切換到其他專案",
   "export.preview.captureGapDeliveryUnconfirmed": "HTTP 事件未確認送達",
   "export.preview.captureGapUnsaved": "缺口未能寫入",
+  "export.preview.captureGapProxyStopped": "Proxy 在送出前停止",
+  "export.preview.captureGapDeliveryInterrupted": "Proxy 在送出途中停止",
   "export.preview.captureGapAiPaused": "暫停期間略過的 AI 對話行",
   "firstRun.readFailedTitle": "讀不到時間軸",
   "firstRun.readFailedWhy": "這是讀取失敗，不代表沒有記錄 —— 擷取很可能正在運作。",

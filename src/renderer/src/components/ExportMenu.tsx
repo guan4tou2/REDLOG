@@ -154,6 +154,8 @@ function captureGapReason(t: (key: string, params?: Record<string, string>) => s
     case 'project-switched': return t('export.preview.captureGapProjectSwitched')
     case 'delivery-unconfirmed': return t('export.preview.captureGapDeliveryUnconfirmed')
     case 'gap-unsaved': return t('export.preview.captureGapUnsaved')
+    case 'proxy-stopped': return t('export.preview.captureGapProxyStopped')
+    case 'delivery-interrupted': return t('export.preview.captureGapDeliveryInterrupted')
     case 'unspecified': return t('export.preview.captureGapAiPaused')
     default: return reason
   }
