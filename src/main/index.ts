@@ -17,6 +17,7 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
+import { readActivePivots, type ActivePivot } from './active-pivots'
 import { pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
@@ -519,52 +520,11 @@ function applyCapturePacks(cfg: RedLogConfig): void {
 
 }
 
-// Recent distinct pivot nodes for the overlay — dedup by intermediate node,
-// most-recent first, capped. Lets the floating window show the live pivot chain.
-interface ActivePivot { via: string; tool: string; route?: string; ts: number }
-// A pivot is only shown while it's plausibly still open. RedLog detects pivots
-// from the command that creates them (ssh -D/-L/-R, chisel, ligolo…). It closes
-// them on two signals, best-to-worst:
-//   1. command_end for a foreground tunnel — the shell hook fires it when the
-//      ssh/chisel process actually exits, so a Ctrl-C'd SOCKS tunnel drops at
-//      once. (A backgrounded `-f`/`&` pivot ends its command instantly while the
-//      tunnel lives on, so we ignore near-zero-duration ends.)
-//   2. a 30-min recency window — the fallback for backgrounded/remote pivots we
-//      can't observe closing; without it a single ssh command would pin a pivot
-//      to the HUD forever.
-// (PID liveness isn't viable: command_start fires before the process exists, the
-// hook's pid is the shell's $$, and -fN self-daemonizes — plus remote/agent-run
-// pivots have no PID this host could check.)
-const PIVOT_ACTIVE_WINDOW_MS = 30 * 60 * 1000
-const PIVOT_FOREGROUND_MIN_SEC = 2
 // Which command_ends need a recompute at all: see pivot-refresh.ts.
 let lastPivots: LastPivotAnswer | null = null
 function getActivePivots(): ActivePivot[] {
   try {
-    const evs = queryEvents({ agentType: 'pivot', limit: 40 })
-    const cutoff = Date.now() - PIVOT_ACTIVE_WINDOW_MS
-    // command_end events that closed a foreground tunnel → command text of a pivot
-    // that has since exited. Matched by the exact command that opened the pivot.
-    const closedCmds = new Set<string>()
-    for (const e of queryEvents({ agentType: 'shell', limit: 120 })) {
-      const d = (e.data ?? {}) as Record<string, unknown>
-      if (d.subtype !== 'command_end') continue
-      const cmd = (d.command as string) || ''
-      if (cmd && Number(d.duration_sec ?? 0) >= PIVOT_FOREGROUND_MIN_SEC) closedCmds.add(cmd)
-    }
-    const seen = new Set<string>()
-    const out: ActivePivot[] = []
-    for (const e of evs) {
-      if (e.timestamp < cutoff) continue
-      const d = (e.data ?? {}) as Record<string, unknown>
-      const via = (d.via as string) || ''
-      if (!via || seen.has(via)) continue
-      const cmd = (d.command as string) || ''
-      if (cmd && closedCmds.has(cmd)) continue // foreground tunnel has since exited
-      seen.add(via)
-      out.push({ via, tool: String(d.tool ?? 'pivot'), route: d.route as string | undefined, ts: e.timestamp })
-      if (out.length >= 5) break
-    }
+    const out = readActivePivots()
     lastPivots = { projectId: activeProject?.id ?? null, count: out.length }
     return out
   } catch { return [] }
