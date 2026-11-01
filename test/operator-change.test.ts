@@ -15,7 +15,7 @@ function setup() {
   const runtime = new ProjectRuntime()
   const open = runtime.begin(PROJECT, { engagementId: 'eng-a', operatorId: OP_A.id })
   runtime.activate(open)
-  const sinks = { writeSpoolIdentity: vi.fn(), setPrimaryOperator: vi.fn() }
+  const sinks = { writeSpoolIdentity: vi.fn(), setPrimaryOperator: vi.fn(() => true) }
   return { runtime, open, sinks }
 }
 
@@ -40,6 +40,26 @@ describe('applyOperatorChange', () => {
     // Settings autosaves on every edit; most of them are not about the operator.
     const { runtime, open, sinks } = setup()
     applyOperatorChange(runtime, open, OP_A, { ...OP_A }, sinks)
+    expect(sinks.writeSpoolIdentity).not.toHaveBeenCalled()
+    expect(sinks.setPrimaryOperator).not.toHaveBeenCalled()
+  })
+
+  it('keeps the operator when the API refuses the new id', () => {
+    // The id is another live operator's on this project.
+    const { runtime, open, sinks } = setup()
+    sinks.setPrimaryOperator.mockReturnValue(false)
+    const kept = applyOperatorChange(runtime, open, OP_A, { id: 'teammate', name: 'T' }, sinks)
+    expect(kept).toEqual(OP_A)
+    expect(open.operatorId).toBe('op-a')
+    expect(sinks.writeSpoolIdentity).not.toHaveBeenCalled()
+  })
+
+  it('keeps the operator id when the field is left blank', () => {
+    // A blank id would have every capture refused, with no gap recorded.
+    const { runtime, open, sinks } = setup()
+    const kept = applyOperatorChange(runtime, open, OP_A, { id: '  ', name: 'Alice' }, sinks)
+    expect(kept).toEqual(OP_A)
+    expect(open.operatorId).toBe('op-a')
     expect(sinks.writeSpoolIdentity).not.toHaveBeenCalled()
     expect(sinks.setPrimaryOperator).not.toHaveBeenCalled()
   })

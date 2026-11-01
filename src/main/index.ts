@@ -1520,12 +1520,14 @@ app.whenReady().then(() => {
     if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
-    saveConfig(projectDir, newConfig)
-    // First, so the audit row for this save and every source configured below
-    // are already the new operator's. The sources hold `open` and need no
-    // identity passed again.
+    // Before the save, so what is saved is the operator actually in effect (a
+    // blank or refused id keeps the old one), and before anything below
+    // writes, so the audit row and every source are already the new
+    // operator's. The sources hold `open` and need no identity passed again.
     const open = projectRuntime.current()!
-    applyOperatorChange(projectRuntime, open, oldConfig.operator, newConfig.operator, { writeSpoolIdentity, setPrimaryOperator })
+    newConfig.operator = { ...newConfig.operator,
+      ...applyOperatorChange(projectRuntime, open, oldConfig.operator, newConfig.operator, { writeSpoolIdentity, setPrimaryOperator }) }
+    saveConfig(projectDir, newConfig)
     configureIngest({ activeTarget: newConfig.engagement.activeTarget ?? null })
     // Audit trail — log security-relevant setting changes so a reviewer can see
     // when scope loosened or the IP blacklist changed. Only diffs the fields
@@ -1754,7 +1756,8 @@ app.whenReady().then(() => {
     return launchCaptureBrowser(url)
   })
   async function launchCaptureBrowser(startUrl?: string): Promise<{ ok: boolean; error?: string }> {
-    if (!activeProject) return { ok: false, error: 'No project open' }
+    const open = projectRuntime.current()
+    if (!activeProject || !open) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
@@ -1769,6 +1772,9 @@ app.whenReady().then(() => {
       browserCfg.proxy = proxy.url ?? browserCfg.proxy
       trustSpki = proxy.caPath ? readCaSpki(proxy.caPath) : null
     }
+    // The proxy start can outlast the project that asked: a browser launched
+    // now would carry this project's profile into the next one.
+    if (!projectRuntime.isCurrent(open)) return { ok: false, error: 'The project changed while the browser was starting' }
     const result = launchBrowser(browserCfg, projectDir, { trustSpki })
 
     if (result.ok) {
@@ -1776,11 +1782,7 @@ app.whenReady().then(() => {
       // Start polling the browser for URL changes so every navigation lands in
       // the timeline as an http_navigation event. Silent no-op once the browser
       // exits — the poll fails, no event fires.
-      configureCdpMonitor({
-        engagementId: cfg.engagement.id,
-        operatorId: cfg.operator.id,
-        enabled: true
-      })
+      configureCdpMonitor({ identity: open, enabled: true })
       const event = insertEvent('system', {
         subtype: 'browser_launched',
         binary: result.binary,
@@ -1788,7 +1790,7 @@ app.whenReady().then(() => {
         cdpPort: browserCfg.cdpPort,
         isolatedProfile: browserCfg.isolateProfile,
         pid: result.pid
-      }, { engagementId: cfg.engagement.id, operatorId: cfg.operator.id })
+      }, open)
       if (event) eventBus.publish(event)
     }
     return result
