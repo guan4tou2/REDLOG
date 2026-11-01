@@ -154,17 +154,36 @@ export function getPrimaryOperatorTokenHash(): string | null {
   return row?.token_hash ?? null
 }
 
+/** Make `id` the primary operator: the one the project token resolves to.
+ *
+ *  An operator id is a signer. Events name the operator that wrote them and
+ *  verification finds the public key by that id, so a row is never renamed
+ *  to another id: that left every event signed before the change naming an
+ *  operator that no longer existed. A different id gets its own row (or its
+ *  old row back), and the previous primary stays on record, revoked, with
+ *  the key that verifies what it signed. Throws when `id` is another live
+ *  operator on the project: taking over someone else's identity is not a
+ *  rename. */
 export function ensurePrimaryOperator(id: string, name: string, token: string): Operator {
   const db = getDB()
   const existing = getPrimaryOperator()
-  if (existing) {
-    if (existing.id !== id || existing.name !== name) {
-      db.prepare(`UPDATE operators SET id = ?, name = ? WHERE is_primary = 1`).run(id, name)
-    }
-    updateOperatorToken(id, token) // also backfills signer_pub_key if missing
-    // Re-read: updateOperatorToken may have minted a signing key just now.
-    const refreshed = getPrimaryOperator()
-    return refreshed ?? { ...existing, id, name }
+  if (!existing) return createOperator({ id, name, token, isPrimary: true })
+  if (existing.id === id) {
+    if (existing.name !== name) renameOperator(id, name)
+  } else {
+    const other = db.prepare(`SELECT revoked_at FROM operators WHERE id = ?`).get(id) as { revoked_at: number | null } | undefined
+    if (other && other.revoked_at === null) throw new Error(`operator id ${id} belongs to another operator on this project`)
+    let created: Operator | null = null
+    db.transaction(() => {
+      // The token hash is unique, and the token is the project's: it moves.
+      db.prepare(`UPDATE operators SET is_primary = 0, token_hash = ?, revoked_at = ? WHERE id = ?`)
+        .run(hashToken(generateToken()), Date.now(), existing.id)
+      if (other) db.prepare(`UPDATE operators SET is_primary = 1, name = ? WHERE id = ?`).run(name, id)
+      else created = createOperator({ id, name, token, isPrimary: true })
+    })()
+    if (created) return created
   }
-  return createOperator({ id, name, token, isPrimary: true })
+  updateOperatorToken(id, token) // also backfills signer_pub_key if missing
+  // Re-read: updateOperatorToken may have minted a signing key just now.
+  return getPrimaryOperator() ?? { ...existing, id, name }
 }

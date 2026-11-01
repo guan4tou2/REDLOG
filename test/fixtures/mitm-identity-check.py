@@ -117,4 +117,11 @@ with tempfile.TemporaryDirectory() as directory:
     answer = [p for p in sent if p['data'].get('subtype') == 'dns_response']
     assert len(answer) == 1 and answer[0]['_identity'].get('engagementId') == 'A', answer
     assert not pending
+
+    # 6. Settings changed the operator while A stayed open. Same project, so
+    #    the flow is still A's to deliver, not a project switch.
+    addon = ns['RedLogAddon']()
+    activate(A); start(addon, flow('flow-operator'))
+    activate({'engagementId': 'A', 'operatorId': 'op-A2'}); reset(); addon._sweep_stale()
+    assert len(pending) == 1 and sent[-1]['data']['flow_id'] == 'flow-operator', 'an operator change was refused as a project switch'
 print('flow identity checks passed')

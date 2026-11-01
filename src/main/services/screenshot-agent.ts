@@ -7,6 +7,7 @@ import { eventBus } from '../../core/event-bus'
 import { noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { getProjectDir, dbGeneration } from '../../core/db/index'
 import { dHashFromBgra, hammingDistance } from '../../core/dhash'
+import type { ProjectIdentity } from '../../core/project-runtime'
 
 // Triggers that represent someone asking for this exact frame, as opposed to
 // the agent deciding to take one. See captureNow.
@@ -37,8 +38,9 @@ export interface CaptureOptions {
 
 export class ScreenshotAgent {
   private lastHash = ''
-  private engagementId = 'default'
-  private operatorId = ''
+  // Held by reference and read when an event is written: the operator can be
+  // changed in Settings while the project stays open.
+  private identity: Readonly<ProjectIdentity> | null = null
   private quality = 85
   private intervalSec = 0
   private timer: ReturnType<typeof setInterval> | null = null
@@ -72,7 +74,7 @@ export class ScreenshotAgent {
   /** Grab the current screen now, keep it in memory only, and return a token a
    *  later capture can claim it with. Null when nothing could be grabbed. */
   async holdFrame(): Promise<string | null> {
-    if (!this.operatorId) return null
+    if (!this.identity?.operatorId) return null
     const frame = await this.grabFrame().catch((e) => { noteCaptureError('screenshot', e); return null })
     if (!frame) { this.held = null; return null }
     const token = crypto.randomBytes(8).toString('hex')
@@ -142,15 +144,13 @@ export class ScreenshotAgent {
   }
 
   configure(opts: {
-    engagementId?: string
-    operatorId?: string
+    identity?: Readonly<ProjectIdentity>
     quality?: number
     intervalSec?: number
     diffThreshold?: number
     captureOnCommand?: boolean
   }): void {
-    if (opts.engagementId) this.engagementId = opts.engagementId
-    if (opts.operatorId) this.operatorId = opts.operatorId
+    if (opts.identity) this.identity = opts.identity
     if (opts.quality) this.quality = opts.quality
     if (opts.diffThreshold !== undefined) this.diffThreshold = Math.max(0, Math.floor(opts.diffThreshold))
     if (opts.captureOnCommand !== undefined) this.captureOnCommand = opts.captureOnCommand
@@ -176,7 +176,7 @@ export class ScreenshotAgent {
   // stays deduped against lastHash, so an idle screen won't fill the chain.
   private applyInterval(): void {
     if (this.timer) { clearInterval(this.timer); this.timer = null }
-    if (this.intervalSec > 0 && this.operatorId) {
+    if (this.intervalSec > 0 && this.identity?.operatorId) {
       this.timer = setInterval(() => {
         this.captureNow('periodic').catch(() => { /* transient failure — retry next tick */ })
       }, this.intervalSec * 1000)
@@ -187,7 +187,8 @@ export class ScreenshotAgent {
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null } }
 
   async captureNow(trigger: string, causeEventId?: string, opts: CaptureOptions = {}): Promise<string | null> {
-    if (!this.operatorId) return null
+    const identity = this.identity
+    if (!identity?.operatorId) return null
     // Deliberate captures always land — operator intent overrides pause and
     // dedup. `api` belongs here with `manual`: POST /api/screenshot is an
     // operator (or their agent) asking for THIS frame, so silently skipping it
@@ -281,8 +282,8 @@ export class ScreenshotAgent {
         // otherwise a manual capture while paused writes the JPEG to disk and
         // then silently drops its event row, leaving an orphan file.
       }, {
-        engagementId: this.engagementId,
-        operatorId: this.operatorId,
+        engagementId: identity.engagementId,
+        operatorId: identity.operatorId,
         bypassPause: deliberate
       }) } catch (e) {
         // The picture is on disk but no event points at it: a file nothing in

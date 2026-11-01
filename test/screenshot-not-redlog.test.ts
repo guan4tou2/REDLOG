@@ -10,7 +10,7 @@ import path from 'path'
 const h = vi.hoisted(() => ({
   pixels: 1,
   cursorDisplay: 2,
-  events: [] as Array<{ type: string; data: Record<string, unknown> }>,
+  events: [] as Array<{ type: string; data: Record<string, unknown>; ids: { engagementId: string; operatorId: string } }>,
   dir: ''
 }))
 
@@ -39,7 +39,9 @@ vi.mock('electron', () => ({
   }
 }))
 vi.mock('../src/core/ingest', () => ({
-  ingestEvent: (type: string, data: Record<string, unknown>) => { h.events.push({ type, data }); return { id: 'e1' } }
+  ingestEvent: (type: string, data: Record<string, unknown>, ids: { engagementId: string; operatorId: string }) => {
+    h.events.push({ type, data, ids }); return { id: 'e1' }
+  }
 }))
 vi.mock('../src/core/event-bus', () => ({ eventBus: { paused: false } }))
 vi.mock('../src/core/db/index', () => ({ getProjectDir: () => h.dir, dbGeneration: () => 0 }))
@@ -59,7 +61,7 @@ describe('in-app captures do not photograph RedLog', () => {
     h.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-shot2-'))
     h.events = []; h.pixels = 1; h.cursorDisplay = 2
     agent = new ScreenshotAgent()
-    agent.configure({ engagementId: 'eng', operatorId: 'op' })
+    agent.configure({ identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } })
   })
   afterEach(() => fs.rmSync(h.dir, { recursive: true, force: true }))
 
@@ -91,6 +93,15 @@ describe('in-app captures do not photograph RedLog', () => {
     await agent.captureNow('manual', undefined, { heldFrame: token! })
     await agent.captureNow('manual', undefined, { heldFrame: token! })
     expect(h.events.filter((e) => e.data.held_for_marker)).toHaveLength(1)
+  })
+
+  it('writes under the operator the project has now, not the one it had when configured', async () => {
+    // The context's operator changes while the project stays open (Settings).
+    const identity = { projectId: 'proj', engagementId: 'eng', operatorId: 'op' }
+    agent.configure({ identity })
+    identity.operatorId = 'op-changed'
+    await agent.captureNow('manual')
+    expect(h.events[0].ids).toMatchObject({ engagementId: 'eng', operatorId: 'op-changed' })
   })
 
   it('hides RedLog for the grab and brings it back', async () => {

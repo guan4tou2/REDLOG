@@ -33,7 +33,7 @@ describe('file-watcher / lifecycle', () => {
   it('no-ops when enabled with empty watchPaths', () => {
     configureFileWatcher({
       enabled: true, watchPaths: [], ignorePatterns: [],
-      engagementId: 'e1', operatorId: 'op1'
+      identity: { projectId: 'p1', engagementId: 'e1', operatorId: 'op1' }
     })
     const s = _getWatcherStateForTests()
     expect(s.enabled).toBe(true)
@@ -43,7 +43,7 @@ describe('file-watcher / lifecycle', () => {
   it('no-ops when enabled with no engagement id (config error)', () => {
     configureFileWatcher({
       enabled: true, watchPaths: ['/tmp'],
-      engagementId: '', operatorId: 'op1'
+      identity: { projectId: 'p1', engagementId: '', operatorId: 'op1' }
     })
     const s = _getWatcherStateForTests()
     expect(s.watching).toBe(false)  // safety: no attribution → don't watch
@@ -54,7 +54,7 @@ describe('file-watcher / lifecycle', () => {
     try {
       await configureFileWatcher({
         enabled: true, watchPaths: [tmp],
-        engagementId: 'e1', operatorId: 'op1'
+        identity: { projectId: 'p1', engagementId: 'e1', operatorId: 'op1' }
       })
       const s = _getWatcherStateForTests()
       expect(s.watching).toBe(true)
@@ -70,7 +70,7 @@ describe('file-watcher / lifecycle', () => {
     try {
       await configureFileWatcher({
         enabled: true, watchPaths: [tmp],
-        engagementId: 'e1', operatorId: 'op1'
+        identity: { projectId: 'p1', engagementId: 'e1', operatorId: 'op1' }
       })
       expect(_getWatcherStateForTests().watching).toBe(true)
       await configureFileWatcher({ enabled: false })
@@ -100,7 +100,8 @@ describe('file-watcher / command correlation integration', () => {
         engagementId: 'fw-engagement', operatorId
       })
       await configureFileWatcher({
-        enabled: true, watchPaths: [watchedDir], engagementId: 'fw-engagement', operatorId
+        enabled: true, watchPaths: [watchedDir],
+        identity: { projectId: 'fw-project', engagementId: 'fw-engagement', operatorId }
       })
       fs.writeFileSync(path.join(watchedDir, 'result.xml'), '<nmaprun/>')
 

@@ -40,7 +40,7 @@ export const EMPTY_VISIBILITY_SIGNALS: VisibilitySignals = {
 
 let cache: VisibilitySignals = { ...EMPTY_VISIBILITY_SIGNALS }
 
-/** Called where `activeProject` is assigned or cleared. The flags describe one
+/** Called whenever a project opens. The flags describe one
  *  engagement and must not survive into the next. */
 export function resetVisibilitySignalsCache(): void {
   cache = { ...EMPTY_VISIBILITY_SIGNALS }

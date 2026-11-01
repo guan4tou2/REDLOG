@@ -72,7 +72,7 @@ beforeEach(async () => {
   fs.mkdirSync(dir, { recursive: true })
   file = path.join(dir, 'session.txt')
   pt = await import('../src/main/services/powershell-transcript')
-  await pt.configurePowershellTranscript({ enabled: true, engagementId: 'eng', operatorId: 'op' })
+  await pt.configurePowershellTranscript({ enabled: true, identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } })
   await settle()
 })
 

@@ -63,7 +63,7 @@ describeDB('api-server', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-api-'))
     initDB(tmpDir)
     const loot = new LootDetector()
-    loot.configure({ engagementId: 'eng-1', operatorId: 'op-primary' })
+    loot.configure({ identity: { projectId: 'proj-1', engagementId: 'eng-1', operatorId: 'op-primary' } })
     api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', operatorName: 'Primary', lootDetector: loot })
     const port = await api.startApiServer(0) // mints the primary operator + token
     // v0.14.3: since the "early API server start" change (main b3671d9), the

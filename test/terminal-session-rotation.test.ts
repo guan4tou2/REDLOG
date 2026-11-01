@@ -19,7 +19,7 @@ import { configureIngest, ingestEvent, _resetIngest } from '../src/core/ingest'
 import { resetCausesResolver } from '../src/core/causes-resolver'
 import { eventBus } from '../src/core/event-bus'
 import { verifyChainFullAsync } from '../src/core/chain-anchor'
-import { ensurePrimaryOperator, generateToken } from '../src/core/db/operators'
+import { createOperator, ensurePrimaryOperator, generateToken } from '../src/core/db/operators'
 import { getCaptureHealth } from '../src/core/capture-health'
 import { readTerminalEnrollment, writeTerminalEnrollment } from '../src/core/terminal-enrollment'
 import { configureTerminal, detachTerminalRecordings, resumeTerminalRecordings, spawnTerminal, killAllTerminals, getCastPosition, listTerminals, recoverOrphanSessions } from '../src/main/terminal-manager'
@@ -30,7 +30,7 @@ function open(name: string, cap = 50000): string {
   const dir = path.join(root, name)
   initDB(dir)
   ensurePrimaryOperator('operator', 'Operator', generateToken())
-  configureTerminal({ engagementId: name, projectId: name, operatorId: 'operator', maxCastBytes: cap })
+  configureTerminal({ identity: { projectId: name, engagementId: name, operatorId: 'operator' }, maxCastBytes: cap })
   configureIngest({ castProbe: getCastPosition })
   return dir
 }
@@ -155,7 +155,7 @@ describe('project recording rotation without killing the pane', () => {
   it('recovers each orphan once by its local start, even when the same pane had completed segments', () => {
     spawnTerminal('pane', 80, 24); detachTerminalRecordings()
     const orphan = ingestEvent('shell', { subtype: 'session_start', source: 'builtin-terminal', terminalId: 'pane', recordingId: 'orphan-segment' }, { engagementId: 'A', operatorId: 'operator' })!
-    configureTerminal({ engagementId: 'A', projectId: 'A', operatorId: 'operator' })
+    configureTerminal({ identity: { projectId: 'A', engagementId: 'A', operatorId: 'operator' } })
     expect(recoverOrphanSessions()).toBe(1)
     expect(rows().find(row => row.data.reason === 'recovered-orphan')!.data._causes).toEqual([orphan.id])
     expect(recoverOrphanSessions()).toBe(0)
@@ -179,7 +179,7 @@ describe('project recording rotation without killing the pane', () => {
     const open = ingestEvent('shell', { subtype: 'command_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'tail', command: 'tail -f log' }, { engagementId: 'A', operatorId: 'operator' })!
     ingestEvent('shell', { subtype: 'command_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'done', command: 'id' }, { engagementId: 'A', operatorId: 'operator' })
     ingestEvent('shell', { subtype: 'command_end', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'crashed', command_id: 'done', command: 'id', exit_code: 0 }, { engagementId: 'A', operatorId: 'operator' })
-    configureTerminal({ engagementId: 'A', projectId: 'A', operatorId: 'operator' })
+    configureTerminal({ identity: { projectId: 'A', engagementId: 'A', operatorId: 'operator' } })
 
     expect(recoverOrphanSessions()).toBe(1)
     const end = rows().find(row => row.data.subtype === 'session_end' && row.data.reason === 'recovered-orphan')!.data
@@ -202,7 +202,7 @@ describe('project recording rotation without killing the pane', () => {
 
   it('recovers an orphan whose recording never opened without inventing parts', () => {
     ingestEvent('shell', { subtype: 'session_start', source: 'builtin-terminal', terminalId: 'gone', recordingId: 'never', castPath: path.join(getProjectDir(), 'casts', 'never.cast') }, { engagementId: 'A', operatorId: 'operator' })
-    configureTerminal({ engagementId: 'A', projectId: 'A', operatorId: 'operator' })
+    configureTerminal({ identity: { projectId: 'A', engagementId: 'A', operatorId: 'operator' } })
     expect(recoverOrphanSessions()).toBe(1)
     const end = rows().find(row => row.data.subtype === 'session_end' && row.data.reason === 'recovered-orphan')!.data
     expect(end.castSegments).toEqual([])
@@ -229,5 +229,18 @@ describe('project recording rotation without killing the pane', () => {
     const end = rows().find(row => row.data.subtype === 'session_end')!.data
     expect(fs.readFileSync(end.castPath, 'utf8')).not.toContain('still-private-after-switch')
     expect(fs.readFileSync(end.castPath, 'utf8')).toContain('recording-resumed')
+  })
+
+  it('writes under the operator the project has now, not the one it had when configured', () => {
+    // The context's operator changes while the project stays open (Settings).
+    createOperator({ id: 'operator-2', name: 'Second', token: generateToken() })
+    const identity = { projectId: 'A', engagementId: 'A', operatorId: 'operator' }
+    configureTerminal({ identity })
+    spawnTerminal('pane', 80, 24)
+    identity.operatorId = 'operator-2'
+    detachTerminalRecordings()
+    const end = getDB().prepare(`SELECT operator_id, engagement_id, data FROM events WHERE agent_type = 'shell' ORDER BY rowid`).all() as Array<{ operator_id: string; engagement_id: string; data: string }>
+    const sessionEnd = end.find(row => JSON.parse(row.data).subtype === 'session_end')!
+    expect({ operator: sessionEnd.operator_id, engagement: sessionEnd.engagement_id }).toEqual({ operator: 'operator-2', engagement: 'A' })
   })
 })

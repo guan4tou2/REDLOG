@@ -141,12 +141,13 @@ def _embed_identity(payload: dict):
 
 
 def _identity_matches_active(payload):
+    # Same project is the test, not same operator: Settings can change the
+    # operator while the project stays open, and that is not a switch.
     try:
         active = json.loads(_IDENTITY_PATH.read_text(encoding="utf-8"))
         captured = payload.get("_identity")
         return bool(captured and captured.get("engagementId") and captured.get("operatorId")
-                    and captured.get("engagementId") == active.get("engagementId")
-                    and captured.get("operatorId") == active.get("operatorId"))
+                    and captured.get("engagementId") == active.get("engagementId"))
     except Exception:
         return False
 

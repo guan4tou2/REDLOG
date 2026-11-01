@@ -5,6 +5,7 @@ import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { extractTargetWithProvenance } from '../../core/target-extractor'
 import { isVerifyUrl } from '../../core/http-verify'
+import type { ProjectIdentity } from '../../core/project-runtime'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CDP connector — v0.6.92 W-project browser producer
@@ -59,8 +60,9 @@ let lastContext: BrowserContext = { url: null, title: null, connected: false, po
 // keeps the HTTP-poll dependency footprint at zero (using core http only).
 const lastTabUrls = new Map<string, string>()
 let pollTimer: ReturnType<typeof setInterval> | null = null
-let engagementId = ''
-let operatorId = ''
+// The open's identity, held by reference and read when writing: an operator
+// changed in Settings while the browser is open is the one recorded.
+let identity: Readonly<ProjectIdentity> | null = null
 
 // Open WebSocket sessions keyed by tab id. Each carries the tab URL at the
 // time of open so we can attach `url`/`host` to console events without asking
@@ -114,9 +116,8 @@ export function setCdpPort(port: number): void {
   cdpPort = port
 }
 
-export function configureCdpMonitor(opts: { engagementId?: string; operatorId?: string; enabled?: boolean }): void {
-  if (opts.engagementId !== undefined) engagementId = opts.engagementId
-  if (opts.operatorId !== undefined) operatorId = opts.operatorId
+export function configureCdpMonitor(opts: { identity?: Readonly<ProjectIdentity>; enabled?: boolean }): void {
+  if (opts.identity !== undefined) identity = opts.identity
   if (opts.enabled) startCdpMonitor()
   else if (opts.enabled === false) stopCdpMonitor()
 }
@@ -137,8 +138,7 @@ export function stopCdpMonitor(): void {
   // it returns before writing or opening tab sockets; kept, it wrote the
   // closed project's navigation into the next one. Every launch configures
   // the identity again.
-  engagementId = ''
-  operatorId = ''
+  identity = null
 }
 
 function closeAllTabSockets(): void {
@@ -155,7 +155,8 @@ async function pollNavigations(): Promise<void> {
   if (eventBus.paused) return
   let tabs: BrowserTab[]
   try { tabs = await fetchJson<BrowserTab[]>(`http://127.0.0.1:${cdpPort}/json`) } catch { return }
-  if (!operatorId || !engagementId) return
+  const ids = identity
+  if (!ids?.operatorId || !ids.engagementId) return
   const currentIds = new Set<string>()
   for (const tab of tabs) {
     if (tab.type !== 'page') continue
@@ -181,7 +182,7 @@ async function pollNavigations(): Promise<void> {
         mitre_ttp: 'T1071.001',  // Application Layer Protocol: Web Protocols
         description: `→ ${targetHost || url.slice(0, 80)}`
       }, {
-        engagementId, operatorId,
+        engagementId: ids.engagementId, operatorId: ids.operatorId,
         targetId: detectedTarget ?? undefined
       })
     } catch (e) {
@@ -272,7 +273,8 @@ function handleCdpEvent(
   method: string,
   params: Record<string, unknown>
 ): void {
-  if (!engagementId || !operatorId) return
+  const ids = identity
+  if (!ids?.engagementId || !ids.operatorId) return
   let data: Record<string, unknown> | null = null
   let subtype = ''
 
@@ -376,7 +378,7 @@ function handleCdpEvent(
     const targetHost = sess.host
     const detectedTarget = targetHost ? extractTargetWithProvenance(sess.url).host : undefined
     const ev = ingestEvent('browser', data, {
-      engagementId, operatorId,
+      engagementId: ids.engagementId, operatorId: ids.operatorId,
       targetId: detectedTarget ?? undefined
     })
   } catch (e) {

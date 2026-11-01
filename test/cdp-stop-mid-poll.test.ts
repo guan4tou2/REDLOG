@@ -27,9 +27,10 @@ describe.skipIf(cdp === null)('stopping the browser monitor mid-poll', () => {
   let socketAttempts = 0
   let holdList: ((tabs: unknown[]) => void) | null = null
   let listAskedResolve!: () => void
-  const listAsked = new Promise<void>((resolve) => { listAskedResolve = resolve })
+  let listAsked: Promise<void>
 
   beforeEach(async () => {
+    listAsked = new Promise<void>((resolve) => { listAskedResolve = resolve })
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cdp-stop-'))
     dbmod!.initDB(dir)
     server = http.createServer((req, res) => {
@@ -53,7 +54,7 @@ describe.skipIf(cdp === null)('stopping the browser monitor mid-poll', () => {
   it('writes nothing and opens no tab socket once stopped', async () => {
     const port = (server.address() as AddressInfo).port
     cdp!.setCdpPort(port)
-    cdp!.configureCdpMonitor({ engagementId: 'eng-a', operatorId: 'op', enabled: true })
+    cdp!.configureCdpMonitor({ identity: { projectId: 'p-a', engagementId: 'eng-a', operatorId: 'op' }, enabled: true })
     // The poll runs every 3 s; wait for it to ask, then stop before answering.
     await listAsked
     cdp!.stopCdpMonitor()
@@ -64,5 +65,20 @@ describe.skipIf(cdp === null)('stopping the browser monitor mid-poll', () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(events!.queryEvents({ limit: -1, tier: 'all' })).toHaveLength(0)
     expect(socketAttempts).toBe(0)
+  }, 10_000)
+
+  // The monitor is configured once, at browser launch. An operator changed in
+  // Settings afterwards is the one the browser's navigations are recorded under.
+  it('writes under the operator the project has now, not the one it had at launch', async () => {
+    const port = (server.address() as AddressInfo).port
+    cdp!.setCdpPort(port)
+    const open = { projectId: 'p-a', engagementId: 'eng-a', operatorId: 'op' }
+    cdp!.configureCdpMonitor({ identity: open, enabled: true })
+    await listAsked
+    open.operatorId = 'op-changed'
+    holdList!([{ id: 'tab-1', type: 'page', url: 'https://target.example/login', title: 'login' }])
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const rows = events!.queryEvents({ limit: -1, tier: 'all' })
+    expect(rows.map((e) => [e.engagementId, e.operatorId])).toEqual([['eng-a', 'op-changed']])
   }, 10_000)
 })

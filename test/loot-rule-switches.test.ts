@@ -80,7 +80,7 @@ describeDB('loot rule switches (recorded)', () => {
     db.initDB(dir)
     opId = ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id
     const d = new loot.LootDetector()
-    d.configure({ engagementId: 'eng', operatorId: opId, disabledRules: ['jwt'] })
+    d.configure({ identity: { projectId: 'proj', engagementId: 'eng', operatorId: opId }, disabledRules: ['jwt'] })
     ingestMod.configureIngest({ lootDetector: d })
   })
   afterEach(() => {

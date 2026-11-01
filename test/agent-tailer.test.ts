@@ -253,7 +253,7 @@ describe('catchUpSession — end-to-end', () => {
     ].join('\n') + '\n')
 
     const cfgSnap = {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, previewChars: 100, emitThinking: false
     }
@@ -302,7 +302,7 @@ describe('catchUpSession — end-to-end', () => {
         message: { role: 'user', content: [{ type: 'text', text: 'a'.repeat(2000) }] } })
     ].join('\n') + '\n')
     const cfgSnap = {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, previewChars: 100
     }
@@ -329,7 +329,7 @@ describe('catchUpSession — end-to-end', () => {
     const partial = '{"type":"assistant","uuid":"u2","parentUuid":"u1","message":{"role":"assist'
     fs.writeFileSync(source, line1 + partial)
     const cfgSnap = {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, previewChars: 100
     }
@@ -356,7 +356,7 @@ describe('catchUpSession — end-to-end', () => {
       message: { role: 'user', content: [{ type: 'text', text: 'summary text goes here' }] }
     }) + '\n')
     registerSession(source, {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, previewChars: 100
     })
@@ -387,7 +387,7 @@ describe('catchUpSession — end-to-end', () => {
       }) + '\n')
     }
     const cfgBase = {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, previewChars: 100
     }
@@ -414,7 +414,7 @@ describe('catchUpSession — end-to-end', () => {
       message: { role: 'user', content: [{ type: 'text', text: 'hi' }] }
     }) + '\n')
     const base = {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'), idleFlushMs: 50, previewChars: 100
     }
     registerSession(source, { ...base, enabledAgents: ['codex'] })
@@ -437,7 +437,7 @@ describe('catchUpSession — end-to-end', () => {
       message: { role: 'user', content: [{ type: 'text', text: 'hi' }] }
     }) + '\n')
     registerSession(source, {
-      enabled: true, engagementId: 'e1', operatorId: OP,
+      enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP },
       claudeProjectsDir: path.join(scratch, 'claude-projects'),
       idleFlushMs: 50, selfExclusionMarker: '.redlog-app-root'
     })

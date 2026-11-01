@@ -47,7 +47,7 @@ import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
-import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
+import { startApiServer, stopApiServer, configureApi, setPrimaryOperator, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
@@ -91,6 +91,7 @@ import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
+import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
@@ -130,17 +131,16 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
-// Cached IDs of the currently-open project, so background sources (IP monitor,
-// recording toggle) can insert attributed events without re-reading config.yaml
-// from disk on every tick. Cleared in stopProject.
-let currentEngagementId: string | null = null
-let currentOperatorId: string | null = null
 let forceQuit = false
 // One owned install per dependency, including the wait for login PATH.
 const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // Which open a timer or a late `.then` belongs to, and the stop that reaches
 // all of them. The chain sample, the logged-tier sweep and the spool drain
 // are its timers; stopProject closes it first. docs/DESIGN-project-runtime.md.
+// It is also the one place an event's identity comes from: `current()` is the
+// open's context, read when writing, so an operator changed in Settings is
+// the one recorded from the next write on. Once stopProject has closed it,
+// nothing here writes.
 const projectRuntime = new ProjectRuntime()
 
 function managedProxyPort(config: RedLogConfig): number {
@@ -159,7 +159,8 @@ function managedProxyEndpoint(config: RedLogConfig): CaptureEndpoint {
 }
 
 function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_stopped' | 'http_proxy_failed', status: ManagedProxyStatus): void {
-  if (!currentEngagementId || !currentOperatorId) return
+  const open = projectRuntime.current()
+  if (!open) return
   ingestEvent('system', {
     subtype,
     source: 'managed-http-proxy',
@@ -167,7 +168,7 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
     proxy: status.url,
     pid: status.pid ?? null,
     error: status.error ?? null
-  }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+  }, open)
 }
 
 // One start at a time. Opening a project auto-starts capture, and a start from
@@ -235,14 +236,14 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
     if (holder) {
       const reclaimed = await reclaimOrphanProxy(endpoint, orphanDepsFor(proxyOwnerFile(homedir())))
       if (reclaimed) {
-        if (currentEngagementId && currentOperatorId) {
+        if (opening && stillOpen()) {
           ingestEvent('system', {
             subtype: 'http_proxy_orphan_reclaimed',
             source: 'managed-http-proxy',
             proxy: `${endpoint.host}:${endpoint.port}`,
             pid: reclaimed.pid,
             description: `Stopped a mitmdump left running by an earlier RedLog (PID ${reclaimed.pid}) that held ${endpoint.host}:${endpoint.port}`
-          }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+          }, opening)
         }
         holder = await whoHoldsPort(endpoint)
       }
@@ -318,17 +319,20 @@ managedHttpProxy.onStatusChange((next, previous) => {
   // The addon could not write the gap itself, so its log line is all there
   // is. Put the loss on the Timeline too, where an export will carry it.
   const unsaved = (next.unsavedGapEvents ?? 0) - (previous.unsavedGapEvents ?? 0)
-  if (unsaved > 0 && currentEngagementId && currentOperatorId) {
+  const open = projectRuntime.current()
+  if (unsaved > 0 && open) {
     ingestEvent('system', {
       subtype: 'capture_gap', source: 'managed-http-proxy', reason: 'gap-unsaved', skipped_units: unsaved,
       description: `${unsaved} HTTP event(s) refused at a full proxy queue; the addon could not record the gap`
-    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    }, open)
   }
 })
 
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
 
-function writeSpoolIdentity(engagementId: string, operatorId: string): void {
+// Rewritten on an operator change as well as at open: the shell hooks and the
+// HTTP addon stamp what they capture with whatever this file says.
+function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
     fs.mkdirSync(path.dirname(SPOOL_IDENTITY_PATH), { recursive: true })
     fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
@@ -399,9 +403,10 @@ function triggerBookmark(): void {
 // title is allowed and gets the time as its name, which is what a bare mark
 // has always been called.
 function addHudMarker(input: { title?: string; notes?: string; at?: number; bind?: string }): { ok: boolean; id?: string; reason?: 'project-changed' } {
-  if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
+  const open = projectRuntime.current()
+  if (!activeProject || !open) return { ok: false }
   // A draft written while another project was open must not land in this one.
-  if (!hudDraftBelongsHere(input.bind, currentEngagementId)) return { ok: false, reason: 'project-changed' }
+  if (!hudDraftBelongsHere(input.bind, open.engagementId)) return { ok: false, reason: 'project-changed' }
   try {
     const f = hudMarkerFields(input, Date.now())
     const event = insertEvent('marker', redactFields({
@@ -411,7 +416,7 @@ function addHudMarker(input: { title?: string; notes?: string; at?: number; bind
       category: 'custom',
       source_timestamp: f.source_timestamp,
       source: f.source
-    }, MARKER_TEXT_FIELDS), { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    }, MARKER_TEXT_FIELDS), open)
     if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
@@ -512,7 +517,7 @@ function applyCapturePacks(cfg: RedLogConfig): void {
       return modulePath ? [{ agentKind: a.agentKind, modulePath, root: agentTranscriptRoot(entry, homedir(), cfg.agentTailer?.sources?.[a.agentKind]) }] : []
     }),
     enabled: agents.length > 0, enabledAgents: agents.map(a => a.agentKind),
-    engagementId: cfg.engagement.id, operatorId: cfg.operator.id, emitThinking: cfg.agentTailer?.emitThinking ?? false,
+    ...(projectRuntime.current() ? { identity: projectRuntime.current()! } : {}), emitThinking: cfg.agentTailer?.emitThinking ?? false,
     watchPathsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, a.workPaths])),
     activationStarts: Object.fromEntries(agents.map(a => [a.agentKind, a.startedAt])),
     excludedSessionsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, cfg.agentTailer?.sources?.[a.agentKind]?.excludedSessions ?? []])),
@@ -591,7 +596,8 @@ function broadcastIPStatus(status: IPStatusShape): void {
 // (Dock icon, HUD flash toggle) stay silent — we only record settings that would
 // affect enforcement or attribution if silently loosened.
 function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | null {
-  if (!currentEngagementId || !currentOperatorId) return null
+  const open = projectRuntime.current()
+  if (!open) return null
   const changed = diffSecurityConfig(oldCfg, newCfg)
   if (Object.keys(changed).length === 0) return null
   try {
@@ -599,7 +605,7 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | nul
       subtype: 'config_changed',
       changed,
       description: `Config changed: ${Object.keys(changed).join(', ')}`
-    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    }, open)
     if (ev) eventBus.publish(ev)
     // Returned so a scope recompute triggered by this save can cite the row
     // that recorded the change, rather than appearing to happen for no reason.
@@ -702,14 +708,14 @@ function startProject(project: ProjectMeta): void {
   const config = loadConfig(projectDir)
   saveConfig(projectDir, config)
   if (activeProject) stopProject()
-  const opening = projectRuntime.begin({ projectId: project.id, engagementId: config.engagement.id, operatorId: config.operator.id })
+  const opening = projectRuntime.begin(project, { engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
     bindDBEngagement(config.engagement.id)
     activeProject = project
     startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
-    writeSpoolIdentity(config.engagement.id, config.operator.id)
+    writeSpoolIdentity(opening)
     projectRuntime.activate(opening)
   } catch (error) {
     try { stopProject() } catch (cleanupError) {
@@ -724,14 +730,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
   showWifiName = config.network?.showWifiName === true
-  const engagementId = config.engagement.id
-  const operatorId = config.operator.id
-  currentEngagementId = engagementId
-  currentOperatorId = operatorId
-
   screenshotAgent.configure({
-    engagementId,
-    operatorId,
+    identity: opening,
     quality: config.screenshot.quality,
     intervalSec: config.screenshot.intervalSec ?? 0,
     diffThreshold: config.screenshot.diffThreshold ?? 5,
@@ -747,8 +747,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // Combined verdict from the previous engagement can't fire when the new
   // one's first IP tick lands.
   alertRuntime.resetOnProjectSwitch()
-  alertRuntime.configure(config, { engagementId, operatorId }, scopeTargets)
-  lootDetector.configure({ engagementId, operatorId, disabledRules: config.loot?.disabledRules ?? [] })
+  alertRuntime.configure(config, opening, scopeTargets)
+  lootDetector.configure({ identity: opening, disabledRules: config.loot?.disabledRules ?? [] })
   configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
   // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
@@ -781,7 +781,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   } catch (e) { console.error('[plugins] init failed:', e) }
   setVpnAdapters(config.network.vpnAdapters)
 
-  configureTerminal({ engagementId, projectId: project.id, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  configureTerminal({ identity: opening, maxCastBytes: config.terminal?.maxCastBytes })
   configureTerminalProxy(() => {
     const status = managedHttpProxy.status()
     return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
@@ -811,15 +811,15 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // cast and screenshot keep-days silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
-    const swept = sweepRetention(config, { engagementId, operatorId })
+    const swept = sweepRetention(config, opening)
     if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
     }
-    const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, { engagementId, operatorId })
+    const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, opening)
     if (bookmarksPruned > 0) console.log(`[retention] pruned ${bookmarksPruned} bookmark(s)`)
     // Size-pressure eviction of the body store, after the age sweep — whatever
     // aged out has already gone, so this only reaches live-but-cold bodies.
-    const evicted = sweepBodyStore(config, { engagementId, operatorId })
+    const evicted = sweepBodyStore(config, opening)
     if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
       console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
         (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
@@ -828,7 +828,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // stores. Off by default (budget 0); when set, out-of-scope recordings go
     // before in-scope evidence instead of purely by age.
     for (const kind of ['cast', 'screenshot'] as const) {
-      const ev = sweepArtifactStore(kind, config, { engagementId, operatorId })
+      const ev = sweepArtifactStore(kind, config, opening)
       if (ev.evicted > 0 || ev.shortfallBytes > 0) {
         console.log(`[retention] evicted ${ev.evicted} ${kind} file(s) under disk pressure` +
           (ev.shortfallBytes > 0 ? ` (still ${ev.shortfallBytes} bytes over budget; in-scope ${kind}s kept)` : ''))
@@ -836,7 +836,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see the interval below.
-    const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, { engagementId, operatorId })
+    const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, opening)
     if (loggedSwept.deleted > 0) {
       console.log(`[retention] pruned ${loggedSwept.deleted} logged-tier row(s), freed ~${(loggedSwept.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
     }
@@ -847,11 +847,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     const sweepIntervalHours = config.retention?.loggedTier?.sweepIntervalHours ?? 24
     if (sweepIntervalHours > 0) {
       projectRuntime.setInterval(opening, () => {
-        if (!currentEngagementId || !currentOperatorId) return
         try {
-          const tick = sweepLoggedTier(config.retention?.loggedTier, {
-            engagementId: currentEngagementId, operatorId: currentOperatorId
-          })
+          const tick = sweepLoggedTier(config.retention?.loggedTier, opening)
           if (tick.deleted > 0) {
             console.log(`[retention] periodic sweep: ${tick.deleted} logged-tier row(s) pruned, freed ~${(tick.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
           }
@@ -878,7 +875,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // Replay only records belonging to the active engagement. Mismatches remain
   // recoverable on disk and are picked up when their owning project opens.
   const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
-    if (!currentEngagementId || !currentOperatorId) return
+    if (!projectRuntime.isCurrent(opening)) return
     if (eventBus.paused) return
     let pauses: ReturnType<typeof pauseIntervals> | null = null
     const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
@@ -912,10 +909,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // A proxy killed while it held events left a bound on disk (#291). Into
     // the spool with it, so its own project gets the gap and no other does.
     reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-    const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), {
-      engagementId: currentEngagementId,
-      operatorId: currentOperatorId
-    }, emit, limit).replayed
+    const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit).replayed
     if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
   }
   try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
@@ -927,14 +921,14 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   alertRuntime.start()
   startLinkMonitor()
   configureOpsecMonitor((delta, current) => {
-    if (!currentEngagementId || !currentOperatorId) return
+    if (!projectRuntime.isCurrent(opening)) return
     try {
       const ev = insertEvent('system', {
         subtype: 'opsec_state_changed',
         changed: delta,
         current: { vpnInterfaces: current.vpnInterfaces, primaryMac: current.primaryMac, hostname: current.hostname, dnsServers: current.dnsServers },
         description: describeOpsecDelta(delta)
-      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+      }, opening)
       if (ev) eventBus.publish(ev)
     } catch { /* additive */ }
   })
@@ -942,7 +936,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   configureClipboardMonitor({
     pollMs: config.clipboard?.pollMs ?? 1500,
     storePreview: config.clipboard?.storePreview ?? false,
-    engagementId, operatorId, lootDetector
+    identity: opening, lootDetector
   })
   startClipboardMonitor()
 
@@ -951,29 +945,27 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   configureFileWatcher({
     watchPaths: config.fileWatcher?.watchPaths ?? [],
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
-    engagementId, operatorId
+    identity: opening
   })
   configureConnectionMonitor({
     pollMs: config.connectionMonitor?.pollMs,
-    engagementId,
-    operatorId,
+    identity: opening,
     selfPorts: [getApiPort()]
   })
   configurePowershellTranscript({
-    engagementId,
-    operatorId
+    identity: opening
   })
   configureProcessMonitor({
     pollMs: config.processMonitor?.pollMs,
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
-    engagementId, operatorId
+    identity: opening
   })
   // AI capture is separately installed and authorized by this project.
   // Shared exclusions remain local; allowed directories are per source/project.
   {
     const { excludedPaths } = readHookConfig()
     configureAgentTailer({
-      engagementId, operatorId,
+      identity: opening,
       excludedPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
       // v0.12.0: route agent tool_call events through the alert subsystem
@@ -986,8 +978,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   applyCapturePacks(config)
 
   configureApi({
-    engagementId,
-    operatorId,
+    engagementId: opening.engagementId,
+    operatorId: opening.operatorId,
     operatorName: config.operator.name,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
@@ -1024,13 +1016,13 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   })
   onApiProjectOpen()
 
-  insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
+  insertEvent('system', { subtype: 'session_start' }, opening)
   // Pause lives in memory, not in the project: say in this record what it
   // would otherwise leave unexplained (see core/recording-state-marker).
   try {
     const marker = markerForOpen(eventBus.paused, lastRecordingSubtype())
     if (marker) {
-      const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, { engagementId, operatorId })
+      const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, opening)
       if (ev) eventBus.publish(ev, { bypassPause: true })
     }
   } catch { /* additive: a marker that fails to write must not stop the project opening */ }
@@ -1041,7 +1033,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // by a choice, not a failure.
   const airgap = config.network?.offline === true
   setUpdaterAirgap(airgap)
-  insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, { engagementId, operatorId })
+  insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, opening)
   if (!airgap) {
     startAnchorLoop()
     startNtpLoop()
@@ -1059,7 +1051,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
         // The operator only went to the download page. Nothing was restarted,
         // so there is no event to write for an update that did not happen; About
         // keeps saying it is not finished until the running version moves.
-      } else if (marker.projectDir === null || recordUpdateOutcome(outcome, { engagementId, operatorId })) {
+      } else if (marker.projectDir === null || recordUpdateOutcome(outcome, opening)) {
         clearUpdateMarker(app.getPath('userData'))
         setUpdateOutcome(outcome)
         send(mainWindow, 'app:updateOutcomeReady')
@@ -1095,7 +1087,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
           eventId: first.brokenAtEventId,
           reason: first.brokenReason,
           sampled: first.sampled
-        }, { engagementId, operatorId })
+        }, opening)
         if (ev) eventBus.publish(ev)
       } catch { /* noteSampleBroken already surfaces via capture-health */ }
     }
@@ -1119,7 +1111,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
             eventId: result.brokenAtEventId,
             reason: result.brokenReason,
             sampled: result.sampled
-          }, { engagementId, operatorId })
+          }, opening)
           if (ev) eventBus.publish(ev)
         } catch { /* */ }
       }
@@ -1242,8 +1234,6 @@ function stopProject(): void {
   clean(closeDB)
   clean(resetBodiesDirCache)
   activeProject = null
-  currentEngagementId = null
-  currentOperatorId = null
   clean(resetCausesResolver)
   clean(() => configureIngest({ activeTarget: null }))
   if (failed) throw firstError
@@ -1419,12 +1409,12 @@ app.whenReady().then(() => {
     getActiveProject: () => activeProject,
     getMainWindow: () => mainWindow,
     getOverlayWindow: () => overlayWindow,
-    getCurrentEngagementId: () => currentEngagementId,
-    getCurrentOperatorId: () => currentOperatorId,
+    getCurrentEngagementId: () => projectRuntime.current()?.engagementId ?? null,
+    getCurrentOperatorId: () => projectRuntime.current()?.operatorId ?? null,
     send,
     triggerBookmark,
     addHudMarker,
-    hudMarkerBinding: () => (activeProject && currentEngagementId ? currentEngagementId : null),
+    hudMarkerBinding: () => (activeProject ? projectRuntime.current()?.engagementId ?? null : null),
     onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
@@ -1535,9 +1525,14 @@ app.whenReady().then(() => {
     if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
+    // Before the save, so what is saved is the operator actually in effect (a
+    // blank or refused id keeps the old one), and before anything below
+    // writes, so the audit row and every source are already the new
+    // operator's. The sources hold `open` and need no identity passed again.
+    const open = projectRuntime.current()!
+    newConfig.operator = { ...newConfig.operator,
+      ...applyOperatorChange(projectRuntime, open, oldConfig.operator, newConfig.operator, { writeSpoolIdentity, setPrimaryOperator }) }
     saveConfig(projectDir, newConfig)
-    currentEngagementId = newConfig.engagement.id
-    currentOperatorId = newConfig.operator.id
     configureIngest({ activeTarget: newConfig.engagement.activeTarget ?? null })
     // Audit trail — log security-relevant setting changes so a reviewer can see
     // when scope loosened or the IP blacklist changed. Only diffs the fields
@@ -1552,10 +1547,7 @@ app.whenReady().then(() => {
     }
     applyDock()
     const targets = snapshotScope(newConfig).targets
-    alertRuntime.configure(newConfig, {
-      engagementId: newConfig.engagement.id,
-      operatorId: newConfig.operator.id
-    }, targets)
+    alertRuntime.configure(newConfig, open, targets)
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,
       intervalSec: newConfig.screenshot.intervalSec ?? 0,
@@ -1581,18 +1573,16 @@ app.whenReady().then(() => {
       excludeTargets: beforeScope.excludeTargets,
       alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
     }, configChangedId)
-    configureTerminal({ engagementId: newConfig.engagement.id, projectId: activeProject!.id, operatorId: newConfig.operator.id,
-      maxCastBytes: newConfig.terminal?.maxCastBytes })
+    configureTerminal({ identity: open, maxCastBytes: newConfig.terminal?.maxCastBytes })
     lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
       storePreview: newConfig.clipboard?.storePreview ?? false,
-      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, lootDetector
+      lootDetector
     })
     configureFileWatcher({
       watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
-      ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
-      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
+      ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? []
     })
     configureConnectionMonitor({
       pollMs: newConfig.connectionMonitor?.pollMs,
@@ -1600,8 +1590,7 @@ app.whenReady().then(() => {
     })
     configureProcessMonitor({
       pollMs: newConfig.processMonitor?.pollMs,
-      ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? [],
-      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
+      ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? []
     })
     applyCapturePacks(newConfig)
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
@@ -1772,7 +1761,8 @@ app.whenReady().then(() => {
     return launchCaptureBrowser(url)
   })
   async function launchCaptureBrowser(startUrl?: string): Promise<{ ok: boolean; error?: string }> {
-    if (!activeProject) return { ok: false, error: 'No project open' }
+    const open = projectRuntime.current()
+    if (!activeProject || !open) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
@@ -1787,6 +1777,9 @@ app.whenReady().then(() => {
       browserCfg.proxy = proxy.url ?? browserCfg.proxy
       trustSpki = proxy.caPath ? readCaSpki(proxy.caPath) : null
     }
+    // The proxy start can outlast the project that asked: a browser launched
+    // now would carry this project's profile into the next one.
+    if (!projectRuntime.isCurrent(open)) return { ok: false, error: 'The project changed while the browser was starting' }
     const result = launchBrowser(browserCfg, projectDir, { trustSpki })
 
     if (result.ok) {
@@ -1794,11 +1787,7 @@ app.whenReady().then(() => {
       // Start polling the browser for URL changes so every navigation lands in
       // the timeline as an http_navigation event. Silent no-op once the browser
       // exits — the poll fails, no event fires.
-      configureCdpMonitor({
-        engagementId: cfg.engagement.id,
-        operatorId: cfg.operator.id,
-        enabled: true
-      })
+      configureCdpMonitor({ identity: open, enabled: true })
       const event = insertEvent('system', {
         subtype: 'browser_launched',
         binary: result.binary,
@@ -1806,7 +1795,7 @@ app.whenReady().then(() => {
         cdpPort: browserCfg.cdpPort,
         isolatedProfile: browserCfg.isolateProfile,
         pid: result.pid
-      }, { engagementId: cfg.engagement.id, operatorId: cfg.operator.id })
+      }, open)
       if (event) eventBus.publish(event)
     }
     return result
@@ -1892,13 +1881,14 @@ app.whenReady().then(() => {
   // from then on, so the record says when it happened.
   const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }): void => {
     debugLog('hooks', installed ? 'install' : 'uninstall', `id=${hookId} success=${r.success}`)
-    if (!r.success || !currentEngagementId || !currentOperatorId) return
+    const open = projectRuntime.current()
+    if (!r.success || !open) return
     try {
       const ev = insertEvent('system', {
         subtype: 'config_changed',
         changed: { [`hook.${hookId}.installed`]: { from: !installed, to: installed } },
         description: r.message
-      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+      }, open)
       if (ev) eventBus.publish(ev)
     } catch { /* additive */ }
   }
@@ -1981,7 +1971,8 @@ app.whenReady().then(() => {
     // Log the toggle so a reviewer can explain gaps in the timeline — "no events
     // for 20 min" reads very differently as "recording was paused" vs "idle".
     // Bypass the paused gate for this one write: pause events must always land.
-    if (currentEngagementId && currentOperatorId) {
+    const open = projectRuntime.current()
+    if (open) {
       try {
         const ev = insertEvent('system', {
           subtype: recording ? 'recording_resumed' : 'recording_paused',
@@ -1989,7 +1980,7 @@ app.whenReady().then(() => {
           // v0.9.5: who flipped it. With pause now actually suppressing
           // capture, these two rows are the entire record of the gap.
           source: source || 'unknown'
-        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+        }, open)
         if (ev) eventBus.publish(ev, { bypassPause: true })
       } catch { /* additive */ }
     }
