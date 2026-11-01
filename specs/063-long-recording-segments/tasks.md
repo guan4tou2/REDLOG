@@ -19,4 +19,6 @@
 | T005 | 既有 mitmproxy source、body store／index 與 #290 | HTTP／SSE／雙向 WS 何時落盤、途中斷線及匯出能讀到的 bytes；不以 PTY 結果代替網路串流 |
 | T006／T007 | 既有 macOS 候選與 064 test-coverage-matrix | 先核對 #432 目前狀態，不再照舊敘述假定 PR 未合；Windows／WSL／Kali 與完整 feature gate 仍待 |
 
+2026-10-31：#290 第一項的來源盤點（何時送出、何時落盤、持續／完成後／未支援）與後續分段 PR 順序見 [inventory.md](inventory.md)。T005 仍不勾：多小時與跨平台驗收未完成。
+
 #291／#290 管功能可靠性，#296 管測試集合，#457 協調缺少的實機環境。各自回填原證據，不以本對帳表取代驗收。
