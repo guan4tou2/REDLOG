@@ -323,10 +323,12 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
   const upstream = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok') })
   const upPort = await listen(upstream)
   let holding = true
+  // The test's own record, outside RedLog: every event POST that reached the API.
+  let received = 0
   const heldPosts: ServerResponse[] = []
   const api = createServer((req, res) => {
     req.resume()
-    req.on('end', () => { if (holding) heldPosts.push(res); else res.end('{}') })
+    req.on('end', () => { received++; if (holding) heldPosts.push(res); else res.end('{}') })
   })
   const apiPort = await listen(api)
   const release = (): void => { holding = false; for (const res of heldPosts.splice(0)) res.end('{}') }
@@ -352,19 +354,25 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
   const records = (reason: string): Array<{ _identity: unknown; data: Record<string, unknown> }> => filesUnder(pending)
     .filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(f, 'utf8')))
     .filter(r => r.data.reason === reason)
+  const units = (rows: ReturnType<typeof records>): number => rows.reduce((n, r) => n + Number(r.data.skipped_units), 0)
   // Fill all 64 send slots against an API that never answers.
-  const saturate = async (url: string, tag: string): Promise<void> => {
+  const saturate = async (url: string, tag: string): Promise<number> => {
     const before = refusals()
     const outcomes = await Promise.all(Array.from({ length: 120 }, (_, i) => viaProxy(url, `http://127.0.0.1:${upPort}/load?${tag}=${i}`)))
     expect(outcomes.filter(outcome => outcome !== 200)).toEqual([])
     expect(refusals() - before, 'the queue never filled').toBeGreaterThan(0)
+    return refusals() - before
   }
   try {
     // Killed: the marker bounds the 64 held, and nothing else is on disk for them.
     const killed = await proxy.start({ addonPath: ADDON, port: 18000 + Math.floor(Math.random() * 2000) })
     expect(killed.state, output).toBe('running')
-    await saturate(killed.url!, 'killed')
+    const refusedBeforeKill = await saturate(killed.url!, 'killed')
     await expect.poll(() => filesUnder(inflight).filter(f => f.endsWith('.json')).length).toBe(1)
+    // Ground truth at the kill: the four workers' POSTs reached the API and
+    // were never answered; the rest of the 64 slots never left the queue.
+    const reachedApi = received
+    expect(reachedApi).toBe(4)
     const marker = JSON.parse(readFileSync(filesUnder(inflight).find(f => f.endsWith('.json'))!, 'utf8'))
     expect(marker.identities).toHaveLength(1)
     const bound = Number(marker.identities[0].upper_bound)
@@ -378,9 +386,16 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
     expect(reaped).toHaveLength(1)
     expect(reaped[0]).toMatchObject({ _identity: { engagementId: 'eng-291', operatorId: 'op-291' },
       data: { subtype: 'capture_gap', reason: 'delivery-interrupted', capture_delivery: 'unknown', skipped_units: bound } })
+    // Refusals at the full queue are counted a window at a time; the window
+    // open at the kill is lost with the process (#460, unchanged here).
+    const queueFullPersisted = units(records('queue-full'))
+    expect(queueFullPersisted).toBeLessThanOrEqual(refusedBeforeKill)
+    const killTruth = `in flight 64 (${reachedApi} reached the API unanswered, ${64 - reachedApi} never sent), persisted as up to ${bound};`
+      + ` queue-full refused ${refusedBeforeKill}, persisted ${queueFullPersisted}, lost with the open window ${refusedBeforeKill - queueFullPersisted}`
     proxy.stop()
     release()
     holding = true
+    received = 0
     rmSync(pending, { recursive: true, force: true })
 
     // Asked: the exact count, split by what it knows. The four workers are
@@ -394,8 +409,9 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
     const tookMs = Date.now() - startedAt
     const stopped = records('proxy-stopped')
     const interrupted = records('delivery-interrupted')
-    const units = (rows: typeof stopped): number => rows.reduce((n, r) => n + Number(r.data.skipped_units), 0)
     expect(units(stopped) + units(interrupted), output.slice(-1500)).toBe(64)
+    // The unconfirmed four are exactly the POSTs the API holds unanswered.
+    expect(units(interrupted)).toBe(received)
     expect(units(interrupted)).toBe(4)
     expect(stopped.every(r => r.data.capture_delivery === 'not-sent')).toBe(true)
     expect(filesUnder(inflight).filter(f => f.endsWith('.json')), 'a recorded stop left its bound behind').toEqual([])
@@ -426,7 +442,7 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
       expect(markerFiles()).toEqual([])
       plainOutcome = `${units(records('proxy-stopped'))} not sent + ${units(records('delivery-interrupted'))} unconfirmed`
     }
-    console.log(`[291] mitmdump ${mitmVersion()} on ${process.platform}: killed -> marker bound ${bound}, reaped as one up-to-${bound} gap;`
+    console.log(`[291] mitmdump ${mitmVersion()} on ${process.platform}: killed -> ${killTruth};`
       + ` asked -> ${units(stopped)} not sent + ${units(interrupted)} unconfirmed, exited in ${tookMs} ms; signalled -> ${plainOutcome}`)
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
