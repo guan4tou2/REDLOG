@@ -72,7 +72,10 @@ export function cycle(i: number, opts: { terminalId?: string; now?: number } = {
     out.push({ agentType: 'scanner', data: {
       subtype: 'http_request_start', flow_id: flowId, method: f === 0 ? 'POST' : 'GET', url, path: url.slice(url.indexOf('/', 8)),
       host, port: 443, scheme: 'https', request_headers: HEADERS_REQ.map(([k, v]) => [k, k === 'Host' ? host : v]),
-      ...(f === 0 ? { request_body_preview: 'username=admin&password=hunter2', request_body: { data: 'username=admin&password=hunter2', encoding: 'text', size: 31 } } : {}),
+      // A login form with a password-shaped field, so redaction has something to
+      // match. No username key: nothing in ingest reads one, and the pair reads as
+      // a credential to secret scanners. Same 31 bytes as before, so §3 holds.
+      ...(f === 0 ? { request_body_preview: 'remember_me=on&password=hunter2', request_body: { data: 'remember_me=on&password=hunter2', encoding: 'text', size: 31 } } : {}),
       http_version: 'HTTP/1.1', source_addr: `127.0.0.1:${50000 + (i % 10000)}`, pid
     } })
     const body = lorem(6000, i * 3 + f)
