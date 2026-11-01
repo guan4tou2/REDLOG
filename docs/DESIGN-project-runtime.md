@@ -78,7 +78,7 @@ What it deliberately is not, yet:
   interface in one change would make that order implicit. Services move onto
   `onStop` one at a time, each with a test that pins its place.
 - **Not the identity source** — until R1b-3, which made it one: see §4.
-  `activeProject` still exists and is the next slice.
+  R1b-4 made it the open project too: `activeProject` is gone.
 - **Not a transaction.** Switching stops the old open, then begins the new
   one. A failed open is cleaned up and reported; it does not restore the old
   project. That was already true and is now stated.
@@ -173,8 +173,15 @@ evidence-schema change during a refactor.
      the operator they were captured under. The HTTP addon now refuses a
      late event by engagement only, so an operator change in the same
      project is no longer taken for a switch.
-  4. Next: retire `activeProject` into the runtime (it holds the open's
-     `ProjectMeta`, renamed through it).
+  4. Done: `activeProject` is retired. `begin` keeps a frozen copy of the
+     open's `ProjectMeta`; `project()` returns it from `begin` until `close`
+     starts, and `renameProject(context, name)` replaces it for the live open
+     only. "Is a project open" and "which one" now have the same answer as
+     "which open is this", where the module variable was set after the DB
+     opened and cleared near the end of `stopProject`, on moments of its own.
+     The one behaviour that moved: the open project reads as none from the
+     first line of `stopProject` rather than its last. Nothing in that function
+     asks, and nothing asynchronous can run inside it.
 - R1b and anything else that edits `src/main/index.ts` run one at a time: #464
   and R1c met there in one function.
 - R2 is unblocked by R0. It starts with the characterization tests in §3, not

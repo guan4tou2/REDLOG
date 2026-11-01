@@ -10,7 +10,8 @@ import type { ProjectMeta } from '../../core/project-manager'
  * module — only the things that change at runtime go here.
  */
 export interface IpcContext {
-  getActiveProject: () => ProjectMeta | null
+  /** The runtime's open project: read-only, replaced on rename. */
+  getActiveProject: () => Readonly<ProjectMeta> | null
   getMainWindow: () => BrowserWindow | null
   getOverlayWindow: () => BrowserWindow | null
   getCurrentEngagementId: () => string | null

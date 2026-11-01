@@ -129,7 +129,6 @@ if (process.platform === 'win32') {
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
-let activeProject: ProjectMeta | null = null
 let forceQuit = false
 // One owned install per dependency, including the wait for login PATH.
 const dependencyInstalls = new Map<PreflightCommand, AbortController>()
@@ -139,8 +138,15 @@ const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // It is also the one place an event's identity comes from: `current()` is the
 // open's context, read when writing, so an operator changed in Settings is
 // the one recorded from the next write on. Once stopProject has closed it,
-// nothing here writes.
+// nothing here writes. And it is which project is open: `project()`, where a
+// module variable of its own used to be set and cleared at moments of its own.
 const projectRuntime = new ProjectRuntime()
+
+/** The open project's directory, or null when none is open. */
+function openProjectDir(): string | null {
+  const project = projectRuntime.project()
+  return project ? getProjectPath(project) : null
+}
 
 function managedProxyPort(config: RedLogConfig): number {
   const fallback = DEFAULT_CONFIG.httpCapture.port
@@ -193,7 +199,8 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
   // nothing happen, press it again. It stopped being survivable when capture
   // began taking itself up at project open: a port already in use now means
   // an engagement that records no HTTP and never says why.
-  if (!activeProject) return managedHttpProxy.noteStartFailure('No project open')
+  const projectDir = openProjectDir()
+  if (!projectDir) return managedHttpProxy.noteStartFailure('No project open')
   // Each await below can outlast the project that asked: mitmdump takes
   // seconds to come up. A switch in between stops the proxy, which resolves
   // this start as `stopped`, and that used to be published as the next
@@ -210,7 +217,7 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
   if (!stillOpen()) return managedHttpProxy.status()
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
-  const config = loadConfig(getProjectPath(activeProject))
+  const config = loadConfig(projectDir)
   const current = managedHttpProxy.status()
   const before = current.state
   const endpoint = managedProxyEndpoint(config)
@@ -286,7 +293,7 @@ const httpVerificationHistory = new HttpVerificationHistory()
 
 function verificationContext(config: RedLogConfig, status: ManagedProxyStatus): HttpVerificationContext {
   return {
-    projectId: activeProject?.id ?? '',
+    projectId: projectRuntime.project()?.id ?? '',
     endpoint: managedProxyUrl(managedProxyEndpoint(config)),
     caFingerprint: status.caFingerprint?.sha256 ?? null,
     routing: JSON.stringify([config.httpCapture?.routeTerminals === true, config.browser?.proxy ?? '', config.browser?.ignoreCertErrors ?? DEFAULT_BROWSER.ignoreCertErrors]),
@@ -299,8 +306,8 @@ function verificationContext(config: RedLogConfig, status: ManagedProxyStatus): 
 
 function httpCaptureStatus(): ManagedProxyStatus {
   const status = managedHttpProxy.status()
-  if (!activeProject) return status
-  const projectDir = getProjectPath(activeProject)
+  const projectDir = openProjectDir()
+  if (!projectDir) return status
   const context = verificationContext(loadConfig(projectDir), status)
   try {
     const evidence = httpVerificationHistory.read(projectDir).filter(row => row.projectId === context.projectId).at(-1) ?? null
@@ -403,7 +410,7 @@ function triggerBookmark(): void {
 // has always been called.
 function addHudMarker(input: { title?: string; notes?: string; at?: number; bind?: string }): { ok: boolean; id?: string; reason?: 'project-changed' } {
   const open = projectRuntime.current()
-  if (!activeProject || !open) return { ok: false }
+  if (!projectRuntime.project() || !open) return { ok: false }
   // A draft written while another project was open must not land in this one.
   if (!hudDraftBelongsHere(input.bind, open.engagementId)) return { ok: false, reason: 'project-changed' }
   try {
@@ -530,7 +537,7 @@ let lastPivots: LastPivotAnswer | null = null
 function getActivePivots(): ActivePivot[] {
   try {
     const out = readActivePivots()
-    lastPivots = { projectId: activeProject?.id ?? null, count: out.length }
+    lastPivots = { projectId: projectRuntime.project()?.id ?? null, count: out.length }
     return out
   } catch { return [] }
 }
@@ -648,11 +655,12 @@ let recomputePending: { projectId: string; before: ScopeSnapshot; configChangedI
 let recomputeRunning = false
 
 function scheduleScopeRecompute(before: ScopeSnapshot, configChangedId: string | null): void {
-  if (!activeProject) return
+  const project = projectRuntime.project()
+  if (!project) return
   // Coalesce to the EARLIEST before-state of the burst: a→b→c is one boundary
   // move from a to c, and comparing c against b would report the wrong delta.
-  if (!recomputePending || recomputePending.projectId !== activeProject.id) {
-    recomputePending = { projectId: activeProject.id, before, configChangedId }
+  if (!recomputePending || recomputePending.projectId !== project.id) {
+    recomputePending = { projectId: project.id, before, configChangedId }
   } else if (configChangedId) {
     recomputePending.configChangedId = configChangedId
   }
@@ -664,15 +672,16 @@ async function runPendingRecompute(): Promise<void> {
   const job = recomputePending
   recomputeTimer = null
   if (!job || recomputeRunning) return
-  // By id, not by object: renaming a project replaces `activeProject` with a
-  // fresh object for the same engagement, and a reference test would read that
-  // as a project switch and drop the queued recompute.
+  // By id, not by object: renaming a project replaces the runtime's project
+  // with a fresh object for the same engagement, and a reference test would
+  // read that as a project switch and drop the queued recompute.
   const running = projectRuntime.current()
-  if (!activeProject || activeProject.id !== job.projectId || !running) { recomputePending = null; return }
+  const project = projectRuntime.project()
+  if (!project || project.id !== job.projectId || !running) { recomputePending = null; return }
   recomputePending = null
   recomputeRunning = true
   try {
-    const config = loadConfig(getProjectPath(activeProject))
+    const config = loadConfig(getProjectPath(project))
     const snap = snapshotScope(config)
     await runScopeRecompute({
       before: job.before,
@@ -706,12 +715,11 @@ function startProject(project: ProjectMeta): void {
   const projectDir = getProjectPath(project)
   const config = loadConfig(projectDir)
   saveConfig(projectDir, config)
-  if (activeProject) stopProject()
+  if (projectRuntime.current()) stopProject()
   const opening = projectRuntime.begin(project, { engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
     bindDBEngagement(config.engagement.id)
-    activeProject = project
     startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
     writeSpoolIdentity(opening)
@@ -993,7 +1001,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     httpVerifySink: (report) => {
       managedHttpProxy.noteVerification(report)
       const status = managedHttpProxy.status()
-      if (report.scheme === 'https' && activeProject?.id === project.id && status.httpsVerification?.receivedAt === report.receivedAt && status.httpsVerification?.nonce === report.nonce
+      if (report.scheme === 'https' && projectRuntime.isCurrent(opening) && status.httpsVerification?.receivedAt === report.receivedAt && status.httpsVerification?.nonce === report.nonce
         && !report.rejected && status.caFingerprint && status.url && status.sourceInstance) {
         const context = verificationContext(loadConfig(projectDir), status)
         const evidence: HttpVerificationEvidence = {
@@ -1228,7 +1236,6 @@ function stopProject(): void {
   clean(detachTerminalRecordings)
   clean(closeDB)
   clean(resetBodiesDirCache)
-  activeProject = null
   clean(resetCausesResolver)
   clean(() => configureIngest({ activeTarget: null }))
   if (failed) throw firstError
@@ -1401,7 +1408,7 @@ app.whenReady().then(() => {
 
   // Shared context for extracted IPC handler modules.
   const ipcCtx: IpcContext = {
-    getActiveProject: () => activeProject,
+    getActiveProject: () => projectRuntime.project(),
     getMainWindow: () => mainWindow,
     getOverlayWindow: () => overlayWindow,
     getCurrentEngagementId: () => projectRuntime.current()?.engagementId ?? null,
@@ -1409,8 +1416,8 @@ app.whenReady().then(() => {
     send,
     triggerBookmark,
     addHudMarker,
-    hudMarkerBinding: () => (activeProject ? projectRuntime.current()?.engagementId ?? null : null),
-    onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
+    hudMarkerBinding: () => (projectRuntime.project() ? projectRuntime.current()?.engagementId ?? null : null),
+    onPluginsChanged: () => { const dir = openProjectDir(); if (dir) applyCapturePacks(loadConfig(dir)) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
   registerDataExportIpc(ipcMain, ipcCtx, { recentExports: new RecentExportStore(path.join(app.getPath('userData'), 'recent-exports')) })
@@ -1447,31 +1454,34 @@ app.whenReady().then(() => {
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:rename', (_e, id: string, name: string) => {
     const updated = renameProject(id, name)
-    // Keep activeProject.name in sync if the renamed project is the current one
-    // — main-window title bar reads this on subsequent renders.
-    if (updated && activeProject?.id === id) activeProject = { ...activeProject, name: updated.name }
+    // Keep the open project's name in sync if it is the one renamed — the
+    // main-window title bar reads it on subsequent renders.
+    const open = projectRuntime.current()
+    if (updated && open?.projectId === id) projectRuntime.renameProject(open, updated.name)
     return updated
   })
-  ipcMain.handle('project:active', () => activeProject
-    ? { id: activeProject.id, name: activeProject.name, createdAt: activeProject.createdAt }
-    : null)
+  ipcMain.handle('project:active', () => {
+    const project = projectRuntime.project()
+    return project ? { id: project.id, name: project.name, createdAt: project.createdAt } : null
+  })
   ipcMain.handle('project:close', () => {
-    if (activeProject) stopProject()
+    if (projectRuntime.current()) stopProject()
     return true
   })
 
   // --- IP ---
   ipcMain.handle('ip:getStatus', () => alertRuntime.ipStatus())
   ipcMain.handle('config:get', () => {
-    if (!activeProject) return null
-    return loadConfig(getProjectPath(activeProject))
+    const dir = openProjectDir()
+    return dir ? loadConfig(dir) : null
   })
 
   // AI source metadata and shared hook exclusions. The folder picker itself
   // does not grant capture permission.
   ipcMain.handle('agents:sessions', () => listAgentSessions())
   ipcMain.handle('agents:sources', (_event, roots?: Record<string, string>) => {
-    const config = activeProject ? loadConfig(getProjectPath(activeProject)) : {}
+    const dir = openProjectDir()
+    const config = dir ? loadConfig(dir) : {}
     if (roots === undefined) return describeAgentSources(config)
     // Metadata-only preview of the unsaved form: directory existence is not permission.
     if (!roots || typeof roots !== 'object' || Array.isArray(roots) || Object.entries(roots).some(([kind, root]) => !createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list().some(p => p.agentKind === kind) || typeof root !== 'string' || !path.isAbsolute(root))) throw new Error('Invalid AI source directory')
@@ -1482,7 +1492,8 @@ app.whenReady().then(() => {
     try {
       // Live-reconfigure the tailer so the new gate takes effect immediately
       saveHookConfig(cfg)
-      if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject)))
+      const dir = openProjectDir()
+      if (dir) applyCapturePacks(loadConfig(dir))
       return true
     } catch { return false }
   })
@@ -1498,8 +1509,8 @@ app.whenReady().then(() => {
     return result.filePaths[0]
   })
   const saveProjectConfig = (newConfig: RedLogConfig, opts?: { expectProjectId?: string }): boolean => {
-    if (!activeProject) return false
-    const projectDir = getProjectPath(activeProject)
+    const projectDir = openProjectDir()
+    if (!projectDir) return false
     const oldConfig = loadConfig(projectDir)
     // A form is bound to the project it was loaded from. Settings flushes a
     // pending write when it unmounts, and the operator may have switched
@@ -1613,8 +1624,9 @@ app.whenReady().then(() => {
   // other. The merge belongs here, against the config as it is NOW, and the
   // caller says which project it meant.
   ipcMain.handle('scope:addTarget', (_e, target: unknown, opts?: { expectProjectId?: string }) => {
-    if (!activeProject || typeof target !== 'string' || !target.trim()) return false
-    const current = loadConfig(getProjectPath(activeProject))
+    const projectDir = openProjectDir()
+    if (!projectDir || typeof target !== 'string' || !target.trim()) return false
+    const current = loadConfig(projectDir)
     if (opts?.expectProjectId && opts.expectProjectId !== current.engagement.id) return false
     const targets = current.scope?.targets ?? []
     if (targets.includes(target)) return true
@@ -1649,7 +1661,7 @@ app.whenReady().then(() => {
     // keep the overlay + dashboard pivot views live — on new pivots, and on the
     // command_end that closes a foreground tunnel so it drops from the HUD at once.
     const d = (event.data ?? {}) as Record<string, unknown>
-    if (pivotsMayChange(event, lastPivots, activeProject?.id ?? null)) {
+    if (pivotsMayChange(event, lastPivots, projectRuntime.project()?.id ?? null)) {
       const p = getActivePivots()
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)
@@ -1670,42 +1682,44 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : { rows: [], truncated: false }))
-  ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
-  ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
+  ipcMain.handle('scope:getViolations', () => (projectRuntime.project() ? queryScopeViolationRows() : { rows: [], truncated: false }))
+  ipcMain.handle('scope:getViolationCount', () => (projectRuntime.project() ? activeViolationCount() : 0))
+  ipcMain.handle('scope:getLastRecompute', () => (projectRuntime.project() ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
   // The scope file merged into the lists, as the app enforces it. Only the
   // path saved in this project's config is read: the renderer never supplies a
   // path, so this cannot be used to read an arbitrary file.
   ipcMain.handle('scope:policy', () => {
-    if (!activeProject) return null
-    const config = loadConfig(getProjectPath(activeProject))
+    const projectDir = openProjectDir()
+    if (!projectDir) return null
+    const config = loadConfig(projectDir)
     if (config.scope.scopeFile && !readScopeFile(config.scope.scopeFile).ok) throw new Error('Scope file unavailable')
     const scope = snapshotScope(config)
     return { targets: scope.targets, excludeTargets: scope.excludeTargets }
   })
   ipcMain.handle('scope:fileInForce', () => {
-    if (!activeProject) return null
-    const file = loadConfig(getProjectPath(activeProject)).scope?.scopeFile
+    const projectDir = openProjectDir()
+    if (!projectDir) return null
+    const file = loadConfig(projectDir).scope?.scopeFile
     return file ? { path: file, ...readScopeFile(file) } : null
   })
 
   // §22: which nouns this engagement has the data for. Read-only, and the
   // flags are monotonic, so a mature project costs no queries at all.
-  ipcMain.handle('visibility:signals', () => (activeProject ? getVisibilitySignals() : null))
+  ipcMain.handle('visibility:signals', () => (projectRuntime.project() ? getVisibilitySignals() : null))
 
   // --- Evidence Chain + Clock (extracted to ipc/chain.ts) ---
 
   // --- Loot ---
-  ipcMain.handle('loot:getCount', () => activeProject ? getLootCount() : 0)
+  ipcMain.handle('loot:getCount', () => projectRuntime.project() ? getLootCount() : 0)
   ipcMain.handle('loot:rules', () => listLootRules())
 
   // --- Bookmarks ---
-  ipcMain.handle('bookmarks:list', () => activeProject ? listBookmarks() : [])
-  ipcMain.handle('bookmarks:get', (_e, id: string) => activeProject ? getBookmark(id) : null)
+  ipcMain.handle('bookmarks:list', () => projectRuntime.project() ? listBookmarks() : [])
+  ipcMain.handle('bookmarks:get', (_e, id: string) => projectRuntime.project() ? getBookmark(id) : null)
   ipcMain.handle('bookmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
     const opening = projectRuntime.current()
-    if (!activeProject || !opening) return null
+    if (!projectRuntime.project() || !opening) return null
     // Asking the browser can take two seconds. A bookmark saved in one project
     // must not land in the one opened meanwhile.
     const browser = await getActiveBrowserTab()
@@ -1722,8 +1736,8 @@ app.whenReady().then(() => {
       context
     })
   })
-  ipcMain.handle('bookmarks:update', (_e, id: string, data) => activeProject ? updateBookmark(id, data) : false)
-  ipcMain.handle('bookmarks:delete', (_e, id: string) => activeProject ? deleteBookmark(id) : false)
+  ipcMain.handle('bookmarks:update', (_e, id: string, data) => projectRuntime.project() ? updateBookmark(id, data) : false)
+  ipcMain.handle('bookmarks:delete', (_e, id: string) => projectRuntime.project() ? deleteBookmark(id) : false)
 
   // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
@@ -1757,8 +1771,8 @@ app.whenReady().then(() => {
   })
   async function launchCaptureBrowser(startUrl?: string): Promise<{ ok: boolean; error?: string }> {
     const open = projectRuntime.current()
-    if (!activeProject || !open) return { ok: false, error: 'No project open' }
-    const projectDir = getProjectPath(activeProject)
+    const projectDir = openProjectDir()
+    if (!projectDir || !open) return { ok: false, error: 'No project open' }
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
     // Through RedLog's own proxy the browser trusts that proxy's CA by its key,
@@ -1811,12 +1825,13 @@ app.whenReady().then(() => {
 
   // --- Config Profile Export/Import ---
   ipcMain.handle('config:exportProfile', async () => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
+    const project = projectRuntime.project()
+    if (!project) return null
+    const projectDir = getProjectPath(project)
     const config = loadConfig(projectDir)
     const profile = { version: 1, ...config }
     const result = await dialog.showSaveDialog(mainWindow!, {
-      defaultPath: `redlog-profile-${activeProject.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
+      defaultPath: `redlog-profile-${project.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
         { name: 'REDLOG Profile', extensions: ['yaml', 'yml'] },
         { name: 'JSON', extensions: ['json'] }
@@ -1854,7 +1869,7 @@ app.whenReady().then(() => {
     }
     return detectHooksAsync()
   })
-  ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
+  ipcMain.handle('capture:health', () => projectRuntime.project() ? getCaptureHealth() : null)
   // #255. `upTo` is the newest write time the card was showing: the operator
   // confirmed deleting what they were shown, not whatever has arrived since.
   ipcMain.handle('capture:clearUnattributedSpool', (_e, upTo: unknown) => {
@@ -2061,7 +2076,7 @@ let quitPrompt: Promise<void> | null = null
 /** When a command last arrived from a terminal outside RedLog, or null. A
  *  failed health read means "unknown", which must not block a quit. */
 function externalShellLastEventAt(): number | null {
-  if (!activeProject) return null
+  if (!projectRuntime.project()) return null
   try {
     const terminal = getCaptureHealth().sources.find((s) => s.id === 'terminal')
     return terminal?.ownShellLastEventAt ?? null
@@ -2074,7 +2089,7 @@ function currentQuitImpact(): ReturnType<typeof quitImpact> {
   return quitImpact({
     terminals: listTerminals().length,
     proxyState: managedHttpProxy.status().state,
-    project: activeProject?.name ?? null,
+    project: projectRuntime.project()?.name ?? null,
     externalLastEventAt: externalShellLastEventAt()
   })
 }
