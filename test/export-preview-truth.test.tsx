@@ -164,3 +164,32 @@ describe('the export preview shows only what the plan measured', () => {
     expect(screen.getByRole('dialog').textContent).not.toMatch(/cut off/)
   })
 })
+
+// #291 R14: a capture gap is a Known Gap. The preview names it per reason and
+// shows an unrecorded amount as unknown; it never claims what was lost.
+describe('the export preview names capture gaps', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  const draw = async (p: ResolvedExportPlan): Promise<void> => {
+    install(p)
+    render(<I18nProvider><ExportMenu totalCount={120} /></I18nProvider>)
+    openJson()
+    await waitFor(() => expect(screen.getByTestId('export-preview-scope')).toBeTruthy())
+  }
+
+  it('shows each reason with its skipped units, and an unknown amount as unknown', async () => {
+    await draw(plan({ counts: { ...plan().counts, captureGaps: [
+      { reason: 'delivery-unconfirmed', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
+      { reason: 'queue-full', gaps: 3, skippedUnits: 17, unknownAmount: 1 }
+    ] } }))
+    const panel = screen.getByRole('dialog').textContent ?? ''
+    expect(panel).toMatch(/Capture gaps \(queue-full\)\s*3 gap\(s\) · 17 skipped · amount unknown for 1/)
+    expect(panel).toMatch(/Capture gaps \(delivery-unconfirmed\)\s*1 gap\(s\) · amount unknown for 1/)
+    expect(panel).not.toMatch(/delivery-unconfirmed\)[^C]*0 skipped/)
+  })
+
+  it('shows nothing when the selection holds no gap', async () => {
+    await draw(plan())
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/Capture gaps/)
+  })
+})
