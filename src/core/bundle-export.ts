@@ -64,7 +64,26 @@ interface ManifestPayload {
   /** §3.3: per-agent_type event count so consumers know which events are
    *  AI-reported (agent_type 'agent') versus directly observed. */
   eventSourceBreakdown?: Record<string, number>
+  /** Present only when raw agent transcripts were copied in. They are the
+   *  agent's transcript as written — not redacted, not scope-trimmed. */
+  rawAgentTranscripts?: { redacted: false; files: RawTranscriptFile[] }
   files: ManifestFile[]
+}
+
+interface RawTranscriptFile extends ManifestFile {
+  /** Read from the sidecar name when it has the tailer's shape. */
+  agentKind?: string
+  sessionId?: string
+}
+
+/** The tailer names a sidecar `${agentKind}-${sessionId}[-${activation}].jsonl`
+ *  (tailer-host.ts). Agent kinds and session ids both contain dashes, so the
+ *  split is only trusted when the session id is a UUID; any other name is
+ *  listed by path alone rather than guessed at. */
+const SIDECAR_NAME = /^(.+)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-\d+)?\.jsonl$/i
+function transcriptNameParts(name: string): { agentKind?: string; sessionId?: string } {
+  const m = SIDECAR_NAME.exec(name)
+  return m ? { agentKind: m[1], sessionId: m[2] } : {}
 }
 
 function sha256File(p: string): { bytes: number; sha256: string } {
@@ -96,7 +115,12 @@ export interface ExportBundleOpts {
    *  event's sha256 lets an auditor verify the sidecar hasn't been
    *  tampered with WITHOUT them needing the raw file — so redacted export
    *  is the safe default, and this flag is the opt-in for engagements that
-   *  legitimately need the pre-redaction content. */
+   *  legitimately need the pre-redaction content.
+   *
+   *  Refused (throws) together with `includeEventIds`: a sidecar is whole, so it
+   *  cannot be trimmed to a plan-approved selection or time/session range.
+   *  Only `*.jsonl` transcripts are copied, and the manifest lists each under
+   *  `rawAgentTranscripts` with `redacted: false`. */
   includeAgentTranscripts?: boolean
   snapshot?: ExportSnapshot
   /** Exact event selection approved by ExportPlan. When present, later policy
@@ -130,6 +154,11 @@ function copyPrefix(src: string, dst: string, limit: number): void {
 }
 
 export function exportBundle(engagementId: string, opts: ExportBundleOpts): EvidenceBundle {
+  // Before anything is written. A sidecar is the whole conversation, so it
+  // cannot ride along with a selection that approved exact events.
+  if (opts.includeAgentTranscripts && opts.includeEventIds) {
+    throw new Error('Raw agent transcripts cannot be exported with a selection: a sidecar holds the whole conversation, not only the approved events.')
+  }
   // __dirname resolves differently between dev (src/core/) and packaged
   // builds (out/main/). Try the same two-then-three-parents pattern
   // hooks-manager.ts uses for shipped assets, then fall back to cwd.
@@ -514,21 +543,27 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // events, so an auditor can prove tamper-freedom without seeing the
   // raw bytes — they only need the raw file for content review, which is
   // an opt-in choice.
+  // Only the transcripts themselves (`*.jsonl`): the tailer's `.offset.json`
+  // checkpoints and boundary file are bookkeeping, not conversation. Each one
+  // copied is listed in `manifest.rawAgentTranscripts`, marked unredacted.
+  let rawAgentTranscripts: ManifestPayload['rawAgentTranscripts']
   if (opts.includeAgentTranscripts) {
     const srcAgent = path.join(projectDir, 'agent-transcripts')
     const dstAgent = path.join(bundleDir, 'agent-transcripts')
+    const raw: RawTranscriptFile[] = []
     if (fs.existsSync(srcAgent)) {
-      fs.mkdirSync(dstAgent, { recursive: true })
-      for (const name of fs.readdirSync(srcAgent)) {
+      for (const name of fs.readdirSync(srcAgent).filter((n) => n.endsWith('.jsonl')).sort()) {
         const s = path.join(srcAgent, name)
+        if (!fs.statSync(s).isFile()) continue
+        fs.mkdirSync(dstAgent, { recursive: true })
         const d = path.join(dstAgent, name)
-        if (fs.statSync(s).isFile()) {
-          fs.copyFileSync(s, d)
-          const info = sha256File(d)
-          files.push({ path: `agent-transcripts/${name}`, ...info })
-        }
+        fs.copyFileSync(s, d)
+        const info = sha256File(d)
+        files.push({ path: `agent-transcripts/${name}`, ...info })
+        raw.push({ path: `agent-transcripts/${name}`, sha256: info.sha256, bytes: info.bytes, ...transcriptNameParts(name) })
       }
     }
+    rawAgentTranscripts = { redacted: false, files: raw }
   }
 
   // v0.6.94 C: ship a standalone chain verifier inside the bundle so the
@@ -703,6 +738,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       httpBodies: { included: httpBodiesIncluded, excludedOutOfScope: httpBodiesExcluded }
     } : undefined,
     eventSourceBreakdown: sourceBreakdown,
+    rawAgentTranscripts,
     tiers: {
       // Planned exports describe the approved snapshot. Direct exports use
       // the live head, including the digest event emitted above.

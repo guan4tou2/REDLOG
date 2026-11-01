@@ -183,6 +183,50 @@ describeDB('evidence bundle export', () => {
     expect(fs.existsSync(path.join(outDir, 'agent-transcripts', 'claude-1.jsonl'))).toBe(true)
   })
 
+  // The sidecar is one whole file per conversation. A selection approved by an
+  // ExportPlan names exact events; shipping the whole sidecar beside it would
+  // carry every line the selection left out.
+  it('refuses raw agent transcripts beside a plan-approved selection, and writes nothing', () => {
+    seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"outside the selection"}\n')
+    const outRoot = path.join(dir, 'refused')
+    expect(() => exportBundle('eng', { outRoot, includeAgentTranscripts: true, includeEventIds: new Set(['evt-1']) }))
+      .toThrow(/agent transcripts.*selection/i)
+    const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true })
+      .flatMap((e) => [e.name, ...(e.isDirectory() ? walk(path.join(d, e.name)) : [])]) : []
+    expect(walk(outRoot)).toEqual([])
+  })
+
+  it('exports only the sidecar transcripts, never the tailer checkpoints beside them', () => {
+    const id = '0f1e2d3c-4b5a-4968-8776-655443322110'
+    seedFile('agent-transcripts', `claude-code-${id}.jsonl`, '{"text":"hello"}\n')
+    seedFile('agent-transcripts', `claude-code-${id}.jsonl.offset.json`, '{"base":0}')
+    seedFile('agent-transcripts', '.recording-boundary.json', '{"paused":false}')
+    seedFile('agent-transcripts', 'notes.txt', 'not a transcript')
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'exports3'), includeAgentTranscripts: true })
+    expect(fs.readdirSync(path.join(outDir, 'agent-transcripts'))).toEqual([`claude-code-${id}.jsonl`])
+    expect(manifest.files.filter((f) => f.path.startsWith('agent-transcripts/')).map((f) => f.path)).toEqual([`agent-transcripts/claude-code-${id}.jsonl`])
+  })
+
+  it('discloses each raw transcript in the manifest and marks it unredacted', () => {
+    const id = '0f1e2d3c-4b5a-4968-8776-655443322110'
+    const body = '{"text":"sk-LIVE-KEY"}\n'
+    seedFile('agent-transcripts', `claude-code-${id}-1700000000000.jsonl`, body)
+    seedFile('agent-transcripts', 'odd-name.jsonl', 'x\n')
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'exports4'), includeAgentTranscripts: true })
+    const onDisk = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8')) as typeof manifest
+    expect(onDisk.rawAgentTranscripts?.redacted).toBe(false)
+    expect(onDisk.rawAgentTranscripts?.files).toEqual([
+      { path: 'agent-transcripts/claude-code-0f1e2d3c-4b5a-4968-8776-655443322110-1700000000000.jsonl', sha256: crypto.createHash('sha256').update(body).digest('hex'), bytes: Buffer.byteLength(body), agentKind: 'claude-code', sessionId: id },
+      { path: 'agent-transcripts/odd-name.jsonl', sha256: crypto.createHash('sha256').update('x\n').digest('hex'), bytes: 2 }
+    ])
+  })
+
+  it('does not mention raw agent transcripts in the manifest when none were requested', () => {
+    seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"hello"}\n')
+    const { manifest } = exportBundle('eng', { outRoot: path.join(dir, 'exports5') })
+    expect(manifest.rawAgentTranscripts).toBeUndefined()
+  })
+
   it('never exports operator token hashes', () => {
     const { outDir } = exportBundle('eng', {})
     const opsPath = path.join(outDir, 'operators.json')
