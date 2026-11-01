@@ -261,12 +261,12 @@ _redlog_current_line() {
   printf '%s' "$line"
 }
 
-_redlog_debug_trap() {
+_redlog_trace_command() {
   [[ -z "${_REDLOG_TRAP_ARMED:-}" ]] && return
   [[ "$BASH_COMMAND" == "$PROMPT_COMMAND" ]] && return
   # An empty Enter or a bare function definition runs no simple command, so
   # the first thing traced after it is our own prompt hook.
-  [[ "$BASH_COMMAND" == _redlog_prompt_command || "$BASH_COMMAND" == _redlog_arm ]] && return
+  [[ "$BASH_COMMAND" == _redlog_prompt_command || "$BASH_COMMAND" == _redlog_arm* ]] && return
   [[ -n "$_REDLOG_LAST_CMD" || -n "$_REDLOG_SKIP" ]] && return
   local cmd whole=1
   cmd=$(_redlog_current_line) || { cmd="$BASH_COMMAND"; whole=0; }
@@ -323,13 +323,72 @@ _redlog_debug_trap() {
     "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
 }
 
+# What the DEBUG trap runs. Alone when nothing else holds the trap; behind
+# another tool's trap, see `_redlog_arm`. `$1` is the status that other trap
+# ended with, handed back so that under `extdebug` (where a trap's status says
+# whether the command runs) REDLOG neither skips a command the other tool let
+# through nor lets one through that it stopped. Without a trap before it the
+# status is 0: the previous command's `$?` is not an answer to "may this run".
+_redlog_debug_trap() {
+  local rc=${1:-0}
+  _redlog_trace_command
+  return "$rc"
+}
 
 # The DEBUG trap fires for every simple command, including the ones inside
 # PROMPT_COMMAND. Without this pair the operator's own prompt command (history
 # -a, a prompt function) was recorded as "the command", and because a command
 # was then "in flight" the next real one was dropped: nothing they typed was
 # recorded. Disarm first, re-arm last; the trap only counts while armed.
-_redlog_arm() { _REDLOG_TRAP_ARMED=1; }
+#
+# Re-arming is also where REDLOG's trap is put in place, and kept there. Bash
+# keeps one DEBUG trap per shell, and bash-preexec, starship's bash init and
+# atuin all keep their hook in it: a bare `trap '...' DEBUG` here took theirs
+# away without a word. `$1` is `trap -p DEBUG`, passed by the prompt command
+# below because a function cannot see it -- the trap is invisible inside a
+# function, a sourced file and a `$( )` alike unless `functrace` is on, and
+# turning that on would change which commands the trap sees.
+#
+#   - Nobody holds the trap: install REDLOG's.
+#   - Someone else does, and REDLOG is not in it: install theirs followed by
+#     REDLOG's, in one trap. Theirs goes first, so it sees `$?`, `$_` and
+#     `$BASH_COMMAND` exactly as it would have without us, and what it prints
+#     goes to the terminal rather than into the command's recorded output.
+#   - REDLOG is already in it (an earlier prompt's, or one a tool chained and
+#     kept): leave it. Matching on our own function name is also what stops a
+#     hook sourced twice from chaining to itself.
+#
+# Looking at every prompt is what covers a tool that sets its trap AFTER we load.
+# That is routine -- bash-preexec installs from its first PROMPT_COMMAND, after
+# the rc that sourced us -- and REDLOG cannot stop it. The prompt command runs
+# after the operator's own, so by the time a command is typed the trap is ours
+# again, with theirs in front. Two limits, both left as they are: a tool that
+# swaps the trap in a typed line costs only the rest of that line, because the
+# record falls back to history at the next prompt (`not-captured`: the line and
+# its status, none of its output); and a tool that replaces it at every prompt
+# is chained to afresh each time rather than stacked, so it cannot grow.
+#
+# `trap -p` prints `trap -- 'body' DEBUG`, quoted for the shell to read back,
+# so `eval set --` is what splits it. `body` can be anything the other tool put
+# there; a `return` or a `$1` in it would meet this function's frame, not the
+# prompt's, and none of the tools above do either.
+_redlog_arm() {
+  local current=$1
+  if [[ "$current" != *_redlog_debug_trap* ]]; then
+    local body=""
+    if [[ -n "$current" ]]; then
+      eval "set -- $current"
+      body=$3
+    fi
+    if [[ -n "$body" ]]; then
+      # A newline, not `;`: the other tool's last line may end in a comment.
+      trap -- "$body"$'\n''_redlog_debug_trap $?' DEBUG
+    else
+      trap -- '_redlog_debug_trap' DEBUG
+    fi
+  fi
+  _REDLOG_TRAP_ARMED=1
+}
 
 # A line the DEBUG trap never saw: `( cd x; make )`, `{ a; b; }`, a function
 # definition. A subshell or group compound runs its simple commands where the
@@ -437,16 +496,36 @@ _redlog_prompt_command() {
 # is still number 1 and is seen.
 _REDLOG_HISTNUM=$(_redlog_history_number)
 : "${_REDLOG_HISTNUM:=0}"
-trap '_redlog_debug_trap' DEBUG
-_redlog_user_pc="${PROMPT_COMMAND:-}"
-# A trailing `;` or blank in the operator's value would make `;;` a syntax error.
-_redlog_user_pc="${_redlog_user_pc%"${_redlog_user_pc##*[![:space:];]}"}"
-if [[ -n "$_redlog_user_pc" ]]; then
-  PROMPT_COMMAND="_redlog_prompt_command;${_redlog_user_pc};_redlog_arm"
+# The trap itself is installed by `_redlog_arm` at the first prompt, behind any
+# trap already there (see it). Nothing is recorded before that prompt either
+# way: the trap only counts while armed, and arming is the last thing it does.
+#
+# The operator's PROMPT_COMMAND runs between the two, whole. Bash 5.1 lets it be
+# an array, each element a command of its own; `${PROMPT_COMMAND:-}` is element
+# 0 alone, so the rest ran after `_redlog_arm`, armed, and were recorded as
+# things the operator typed. An array is wrapped as an array. Before 5.1 an
+# array PROMPT_COMMAND is not run as a prompt command at all (bash reads
+# element 0 as the string it is), so those versions take the string path as
+# they always did. `declare -p`, not `${PROMPT_COMMAND@a}`: the latter is a
+# syntax error on 3.2, and a sourced file that does not parse loads nothing.
+#
+# `$(trap -p DEBUG)` is in the command rather than in `_redlog_arm` because a
+# prompt command runs at the top level, where the trap is visible. It costs one
+# `$( )` a prompt, as `history 1` already does twice.
+if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )) \
+   && [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+  PROMPT_COMMAND=(_redlog_prompt_command "${PROMPT_COMMAND[@]}" '_redlog_arm "$(trap -p DEBUG)"')
 else
-  PROMPT_COMMAND="_redlog_prompt_command;_redlog_arm"
+  _redlog_user_pc="${PROMPT_COMMAND:-}"
+  # A trailing `;` or blank in the operator's value would make `;;` a syntax error.
+  _redlog_user_pc="${_redlog_user_pc%"${_redlog_user_pc##*[![:space:];]}"}"
+  if [[ -n "$_redlog_user_pc" ]]; then
+    PROMPT_COMMAND="_redlog_prompt_command;${_redlog_user_pc};"'_redlog_arm "$(trap -p DEBUG)"'
+  else
+    PROMPT_COMMAND='_redlog_prompt_command;_redlog_arm "$(trap -p DEBUG)"'
+  fi
+  unset _redlog_user_pc
 fi
-unset _redlog_user_pc
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1

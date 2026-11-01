@@ -106,6 +106,34 @@ describeShell(`auto capture in an enrolled bash (${target.label})`, () => {
   })
 })
 
+// bash-preexec, starship and atuin keep their hook in the DEBUG trap, and
+// loading this adapter used to replace it. Here the other tool's trap writes
+// to a file rather than to the terminal, so a recording that included its
+// output would show up as a stdout that is not the command's.
+describeShell(`bash auto capture beside another tool's DEBUG trap (${target.label})`, () => {
+  let collector: Awaited<ReturnType<typeof startCollector>>
+  const token = 'bash-chain-token'
+  beforeAll(async () => { collector = await startCollector(token) })
+  afterAll(async () => { await collector?.close() })
+
+  it('keeps that trap running and still records the command with its output, once', async () => {
+    const report = await runZsh(target, {
+      shellKind: 'bash',
+      rc: `trap 'printf "%s\\n" "$BASH_COMMAND" >> "$HOME/prior-trap.log"' DEBUG\nsource ${hookPath(target, 'shell-bash-hook.sh')}`,
+      commands: ['echo chained-output', 'grep -c "^echo chained-output$" "$HOME/prior-trap.log"'],
+      redlog: { port: collector.port, token },
+      timeoutSeconds: 30
+    })
+    expect(report.ok, report.error).toBe(true)
+    // Their trap ran for the command, once.
+    expect(report.steps[1].output.trim()).toMatch(/(^|\s)1$/)
+    expect(events(collector.events, 'command_start', 'chained-output').filter((e) => e.data.command === 'echo chained-output')).toHaveLength(1)
+    const end = events(collector.events, 'command_end', 'chained-output').find((e) => e.data.command === 'echo chained-output')
+    expect(end?.data).toMatchObject({ completeness: 'complete', output_disposition: 'captured' })
+    expect(String(end?.data.stdout).trim()).toBe('chained-output')
+  })
+})
+
 describeShell(`bash auto capture degrades instead of wedging (${target.label})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>
   const token = 'bash-degrade-token'
