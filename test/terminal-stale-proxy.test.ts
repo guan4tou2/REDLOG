@@ -30,7 +30,7 @@ beforeEach(() => {
   _resetIngest()
   initDB(path.join(root, 'P'))
   ensurePrimaryOperator('operator', 'Operator', generateToken())
-  configureTerminal({ engagementId: 'P', projectId: 'P', operatorId: 'operator' })
+  configureTerminal({ identity: { projectId: 'P', engagementId: 'P', operatorId: 'operator' } })
   configureIngest({ castProbe: getCastPosition })
 })
 afterEach(() => {

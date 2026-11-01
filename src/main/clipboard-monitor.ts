@@ -5,6 +5,7 @@ import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { redact, maskText, getRules } from '../core/redaction'
 import type { LootDetector } from '../core/loot-detector'
+import type { ProjectIdentity } from '../core/project-runtime'
 
 // Clipboard capture is off by default — the clipboard often holds passwords,
 // tokens, session cookies. When enabled, we:
@@ -21,12 +22,13 @@ interface Config {
   enabled: boolean
   pollMs: number
   storePreview: boolean
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
   lootDetector: LootDetector | null
 }
 
-let cfg: Config = { enabled: false, pollMs: 1500, storePreview: false, engagementId: '', operatorId: '', lootDetector: null }
+let cfg: Config = { enabled: false, pollMs: 1500, storePreview: false, lootDetector: null }
 let timer: ReturnType<typeof setInterval> | null = null
 let lastHash: string | null = null
 // Bumped by every restart and stop. config:save and project open configure the
@@ -81,7 +83,7 @@ async function sample(): Promise<void> {
       lootTypes: lootTypes.length > 0 ? lootTypes : undefined,
       preview,  // null when storePreview is off
       redactionsInPreview: redacted.redacted.length > 0 ? redacted.redacted.length : undefined
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, { engagementId: cfg.identity?.engagementId ?? '', operatorId: cfg.identity?.operatorId ?? '' })
   } catch (e) {
     // DB may not be ready during startup or project close; forward to
     // capture-health so a persistent failure surfaces on StatusBar instead of

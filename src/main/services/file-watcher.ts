@@ -2,6 +2,7 @@ import { statSync } from 'fs'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
+import type { ProjectIdentity } from '../../core/project-runtime'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // File watcher (v0.6.92)
@@ -39,8 +40,9 @@ export interface FileWatcherConfig {
   enabled: boolean
   watchPaths?: string[]
   ignorePatterns?: string[]
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
 }
 
 const DEFAULT_IGNORES = [
@@ -57,7 +59,7 @@ const DEFAULT_IGNORES = [
   '**/.redlog/**',
 ]
 
-let cfg: FileWatcherConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: FileWatcherConfig = { enabled: false }
 let watcher: ChokidarWatcher | null = null
 // Bumped by every stop, and so by every restart. The restart awaits the
 // chokidar import before it creates a watcher, and config:save and project
@@ -83,7 +85,7 @@ async function restartFileWatcher(): Promise<void> {
   stopFileWatcher()
   const run = generation
   if (!cfg.enabled) return
-  if (!cfg.engagementId || !cfg.operatorId) return
+  if (!cfg.identity?.engagementId || !cfg.identity.operatorId) return
   const paths = (cfg.watchPaths ?? []).filter(Boolean)
   if (paths.length === 0) return  // nothing configured — silent no-op
   const chok = await loadChokidar()
@@ -132,7 +134,8 @@ async function restartFileWatcher(): Promise<void> {
 function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file_deleted', isDir = false): void {
   // Off is checked here too, so no watcher can record after the pack is off.
   if (!cfg.enabled || eventBus.paused) return
-  if (!cfg.engagementId || !cfg.operatorId) return
+  const identity = cfg.identity
+  if (!identity?.engagementId || !identity.operatorId) return
   let size: number | undefined
   let mtime: number | undefined
   if (subtype !== 'file_deleted') {
@@ -150,7 +153,7 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
       mtime,
       is_dir: isDir || undefined,
       source: 'file-watcher'
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, { engagementId: identity.engagementId, operatorId: identity.operatorId })
   } catch (e) {
     noteDbError('file-watcher', e)
   }

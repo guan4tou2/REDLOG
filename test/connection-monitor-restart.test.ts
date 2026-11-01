@@ -39,7 +39,7 @@ vi.mock('../src/core/socket-attribution', () => ({ notePortPid: () => {}, socket
 
 let cm: typeof import('../src/main/services/connection-monitor')
 
-const IDS = { engagementId: 'eng', operatorId: 'op' }
+const IDS = { identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } }
 const ON = { enabled: true, pollMs: 1000, selfPorts: [], ...IDS }
 const c1: Connection = { proto: 'tcp', localAddr: '10.0.0.5', localPort: 50001, remoteAddr: '203.0.113.9', remotePort: 443, pid: 4242 }
 const c2: Connection = { ...c1, localPort: 50002, remoteAddr: '203.0.113.10' }
@@ -106,7 +106,7 @@ describe('connection monitor — announcing the blind spot once per capture star
     await settle()
     // stopProject, then startProject: configure, then applyCapturePacks.
     cm.stopConnectionMonitor()
-    cm.configureConnectionMonitor({ pollMs: 1000, selfPorts: [], engagementId: 'eng2', operatorId: 'op2' })
+    cm.configureConnectionMonitor({ pollMs: 1000, selfPorts: [], identity: { projectId: 'proj2', engagementId: 'eng2', operatorId: 'op2' } })
     cm.configureConnectionMonitor({ enabled: true })
     await settle()
     expect(announcements().map((r) => r.operatorId)).toEqual(['op', 'op2'])

@@ -23,10 +23,10 @@ beforeEach(() => {
 })
 afterEach(() => { stopHost(); unregisterAdapter('codex'); fs.rmSync(root, { recursive: true, force: true }) })
 function adapter(): TailerAdapter { return { agentKind: 'codex', transcriptGlob: root + '/*.jsonl', knownIngestTypes: new Set(['user']), knownIgnoredTypes: new Set(), resolveCwd: resolve, parseUnit: JSON.parse, subtypeFor: () => 'user_message', init, stop } as TailerAdapter }
-function enable() { configureHost({ enabled: true, engagementId: 'eng-a', operatorId: 'op', enabledAgents: ['codex'], watchPathsByAgent: { codex: [cwd] }, activationStarts: { codex: startedAt } }) }
+function enable() { configureHost({ enabled: true, identity: { projectId: 'p', engagementId: 'eng-a', operatorId: 'op' }, enabledAgents: ['codex'], watchPathsByAgent: { codex: [cwd] }, activationStarts: { codex: startedAt } }) }
 describe('AI capture lifecycle', () => {
   it('does not initialize an adapter or read a disabled source', () => {
-    configureHost({ enabled: false, engagementId: 'eng-a', operatorId: 'op', enabledAgents: [] })
+    configureHost({ enabled: false, identity: { projectId: 'p', engagementId: 'eng-a', operatorId: 'op' }, enabledAgents: [] })
     registerAdapter(adapter()); registerSession('codex', source)
     expect(init).not.toHaveBeenCalled(); expect(resolve).not.toHaveBeenCalled()
   })
@@ -60,7 +60,7 @@ describe('AI capture lifecycle', () => {
     stopHost(); expect(stop).toHaveBeenCalled()
     const oldControl = init.mock.calls[0][0]
     m.project = path.join(root, 'project-b'); fs.mkdirSync(m.project)
-    configureHost({ engagementId: 'eng-b', enabledAgents: ['codex'], enabled: true })
+    configureHost({ identity: { projectId: 'p', engagementId: 'eng-b', operatorId: 'op' }, enabledAgents: ['codex'], enabled: true })
     resolve.mockClear(); m.ingest.mockClear(); old.add(source)
     oldControl.emitTurns('codex', 'session', [{ type: 'user', uuid: 'stale', textContent: 'stale callback' }])
     expect(resolve).not.toHaveBeenCalled(); expect(m.ingest).not.toHaveBeenCalled()

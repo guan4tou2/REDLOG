@@ -37,7 +37,7 @@ vi.mock('../src/core/ingest', () => ({
 }))
 vi.mock('../src/core/capture-health', () => ({ noteDbError: () => {} }))
 
-const IDS = { engagementId: 'eng', operatorId: 'op' }
+const IDS = { identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } }
 const openWatchers = (): number => h.watchers.filter((w) => w.open).length
 /** What chokidar would do on a filesystem change: tell every open watcher. */
 const fire = (event: string, p: string): void => {
@@ -106,7 +106,7 @@ describe('file watcher — restarting', () => {
     await fw.configureFileWatcher(ON)
     // stopProject, then startProject: configure, then applyCapturePacks.
     fw.stopFileWatcher()
-    void fw.configureFileWatcher({ watchPaths: ['/watched'], ignorePatterns: [], engagementId: 'eng2', operatorId: 'op2' })
+    void fw.configureFileWatcher({ watchPaths: ['/watched'], ignorePatterns: [], identity: { projectId: 'proj2', engagementId: 'eng2', operatorId: 'op2' } })
     void fw.configureFileWatcher({ enabled: false })
     await settle()
     expect(openWatchers()).toBe(0)
@@ -119,7 +119,7 @@ describe('PowerShell transcript follower — restarting', () => {
   // applyCapturePacks switches the pack. config:save calls it only once.
   const switchProject = (packOn: boolean): void => {
     pt.stopPowershellTranscript()
-    void pt.configurePowershellTranscript({ engagementId: 'eng2', operatorId: 'op2' })
+    void pt.configurePowershellTranscript({ identity: { projectId: 'proj2', engagementId: 'eng2', operatorId: 'op2' } })
     void pt.configurePowershellTranscript({ enabled: packOn })
   }
 

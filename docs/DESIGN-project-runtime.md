@@ -46,9 +46,13 @@ A → B → A the first A's continuation counted as the second A's attempt.
 
 `src/core/project-runtime.ts`. One open project as the main process sees it:
 
-- `begin(identity)` → `ProjectContext { projectId, engagementId, operatorId,
-  generation, signal }`, state `opening`. Refuses while an open is live: the
-  caller owns the order of a switch.
+- `begin(project, { engagementId, operatorId })` → `ProjectContext { projectId,
+  engagementId, operatorId, generation, signal }`, state `opening`. Refuses
+  while an open is live: the caller owns the order of a switch.
+- `setOperator(context, id)` (R1b): the operator is the one part of an open's
+  identity that may change while it stays open. The context is frozen; its
+  `operatorId` is a getter, so every holder sees the change from its next
+  read. An ended open keeps the operator it ended with.
 - `activate(context)` → `active`.
 - `close()` aborts the signal, then runs the open's cleanups newest first.
   Every one runs; the first failure is rethrown after the last. An open that
@@ -73,9 +77,8 @@ What it deliberately is not, yet:
   dropped before the spool identity), and moving twenty services behind an
   interface in one change would make that order implicit. Services move onto
   `onStop` one at a time, each with a test that pins its place.
-- **Not the identity source.** `activeProject`, `currentEngagementId` and
-  `currentOperatorId` still exist. Replacing them with `projectRuntime.current()`
-  touches every IPC handler and is its own slice.
+- **Not the identity source** — until R1b-3, which made it one: see §4.
+  `activeProject` still exists and is the next slice.
 - **Not a transaction.** Switching stops the old open, then begins the new
   one. A failed open is cleaned up and reported; it does not restore the old
   project. That was already true and is now stated.
@@ -155,8 +158,23 @@ evidence-schema change during a refactor.
      project's evidence from the last one's sessions, so `stopProject` stops
      the browser instead. `e2e/capture-browser-project-switch.spec.ts` pins
      this; it is POSIX-only (a `#!/bin/sh` stand-in) and runs in CI.
-  3. Next: identity from `projectRuntime.current()`, then retire
-     `activeProject` / `currentEngagementId` / `currentOperatorId`.
+  3. **Identity from the open's context.** `currentEngagementId` and
+     `currentOperatorId` are gone. Every capture service holds the open's
+     `ProjectContext` by reference and reads the identity when it writes, so
+     nothing copies it at configure time. `main/index.ts` reads
+     `projectRuntime.current()`, or the opening context inside an open's own
+     work. Once `stopProject` has closed the runtime, nothing in `index.ts`
+     writes; the services still finish their stop-time writes through the
+     context they hold, and the R1c guard refuses anything late.
+     Operator changes made in Settings take effect for every source at once
+     (`main/operator-change.ts`): the runtime's `setOperator`, the spool
+     identity file the shell hooks and HTTP addon stamp from, and the API's
+     primary operator (same token, new operator). Events already spooled keep
+     the operator they were captured under. The HTTP addon now refuses a
+     late event by engagement only, so an operator change in the same
+     project is no longer taken for a switch.
+  4. Next: retire `activeProject` into the runtime (it holds the open's
+     `ProjectMeta`, renamed through it).
 - R1b and anything else that edits `src/main/index.ts` run one at a time: #464
   and R1c met there in one function.
 - R2 is unblocked by R0. It starts with the characterization tests in §3, not

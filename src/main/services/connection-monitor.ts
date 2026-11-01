@@ -3,6 +3,7 @@ import { eventBus } from '../../core/event-bus'
 import { ingestEvent } from '../../core/ingest'
 import { notePortPid, socketCausesFor } from '../../core/socket-attribution'
 import { noteDbError } from '../../core/capture-health'
+import type { ProjectIdentity } from '../../core/project-runtime'
 import {
   parseSs, parseNetstatBsd, parseNetstatWin, parseLsof, attachLsof,
   diffConns, indexConns, isCapturable,
@@ -32,8 +33,9 @@ import {
 export interface ConnectionMonitorConfig {
   enabled: boolean
   pollMs?: number
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
   /** Local listener ports that are RedLog itself, filtered out so the app does
    *  not record its own hooks POSTing to its API. */
   selfPorts?: number[]
@@ -50,7 +52,11 @@ interface Tracked {
   openedAt: number
 }
 
-let cfg: ConnectionMonitorConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: ConnectionMonitorConfig = { enabled: false }
+/** The identity to write under, read at the moment of the write. */
+function ids(): { engagementId: string; operatorId: string } {
+  return { engagementId: cfg.identity?.engagementId ?? '', operatorId: cfg.identity?.operatorId ?? '' }
+}
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let known = new Map<string, Tracked>()
 let polling = false
@@ -116,7 +122,7 @@ function announceLimit(): void {
       description: 'Connection capture records established connections only; ' +
         'SYN scans (nmap -sS) complete no handshake and are not visible here.',
       poll_ms: Math.max(1000, cfg.pollMs ?? DEFAULT_POLL_MS)
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, ids())
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
@@ -204,7 +210,7 @@ function emitOpen(c: Connection): void {
     }
     const causes = socketCausesFor('scanner', data)
     if (causes.length > 0) data._causes = causes
-    const ev = ingestEvent('scanner', data, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
+    const ev = ingestEvent('scanner', data, { ...ids(), targetId: c.remoteAddr })
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
@@ -218,7 +224,7 @@ function emitClose(c: Connection, durationMs: number): void {
       local_port: c.localPort,
       detectedTarget: c.remoteAddr,
       duration_sec: Math.max(0, Math.round(durationMs / 1000))
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
+    }, { ...ids(), targetId: c.remoteAddr })
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
@@ -229,7 +235,7 @@ function emitSaturated(count: number): void {
       count,
       description: `Connection monitor over budget: ${count} changes in one poll; ` +
         'recording the count, not each row (a wide scan opens thousands of short connections).'
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, ids())
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 

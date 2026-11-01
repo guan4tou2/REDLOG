@@ -95,7 +95,7 @@ describeDB('loot recording', () => {
     db.initDB(dir)
     opId = ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id
     const d = new loot.LootDetector()
-    d.configure({ engagementId: 'eng', operatorId: opId })
+    d.configure({ identity: { projectId: 'proj', engagementId: 'eng', operatorId: opId } })
     ingestMod.configureIngest({ lootDetector: d })
   })
   afterEach(() => {
@@ -163,9 +163,21 @@ describeDB('loot recording', () => {
     expect(lootRows()).toHaveLength(0)
   })
 
+  it('records under the operator the project has now, not the one it had when configured', () => {
+    // The context's operator changes while the project stays open (Settings).
+    const second = ops.createOperator({ id: 'op-second', name: 'Second', token: ops.generateToken() }).id
+    const identity = { projectId: 'proj', engagementId: 'eng', operatorId: opId }
+    const d = new loot.LootDetector()
+    d.configure({ identity })
+    identity.operatorId = second
+    expect(d.emit(d.findMatches(`k ${AWS_A}`), { targetId: 't' })).toBe(true)
+    const [row] = events.queryEvents({ limit: 5 }).filter((e) => e.agentType === 'loot')
+    expect({ operatorId: row.operatorId, engagementId: row.engagementId }).toEqual({ operatorId: second, engagementId: 'eng' })
+  })
+
   it('reports a failed loot write, and records it on the next sighting instead of forgetting it', () => {
     const d = new loot.LootDetector()
-    d.configure({ engagementId: 'eng', operatorId: opId })
+    d.configure({ identity: { projectId: 'proj', engagementId: 'eng', operatorId: opId } })
     const matches = d.findMatches(`k ${AWS_B}`)
     db.closeDB()
     expect(d.emit(matches, { targetId: 't' })).toBe(false)

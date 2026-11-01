@@ -10,20 +10,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const h = vi.hoisted(() => ({
   text: '',
   reads: 0,
-  events: [] as Array<Record<string, unknown>>
+  events: [] as Array<Record<string, unknown>>,
+  ids: [] as Array<{ engagementId: string; operatorId: string }>
 }))
 
 vi.mock('electron', () => ({
   clipboard: { readText: () => { h.reads++; return h.text } }
 }))
 vi.mock('../src/core/ingest', () => ({
-  ingestEvent: (_type: string, data: Record<string, unknown>) => { h.events.push(data); return null }
+  ingestEvent: (_type: string, data: Record<string, unknown>, ids: { engagementId: string; operatorId: string }) => {
+    h.events.push(data); h.ids.push(ids); return null
+  }
 }))
 vi.mock('../src/core/capture-health', () => ({ noteDbError: () => {} }))
 
 let monitor: typeof import('../src/main/clipboard-monitor')
 
-const IDS = { engagementId: 'eng', operatorId: 'op' }
+const IDS = { identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } }
 const ON = { enabled: true, pollMs: 500, ...IDS }
 
 /** Let every restart in flight get past its clipboard read. */
@@ -42,6 +45,7 @@ beforeEach(async () => {
   h.text = 'on the clipboard before capture started'
   h.reads = 0
   h.events.length = 0
+  h.ids.length = 0
   monitor = await import('../src/main/clipboard-monitor')
 })
 
@@ -109,6 +113,18 @@ describe('clipboard monitor — what it captures', () => {
     const preview = String(h.events[0].preview)
     expect(preview).toHaveLength(120)
     expect(preview.startsWith(`token ${'•'.repeat(32)} and xxx`)).toBe(true)
+  })
+})
+
+describe('clipboard monitor — identity', () => {
+  it('writes under the operator the project has now, not the one it had when configured', async () => {
+    // The context's operator changes while the project stays open (Settings).
+    const identity = { projectId: 'proj', engagementId: 'eng', operatorId: 'op' }
+    monitor.configureClipboardMonitor({ enabled: true, pollMs: 500, identity })
+    await settle()
+    identity.operatorId = 'op-changed'
+    await copy('first copy after the operator changed')
+    expect(h.ids).toEqual([{ engagementId: 'eng', operatorId: 'op-changed' }])
   })
 })
 
@@ -180,7 +196,7 @@ describe('clipboard monitor — turning it off', () => {
     monitor.configureClipboardMonitor(ON)
     await settle()
     monitor.stopClipboardMonitor()
-    monitor.configureClipboardMonitor({ pollMs: 500, storePreview: false, engagementId: 'eng2', operatorId: 'op2' })
+    monitor.configureClipboardMonitor({ pollMs: 500, storePreview: false, identity: { projectId: 'proj', engagementId: 'eng2', operatorId: 'op2' } })
     monitor.startClipboardMonitor()
     monitor.configureClipboardMonitor({ enabled: false })
     await settle()

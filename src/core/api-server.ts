@@ -128,6 +128,15 @@ export function configureApi(opts: {
   if (opts.httpVerifySink) httpVerifySinkRef = opts.httpVerifySink
 }
 
+/** Settings changed the operator while the project stays open. The token is
+ *  the project's and keeps working; what arrives with it is the new
+ *  operator's from now on. With no project open, the next open applies it. */
+export function setPrimaryOperator(id: string, name: string): void {
+  primaryOperatorId = id
+  if (name) primaryOperatorName = name
+  if (projectOpen) ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
+}
+
 function writePrimaryToken(): string {
   const token = generateToken()
   fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })

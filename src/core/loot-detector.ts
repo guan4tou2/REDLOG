@@ -4,6 +4,7 @@ import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { DETECT_AS_LOOT, SECRET_SHAPES, compileShape } from './secret-patterns'
 import { runBounded, _shutdownBoundedRegex } from './bounded-regex'
+import type { ProjectIdentity } from './project-runtime'
 
 interface LootMatch {
   /** Stable rule identity, the key a rule is switched off by: the built-in's
@@ -170,17 +171,17 @@ function pluginRuleId(pluginId: string, patternName: string): string {
 }
 
 export class LootDetector {
-  private engagementId = 'default'
-  private operatorId = ''
+  // Held by reference and read when a loot event is written: the operator can
+  // be changed in Settings while the project stays open.
+  private identity: Readonly<ProjectIdentity> | null = null
   private detectedHashes = new Set<string>()
   private disabledRules = new Set<string>()
 
-  configure(opts: { engagementId?: string; operatorId?: string; disabledRules?: readonly string[] }): void {
-    if (opts.engagementId && opts.engagementId !== this.engagementId) {
-      this.engagementId = opts.engagementId
-      this.detectedHashes.clear()
+  configure(opts: { identity?: Readonly<ProjectIdentity>; disabledRules?: readonly string[] }): void {
+    if (opts.identity) {
+      if (opts.identity.engagementId !== this.identity?.engagementId) this.detectedHashes.clear()
+      this.identity = opts.identity
     }
-    if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.disabledRules) this.disabledRules = new Set(opts.disabledRules)
   }
 
@@ -193,7 +194,7 @@ export class LootDetector {
   /** Matches of the rules that are switched on, recorded as loot. */
   scan(text: string, targetId?: string, source?: string, causeEventId?: string): LootMatch[] {
     const matches = this.findMatches(text).filter((m) => this.isReported(m))
-    if (matches.length > 0 && this.operatorId) this.emit(matches, { targetId, source, causeEventId })
+    if (matches.length > 0 && this.identity?.operatorId) this.emit(matches, { targetId, source, causeEventId })
     return matches
   }
 
@@ -235,7 +236,8 @@ export class LootDetector {
    * sighting records it instead of the loot being silently lost.
    */
   emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): boolean {
-    if (!this.operatorId) return false
+    const identity = this.identity
+    if (!identity?.operatorId) return false
     const fresh: LootMatch[] = []
     const keys: string[] = []
     for (const m of matches) {
@@ -267,8 +269,8 @@ export class LootDetector {
         // "shell → loot → screenshot" attack narratives.
         ...(opts.causeEventId ? { _causes: [opts.causeEventId] } : {})
       }, {
-        engagementId: this.engagementId,
-        operatorId: this.operatorId,
+        engagementId: identity.engagementId,
+        operatorId: identity.operatorId,
         targetId: opts.targetId
       })
       if (!evt) return false

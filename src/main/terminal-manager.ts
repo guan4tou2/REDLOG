@@ -16,7 +16,8 @@ import { ensurePtyHelperExecutable } from '../core/pty-helper'
 import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 import { indexCast } from '../core/cast-index'
-import { beginTerminal, readTerminalEnrollment, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
+import type { ProjectIdentity } from '../core/project-runtime'
+import { beginTerminal,readTerminalEnrollment, writeTerminalEnrollment, removeTerminalEnrollment } from '../core/terminal-enrollment'
 
 // Checked once per run, before the first shell is started. See core/pty-helper.ts.
 let ptyHelperChecked = false
@@ -122,9 +123,7 @@ interface TerminalSession {
   startEventId?: string | null
   // Audit 2026-09-18 P1: identity captured for this recording binding. Its close lands before
   // the project changes; the surviving pane gets a new binding afterwards.
-  engagementId: string
-  projectId: string
-  operatorId: string
+  identity: Readonly<ProjectIdentity>
   recordingId: string
   projectDir: string
   previousRecording?: { projectId: string; recordingId: string }
@@ -163,7 +162,7 @@ function finaliseSession(session: TerminalSession, exitCode: number | null, reas
           reason, ...(pending.recordingId === session.recordingId && pending.startEventId
             ? { _causes: [pending.startEventId] }
             : { boundary_from: { projectId: pending.projectId, recordingId: pending.recordingId, commandId: pending.commandId } })
-      }, { engagementId: session.engagementId, operatorId: session.operatorId, bypassPause: true })
+      }, { engagementId: session.identity.engagementId, operatorId: session.identity.operatorId, bypassPause: true })
     }
     ingestEvent('shell', {
       subtype: 'session_end', source: 'builtin-terminal', terminalId: session.id,
@@ -174,7 +173,7 @@ function finaliseSession(session: TerminalSession, exitCode: number | null, reas
       castTruncated: session.castTruncated, durationMs: Date.now() - session.castStart,
       ...(closed?.error ? { recordingError: closed.error } : {}),
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
-    }, { engagementId: session.engagementId, operatorId: session.operatorId, bypassPause: true })
+    }, { engagementId: session.identity.engagementId, operatorId: session.identity.operatorId, bypassPause: true })
   } catch (error) { noteDbError('terminal-session-end', error) }
 
   // Index only if the owning project is still open after the boundary. It is
@@ -203,7 +202,7 @@ function prepareTerminalEvent(data: Record<string, unknown>, incomingEngagement:
     if (data.subtype === 'command_end') session.pendingCommands.delete(commandKey(data))
     return false
   }
-  if (session.finalised || session.recordingReason || incomingEngagement !== session.engagementId) return false
+  if (session.finalised || session.recordingReason || incomingEngagement !== session.identity.engagementId) return false
   data.recordingId = session.recordingId
   const pending = session.pendingCommands.get(commandKey(data))
   if (pending && pending.recordingId !== session.recordingId && data.subtype !== 'command_start') {
@@ -222,22 +221,20 @@ function terminalEventRecorded(event: RedLogEvent): void {
   const data = event.data
   if (data.source !== 'builtin-terminal' || typeof data.terminalId !== 'string') return
   const session = sessions.get(data.terminalId)
-  if (!session || event.engagementId !== session.engagementId) return
+  if (!session || event.engagementId !== session.identity.engagementId) return
   if (data.subtype === 'capture_stopped' || data.subtype === 'capture_resumed') refreshTerminalConsent(session)
   const key = commandKey(data)
   if (data.subtype === 'command_start') {
     // Foreground shell commands are sequential. A new start also retires a
     // command that completed while the picker had no record to receive it.
     session.pendingCommands.clear()
-    session.pendingCommands.set(key, { projectId: session.projectId, recordingId: session.recordingId,
+    session.pendingCommands.set(key, { projectId: session.identity.projectId, recordingId: session.recordingId,
       commandId: typeof data.command_id === 'string' ? data.command_id : key, startEventId: event.id })
   } else if (data.subtype === 'command_end') session.pendingCommands.delete(key)
 }
 
-function beginRecording(session: TerminalSession): void {
-  session.engagementId = engagementId
-  session.projectId = projectId
-  session.operatorId = operatorId
+function beginRecording(session: TerminalSession, binding: Readonly<ProjectIdentity>): void {
+  session.identity = binding
   session.projectDir = getProjectDir()
   session.recordingId = crypto.randomUUID()
   session.castStart = Date.now()
@@ -266,7 +263,7 @@ function beginRecording(session: TerminalSession): void {
       ...(session.previousRecording ? { continues: session.previousRecording } : {}),
       ...(session.previousRecording ? { rotationPaneCount: sessions.size } : {}),
       ...(session.hookSourced ? {} : { hookMissing: 'no-hook-for-shell' })
-    }, { engagementId, operatorId, bypassPause: true })
+    }, { engagementId: binding.engagementId, operatorId: binding.operatorId, bypassPause: true })
     if (!event) throw new Error('Recording start was not stored')
     session.startEventId = event.id
   } catch (error) {
@@ -278,7 +275,7 @@ function beginRecording(session: TerminalSession): void {
   }
   try {
     const old = readTerminalEnrollment(os.homedir(), session.id)
-    const state = beginTerminal({ sessionId: session.id, mode: old?.mode ?? 'auto', engagementId, operatorId, now: session.castStart })
+    const state = beginTerminal({ sessionId: session.id, mode: old?.mode ?? 'auto', engagementId: binding.engagementId, operatorId: binding.operatorId, now: session.castStart })
     if (session.previousRecording) state.recording = old?.recording === true || (old?.stoppedReason === 'project-switched' && session.consentBeforeSwitch === true)
     if (old?.stoppedReason === 'operator' || session.recordingReason) state.recording = false
     if (old?.stoppedReason === 'operator') state.stoppedReason = 'operator'
@@ -299,7 +296,7 @@ export function detachTerminalRecordings(): number {
     refreshTerminalConsent(session)
     session.consentBeforeSwitch = !session.operatorPaused
     finaliseSession(session, null, 'project-switched')
-    session.previousRecording = { projectId: session.projectId, recordingId: session.recordingId }
+    session.previousRecording = { projectId: session.identity.projectId, recordingId: session.recordingId }
     session.castPath = null
     session.recordingReason = 'no-project'
     try {
@@ -308,15 +305,15 @@ export function detachTerminalRecordings(): number {
     } catch (error) { noteDbError('terminal-enrollment', error) }
     sendToWindow(`terminal:castState:${session.id}`, castState(session))
   }
-  engagementId = ''
-  operatorId = ''
+  identity = null
   return sessions.size
 }
 
 /** Called only once the incoming project's ingest and DB are ready. */
 export function resumeTerminalRecordings(): number {
-  if (!engagementId || !operatorId) return 0
-  for (const session of sessions.values()) if (session.finalised) beginRecording(session)
+  const current = identity
+  if (!current?.engagementId || !current.operatorId) return 0
+  for (const session of sessions.values()) if (session.finalised) beginRecording(session, current)
   return sessions.size
 }
 
@@ -355,9 +352,9 @@ eventBus.on('recording', () => {
 })
 
 let mainWindow: BrowserWindow | null = null
-let engagementId = ''
-let projectId = ''
-let operatorId = ''
+// Held by reference and read when an event is written: the operator can be
+// changed in Settings while the project stays open.
+let identity: Readonly<ProjectIdentity> | null = null
 let maxCastBytes = 50 * 1024 * 1024
 
 export function setTerminalWindow(win: BrowserWindow): void {
@@ -409,10 +406,8 @@ export function getCastPosition(terminalId: string): { castPath: string; offset:
   return { castPath: session.castPath, offset: session.castBytes, truncated: session.castTruncated }
 }
 
-export function configureTerminal(opts: { engagementId: string; projectId: string; operatorId: string; maxCastBytes?: number }): void {
-  engagementId = opts.engagementId
-  projectId = opts.projectId
-  operatorId = opts.operatorId
+export function configureTerminal(opts: { identity: Readonly<ProjectIdentity>; maxCastBytes?: number }): void {
+  identity = opts.identity
   configureIngest({ terminalLifecycle: { prepare: prepareTerminalEvent, recorded: terminalEventRecorded } })
   configureBuiltinTerminalHealth(() => {
     const failed = Array.from(sessions.values()).find(session => session.recordingReason === 'recording-failed')
@@ -477,7 +472,8 @@ function recoveredCast(castPath: unknown): {
 }
 
 export function recoverOrphanSessions(): number {
-  if (!operatorId) return 0
+  const current = identity
+  if (!current?.operatorId) return 0
   let recovered = 0
   try {
     // v0.6.87 A5: paginated scan via SQL (previous impl loaded up to 5000 rows
@@ -531,7 +527,7 @@ export function recoverOrphanSessions(): number {
               subtype: 'command_boundary', source: 'builtin-terminal', terminalId: tid,
               recordingId: start.recordingId, command_id: command.command_id,
               reason: 'recovered-orphan', _causes: [command.id]
-            }, { engagementId, operatorId })
+            }, { engagementId: current.engagementId, operatorId: current.operatorId })
           }
         }
         const ev = ingestEvent('shell', {
@@ -547,7 +543,7 @@ export function recoverOrphanSessions(): number {
           ...recoveredCast(start.castPath),
           recovered: true,
           description: 'orphan session recovered on app start'
-        }, { engagementId, operatorId })
+        }, { engagementId: current.engagementId, operatorId: current.operatorId })
         if (ev) recovered++
       } catch (e) { noteDbError('orphan-session-recovery', e) }
     }
@@ -592,7 +588,8 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
       ...castState(existing)
     }
   }
-  if (!operatorId) {
+  const spawnIdentity = identity
+  if (!spawnIdentity?.operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
   }
 
@@ -662,9 +659,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     finalised: false,
     cols,
     rows,
-    engagementId,
-    projectId,
-    operatorId,
+    identity: spawnIdentity,
     shell,
     shellLabel,
     hookSourced: false,
@@ -703,7 +698,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   const hookPath = resolveShellHook(shell, wslDistro ? '/bin/bash' : undefined)
   session.hookSourced = hookPath !== null
 
-  beginRecording(session)
+  beginRecording(session, spawnIdentity)
 
   // Auto-source the shell hook so individual commands appear in the timeline
   if (hookPath) {
