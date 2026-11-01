@@ -16,6 +16,7 @@ import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '.
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
+import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
@@ -536,6 +537,8 @@ interface ActivePivot { via: string; tool: string; route?: string; ts: number }
 // pivots have no PID this host could check.)
 const PIVOT_ACTIVE_WINDOW_MS = 30 * 60 * 1000
 const PIVOT_FOREGROUND_MIN_SEC = 2
+// Which command_ends need a recompute at all: see pivot-refresh.ts.
+let lastPivots: LastPivotAnswer | null = null
 function getActivePivots(): ActivePivot[] {
   try {
     const evs = queryEvents({ agentType: 'pivot', limit: 40 })
@@ -562,6 +565,7 @@ function getActivePivots(): ActivePivot[] {
       out.push({ via, tool: String(d.tool ?? 'pivot'), route: d.route as string | undefined, ts: e.timestamp })
       if (out.length >= 5) break
     }
+    lastPivots = { projectId: activeProject?.id ?? null, count: out.length }
     return out
   } catch { return [] }
 }
@@ -1696,7 +1700,7 @@ app.whenReady().then(() => {
     // keep the overlay + dashboard pivot views live — on new pivots, and on the
     // command_end that closes a foreground tunnel so it drops from the HUD at once.
     const d = (event.data ?? {}) as Record<string, unknown>
-    if (event.agentType === 'pivot' || (event.agentType === 'shell' && d.subtype === 'command_end')) {
+    if (pivotsMayChange(event, lastPivots, activeProject?.id ?? null)) {
       const p = getActivePivots()
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)

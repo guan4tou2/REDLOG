@@ -17,9 +17,17 @@ import { launchWithTempHome, openTestProject, openView, REPO_ROOT } from './help
  *   REDLOG_SOAK_PTY_LINES       numbered lines each command prints, default 20
  *   REDLOG_SOAK_RESIZE_MS       window resize interval, default 15000
  *   REDLOG_SOAK_OUT             results file (JSON), default test-results/terminal-soak-<time>.json
+ *   REDLOG_SOAK_RESIZE_VIA=cdp  resize the viewport through CDP, not the window through app.evaluate
+ *   REDLOG_SOAK_GC=1            force a full collection in both JS heaps before each sample
+ *   REDLOG_SOAK_PROFILE_AT      start one minute of allocation sampling in both heaps at
+ *                               this minute; writes <out>.main.heapprofile / .renderer.heapprofile
  *
  * Every printed line carries a sequence number, so the cast read back after
  * the pane exits says exactly what was lost, duplicated or reordered.
+ *
+ * Each minute's sample splits RSS by process type and records both JS heaps,
+ * because "the App grew" does not say where: the growth #290 found came from
+ * the main process, outside the renderer that holds the terminal.
  */
 const minutes = Number(process.env.REDLOG_SOAK_MINUTES ?? 0)
 const env = (key: string, fallback: number): number => Number(process.env[key] ?? fallback)
@@ -80,7 +88,51 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
     await page.waitForTimeout(900)
 
     const appRss = (): Promise<number> => app.evaluate(({ app }) => app.getAppMetrics().reduce((sum, m) => sum + m.memory.workingSetSize * 1024, 0))
+    // Where the growth is: per process type, and each JS heap (after a forced
+    // collection with REDLOG_SOAK_GC=1, so a slope can be told from garbage
+    // not yet collected).
+    const cdp = await page.context().newCDPSession(page)
+    const forceGc = process.env.REDLOG_SOAK_GC === '1'
+    const detail = async (): Promise<Record<string, unknown>> => {
+      if (forceGc) await cdp.send('HeapProfiler.collectGarbage')
+      const renderer = await cdp.send('Runtime.getHeapUsage')
+      const dom = await cdp.send('Memory.getDOMCounters')
+      const main = await app.evaluate(({ app }, gc) => {
+        const req = process.mainModule!.require
+        if (gc) {
+          req('v8').setFlagsFromString('--expose-gc')
+          req('vm').runInNewContext('gc')()
+        }
+        const m = process.memoryUsage()
+        const byType: Record<string, number> = {}
+        for (const p of app.getAppMetrics()) byType[p.type] = (byType[p.type] ?? 0) + p.memory.workingSetSize * 1024
+        return { byType, heapUsed: m.heapUsed, heapTotal: m.heapTotal, external: m.external, arrayBuffers: m.arrayBuffers, rss: m.rss }
+      }, forceGc)
+      return { main, renderer: { used: renderer.usedSize, total: renderer.totalSize }, dom }
+    }
+    // Allocation sampling in both JS heaps for one minute, from this minute.
+    const profileAt = env('REDLOG_SOAK_PROFILE_AT', -1)
+    let profiling: 'no' | 'on' | 'done' = 'no'
+    const startProfile = async (): Promise<void> => {
+      await cdp.send('HeapProfiler.startSampling', { samplingInterval: 16384, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true })
+      await app.evaluate(() => {
+        const { Session } = process.mainModule!.require('inspector')
+        const s = new Session(); s.connect()
+        ;(globalThis as any).__soakProfiler = s
+        s.post('HeapProfiler.startSampling', { samplingInterval: 16384, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true })
+      })
+    }
+    const stopProfile = async (): Promise<void> => {
+      const renderer = await cdp.send('HeapProfiler.stopSampling')
+      fs.writeFileSync(out.replace(/\.json$/, '') + '.renderer.heapprofile', JSON.stringify(renderer.profile))
+      const main = await app.evaluate(() => new Promise<string>((resolve, reject) => {
+        const s = (globalThis as any).__soakProfiler
+        s.post('HeapProfiler.stopSampling', (err: Error | null, r: { profile: unknown }) => err ? reject(err) : resolve(JSON.stringify(r.profile)))
+      }))
+      fs.writeFileSync(out.replace(/\.json$/, '') + '.main.heapprofile', main)
+    }
     const sizes = [[1280, 800], [900, 620]] as const
+    const resizeViaCdp = process.env.REDLOG_SOAK_RESIZE_VIA === 'cdp'
     const started = Date.now()
     let commands = 0
     let resizes = 0
@@ -97,8 +149,15 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
       commands++
       if (Date.now() >= nextResize) {
         const [width, height] = sizes[++resizes % 2]
-        // The window this page is in: the app also has an overlay window.
-        await (await app.browserWindow(page)).evaluate((win, size) => win.setSize(size.width, size.height), { width, height })
+        if (resizeViaCdp) {
+          // The page's viewport, not the window: xterm refits and the PTY is
+          // resized as before, with no call into the main process's JS, so
+          // the harness's own inspector traffic can be told from the App's.
+          await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 0, mobile: false })
+        } else {
+          // The window this page is in: the app also has an overlay window.
+          await (await app.browserWindow(page)).evaluate((win, size) => win.setSize(size.width, size.height), { width, height })
+        }
         nextResize += shape.resizeMs
       }
       if (Date.now() >= nextSample) {
@@ -106,12 +165,15 @@ test('a long terminal session with resizes is saved whole, in order, and verifia
           t: Math.round((Date.now() - started) / 1000),
           rss: await appRss(),
           castBytes: (await page.evaluate(async () => (await window.redlog.terminal.list())[0].castBytes)) as number,
-          lines: commands * shape.linesPerCommand
+          lines: commands * shape.linesPerCommand,
+          ...(await detail())
         }
         samples.push(sample)
         fs.appendFileSync(samplesFile, JSON.stringify(sample) + '\n')
         if (warm === undefined && sample.t * 1000 >= durationMs / 10) warm = sample.rss
         nextSample += 60_000
+        if (profiling === 'on') { await stopProfile(); profiling = 'done' }
+        else if (profiling === 'no' && profileAt >= 0 && sample.t >= profileAt * 60) { await startProfile(); profiling = 'on' }
       }
       await page.waitForTimeout(shape.commandMs)
     }
