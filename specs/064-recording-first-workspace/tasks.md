@@ -147,6 +147,7 @@ T012／T013 本批完成（macOS source build＋DB／unit，見最新 verificati
 - [x] T057 真 app 核對：Timeline 的 gap 標題、HTTP 檢視 HAR 預覽列、以 app 自有 mitmdump 觸發的健康卡未保存 gap 列與 Timeline 紀錄（#460、#461）。
 - [x] T058 專案切換後因身分不符而拒收的 event，替原專案寫入 spool 的 `capture_gap`（reason `project-switched`）：固定 event 自己的身分，帶時間窗、精確拒收數與宣告的 body bytes，不含 URL／headers／body；與 `queue-full` 同樣每專案每窗一筆，但目前專案的送出不提前結束它；寫不出時的 log 不被 managed proxy 記到目前專案。Timeline 標題寫出拒收數。先寫 RED 測試，並以真 mitmdump 驗證 A 重開後持有 gap、B 仍無 A 的任何東西（#459）。
 - [x] T059 串流 flow（SSE／WebSocket）的結束狀態只由已保存的列推導，不新增儲存：close 列報告的觀察數與實際保存的不重複 chunk／message 數相符且狀態為 `ended` 才算「已觀察到結束」；中斷、未排入、截斷或保存數少於觀察數為「已知不完整」並寫出缺少數；沒有 close 列為「完成狀態未知」（可能仍在進行或來源先被終止）。HTTP 詳細面板對整個 flow 顯示一行；查詢走新的 partial index。以真 mitmdump 強制終止驗證（#291）。
+- [x] T060 proxy 停止時已收進送出佇列但未送達的 event 留下紀錄（#291）：佇列有東西時 addon 在 `~/.redlog/inflight/` 保留不含內容的上限標記（每專案的上限、時間窗、pid、心跳），排入前先寫、上限取 8 的倍數、心跳每秒調降並在清空時刪除；app 的 spool drain 把已不存在的 proxy 的標記轉成該專案的 `capture_gap`（`delivery-interrupted`，「最多 N 筆」）。被告知的停止（POSIX `done()`，或 managed proxy 以專屬 token 送 `/__redlog_stop`）把尚未送出的精確記為 `proxy-stopped`、送出中未確認的記為 `delivery-interrupted`，並刪除標記；Windows 的 managed proxy 停止改為先請求、被拒立即 kill、逾時才 kill，結束 app 時仍直接 kill。兩個新 reason 也依暫停區間判定，Timeline 標題寫出數量。先寫 RED 測試，並以真 mitmdump 驗證兩條停止路徑。
 
 ## 2026-10-30 排程與文件整理
 

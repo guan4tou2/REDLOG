@@ -111,6 +111,8 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
           if (d.reason === 'queue-full') return t('eventTitle.gapQueueFull', { count: String(d.skipped_units ?? '?') })
           if (d.reason === 'project-switched') return t('eventTitle.gapProjectSwitched', { count: String(d.skipped_units ?? '?') })
           if (d.reason === 'delivery-unconfirmed') return t('eventTitle.gapDeliveryUnconfirmed')
+          if (d.reason === 'proxy-stopped') return t('eventTitle.gapProxyStopped', { count: String(d.skipped_units ?? '?') })
+          if (d.reason === 'delivery-interrupted') return t('eventTitle.gapDeliveryInterrupted', { count: String(d.skipped_units ?? '?') })
           return `[${d.subtype}] ${d.description || ''}`.trim()
         case 'cookie_change':
           return t('eventTitle.cookieRotated', { domain: String(d.domain || '?'), name: String(d.cookie_name || '?') }).trim()

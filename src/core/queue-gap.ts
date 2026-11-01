@@ -2,9 +2,18 @@
 // spooled and replayed later, and the replay knows nothing about when
 // recording was paused: a gap counted while paused read as a loss in a stretch
 // nothing was meant to be recorded. These two functions judge it against the
-// pause intervals the Timeline already holds.
+// pause intervals the Timeline already holds. A gap for events the proxy held
+// when it stopped (#291) is judged the same way: an event admitted while
+// paused would have been refused by RedLog, so losing it lost nothing.
 
 export type PauseInterval = [start: number, end: number]
+
+const PAUSE_JUDGED = new Set(['queue-full', 'proxy-stopped', 'delivery-interrupted'])
+
+/** A capture gap whose window says when the events it counts were admitted. */
+export function isPauseJudgedGap(data: Record<string, unknown>): boolean {
+  return data.subtype === 'capture_gap' && PAUSE_JUDGED.has(String(data.reason))
+}
 
 /** `recording_paused` / `recording_resumed` rows, oldest first, as intervals.
  *  A pause with no resume after it is still open. */
@@ -27,7 +36,7 @@ export function pauseIntervals(rows: ReadonlyArray<{ subtype: string; timestamp:
  *  of it was a real loss and the count cannot be split — and says so. Any
  *  other gap is returned as it came. */
 export function queueGapAgainstPauses<T extends Record<string, unknown>>(data: T, pauses: readonly PauseInterval[]): (T & { overlaps_pause?: true }) | null {
-  if (data.subtype !== 'capture_gap' || data.reason !== 'queue-full') return data
+  if (!isPauseJudgedGap(data)) return data
   const start = Number(data.gap_started_at)
   const end = Number(data.gap_ended_at ?? data.gap_started_at)
   if (!Number.isFinite(start) || !Number.isFinite(end)) return data

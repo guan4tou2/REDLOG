@@ -312,3 +312,104 @@ test('#460 a full queue under real load: counted, not lost to a pause, said when
     await close(upstream)
   }
 })
+
+// #291: what the addon had admitted and not delivered when it stopped. Killed,
+// it leaves a bound on disk the app turns into an up-to-N gap; asked to stop,
+// it records the exact number it will not send and removes the bound.
+test('#291 a stopped proxy leaves a record of what it held: a bound when killed, an exact count when asked', async () => {
+  requireMitmdump()
+  test.setTimeout(150_000)
+  const { reapInflightMarkers } = await import('../src/core/inflight-marker')
+  const upstream = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok') })
+  const upPort = await listen(upstream)
+  let holding = true
+  const heldPosts: ServerResponse[] = []
+  const api = createServer((req, res) => {
+    req.resume()
+    req.on('end', () => { if (holding) heldPosts.push(res); else res.end('{}') })
+  })
+  const apiPort = await listen(api)
+  const release = (): void => { holding = false; for (const res of heldPosts.splice(0)) res.end('{}') }
+
+  const producerHome = makeTempHome('redlog-stop-gap-')
+  const redlogDir = join(producerHome, '.redlog')
+  const pending = join(redlogDir, 'pending')
+  const inflight = join(redlogDir, 'inflight')
+  mkdirSync(redlogDir, { recursive: true })
+  writeFileSync(join(redlogDir, 'api-port'), String(apiPort))
+  writeFileSync(join(redlogDir, 'api-token'), 'acceptance-token')
+  writeFileSync(join(redlogDir, 'active-identity.json'), JSON.stringify({ engagementId: 'eng-291', operatorId: 'op-291' }))
+  let output = ''
+  const proxy = new ManagedHttpProxy({
+    spawn: ((command: string, args: string[], options: Parameters<typeof spawn>[2]) => {
+      const child = spawn(command, args, { ...options, env: { ...options?.env, HOME: producerHome, USERPROFILE: producerHome, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' } })
+      child.stdout?.on('data', chunk => { output += String(chunk) })
+      child.stderr?.on('data', chunk => { output += String(chunk) })
+      return child
+    }) as never
+  })
+  const refusals = (): number => (output.match(/\[redlog\] capture queue full/g) ?? []).length
+  const records = (reason: string): Array<{ _identity: unknown; data: Record<string, unknown> }> => filesUnder(pending)
+    .filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(f, 'utf8')))
+    .filter(r => r.data.reason === reason)
+  // Fill all 64 send slots against an API that never answers.
+  const saturate = async (url: string, tag: string): Promise<void> => {
+    const before = refusals()
+    const outcomes = await Promise.all(Array.from({ length: 120 }, (_, i) => viaProxy(url, `http://127.0.0.1:${upPort}/load?${tag}=${i}`)))
+    expect(outcomes.filter(outcome => outcome !== 200)).toEqual([])
+    expect(refusals() - before, 'the queue never filled').toBeGreaterThan(0)
+  }
+  try {
+    // Killed: the marker bounds the 64 held, and nothing else is on disk for them.
+    const killed = await proxy.start({ addonPath: ADDON, port: 18000 + Math.floor(Math.random() * 2000) })
+    expect(killed.state, output).toBe('running')
+    await saturate(killed.url!, 'killed')
+    await expect.poll(() => filesUnder(inflight).filter(f => f.endsWith('.json')).length).toBe(1)
+    const marker = JSON.parse(readFileSync(filesUnder(inflight).find(f => f.endsWith('.json'))!, 'utf8'))
+    expect(marker.identities).toHaveLength(1)
+    const bound = Number(marker.identities[0].upper_bound)
+    expect(bound).toBeGreaterThanOrEqual(64)
+    expect(JSON.stringify(marker)).not.toMatch(/load\?|127\.0\.0\.1:\d+\/|ok/)
+    hardKill(killed.pid!)
+    await expect.poll(() => alive(marker.pid)).toBe(false)
+    const reapedInto = join(producerHome, 'reaped')
+    expect(reapInflightMarkers(inflight, reapedInto)).toBe(1)
+    const reaped = filesUnder(reapedInto).map(f => JSON.parse(readFileSync(f, 'utf8')))
+    expect(reaped).toHaveLength(1)
+    expect(reaped[0]).toMatchObject({ _identity: { engagementId: 'eng-291', operatorId: 'op-291' },
+      data: { subtype: 'capture_gap', reason: 'delivery-interrupted', capture_delivery: 'unknown', skipped_units: bound } })
+    proxy.stop()
+    release()
+    holding = true
+    rmSync(pending, { recursive: true, force: true })
+
+    // Asked: the exact count, split by what it knows. The four workers are
+    // mid-POST to an API that does not answer, so those four are unconfirmed.
+    const asked = await proxy.start({ addonPath: ADDON, port: 18000 + Math.floor(Math.random() * 2000) })
+    expect(asked.state, output).toBe('running')
+    await saturate(asked.url!, 'asked')
+    const startedAt = Date.now()
+    proxy.stop({ graceful: true })
+    await proxy.released(10_000)
+    const tookMs = Date.now() - startedAt
+    const stopped = records('proxy-stopped')
+    const interrupted = records('delivery-interrupted')
+    const units = (rows: typeof stopped): number => rows.reduce((n, r) => n + Number(r.data.skipped_units), 0)
+    expect(units(stopped) + units(interrupted), output.slice(-1500)).toBe(64)
+    expect(units(interrupted)).toBe(4)
+    expect(stopped.every(r => r.data.capture_delivery === 'not-sent')).toBe(true)
+    expect(filesUnder(inflight).filter(f => f.endsWith('.json')), 'a recorded stop left its bound behind').toEqual([])
+    expect(JSON.stringify(filesUnder(pending).map(f => readFileSync(f, 'utf8')))).not.toMatch(/load\?/)
+    console.log(`[291] mitmdump ${mitmVersion()} on ${process.platform}: killed -> marker bound ${bound}, reaped as one up-to-${bound} gap;`
+      + ` asked -> ${units(stopped)} not sent + ${units(interrupted)} unconfirmed, exited in ${tookMs} ms`)
+  } catch (e) {
+    console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+    console.log(`[DBG] producer output tail: ${output.slice(-1500)}`)
+    throw e
+  } finally {
+    release()
+    proxy.stop()
+    await close(api)
+    await close(upstream)
+  }
+})

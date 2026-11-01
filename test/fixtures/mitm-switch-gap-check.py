@@ -7,8 +7,10 @@ import ast, json, re, shutil, sys, tempfile, pathlib, time, types, urllib.reques
 # Runs the production transport functions without mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 functions = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id',
-             '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps'}
-assigns = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT'}
+             '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps',
+             '_inflight_key', '_write_inflight_marker', '_inflight_admit', '_inflight_begin', '_inflight_end'}
+assigns = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT',
+           '_INFLIGHT', '_INFLIGHT_LOCK', '_INFLIGHT_STATE', '_INFLIGHT_STEP', '_INFLIGHT_INSTANCE', '_INFLIGHT_STARTED_MS'}
 body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in functions)
         or (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id in assigns for t in n.targets))
         or (isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id in assigns)]
@@ -25,7 +27,7 @@ with tempfile.TemporaryDirectory() as directory:
               ctx=types.SimpleNamespace(log=types.SimpleNamespace(warn=warnings.append)),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
               _SEND_QUEUE=types.SimpleNamespace(put=pending.append),
-              _IDENTITY_PATH=root / 'identity', SPOOL_DIR=root / 'pending',
+              _IDENTITY_PATH=root / 'identity', SPOOL_DIR=root / 'pending', INFLIGHT_DIR=root / 'inflight', os=__import__('os'),
               _get_redlog_connection=lambda: ('1234', 'token'))
     exec(compile(ast.Module(body=body, type_ignores=[]), '<production-transport>', 'exec'), ns)
     send = ns['_send_to_redlog']

@@ -1328,6 +1328,8 @@
   "eventTitle.gapQueueFull": "[gap] {{count}} HTTP events refused at a full proxy queue",
   "eventTitle.gapProjectSwitched": "[gap] {{count}} HTTP events refused after another project was opened",
   "eventTitle.gapDeliveryUnconfirmed": "[gap] HTTP event delivery not confirmed",
+  "eventTitle.gapProxyStopped": "[gap] {{count}} HTTP events not sent: the proxy stopped first",
+  "eventTitle.gapDeliveryInterrupted": "[gap] Up to {{count}} HTTP events may be missing: the proxy stopped while sending them",
   "eventTitle.gapUnsaved": "[gap] {{count}} HTTP events lost, gap could not be saved",
   "filter.title": "Filter",
   "filter.target": "Target",

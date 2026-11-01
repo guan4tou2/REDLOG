@@ -399,6 +399,15 @@ Ghostwriter's Oplog CSV import maps directly onto these fields. Populating them 
 
 The request pins project identity; later async sends or errors cannot rebind the flow. Pause rejects new bytes, including delayed segments observed before resume; rejection is never spooled for later replay. Transmission has four workers and at most 64 admitted events. Offline spool admission is bounded to 5,000 files / 64 MiB, and publication uses a temporary file followed by rename. An unacknowledged delivery stores only project-bound `scanner.capture_gap` metadata (`reason: delivery-unconfirmed`, `capture_delivery: unknown`); it never retains the original URL, headers or body for replay. This prevents transport failure during pause from saving refused raw content. It also means failed original content cannot be recovered from this spool. Explicit HTTP refusals are never spooled.
 
+Events admitted to the send queue and not yet delivered when the proxy stops are recorded the same way, as content-free `scanner.capture_gap` records for their own project (#291):
+
+| `reason` | `capture_delivery` | When | `skipped_units` |
+|---|---|---|---|
+| `proxy-stopped` | `not-sent` | The addon was told to stop (its shutdown hook, or the managed proxy's private stop request) while events were still queued. | Exact. |
+| `delivery-interrupted` | `unknown` | Events were mid-send when a told stop gave up waiting for them, or the proxy was killed. | An upper bound: some or all may have arrived. |
+
+A kill runs no code, so while anything is in flight the addon keeps a marker in `~/.redlog/inflight/<pid>-<ns>.json`: `pid`, `heartbeat_at`, and per project `identity`, `upper_bound`, `since` and `last`. It holds no URL, header or body. The marker is written before an event is queued, with the bound rounded up to a multiple of 8. A heartbeat lowers the bound to the real count each second, and the marker is removed once nothing is in flight or a told stop has recorded its exact counts. The app's spool drain turns the marker of a producer that is gone (its pid is not running, or its heartbeat is ten minutes old) into a `delivery-interrupted` spool record and removes it. `gap_started_at`/`gap_ended_at` span when the held events were admitted. Both reasons are judged against recording pauses like `queue-full`.
+
 Terminal response/error metadata records `stream_state`, `stream_bytes_observed`, `stream_chunks_observed`, `stream_not_queued_bytes` and `capture_delivery: unknown`. Observed counts are not acknowledged persistence counts. Known unqueued bytes or interruption mark partial capture; otherwise completeness remains unverified. A missing terminal event is not normal completion.
 
 HTTP selection exports include only the segments inside the approved snapshot. HAR keeps raw segment bodies in `_redlog.streamChunks` with event ID, sequence, offset and content encoding; it does not fabricate one fully decoded response. Bundle uses the existing Event/body-ref attachment contract. Reading and search remain per saved segment; no logical SSE parser or cross-segment text-search guarantee is introduced.

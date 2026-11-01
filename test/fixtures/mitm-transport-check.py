@@ -3,14 +3,16 @@ from unittest.mock import patch
 # Execute the production transport functions without requiring optional mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id',
-         '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps'}
-gap_state = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT'}
-ns = dict(json=json, time=__import__('time'), urllib=urllib, VERBOSE=False, threading=__import__('threading'))
+         '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps',
+         '_inflight_key', '_write_inflight_marker', '_inflight_admit', '_inflight_begin', '_inflight_end'}
+gap_state = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT',
+             '_INFLIGHT', '_INFLIGHT_LOCK', '_INFLIGHT_STATE', '_INFLIGHT_STEP', '_INFLIGHT_INSTANCE', '_INFLIGHT_STARTED_MS'}
+ns = dict(json=json, time=__import__('time'), urllib=urllib, VERBOSE=False, threading=__import__('threading'), os=__import__('os'))
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     ns['_SPOOL_LOCK'] = __import__('threading').Lock()
     ns['_SEND_SLOTS'] = __import__('threading').BoundedSemaphore(64)
-    ns.update(_IDENTITY_PATH=root/'identity', SPOOL_DIR=root/'pending')
+    ns.update(_IDENTITY_PATH=root/'identity', SPOOL_DIR=root/'pending', INFLIGHT_DIR=root/'inflight')
     pending = []
     ns['_SEND_QUEUE'] = types.SimpleNamespace(put=pending.append)
     ns['threading'] = types.SimpleNamespace(Lock=__import__('threading').Lock, Thread=lambda target, daemon: types.SimpleNamespace(start=lambda: pending.append(target)))

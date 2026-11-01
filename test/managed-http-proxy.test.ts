@@ -348,6 +348,74 @@ describe('managed HTTP proxy', () => {
     await expect(proxy.released(30)).resolves.toBeUndefined()
   })
 
+  // #291: a kill on Windows is TerminateProcess, so the addon never ran its
+  // shutdown hook and whatever its queue held was lost unrecorded. A graceful
+  // stop asks the addon itself, with a secret only this child was given, and
+  // kills only when the answer is a refusal or the grace runs out.
+  describe('a graceful stop', () => {
+    class AskedChild extends FakeChild {
+      env: Record<string, string | undefined> = {}
+      kill(): boolean { this.killed = true; return true }
+      leave(): void { this.exitCode = 0; this.emit('exit', 0, null) }
+    }
+    async function running(requestStop: (url: string, token: string) => Promise<number | null>, stopGraceMs = 1_000) {
+      const child = new AskedChild()
+      const proxy = createProxy({
+        spawn: vi.fn((_cmd: string, _args: string[], options: { env: Record<string, string | undefined> }) => {
+          child.env = options.env
+          return child as never
+        }) as never,
+        exists: () => true, readinessTimeoutMs: 100, requestStop, stopGraceMs
+      })
+      const started = proxy.start({ addonPath: '/addon.py', port: 8080 })
+      child.stderr.emit('data', Buffer.from('proxy server listening'))
+      await started
+      return { child, proxy }
+    }
+
+    it('asks the addon with its own control token and does not kill a child that is leaving', async () => {
+      const requestStop = vi.fn(async () => 202)
+      const { child, proxy } = await running(requestStop)
+      const token = child.env.REDLOG_PROXY_CONTROL_TOKEN
+      expect(token).toMatch(/^[0-9a-f]{64}$/)
+      expect(token).not.toBe(child.env.REDLOG_PROXY_READY_TOKEN)
+      expect(proxy.stop({ graceful: true })).toMatchObject({ state: 'stopped' })
+      expect(requestStop).toHaveBeenCalledWith('http://127.0.0.1:8080', token)
+      let released = false
+      const waiting = proxy.released(10_000).then(() => { released = true })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(released).toBe(false)
+      expect(child.killed).toBe(false)
+      child.leave()
+      await waiting
+      expect(child.killed).toBe(false)
+    })
+
+    it('kills at once when the addon refuses, as an addon without the stop path does', async () => {
+      const { child, proxy } = await running(async () => 404)
+      proxy.stop({ graceful: true })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(child.killed).toBe(true)
+    })
+
+    it('kills when the grace runs out, including when the request got no answer', async () => {
+      const { child, proxy } = await running(async () => null, 30)
+      proxy.stop({ graceful: true })
+      await new Promise(resolve => setTimeout(resolve, 5))
+      expect(child.killed).toBe(false)
+      await new Promise(resolve => setTimeout(resolve, 60))
+      expect(child.killed).toBe(true)
+    })
+
+    it('still kills at once when not asked to be graceful', async () => {
+      const requestStop = vi.fn(async () => 202)
+      const { child, proxy } = await running(requestStop)
+      proxy.stop()
+      expect(child.killed).toBe(true)
+      expect(requestStop).not.toHaveBeenCalled()
+    })
+  })
+
   it('does not turn a cancelled startup into a failed state', async () => {
     const child = new FakeChild()
     const proxy = createProxy({

@@ -18,7 +18,8 @@ import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/ind
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
-import { pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
+import { isPauseJudgedGap, pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
+import { inflightMarkerDirectory, reapInflightMarkers } from '../core/inflight-marker'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
 } from '../core/db/bookmarks'
@@ -274,9 +275,9 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
   return status
 }
 
-function stopManagedHttpCapture(record = true): ManagedProxyStatus {
+function stopManagedHttpCapture(record = true, graceful = true): ManagedProxyStatus {
   const before = managedHttpProxy.status()
-  const status = managedHttpProxy.stop()
+  const status = managedHttpProxy.stop({ graceful })
   if (record && before.state === 'running') publishManagedProxyEvent('http_proxy_stopped', status)
   return status
 }
@@ -881,9 +882,10 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     if (eventBus.paused) return
     let pauses: ReturnType<typeof pauseIntervals> | null = null
     const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
-      // A queue-full gap is judged against the pauses before it lands: one
-      // counted entirely while paused is not a loss, and is done with (#460).
-      const data = spooled.reason === 'queue-full'
+      // A queue-full or proxy-stop gap is judged against the pauses before it
+      // lands: one counted entirely while paused is not a loss, and is done
+      // with (#460, #291).
+      const data = isPauseJudgedGap(spooled)
         ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
         : spooled
       if (!data) return true
@@ -907,6 +909,9 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
       // A pause is the one case worth keeping for later.
       return result.skipped !== 'paused'
     }
+    // A proxy killed while it held events left a bound on disk (#291). Into
+    // the spool with it, so its own project gets the gap and no other does.
+    reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
     const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), {
       engagementId: currentEngagementId,
       operatorId: currentOperatorId
@@ -2118,7 +2123,8 @@ app.on('before-quit', (event) => {
 })
 
 app.on('will-quit', () => {
-  stopManagedHttpCapture(false)
+  // Killed, not asked: see ManagedHttpProxy.stop.
+  stopManagedHttpCapture(false, false)
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()
