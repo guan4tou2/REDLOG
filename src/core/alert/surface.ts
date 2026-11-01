@@ -42,11 +42,12 @@ export interface EmitContext {
  *  at read time. */
 export class ChainEmitter implements Surface {
   readonly name = 'chain'
-  constructor(private ctx: EmitContext) {}
+  constructor(private ctx: Readonly<EmitContext>) {}
 
-  updateContext(next: Partial<EmitContext>): void {
-    if (next.engagementId) this.ctx.engagementId = next.engagementId
-    if (next.operatorId) this.ctx.operatorId = next.operatorId
+  /** Held by reference and read when a verdict is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  updateContext(next: Readonly<EmitContext>): void {
+    this.ctx = next
   }
 
   handle(verdict: Verdict): void {

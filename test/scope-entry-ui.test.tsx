@@ -68,6 +68,36 @@ describe('scope and project identity entry', () => {
     window.removeEventListener('redlog:project-renamed', renamed)
   })
 
+  // The operator ID is stamped on every event and names a signer, and a save
+  // applies it to every source at once. Saved per keystroke, typing "bob"
+  // with a pause made operators "b" and "bo" too; left blank, every capture
+  // was refused. It is committed when the field is left, and never blank.
+  it('commits the operator ID when the field is left, and never a blank one', () => {
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => null, rename: vi.fn() }
+    }
+    const setConfig = vi.fn()
+    const config = {
+      engagement: { id: 'p1' }, operator: { id: 'op', name: 'Operator' },
+      network: { whitelist: [], blacklist: [], checkInterval: 60 },
+      scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
+    } as unknown as ConfigState
+    render(<I18nProvider><ProjectSettings config={config} setConfig={setConfig} /></I18nProvider>)
+    const operatorId = screen.getByDisplayValue('op') as HTMLInputElement
+    fireEvent.change(operatorId, { target: { value: 'b' } })
+    fireEvent.change(operatorId, { target: { value: 'bob ' } })
+    expect(setConfig).not.toHaveBeenCalled()
+    fireEvent.blur(operatorId)
+    expect(setConfig).toHaveBeenCalledOnce()
+    expect(setConfig.mock.calls[0][0].operator).toEqual({ id: 'bob', name: 'Operator' })
+
+    setConfig.mockClear()
+    fireEvent.change(operatorId, { target: { value: '  ' } })
+    fireEvent.blur(operatorId)
+    expect(setConfig).not.toHaveBeenCalled()
+    expect(operatorId.value).toBe('op')
+  })
+
   // Spec 037 FR: scope is pasted, split on newline/comma/space, and every entry
   // is validated against the scope evaluator. The requirement moved here with
   // the field -- the create card stopped asking -- and an entry the evaluator

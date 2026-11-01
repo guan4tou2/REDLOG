@@ -40,7 +40,7 @@ beforeEach(() => {
   source = path.join(dir, `${SID}.jsonl`)
   claudeCodeAdapter.transcriptGlob = path.join(scratch, 'claude-projects', '**', '*.jsonl')
   registerAdapter(claudeCodeAdapter)
-  configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000 })
+  configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
 })
 
 afterEach(() => {
@@ -99,7 +99,7 @@ describe('an AI transcript read while recording is paused', () => {
     // A restart: the host forgets the session and registers it from disk.
     stopHost()
     registerAdapter(claudeCodeAdapter)
-    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000 })
+    configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
     fs.appendFileSync(source, turn('u3', 'after'))
     registerSession('claude-code', source)
 
@@ -111,7 +111,7 @@ describe('a line that began during the pause', () => {
   const restart = (): void => {
     stopHost()
     registerAdapter(claudeCodeAdapter)
-    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000 })
+    configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
   }
 
   it('is still dropped when the rest arrives after a restart', () => {
@@ -184,7 +184,7 @@ describe('a transcript started before AI capture was turned on', () => {
   it('keeps nothing of a pause read after the base, and resumes from the right place', () => {
     fs.writeFileSync(source, turn('old', 'before activation'))
     const startedAt = Date.now() + 1000
-    configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000, activationStarts: { 'claude-code': startedAt } })
+    configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000, activationStarts: { 'claude-code': startedAt } })
     registerSession('claude-code', source)
 
     eventBus.pause()

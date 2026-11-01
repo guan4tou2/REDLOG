@@ -85,7 +85,7 @@ describe('the screenshot agent refuses to record an empty frame', () => {
 
   const agent = (): InstanceType<typeof ScreenshotAgent> => {
     const a = new ScreenshotAgent()
-    a.configure({ engagementId: 'eng', operatorId: 'op' })
+    a.configure({ identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } })
     return a
   }
 

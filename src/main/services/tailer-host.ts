@@ -54,6 +54,7 @@ import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { isInsideDir } from '../../core/paths'
+import type { ProjectIdentity } from '../../core/project-runtime'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -222,8 +223,9 @@ export interface TailerHostConfig {
    *  handed to `registerSession` is refused — checked before the self-exclusion
    *  and watch-path gates, so a disabled agent's files are not even opened. */
   enabledAgents?: readonly string[]
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
   /** File name that opts a repo out of tailing when found in any
    *  ancestor of the session's cwd. Default `.redlog-app-root` — RedLog's
    *  own repo commits one to break the "watching my own dev session"
@@ -305,7 +307,11 @@ interface SessionState {
 
 const registeredAdapters = new Map<string, TailerAdapter>()
 let hostGeneration = 0
-let cfg: TailerHostConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: TailerHostConfig = { enabled: false }
+/** The identity to write under, read at the moment of the write. */
+function ids(): { engagementId: string; operatorId: string } {
+  return { engagementId: cfg.identity?.engagementId ?? '', operatorId: cfg.identity?.operatorId ?? '' }
+}
 const watchersByAgent = new Map<string, FSWatcher>()
 // P2-5: write coalescing — rapid chokidar `change` events for the same
 // session are debounced into a single catchUpSession call over a 50ms window.
@@ -439,7 +445,7 @@ export function registerAdapter(adapter: TailerAdapter): void {
   // If already running, start a watcher for this adapter immediately so
   // late registrations (e.g. plugin loaded after project open) don't miss
   // active sessions. Idempotent — `restart` also handles this.
-  if (cfg.enabled && cfg.engagementId && cfg.operatorId) restartAdapter(adapter)
+  if (cfg.enabled && cfg.identity?.engagementId && cfg.identity.operatorId) restartAdapter(adapter)
 }
 
 export function unregisterAdapter(agentKind: string): void {
@@ -661,7 +667,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
             child_type: t.type,
             pending_full: true,
             description: `Pending-parent buffer full (>${MAX_PENDING_CHILDREN}). Later children with missing parents emit without _causes rather than deferring indefinitely.`
-          }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+          }, ids())
         } catch (e) { noteDbError('tailer-host', e) }
       }
     }
@@ -784,8 +790,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
 
   try {
     const ev = ingestEvent('agent', data, {
-      engagementId: cfg.engagementId,
-      operatorId: cfg.operatorId
+      ...ids()
     })
     if (!ev) throw new Error('AI event was not saved')
     if (ev) {
@@ -904,7 +909,7 @@ function reportGap(s: SessionState): void {
     skipped_bytes: s.pauseSkippedBytes, skipped_units: s.pauseSkippedLines,
     gap_started_at: s.pauseStartedAt, gap_ended_at: Date.now(),
     description: 'Recording paused: source content omitted from events and sidecar.'
-  }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+  }, ids())
   if (!ev) throw new Error('AI capture gap was not saved')
   s.pauseSkippedBytes = 0; s.pauseSkippedLines = 0; s.pauseStartedAt = null
 }
@@ -940,7 +945,7 @@ function catchUpJsonl(s: SessionState): void {
       // Keep prior evidence append-only; a reset never truncates recorded bytes.
       const ev = ingestEvent('agent', { subtype: 'transcript_compacted', agent: s.agentKind, session_id: s.sessionId,
         old_sidecar_bytes: size, old_sidecar_sha256: fileSha256(s.sidecarPath), new_source_bytes: sourceSize
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }, ids())
       if (!ev) throw new Error('AI reset was not saved')
       s.discardPartial = false; checkpoint(s, 0); s.sourceOffset = 0
       s.pendingByParentUuid.clear(); s.pendingLineBuffer = ''; s.postCompact = true
@@ -1041,7 +1046,7 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
           agent: s.agentKind,
           unknown_type: '<parse_error>',
           description: 'Adapter.parseUnit() threw. See stderr for details.'
-        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+        }, ids())
       } catch (err) { noteDbError('tailer-host', err) }
     }
     noteCaptureError(`agent-${s.agentKind}`, e)
@@ -1074,7 +1079,7 @@ function processTurns(s: SessionState, turns: ParsedTurn[]): void {
             agent: s.agentKind,
             unknown_type: safeType,
             description: `Encountered a transcript line type not in the adapter whitelist. Skipping only this type.`
-          }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+          }, ids())
         } catch (e) { noteDbError('tailer-host', e) }
       }
       continue
@@ -1110,7 +1115,7 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
       tool_calls_seen: s.toolCallsSeen,
       tool_calls_emitted: s.toolCallsEmitted,
       reason
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, ids())
   } catch (e) { noteDbError('tailer-host', e) }
 
   if (!s.toolGapAdvisoryFired && s.toolCallsSeen >= 10 && s.toolCallsEmitted === 0) {
@@ -1123,7 +1128,7 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
         tool_calls_seen: s.toolCallsSeen,
         tool_calls_emitted: s.toolCallsEmitted,
         description: `Parser saw ${s.toolCallsSeen} tool_use turns in source but emitted 0 tool_call events. The transcript format may have changed — tool activity is not being recorded.`
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }, ids())
     } catch (e) { noteDbError('tailer-host', e) }
   }
 
@@ -1228,7 +1233,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
         const source = fs.statSync(sourcePath)
         sourceBaseOffset = source.birthtimeMs < captureFrom + 1 ? source.size : 0
         fs.writeFileSync(cursorPath, JSON.stringify({ source: sourcePath, startedAt, base: sourceBaseOffset }), { flag: 'wx', mode: 0o600 })
-        ingestEvent('agent', { subtype: 'transcript_capture_started', agent: agentKind, session_id: sessionId, skipped_source_bytes: sourceBaseOffset, activation_requested_at: startedAt, sidecar_file: path.basename(sidecarPath) }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+        ingestEvent('agent', { subtype: 'transcript_capture_started', agent: agentKind, session_id: sessionId, skipped_source_bytes: sourceBaseOffset, activation_requested_at: startedAt, sidecar_file: path.basename(sidecarPath) }, ids())
       }
     } catch (e) { noteDbError('tailer-host', e); return }
   }
@@ -1377,7 +1382,7 @@ function unregisterSession(key: string): void {
         turns_emitted: s.turnsEmitted,
         lines_seen: s.linesSeen,
         description: 'Transcript source removed or tailer shutting down; no more events for this session.'
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }, ids())
     } catch (e) { noteDbError('tailer-host', e) }
   }
   sessions.delete(key)
@@ -1413,7 +1418,7 @@ export function stopHost(): void {
 }
 
 function restartAll(): void {
-  if (!cfg.enabled || !cfg.engagementId || !cfg.operatorId) {
+  if (!cfg.enabled || !cfg.identity?.engagementId || !cfg.identity.operatorId) {
     return
   }
   for (const adapter of registeredAdapters.values()) restartAdapter(adapter)

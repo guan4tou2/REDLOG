@@ -18,7 +18,7 @@ const adapter: TailerAdapter = {
   knownIngestTypes: new Set(['user']), knownIgnoredTypes: new Set(['metadata']),
   resolveCwd: () => '/work/client', parseUnit: raw => JSON.parse(raw), subtypeFor: () => 'user_message'
 }
-const cfg = { enabled: true, engagementId: 'e1', operatorId: 'op', idleFlushMs: 60_000 }
+const cfg = { enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: 'op' }, idleFlushMs: 60_000 }
 const line = (uuid: string, text = uuid) => JSON.stringify({ uuid, type: 'user', textContent: text }) + '\n'
 const rows = () => queryEvents({ agentType: 'agent', limit: 100 }).filter(e => e.data.transcript_uuid)
 const sidecars = () => fs.existsSync(path.join(dir, 'agent-transcripts')) ? fs.readdirSync(path.join(dir, 'agent-transcripts')).filter(n => n.endsWith('.jsonl')).map(n => fs.readFileSync(path.join(dir, 'agent-transcripts', n), 'utf8')).join('') : ''

@@ -24,6 +24,17 @@ export default function ProjectSettings({ config, setConfig }: { config: ConfigS
     setProjectName(final)
     if (res.ok) window.dispatchEvent(new CustomEvent('redlog:project-renamed', { detail: final }))
   }
+  // The operator ID names a signer, and a save applies it to every source at
+  // once. So it is committed when the field is left, not per keystroke (a
+  // pause while typing would make an operator of each prefix), and never
+  // blank (every capture would be refused, with no gap recorded).
+  const [operatorId, setOperatorId] = useState(config.operator.id)
+  useEffect(() => { setOperatorId(config.operator.id) }, [config.operator.id])
+  const commitOperatorId = (): void => {
+    const id = operatorId.trim()
+    if (!id || id === config.operator.id) { setOperatorId(config.operator.id); return }
+    setConfig({ ...config, operator: { ...config.operator, id } })
+  }
 
   return (
     <>
@@ -37,7 +48,7 @@ export default function ProjectSettings({ config, setConfig }: { config: ConfigS
         <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} hint={t('settings.engagementNameHint')} />
       </FieldGroup>
       <FieldGroup title={t('settings.operatorGroup')}>
-        <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} hint={t('settings.operatorIdHint')} />
+        <Field label={t('settings.id')} value={operatorId} onChange={setOperatorId} onBlur={commitOperatorId} hint={t('settings.operatorIdHint')} />
         <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} hint={t('settings.operatorNameHint')} />
       </FieldGroup>
       {/* Was "Team Profile Sync", two buttons. The import half duplicated

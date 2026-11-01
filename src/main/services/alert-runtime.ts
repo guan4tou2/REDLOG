@@ -9,6 +9,7 @@
 // hidden.
 
 import type { RedLogConfig } from '../../core/config'
+import type { ProjectIdentity } from '../../core/project-runtime'
 import type { IPProducerState } from './producers/ip-signal-producer'
 import {
   alertFloorFor,
@@ -86,8 +87,8 @@ export class AlertRuntime {
    *  on project open and on config:save. Also updates the ChainEmitter's
    *  engagement/operator context. Policies dedup internally so a no-op
    *  configure() call doesn't re-emit anything. */
-  configure(cfg: RedLogConfig, ids: { engagementId: string; operatorId: string }, scopeTargets: string[]): void {
-    this.chainEmitter.updateContext(ids)
+  configure(cfg: RedLogConfig, identity: Readonly<ProjectIdentity>, scopeTargets: string[]): void {
+    this.chainEmitter.updateContext(identity)
 
     this.ipPolicy.configure({
       safeIps: cfg.network?.whitelist ?? [],

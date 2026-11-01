@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
+import type { ProjectIdentity } from '../../core/project-runtime'
 import { noteProcessParent } from '../../core/socket-attribution'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,8 +35,9 @@ export interface ProcessMonitorConfig {
   enabled: boolean
   pollMs?: number
   ignoreCommands?: string[]
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
 }
 
 interface PsRow {
@@ -137,7 +139,11 @@ export function leadingToken(cmd: string): string {
   return trimmed.split(/\s+/)[0] ?? ''
 }
 
-let cfg: ProcessMonitorConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: ProcessMonitorConfig = { enabled: false }
+/** The identity to write under, read at the moment of the write. */
+function ids(): { engagementId: string; operatorId: string } {
+  return { engagementId: cfg.identity?.engagementId ?? '', operatorId: cfg.identity?.operatorId ?? '' }
+}
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let knownProcs = new Map<number, TrackedProc>()
 let ownPid = process.pid
@@ -180,7 +186,7 @@ function stopPolling(): void {
 function restart(): void {
   stopPolling()
   const run = generation
-  const capturing = cfg.enabled && !!cfg.engagementId && !!cfg.operatorId &&
+  const capturing = cfg.enabled && !!cfg.identity?.engagementId && !!cfg.identity.operatorId &&
     (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32')
   // Not capturing, so the next start is a capture start and may say again
   // that ps is unusable. A restart while capture stays on does not.
@@ -213,7 +219,7 @@ function restart(): void {
         platform: process.platform,
         error: (err as Error)?.message?.slice(0, 200) || 'unknown',
         description: 'Process monitor: system `ps` not usable (BusyBox / minimal container?). Install procps-ng.'
-      }, { engagementId: cfg.engagementId!, operatorId: cfg.operatorId! })
+      }, ids())
     } catch { /* additive */ }
     console.warn('[process-monitor] ps unavailable:', (err as Error)?.message)
   })
@@ -262,7 +268,7 @@ async function pollInner(): Promise<void> {
         count: total,
         window_ms: 60_000,
         description: `Process monitor over budget: ${total} events in the last minute; dropping`
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      }, ids())
     } catch { /* additive */ }
     // Still update knownProcs so we don't re-detect these next tick.
     // v0.6.100 F3: exclude our own descendants from knownProcs. Pre-v0.6.100
@@ -362,7 +368,7 @@ function emitSpawn(r: PsRow): void {
       command: r.command.slice(0, 500),
       argv: argv.slice(0, 20),
       started_at: Date.now()
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, ids())
   } catch (e) {
     noteDbError('process-monitor', e)
   }
@@ -378,7 +384,7 @@ function emitExit(p: TrackedProc): void {
       command: p.command.slice(0, 500),
       exit_code: null,   // ps -eo doesn't expose exit; caller can join to shell events
       duration_sec
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+    }, ids())
   } catch (e) {
     noteDbError('process-monitor', e)
   }

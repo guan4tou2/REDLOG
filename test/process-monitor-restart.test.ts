@@ -40,7 +40,7 @@ vi.mock('../src/core/capture-health', () => ({ noteDbError: () => {} }))
 
 let pm: typeof import('../src/main/services/process-monitor')
 
-const IDS = { engagementId: 'eng', operatorId: 'op' }
+const IDS = { identity: { projectId: 'proj', engagementId: 'eng', operatorId: 'op' } }
 const ON = { enabled: true, pollMs: 2000, ignoreCommands: [], ...IDS }
 // A parent that is not this process, so none of these counts as RedLog's own.
 const a: Proc = { pid: 424201, ppid: 424200, command: '/usr/bin/nmap -sV 10.0.0.5' }
@@ -114,10 +114,23 @@ describe('process monitor — saying ps is unusable once per capture start', () 
     await settle()
     // stopProject, then startProject: configure, then applyCapturePacks.
     pm.stopProcessMonitor()
-    pm.configureProcessMonitor({ pollMs: 2000, ignoreCommands: [], engagementId: 'eng2', operatorId: 'op2' })
+    pm.configureProcessMonitor({ pollMs: 2000, ignoreCommands: [], identity: { projectId: 'proj2', engagementId: 'eng2', operatorId: 'op2' } })
     pm.configureProcessMonitor({ enabled: true })
     await settle()
     expect(advisories().map((r) => r.operatorId)).toEqual(['op', 'op2'])
+  })
+
+  it('writes under the operator the project has now, not the one it had when configured', async () => {
+    // The context's operator changes while the project stays open (Settings).
+    const identity = { projectId: 'proj', engagementId: 'eng', operatorId: 'op' }
+    pm.configureProcessMonitor({ ...ON, identity })
+    await settle()
+    expect(advisories().map((r) => r.operatorId)).toEqual(['op'])
+    identity.operatorId = 'op-changed'
+    pm.configureProcessMonitor({ enabled: false })
+    pm.configureProcessMonitor({ enabled: true })
+    await settle()
+    expect(advisories().map((r) => r.operatorId)).toEqual(['op', 'op-changed'])
   })
 })
 

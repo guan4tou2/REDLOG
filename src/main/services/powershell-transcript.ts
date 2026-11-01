@@ -5,6 +5,7 @@ import { insertEvent } from '../../core/db/events'
 import { ingest } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
+import type { ProjectIdentity } from '../../core/project-runtime'
 import { parseStartTranscript, type TranscriptCommand } from '../../core/start-transcript'
 
 // PowerShell Start-Transcript follower (docs/DESIGN-core-and-capture.md §2.3).
@@ -26,8 +27,9 @@ import { parseStartTranscript, type TranscriptCommand } from '../../core/start-t
 
 export interface PowershellTranscriptConfig {
   enabled: boolean
-  engagementId: string
-  operatorId: string
+  /** Held by reference and read when an event is written, so an operator
+   *  change made while the project stays open reaches the next event. */
+  identity?: Readonly<ProjectIdentity>
 }
 
 type ChokidarWatcher = {
@@ -42,7 +44,7 @@ async function loadChokidar(): Promise<ChokidarNS | null> {
   return chokidarNS
 }
 
-let cfg: PowershellTranscriptConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: PowershellTranscriptConfig = { enabled: false }
 let watcher: ChokidarWatcher | null = null
 // Bumped by every restart and stop. The restart awaits the chokidar import
 // before it creates a watcher, and project open configures this twice in one
@@ -124,7 +126,7 @@ async function restart(): Promise<void> {
 function follow(absPath: string): void {
   // Off is checked here too, so no watcher can record after the pack is off.
   if (!cfg.enabled) return
-  if (!cfg.engagementId || !cfg.operatorId) return
+  if (!cfg.identity?.engagementId || !cfg.identity.operatorId) return
   let text: string
   try { text = readFileSync(absPath, 'utf-8') } catch { return }
   const already = emitted.get(absPath) ?? 0
@@ -164,6 +166,8 @@ const OUTPUT_CAP = 100 * 1024  // parity with the shell hook's per-stream cap
 
 /** False only when the write failed; a command ingest declines on purpose is consumed. */
 function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | null): boolean {
+  const identity = cfg.identity
+  if (!identity) return false
   try {
     // Through ingest() so a PowerShell transcript command gets the same
     // target extraction / scope dispatch / companion pipeline a command that
@@ -179,8 +183,8 @@ function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | 
         ...(host ? { hostname: host } : {}),
         transcript: path.basename(sourcePath)
       },
-      engagementId: cfg.engagementId,
-      operatorId: cfg.operatorId
+      engagementId: identity.engagementId,
+      operatorId: identity.operatorId
     })
     return true
   } catch (e) { noteDbError('powershell-transcript', e); return false }

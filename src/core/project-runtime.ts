@@ -19,6 +19,8 @@
  * project back. docs/DESIGN-project-runtime.md.
  */
 
+import type { ProjectMeta } from './project-manager'
+
 export type ProjectRuntimeState = 'closed' | 'opening' | 'active' | 'closing' | 'failed'
 
 export interface ProjectIdentity {
@@ -27,7 +29,11 @@ export interface ProjectIdentity {
   operatorId: string
 }
 
-export interface ProjectContext extends ProjectIdentity {
+/** The project and engagement are fixed for the life of an open. The
+ *  operator is not: Settings can change it while the project stays open, and
+ *  `setOperator` makes every holder of the context see it from the next read.
+ *  Read the identity when writing, not once at start. */
+export interface ProjectContext extends Readonly<ProjectIdentity> {
   readonly generation: number
   readonly signal: AbortSignal
 }
@@ -37,6 +43,7 @@ interface Open {
   controller: AbortController
   cleanups: Array<() => unknown>
   activated: boolean
+  operatorId: string
 }
 
 export class ProjectRuntime {
@@ -54,13 +61,29 @@ export class ProjectRuntime {
 
   /** Start a new open. The previous one must already be closed: the caller
    *  owns the order of a switch, and stopping it here would hide that. */
-  begin(identity: ProjectIdentity): ProjectContext {
+  begin(project: ProjectMeta, ids: Omit<ProjectIdentity, 'projectId'>): ProjectContext {
     if (this.open) throw new Error(`project runtime: generation ${this.open.context.generation} is still ${this.status}`)
     const controller = new AbortController()
-    const context: ProjectContext = { ...identity, generation: ++this.generation, signal: controller.signal }
-    this.open = { context, controller, cleanups: [], activated: false }
+    const open: Open = { context: null!, controller, cleanups: [], activated: false, operatorId: ids.operatorId }
+    open.context = Object.freeze({
+      projectId: project.id,
+      engagementId: ids.engagementId,
+      get operatorId() { return open.operatorId },
+      generation: ++this.generation,
+      signal: controller.signal
+    })
+    this.open = open
     this.status = 'opening'
-    return context
+    return open.context
+  }
+
+  /** Change the operator of the live open. An open that has ended keeps the
+   *  operator it ended with: its late writes are refused by engagement, and
+   *  must not be relabelled. */
+  setOperator(context: ProjectContext, operatorId: string): boolean {
+    if (!this.isCurrent(context)) return false
+    this.open!.operatorId = operatorId
+    return true
   }
 
   activate(context: ProjectContext): void {

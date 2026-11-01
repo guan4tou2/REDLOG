@@ -90,4 +90,15 @@ describeDB('per-project token isolation', () => {
     expect(api.getApiToken()).toBe(tokenA)          // A restored from its file
     expect(ops.resolveOperatorByToken(tokenB)).toBeNull() // B's secret is dead here
   })
+
+  // Settings can change the operator while the project stays open. The token
+  // is the project's, not the operator's: it keeps working, and what arrives
+  // with it is attributed to the new operator from then on.
+  it('an operator changed while the project is open takes over the same token', () => {
+    initDB(dirA); api.onApiProjectOpen()
+    const token = api.getApiToken()
+    api.setPrimaryOperator('op-2', 'Op Two')
+    expect(api.getApiToken()).toBe(token)
+    expect(ops.resolveOperatorByToken(token)).toMatchObject({ id: 'op-2', name: 'Op Two', isPrimary: true })
+  })
 })

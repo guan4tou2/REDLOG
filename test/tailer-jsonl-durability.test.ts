@@ -60,7 +60,7 @@ beforeEach(() => {
   source = path.join(dir, `${SID}.jsonl`)
   claudeCodeAdapter.transcriptGlob = path.join(scratch, 'claude-projects', '**', '*.jsonl')
   host.registerAdapter(claudeCodeAdapter)
-  host.configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000 })
+  host.configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
 })
 
 afterEach(() => {
@@ -191,7 +191,7 @@ describe('a child waiting for a parent that has not arrived', () => {
 
 describe('a thinking turn', () => {
   it('whose write fails is held back like any other', () => {
-    host.configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, emitThinking: true })
+    host.configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, emitThinking: true })
     db.getDB().exec('ALTER TABLE events_logged RENAME TO events_logged_gone')
     fs.writeFileSync(source, JSON.stringify({
       type: 'assistant', uuid: 'th1', cwd: '/tmp/durable',
@@ -208,7 +208,7 @@ describe('a thinking turn', () => {
 describe('a transcript started before AI capture was turned on', () => {
   it('re-reads a failed turn from after the base, not from the start', () => {
     fs.writeFileSync(source, turn('old', 'before activation'))
-    host.configureHost({ enabled: true, engagementId: 'e1', operatorId: OP, idleFlushMs: 60_000, previewChars: 1000, activationStarts: { 'claude-code': Date.now() + 1000 } })
+    host.configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000, activationStarts: { 'claude-code': Date.now() + 1000 } })
     host.registerSession('claude-code', source)
     fs.appendFileSync(source, turn('u1', 'first') + turn('u2', 'second'))
     h.failOn.add('second')
