@@ -628,7 +628,9 @@ An adversarial review found four confirmed faults, each reproduced, and each now
 - A bound whose write failed was still taken as written in memory. A reader holding the file on Windows is enough to make the write fail. Now it is only remembered once it is on disk.
 - No test could catch a worker sending, during the stop's wait, an event already recorded as not sent. The fixture now takes one in that window. It also asserts at every enqueue that the bound on disk covers what is in flight.
 
-A quit inside an asked stop's grace now kills the child that is leaving: the timer that would have killed it dies with the app.
+A quit inside an asked stop's grace now kills the child that is leaving: the timer that would have killed it dies with the app. Past the grace the kill is SIGKILL. On POSIX a SIGTERM only asks again for a shutdown already under way, so the 3.5 s bound did not hold if that shutdown hung.
+
+The e2e now keeps its own record at the API. At `1c237618`, in every run, the kill left 64 in flight: 4 POSTs reached the API and were never answered, and 60 were never sent. RedLog persisted this as one gap of "up to 64". Queue-full refusals still in the open window at the kill were not persisted (the #460 limit, unchanged): 4 of 176 on Windows, and 175, 0 and 78 of 176 in three Linux runs. With an asked stop, the 4 unconfirmed equalled the API's unanswered POSTs. One of four Linux runs of #459 failed at A's first start, before any stop, because port 6661 was held by something outside the test. The other three passed.
 
 RED first: `test/fixtures/mitm-stop-gap-check.py` (run by `test/mitm-stop-gap.test.ts`, which also covers the app-side reaper, its liveness rules and the pause judgment), four graceful-stop cases in `test/managed-http-proxy.test.ts`, and a title case in `test/queue-gap-visibility.test.tsx`. The four fixtures that load `_send_to_redlog` now load the in-flight functions too.
 
