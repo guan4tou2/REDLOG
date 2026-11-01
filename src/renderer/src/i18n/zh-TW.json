@@ -1693,7 +1693,7 @@
   "export.range.all": "整個專案",
   "settings.agents.updateCapture": "更新整合",
   "settings.agents.captureBoundary": "授權對話會包含工具從其他目錄讀取的內容。",
-  "settings.agents.rawCopy": "原始副本會照原樣保存每段對話記錄，包含 thinking、未遮蔽的憑證、工具輸入與輸出，以及 agent 讀取的工作目錄外檔案；「包含 thinking blocks」不影響原始副本。暫停或關閉擷取期間不會儲存任何內容，恢復後也不會補錄，且除非另行核准，匯出不會包含原始副本。",
+  "settings.agents.rawCopy": "原始副本會照原樣保存每段對話記錄，包含 thinking、未遮蔽的憑證、工具輸入與輸出，以及 agent 讀取的工作目錄外檔案；「包含 thinking blocks」不影響原始副本。暫停或關閉擷取期間不會儲存任何內容，恢復後也不會補錄；任何匯出都不包含原始副本。",
   "settings.agents.sessions": "對話",
   "settings.agents.sessionExcluded": "已排除",
   "settings.agents.sessionRecording": "擷取中",

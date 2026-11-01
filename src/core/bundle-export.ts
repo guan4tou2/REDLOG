@@ -118,7 +118,8 @@ export interface ExportBundleOpts {
    *  legitimately need the pre-redaction content.
    *
    *  Refused (throws) together with `includeEventIds`: a sidecar is whole, so it
-   *  cannot be trimmed to a plan-approved selection or time/session range.
+   *  cannot be trimmed to a plan-approved selection or time/session range;
+   *  and together with scope masking, which a sidecar cannot honour.
    *  Only `*.jsonl` transcripts are copied, and the manifest lists each under
    *  `rawAgentTranscripts` with `redacted: false`. */
   includeAgentTranscripts?: boolean
@@ -158,6 +159,11 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // cannot ride along with a selection that approved exact events.
   if (opts.includeAgentTranscripts && opts.includeEventIds) {
     throw new Error('Raw agent transcripts cannot be exported with a selection: a sidecar holds the whole conversation, not only the approved events.')
+  }
+  // Nor with scope masking: an out-of-scope target masked in events.jsonl
+  // would still be in the raw transcript beside it, unmasked.
+  if (opts.includeAgentTranscripts && opts.scope && opts.maskOutOfScope !== false) {
+    throw new Error('Raw agent transcripts cannot be exported with scope masking: a sidecar is not masked, so it would carry what the events hide.')
   }
   // __dirname resolves differently between dev (src/core/) and packaged
   // builds (out/main/). Try the same two-then-three-parents pattern

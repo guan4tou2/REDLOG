@@ -186,6 +186,18 @@ describeDB('evidence bundle export', () => {
   // The sidecar is one whole file per conversation. A selection approved by an
   // ExportPlan names exact events; shipping the whole sidecar beside it would
   // carry every line the selection left out.
+  // Masking hides an out-of-scope target in events.jsonl; the raw transcript
+  // beside it would show it unmasked.
+  it('refuses raw agent transcripts beside scope masking', () => {
+    seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"curl http://out-of-scope.example"}\n')
+    const scope = { targets: ['in-scope.example'], excludeTargets: [] }
+    expect(() => exportBundle('eng', { outRoot: path.join(dir, 'masked'), includeAgentTranscripts: true, scope }))
+      .toThrow(/agent transcripts.*scope masking/i)
+    expect(fs.existsSync(path.join(dir, 'masked'))).toBe(false)
+    const { outDir } = exportBundle('eng', { outRoot: path.join(dir, 'unmasked'), includeAgentTranscripts: true, scope, maskOutOfScope: false })
+    expect(fs.existsSync(path.join(outDir, 'agent-transcripts', 'claude-1.jsonl'))).toBe(true)
+  })
+
   it('refuses raw agent transcripts beside a plan-approved selection, and writes nothing', () => {
     seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"outside the selection"}\n')
     const outRoot = path.join(dir, 'refused')
