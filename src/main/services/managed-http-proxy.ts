@@ -158,6 +158,9 @@ export class ManagedHttpProxy {
   // How to ask the running child to stop itself. Its own secret, not the
   // readiness token: the addon hands that one to anyone who asks for it.
   private control: { child: ChildProcess; url: string; token: string } | null = null
+  // A child asked to stop that has not exited yet. Quitting inside its grace
+  // must still kill it: the timer that would have done so dies with the app.
+  private leaving: ChildProcess | null = null
   private readonly deps: Dependencies
 
   constructor(deps: Partial<Dependencies> = {}) {
@@ -243,8 +246,12 @@ export class ManagedHttpProxy {
       try { child.kill() } catch { /* already exited */ }
     }
     if (!control) { kill(); return }
+    this.leaving = child
     const fallback = setTimeout(kill, this.deps.stopGraceMs)
-    void exited.then(() => clearTimeout(fallback))
+    void exited.then(() => {
+      clearTimeout(fallback)
+      if (this.leaving === child) this.leaving = null
+    })
     void this.deps.requestStop(control.url, control.token).then((status) => {
       if (status !== null && status !== 202) { clearTimeout(fallback); kill() }
     })
@@ -408,6 +415,11 @@ export class ManagedHttpProxy {
     this.cancelStart = null
     this.update({ state: 'stopped', url: null })
     cancel?.()
+    const leaving = this.leaving
+    if (!options.graceful && leaving && leaving.exitCode === null && !leaving.killed) {
+      this.leaving = null
+      try { leaving.kill() } catch { /* already exited */ }
+    }
     if (child) this.terminate(child, control ?? undefined)
     return this.status()
   }

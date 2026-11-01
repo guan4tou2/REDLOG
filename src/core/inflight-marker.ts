@@ -33,10 +33,17 @@ interface MarkerEntry {
   last?: unknown
 }
 
+/** A marker this reaper has decided on. Renamed before anything is written, so
+ *  a marker that then cannot be removed is never reaped a second time: a
+ *  record already replayed would come back as a duplicate. The price is that
+ *  an app that dies between the claim and the write loses that one gap. */
+const CLAIMED_SUFFIX = '.reaping'
+
 /** Turn the marker of every proxy that is gone into one spool record per
  *  project it held events for, then remove the marker. A marker that cannot be
- *  read is set aside as `.bad`, like a spool file. Returns how many markers
- *  were reaped. */
+ *  read is set aside as `.bad`, like a spool file; one that cannot be claimed
+ *  (a directory this user cannot write) is left alone. Returns how many
+ *  markers were reaped. */
 export function reapInflightMarkers(
   directory: string,
   spoolDirectory: string,
@@ -47,7 +54,7 @@ export function reapInflightMarkers(
   try { names = fs.readdirSync(directory) } catch { return 0 }
   let reaped = 0
   for (const name of names.filter((n) => n.endsWith('.json')).sort()) {
-    const file = path.join(directory, name)
+    let file = path.join(directory, name)
     try {
       const marker = JSON.parse(fs.readFileSync(file, 'utf8')) as {
         instance?: unknown; pid?: unknown; heartbeat_at?: unknown; identities?: unknown
@@ -57,6 +64,8 @@ export function reapInflightMarkers(
         throw new Error('invalid in-flight marker')
       }
       if (alive(marker.pid as number) && now - heartbeat < STALE_MS) continue
+      try { fs.renameSync(file, `${file}${CLAIMED_SUFFIX}`) } catch { continue }
+      file = `${file}${CLAIMED_SUFFIX}`
       const instance = String(marker.instance ?? name.slice(0, -'.json'.length)).replace(/[^\w-]/g, '')
       ;(marker.identities as MarkerEntry[]).forEach((entry, index) => {
         const engagementId = entry.identity?.engagementId
@@ -82,12 +91,14 @@ export function reapInflightMarkers(
           }
         }
         fs.mkdirSync(spoolDirectory, { recursive: true })
-        // Named like the addon's own spool files, so replay orders it by time.
-        const target = path.join(spoolDirectory, `${now}000000-inflight-${instance}-${index}.json`)
+        // Named like the addon's own spool files, so replay orders it by time,
+        // and from the marker alone, so finishing a claimed one rewrites the
+        // same file rather than adding another.
+        const target = path.join(spoolDirectory, `${Math.trunc(heartbeat)}000000-inflight-${instance}-${index}.json`)
         fs.writeFileSync(`${target}.tmp`, JSON.stringify(record))
         fs.renameSync(`${target}.tmp`, target)
       })
-      fs.unlinkSync(file)
+      try { fs.unlinkSync(file) } catch { /* claimed: not reaped again */ }
       reaped++
     } catch {
       try { fs.renameSync(file, `${file}.bad`) } catch { /* preserve best effort */ }

@@ -1,4 +1,4 @@
-import { it, expect, describe } from 'vitest'
+import { it, expect, describe, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -61,6 +61,29 @@ describe('a killed proxy\'s in-flight marker', () => {
       expect(reapInflightMarkers(inflight, spool, 50_000 + 10 * 60_000 + 1, () => true)).toBe(1)
       expect(fs.readdirSync(spool)).toHaveLength(1)
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  })
+
+  // A marker that cannot be removed (a directory a root-run producer created)
+  // must not be reaped again every drain: a replayed record would come back.
+  it('is reaped once even when it cannot be removed, and not at all when it cannot be claimed', () => {
+    const { root, inflight, spool } = setup()
+    const rename = vi.spyOn(fs, 'renameSync')
+    const unlink = vi.spyOn(fs, 'unlinkSync')
+    try {
+      fs.writeFileSync(path.join(inflight, '4242-1.json'), JSON.stringify(marker()))
+      rename.mockImplementationOnce(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }) })
+      expect(reapInflightMarkers(inflight, spool, 60_000, () => false)).toBe(0)
+      expect(fs.existsSync(spool) ? fs.readdirSync(spool) : []).toEqual([])
+      unlink.mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }) })
+      expect(reapInflightMarkers(inflight, spool, 60_000, () => false)).toBe(1)
+      for (const file of fs.readdirSync(spool)) fs.rmSync(path.join(spool, file))
+      expect(reapInflightMarkers(inflight, spool, 90_000, () => false)).toBe(0)
+      expect(fs.readdirSync(spool)).toEqual([])
+    } finally {
+      rename.mockRestore()
+      unlink.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('writes nothing for an empty bound or an unowned entry, and sets aside a marker it cannot read', () => {

@@ -323,9 +323,9 @@ def _inflight_key(payload: dict) -> tuple:
     return (ident.get("engagementId"), ident.get("operatorId"))
 
 
-def _write_inflight_marker():
-    """Write the bounds, or remove the marker when none is left. Called with
-    _INFLIGHT_LOCK held."""
+def _write_inflight_marker() -> bool:
+    """Write the bounds, or remove the marker when none is left. False when
+    the disk does not hold what memory does. Called with _INFLIGHT_LOCK held."""
     path = INFLIGHT_DIR / f"{_INFLIGHT_INSTANCE}.json"
     live = [entry for entry in _INFLIGHT.values() if entry["bound"]]
     try:
@@ -333,7 +333,7 @@ def _write_inflight_marker():
             if _INFLIGHT_STATE["marker"]:
                 path.unlink(missing_ok=True)
                 _INFLIGHT_STATE["marker"] = False
-            return
+            return True
         INFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
         marker = {"version": 1, "instance": _INFLIGHT_INSTANCE, "pid": os.getpid(),
                   "started_at": _INFLIGHT_STARTED_MS, "heartbeat_at": int(time.time() * 1000),
@@ -343,8 +343,9 @@ def _write_inflight_marker():
         temporary.write_text(json.dumps(marker), encoding="utf-8")
         temporary.replace(path)
         _INFLIGHT_STATE["marker"] = True
+        return True
     except Exception:
-        pass  # Capture must not wait on, or fail for, its own bookkeeping.
+        return False  # Capture must not wait on, or fail for, its own bookkeeping.
 
 
 def _inflight_admit(payload: dict) -> bool:
@@ -361,8 +362,12 @@ def _inflight_admit(payload: dict) -> bool:
         entry["last"] = now_ms
         held = entry["queued"] + entry["sending"]
         if held > entry["bound"]:
+            # Only a bound on disk counts: one that failed to write (a reader
+            # holding the file on Windows) is tried again by the next event.
+            written = entry["bound"]
             entry["bound"] = -(-held // _INFLIGHT_STEP) * _INFLIGHT_STEP
-            _write_inflight_marker()
+            if not _write_inflight_marker():
+                entry["bound"] = written
     return True
 
 
@@ -422,6 +427,10 @@ def _stop_sending(wait_s: float):
                                             "started": entry["since"], "last": entry["last"],
                                             "units": entry["queued"], "bytes": entry["queued_bytes"]}, now_ms))
                 entry["queued"] = entry["queued_bytes"] = 0
+            # What is recorded exactly leaves the bound at once: a kill during
+            # the wait below must not count it a second time.
+            entry["bound"] = entry["sending"]
+        _write_inflight_marker()
     _save_gaps(records)
     deadline = time.monotonic() + wait_s
     while time.monotonic() < deadline:

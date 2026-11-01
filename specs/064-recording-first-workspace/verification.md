@@ -613,3 +613,36 @@ Nothing new is stored. `queryStreamSegments` counts distinct `seq` and `message_
 Not covered:
 - The up to 64 queued events a hard kill loses (T054–T057) are still not counted.
 - A stream whose chunks were all lost and whose close never came leaves only its request, so it has no line.
+
+## 2026-11-01 — what the send queue held when the proxy stopped (T060)
+
+**Events admitted to the send queue and not yet delivered were lost with no record (#291).** The addon admits up to 64 events (4 workers). On Windows every managed stop was `child.kill()`, which is TerminateProcess: an experiment with mitmdump 12.2.3 showed the addon's `done()` never runs, with or without `SIGINT`. On POSIX `done()` ran but only flushed the gap windows; the daemon workers dropped what was queued. Writing the events ahead is not an option: an unacknowledged event may only be spooled as a content-free gap.
+
+- **A bound on disk.** While anything is in flight the addon keeps `~/.redlog/inflight/<pid>-<ns>.json`. It holds pid, heartbeat, and per project the identity, an upper bound, and the first and last admission times. It holds no content. The marker is written before the event is queued, so a kill at any later point leaves a bound that covers it. The bound is rounded up to 8: 10 admissions write it twice. A 1 s heartbeat lowers it to the real count and removes the marker when nothing is in flight. The spool drain turns a marker whose pid is gone (or whose heartbeat is ten minutes old) into a `capture_gap` / `delivery-interrupted` / `capture_delivery: unknown` spool record for its project, then removes the marker. Replay then delivers it to that project only.
+- **An exact count when told.** `done()`, and a new private `/__redlog_stop` guarded by its own `REDLOG_PROXY_CONTROL_TOKEN` (the readiness token is served to anyone who asks), stop admitting. Events still queued are recorded exactly as `proxy-stopped` / `not-sent` and are not sent afterwards. The stop waits up to 2 s for sends under way, records the rest as `delivery-interrupted` (they may have arrived), and removes the marker. The managed proxy's stop now asks first. It kills at once on a refusal (an addon without the path answers 404), or after 3.5 s with no exit; `released()` still waits for the exit. Quitting the app still kills outright: a child left running would hold the port, and the marker covers it.
+- Both reasons are judged against pauses like `queue-full`, since RedLog refuses what arrives while paused. The Timeline titles are "[gap] N HTTP events not sent: the proxy stopped first" and "[gap] Up to N HTTP events may be missing: the proxy stopped while sending them".
+
+An adversarial review found four confirmed faults, each reproduced, and each now fixed with a test that fails without the fix:
+- A told stop recorded the queued events exactly but left the full bound on disk while it waited. A kill in that wait counted them twice. Now the bound drops to what is still sending as soon as the exact record is written.
+- The reaper wrote spool records before removing the marker, under a time-based name. A marker it could not remove, for example in a directory a root-run producer created, was reaped again every 30 s. Now the marker is claimed by a rename first, an unclaimable one is left alone, and spool names come from the marker.
+- A bound whose write failed was still taken as written in memory. A reader holding the file on Windows is enough to make the write fail. Now it is only remembered once it is on disk.
+- No test could catch a worker sending, during the stop's wait, an event already recorded as not sent. The fixture now takes one in that window. It also asserts at every enqueue that the bound on disk covers what is in flight.
+
+A quit inside an asked stop's grace now kills the child that is leaving: the timer that would have killed it dies with the app.
+
+RED first: `test/fixtures/mitm-stop-gap-check.py` (run by `test/mitm-stop-gap.test.ts`, which also covers the app-side reaper, its liveness rules and the pause judgment), four graceful-stop cases in `test/managed-http-proxy.test.ts`, and a title case in `test/queue-gap-visibility.test.tsx`. The four fixtures that load `_send_to_redlog` now load the in-flight functions too.
+
+**Real mitmdump 12.2.3, `e2e/capture-gap-acceptance.spec.ts` #291.** The API was held so all 64 slots filled, with 120 concurrent flows per phase.
+
+| | Windows | Linux (WSL kali, xvfb) |
+|---|---|---|
+| Hard kill | marker bound 64, reaped as one up-to-64 gap | same |
+| Asked to stop | 60 not sent + 4 unconfirmed, exited in 2,326 ms, marker removed | 60 + 4, 2,335–2,616 ms |
+| Signalled (`child.kill()`) | nothing ran; marker left with bound 64 | `done()` ran: 60 + 4, marker removed |
+
+The #459 and #460 cases still pass on Linux. #459 now finds the app's own proxy alive right after the switch: it is inside the asked stop's grace. A's late answer still reached the client as a hang-up, and B still held none of A's events.
+
+Not covered:
+- The rounded bound is an upper bound by design: a kill with one event in flight reads "up to 8" until the next heartbeat lowers it.
+- A marker is read only by a drain, which runs while a project is open. A gap for a project that is never reopened stays in the spool, like every other record.
+- The ingest path for a reaped gap in the running app is covered through `replaySpoolDirectory` in the unit tests. It is not covered by an app-level e2e.

@@ -4,7 +4,9 @@
 // nothing was meant to be recorded. These two functions judge it against the
 // pause intervals the Timeline already holds. A gap for events the proxy held
 // when it stopped (#291) is judged the same way: an event admitted while
-// paused would have been refused by RedLog, so losing it lost nothing.
+// paused would have been refused by RedLog, so losing it lost nothing. Not
+// quite at a boundary — RedLog judges an http_request_* event by when it
+// arrives — but the queue drains in milliseconds.
 
 export type PauseInterval = [start: number, end: number]
 

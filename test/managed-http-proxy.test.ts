@@ -407,6 +407,15 @@ describe('managed HTTP proxy', () => {
       expect(child.killed).toBe(true)
     })
 
+    it('kills a child still inside its grace when the app then quits', async () => {
+      const { child, proxy } = await running(async () => null, 60_000)
+      proxy.stop({ graceful: true })
+      expect(child.killed).toBe(false)
+      proxy.stop()
+      expect(child.killed).toBe(true)
+      child.leave()
+    })
+
     it('still kills at once when not asked to be graceful', async () => {
       const requestStop = vi.fn(async () => 202)
       const { child, proxy } = await running(requestStop)

@@ -32,13 +32,22 @@ shutdowns = []
 with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     pending = []
+
+    def put(deliver):
+        """The queue itself checks the order: a kill from here on must find a
+        bound on disk that covers everything in flight, this event included."""
+        held = sum(e['queued'] + e['sending'] for e in ns['_INFLIGHT'].values())
+        on_disk = sum(i['upper_bound'] for m in markers() for i in m['identities'])
+        assert on_disk >= held, f'queued with {held} in flight and a bound of {on_disk} on disk'
+        pending.append(deliver)
+
     ns = dict(json=json, os=os, urllib=urllib, time=time, threading=threading, hmac=__import__('hmac'), VERBOSE=False,
               http=types.SimpleNamespace(Response=Response, HTTPFlow=object), tcp=types.SimpleNamespace(TCPFlow=object),
               tls=types.SimpleNamespace(TlsData=object, ClientHelloData=object),
               ctx=types.SimpleNamespace(log=types.SimpleNamespace(warn=warnings.append),
                                         master=types.SimpleNamespace(shutdown=lambda: shutdowns.append(time.time()))),
               _SPOOL_LOCK=threading.Lock(), _SEND_SLOTS=threading.BoundedSemaphore(64),
-              _SEND_QUEUE=types.SimpleNamespace(put=pending.append),
+              _SEND_QUEUE=types.SimpleNamespace(put=put),
               _IDENTITY_PATH=root / 'identity', SPOOL_DIR=root / 'pending', INFLIGHT_DIR=root / 'inflight',
               VERIFY_HOST='redlog.verify.invalid', _get_redlog_connection=lambda: ('1234', 'token'))
     exec(compile(ast.Module(body=body, type_ignores=[]), '<production-transport>', 'exec'), ns)
@@ -76,7 +85,7 @@ with tempfile.TemporaryDirectory() as directory:
     # The bound is rounded up, so a busy queue does not write a file per event.
     writes = []
     real_write = ns['_write_inflight_marker']
-    ns['_write_inflight_marker'] = lambda: (writes.append(1), real_write())
+    ns['_write_inflight_marker'] = lambda: writes.append(1) or real_write()
     for _ in range(9):
         assert send(event()) is True
     assert len(pending) == 10
@@ -118,7 +127,20 @@ with tempfile.TemporaryDirectory() as directory:
 
         # The stop records the four never taken as exact, and the two being
         # sent as unconfirmed: it cannot know whether they arrived.
-        ns['_stop_sending'](0.2)
+        stopper = threading.Thread(target=ns['_stop_sending'], args=(0.6,))
+        stopper.start()
+        deadline = time.time() + 2
+        while not gaps('proxy-stopped') and time.time() < deadline:
+            time.sleep(0.01)
+        # While it waits on the two: what it recorded exactly is off the bound
+        # already, so a kill now does not count those four twice.
+        assert [i['upper_bound'] for m in markers() for i in m['identities']] == [2], markers()
+        # And a worker that takes one of the four now does not send it.
+        with patch('urllib.request.urlopen', side_effect=AssertionError('sent after it was recorded as not sent')) as late:
+            pending.pop(0)()
+            assert not late.called
+        assert stopper.is_alive(), 'the stop stopped waiting before the check ran'
+        stopper.join(5)
         stopped = gaps('proxy-stopped')
         assert len(stopped) == 1 and stopped[0]['skipped_units'] == 4 and stopped[0]['skipped_body_bytes'] == 40, stopped
         assert stopped[0]['capture_delivery'] == 'not-sent'
@@ -162,6 +184,20 @@ with tempfile.TemporaryDirectory() as directory:
     # Leave what the production code wrote for a reader on the app side.
     if len(sys.argv) > 1:
         shutil.copytree(root / 'pending', sys.argv[1], dirs_exist_ok=True)
+
+# A bound that failed to reach the disk is not taken as written: the next
+# event tries again, so the file is never below what memory believes.
+with tempfile.TemporaryDirectory() as directory:
+    root = pathlib.Path(directory)
+    blocked = root / 'blocked'
+    blocked.write_text('not a directory')
+    ns.update(_INFLIGHT={}, _INFLIGHT_STATE={'stopping': False, 'marker': False}, INFLIGHT_DIR=blocked / 'inflight')
+    payload = {'_identity': A, 'data': {}}
+    assert ns['_inflight_admit'](payload) is True
+    assert ns['_INFLIGHT'][('A', 'op-A')]['bound'] == 0, 'a failed write was remembered as written'
+    ns['INFLIGHT_DIR'] = root / 'inflight'
+    assert ns['_inflight_admit'](payload) is True
+    assert [i['upper_bound'] for m in [json.loads(p.read_text()) for p in (root / 'inflight').glob('*.json')] for i in m['identities']] == [8]
 
 # The stop request: only the owner's token stops the proxy, and a stop records
 # before it shuts down.
