@@ -400,8 +400,34 @@ test('#291 a stopped proxy leaves a record of what it held: a bound when killed,
     expect(stopped.every(r => r.data.capture_delivery === 'not-sent')).toBe(true)
     expect(filesUnder(inflight).filter(f => f.endsWith('.json')), 'a recorded stop left its bound behind').toEqual([])
     expect(JSON.stringify(filesUnder(pending).map(f => readFileSync(f, 'utf8')))).not.toMatch(/load\?/)
+    release()
+    holding = true
+    rmSync(pending, { recursive: true, force: true })
+
+    // Signalled, not asked — what quitting the app does. POSIX runs the
+    // shutdown hook, which records exactly; on Windows the signal is
+    // TerminateProcess, nothing runs, and the marker is what is left.
+    const plain = await proxy.start({ addonPath: ADDON, port: 18000 + Math.floor(Math.random() * 2000) })
+    expect(plain.state, output).toBe('running')
+    await saturate(plain.url!, 'plain')
+    const markerFiles = (): string[] => filesUnder(inflight).filter(f => f.endsWith('.json'))
+    await expect.poll(() => markerFiles().length).toBe(1)
+    const plainPid = Number(JSON.parse(readFileSync(markerFiles()[0], 'utf8')).pid)
+    proxy.stop()
+    await proxy.released(10_000)
+    await expect.poll(() => alive(plainPid), { timeout: 10_000 }).toBe(false)
+    let plainOutcome: string
+    if (process.platform === 'win32') {
+      expect(markerFiles()).toHaveLength(1)
+      expect(records('proxy-stopped')).toEqual([])
+      plainOutcome = `marker left, bound ${JSON.parse(readFileSync(markerFiles()[0], 'utf8')).identities[0].upper_bound}`
+    } else {
+      expect(units(records('proxy-stopped')) + units(records('delivery-interrupted'))).toBe(64)
+      expect(markerFiles()).toEqual([])
+      plainOutcome = `${units(records('proxy-stopped'))} not sent + ${units(records('delivery-interrupted'))} unconfirmed`
+    }
     console.log(`[291] mitmdump ${mitmVersion()} on ${process.platform}: killed -> marker bound ${bound}, reaped as one up-to-${bound} gap;`
-      + ` asked -> ${units(stopped)} not sent + ${units(interrupted)} unconfirmed, exited in ${tookMs} ms`)
+      + ` asked -> ${units(stopped)} not sent + ${units(interrupted)} unconfirmed, exited in ${tookMs} ms; signalled -> ${plainOutcome}`)
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
     console.log(`[DBG] producer output tail: ${output.slice(-1500)}`)
