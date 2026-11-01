@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
+import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
 
 // The bash adapter recorded the command and its exit status, and nothing the
 // command printed: output needed `redlog-run`, a prefix nobody remembers
@@ -103,6 +104,37 @@ describeShell(`auto capture in an enrolled bash (${target.label})`, () => {
     const during = events(collector.events, 'command_end', 'pager=')[0]
     expect(during?.data.stdout).toContain('pager=cat')
     expect(report.steps[7].output).toContain('pager=cat')
+  })
+})
+
+// bash-preexec, starship and atuin keep their hook in the DEBUG trap, and
+// loading this adapter used to replace it. Here the other tool's trap writes
+// to a file rather than to the terminal, so a recording that included its
+// output would show up as a stdout that is not the command's.
+// Skipped where this bash cannot chain (test/helpers/bash-trap-chain.ts): there
+// the hook installs its own trap once and leaves the other tool's alone.
+const describeChain = process.platform === 'win32' || !bashCanChainDebugTrap ? describe.skip : describe
+describeChain(`bash auto capture beside another tool's DEBUG trap (${target.label})`, () => {
+  let collector: Awaited<ReturnType<typeof startCollector>>
+  const token = 'bash-chain-token'
+  beforeAll(async () => { collector = await startCollector(token) })
+  afterAll(async () => { await collector?.close() })
+
+  it('keeps that trap running and still records the command with its output, once', async () => {
+    const report = await runZsh(target, {
+      shellKind: 'bash',
+      rc: `trap 'printf "%s\\n" "$BASH_COMMAND" >> "$HOME/prior-trap.log"' DEBUG\nsource ${hookPath(target, 'shell-bash-hook.sh')}`,
+      commands: ['echo chained-output', 'grep -c "^echo chained-output$" "$HOME/prior-trap.log"'],
+      redlog: { port: collector.port, token },
+      timeoutSeconds: 30
+    })
+    expect(report.ok, report.error).toBe(true)
+    // Their trap ran for the command, once.
+    expect(report.steps[1].output.trim()).toMatch(/(^|\s)1$/)
+    expect(events(collector.events, 'command_start', 'chained-output').filter((e) => e.data.command === 'echo chained-output')).toHaveLength(1)
+    const end = events(collector.events, 'command_end', 'chained-output').find((e) => e.data.command === 'echo chained-output')
+    expect(end?.data).toMatchObject({ completeness: 'complete', output_disposition: 'captured' })
+    expect(String(end?.data.stdout).trim()).toBe('chained-output')
   })
 })
 
