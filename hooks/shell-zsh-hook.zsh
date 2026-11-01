@@ -207,6 +207,11 @@ redlog() {
       case "${1:-list}" in
         list)
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --action list
+          local prog
+          for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
+            [[ -n "$prog" ]] && _redlog_is_user_function "$prog" && \
+              print -- "$prog is your own function, so it is not PTY-recorded"
+          done
           print
           ;;
         add)
@@ -389,6 +394,7 @@ _redlog_preexec() {
   _REDLOG_CMD_START=""
   _REDLOG_CMD_ID=""
   _REDLOG_CMD_CLASS=""
+  _REDLOG_CMD_CAPTURE=""
   _REDLOG_RELAY_DIR=""
 
   # The operator said stop. Nothing below runs: no command_start, no relay, no
@@ -412,6 +418,18 @@ _redlog_preexec() {
   fi
   : ${_REDLOG_CMD_CLASS:=native}
 
+  # `class` is the policy; it is not a claim about how this run was captured.
+  # A `pty` program whose name is the operator's own function was never
+  # wrapped (#288), so it ran native. The record says so beside the class
+  # rather than letting `pty` read as "PTY-captured".
+  _REDLOG_CMD_CAPTURE=""
+  if [[ "$_REDLOG_CMD_CLASS" == "pty" ]]; then
+    local -a _redlog_words
+    _redlog_words=(${(z)1})
+    _redlog_is_user_function "${_redlog_words[1]:-}" && \
+      _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"existing-shell-function"'
+  fi
+
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
@@ -426,7 +444,7 @@ _redlog_preexec() {
   fi
 
   _redlog_send_event "command_start" "$1" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 # FR-009. The commands run either way — that part has always worked, silently,
@@ -503,7 +521,7 @@ _redlog_precmd() {
       # (FR-008), without two processes watching an empty descriptor.
       redirected) disposition="redirected" ;;
     esac
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
   fi
 
   _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
@@ -511,6 +529,7 @@ _redlog_precmd() {
   _REDLOG_CMD_START=""
   _REDLOG_CMD_ID=""
   _REDLOG_CMD_CLASS=""
+  _REDLOG_CMD_CAPTURE=""
   return $exit_code
 }
 
@@ -530,13 +549,40 @@ _redlog_precmd() {
 # and anything invoked by path. For a short, explicit list of programs it is
 # the right tool, and the limitation is honest: `sudo ssh` and `/usr/bin/ssh`
 # go to the native path and are recorded as `interactive`.
+#
+# A function the operator already has under the program's name is theirs and
+# is not wrapped (#288): replacing it would drop whatever it does, and with
+# RedLog not recording the wrapper's fallback is `command ssh`, which is not
+# their function either. That program is not PTY-recorded and runs native; it
+# is still classed `pty`, so it is recorded as metadata only, `interactive`,
+# like `sudo ssh`. The reverse order is the same outcome by the operator's own
+# hand: a function defined AFTER this hook replaces RedLog's wrapper, and that
+# program is not PTY-recorded either. `redlog class list` names the programs
+# this applies to, and the program's `command_start`/`command_end` carry
+# `capture_mode: native` and `capture_reason: existing-shell-function` beside
+# `class: pty`, so the policy is not read as a claim about the run.
+#
+# Wrappers are installed once, when this hook loads, and not re-applied at each
+# prompt: a program added to the PTY class afterwards is wrapped in the next
+# terminal. A wrapper needs a real program behind it — `whence -p` looks past
+# functions and aliases, which `command -v` does not.
+#
+# RedLog's own wrapper is told apart by its body, which carries
+# `_REDLOG_SESSION_HELPER` — so sourcing the hook again reinstalls it.
+_redlog_is_user_function() {
+  [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" != *_REDLOG_SESSION_HELPER* ]]
+}
+
 _redlog_install_pty_wrappers() {
   local prog
   for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
     [[ -n "$prog" ]] || continue
-    # Only wrap what is actually here. A function named `ssh` on a machine
-    # without ssh turns "command not found" into a confusing python error.
-    command -v -- "$prog" >/dev/null 2>&1 || continue
+    # Only wrap what is actually here: an executable on PATH. A function named
+    # `ssh` on a machine without ssh turns "command not found" into a confusing
+    # python error, and `command -v` would call the operator's own function
+    # "here".
+    whence -p -- "$prog" >/dev/null 2>&1 || continue
+    _redlog_is_user_function "$prog" && continue
     functions[$prog]='
       if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
         python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"

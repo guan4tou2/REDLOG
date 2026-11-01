@@ -36,8 +36,10 @@ Already emitted. Gains:
   "source": "auto-relay",        // "auto-relay" | "auto-pty" | "builtin-terminal" | absent (hook metadata only)
   "session_id": "<terminal session>",
   "command_id": "<new per command>",   // NEW — the correlation key
-  "class": "relayed",            // NEW — relayed | pty | native
+  "class": "relayed",            // NEW — relayed | pty | native (policy)
   "cwd": "/root"
+  // pty-class only, when it ran native because the name is the operator's own shell function (#288):
+  // "capture_mode": "native", "capture_reason": "existing-shell-function" — also on `command_end`
 }
 ```
 
