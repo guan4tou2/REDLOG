@@ -5,6 +5,37 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.18.6 — 2026-11-01
+
+Release. Supersedes v0.18.3 as the current download; carries everything in
+the v0.18.4 and v0.18.5 prereleases.
+
+- PowerShell: a failed cmdlet after a native command no longer reports that
+  command's exit code (#477).
+- WSL: the hooks give `cmd.exe` no stdin, so a script piped into an
+  interactive bash is no longer swallowed while the hook loads. Under NAT
+  networking the API is not reachable from WSL and events arrive through the
+  spool replay (#478).
+- WebSocket and raw TCP streams no longer grow mitmdump's memory without
+  bound; the addon keeps only the newest message (#479).
+- A body cut at the capture cap keeps its known total: "saved 10.0 MB of
+  16.0 MB", or "total unknown" (#480).
+- A raw TCP stream records its close (`tcp_end`): `ended` or `interrupted`,
+  judged against its saved messages (#481).
+- A terminal recording recovered after a crash lists the parts on disk with
+  their hashes, and its open commands get a `recovered-orphan` boundary; both
+  read as interrupted (#482).
+- The export preview counts recordings and commands a crash cut off, and an
+  ended terminal tab says what its recording went through (#483).
+- A shell `command_end` no longer re-reads the pivot list unless a pivot is
+  open (#485), and a closed tunnel stays closed however many commands follow
+  it (#486).
+- The installer leaves out MSBuild's intermediate files, which made an upgrade
+  fail from an install folder deeper than about 120 characters (#476).
+- Packaged smoke, real installs and long-stream and PTY soak results are
+  recorded in `docs/PACKAGED-SMOKE.md` and `specs/063-long-recording-segments/`
+  (#474, #475, #484).
+
 ## v0.18.5 — 2026-10-31
 
 Prerelease for closed internal testing.
