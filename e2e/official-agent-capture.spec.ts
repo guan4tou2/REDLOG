@@ -216,6 +216,13 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     await expect.poll(async () => (await rows()).filter(e => e.data.subtype === 'transcript_capture_started').length).toBeGreaterThan(starts)
     appendFileSync(source, user('REACTIVATED_SENTINEL'))
     await expect.poll(async () => JSON.stringify(await rows())).toContain('REACTIVATED_SENTINEL')
+    // Turning it back on is a new start, not a resume: the reader has caught
+    // up past REACTIVATED, and what was written while it was off is still in
+    // neither the events nor any sidecar (#489 A04).
+    expect(JSON.stringify(await rows())).not.toMatch(/WHILE_DISABLED_SENTINEL|AFTER_REINSTALL_SENTINEL/)
+    const sidecarText = () => readdirSync(sidecarDir).filter(p => p.endsWith('.jsonl')).map(p => readFileSync(join(sidecarDir, p), 'utf8')).join('')
+    await expect.poll(sidecarText).toContain('REACTIVATED_SENTINEL')
+    expect(sidecarText()).not.toMatch(/WHILE_DISABLED_SENTINEL|AFTER_REINSTALL_SENTINEL/)
     await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
     await page.getByTestId(`agent-remove-${kind}`).click()
     await page.getByRole('dialog', { name: 'Remove capture integration' }).getByRole('button', { name: 'Remove', exact: true }).click()
