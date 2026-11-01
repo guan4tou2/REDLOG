@@ -104,13 +104,15 @@ WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`�
 
 **但曲線沒有平台**：兩次 60 分鐘都是約每分鐘 +1 MiB 的穩定上升（第 6 分鐘 754 → 第 59 分鐘 803）。照此斜率，約 70 分鐘會超過 64 MiB 預算；增長來源（renderer 的 xterm scrollback、Timeline 的 live event 或其他）未查。這是通過 60 分鐘的預算，不是有界的證明。
 
+後續（2026-11-01）：成長在 main，不在 renderer。來源是每個 `command_end` 都重讀 pivots（已修正），以及兩條事件庫連線的 SQLite page cache 隨資料庫填滿（每條上限約 15.6 MiB，有界）。量測與對照見 [pty-memory.md](pty-memory.md)。
+
 前兩次 60／30 分鐘 PTY 執行在第 13／2 分鐘中止，原因是同機另一工作階段對 WSL 執行 `wsl --shutdown`（模式切換驗收），不是 App 行為；同一時段 Windows 上 WSL 驅動的 zsh 單元測試也因此失敗，事後重跑通過。
 
 ### 仍未完成
 
 - Pause／Resume、App 重啟（未殺 producer）、高負載、隔離 volume 容量逼近上限在長時間下的組合；本輪只做 producer 硬殺與 App 重啟。
 - mitmdump 硬殺時未送出的已排隊 event 仍會遺失，無記錄（#291）。
-- PTY 的 App 記憶體每分鐘約 +1 MiB、未見平台，原因未查；兩小時以上 PTY 未跑，照斜率會超過 64 MiB 預算。
+- PTY 的 App 記憶體：原因已查明，有界的推論見 [pty-memory.md](pty-memory.md)；但兩小時以上的 PTY soak 仍未實際跑過。
 - 原生 Windows PTY（PowerShell）、macOS、installer 版本均未跑此 soak。CI 的 e2e 使用 mitmproxy 11.0.2，本機為 12.2.3。
 
 T005 仍不勾。
