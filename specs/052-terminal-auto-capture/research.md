@@ -116,7 +116,7 @@ what `tlogger-v2` learned in the field:
 
 | Class | Default members | Why |
 |---|---|---|
-| `native` | `nc`, `ncat`, editors and pagers (`vim`, `vi`, `nvim`, `nano`, `less`, `more`), bare REPLs, `claude`, `codex` | `nc` must keep local suspension (FR-025); editors record redraws, not content (FR-026); `claude` and `codex` are full-screen TUIs whose conversation the AI tailer already captures from the local transcript |
+| `native` | `nc`, `ncat`, editors and pagers (`vim`, `vi`, `nvim`, `nano`, `less`, `more`), bare REPLs, `claude`, `codex` | `nc` must keep local suspension (FR-025); editors record redraws, not content (FR-026); `claude` and `codex` are full-screen TUIs whose screen is redraws; their conversation comes from the local transcript through the AI tailer, when AI conversation capture is enabled |
 | `pty` | `ssh`, `socat`, `pwncat-cs` | they bring their own TTY, so a PTY capture is lossless; the suspension cost is acceptable for them |
 | `relayed` | everything else, including a REPL given a script, `-c`, `-m` or `-e` | FR-027 |
 
