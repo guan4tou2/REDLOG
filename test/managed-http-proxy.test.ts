@@ -403,8 +403,11 @@ describe('managed HTTP proxy', () => {
       proxy.stop({ graceful: true })
       await new Promise(resolve => setTimeout(resolve, 5))
       expect(child.killed).toBe(false)
+      const kill = vi.spyOn(child, 'kill')
       await new Promise(resolve => setTimeout(resolve, 60))
       expect(child.killed).toBe(true)
+      // A SIGTERM would only ask again for the shutdown it is already in.
+      expect(kill).toHaveBeenCalledWith('SIGKILL')
     })
 
     it('kills a child still inside its grace when the app then quits', async () => {

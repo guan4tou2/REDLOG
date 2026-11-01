@@ -241,13 +241,16 @@ export class ManagedHttpProxy {
     const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
     this.exiting = exited
     void exited.then(() => { if (this.exiting === exited) this.exiting = null })
-    const kill = (): void => {
+    const kill = (signal?: NodeJS.Signals): void => {
       if (child.exitCode !== null || child.killed) return
-      try { child.kill() } catch { /* already exited */ }
+      try { child.kill(signal) } catch { /* already exited */ }
     }
     if (!control) { kill(); return }
     this.leaving = child
-    const fallback = setTimeout(kill, this.deps.stopGraceMs)
+    // Past the grace, SIGKILL: on POSIX a SIGTERM asks for the shutdown this
+    // child is already in, and one that hangs would hold the port past the
+    // five seconds a following start waits. Its marker covers what it held.
+    const fallback = setTimeout(() => kill('SIGKILL'), this.deps.stopGraceMs)
     void exited.then(() => {
       clearTimeout(fallback)
       if (this.leaving === child) this.leaving = null
@@ -418,7 +421,7 @@ export class ManagedHttpProxy {
     const leaving = this.leaving
     if (!options.graceful && leaving && leaving.exitCode === null && !leaving.killed) {
       this.leaving = null
-      try { leaving.kill() } catch { /* already exited */ }
+      try { leaving.kill('SIGKILL') } catch { /* already exited */ }
     }
     if (child) this.terminate(child, control ?? undefined)
     return this.status()
