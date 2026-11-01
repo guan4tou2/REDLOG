@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
+import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
 
 // The bash adapter recorded the command and its exit status, and nothing the
 // command printed: output needed `redlog-run`, a prefix nobody remembers
@@ -110,7 +111,10 @@ describeShell(`auto capture in an enrolled bash (${target.label})`, () => {
 // loading this adapter used to replace it. Here the other tool's trap writes
 // to a file rather than to the terminal, so a recording that included its
 // output would show up as a stdout that is not the command's.
-describeShell(`bash auto capture beside another tool's DEBUG trap (${target.label})`, () => {
+// Skipped where this bash cannot chain (test/helpers/bash-trap-chain.ts): there
+// the hook installs its own trap once and leaves the other tool's alone.
+const describeChain = process.platform === 'win32' || !bashCanChainDebugTrap ? describe.skip : describe
+describeChain(`bash auto capture beside another tool's DEBUG trap (${target.label})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>
   const token = 'bash-chain-token'
   beforeAll(async () => { collector = await startCollector(token) })

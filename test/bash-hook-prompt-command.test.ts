@@ -3,6 +3,7 @@ import { spawnSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
 
 // The bash adapter recorded the operator's PROMPT_COMMAND instead of what they
 // typed, and dropped every real command behind it. Run a real interactive bash.
@@ -105,7 +106,13 @@ describe.skipIf(process.platform === 'win32')('bash adapter with another tool\'s
   const events = (stderr: string): Array<[string, string]> =>
     [...stderr.matchAll(/EVENT (\w+) \[([^\]]*)\]/g)].map((m) => [m[1], m[2]] as [string, string]).filter(([, c]) => c !== 'exit')
 
-  it('runs the existing trap for each command, and records each command once', () => {
+  // Chaining needs a bash that shows a DEBUG trap to the prompt command and
+  // lets it set one over another. Where it does not, the hook installs its own
+  // trap once and leaves the rest alone, and the cases below the chaining ones
+  // are what hold there.
+  const itChain = it.skipIf(!bashCanChainDebugTrap)
+
+  itChain('runs the existing trap for each command, and records each command once', () => {
     const out = runRaw('history -a', typed, [THEIRS])
     const ev = events(out)
     expect(starts(ev)).toEqual(typed)
@@ -114,7 +121,7 @@ describe.skipIf(process.platform === 'win32')('bash adapter with another tool\'s
     for (const c of typed) expect(theirs.filter((t) => t === c), c).toHaveLength(1)
   })
 
-  it('runs it with the status of the previous command, as it would without us', () => {
+  itChain('runs it with the status of the previous command, as it would without us', () => {
     const before = [`trap 'echo "THEIRS<rc=$? $BASH_COMMAND>" >&2' DEBUG`]
     const out = runRaw(null, ['false', 'echo after', 'sh -c "exit 7"', 'echo again'], before)
     const theirs = marks(out, 'THEIRS')
@@ -128,11 +135,42 @@ describe.skipIf(process.platform === 'win32')('bash adapter with another tool\'s
   const trapBody = (stderr: string): string => /trap -- '([\s\S]*?)' DEBUG/.exec(stderr)?.[1] ?? ''
   const count = (text: string, needle: string): number => text.split(needle).length - 1
 
-  it('installs exactly its own trap when there was none', () => {
+  it('installs exactly its own trap when there was none, and records in full', () => {
     expect(trapBody(runRaw(null, [SHOW]))).toBe('_redlog_debug_trap')
+    expect(dispositions(runRaw(null, typed))).toEqual(typed.map((c) => [c, 'interactive']))
   })
 
-  it('does not chain the hook to itself when it is loaded twice', () => {
+  // `_redlog_trap_plan` is what decides, from what the prompt command read, so
+  // it is called directly: a bash that cannot show a `$( )` the trap cannot be
+  // had on every machine this runs on, and its answers do not depend on one.
+  it('plans from what it was shown, whatever bash it runs on', () => {
+    // Quotes and dollar signs are made visible: `marks` drops what has a `$`.
+    const define = 'plan() { _redlog_trap_plan "$1"; local n=${_REDLOG_TRAP_NEXT//\\$/DOLLAR}; n=${n//$\'\\n\'/|}; echo "PLAN<$n>" >&2; }'
+    // One line, so that no prompt (which would plan too) comes between the calls.
+    const calls = [
+      'unset _REDLOG_TRAP_INSTALLED _REDLOG_TRAP_SEEN',
+      'plan ""',                                      // nobody: install ours
+      'plan ""',                                      // empty, and ours never seen: a blind bash, leave it
+      `plan "trap -- '_redlog_debug_trap' DEBUG"`,    // ours seen: leave it; from now on empty means removed
+      'plan ""',                                      // removed: install again
+      `plan "trap -- '_redlog_debug_trap' DEBUG"`,
+      `plan "trap -- 'echo it'\\\\''s' DEBUG"`,       // someone else's, quoted the way bash prints it
+      `plan "trap -- 'echo a # c' DEBUG"`,            // a trailing comment must not swallow ours
+      `plan "trap -- '' DEBUG"`                       // an ignored trap is not a hook to keep
+    ].join('; ')
+    expect(marks(runRaw(null, [define, calls]), 'PLAN')).toEqual([
+      '_redlog_debug_trap',
+      '',
+      '',
+      '_redlog_debug_trap',
+      '',
+      "echo it's|_redlog_debug_trap DOLLAR?",
+      'echo a # c|_redlog_debug_trap DOLLAR?',
+      '_redlog_debug_trap'
+    ])
+  })
+
+  itChain('does not chain the hook to itself when it is loaded twice', () => {
     // The loaded-in-this-shell guard, and then with the guard out of the way.
     const guarded = runRaw(null, [`source ${HOOK} 2>/dev/null`, ...typed, SHOW], [THEIRS])
     expect(count(trapBody(guarded), '_redlog_debug_trap')).toBe(1)
@@ -143,7 +181,7 @@ describe.skipIf(process.platform === 'win32')('bash adapter with another tool\'s
     expect(starts(events(unguarded)).filter((c) => typed.includes(c))).toEqual(typed)
   })
 
-  it('still records after another tool sets its trap at a later prompt (bash-preexec style)', () => {
+  itChain('still records after another tool sets its trap at a later prompt (bash-preexec style)', () => {
     // A prompt command that installs its trap, as bash-preexec does on the
     // first prompt and starship's init may do after the hook is loaded.
     const before = [
@@ -157,7 +195,7 @@ describe.skipIf(process.platform === 'win32')('bash adapter with another tool\'s
     expect(dispositions(out)).toEqual(typed.map((c) => [c, 'interactive']))
   })
 
-  it('still records after a typed command replaces the trap', () => {
+  itChain('still records after a typed command replaces the trap', () => {
     const swap = `trap 'echo "LATER<$BASH_COMMAND>" >&2' DEBUG`
     const out = runRaw(null, [swap, ...typed], [])
     const ev = events(out)
