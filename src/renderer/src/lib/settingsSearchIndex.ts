@@ -169,6 +169,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.agents.removeCapture',
     'settings.agents',
     'settings.agents.emitThinking',
+    'settings.agents.rawCopy',
     'settings.externalInvalidResponse',
     'settings.externalCapture',
     'settings.externalCaptureHint',
