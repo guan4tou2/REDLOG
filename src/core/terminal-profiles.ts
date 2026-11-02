@@ -163,30 +163,42 @@ function heldOf(p: CompiledClassPolicy): Record<string, string> {
   )
 }
 
+// Atomics.wait is allowed on the main thread of a Node process, which is what
+// the Electron main process and the vitest worker both are (it is only the
+// browser's main thread and a renderer that refuse it). So the wait is a real
+// sleep, with no busy loop; if some host did refuse it, it would throw out of
+// retryBusy into the callers' catch, and the write is reported as not done.
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
+/** Run a file operation, trying it again a few times when Windows says the file
+ *  is busy. A rename or an unlink onto a file another process holds open (the
+ *  relay under WSL, an antivirus scan) fails with EPERM, EBUSY or EACCES for a
+ *  moment. Any other error, and the last of these, is thrown. */
+function retryBusy(op: () => void): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      op()
+      return
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      if (attempt >= 3 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e
+      sleepSync(25 * (attempt + 1))
+    }
+  }
+}
+
 /** Whole or not at all, as `writeTerminalEnrollment` does it: the reader is a
- *  prompt hook that cannot wait. On Windows a rename onto a file another
- *  process holds open (the relay under WSL, an antivirus scan) fails with
- *  EPERM, EBUSY or EACCES for a moment, so it is tried again a few times; if it
- *  still fails the old file stays, which is a stale answer and not a wrong one. */
+ *  prompt hook that cannot wait. If the rename still fails after the retries the
+ *  old file stays, which is a stale answer and not a wrong one. */
 function replaceFile(target: string, body: string): string | undefined {
   const tmp = `${target}.part`
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(tmp, body, 'utf8')
-    for (let attempt = 0; ; attempt++) {
-      try {
-        fs.renameSync(tmp, target)
-        return undefined
-      } catch (e) {
-        const code = (e as NodeJS.ErrnoException).code
-        if (attempt >= 3 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e
-        sleepSync(25 * (attempt + 1))
-      }
-    }
+    retryBusy(() => fs.renameSync(tmp, target))
+    return undefined
   } catch (e) {
     try { fs.rmSync(tmp, { force: true }) } catch { /* a leftover .part is overwritten next time */ }
     return (e as Error).message
@@ -213,7 +225,7 @@ export function syncTerminalProfiles(home: string = os.homedir()): { written: bo
     .flatMap((pluginId) => registry.get(pluginId) ?? [])
   if (profiles.length === 0) {
     try {
-      fs.unlinkSync(target)
+      retryBusy(() => fs.unlinkSync(target))
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return { written: false, error: (e as Error).message }
     }

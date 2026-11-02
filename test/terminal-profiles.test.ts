@@ -258,6 +258,50 @@ describe('writing the snapshot', () => {
     expect(r.error).toBeTruthy()
   })
 
+  // Removing the file when the last plugin goes is the same race as replacing
+  // it: the relay can hold it open for a moment, and an unlink Windows refuses
+  // would leave a snapshot of plugins that are gone.
+  it('retries an unlink that Windows refuses, then keeps the file and says so', () => {
+    register('pack', [profile()])
+    syncTerminalProfiles(home)
+    const old = text()
+    unregisterTerminalProfiles('pack')
+    const real = fs.unlinkSync
+    let calls = 0
+    vi.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
+      calls += 1
+      if (calls <= 2) throw Object.assign(new Error('busy'), { code: calls === 1 ? 'EPERM' : 'EBUSY' })
+      real(p)
+    })
+    expect(syncTerminalProfiles(home)).toEqual({ written: false })
+    expect(calls).toBe(3)
+    expect(fs.existsSync(path.join(home, '.redlog', 'terminal-profiles.json'))).toBe(false)
+
+    vi.restoreAllMocks()
+    register('pack', [profile()])
+    syncTerminalProfiles(home)
+    expect(text()).toBe(old)
+    unregisterTerminalProfiles('pack')
+    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => { throw Object.assign(new Error('held'), { code: 'EACCES' }) })
+    const r = syncTerminalProfiles(home)
+    vi.restoreAllMocks()
+    expect(r.written).toBe(false)
+    expect(r.error).toMatch(/held/)
+    expect(text()).toBe(old)
+  })
+
+  it('does not retry an unlink that fails for another reason', () => {
+    register('pack', [profile()])
+    syncTerminalProfiles(home)
+    unregisterTerminalProfiles('pack')
+    let calls = 0
+    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => { calls += 1; throw Object.assign(new Error('is a directory'), { code: 'EISDIR' }) })
+    const r = syncTerminalProfiles(home)
+    vi.restoreAllMocks()
+    expect(calls).toBe(1)
+    expect(r.error).toMatch(/is a directory/)
+  })
+
   it('retries a rename that Windows refuses, then keeps the old file and says so', () => {
     register('pack', [profile()])
     syncTerminalProfiles(home)
