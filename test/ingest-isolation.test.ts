@@ -120,4 +120,125 @@ describeDB('ingest keeps one project from reaching the next', () => {
       expect(errors).not.toHaveBeenCalled()
     })
   })
+
+  describe('what ingest remembers per terminal and command', () => {
+    // The documented fake AWS key; the loot detector recognises its shape.
+    const KEY_A = 'AKIAIOSFODNN7EXAMPLE'
+    const SECRET_A = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+    const KEY_B = 'AKIAIOSFODNN7EXAMPLF'
+
+    const lootRows = (): string[] => {
+      const db = dbMod.getReadonlyDB()
+      return (db.prepare(`SELECT data FROM events WHERE agent_type = 'loot' UNION ALL SELECT data FROM events_logged WHERE agent_type = 'loot'`).all() as Array<{ data: string }>)
+        .map((r) => r.data)
+    }
+    const output = (p: { op: string }, engagementId: string, terminalId: string, stdout: string) =>
+      ingestMod.ingest({ agentType: 'shell', operatorId: p.op, engagementId, data: { subtype: 'session_output', terminalId, source: 'builtin-terminal', stdout } })
+
+    // Output chunks are arbitrary read boundaries, so ingest joins each chunk to
+    // the tail of the previous one before scanning. The tail is keyed by
+    // terminal id, and the next project's terminal can carry the same id.
+    it('does not scan the closed project\'s last output into the next project', () => {
+      const a = open('eng-A')
+      output(a, 'eng-A', 'T1', `export AWS_ACCESS_KEY_ID=${KEY_A}\nexport AWS_SECRET_ACCESS_KEY=${SECRET_A}\n`)
+      expect(lootRows()).toHaveLength(1)
+      stopProject()
+
+      const b = open('eng-B')
+      output(b, 'eng-B', 'T1', 'ls\nREADME.md\n')
+      expect(lootRows()).toEqual([])
+    })
+
+    it('control: fresh matching text in the next project still produces a loot row', () => {
+      const a = open('eng-A')
+      output(a, 'eng-A', 'T1', `export AWS_ACCESS_KEY_ID=${KEY_A}\n`)
+      stopProject()
+
+      const b = open('eng-B')
+      output(b, 'eng-B', 'T1', `export AWS_ACCESS_KEY_ID=${KEY_B}\n`)
+      const rows = lootRows()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toContain(KEY_B)
+      expect(rows[0]).not.toContain(KEY_A)
+    })
+
+    it('still joins chunks inside one project, so a secret split across two is found', () => {
+      const a = open('eng-A')
+      output(a, 'eng-A', 'T1', 'export AWS_ACCESS_KEY_ID=AKIAIOSFOD')
+      expect(lootRows()).toEqual([])
+      output(a, 'eng-A', 'T1', 'NN7EXAMPLE\n')
+      expect(lootRows()).toHaveLength(1)
+    })
+
+    // A session_end clears its terminal's tail, but one that arrives while
+    // recording is paused is refused before enrichment, so the tail survives:
+    // pause, switch project, resume, same terminal id. The built-in terminal
+    // sends its session_end with bypassPause; an external redlog-session
+    // (hooks/redlog-session.py) does not, and keeps its id across the switch.
+    it('does not leak through a session_end that was refused while paused', () => {
+      const a = open('eng-A')
+      output(a, 'eng-A', 'T1', `export AWS_ACCESS_KEY_ID=${KEY_A}\n`)
+      bus.eventBus.pause()
+      const end = ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { subtype: 'session_end', terminalId: 'T1', source: 'external-session' } })
+      expect(end.skipped).toBe('paused')
+      stopProject()
+
+      const b = open('eng-B')
+      bus.eventBus.resume()
+      output(b, 'eng-B', 'T1', 'ls\nREADME.md\n')
+      expect(lootRows()).toEqual([])
+    })
+
+    it('a late-output chunk number seen by the closed project is not a resend in the next', () => {
+      const chunk = { subtype: 'command_output', command_id: 'cmd-xproj', seq: 1, late: true, stream: 'stdout', stdout: 'tick\n' }
+      const a = open('eng-A')
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).event).not.toBeNull()
+      stopProject()
+
+      const b = open('eng-B')
+      const r = ingestMod.ingest({ agentType: 'shell', operatorId: b.op, engagementId: 'eng-B', data: { ...chunk } })
+      expect(r.skipped).toBeUndefined()
+      expect(r.event).not.toBeNull()
+    })
+
+    it('control: a resend inside one project is still recognised', () => {
+      const chunk = { subtype: 'command_output', command_id: 'cmd-resend', seq: 1, late: true, stream: 'stdout', stdout: 'tick\n' }
+      const a = open('eng-A')
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).event).not.toBeNull()
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).skipped).toBe('dedup')
+    })
+
+    it('_resetIngest forgets which late chunks were seen', () => {
+      const chunk = { subtype: 'command_output', command_id: 'cmd-reset', seq: 1, late: true, stream: 'stdout', stdout: 'tick\n' }
+      const a = open('eng-A')
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).event).not.toBeNull()
+      ingestMod._resetIngest()
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk, stdout: 'tock\n' } }).event).not.toBeNull()
+    })
+
+    it('does not file the next project\'s late output under the closed project\'s target', () => {
+      const a = open('eng-A')
+      const start = ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', targetId: 'host-of-a', data: { subtype: 'command_start', command_id: 'cmd-target', command: 'sleep 9' } })
+      expect(start.event?.targetId).toBe('host-of-a')
+      stopProject()
+
+      const b = open('eng-B')
+      const r = ingestMod.ingest({ agentType: 'shell', operatorId: b.op, engagementId: 'eng-B', data: { subtype: 'command_output', command_id: 'cmd-target', seq: 1, late: true, stream: 'stdout', stdout: 'tick\n' } })
+      expect(r.event).not.toBeNull()
+      expect(r.event?.targetId).toBeNull()
+    })
+
+    it('does not bracket the next project\'s command_end with the closed project\'s cast offset', () => {
+      ingestMod.configureIngest({ castProbe: () => ({ castPath: '/cast/T1.cast', offset: 100, truncated: false }) })
+      const a = open('eng-A')
+      ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { subtype: 'command_start', terminalId: 'T1', source: 'builtin-terminal', command: 'whoami' } })
+      stopProject()
+
+      ingestMod.configureIngest({ castProbe: () => ({ castPath: '/cast/T1.cast', offset: 900, truncated: false }) })
+      const b = open('eng-B')
+      const end = ingestMod.ingest({ agentType: 'shell', operatorId: b.op, engagementId: 'eng-B', data: { subtype: 'command_end', terminalId: 'T1', source: 'builtin-terminal', command: 'whoami', exit_code: 0 } })
+      expect(end.event?.data.io).toMatchObject({ unbracketed: true })
+      expect(end.event?.data.io).not.toHaveProperty('off')
+    })
+  })
 })
