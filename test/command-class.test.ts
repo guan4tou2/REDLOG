@@ -534,12 +534,13 @@ describe('the shipped tool profiles', () => {
     ])
   })
 
-  it('claim no executable twice, and none that a default list or the REPL and wrapper tables hold', () => {
+  // A profile's executables are also in the default list of their mode, for a
+  // relay that does not read profiles: test/hook-update-mixed-version.test.ts.
+  it('claim no executable twice, and none that the REPL and wrapper tables hold', () => {
     expect(new Set(executables).size, 'an executable in two profiles').toBe(executables.length)
     const defaults = [...shipped.native, ...shipped.pty]
     expect(new Set(defaults).size, 'a command in both default lists').toBe(defaults.length)
     for (const e of executables) {
-      expect(defaults, `${e} is a profile's and a default's`).not.toContain(e)
       expect(shipped.repl, `${e} is a profile's and a REPL`).not.toContain(e)
       expect(Object.keys(shipped.wrappers), `${e} is a profile's and a wrapper`).not.toContain(e)
     }

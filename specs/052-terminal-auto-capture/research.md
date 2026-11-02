@@ -135,6 +135,14 @@ run it. Both readers compile the file the same way — the shell through
 in `src/core/terminal-class.ts` — with the operator's overlay on top, and
 `test/command-class.test.ts` holds the two to one golden table of modes.
 
+A profile's executables are also listed in the `native` or `pty` list of its
+mode. The support files are written one at a time, so an enrolled shell can run
+a relay from before profiles against this file, and that relay reads the two
+lists only. The profile still wins in the compiler, so the copies change no
+result; `test/hook-update-mixed-version.test.ts` runs every pairing of the two
+releases' relay and policy, and a write that fails at each file, and holds
+every shipped name to its class.
+
 **Must hold**: the classification survives `sudo`, `env`, `proxychains` and an
 absolute path (FR-027), so the classifier walks prefix wrappers before it looks
 at the program name.
