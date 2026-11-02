@@ -17,6 +17,7 @@
 // `insertEvent` stays the DB write; ingest is the policy around it.
 
 import { insertEvent, lastRecordingResumeTime, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
+import { dbEngagement } from './db/index'
 import { eventBus } from './event-bus'
 import { isCapturePlumbing } from './capture-plumbing'
 import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
@@ -132,6 +133,17 @@ export function ingest(input: IngestInput): IngestResult {
   const { agentType, engagementId, operatorId } = input
   const data = input.data
   let targetId = input.targetId
+
+  // A row for another engagement is work that outlived its project. insertEvent
+  // refuses it, but only after enrichment has stored the row's bodies under the
+  // OPEN project's directory and settled its command pairs in this project's
+  // runtime. Same check, earlier, so a refused row has no side effects.
+  // Reported as `dedup`, as it always was; the refusal is named in the log.
+  const bound = dbEngagement()
+  if (bound !== null && input.engagementId !== undefined && input.engagementId !== bound) {
+    console.error(`[ingest] refused a ${agentType} row for engagement ${input.engagementId}: the open database belongs to ${bound}`)
+    return { event: null, skipped: 'dedup', companions: [] }
+  }
 
   // Runtime pairs must settle even if the evidence write is paused. Otherwise
   // a command_end seen during pause leaves a phantom active command that can
