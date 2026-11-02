@@ -94,7 +94,7 @@ import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
-import { replaySpoolDirectory } from '../core/spool-replay'
+import { drainInSlices, replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
@@ -868,9 +868,9 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
 
   // Replay only records belonging to the active engagement. Mismatches remain
   // recoverable on disk and are picked up when their owning project opens.
-  const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
-    if (!projectRuntime.isCurrent(opening)) return
-    if (eventBus.paused) return
+  const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
+    if (!projectRuntime.isCurrent(opening)) return null
+    if (eventBus.paused) return null
     let pauses: ReturnType<typeof pauseIntervals> | null = null
     const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
       // A queue-full or proxy-stop gap is judged against the pauses before it
@@ -902,15 +902,18 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     }
     // A proxy killed while it held events left a bound on disk (#291). Into
     // the spool with it, so its own project gets the gap and no other does.
-    reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-    const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit).replayed
-    if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+    if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
+    const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
+    if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
+    return run.last
   }
   try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
-  projectRuntime.setInterval(opening, () => {
-    try { drainSpool(200) } catch { /* next interval retries preserved files */ }
-  }, 30_000)
+  // The API shares this thread, so the periodic drain yields every ten files
+  // instead of holding it for all two hundred.
+  projectRuntime.setInterval(opening, drainInSlices({
+    drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
+  }), 30_000)
 
   alertRuntime.start()
   startLinkMonitor()

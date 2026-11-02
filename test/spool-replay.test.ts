@@ -22,7 +22,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const before = fs.readFileSync(file)
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0 })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, last: 'secret-a.json' })
     expect(emitted).toEqual([])
     expect(fs.readFileSync(file)).toEqual(before)
   })
@@ -31,7 +31,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const emitted: SpoolReplayEvent[] = []
     replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true })
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0 })
+      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'secret-a.json' })
     expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a', recovered_from_spool: true } })
     expect(fs.existsSync(file)).toBe(false)
   })
@@ -40,7 +40,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'unknown')
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0 })
+      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0, last: 'unknown.json' })
     expect(emitted).toEqual([])
     expect(fs.existsSync(file)).toBe(false)
     expect(fs.existsSync(`${file}.unattributed`)).toBe(true)
@@ -49,8 +49,64 @@ describe('spool replay isolation', () => {
   it('keeps an attributable item pending until the write is accepted', () => {
     const d = dir(); const file = write(d, 'during-pause', 'project-a')
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-a' }, () => false))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0 })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, last: 'during-pause.json' })
     expect(fs.existsSync(file)).toBe(true)
+  })
+})
+
+// A drain that runs in slices resumes where the last one stopped. `after` is
+// that place, and `last` is what the caller hands back for it — including files
+// that were looked at and left alone, or another project's files would pin the
+// cursor behind them.
+describe('resuming a replay after a name', () => {
+  const ACTIVE = { engagementId: 'project-a', operatorId: 'op-a' }
+  const names = (emitted: SpoolReplayEvent[]): unknown[] => emitted.map((e) => e.data.command)
+
+  it('continues in sorted order from the cursor and reports the last name it looked at', () => {
+    const d = dir()
+    for (const n of ['e', 'c', 'a', 'd', 'b']) write(d, n, 'project-a')
+    const emitted: SpoolReplayEvent[] = []
+    const emit = (e: SpoolReplayEvent): boolean => { emitted.push(e); return true }
+
+    const first = replaySpoolDirectory(d, ACTIVE, emit, 2)
+    expect(first.last).toBe('b.json')
+    const second = replaySpoolDirectory(d, ACTIVE, emit, 2, first.last!)
+    expect(second.last).toBe('d.json')
+    const third = replaySpoolDirectory(d, ACTIVE, emit, 2, second.last!)
+    expect(third.last).toBe('e.json')
+    expect(names(emitted)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    expect(replaySpoolDirectory(d, ACTIVE, emit, 2, third.last!).last).toBeNull()
+  })
+
+  it('names nothing when there is nothing to look at', () => {
+    expect(replaySpoolDirectory(dir(), ACTIVE, () => true).last).toBeNull()
+    expect(replaySpoolDirectory(path.join(dir(), 'missing'), ACTIVE, () => true).last).toBeNull()
+  })
+
+  it('counts a deferred, unattributed or unreadable file as looked at', () => {
+    const d = dir()
+    write(d, 'a-other', 'project-b')
+    write(d, 'b-nobody')
+    fs.writeFileSync(path.join(d, 'c-garbage.json'), '{')
+    write(d, 'd-mine', 'project-a')
+    const emitted: SpoolReplayEvent[] = []
+    const emit = (e: SpoolReplayEvent): boolean => { emitted.push(e); return true }
+
+    // The three that cannot be replayed fill the slice; the cursor still moves.
+    const first = replaySpoolDirectory(d, ACTIVE, emit, 3)
+    expect(first).toMatchObject({ replayed: 0, deferred: 1, unattributed: 1, invalid: 1, last: 'c-garbage.json' })
+    const second = replaySpoolDirectory(d, ACTIVE, emit, 3, first.last!)
+    expect(second).toMatchObject({ replayed: 1, last: 'd-mine.json' })
+    expect(names(emitted)).toEqual(['d-mine'])
+  })
+
+  it('leaves files at or before the cursor alone', () => {
+    const d = dir()
+    write(d, 'a', 'project-a'); write(d, 'b', 'project-a')
+    const emitted: SpoolReplayEvent[] = []
+    replaySpoolDirectory(d, ACTIVE, (e) => { emitted.push(e); return true }, Number.POSITIVE_INFINITY, 'a.json')
+    expect(names(emitted)).toEqual(['b'])
+    expect(fs.existsSync(path.join(d, 'a.json'))).toBe(true)
   })
 })
 
