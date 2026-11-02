@@ -89,6 +89,8 @@ macOS／Linux 上 RedLog
   而那通常發生在你花了兩天才打進去的機器上。
 - **編輯器和 pager（`vim`、`nano`、`less`…）也不碰。** 記下來的會是游標移動和重繪，
   不是檔案內容。
+- **`claude`、`codex` 也不碰。** 它們是全螢幕介面，從畫面錄只會得到重繪。Shell 只記啟動指令；
+  對話內容要在「設定 ▸ 其他擷取來源 ▸ AI 對話」啟用後，才會從本機 transcript 擷取。
 - **Zsh 的 `ssh`、`socat`、`pwncat-cs` 使用 PTY 錄製器**（`redlog-session`），
   輸出是合併的 PTY stream；Bash 對這一類不自動包裝，需明確使用 `redlog-session`。
 

@@ -40,6 +40,18 @@ describe('command classification', () => {
     }
   })
 
+  it('leaves the AI CLIs alone, because their conversation is not on the screen', () => {
+    // claude and codex are full-screen TUIs, and the AI tailer already records
+    // the conversation from the local transcript. A relay would store redraws
+    // as output and risk the interface (streaming, Esc, Ctrl-C, resize).
+    expect(classify('claude')).toBe('native')
+    expect(classify('claude --resume')).toBe('native')
+    expect(classify('codex')).toBe('native')
+    expect(classify('codex resume')).toBe('native')
+    expect(classify('sudo claude')).toBe('native')
+    expect(classify('/usr/local/bin/codex')).toBe('native')
+  })
+
   it('gives a PTY to the things that bring their own', () => {
     expect(classify('ssh root@10.0.0.1')).toBe('pty')
     expect(classify('socat - TCP:10.0.0.1:4444')).toBe('pty')
@@ -100,6 +112,9 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     'ncat -lvnp 4444',
     'vim notes.txt',
     'less big.log',
+    'claude',
+    'codex resume',
+    'sudo claude',
     'ssh root@10.0.0.1',
     'socat - TCP:10.0.0.1:4444',
     'pwncat-cs 10.0.0.1 4444',
@@ -134,7 +149,7 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       `python3 "${hookPath(target!, 'redlog-relay.py')}" classify --home "$H" -- ${line.split(' ').map(quote).join(' ')}\n` +
       `printf '\\n'`
     )].join('\n')
-    // 25 `python3` spawns across the WSL boundary, in a suite that runs files
+    // 28 `python3` spawns across the WSL boundary, in a suite that runs files
     // in parallel. Alone this is seconds; under full-suite load it is a
     // minute, and the default budget turns that into a truncated stdout and a
     // mystery — the same shape test/shell-redlog-run.test.ts documents.
@@ -148,6 +163,11 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     for (const line of CASES) {
       expect(fromShell.get(line), `${line}: shell and RedLog disagree`)
         .toBe(classifyCommand(line.split(' ')))
+    }
+    // Agreeing is not enough: both sides read one file, so they agree on a
+    // wrong default too. The AI CLIs are native in the shell as well.
+    for (const line of ['claude', 'codex resume', 'sudo claude']) {
+      expect(fromShell.get(line), `${line}: the shell relays it`).toBe('native')
     }
   }, 300_000)
 
