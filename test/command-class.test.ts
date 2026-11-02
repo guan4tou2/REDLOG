@@ -3,7 +3,8 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
-  classifyCommand, compileClassPolicy, type CommandClass, type CompiledClassPolicy, type ShippedClassPolicy
+  classifyCommand, compileClassPolicy, CLASS_FILE_MAX_BYTES,
+  type CommandClass, type CompiledClassPolicy, type ShippedClassPolicy
 } from '../src/core/terminal-class'
 import { readClassOverlay } from '../src/core/terminal-enrollment'
 import {
@@ -152,6 +153,23 @@ const heldOf = (p: CompiledClassPolicy): Record<string, string> =>
 const synthetic = (native: string[], pty: string[], terminalProfiles: unknown[]): ShippedClassPolicy =>
   ({ native, pty, terminalProfiles })
 
+// The most either file may hold: ~/.redlog/command-class.json and
+// ~/.redlog/terminal-profiles.json are written by RedLog and are a few KB.
+const CLASS_FILE_CAP = CLASS_FILE_MAX_BYTES
+const padded = (text: string, bytes: number): string => text + ' '.repeat(bytes - Buffer.byteLength(text))
+// A JSON object text with one more key added, `x`, nested so that the whole
+// document is `levels` containers deep (the object itself is the first).
+const deepInside = (objectText: string, levels: number): string =>
+  objectText.replace(/}$/, `, "x": ${'['.repeat(levels - 1)}${']'.repeat(levels - 1)}}`)
+
+// Profile ids a hand-edited snapshot can carry that are not `<plugin>/<id>` in
+// plain lowercase: a terminal escape, an OSC title, a line that looks like a
+// header, a NUL, an id too long, a trailing newline, text that is not ASCII.
+const ODD_IDS = [
+  'pack/\u001b[31mred', '\u001b]0;pwned\u0007', 'a\nnative: fake', 'a\u0000b', `pack/${'a'.repeat(130)}`,
+  'pack/ok\n', 'pack/\u00e9', '\u00e9/x', 'Pack/x', 'a/b/c', 'a/', '/a', '-a', '', 'a b', 'pack/x\u2028y'
+]
+
 // Synthetic shipped policies, each one a way profiles can disagree or break.
 const CLASHING = {
   sameMode: synthetic([], [], [profile('a', 'A', 'native', ['x']), profile('b', 'B', 'native', ['x'])]),
@@ -187,6 +205,36 @@ const MIRROR_CASES: MirrorCase[] = [
   { id: 'shipped nothingBelow, overridden', file: '{"pty": ["x"]}', shipped: CLASHING.nothingBelow },
   { id: 'shipped relayedProfile, moved', file: '{"native": ["z"], "pty": ["x"]}', shipped: CLASHING.relayedProfile },
   { id: 'shipped broken, bad overlay', file: '{"native": 3, "pty": [false]}', shipped: CLASHING.broken },
+  // The overlay feeds `--field pty`, which the zsh adapter pastes into the
+  // source of a wrapper, so a name that is not a bare command name is dropped
+  // from it as the executables of a profile are.
+  { id: 'overlay names that are not bare command names', probes: ['curl', 'ok.tool_1+x-y', 'a', 'vim', 'nc', 'z'],
+    file: JSON.stringify({
+      pty: ['a;b', 'curl', 'x\n', '-x', 'ok.tool_1+x-y', 'a/b', 'é', '', 'a b', '$(id)', '`id`'],
+      native: ['a b', 'vim', 'a'.repeat(65)],
+      relayed: ['x;y', 'nc', 'z']
+    }) },
+  { id: 'overlay a name of 64 characters is fine, 65 is not', probes: ['curl'],
+    file: JSON.stringify({ pty: ['a'.repeat(64), 'a'.repeat(65), 'curl'] }) },
+  // The files are read with a cap and without recursing without limit: a file
+  // too deep or too big is unreadable on both sides, never a traceback.
+  { id: 'overlay nested 200000 deep', file: '['.repeat(200000) + ']'.repeat(200000), probes: ['curl', 'vim', 'ssh'] },
+  { id: 'overlay at the size cap is read', file: padded('{"pty": ["capped-tool"]}', CLASS_FILE_CAP), probes: ['capped-tool', 'ssh'] },
+  { id: 'overlay one byte over the cap is not', file: padded('{"pty": ["capped-tool"]}', CLASS_FILE_CAP + 1), probes: ['capped-tool', 'ssh'] },
+  // Depth is counted in containers, the outer object being the first: V8 parses
+  // any depth and Python gives up near a thousand, so both apply one cap (32).
+  { id: 'snapshot 32 levels deep is read', file: null, probes: ['deep-tool'],
+    contributed: deepInside(snap([profile('pack/deep', 'Deep', 'pty', ['deep-tool'])]), 32) },
+  { id: 'snapshot 33 levels deep is not', file: null, probes: ['deep-tool'],
+    contributed: deepInside(snap([profile('pack/deep', 'Deep', 'pty', ['deep-tool'])]), 33) },
+  { id: 'overlay 32 levels deep is read', file: deepInside('{"pty": ["deep-tool"]}', 32), probes: ['deep-tool'] },
+  { id: 'overlay 33 levels deep is not', file: deepInside('{"pty": ["deep-tool"]}', 33), probes: ['deep-tool'] },
+  { id: 'snapshot nested 200000 deep', file: '{"pty": ["curl"]}', probes: ['curl', 'vim', 'ssh'],
+    contributed: '['.repeat(200000) + ']'.repeat(200000) },
+  { id: 'snapshot at the size cap is read', file: null, probes: ['capped-tool', 'vim'],
+    contributed: padded(snap([profile('pack/capped', 'Capped', 'pty', ['capped-tool'])]), CLASS_FILE_CAP) },
+  { id: 'snapshot one byte over the cap is not', file: null, probes: ['capped-tool', 'vim'],
+    contributed: padded(snap([profile('pack/capped', 'Capped', 'pty', ['capped-tool'])]), CLASS_FILE_CAP + 1) },
   ...contributedCases()
 ]
 
@@ -258,6 +306,14 @@ function contributedCases(): MirrorCase[] {
         pack('newline', 'pty', ['x\n']), pack('good', 'pty', ['ok.tool_1+x-y']), pack('long', 'pty', ['a'.repeat(65)]),
         pack('slash', 'pty', ['a/b']), pack('empty', 'pty', [''])
       ]) },
+    // An id is printed by `redlog class list`, so it is held to a shape and to
+    // plain text, and an invalid one is named by its position instead.
+    { id: 'snapshot profile ids that are not plain', file: null, probes: ['e-esc', 'e-ok', 'e-uni'],
+      contributed: snap(ODD_IDS.map((id, i) => profile(id, 'Odd', 'pty', [`e-${i}`])).concat([
+        profile('pack/e-ok', 'Ok', 'pty', ['e-ok']), profile('plain', 'Plain', 'native', ['e-plain'])
+      ])) },
+    { id: 'snapshot profile id valid but its executables are not', file: null,
+      contributed: snap([profile('pack/fine-id', 'Fine', 'pty', ['a;b']), profile('Pack/Bad', 'Bad', 'pty', ['a;b'])]) },
     { id: 'snapshot invalid profile counts on from the shipped ones', file: null,
       contributed: snap([{ mode: 'pty', executables: ['x'] }, 'text', pack('fine', 'pty', ['f'])]) },
     { id: 'snapshot invalid profile counts on from a synthetic shipped list', file: null,
@@ -525,6 +581,77 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       `printf '%s=' ${word}; python3 "${relay()}" classify --home "$H" -- ${word}; printf '\\n'`
     const list = (): string => `python3 "${relay()}" policy --home "$H" --action list; echo "list-exit=$?"`
 
+    // `--field pty` is pasted into the source of the zsh wrappers, so it must
+    // never carry a name that is more than a bare command name, whoever wrote
+    // the overlay, and `class add` must not write one.
+    it('drops a name that is not a bare command name from the overlay, and says so once', async () => {
+      const file = JSON.stringify({ pty: ['curl', 'a;b', 'x y', '$(id)', 'ok.tool'], native: ['a`b`'] }).replace(/'/g, '')
+      const run = await runInShell(target!, inOverlay(file, [
+        `python3 "${relay()}" policy --home "$H" --field pty; echo`, list()
+      ]), { timeoutMs: 120_000 })
+      const pty = run.stdout.split('native:')[0] // what `--field pty` printed, before the list
+      expect(pty, run.stderr.slice(0, 300)).toContain('curl')
+      expect(pty).toContain('ok.tool')
+      expect(pty).not.toMatch(/a;b|x y|\$\(|`| /)
+      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: pty is not a list of commands\n')
+      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: native is not a list of commands\n')
+    }, 180_000)
+
+    it('refuses to add a name that is not a bare command name, exits 3, and writes nothing', async () => {
+      const add = (name: string): string =>
+        `python3 "${relay()}" policy --home "$H" --action add --field pty --command ${name}; echo "rc=$?"`
+      const run = await runInShell(target!, [
+        'H=$(mktemp -d -t redlog-add.XXXXXX)',
+        add(`'a;b'`), add(`'a b'`), add(`'-x'`), add(`'$(id)'`), add(`'a\`id\`'`), add(`"$(printf 'x\\ny')"`), add(`"$(printf 'a%.0s' $(seq 65))"`),
+        'test -e "$H/.redlog/command-class.json" && echo written || echo nothing-written',
+        add('ligolo-proxy'), add('/usr/bin/ssh'),
+        'cat "$H/.redlog/command-class.json"; echo',
+        'rm -rf "$H"'
+      ].join('\n'), { timeoutMs: 120_000 })
+      const lines = run.stdout.split('\n')
+      expect(lines.slice(0, 7), run.stderr.slice(0, 300)).toEqual(Array(7).fill('rc=3'))
+      expect(lines[7]).toBe('nothing-written')
+      expect(lines.slice(8, 10)).toEqual(['rc=0', 'rc=0'])
+      expect(JSON.parse(lines[10])).toEqual({ native: [], pty: ['ligolo-proxy', 'ssh'], relayed: [] })
+    }, 180_000)
+
+    // json.load recurses, and a deep enough file raised RecursionError: classify
+    // and `--field pty` exited 1 with a traceback, zsh installed no PTY wrappers
+    // and every command fell back to native, silently.
+    it('reads a file nested too deep, or too big, as not readable: the relay still answers and exits 0', async () => {
+      const cap = CLASS_FILE_MAX_BYTES
+      const bundledPty = (): string => `python3 "${relay()}" policy --home "$H" --field pty; rc=$?; echo; echo "pty-rc=$rc"`
+      const classify = `python3 "${relay()}" classify --home "$H" -- ssh -x; rc=$?; echo; echo "classify-rc=$rc"`
+      // `make` is the shell that writes the file, with $F as its path.
+      const check = async (name: 'command-class.json' | 'terminal-profiles.json', make: string): Promise<string[]> => {
+        const run = await runInShell(target!, [
+          'H=$(mktemp -d -t redlog-deep.XXXXXX)', 'mkdir -p "$H/.redlog"', `F="$H/.redlog/${name}"`,
+          make, bundledPty(), classify,
+          `python3 "${relay()}" policy --home "$H" --action list; echo "list-rc=$?"`,
+          'rm -rf "$H"'
+        ].join('\n'), { timeoutMs: 120_000 })
+        return run.stdout.split('\n')
+      }
+      for (const name of ['command-class.json', 'terminal-profiles.json'] as const) {
+        const nested = (await check(name, `python3 -c "import sys; sys.stdout.write('['*200000+']'*200000)" > "$F"`)).join('\n')
+        expect(nested, name).toContain('\nssh\n')
+        expect(nested, name).toContain('pty-rc=0')
+        expect(nested, name).toContain('pty\nclassify-rc=0')
+        expect(nested, name).toContain('list-rc=0')
+        expect(nested, name).not.toMatch(/Traceback|RecursionError/)
+        const body = name === 'command-class.json'
+          ? '{"pty": ["capped-tool"]}'
+          : '{"version":1,"profiles":[{"id":"pack/capped","name":"Capped","mode":"pty","executables":["capped-tool"],"reason":"r"}],"held":{}}'
+        const padTo = (bytes: number): string =>
+          `printf '%s' '${body}' > "$F"; python3 -c "import sys; p=sys.argv[1]; t=open(p).read(); open(p,'w').write(t+' '*(${bytes}-len(t)))" "$F"`
+        const big = await check(name, padTo(cap + 1))
+        expect(big.join('\n'), `${name} one byte over the cap`).not.toContain('capped-tool')
+        expect(big.join('\n'), name).toContain('list-rc=0')
+        const exact = await check(name, padTo(cap))
+        expect(exact.join('\n'), `${name} at the cap`).toContain('capped-tool')
+      }
+    }, 300_000)
+
     it('{"native": null}: the field is ignored and the defaults stand', async () => {
       // Before: python3 raised TypeError, `classify` printed nothing, and the
       // shell took that as native for everything — capture stopped silently,
@@ -714,6 +841,25 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
         'plugin profiles: Fine from pack-d (fine-tool)',
         'skipped tool profile pack-d/bad: not valid'
       ])
+    }, 180_000)
+
+    // An id is the one thing printed raw if it is not checked: a terminal escape
+    // or a newline in it would draw on the operator's screen or fake a header.
+    // An invalid profile is named by its position, a valid-looking one by id.
+    it('names an invalid profile by position when its id is not plain, and prints nothing raw', async () => {
+      const lines = await run(snap([
+        ...ODD_IDS.map((id, i) => ({ id, name: 'Odd', mode: 'pty', executables: [`e-${i}`], reason: 'r' })),
+        { id: 'pack-d/bad', name: 'Bad', mode: 'pty', executables: ['a;b'], reason: 'r' },
+        { id: 'pack-d/fine', name: 'Fine', mode: 'pty', executables: ['fine-tool'], reason: 'r' }
+      ]))
+      const bundledCount = 1 // the bundled Vim profile counts first
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vim vi)',
+        'plugin profiles: Fine from pack-d (fine-tool)',
+        ...ODD_IDS.map((_, i) => `skipped tool profile #${bundledCount + i}: not valid`),
+        'skipped tool profile pack-d/bad: not valid'
+      ])
+      expect(lines.join('\n')).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f]/)
     }, 180_000)
 
     // A snapshot someone edited by hand can carry a name the app would refuse.

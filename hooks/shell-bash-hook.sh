@@ -137,9 +137,13 @@ redlog() {
             return 2
           fi
           python3 "$_REDLOG_RELAY" policy --home "$home" \
-            --action add --field "$2" --command "$3" >/dev/null || {
-            echo "[redlog] no such class: $2" >&2; return 2
-          }
+            --action add --field "$2" --command "$3" >/dev/null
+          # 3 is a name the wrapper cannot be built from; anything else is the class.
+          case $? in
+            0) ;;
+            3) echo "[redlog] not a command name: $3 (letters, digits, . _ + - only)" >&2; return 2 ;;
+            *) echo "[redlog] no such class: $2" >&2; return 2 ;;
+          esac
           echo "[redlog] $3 is now $2"
           # zsh wraps the pty class in a recorder; bash does not (yet), and
           # saying otherwise would promise output that is not captured.

@@ -6,7 +6,8 @@ import {
   registerTerminalProfiles, unregisterTerminalProfiles, syncTerminalProfiles, readContributedProfiles,
   ADAPTER_RESERVED
 } from '../src/core/terminal-profiles'
-import { compileClassPolicy, type CompiledClassPolicy } from '../src/core/terminal-class'
+import { compileClassPolicy, CLASS_FILE_MAX_BYTES, type CompiledClassPolicy } from '../src/core/terminal-class'
+import { readClassOverlay } from '../src/core/terminal-enrollment'
 import shipped from '../hooks/command-class.json'
 
 // #499. A plugin manifest may contribute `terminalProfiles`. RedLog validates
@@ -435,5 +436,49 @@ describe('who keeps a command across writes', () => {
     fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), '{"relayed":["x"]}')
     syncTerminalProfiles(home)
     expect(heldNow().x).toBe('aaa/p')
+  })
+})
+
+// The two files the policy reads from ~/.redlog are read with a size cap, and a
+// file nested too deep is not a crash. The shell reads them the same way
+// (hooks/redlog-relay.py `read_json_capped`); test/command-class.test.ts runs
+// the same files through both.
+describe('reading the files the policy reads', () => {
+  const put = (name: string, body: string): void => {
+    fs.mkdirSync(path.join(home, '.redlog'), { recursive: true })
+    fs.writeFileSync(path.join(home, '.redlog', name), body)
+  }
+  const padded = (body: string, bytes: number): string => body + ' '.repeat(bytes - Buffer.byteLength(body))
+  const nested = '['.repeat(200000) + ']'.repeat(200000)
+
+  it('reads the snapshot at the cap, and as unreadable one byte over it', () => {
+    const body = JSON.stringify({ version: 1, profiles: [], held: {} })
+    put('terminal-profiles.json', padded(body, CLASS_FILE_MAX_BYTES))
+    expect(readContributedProfiles(home)).toEqual({ version: 1, profiles: [], held: {} })
+    put('terminal-profiles.json', padded(body, CLASS_FILE_MAX_BYTES + 1))
+    expect(readContributedProfiles(home)).toBe(false)
+  })
+
+  it('reads a snapshot nested too deep as unreadable', () => {
+    put('terminal-profiles.json', nested)
+    expect(readContributedProfiles(home)).toBe(false)
+  })
+
+  it('does the same for the operator\'s overlay: at the cap it is read, over it or too deep it is no overlay', () => {
+    const body = '{"pty":["ok"]}'
+    put('command-class.json', padded(body, CLASS_FILE_MAX_BYTES))
+    expect(readClassOverlay(home)).toEqual({ pty: ['ok'] })
+    put('command-class.json', padded(body, CLASS_FILE_MAX_BYTES + 1))
+    expect(readClassOverlay(home)).toBeNull()
+    put('command-class.json', nested)
+    expect(readClassOverlay(home)).toBeNull()
+  })
+
+  it('drops from the overlay a name that is not a bare command name, and says so once per field', () => {
+    const p = compileClassPolicy({ pty: ['curl', 'a;b', 'x y', 'x\n', '-x', ''], native: ['$(id)'], relayed: ['ok.tool'] })
+    expect(p.pty).toContain('curl')
+    expect(p.pty.join(' ')).not.toMatch(/a;b|x y|\n|-x/)
+    expect(p.native).not.toContain('$(id)')
+    expect(p.problems).toEqual([{ kind: 'invalid-overlay', field: 'native' }, { kind: 'invalid-overlay', field: 'pty' }])
   })
 })

@@ -223,7 +223,10 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
           'echo code=$?',
           'redlog class remove curl',
           'redlog class list',
-          'redlog class add nonsense curl'
+          'redlog class add nonsense curl',
+          `redlog class add pty 'a;b'`,
+          'echo code=$?',
+          'redlog class list'
         ],
         redlog: {
           port: collector.port, token,
@@ -283,6 +286,14 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
     it('refuses a class that does not exist, instead of inventing one', () => {
       // Rule 3: a typo must not be silently a no-op.
       expect(run.steps[11].output).toMatch(/no such class: nonsense/)
+    })
+
+    // The wrapper function is built from this name, so it is not a free string.
+    it('refuses a name that is not a bare command name, says so, and does not write it', () => {
+      expect(run.steps[12].output).toMatch(/not a command name: a;b/)
+      expect(run.steps[12].output).not.toMatch(/no such class/)
+      expect(run.steps[13].output, 'a refused add returned zero').toContain('code=2')
+      expect(run.steps[14].output).not.toMatch(/a;b/)
     })
   })
 

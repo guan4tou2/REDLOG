@@ -1314,6 +1314,11 @@ def policy_field(argv):
         target = opts["field"]
         if target not in CLASS_FIELDS:
             return 2
+        # Not a name the wrapper can be built from: refused before anything is
+        # written, with its own status so the hook can say so (2 is "no such class").
+        if not EXECUTABLE.fullmatch(command):
+            sys.stderr.write("redlog-relay: %r is not a bare command name\n" % command)
+            return 3
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
@@ -1330,6 +1335,58 @@ def overlay_path(opts):
     return os.path.join(terminal_home(opts), ".redlog", "command-class.json")
 
 
+# The most either file under ~/.redlog that the policy reads may hold. Both are
+# written by RedLog and are a few KB; anything bigger was not written by it, and
+# is read as not readable instead of being parsed. Mirrored by
+# CLASS_FILE_MAX_BYTES in src/core/terminal-class.ts.
+MAX_CLASS_FILE_BYTES = 1024 * 1024
+
+# How deep either file may nest. RedLog's own are four levels deep. Python's
+# parser gives up near a thousand levels with RecursionError and V8 parses any
+# depth, so an explicit cap is what makes "too deep" one answer on both sides.
+# Mirrored by CLASS_FILE_MAX_DEPTH in src/core/terminal-class.ts.
+MAX_CLASS_JSON_DEPTH = 32
+
+
+def nests_deeper_than(value, limit=MAX_CLASS_JSON_DEPTH):
+    """Whether a parsed value nests deeper than `limit` containers. Iterative."""
+    stack = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict):
+            children = node.values()
+        elif isinstance(node, list):
+            children = node
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def read_json_capped(path, parse_constant=None):
+    """JSON from a file the policy reads, or ValueError when it cannot be used.
+
+    FileNotFoundError and other OSErrors pass through. A file over the cap is
+    not read past it, and a file nested so deep that json recurses out of stack
+    (RecursionError, which is not a ValueError) is the same refusal: a hand-edit
+    must not be able to stop `classify` and `--field pty` with a traceback,
+    which leaves zsh without PTY wrappers and every command native, silently.
+    """
+    with open(path, "rb") as fh:
+        data = fh.read(MAX_CLASS_FILE_BYTES + 1)
+    if len(data) > MAX_CLASS_FILE_BYTES:
+        raise ValueError("file is larger than %d bytes" % MAX_CLASS_FILE_BYTES)
+    try:
+        parsed = json.loads(data.decode("utf-8"), parse_constant=parse_constant)
+    except RecursionError:
+        raise ValueError("nested too deeply")
+    if nests_deeper_than(parsed):
+        raise ValueError("nested too deeply")
+    return parsed
+
+
 def read_overlay_file(home):
     """The operator's overlay exactly as parsed, or None when there is none.
 
@@ -1337,8 +1394,7 @@ def read_overlay_file(home):
     so that a file that is not an object and a file that is both get one rule.
     """
     try:
-        with open(overlay_path({"home": home}), "r") as fh:
-            return json.load(fh)
+        return read_json_capped(overlay_path({"home": home}))
     except (OSError, ValueError):
         return None
 
@@ -1487,8 +1543,7 @@ def read_contributed_file(home):
     def refuse(name):
         raise ValueError(name)
     try:
-        with open(contributed_path({"home": home}), "r", encoding="utf-8") as fh:
-            return json.load(fh, parse_constant=refuse)
+        return read_json_capped(contributed_path({"home": home}), parse_constant=refuse)
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
@@ -1546,7 +1601,9 @@ def normalize_overlay(raw):
         if not isinstance(value, list):
             problems.append({"kind": "invalid-overlay", "field": name})
             continue
-        kept = [c for c in value if isinstance(c, str)]
+        # A bare command name only, as an executable of a profile is: the zsh
+        # adapter pastes `--field pty` into the source of a wrapper function.
+        kept = [c for c in value if isinstance(c, str) and EXECUTABLE.fullmatch(c)]
         if len(kept) != len(value):
             problems.append({"kind": "invalid-overlay", "field": name})
         lists[name] = kept
@@ -1585,7 +1642,8 @@ def compile_policy(overlay, shipped, contributed=None):
     # The plugins' profiles join after the shipped ones, so `#<index>` keeps counting.
     for index, profile in enumerate(list(shipped.get("terminalProfiles", [])) + snapshot_profiles):
         if not valid_profile(profile):
-            ident = profile.get("id") if isinstance(profile, dict) and isinstance(profile.get("id"), str) else "#%d" % index
+            # Named by its id only when that is safe to print: it comes out of a file.
+            ident = profile["id"] if isinstance(profile, dict) and valid_id(profile.get("id")) else "#%d" % index
             problems.append({"kind": "invalid-profile", "profile": ident})
             continue
         for command in profile["executables"]:
@@ -1640,10 +1698,23 @@ def compile_policy(overlay, shipped, contributed=None):
 EXECUTABLE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}")
 
 
+# A profile id: lowercase words, optionally `<plugin>/<id>`, at most 129
+# characters. An id is printed by `redlog class list`, so what is not this shape
+# is never shown, only counted by position. Mirrored by PROFILE_ID in
+# src/core/terminal-class.ts. fullmatch, not `$`: Python's `$` also matches
+# before a trailing newline.
+PROFILE_ID = re.compile(r"[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?")
+PROFILE_ID_MAX = 129
+
+
+def valid_id(ident):
+    return isinstance(ident, str) and len(ident) <= PROFILE_ID_MAX and PROFILE_ID.fullmatch(ident) is not None
+
+
 def valid_profile(profile):
     return (
         isinstance(profile, dict)
-        and isinstance(profile.get("id"), str)
+        and valid_id(profile.get("id"))
         and profile.get("mode") in MODES
         and isinstance(profile.get("executables"), list)
         and len(profile["executables"]) > 0

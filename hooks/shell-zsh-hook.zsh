@@ -237,9 +237,13 @@ redlog() {
             return 2
           fi
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
-            --action add --field "$2" --command "$3" >/dev/null || {
-            print -u2 -- "[redlog] no such class: $2"; return 2
-          }
+            --action add --field "$2" --command "$3" >/dev/null
+          # 3 is a name the wrapper cannot be built from; anything else is the class.
+          case $? in
+            0) ;;
+            3) print -u2 -- "[redlog] not a command name: $3 (letters, digits, . _ + - only)"; return 2 ;;
+            *) print -u2 -- "[redlog] no such class: $2"; return 2 ;;
+          esac
           print -- "[redlog] $3 is now $2"
           # FR-028. The cost is not obvious and it is paid in the middle of an
           # engagement, on the command the operator cares most about.

@@ -88,6 +88,32 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const byCommand = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
+/** The most ~/.redlog/command-class.json or ~/.redlog/terminal-profiles.json
+ *  may hold for the policy to read it. RedLog writes both and they are a few KB;
+ *  a bigger one was not written by it and is read as not readable. Mirrored by
+ *  MAX_CLASS_FILE_BYTES in `hooks/redlog-relay.py`. */
+export const CLASS_FILE_MAX_BYTES = 1024 * 1024
+
+/** How deep either file may nest. RedLog's own are four levels deep (snapshot,
+ *  profiles, a profile, its executables). V8 parses any depth, Python's parser
+ *  gives up near a thousand with RecursionError, so an explicit cap is what
+ *  makes "too deep" one answer on both sides. Mirrored by
+ *  MAX_CLASS_JSON_DEPTH in `hooks/redlog-relay.py`. */
+export const CLASS_FILE_MAX_DEPTH = 32
+
+/** Whether a parsed value nests deeper than `max` containers. Iterative: the
+ *  point is to answer for a value too deep to recurse into. */
+export function nestsDeeperThan(value: unknown, max: number = CLASS_FILE_MAX_DEPTH): boolean {
+  const stack: Array<[unknown, number]> = [[value, 1]]
+  for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
+    const [v, depth] = item
+    if (typeof v !== 'object' || v === null) continue
+    if (depth > max) return true
+    for (const child of Array.isArray(v) ? v : Object.values(v)) stack.push([child, depth + 1])
+  }
+  return false
+}
+
 /** The operator's overlay as lists, plus what was wrong with it. Anything
  *  that is not an object is no overlay; unknown keys, the retired `removed`
  *  included, are ignored. A field that is not a list is ignored whole and a
@@ -102,7 +128,9 @@ function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>
     if (!hasOwn(raw, field)) continue
     const value = raw[field]
     if (!Array.isArray(value)) { problems.push({ kind: 'invalid-overlay', field }); continue }
-    const kept = value.filter((c): c is string => typeof c === 'string')
+    // A bare command name only, as an executable of a profile is: the zsh
+    // adapter pastes the pty list into the source of a wrapper function.
+    const kept = value.filter((c): c is string => typeof c === 'string' && EXECUTABLE.test(c))
     if (kept.length !== value.length) problems.push({ kind: 'invalid-overlay', field })
     lists[field] = kept
   }
@@ -115,9 +143,22 @@ function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>
  *  Mirrored by EXECUTABLE in `hooks/redlog-relay.py`. */
 export const EXECUTABLE =/^[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}$/
 
+/** A profile id: lowercase words, optionally `<plugin>/<id>`, at most 129
+ *  characters (a 64-character plugin id, the slash, a 64-character local id).
+ *  An id is printed by `redlog class list`, so what is not this shape is never
+ *  shown, only counted by position. Mirrored by PROFILE_ID in
+ *  `hooks/redlog-relay.py`; the bundled ids (`vim`, `claude-code`, ...) and the
+ *  plugins' (`<plugin>/<id>`) both fit. */
+const PROFILE_ID = /^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)?$/
+const PROFILE_ID_MAX = 129
+
+function validId(id: unknown): id is string {
+  return typeof id === 'string' && id.length <= PROFILE_ID_MAX && PROFILE_ID.test(id)
+}
+
 function validProfile(p: unknown): p is TerminalProfile {
   return isRecord(p)
-    && typeof p.id === 'string'
+    && validId(p.id)
     && MODES.includes(p.mode as CommandClass)
     && Array.isArray(p.executables)
     && p.executables.length > 0
@@ -193,7 +234,8 @@ export function compileClassPolicy(
   // The plugins' profiles join after the shipped ones, so `#<index>` keeps counting.
   ;[...(shipped.terminalProfiles ?? []), ...snapshot.profiles].forEach((profile, index) => {
     if (!validProfile(profile)) {
-      const id = isRecord(profile) && typeof profile.id === 'string' ? profile.id : `#${index}`
+      // Named by its id only when that is safe to print: it comes out of a file.
+      const id = isRecord(profile) && validId(profile.id) ? profile.id : `#${index}`
       problems.push({ kind: 'invalid-profile', profile: id })
       return
     }
