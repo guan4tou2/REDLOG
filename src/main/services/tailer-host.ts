@@ -54,6 +54,7 @@ import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { isInsideDir } from '../../core/paths'
+import { restrictToOwner } from '../../core/fs-acl'
 import type { ProjectIdentity } from '../../core/project-runtime'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -324,12 +325,38 @@ function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
 }
 
+/** Written once the sidecar directory is owner-only on Windows. */
+const SIDECAR_ACL_MARKER = '.owner-only'
+
+/** Sidecars are raw, unredacted conversations. The 0o700/0o600 modes mean
+ *  nothing on NTFS, so there the directory takes the same icacls restriction
+ *  as the keys directory. Throws when it cannot be applied: the caller must
+ *  not save raw content it cannot protect.
+ *
+ *  Files already in the directory are restricted first. Restricting a
+ *  directory strips the inherited entries from its children, and a file that
+ *  has nothing explicit is left with an empty ACL, unreadable by its owner.
+ *  Files created afterwards take the process's default ACL, not the project
+ *  directory's. The marker keeps this to one pass per directory, since each
+ *  icacls call costs about 50 ms. */
+function secureSidecarDir(dir: string): void {
+  if (process.platform !== 'win32') return
+  const marker = path.join(dir, SIDECAR_ACL_MARKER)
+  if (fs.existsSync(marker)) return
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile()) restrictToOwner(path.join(dir, entry.name))
+  }
+  restrictToOwner(dir)
+  fs.writeFileSync(marker, '')
+}
+
 let resumeBoundary = 0
 function boundaryPath(): string { return path.join(getProjectDir(), 'agent-transcripts', '.recording-boundary.json') }
 function saveBoundary(paused: boolean): void {
   const file = boundaryPath(), tmp = file + '.tmp'
   let at = Date.now()
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  secureSidecarDir(path.dirname(file))
   try {
     fs.writeFileSync(tmp, JSON.stringify({ paused, at }), { mode: 0o600 })
     // Windows file timestamps can lead the coarser Date.now clock. Compare
@@ -1214,6 +1241,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   try { projectDir = getProjectDir() } catch { return }
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
   try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
+  try { secureSidecarDir(sidecarDir) } catch (e) { noteCaptureError(`agent-${agentKind}`, e); return }
   const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}${activationFor(agentKind, sessionId) ? `-${activationFor(agentKind, sessionId)}` : ''}.jsonl`)
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 
