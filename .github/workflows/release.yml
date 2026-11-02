@@ -17,7 +17,34 @@ on:
 # exactly how v0.2.1 first shipped mac-only. Collect the artifacts and let a
 # single downstream job create one release.
 jobs:
+  # A tag is only built if its commit is on main and CI passed on exactly that
+  # commit (see scripts/verify-release-ci.mjs). The build below then does not
+  # repeat typecheck or the verify:* gates: CI already ran them on this sha.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout (full history, to judge reachability from main)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Require green CI on the tagged commit, on main
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-release-ci.mjs
+
   build:
+    needs: gate
     strategy:
       fail-fast: false
       matrix:
