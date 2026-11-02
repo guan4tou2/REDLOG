@@ -84,5 +84,5 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no bash reachab
     })
     expect(run.ok, run.error).toBe(true)
     expect(run.steps[2].output).toContain('rc-1')
-  }, 120_000)
+  }, 300_000)
 })

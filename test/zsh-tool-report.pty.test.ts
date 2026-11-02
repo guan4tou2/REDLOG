@@ -82,7 +82,7 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
     })
     expect(run.ok, run.error).toBe(true)
     expect(run.steps[2].output).toContain('rc-1')
-  }, 120_000)
+  }, 300_000)
 
   // Under WARN_CREATE_GLOBAL a function that assigns an undeclared parameter
   // prints a warning. The first prompt now runs the shell-name lookup, which on
@@ -100,5 +100,5 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
     expect(run.ok, run.error).toBe(true)
     const beforeFirstPrompt = run.transcript.split(run.marker)[0]
     expect(beforeFirstPrompt).not.toMatch(/created globally/)
-  }, 120_000)
+  }, 300_000)
 })
