@@ -422,15 +422,20 @@ _redlog_preexec() {
   : ${_REDLOG_CMD_CLASS:=native}
 
   # `class` is the policy; it is not a claim about how this run was captured.
-  # A `pty` program whose name is the operator's own function was never
-  # wrapped (#288), so it ran native. The record says so beside the class
-  # rather than letting `pty` read as "PTY-captured".
+  # A `pty` run is PTY-recorded only when the word typed is RedLog's wrapper
+  # function. Otherwise it ran native, and the record says so beside the class
+  # rather than letting `pty` read as "PTY-captured": the operator's own
+  # function of that name (#288), or no wrapper at all — a program that joined
+  # the class after this shell started, a plugin's, `sudo ssh`, `/usr/bin/ssh`.
   _REDLOG_CMD_CAPTURE=""
   if [[ "$_REDLOG_CMD_CLASS" == "pty" ]]; then
     local -a _redlog_words
     _redlog_words=(${(z)1})
-    _redlog_is_user_function "${_redlog_words[1]:-}" && \
+    if _redlog_is_user_function "${_redlog_words[1]:-}"; then
       _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"existing-shell-function"'
+    elif ! _redlog_is_pty_wrapper "${_redlog_words[1]:-}"; then
+      _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"no-pty-wrapper"'
+    fi
   fi
 
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
@@ -566,7 +571,10 @@ _redlog_precmd() {
 # program is not PTY-recorded either. `redlog class list` names the programs
 # this applies to, and the program's `command_start`/`command_end` carry
 # `capture_mode: native` and `capture_reason: existing-shell-function` beside
-# `class: pty`, so the policy is not read as a claim about the run.
+# `class: pty`, so the policy is not read as a claim about the run. A `pty`
+# command whose typed word is not a wrapper at all (`sudo ssh`, a program added
+# to the class after this shell started, one a plugin's tool profile named)
+# says `capture_reason: no-pty-wrapper`, as the bash adapter does for every one.
 #
 # Wrappers are installed once, when this hook loads, and not re-applied at each
 # prompt: a program added to the PTY class afterwards is wrapped in the next
@@ -582,6 +590,12 @@ _redlog_precmd() {
 # ignores it, where an unknown option would stop the operator's `ssh`.
 _redlog_is_user_function() {
   [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" != *_REDLOG_SESSION_HELPER* ]]
+}
+
+# The reverse: the name is RedLog's own PTY wrapper, so a `pty` run of it is
+# PTY-recorded. Everything else typed for a `pty` program ran on the terminal.
+_redlog_is_pty_wrapper() {
+  [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" == *_REDLOG_SESSION_HELPER* ]]
 }
 
 _redlog_install_pty_wrappers() {
