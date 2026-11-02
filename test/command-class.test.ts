@@ -655,9 +655,24 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       expect(lines.slice(0, 2)).toEqual(['native: nc vim vi', 'pty: socat'])
       expect(lines.slice(3)).toEqual([
         'tool profiles: Vim (vim vi)',
-        'vi stays native from Vim, which had it first; Vim Keys from pack-a (pty) and Vim Two from pack-c (relayed) are not applied; choose one with: redlog class add <class> vi',
-        'vim stays native from Vim, which had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vim'
+        'vi stays native because Vim had it first; Vim Keys from pack-a (pty) and Vim Two from pack-c (relayed) are not applied; choose one with: redlog class add <class> vi',
+        'vim stays native because Vim had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vim'
       ])
+    }, 180_000)
+
+    // When the holder is itself a plugin the name already says "from <plugin>",
+    // so the line must not say "from" twice.
+    it('names a plugin that holds a command once, with a single "from"', async () => {
+      const lines = await run(snap([
+        { id: 'red-team-pack/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'r' },
+        { id: 'vimpack/keys', name: 'Vim Keys', mode: 'relayed', executables: ['ligolo-proxy'], reason: 'r' }
+      ], { 'ligolo-proxy': 'red-team-pack/ligolo' }))
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vim vi)',
+        'plugin profiles: Ligolo-ng from red-team-pack (ligolo-proxy)',
+        'ligolo-proxy stays pty because Ligolo-ng from red-team-pack had it first; Vim Keys from vimpack (relayed) is not applied; choose one with: redlog class add <class> ligolo-proxy'
+      ])
+      expect(lines[5].match(/\bfrom\b/g)).toHaveLength(2)
     }, 180_000)
 
     it('leaves out a kept clash the operator has already settled', async () => {
@@ -665,7 +680,7 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       expect(lines.slice(3)).toEqual([
         'tool profiles: Vim (vi)',
         'your changes: vim (relayed)',
-        'vi stays native from Vim, which had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vi'
+        'vi stays native because Vim had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vi'
       ])
     }, 180_000)
 

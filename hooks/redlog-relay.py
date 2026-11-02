@@ -1762,7 +1762,9 @@ def policy_notes(bundled, contributed, policy):
                          % (command, entries[command]["mode"], joined(said), command))
         else:
             others = ["%s (%s)" % (label(c["profile"]), c["mode"]) for c in problem["claims"] if c["profile"] != kept]
-            lines.append("%s stays %s from %s, which had it first; %s %s not applied; choose one with: redlog class add <class> %s"
+            # No "from" here: label() already says it for a plugin's profile.
+            # And no colon after the class, which is how a header looks.
+            lines.append("%s stays %s because %s had it first; %s %s not applied; choose one with: redlog class add <class> %s"
                          % (command, entries[command]["mode"], label(kept), joined(others),
                             "is" if len(others) == 1 else "are", command))
     for problem in policy["problems"]:
