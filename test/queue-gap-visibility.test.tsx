@@ -38,7 +38,7 @@ describe('a gap the addon could not write', () => {
     await proxy.start({ addonPath: '/addon.py', port: 6661 })
     expect(proxy.status().unsavedGapEvents).toBeUndefined()
     child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] capture gap not sa'))
-    child.stdout.emit('data', Buffer.from('ved: 3 event(s) refused at a full send queue are not recorded anywhere\n[10:00:01.000] [redlog] capture gap not saved: 2 event(s) refused\n'))
+    child.stdout.emit('data', Buffer.from('ved: 3 event(s) reason=queue-full started=1 ended=2 engagement=A\n[10:00:01.000] [redlog] capture gap not saved: 2 event(s) reason=queue-full started=3 ended=4 engagement=A\n'))
     expect(proxy.status().unsavedGapEvents).toBe(5)
     expect(seen.filter(([n]) => n !== undefined).at(-1)).toEqual([5, 3])
     proxy.stop()
@@ -52,7 +52,7 @@ describe('a gap the addon could not write', () => {
     const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists: () => true, fingerprint: () => null,
       readinessTimeoutMs: 100, probe: async () => true })
     await proxy.start({ addonPath: '/addon.py', port: 6661 })
-    child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] project-switch gap not saved: 2 event(s) for a closed project are not recorded anywhere\n'))
+    child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] capture gap not saved: 2 event(s) reason=project-switched started=1 ended=2 engagement=A\n'))
     expect(proxy.status().unsavedGapEvents).toBeUndefined()
     proxy.stop()
   })

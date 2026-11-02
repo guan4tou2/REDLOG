@@ -4,6 +4,7 @@ import { X509Certificate, createHash, randomBytes } from 'node:crypto'
 import http from 'node:http'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
 import { VERIFY_HOST, isVerifyNonce, type HttpVerifyReport } from '../../core/http-verify'
+import { parseUnsavedGapLine, type UnsavedGap } from '../../core/unsaved-gap'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
 
@@ -22,14 +23,11 @@ export interface ManagedProxyStatus {
   verificationState?: import('../../core/http-verification-evidence').HttpVerificationState
   sourceInstance?: string
   httpsVerification?: HttpVerifyReport
-  /** Events the addon refused at a full send queue and then could not record
-   *  even as a capture gap (#460). Present only when there are some. */
+  /** Events the addon could not record even as a capture gap (#460, #507),
+   *  whatever the gap's reason but another project's. Present only when there
+   *  are some. */
   unsavedGapEvents?: number
 }
-
-/** The addon's line for a gap it could not write. Its log is the only place
- *  that loss is said, so the proxy output is read for it. */
-const UNSAVED_GAP_LINE = /\[redlog\] capture gap not saved: (\d+) event/
 
 export interface CaFingerprint {
   /** uppercase hex, no separators — what certutil and `security -Z` take */
@@ -144,6 +142,7 @@ export class ManagedHttpProxy {
   private sourceInstance: string | undefined
   private generation = 0
   private listeners = new Set<StatusListener>()
+  private gapListeners = new Set<(gap: UnsavedGap) => void>()
   private proof: { report: HttpVerifyReport; ca: string } | null = null
   private startedAt = 0
   private caPath: string | null = null
@@ -275,11 +274,23 @@ export class ManagedHttpProxy {
     for (const listener of this.listeners) listener(current, previous)
   }
 
-  private noteUnsavedGap(events: number): void {
-    const previous = this.status()
-    this.unsavedGapEvents += events
-    const current = this.status()
-    for (const listener of this.listeners) listener(current, previous)
+  private noteUnsavedGap(gap: UnsavedGap): void {
+    // Another project's gap is not the open project's loss: it is told to
+    // onUnsavedGap, with its owner, and left out of this count.
+    if (gap.reason !== 'project-switched') {
+      const previous = this.status()
+      this.unsavedGapEvents += gap.units
+      const current = this.status()
+      for (const listener of this.listeners) listener(current, previous)
+    }
+    for (const listener of this.gapListeners) listener(gap)
+  }
+
+  /** Called for each gap the addon says it could not save, with the window and
+   *  the project it reports. */
+  onUnsavedGap(listener: (gap: UnsavedGap) => void): () => void {
+    this.gapListeners.add(listener)
+    return () => this.gapListeners.delete(listener)
   }
 
   /** Splits a stream into lines, carrying a partial one into the next chunk. */
@@ -289,8 +300,8 @@ export class ManagedHttpProxy {
       const lines = `${pending}${text}`.split(/\r?\n/)
       pending = (lines.pop() ?? '').slice(-1_000)
       for (const line of lines) {
-        const match = UNSAVED_GAP_LINE.exec(line)
-        if (match && Number(match[1]) > 0) this.noteUnsavedGap(Number(match[1]))
+        const gap = parseUnsavedGapLine(line)
+        if (gap) this.noteUnsavedGap(gap)
       }
     }
   }

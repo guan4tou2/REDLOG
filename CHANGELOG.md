@@ -5,6 +5,13 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- HTTP capture: the proxy addon no longer reads a spool record the app's drain
+  removed mid-write as a full spool, so a capture gap is not lost to that race.
+  Every gap it still cannot save leaves one log line carrying its reason, window
+  and project, which the app records as `gap-unsaved` with that window (before,
+  only a full send queue was read, and a failed delivery-unconfirmed write left
+  nothing). An event answered after the project closed on quit is a
+  `proxy-stopped` gap, not a `project-switched` one (Refs #507, Refs #291).
 - Windows: the AI capture sidecar directory (`agent-transcripts/`) is restricted
   to the current user, as the keys directory is. When that cannot be applied,
   the session is not captured and the source reports a capture error (Refs #489).
