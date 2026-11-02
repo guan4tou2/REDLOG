@@ -16,9 +16,11 @@ let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
 let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 let mod: typeof import('../src/core/db/index')
+let toggleDoNotExport: typeof import('../src/core/db/do-not-export').toggleDoNotExport
 
 let dbAvailable = false
 try {
+  toggleDoNotExport = (await import('../src/core/db/do-not-export')).toggleDoNotExport
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const b = await import('../src/core/bundle-export')
@@ -206,6 +208,53 @@ describeDB('evidence bundle export', () => {
     const walk = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true })
       .flatMap((e) => [e.name, ...(e.isDirectory() ? walk(path.join(d, e.name)) : [])]) : []
     expect(walk(outRoot)).toEqual([])
+  })
+
+  // Every other way the events are narrowed has the same flaw: the sidecar is
+  // copied whole, so whatever the events leave out is still in it.
+  describe('raw agent transcripts beside any other narrowing of the events', () => {
+    const allNames = (d: string): string[] => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true })
+      .flatMap((e) => [e.name, ...(e.isDirectory() ? allNames(path.join(d, e.name)) : [])]) : []
+
+    it('refuses a snapshot, which drops every event recorded after it', () => {
+      seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"said after the snapshot"}\n')
+      const snapshot = takeExportSnapshot()
+      ins('marker', { title: 'later', severity: 'info' })
+      const outRoot = path.join(dir, 'snap')
+      expect(() => exportBundle('eng', { outRoot, includeAgentTranscripts: true, snapshot }))
+        .toThrow(/agent transcripts.*snapshot/i)
+      expect(allNames(outRoot)).toEqual([])
+    })
+
+    it('refuses personal domains, which drop events instead of masking them', () => {
+      seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"curl http://mine.local"}\n')
+      const scope = { targets: ['in-scope.example'], excludeTargets: [], personalDomains: ['mine.local'] }
+      const outRoot = path.join(dir, 'personal')
+      expect(() => exportBundle('eng', { outRoot, includeAgentTranscripts: true, scope, maskOutOfScope: false }))
+        .toThrow(/agent transcripts.*personal domains/i)
+      expect(allNames(outRoot)).toEqual([])
+    })
+
+    it('refuses while any event is marked do-not-export', () => {
+      seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"the operator kept this out"}\n')
+      const kept = insertEventRaw('marker', { title: 'keep out', severity: 'info' }, { engagementId: 'eng', operatorId: 'op' })
+      toggleDoNotExport(kept!.id)
+      const outRoot = path.join(dir, 'dne')
+      expect(() => exportBundle('eng', { outRoot, includeAgentTranscripts: true }))
+        .toThrow(/agent transcripts.*do-not-export/i)
+      expect(allNames(outRoot)).toEqual([])
+      // The marked row is dropped from a bundle that carries no sidecar.
+      const { outDir } = exportBundle('eng', { outRoot })
+      expect(fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8')).not.toContain('keep out')
+    })
+
+    it('still includes the sidecars in a full export with masking explicitly off', () => {
+      seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"hello"}\n')
+      const scope = { targets: ['in-scope.example'], excludeTargets: [] }
+      const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'full'), includeAgentTranscripts: true, scope, maskOutOfScope: false })
+      expect(fs.readFileSync(path.join(outDir, 'agent-transcripts', 'claude-1.jsonl'), 'utf-8')).toBe('{"text":"hello"}\n')
+      expect(manifest.rawAgentTranscripts?.files.map((f) => f.path)).toEqual(['agent-transcripts/claude-1.jsonl'])
+    })
   })
 
   it('exports only the sidecar transcripts, never the tailer checkpoints beside them', () => {
