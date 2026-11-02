@@ -8,6 +8,7 @@ import json
 import os
 import queue
 import select
+import shlex
 import signal
 import sys
 sys.dont_write_bytecode = True
@@ -378,7 +379,9 @@ def main():
         command = [os.environ.get('SHELL', '/bin/bash')]
     try:
         recorder = Recorder(Path.home() / '.redlog', args.max_bytes, command_id)
-        recorder.start(' '.join(command))
+        # Quoted, so `ssh host 'sleep 20'` is not recorded as `ssh host sleep 20`.
+        # `shlex.join` is 3.8+ and nothing here states a floor; `quote` is old.
+        recorder.start(' '.join(shlex.quote(arg) for arg in command))
     except Exception as error:
         no_project = (isinstance(error, FileNotFoundError)
                       and error.filename == str(Path.home() / '.redlog' / 'active-identity.json'))
