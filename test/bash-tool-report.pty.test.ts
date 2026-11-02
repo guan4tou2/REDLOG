@@ -13,8 +13,11 @@ const target: ShellTarget | null = process.platform === 'win32'
 const describeShell = target ? describe : describe.skip
 
 // Polling `ls` of the directory itself: no glob to match nothing.
-const WAIT_FOR_REPORT =
-  'for i in $(seq 1 100); do test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)" && break; sleep 0.1; done; echo waited-$((1+1))'
+const LISTED = 'test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)"'
+const WAIT_FOR_REPORT = `for i in $(seq 1 100); do ${LISTED} && break; sleep 0.1; done; echo waited-$((1+1))`
+// The first thing typed: a report taken after the first command has run is not
+// there yet, and this polls into its own timeout.
+const BEFORE_ANY_COMMAND = `for i in $(seq 1 50); do ${LISTED} && break; sleep 0.1; done; ${LISTED}; echo before-any-command-$?`
 
 describeShell(`the first-prompt tool report (${target?.label ?? 'no bash reachable'})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>
@@ -35,6 +38,7 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no bash reachab
           'export PATH="$HOME/late-bin:$PATH"'
         ].join('\n'),
         commands: [
+          BEFORE_ANY_COMMAND,
           'echo one', 'echo two', 'echo three',
           WAIT_FOR_REPORT,
           // The background write has finished; give a second one the chance to show itself.
@@ -48,14 +52,18 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no bash reachab
       })
     }, 300_000)
 
-    it('reports once, however many prompts there are', () => {
+    it('reports at the first prompt, before any command has run', () => {
       expect(run.ok, run.error).toBe(true)
-      expect(run.steps[6].output.trim(), `trace: ${run.steps[6].output}`).toBe('1')
-      expect(run.steps[7].output.trim().split(/\s+/)).toHaveLength(1)
+      expect(run.steps[0].output).toContain('before-any-command-0')
+    })
+
+    it('reports once, however many prompts there are', () => {
+      expect(run.steps[7].output.trim(), `trace: ${run.steps[7].output}`).toBe('1')
+      expect(run.steps[8].output.trim().split(/\s+/)).toHaveLength(1)
     })
 
     it('reports the PATH the first prompt has, not the one the hook was sourced with', () => {
-      const report = JSON.parse(run.steps[5].output.trim()) as {
+      const report = JSON.parse(run.steps[6].output.trim()) as {
         environment: string; shell: string; found: Record<string, string>; checked: string[]
       }
       expect(report.shell).toBe('bash')

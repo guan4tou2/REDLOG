@@ -12,8 +12,12 @@ const target: ShellTarget | null = findShellTarget()
 const describeShell = target ? describe : describe.skip
 
 // `ls` of the directory itself: a glob that matches nothing is an error in zsh.
-const WAIT_FOR_REPORT =
-  'for i in $(seq 1 100); do test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)" && break; sleep 0.1; done; echo waited-$((1+1))'
+const LISTED = 'test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)"'
+const WAIT_FOR_REPORT = `for i in $(seq 1 100); do ${LISTED} && break; sleep 0.1; done; echo waited-$((1+1))`
+// The first thing typed. The first prompt is drawn before it, so a report taken
+// at the FIRST COMMAND's prompt (the early return in precmd) is not there yet
+// and this polls into its own timeout; a report taken at the first prompt is.
+const BEFORE_ANY_COMMAND = `for i in $(seq 1 50); do ${LISTED} && break; sleep 0.1; done; ${LISTED}; echo before-any-command-$?`
 
 describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachable'})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>
@@ -33,6 +37,7 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
           'export PATH="$HOME/late-bin:$PATH"'
         ].join('\n'),
         commands: [
+          BEFORE_ANY_COMMAND,
           'echo one', 'echo two', 'echo three',
           WAIT_FOR_REPORT,
           // The background write has finished; give a second one the chance to show itself.
@@ -46,14 +51,18 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
       })
     }, 300_000)
 
-    it('reports once, however many prompts there are', () => {
+    it('reports at the first prompt, before any command has run', () => {
       expect(run.ok, run.error).toBe(true)
-      expect(run.steps[6].output.trim(), `trace: ${run.steps[6].output}`).toBe('1')
-      expect(run.steps[7].output.trim().split(/\s+/)).toHaveLength(1)
+      expect(run.steps[0].output).toContain('before-any-command-0')
+    })
+
+    it('reports once, however many prompts there are', () => {
+      expect(run.steps[7].output.trim(), `trace: ${run.steps[7].output}`).toBe('1')
+      expect(run.steps[8].output.trim().split(/\s+/)).toHaveLength(1)
     })
 
     it('reports the PATH the first prompt has, not the one the hook was sourced with', () => {
-      const report = JSON.parse(run.steps[5].output.trim()) as {
+      const report = JSON.parse(run.steps[6].output.trim()) as {
         environment: string; shell: string; found: Record<string, string>; checked: string[]
       }
       expect(report.shell).toBe('zsh')
@@ -73,5 +82,23 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
     })
     expect(run.ok, run.error).toBe(true)
     expect(run.steps[2].output).toContain('rc-1')
+  }, 120_000)
+
+  // Under WARN_CREATE_GLOBAL a function that assigns an undeclared parameter
+  // prints a warning. The first prompt now runs the shell-name lookup, which on
+  // main first ran at the first command; the adapter declares what it assigns.
+  it('prints no created-globally warning before the first prompt with WARN_CREATE_GLOBAL set', async () => {
+    const run = await runZsh(target!, {
+      rc: ['setopt WARN_CREATE_GLOBAL', `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`].join('\n'),
+      commands: ['echo ready-$((1+1))'],
+      redlog: { port: collector.port, token },
+      // Under WSL the hook resolves the directory at source time, which warns
+      // on main as well; this test is about the first prompt.
+      env: { WSL_DISTRO_NAME: '' },
+      timeoutSeconds: 60
+    })
+    expect(run.ok, run.error).toBe(true)
+    const beforeFirstPrompt = run.transcript.split(run.marker)[0]
+    expect(beforeFirstPrompt).not.toMatch(/created globally/)
   }, 120_000)
 })

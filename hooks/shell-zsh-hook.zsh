@@ -70,6 +70,9 @@ typeset -gA _REDLOG_CLASS_CACHE
 typeset -g _REDLOG_CLASS_SIG=""
 # Not exported: a child shell reports for itself.
 typeset -g _REDLOG_TOOLS_REPORTED=""
+# Assigned by shell-common.sh functions the first prompt now reaches; declared
+# here so WARN_CREATE_GLOBAL stays quiet until the first command, as before.
+typeset -g _REDLOG_DIR _redlog_shell
 
 _redlog_policy_sig() {
   REPLY=""

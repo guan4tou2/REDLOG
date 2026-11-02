@@ -70,6 +70,25 @@ describe('shell adapter boundaries', () => {
     }
   })
 
+  // The first prompt of a shell has no command before it, which is exactly the
+  // prompt `_redlog_precmd` returns early from. A guard below that return is a
+  // report at the first COMMAND's prompt, and the PTY tests alone had stayed
+  // green with it moved (a late report still shows up). Order is the contract.
+  it('takes the report before anything that depends on a command having run', () => {
+    const body = (text: string, name: string): string => {
+      const start = text.indexOf(`${name}() {`)
+      expect(start, `${name} exists`).toBeGreaterThan(-1)
+      return text.slice(start, text.indexOf('\n}\n', start)).split('\n').filter((l) => !l.trim().startsWith('#')).join('\n')
+    }
+    for (const [file, fn] of [['hooks/shell-zsh-hook.zsh', '_redlog_precmd'], ['hooks/shell-bash-hook.sh', '_redlog_prompt_command']]) {
+      const text = body(read(file), fn)
+      const guard = text.indexOf('_redlog_report_tools')
+      expect(guard, `${file}: the guard is in ${fn}`).toBeGreaterThan(-1)
+      expect(guard, `${file}: before the first use of the last command`).toBeLessThan(text.indexOf('_REDLOG_LAST_CMD'))
+      expect(guard, `${file}: before the first return`).toBeLessThan(text.indexOf('return'))
+    }
+  })
+
   it('does not ship historical combined hook entry points', () => {
     expect(fs.existsSync(path.resolve('hooks/shell-preexec-hook.sh'))).toBe(false)
     expect(fs.existsSync(path.resolve('shell/redlog-hook.zsh'))).toBe(false)
