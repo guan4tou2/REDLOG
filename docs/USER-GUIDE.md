@@ -97,7 +97,8 @@ macOS／Linux 上 RedLog
 未擷取輸出的指令仍留下 `metadata-only` 與原因，不把空 `stdout` 說成沒有輸出。
 PTY 錄製另外保存 session 輸出，不等同分離的 stdout／stderr，也不承諾原始按鍵紀錄。
 清單在 設定 ▸ 指令與終端 看得到，也可以用
-`redlog class list` 列出來、`redlog class add|remove` 調整。把指令加進 PTY 那一類時
+`redlog class list` 列出來，清單會標出哪些指令來自工具設定檔、哪些是你自己的調整；
+用 `redlog class add|remove` 調整。把指令加進 PTY 那一類時
 會提醒你：那會失去本機暫停。`remove` 只撤銷你自己的調整，讓指令回到內建的分類；
 要讓內建分類裡的指令改走 relay，用 `redlog class add relayed <指令>`。
 
