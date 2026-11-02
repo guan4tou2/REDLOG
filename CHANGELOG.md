@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Capture Health: the status bar dot and the dashboard card no longer keep the
+  last verdict on screen after a failed read. They say "last confirmed … ;
+  current state unknown" with the time, and a failed read neither raises nor
+  clears the capture issue. One shared snapshot now feeds the status bar,
+  dashboard and both capture settings pages (Refs #298).
+
 - Windows: the AI capture sidecar directory (`agent-transcripts/`) is restricted
   to the current user, as the keys directory is. When that cannot be applied,
   the session is not captured and the source reports a capture error (Refs #489).
