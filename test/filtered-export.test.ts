@@ -289,3 +289,23 @@ it('delivers sidecar stream segments by their recorded hash, and refuses changed
  expect(result.ok).toBe(false)
  expect(result.error).toBe('source-unavailable')
 })
+
+// #291 R14: the capture gaps inside the exported selection are in the plan's
+// counts and so in the manifest beside the artifact; one outside it is not.
+it('counts the capture gaps inside the selection, and carries them into the manifest', () => {
+ const gap=(id:string,ts:number,agentType:string,data:Record<string,unknown>)=>insertFixture('events_logged',id,ts,{agentType,subtype:'capture_gap',data})
+ gap('in-full',1000,'scanner',{reason:'queue-full',skipped_units:12})
+ gap('in-unconfirmed',1001,'scanner',{reason:'delivery-unconfirmed',capture_delivery:'unknown'})
+ gap('in-nocount',1002,'scanner',{reason:'project-switched'})
+ gap('out-full',5000,'scanner',{reason:'queue-full',skipped_units:99})
+ const r=resolve({format:'json',subset:{kind:'time-range',since:900,before:2000}})
+ expect(r.ok).toBe(true)
+ expect(r.plan.counts.captureGaps).toEqual([
+  {reason:'delivery-unconfirmed',gaps:1,skippedUnits:0,unknownAmount:1},
+  {reason:'project-switched',gaps:1,skippedUnits:0,unknownAmount:1},
+  {reason:'queue-full',gaps:1,skippedUnits:12,unknownAmount:0}
+ ])
+ const manifest=JSON.parse(fs.readFileSync(`${execute(r.plan.id).artifactPath}.manifest.json`,'utf8'))
+ expect(manifest.actualCounts.captureGaps).toEqual(r.plan.counts.captureGaps)
+ expect(resolve({format:'json',subset:{kind:'time-range',since:3000,before:6000}}).plan.counts.captureGaps).toEqual([{reason:'queue-full',gaps:1,skippedUnits:99,unknownAmount:0}])
+})

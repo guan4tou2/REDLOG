@@ -164,3 +164,52 @@ describe('the export preview shows only what the plan measured', () => {
     expect(screen.getByRole('dialog').textContent).not.toMatch(/cut off/)
   })
 })
+
+// #291 R14: a capture gap is a Known Gap. The preview names it per reason and
+// shows an unrecorded amount as unknown; it never claims what was lost.
+describe('the export preview names capture gaps', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  const draw = async (p: ResolvedExportPlan): Promise<void> => {
+    install(p)
+    render(<I18nProvider><ExportMenu totalCount={120} /></I18nProvider>)
+    openJson()
+    await waitFor(() => expect(screen.getByTestId('export-preview-scope')).toBeTruthy())
+  }
+
+  it('shows each reason with its skipped units, and an unknown amount as unknown', async () => {
+    await draw(plan({ counts: { ...plan().counts, captureGaps: [
+      { reason: 'delivery-unconfirmed', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
+      { reason: 'queue-full', gaps: 3, skippedUnits: 17, unknownAmount: 1 }
+    ] } }))
+    const panel = screen.getByRole('dialog').textContent ?? ''
+    expect(panel).toMatch(/Capture gaps \(proxy queue full\)\s*3 gap\(s\) · 17 skipped · amount unknown for 1/)
+    expect(panel).toMatch(/Capture gaps \(HTTP delivery not confirmed\)\s*1 gap\(s\) · amount unknown for 1/)
+    expect(panel).not.toMatch(/not confirmed\)[^C]*0 skipped/)
+  })
+
+  // The reason is shown in words, the way the Timeline names the same gap; a
+  // reason the preview does not know is shown as recorded, never dropped.
+  it('names each known reason in words, and an unknown one as recorded', async () => {
+    await draw(plan({ counts: { ...plan().counts, captureGaps: [
+      { reason: 'gap-unsaved', gaps: 1, skippedUnits: 4, unknownAmount: 0 },
+      { reason: 'project-switched', gaps: 1, skippedUnits: 2, unknownAmount: 0 },
+      { reason: 'proxy-stopped', gaps: 1, skippedUnits: 3, unknownAmount: 0 },
+      { reason: 'delivery-interrupted', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
+      { reason: 'some-new-reason', gaps: 1, skippedUnits: 0, unknownAmount: 1 },
+      { reason: 'unspecified', gaps: 1, skippedUnits: 9, unknownAmount: 0 }
+    ] } }))
+    const panel = screen.getByRole('dialog').textContent ?? ''
+    expect(panel).toMatch(/Capture gaps \(gap could not be saved\)\s*1 gap\(s\) · 4 skipped/)
+    expect(panel).toMatch(/Capture gaps \(another project was opened\)\s*1 gap\(s\) · 2 skipped/)
+    expect(panel).toMatch(/Capture gaps \(proxy stopped before sending\)\s*1 gap\(s\) · 3 skipped/)
+    expect(panel).toMatch(/Capture gaps \(proxy stopped while sending\)\s*1 gap\(s\) · amount unknown for 1/)
+    expect(panel).toMatch(/Capture gaps \(some-new-reason\)\s*1 gap\(s\) · amount unknown for 1/)
+    expect(panel).toMatch(/Capture gaps \(AI transcript lines skipped while paused\)\s*1 gap\(s\) · 9 skipped/)
+  })
+
+  it('shows nothing when the selection holds no gap', async () => {
+    await draw(plan())
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/Capture gaps/)
+  })
+})

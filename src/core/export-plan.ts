@@ -52,6 +52,15 @@ export interface NormalizedExportRequest {
   includeAttachments: readonly string[]
 }
 
+export interface CaptureGapCount {
+  reason: string
+  gaps: number
+  /** units the gaps with a recorded, delivered count skipped */
+  skippedUnits: number
+  /** gaps with no usable count: how much they skipped is not known */
+  unknownAmount: number
+}
+
 export interface ExportCounts {
   exchanges?: number
   examined: number
@@ -71,6 +80,9 @@ export interface ExportCounts {
   truncatedOutputs?: number
   /** recording pauses among the exported Events: stretches nothing was recorded */
   pauseWindows?: number
+  /** Known Gaps among the exported Events, per reason (#291). Disclosure only:
+   *  a gap does not say what was lost, and unconfirmed delivery is not loss. */
+  captureGaps?: CaptureGapCount[]
   /** terminal recordings the app never closed, recovered after a crash (#290) */
   interruptedRecordings?: number
   /** commands those recordings left running, closed without a result (#290) */
@@ -113,6 +125,33 @@ export function countInterrupted(events: readonly RedLogEvent[]): { recordings: 
  *  selection that filters system Events out will not show its pauses. */
 export function countPauseWindows(events: readonly RedLogEvent[]): number {
   return events.filter(e => e.agentType === 'system' && e.data.subtype === 'recording_paused').length
+}
+
+/** `reason` of a `capture_gap` that names none: the AI-source pause gap. */
+const UNSPECIFIED_GAP_REASON = 'unspecified'
+
+/** Known Gaps among these Events, one entry per reason, sorted by reason. A gap
+ *  says that recording could not keep up, was refused or was unsaved over a
+ *  stretch; it never says what was in it. `skippedUnits` sums only the counts
+ *  Events recorded. A gap with no count is `unknownAmount`, a number of gaps,
+ *  so an absent count reads as unknown rather than as zero. Unconfirmed
+ *  delivery is unknown, not loss, so it is never added into `skippedUnits`
+ *  whatever count it carries. Units differ by source, so there is no total
+ *  across reasons. Like pause windows this counts what the export carries. */
+export function countCaptureGaps(events: readonly RedLogEvent[]): CaptureGapCount[] {
+  const byReason = new Map<string, CaptureGapCount>()
+  for (const e of events) {
+    if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') continue
+    const reason = typeof e.data.reason === 'string' && e.data.reason ? e.data.reason : UNSPECIFIED_GAP_REASON
+    const row = byReason.get(reason) ?? { reason, gaps: 0, skippedUnits: 0, unknownAmount: 0 }
+    const units = e.data.skipped_units
+    const delivered = reason !== 'delivery-unconfirmed' && e.data.capture_delivery !== 'unknown'
+    row.gaps++
+    if (delivered && typeof units === 'number' && Number.isFinite(units) && units >= 0) row.skippedUnits += units
+    else row.unknownAmount++
+    byReason.set(reason, row)
+  }
+  return [...byReason.values()].sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0))
 }
 
 /** Flows among these Events that have SSE chunks or WebSocket messages and

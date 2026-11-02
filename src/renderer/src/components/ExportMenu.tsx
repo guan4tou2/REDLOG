@@ -146,6 +146,31 @@ function PreviewRow({ label, value, warn }: {
   )
 }
 
+/** What a capture gap's reason means, in the words the Timeline uses for it.
+ *  A reason this does not know is shown as recorded rather than hidden. */
+function captureGapReason(t: (key: string, params?: Record<string, string>) => string, reason: string): string {
+  switch (reason) {
+    case 'queue-full': return t('export.preview.captureGapQueueFull')
+    case 'project-switched': return t('export.preview.captureGapProjectSwitched')
+    case 'delivery-unconfirmed': return t('export.preview.captureGapDeliveryUnconfirmed')
+    case 'gap-unsaved': return t('export.preview.captureGapUnsaved')
+    case 'proxy-stopped': return t('export.preview.captureGapProxyStopped')
+    case 'delivery-interrupted': return t('export.preview.captureGapDeliveryInterrupted')
+    case 'unspecified': return t('export.preview.captureGapAiPaused')
+    default: return reason
+  }
+}
+
+/** A warned row whose value is a sentence, for what one number cannot say. */
+function PreviewText({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="flex justify-between gap-3 text-xs px-3 py-0.5 text-amber-500">
+      <span>{label}</span>
+      <span className="text-right">{value}</span>
+    </div>
+  )
+}
+
 /** One of the two things the 自用 / 交付 pair was standing in for. A mode named
  *  after an audience made the operator translate "who is this for" into "what
  *  comes out" every time — and it translated badly: its tooltip promised
@@ -596,6 +621,13 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
                     <PreviewRow label={t('export.preview.truncatedOutputs')} value={resolvedPlan.counts.truncatedOutputs ?? 0} warn />
                     <PreviewRow label={t('export.preview.pauseWindows')} value={resolvedPlan.counts.pauseWindows ?? 0} warn />
+                    {(resolvedPlan.counts.captureGaps ?? []).map(gap => (
+                      <PreviewText key={gap.reason} label={t('export.preview.captureGaps', { reason: captureGapReason(t, gap.reason) })} value={[
+                        t('export.preview.captureGapsCount', { count: String(gap.gaps) }),
+                        ...(gap.skippedUnits > 0 ? [t('export.preview.captureGapsSkipped', { count: String(gap.skippedUnits) })] : []),
+                        ...(gap.unknownAmount > 0 ? [t('export.preview.captureGapsUnknown', { count: String(gap.unknownAmount) })] : [])
+                      ].join(' · ')} />
+                    ))}
                     {(resolvedPlan.counts.interruptedRecordings ?? 0) > 0 && <PreviewRow label={t('export.preview.interruptedRecordings')} value={resolvedPlan.counts.interruptedRecordings!} warn />}
                     {(resolvedPlan.counts.interruptedCommands ?? 0) > 0 && <PreviewRow label={t('export.preview.interruptedCommands')} value={resolvedPlan.counts.interruptedCommands!} warn />}
                     {(resolvedPlan.counts.partialHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.partialHttpFlows')} value={resolvedPlan.counts.partialHttpFlows!} warn />}

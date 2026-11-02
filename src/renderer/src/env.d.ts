@@ -67,6 +67,7 @@ interface ResolvedExportPlan {
     unsupported: number
     truncatedOutputs?: number
     pauseWindows?: number
+    captureGaps?: Array<{ reason: string; gaps: number; skippedUnits: number; unknownAmount: number }>
     interruptedRecordings?: number
     interruptedCommands?: number
     partialHttpFlows?: number

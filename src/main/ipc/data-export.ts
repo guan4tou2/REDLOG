@@ -19,6 +19,7 @@ import {
   countReferencedAttachments,
   countTruncatedOutputs,
   countPauseWindows,
+  countCaptureGaps,
   countInterrupted,
   countPartialHttpFlows,
   countPartialHttpFlowsOutside,
@@ -149,6 +150,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
       unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents),
       truncatedOutputs: countTruncatedOutputs(selectedEvents),
       pauseWindows: countPauseWindows(selectedEvents),
+      captureGaps: countCaptureGaps(selectedEvents),
       ...(({ recordings, commands }) => ({ interruptedRecordings: recordings, interruptedCommands: commands }))(countInterrupted(selectedEvents)),
       ...(request.format === 'har' ? {
         partialHttpFlows: countPartialHttpFlows(selectedEvents),
