@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
-import { classifyCommand, mergeClassPolicy } from '../src/core/terminal-class'
+import { describe, it, expect, afterAll } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { classifyCommand, mergeClassPolicy, type CommandClass } from '../src/core/terminal-class'
+import { readClassOverlay } from '../src/core/terminal-enrollment'
 import { findShellTarget, runInShell, hookPath, type ShellTarget } from './helpers/zsh-pty'
+import shipped from '../hooks/command-class.json'
+import golden from './fixtures/command-class-golden.json'
 
 const target: ShellTarget | null = findShellTarget()
 const describeShell = target ? describe : describe.skip
@@ -204,6 +210,35 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     expect(line('native')).toContain('vim')
     expect(line('pty')).not.toContain('vim')
   }, 300_000)
+
+  // The golden table is what the classifier did before tool profiles moved the
+  // names around, so it is the shell half of the proof that they did not change
+  // what any command does. One python3 for every case: each overlay file is
+  // written into a temp home, and the shell's own load_policy and classify_argv
+  // answer for every probe.
+  it('gives every probe the golden mode under every overlay', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-golden-'))
+    try {
+      const input = path.join(dir, 'cases.json')
+      fs.writeFileSync(input, JSON.stringify({
+        cases: golden.cases.map((c) => ({ id: c.id, file: c.file, probes: golden.probes }))
+      }))
+      const driver = target!.toShellPath(path.join(__dirname, 'helpers', 'class-policy-driver.py'))
+      const run = await runInShell(
+        target!,
+        `python3 "${driver}" "${hookPath(target!, 'redlog-relay.py')}" "${target!.toShellPath(input)}"`,
+        { timeoutMs: 240_000 }
+      )
+      const answers = JSON.parse(run.stdout) as Record<string, { modes: Record<string, string>; native: string[]; pty: string[] }>
+      for (const c of golden.cases) {
+        expect(answers[c.id].modes, `${c.id} ${c.name}: ${run.stderr.slice(0, 300)}`).toEqual(c.modes)
+        expect([...answers[c.id].native].sort(), `${c.id} native list`).toEqual(c.native)
+        expect([...answers[c.id].pty].sort(), `${c.id} pty list`).toEqual(c.pty)
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 300_000)
 })
 
 // The merge itself, without a shell in the way.
@@ -222,4 +257,41 @@ describe('the class overlay', () => {
     const policy = mergeClassPolicy({ pty: ['ssh'] })
     expect(policy.pty.filter((c) => c === 'ssh')).toHaveLength(1)
   })
+})
+
+// The golden table (test/fixtures/command-class-golden.json) pins what every
+// probe command is under every overlay file an operator could have. It was
+// generated from the code before tool profiles existed, and the shell leg above
+// runs the same table through hooks/redlog-relay.py. Here the TypeScript side
+// reads each overlay the way the app does — readClassOverlay on a real file —
+// and derives a mode the way classifyCommand does: pty, then native, then a
+// bare REPL is native, else relayed.
+describe('the golden class table', () => {
+  const homes: string[] = []
+  afterAll(() => { for (const h of homes) fs.rmSync(h, { recursive: true, force: true }) })
+
+  const homeWith = (file: string | null): string => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-class-home-'))
+    homes.push(home)
+    if (file !== null) {
+      fs.mkdirSync(path.join(home, '.redlog'))
+      fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), file)
+    }
+    return home
+  }
+  const modeFor = (lists: { native: string[]; pty: string[] }, program: string): CommandClass =>
+    lists.pty.includes(program) ? 'pty'
+      : lists.native.includes(program) ? 'native'
+        : shipped.repl.includes(program) ? 'native'
+          : 'relayed'
+
+  for (const c of golden.cases) {
+    it(`${c.id}: ${c.name}`, () => {
+      const lists = mergeClassPolicy(readClassOverlay(homeWith(c.file)))
+      const modes = Object.fromEntries(golden.probes.map((p) => [p, modeFor(lists, p)]))
+      expect(modes).toEqual(c.modes)
+      expect([...lists.native].sort()).toEqual(c.native)
+      expect([...lists.pty].sort()).toEqual(c.pty)
+    })
+  }
 })

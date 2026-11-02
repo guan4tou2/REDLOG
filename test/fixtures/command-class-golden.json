@@ -1,0 +1,154 @@
+{
+  "_comment": [
+    "Golden table for the class policy: what each probe command is, under each",
+    "overlay file the operator could have. Generated from the code BEFORE the",
+    "tool-profile compiler (#499 PR A) and not regenerated since: the compiler",
+    "must reproduce it, not rewrite it. `file` is the exact text of",
+    "~/.redlog/command-class.json (null: no file). `native` and `pty` are the",
+    "full effective lists, sorted. One declared exception, in the test: O11",
+    "named curl in both lists; it is now only in `pty`, and its mode is unchanged."
+  ],
+  "probes": ["nc", "ncat", "stty", "vim", "vi", "nvim", "nano", "emacs", "less", "more", "claude", "codex", "ssh", "socat", "pwncat-cs", "nmap", "curl", "python3"],
+  "cases": [
+    {
+      "id": "O0", "name": "no overlay file",
+      "file": null,
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O1", "name": "empty object",
+      "file": "{}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O2", "name": "pty curl",
+      "file": "{\"pty\": [\"curl\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "pty", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["curl", "pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O3", "name": "relayed nc",
+      "file": "{\"relayed\": [\"nc\"]}",
+      "modes": {"nc": "relayed", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O4", "name": "relayed vim",
+      "file": "{\"relayed\": [\"vim\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "relayed", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O5", "name": "pty vim",
+      "file": "{\"pty\": [\"vim\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "pty", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi"],
+      "pty": ["pwncat-cs", "socat", "ssh", "vim"]
+    },
+    {
+      "id": "O6", "name": "native ssh",
+      "file": "{\"native\": [\"ssh\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "native", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "ssh", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat"]
+    },
+    {
+      "id": "O7", "name": "native pwncat-cs",
+      "file": "{\"native\": [\"pwncat-cs\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "native", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "pwncat-cs", "stty", "vi", "vim"],
+      "pty": ["socat", "ssh"]
+    },
+    {
+      "id": "O8", "name": "relayed claude and codex",
+      "file": "{\"relayed\": [\"claude\", \"codex\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "relayed", "codex": "relayed", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O9", "name": "pty ssh, already pty",
+      "file": "{\"pty\": [\"ssh\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O10", "name": "native vim, already native",
+      "file": "{\"native\": [\"vim\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O11", "name": "curl named native and pty",
+      "file": "{\"native\": [\"curl\"], \"pty\": [\"curl\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "pty", "python3": "native"},
+      "native": ["claude", "codex", "curl", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["curl", "pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O12", "name": "ssh named native and relayed",
+      "file": "{\"native\": [\"ssh\"], \"relayed\": [\"ssh\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "native", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "ssh", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat"]
+    },
+    {
+      "id": "O13", "name": "legacy removed key",
+      "file": "{\"removed\": [\"nc\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O14", "name": "relayed python3 (bare REPL rule keeps it native)",
+      "file": "{\"relayed\": [\"python3\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O15", "name": "three fields at once",
+      "file": "{\"native\": [\"nmap\"], \"relayed\": [\"socat\"], \"pty\": [\"vim\"]}",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "pty", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "relayed", "pwncat-cs": "pty", "nmap": "native", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nmap", "nvim", "stty", "vi"],
+      "pty": ["pwncat-cs", "ssh", "vim"]
+    },
+    {
+      "id": "O16", "name": "array overlay",
+      "file": "[]",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O17a", "name": "string overlay",
+      "file": "\"x\"",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O17b", "name": "number overlay",
+      "file": "7",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    },
+    {
+      "id": "O17c", "name": "unparseable overlay",
+      "file": "{nope",
+      "modes": {"nc": "native", "ncat": "native", "stty": "native", "vim": "native", "vi": "native", "nvim": "native", "nano": "native", "emacs": "native", "less": "native", "more": "native", "claude": "native", "codex": "native", "ssh": "pty", "socat": "pty", "pwncat-cs": "pty", "nmap": "relayed", "curl": "relayed", "python3": "native"},
+      "native": ["claude", "codex", "emacs", "less", "more", "nano", "nc", "ncat", "nvim", "stty", "vi", "vim"],
+      "pty": ["pwncat-cs", "socat", "ssh"]
+    }
+  ]
+}
