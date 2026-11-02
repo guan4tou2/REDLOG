@@ -569,6 +569,11 @@ _redlog_precmd() {
 #
 # RedLog's own wrapper is told apart by its body, which carries
 # `_REDLOG_SESSION_HELPER` — so sourcing the hook again reinstalls it.
+#
+# The wrapper hands the helper this command's `command_id` in the environment,
+# so the session's rows name the `command_start` they belong to (#296). An
+# environment variable rather than an option: a helper older than this hook
+# ignores it, where an unknown option would stop the operator's `ssh`.
 _redlog_is_user_function() {
   [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" != *_REDLOG_SESSION_HELPER* ]]
 }
@@ -585,7 +590,7 @@ _redlog_install_pty_wrappers() {
     _redlog_is_user_function "$prog" && continue
     functions[$prog]='
       if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
-        python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
+        REDLOG_SESSION_COMMAND_ID="$_REDLOG_CMD_ID" python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"
       fi'

@@ -286,6 +286,24 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end.data.output_disposition).toBe('interactive')
     })
 
+    // #296. The recorder's own terminal id differs from the shell's, so until the
+    // wrapper handed it the command's id the only way to tie a session to its
+    // command was the command text — which cannot tell two `ssh host` runs apart.
+    it('stamps every session event with the command_id of the command it belongs to', () => {
+      expect(run.ok, run.error).toBe(true)
+      const start = shellEvents(collector.events, 'command_start', 'ssh -V')[0]
+      expect(start?.data.command_id, 'no command_id on the command_start').toBeTruthy()
+
+      const sessionEvents = collector.events.filter((e) => e.data.captured_by === 'redlog-session'
+        && e.data.terminalId === collector.events.find((s) => s.data.subtype === 'session_start'
+          && String(s.data.command ?? '').includes('ssh -V'))?.data.terminalId)
+      const subtypes = sessionEvents.map((e) => e.data.subtype)
+      expect(subtypes, 'session start and end are both recorded').toEqual(expect.arrayContaining(['session_start', 'session_end']))
+      for (const e of sessionEvents) {
+        expect(e.data.command_id, `${String(e.data.subtype)} carries no command_id`).toBe(start.data.command_id)
+      }
+    })
+
     // Issue #288. The wrapper is a function named after the program, so a
     // function the operator already had under that name was silently replaced
     // — and, with RedLog not recording, replaced by `command ssh "$@"`, which
