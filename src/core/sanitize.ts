@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import type Database from 'better-sqlite3'
 import { getDB } from './db/index'
 import { insertEvent, RedLogEvent } from './db/events'
 import { eventBus } from './event-bus'
@@ -146,9 +147,24 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
 
 /** Lookup all sanitized replacements for an event, keyed by field. Used by the
  *  bundle export to swap raw bytes for the sanitized copy. */
+// One prepared statement per connection. Export reads this up to three times
+// per event (plan, redact, NDJSON), and preparing it per call dominated the
+// export profile (docs/PERF-AUDIT-2026-11.md §4). Keyed by the Database object
+// rather than module state: closeDB()/initDB() makes a new connection, and a
+// statement from a closed one throws.
+const sanitizedFieldsStmt = new WeakMap<Database.Database, Database.Statement>()
+
+function sanitizedFieldsStatement(db: Database.Database): Database.Statement {
+  let stmt = sanitizedFieldsStmt.get(db)
+  if (!stmt) {
+    stmt = db.prepare('SELECT field, sanitized_value FROM sanitized_events WHERE source_event_id = ?')
+    sanitizedFieldsStmt.set(db, stmt)
+  }
+  return stmt
+}
+
 export function getSanitizedFields(eventId: string): Record<string, string> {
-  const db = getDB()
-  const rows = db.prepare('SELECT field, sanitized_value FROM sanitized_events WHERE source_event_id = ?').all(eventId) as Array<{ field: string; sanitized_value: string }>
+  const rows = sanitizedFieldsStatement(getDB()).all(eventId) as Array<{ field: string; sanitized_value: string }>
   const out: Record<string, string> = {}
   for (const r of rows) out[r.field] = r.sanitized_value
   return out
