@@ -203,6 +203,18 @@ _redlog_adapter_shell() {
   _redlog_shell="${name:-unknown}"
 }
 
+# Which tools this shell's PATH reaches, written by `redlog-relay.py detect` for
+# RedLog to display (#499). Called once per shell, at its first prompt, by the
+# adapter: the rc line that sources the hook is appended at install, so any PATH
+# line a later installer adds comes after it and is only in effect by then.
+# Behind the prompt and silent; what it finds changes nothing the adapter does.
+_redlog_report_tools() {
+  _redlog_is_running || return 0
+  _redlog_adapter_shell
+  ( python3 "$_REDLOG_RELAY" detect --home "${_REDLOG_DIR%/*}" --session "${_REDLOG_SESSION_ID:-}" \
+      --shell "$_redlog_shell" </dev/null >/dev/null 2>&1 & )
+}
+
 # The event payload, written without starting a process (#288). Returns 1 —
 # writing nothing it would want kept — whenever it cannot be sure the JSON is
 # what the python builder in `_redlog_send_event` would have produced, and the

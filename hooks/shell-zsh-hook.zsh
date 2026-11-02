@@ -68,6 +68,8 @@ _REDLOG_EVENT_SOURCE=auto-relay
 zmodload -F zsh/stat b:zstat 2>/dev/null
 typeset -gA _REDLOG_CLASS_CACHE
 typeset -g _REDLOG_CLASS_SIG=""
+# Not exported: a child shell reports for itself.
+typeset -g _REDLOG_TOOLS_REPORTED=""
 
 _redlog_policy_sig() {
   REPLY=""
@@ -480,6 +482,9 @@ _redlog_warn_unreachable() {
 
 _redlog_precmd() {
   local exit_code=$?
+  # Once per shell, at the first prompt and ahead of the early return below,
+  # which is what the first prompt takes: there is no command yet.
+  if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _REDLOG_TOOLS_REPORTED=1; _redlog_report_tools; fi
   [[ -n "$_REDLOG_LAST_CMD" ]] || return
 
   _redlog_warn_unreachable

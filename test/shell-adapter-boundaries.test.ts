@@ -52,6 +52,24 @@ describe('shell adapter boundaries', () => {
     expect(zsh).toContain('\\"cwd\\"')
   })
 
+  // #499 PR B. Where the report goes is the relay's business and when to take it
+  // is the adapter's; neither adapter learns the directory, and both ask the
+  // same shared function, once, at the first prompt.
+  it('keeps tool detection in common: the adapters only say when, and never where', () => {
+    const common = read('hooks/shell-common.sh')
+    expect(common).toContain('_redlog_report_tools()')
+    expect(common).not.toContain('tool-detection')
+    for (const adapter of ['hooks/shell-bash-hook.sh', 'hooks/shell-zsh-hook.zsh']) {
+      const text = read(adapter)
+      expect(text, adapter).not.toContain('tool-detection')
+      expect(text, adapter).not.toContain(' detect ')
+      expect(text.match(/_redlog_report_tools$/gm), adapter).toBeNull()
+      expect(text.match(/_redlog_report_tools; fi/g), adapter).toHaveLength(1)
+      expect(text, adapter).toContain('_REDLOG_TOOLS_REPORTED=""')
+      expect(text, adapter).not.toMatch(/export\s+_REDLOG_TOOLS_REPORTED/)
+    }
+  })
+
   it('does not ship historical combined hook entry points', () => {
     expect(fs.existsSync(path.resolve('hooks/shell-preexec-hook.sh'))).toBe(false)
     expect(fs.existsSync(path.resolve('shell/redlog-hook.zsh'))).toBe(false)

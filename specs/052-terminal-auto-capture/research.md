@@ -135,6 +135,25 @@ run it. Both readers compile the file the same way — the shell through
 in `src/core/terminal-class.ts` — with the operator's overlay on top, and
 `test/command-class.test.ts` holds the two to one golden table of modes.
 
+**Tool detection (#499 PR B)**: which of those executables a machine has is a
+separate state, shown beside the profiles and never an input to them. A miss
+removes nothing and changes no mode; `test/tool-detection.test.ts` pins that
+against the golden table. There is no scanner. RedLog does its own PATH lookup
+(the `app` environment, in memory) only on a trigger: app start, Tool Settings
+opening, a manual rescan, or a profile set that gained an executable, one
+lookup at a time and never per command. The shells say the rest themselves:
+each bash or zsh runs `redlog-relay.py detect` in the background at its first
+prompt, not when the hook is sourced, because the rc line that sources it is
+appended at install and any PATH line a later installer adds comes after it.
+That writes `~/.redlog/tool-detection/<environment>.json`, one file per kind of
+shell, last writer wins; under WSL the home is the Windows profile's, so RedLog
+reads it without spawning `wsl.exe`. RedLog reads at most 64 reports of 64 KiB
+each when asked, marks one stale after 7 days, and never writes or deletes one.
+Executables added to the profiles after a report was written read as
+`unchecked`, not `missing`. PowerShell has no class policy and sends nothing.
+First-prompt PATH is a snapshot: a tool a venv or direnv adds later, or an
+alias with no executable behind it, reads as missing. That is display only.
+
 **Must hold**: the classification survives `sudo`, `env`, `proxychains` and an
 absolute path (FR-027), so the classifier walks prefix wrappers before it looks
 at the program name.
