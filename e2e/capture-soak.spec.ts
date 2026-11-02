@@ -154,11 +154,16 @@ function counts(db: Db): Record<string, number> {
   return out
 }
 
+/** The addon's POST timeout: a delivery-unconfirmed record is written when a
+ *  send fails, up to this long after the event was handed to it. */
+const ADDON_POST_TIMEOUT_MS = 5000
+
 function gaps(db: Db): Gap[] {
   return rows(db, 'capture_gap').map(r => JSON.parse(r.data)).map(d => ({
     reason: String(d.reason), delivery: String(d.capture_delivery),
     units: Number.isInteger(d.skipped_units) ? d.skipped_units : null,
-    started: Number(d.gap_started_at ?? d.reported_at), ended: Number(d.gap_ended_at ?? d.reported_at)
+    started: Number(d.gap_started_at ?? (d.reason === 'delivery-unconfirmed' ? d.reported_at - ADDON_POST_TIMEOUT_MS : d.reported_at)),
+    ended: Number(d.gap_ended_at ?? d.reported_at)
   }))
 }
 
@@ -571,6 +576,31 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
       if (q.markers) queuePeak.markersSeen++
       if (q.bound > queuePeak.bound) queuePeak = { ...queuePeak, bound: q.bound, at: Date.now() }
     }, 1000)
+    // The API's answer time, once a second. The addon gives up on a POST after
+    // 5 s and writes delivery-unconfirmed; a stall that long is where that
+    // record comes from, so the run says when the API stalled and for how long.
+    const api = { probes: 0, over1s: 0, over5s: 0, maxMs: 0, maxAt: 0, stalls: [] as Array<{ t: number; ms: number; phase: string }> }
+    let probing = false
+    const apiPoll = setInterval(() => {
+      if (probing) return
+      let port = ''
+      try { port = fs.readFileSync(path.join(ctx.home, '.redlog', 'api-port'), 'utf8').trim() } catch { return }
+      probing = true
+      const begun = Date.now()
+      const phase = ctx.phase
+      const done = (): void => {
+        const ms = Date.now() - begun
+        probing = false
+        api.probes++
+        if (ms > 1000) { api.over1s++; if (api.stalls.length < 200) api.stalls.push({ t: begun, ms, phase }) }
+        if (ms > 5000) api.over5s++
+        if (ms > api.maxMs) { api.maxMs = ms; api.maxAt = begun }
+      }
+      const req = request({ host: '127.0.0.1', port, path: '/api/health', agent: false }, res => { res.resume(); res.on('end', done) })
+      req.setTimeout(30_000, () => req.destroy())
+      req.on('error', () => { probing = false })
+      req.end()
+    }, 1000)
     try {
       // The local sources are the engagement's target: in-scope traffic is the
       // normal case, and out-of-scope adds a scope_violation row per request.
@@ -598,7 +628,7 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
           mainRss: byType.Browser ?? 0, appRss: Object.values(byType).reduce((a, b) => a + b, 0), rssByType: byType,
           mitmRss: ctx.mitmPid ? treeRss(ctx.mitmPid) : 0,
           project: projectSizes(ctx.home),
-          spool, inflight: inflight(ctx.home), queuePeakBound: queuePeak.bound,
+          spool, inflight: inflight(ctx.home), queuePeakBound: queuePeak.bound, apiMaxMs: api.maxMs, apiOver5s: api.over5s,
           events: c, gaps: g,
           ...(await driver.progress())
         }
@@ -656,7 +686,7 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
         previous = now
       }
       await sample()
-      clearInterval(queuePoll)
+      clearInterval(queuePoll); clearInterval(apiPoll)
 
       const db = openDb(ctx.home)!
       const gapList = gaps(db)
@@ -666,6 +696,7 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
       result.verdict = await driver.verdict(ctx, db, gapList)
       db.close()
       result.queuePeak = queuePeak
+      result.api = { ...api, stalls: api.stalls.map(s => ({ ...s, t: Math.round((s.t - Date.parse(result.startedAt)) / 1000) })) }
       result.spoolAtEnd = dirBytes(path.join(ctx.home, '.redlog', 'pending'))
       result.projectAtEnd = projectSizes(ctx.home)
       result.samples = samples.length
@@ -695,7 +726,7 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
       console.log(`[SOAK] ${result.error}`)
       throw e
     } finally {
-      clearInterval(queuePoll)
+      clearInterval(queuePoll); clearInterval(apiPoll)
       save()
       console.log(`[SOAK] results: ${out}`)
       await driver.stop().catch(() => {})
