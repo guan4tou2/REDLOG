@@ -1294,13 +1294,14 @@ def policy_field(argv):
         return 2
     overlay = read_overlay(opts)
 
+    # `remove` undoes the operator's own edit and nothing else, so the command
+    # is back where the shipped defaults put it. Taking a command out of its
+    # default class is `add relayed`, which has to be recorded too: relayed is
+    # not a list in the defaults, but an override to it must be (#296).
     if action == "remove":
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
-        overlay.setdefault("removed", [])
-        if command not in overlay["removed"]:
-            overlay["removed"].append(command)
     elif action == "add":
         target = opts["field"]
         if target not in CLASS_FIELDS:
@@ -1308,11 +1309,10 @@ def policy_field(argv):
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
-        if target != "relayed":
-            overlay[target].append(command)
-        overlay["removed"] = [c for c in overlay.get("removed", []) if c != command]
+        overlay[target].append(command)
     else:
         return 2
+    overlay.pop("removed", None)
 
     write_json(overlay_path(opts), overlay)
     return 0
@@ -1470,11 +1470,10 @@ def load_policy(home=None):
     overlay = read_overlay({"home": home})
     if not overlay:
         return policy
-    dropped = set(overlay.get("removed", []))
     for name in CLASS_FIELDS:
         if name == "relayed":
             continue
-        base = [c for c in policy.get(name, []) if c not in dropped]
+        base = list(policy.get(name, []))
         for command in overlay.get(name, []):
             if command not in base:
                 base.append(command)

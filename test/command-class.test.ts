@@ -181,7 +181,9 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     const script = [
       'H=$(mktemp -d -t redlog-overlay.XXXXXX)',
       `python3 "${relay}" policy --home "$H" --action add --field pty --command curl > /dev/null`,
-      `python3 "${relay}" policy --home "$H" --action remove --command nc > /dev/null`,
+      `python3 "${relay}" policy --home "$H" --action add --field relayed --command nc > /dev/null`,
+      `python3 "${relay}" policy --home "$H" --action add --field pty --command vim > /dev/null`,
+      `python3 "${relay}" policy --home "$H" --action remove --command vim > /dev/null`,
       `python3 "${relay}" policy --home "$H" --action list`,
       'rm -rf "$H"'
     ].join('\n')
@@ -191,14 +193,16 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       const found = run.stdout.split('\n').find((l) => l.startsWith(`${name}: `))
       return (found ?? '').slice(name.length + 2).trim().split(/\s+/).filter(Boolean)
     }
-    const mine = mergeClassPolicy({ pty: ['curl'], removed: ['nc'] })
+    const mine = mergeClassPolicy({ pty: ['curl'], relayed: ['nc'] })
 
     expect(line('pty').sort(), run.stderr.slice(0, 400)).toEqual([...mine.pty].sort())
     expect(line('native').sort()).toEqual([...mine.native].sort())
-    // And the two edits did what they said: curl joined the pty class, nc left
-    // the native one.
+    // And the edits did what they said: curl joined the pty class, nc left
+    // the native one, and vim's edit was undone, so it is native as it shipped.
     expect(mine.pty).toContain('curl')
     expect(mine.native).not.toContain('nc')
+    expect(line('native')).toContain('vim')
+    expect(line('pty')).not.toContain('vim')
   }, 300_000)
 })
 
@@ -206,7 +210,7 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
 describe('the class overlay', () => {
   it('adds, removes, and moves a command out of the class it was in', () => {
     expect(mergeClassPolicy(null).native).toContain('nc')
-    expect(mergeClassPolicy({ removed: ['nc'] }).native).not.toContain('nc')
+    expect(mergeClassPolicy({ relayed: ['nc'] }).native).not.toContain('nc')
     // `vim` ships native; moving it to pty must take it out of native, or the
     // two lists would both claim it and whichever is consulted first wins.
     const moved = mergeClassPolicy({ pty: ['vim'] })

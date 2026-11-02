@@ -98,7 +98,8 @@ macOS／Linux 上 RedLog
 PTY 錄製另外保存 session 輸出，不等同分離的 stdout／stderr，也不承諾原始按鍵紀錄。
 清單在 設定 ▸ 指令與終端 看得到，也可以用
 `redlog class list` 列出來、`redlog class add|remove` 調整。把指令加進 PTY 那一類時
-會提醒你：那會失去本機暫停。
+會提醒你：那會失去本機暫停。`remove` 只撤銷你自己的調整，讓指令回到內建的分類；
+要讓內建分類裡的指令改走 relay，用 `redlog class add relayed <指令>`。
 
 RedLog 連不上時，指令仍可執行。已有專案身分的指令事件可暫存並在原專案補送，
 保留原本時間；這不保證離線期間的輸出可恢復。沒有專案身分時不承諾保存，
