@@ -1683,9 +1683,22 @@ def display_name(profile):
     line with no colon (a colon is how `native:` and `pty:` look like headers),
     else its id."""
     name = profile.get("name")
-    if isinstance(name, str) and name and ":" not in name and not any(ord(ch) < 0x20 for ch in name):
+    if isinstance(name, str) and name and ":" not in name and plain_line(name):
         return name
     return profile["id"]
+
+
+def plain_line(text):
+    """True when text can be printed as one line: it encodes as UTF-8 (a lone
+    surrogate does not, and writing one to stdout raises), and holds no C0, DEL
+    or C1 control and no Unicode line or paragraph separator. The same rule as
+    NOT_A_PLAIN_LINE in src/core/terminal-profiles.ts, which refuses such a name
+    at registration; this covers a snapshot edited by hand."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return not any(ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F or ch in "\u2028\u2029" for ch in text)
 
 
 def policy_notes(bundled, contributed, policy):

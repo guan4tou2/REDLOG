@@ -63,6 +63,14 @@ function shippedDefaultMode(command: string): CommandClass | null {
 
 const MODES: readonly string[] = ['native', 'pty', 'relayed']
 
+/** What a printed name must not contain: C0 controls, DEL, C1 controls, the
+ *  Unicode line and paragraph separators, and a lone surrogate. The last is
+ *  not text at all: it has no UTF-8 form, so Python's stdout raises on it and
+ *  `redlog class list` stops mid-line. hooks/redlog-relay.py `display_name`
+ *  keeps the same rule for a snapshot someone edited by hand. */
+// eslint-disable-next-line no-control-regex
+const NOT_A_PLAIN_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/
+
 /** Why a profile a plugin declared is unusable, or null when it is usable. */
 function rejection(raw: unknown, seen: Set<string>): string | null {
   if (!isRecord(raw)) return 'not an object'
@@ -70,8 +78,7 @@ function rejection(raw: unknown, seen: Set<string>): string | null {
   if (seen.has(raw.id)) return 'duplicate id'
   const name = raw.name
   if (typeof name !== 'string' || name.length < 1 || name.length > 64 || name.includes(':')
-    // eslint-disable-next-line no-control-regex
-    || /[\u0000-\u001f]/.test(name)) return 'name must be one short line with no colon'
+    || NOT_A_PLAIN_LINE.test(name)) return 'name must be one short line with no colon'
   if (typeof raw.mode !== 'string' || !MODES.includes(raw.mode)) return 'mode must be native, pty or relayed'
   const exes = raw.executables
   if (!Array.isArray(exes) || exes.length < 1 || exes.length > MAX_EXECUTABLES

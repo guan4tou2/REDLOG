@@ -429,6 +429,42 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
   // the table above checks modes, this checks the lists, the entries and the
   // problems, and adds the cases a table of real overlays cannot reach —
   // profiles that clash, profiles that are broken, overlays that are broken.
+  // The name rule has two ends: the registry refuses a name, and the relay shows
+  // the id instead of one it was handed by a hand-edited snapshot. They must
+  // call the same names plain, or one of them lets through what the other won't.
+  it('calls the same profile names plain on both sides', async () => {
+    const names = [
+      'Ligolo-ng', 'Ligolo \u00e9\u00a0\u00a1', 'Sat \u{1F6F0} Ligolo', '\u{1F6F0}', 'a b', 'tab\there',
+      'Ligolo\ud800', '\udc00Ligolo', 'a\udc00\ud800b', 'x\ud83d', '\ude00x',
+      'a\u0000b', 'a\u001fb', 'a\u007fb', 'a\u0080b', 'a\u0085b', 'a\u009fb', 'a\u00a0b',
+      'a\u2027b', 'a\u2028b', 'a\u2029b', 'a\u202ab'
+    ]
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-names-'))
+    try {
+      const input = path.join(dir, 'cases.json')
+      fs.writeFileSync(input, JSON.stringify({ cases: [], names }))
+      const driver = target!.toShellPath(path.join(__dirname, 'helpers', 'class-policy-driver.py'))
+      const run = await runInShell(
+        target!,
+        `python3 "${driver}" "${hookPath(target!, 'redlog-relay.py')}" "${target!.toShellPath(input)}"`,
+        { timeoutMs: 240_000 }
+      )
+      const theirs = (JSON.parse(run.stdout) as { __plain_names: boolean[] }).__plain_names
+      const mine = names.map((name, i) => {
+        const pluginId = `name-mirror-${i}`
+        try {
+          return registerTerminalProfiles(pluginId, [{ id: 'p', name, mode: 'pty', executables: [`nm${i}`], reason: 'r' }]).accepted === 1
+        } finally { unregisterTerminalProfiles(pluginId) }
+      })
+      expect(theirs, run.stderr.slice(0, 300)).toEqual(mine)
+      // and the table is not trivial: it holds both answers
+      expect(mine.filter(Boolean).length).toBeGreaterThan(5)
+      expect(mine.filter((x) => !x).length).toBeGreaterThan(10)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 300_000)
+
   it('compiles every case the same way on both sides', async () => {
     const run = await runDriver(MIRROR_CASES)
     // The real policy is compiled from a temp home read the way the app reads
@@ -662,6 +698,30 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
         'tool profiles: Vim (vim vi)',
         'plugin profiles: Fine from pack-d (fine-tool)',
         'skipped tool profile pack-d/bad: not valid'
+      ])
+    }, 180_000)
+
+    // A snapshot someone edited by hand can carry a name the app would refuse.
+    // A lone surrogate cannot be written to stdout as UTF-8: it used to raise
+    // after `tool profiles:` and lose everything below it, with exit 1. Such a
+    // name is shown as the id, and the listing runs to its last line.
+    it('shows the id for a name that is not plain well-formed text, and still prints every line', async () => {
+      const odd: Record<string, string> = {
+        high: 'Ligolo\ud800', low: '\udc00Ligolo', del: 'a\u007fb', c1: 'a\u0085b', ls: 'a\u2028b', ps: 'a\u2029b'
+      }
+      const lines = await run(snap([
+        ...Object.entries(odd).map(([k, name]) => ({ id: `pack-e/${k}`, name, mode: 'pty', executables: [`x-${k}`], reason: 'r' })),
+        { id: 'pack-e/astral', name: 'Sat \u{1F6F0} Ligolo', mode: 'pty', executables: ['x-astral'], reason: 'r' },
+        { id: 'pack-e/fine', name: 'Fine', mode: 'pty', executables: ['x-fine'], reason: 'r' },
+        { id: 'pack-e/bad', name: 'Bad', mode: 'pty', executables: ['a;b'], reason: 'r' }
+      ]))
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vim vi)',
+        'plugin profiles: ' + [
+          ...Object.keys(odd).map((k) => `pack-e/${k} from pack-e (x-${k})`),
+          'Sat \u{1F6F0} Ligolo from pack-e (x-astral)', 'Fine from pack-e (x-fine)'
+        ].join(', '),
+        'skipped tool profile pack-e/bad: not valid'
       ])
     }, 180_000)
 

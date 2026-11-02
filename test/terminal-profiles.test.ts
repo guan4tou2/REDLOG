@@ -105,6 +105,25 @@ describe('registering a plugin\'s terminal profiles', () => {
     expect(JSON.parse(text()).profiles.map((p: { id: string }) => p.id)).toEqual(['pack/dup', 'pack/good'])
   })
 
+  // A name is printed by `redlog class list`. A lone surrogate cannot be encoded
+  // as UTF-8, so Python's stdout raises on it and the listing stops mid-line;
+  // DEL, the C1 controls and U+2028/2029 are line breaks or terminal controls
+  // that a "one short line" name must not carry.
+  it('refuses a name that is not well-formed text or carries a control character', () => {
+    const bad: Record<string, string> = {
+      loneHigh: 'Ligolo\ud800', loneLow: '\udc00Ligolo', swapped: 'a\udc00\ud800b',
+      del: 'a\u007fb', c1Low: 'a\u0080b', c1High: 'a\u009fb', ls: 'a\u2028b', ps: 'a\u2029b'
+    }
+    const r = register('pack', [
+      ...Object.entries(bad).map(([id, name]) => profile({ id: id.toLowerCase(), name, executables: [`x${id.toLowerCase()}`] })),
+      profile({ id: 'astral', name: 'Ligolo \u{1F6F0} ng', executables: ['xastral'] }),
+      profile({ id: 'accent', name: 'Ligolo \u00a0\u00e9\u00a1', executables: ['xaccent'] })
+    ])
+    expect(r.rejected.map((x) => x.name)).toEqual(Object.keys(bad).map((k) => k.toLowerCase()))
+    expect(new Set(r.rejected.map((x) => x.reason))).toEqual(new Set(['name must be one short line with no colon']))
+    expect(r.accepted).toBe(2)
+  })
+
   it('names an entry whose id is unusable by its position', () => {
     expect(register('pack', [{ mode: 'pty' }, { id: 7 }]).rejected).toEqual([
       { name: '#0', reason: 'id must be lowercase letters, digits and hyphens' },

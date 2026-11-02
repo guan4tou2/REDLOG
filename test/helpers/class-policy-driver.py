@@ -30,7 +30,8 @@ relay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(relay)
 
 with open(sys.argv[2], "r") as fh:
-    cases = json.load(fh)["cases"]
+    loaded = json.load(fh)
+cases = loaded["cases"]
 
 out = {}
 for case in cases:
@@ -66,5 +67,11 @@ for case in cases:
         }
     finally:
         shutil.rmtree(home, ignore_errors=True)
+
+# Optional "names": for each, whether the relay would print it as it is
+# (plain_line), in the same order. The TypeScript registry refuses the same
+# names, so the two are compared. ensure_ascii keeps a lone surrogate an escape.
+if "names" in loaded:
+    out["__plain_names"] = [relay.plain_line(n) for n in loaded["names"]]
 
 sys.stdout.write(json.dumps(out))
