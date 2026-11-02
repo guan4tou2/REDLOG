@@ -53,6 +53,7 @@ _REDLOG_EVENT_SOURCE=auto-relay
 _REDLOG_RELAY_DIR=""
 _REDLOG_CMD_ID=""
 _REDLOG_CMD_CLASS=""
+_REDLOG_CMD_CAPTURE=""
 
 # --- This terminal's own state (spec 052 US2), same contract as zsh ---
 #
@@ -326,8 +327,19 @@ _redlog_trace_command() {
     fi
   fi
 
+  # `class` is the policy; it is not a claim about how this run was captured.
+  # Bash installs no PTY wrapper (zsh does), so a `pty` program runs on the
+  # shell's own terminal and is recorded as metadata only. The record says so
+  # beside the class, as the zsh adapter does for its `existing-shell-function`
+  # case, rather than letting `pty` read as "PTY-captured". `redlog class add
+  # pty` already warns the operator of this; the evidence has to carry it too.
+  _REDLOG_CMD_CAPTURE=""
+  if [[ "$_REDLOG_CMD_CLASS" == "pty" ]]; then
+    _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"no-pty-wrapper"'
+  fi
+
   _redlog_send_event "command_start" "$cmd" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 # What the DEBUG trap runs. Alone when nothing else holds the trap; behind
@@ -510,13 +522,14 @@ _redlog_prompt_command() {
         native|pty) [[ -n "$_REDLOG_DIVERT_FAILED" ]] || disposition="interactive" ;;
         redirected) disposition="redirected" ;;
       esac
-      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
+      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
     fi
     _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
     _REDLOG_LAST_CMD=""
     _REDLOG_CMD_START=""
     _REDLOG_CMD_ID=""
     _REDLOG_CMD_CLASS=""
+    _REDLOG_CMD_CAPTURE=""
   fi
   return $exit_code
 }
