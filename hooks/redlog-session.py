@@ -61,7 +61,7 @@ def trace(event, detail=''):
 
 
 class Recorder:
-    def __init__(self, directory, max_bytes):
+    def __init__(self, directory, max_bytes, command_id=''):
         self.identity = json.loads((directory / 'active-identity.json').read_text())
         self.engagement = self.identity['engagementId']
         self.token = (directory / 'api-token').read_text().strip()
@@ -69,6 +69,9 @@ class Recorder:
         self.url = f'http://127.0.0.1:{self.port}/api/events'
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.session = str(uuid.uuid4())
+        # The shell hook's id for the command this session records. Empty when
+        # the helper is run by hand: such a session belongs to no command_start.
+        self.command_id = command_id
         self.limit = max(4, min(max_bytes, 65536))
         self.used = 0
         self.accepted = 0
@@ -85,6 +88,8 @@ class Recorder:
         payload = {'agent_type': 'shell', 'data': {
             'source': 'external-session', 'terminalId': self.session,
             'captured_by': 'redlog-session', **data}}
+        if self.command_id:
+            payload['data']['command_id'] = self.command_id
         req = urllib.request.Request(self.url, json.dumps(payload).encode(), {
             'Content-Type': 'application/json', 'Authorization': f'Bearer {self.token}',
             'X-Redlog-Engagement': self.engagement})
@@ -344,6 +349,8 @@ def main():
                         help='if the recorder cannot start, run the command anyway, unrecorded')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    # Taken out of the environment so the recorded command does not inherit it.
+    command_id = os.environ.pop('REDLOG_SESSION_COMMAND_ID', '')
     if os.name != 'posix':
         parser.error('use the PowerShell Start-Transcript integration on Windows')
     if args.max_bytes <= 0:
@@ -370,7 +377,7 @@ def main():
             parser.error('interactive shell requires a terminal; otherwise specify a command')
         command = [os.environ.get('SHELL', '/bin/bash')]
     try:
-        recorder = Recorder(Path.home() / '.redlog', args.max_bytes)
+        recorder = Recorder(Path.home() / '.redlog', args.max_bytes, command_id)
         recorder.start(' '.join(command))
     except Exception as error:
         no_project = (isinstance(error, FileNotFoundError)

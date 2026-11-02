@@ -436,7 +436,10 @@ _redlog_preexec() {
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
-    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.XXXXXX 2>/dev/null) \
+    # The shell's pid is in the name so a later shell can tell whose it was.
+    # A full template, not `-t`: BSD mktemp's `-t` ignores $TMPDIR, and the
+    # sweep (shell-common.sh) looks for leftovers in $TMPDIR.
+    if _REDLOG_RELAY_DIR=$(mktemp -d "${${TMPDIR:-/tmp}%/}/redlog-relay.$$.XXXXXX" 2>/dev/null) \
        && _redlog_divert "$_REDLOG_RELAY_DIR"; then
       :
     else
@@ -572,6 +575,11 @@ _redlog_precmd() {
 #
 # RedLog's own wrapper is told apart by its body, which carries
 # `_REDLOG_SESSION_HELPER` — so sourcing the hook again reinstalls it.
+#
+# The wrapper hands the helper this command's `command_id` in the environment,
+# so the session's rows name the `command_start` they belong to (#296). An
+# environment variable rather than an option: a helper older than this hook
+# ignores it, where an unknown option would stop the operator's `ssh`.
 _redlog_is_user_function() {
   [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" != *_REDLOG_SESSION_HELPER* ]]
 }
@@ -595,7 +603,7 @@ _redlog_install_pty_wrappers() {
     functions[$prog]='
       if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]] \
          && _redlog_class_of '"$prog"' && [[ "$REPLY" == pty ]]; then
-        python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
+        REDLOG_SESSION_COMMAND_ID="$_REDLOG_CMD_ID" python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"
       fi'
@@ -611,4 +619,6 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
 _redlog_install_pty_wrappers
+# Behind the prompt: with thousands left over it is not something to wait for.
+( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell

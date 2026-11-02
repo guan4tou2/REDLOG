@@ -562,4 +562,6 @@ unset _redlog_pc_plan _redlog_pc_set
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
+# Behind the prompt: with thousands left over it is not something to wait for.
+( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell

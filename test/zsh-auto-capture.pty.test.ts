@@ -286,31 +286,49 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end.data.output_disposition).toBe('interactive')
     })
 
+    // #296. The recorder's own terminal id differs from the shell's, so until the
+    // wrapper handed it the command's id the only way to tie a session to its
+    // command was the command text — which cannot tell two `ssh host` runs apart.
+    it('stamps every session event with the command_id of the command it belongs to', () => {
+      expect(run.ok, run.error).toBe(true)
+      const start = shellEvents(collector.events, 'command_start', 'ssh -V')[0]
+      expect(start?.data.command_id, 'no command_id on the command_start').toBeTruthy()
+
+      const sessionEvents = collector.events.filter((e) => e.data.captured_by === 'redlog-session'
+        && e.data.terminalId === collector.events.find((s) => s.data.subtype === 'session_start'
+          && String(s.data.command ?? '').includes('ssh -V'))?.data.terminalId)
+      const subtypes = sessionEvents.map((e) => e.data.subtype)
+      expect(subtypes, 'session start and end are both recorded').toEqual(expect.arrayContaining(['session_start', 'session_end']))
+      for (const e of sessionEvents) {
+        expect(e.data.command_id, `${String(e.data.subtype)} carries no command_id`).toBe(start.data.command_id)
+      }
+    })
+
+    // #296 round 2: the wrapper is installed once, when the hook loads, so
+    // moving ssh out of the pty class printed "ssh is now native" and went on
+    // recording the next ssh in full, under a command_start that said native.
+    it('runs a program moved out of the pty class as itself, in the same shell', async () => {
+      const result = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: ['redlog class add native ssh', 'ssh -V moved-probe'],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-harness', operatorId: 'op-harness' } },
+        timeoutSeconds: 60
+      })
+      expect(result.ok, result.error).toBe(true)
+      expect(result.steps[0].output).toMatch(/ssh is now native/)
+      expect(result.steps[1].output).toContain('OpenSSH')
+      expect(result.steps[1].output, 'the moved program was handed to the session recorder')
+        .not.toContain('[redlog] session')
+      expect(collector.events.some((e) => e.data.subtype === 'session_start'
+        && String(e.data.command ?? '').includes('moved-probe'))).toBe(false)
+    }, 300_000)
+
     // Issue #296. The wrapper asked only whether RedLog was running, so after
     // `redlog stop` a pty-class program was still recorded in full by the
     // session recorder — output and all — while the adapter correctly sent
     // nothing. Stopped means the program runs as itself; started again means
     // it is recorded again, in the same shell, without re-sourcing the hook.
-    // #296 round 2: the wrapper is installed once, when the hook loads, so
-  // moving ssh out of the pty class printed "ssh is now native" and went on
-  // recording the next ssh in full, under a command_start that said native.
-  it('runs a program moved out of the pty class as itself, in the same shell', async () => {
-    const result = await runZsh(target!, {
-      rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
-      commands: ['redlog class add native ssh', 'ssh -V moved-probe'],
-      redlog: { port: collector.port, token, identity: { engagementId: 'eng-harness', operatorId: 'op-harness' } },
-      timeoutSeconds: 60
-    })
-    expect(result.ok, result.error).toBe(true)
-    expect(result.steps[0].output).toMatch(/ssh is now native/)
-    expect(result.steps[1].output).toContain('OpenSSH')
-    expect(result.steps[1].output, 'the moved program was handed to the session recorder')
-      .not.toContain('[redlog] session')
-    expect(collector.events.some((e) => e.data.subtype === 'session_start'
-      && String(e.data.command ?? '').includes('moved-probe'))).toBe(false)
-  }, 300_000)
-
-  it('runs a pty-class program as itself while recording is stopped, and records it again after start', async () => {
+    it('runs a pty-class program as itself while recording is stopped, and records it again after start', async () => {
       const result = await runZsh(target!, {
         rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
         commands: ['redlog stop', 'ssh -V stopped-probe', 'redlog start', 'ssh -V started-probe'],
