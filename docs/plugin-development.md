@@ -196,9 +196,17 @@ A plugin that declares `terminalProfiles` waits in Settings ▸ Plugins until yo
 approve it, even though it ships no code: a profile can stop a tool being
 recorded (`native`) or wrap it in every new terminal (`pty`), so a manifest
 dropped into `~/.redlog/plugins/` cannot set one unasked. Until you approve it,
-and again after any change to its manifest, it contributes no profile. Other
-plugins that ship no code stay active from the start, and a plugin with an empty
-`terminalProfiles` list has nothing to approve.
+and again after any change to its manifest, it contributes no profile. The
+approval dialog lists each profile that would take effect (the tool, its
+commands, what happens to them, and your plugin's `reason`), so write the
+`reason` for the person approving it. Other plugins that ship no code stay
+active from the start, and a plugin with an empty `terminalProfiles` list has
+nothing to approve. A third-party plugin that also declares a `tailers` module
+can be approved for its profiles; the tailer still does not run.
+
+If RedLog cannot rewrite `~/.redlog/terminal-profiles.json` (the file is held
+open by another program, say), Settings ▸ Plugins says so, and new terminals
+may still apply the profiles from before until the next successful reload.
 
 A profile that fails is refused whole and named under the plugin in Settings ▸
 Plugins; the rest load. These are refused:

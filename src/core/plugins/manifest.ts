@@ -79,6 +79,52 @@ function isPluginKind(v: unknown): v is NonNullable<PluginManifest['kind']> {
   return typeof v === 'string' && PLUGIN_KINDS.has(v)
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStringList = (v: unknown): boolean => Array.isArray(v) && v.every((s) => typeof s === 'string')
+
+/** Why `contributes` has a shape `applyContributions` cannot take, or null.
+ *  It reads each list with `.map` or `for..of`, and each entry's strings with
+ *  `.trim`, `.startsWith` and `.replaceAll`, so a value of another shape does
+ *  not make a plugin that contributes less: it throws, in the middle of
+ *  applying everyone. Every key that function reads is checked here, in the
+ *  detail it needs; what an entry's own fields mean is for the registrars to
+ *  judge, entry by entry, at load. `terminalProfiles` is in `validateManifest`
+ *  itself, where its message is. */
+function contributesShapeError(c: Record<string, unknown>): string | null {
+  for (const key of ['lootPatterns', 'commandTags', 'targetExtractors', 'eventTypes', 'capture']) {
+    const v = c[key]
+    if (v !== undefined && !(Array.isArray(v) && v.every(isObject))) return `contributes.${key} must be a list of objects`
+  }
+  for (const key of ['lootPatterns', 'targetExtractors']) {
+    for (const entry of (c[key] ?? []) as Array<Record<string, unknown>>) {
+      if (entry.name !== undefined && typeof entry.name !== 'string') return `contributes.${key}: name must be text`
+    }
+  }
+  if (c.redaction !== undefined) {
+    if (!isObject(c.redaction)) return 'contributes.redaction must be an object'
+    for (const list of ['denylist', 'allowlist']) {
+      if (c.redaction[list] !== undefined && !Array.isArray(c.redaction[list])) return `contributes.redaction.${list} must be a list`
+    }
+  }
+  for (const cap of (c.capture ?? []) as Array<Record<string, unknown>>) {
+    if (cap.id !== undefined && typeof cap.id !== 'string') return 'contributes.capture: id must be text'
+    if (cap.hookFile !== undefined && typeof cap.hookFile !== 'string') return 'contributes.capture: hookFile must be text'
+    for (const list of ['requires', 'emits']) {
+      if (cap[list] !== undefined && !isStringList(cap[list])) return `contributes.capture: ${list} must be a list of text`
+    }
+    if (cap.manualSteps !== undefined) {
+      const steps = cap.manualSteps
+      if (!Array.isArray(steps) || !steps.every((s) => isObject(s) && typeof s.label === 'string'
+        && (s.command === undefined || typeof s.command === 'string'))) {
+        return 'contributes.capture: manualSteps must be a list of steps with a text label'
+      }
+    }
+  }
+  if (c.tailers !== undefined && typeof c.tailers !== 'string') return 'contributes.tailers must be the path of a module'
+  return null
+}
+
 export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof raw !== 'object' || raw === null) return { ok: false, error: 'manifest is not an object' }
   const m = raw as Record<string, unknown>
@@ -100,6 +146,8 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof m.contributes !== 'object' || m.contributes === null) {
     return { ok: false, error: 'missing contributes block' }
   }
+  const shapeError = contributesShapeError(m.contributes as Record<string, unknown>)
+  if (shapeError) return { ok: false, error: shapeError }
 
   for (const [retired, why] of Object.entries(RETIRED_KEYS)) {
     if ((m.contributes as Record<string, unknown>)[retired] !== undefined) {

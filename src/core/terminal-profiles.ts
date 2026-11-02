@@ -103,13 +103,16 @@ function rejection(raw: unknown, seen: Set<string>): string | null {
 // empties it, and nothing reaches the compilers until `syncTerminalProfiles`.
 const registry = new Map<string, TerminalProfile[]>()
 
-/** Register a plugin's profiles. A bad entry is dropped whole and named in
- *  `rejected`; the rest load. The effective id is `<pluginId>/<localId>`, so
- *  two plugins can never collide on an id and a profile always says whose it is. */
-export function registerTerminalProfiles(
+/** What a plugin's declared profiles come to, without registering anything: the
+ *  ones that would take effect and the ones refused, by name. A bad entry is
+ *  dropped whole; the rest stand. The effective id is `<pluginId>/<localId>`, so
+ *  two plugins can never collide on an id and a profile always says whose it is.
+ *  The consent dialog reads this too, so what the operator is shown is what the
+ *  registrar would accept. */
+export function checkTerminalProfiles(
   pluginId: string,
   raw: unknown
-): { accepted: number; rejected: RuleRejection[] } {
+): { accepted: TerminalProfile[]; rejected: RuleRejection[] } {
   const list = Array.isArray(raw) ? raw : []
   const rejected: RuleRejection[] = []
   const accepted: TerminalProfile[] = []
@@ -129,8 +132,17 @@ export function registerTerminalProfiles(
       reason: p.reason as string
     })
   })
-  registry.set(pluginId, accepted)
-  return { accepted: accepted.length, rejected }
+  return { accepted, rejected }
+}
+
+/** Register a plugin's profiles: what `checkTerminalProfiles` accepts. */
+export function registerTerminalProfiles(
+  pluginId: string,
+  raw: unknown
+): { accepted: number; rejected: RuleRejection[] } {
+  const r = checkTerminalProfiles(pluginId, raw)
+  registry.set(pluginId, r.accepted)
+  return { accepted: r.accepted.length, rejected: r.rejected }
 }
 
 export function unregisterTerminalProfiles(pluginId: string): void {

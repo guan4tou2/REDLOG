@@ -45,7 +45,17 @@ function statusFor(p: Omit<LoadedPlugin, 'status'>): PluginStatus {
   return 'needs-consent'
 }
 
+/** One plugin, whatever is in its folder. A manifest that makes validation
+ *  itself throw is that plugin's error and not the loss of every other plugin. */
 function loadOne(dir: string, source: 'bundled' | 'user'): LoadedPlugin {
+  try {
+    return loadChecked(dir, source)
+  } catch (e) {
+    return errorPlugin(dir, source, `plugin could not be read: ${(e as Error)?.message ?? String(e)}`)
+  }
+}
+
+function loadChecked(dir: string, source: 'bundled' | 'user'): LoadedPlugin {
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(join(dir, 'plugin.json'), 'utf-8'))

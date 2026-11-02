@@ -182,12 +182,14 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
 
 export function removeContributions(pluginId: string): void {
   reports.delete(pluginId)
+  // First, and on its own: the profiles are what the shell acts on, so one
+  // kind failing to come back must not leave them registered.
+  unregisterTerminalProfiles(pluginId)
   unregisterLootPatterns(pluginId)
   unregisterRedactionRules(pluginId)
   unregisterCommandTags(pluginId)
   unregisterTargetExtractors(pluginId)
   unregisterEventTypes(pluginId)
   unregisterCapturePlugins(pluginId)
-  unregisterTerminalProfiles(pluginId)
   withdrawTailer(pluginId)
 }

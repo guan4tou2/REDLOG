@@ -21,6 +21,12 @@ interface PluginView {
   status: 'active' | 'needs-consent' | 'hash-changed' | 'disabled' | 'error'
   capabilities: string[]
   contributes: string[]
+  /** the terminal profiles the plugin declares that RedLog would accept: what
+   *  an approval is an approval of */
+  terminalProfiles?: Array<{ name: string; mode: 'native' | 'pty' | 'relayed'; executables: string[]; reason: string }>
+  /** why the shell's profiles could not be brought up to date, the same on
+   *  every row; null when they were */
+  profilesError?: string | null
   error?: string
   /** manifest targets a newer plugin API than this RedLog implements */
   apiAhead?: boolean
@@ -99,6 +105,16 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
   )
 }
 
+const PROFILE_LINE = {
+  native: 'plugins.profileNative',
+  pty: 'plugins.profilePty',
+  relayed: 'plugins.profileRelayed'
+} as const
+
+/** A third-party tailer is refused whatever the operator agrees to, so a plugin
+ *  whose only code is one has no code to approve. */
+const tailerRefused = (p: PluginView): boolean => p.source === 'user' && p.report?.tailers?.state === 'rejected'
+
 // SS10: two levels, not four. This page used to hold sub-tabs for installed
 // and marketplace, and the marketplace held its own for publishers and
 // revocations — three levels below a second-level tab, when the standard
@@ -176,7 +192,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     reload: () => Promise<PluginView[]>
     openFolder: () => Promise<string>
     setEnabled: (id: string, enabled: boolean) => Promise<PluginView[]>
-    grant: (id: string) => Promise<{ ok: boolean; error?: string; plugins: PluginView[] }>
+    grant: (id: string) => Promise<{ ok: boolean; error?: string; profilesError?: string; plugins: PluginView[] }>
     revoke: (id: string) => Promise<PluginView[]>
   } }).plugins
 
@@ -198,6 +214,12 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   }
   useEffect(() => { void load() }, [])
 
+  /** A change that went through but left the shell's profiles as they were is
+   *  not a plain success: a revoke or a disable would still be in effect there. */
+  const warnIfStale = (reason: string | null | undefined): void => {
+    if (reason) toast(t('plugins.profilesStale'), { type: 'warning', detail: reason })
+  }
+
   /** One operation on the plugin list. The screen shows what main answered, never
    *  what the operator asked for: on failure the real list is read back, so a
    *  switch that did not flip does not stay drawn as flipped. */
@@ -207,6 +229,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     try {
       const next = await op()
       if (mine === newest.current) setPlugins(next)
+      warnIfStale(next[0]?.profilesError)
       return true
     } catch (e) {
       toast(failure, { type: 'error', why: t('plugins.failedWhy'), detail: errorText(e) })
@@ -242,11 +265,14 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     try {
       const r = await api.grant(p.id)
       if (mine === newest.current) setPlugins(r.plugins)
-      if (r.ok) toast(t('plugins.granted'), 'success')
-      else {
+      if (r.ok) {
+        if (r.profilesError) warnIfStale(r.profilesError)
+        else toast(t('plugins.granted'), 'success')
+      } else {
         toast(t('plugins.grantFailed', { name: p.id }), {
           type: 'error',
-          why: t('plugins.grantFailedWhy'),
+          // "Unable to run" is about code; a plugin that is only profiles runs nothing.
+          why: p.tier === 'privileged' ? t('plugins.grantFailedWhy') : t('plugins.grantFailedWhyProfiles'),
           detail: r.error
         })
       }
@@ -270,6 +296,10 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   }
 
   const shown = plugins.filter((p) => !isHidden(p))
+  // What the open dialog asks the operator to approve: code (a third-party
+  // tailer, which never runs, is not), and the profiles the plugin declares.
+  const approvesCode = confirmGrant !== null && confirmGrant.tier === 'privileged' && !tailerRefused(confirmGrant)
+  const approvesProfiles = confirmGrant?.terminalProfiles ?? []
 
   return (
     <FieldGroup title={t('settings.plugins')}>
@@ -285,6 +315,13 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
       </div>
 
       <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
+
+      {plugins[0]?.profilesError && (
+        <div role="alert" data-testid="plugins-profiles-stale" className="text-xs mb-2 space-y-0.5">
+          <p className="text-amber-300">{t('plugins.profilesStale')}</p>
+          <p className="text-redlog-text-faint break-all">{plugins[0].profilesError}</p>
+        </div>
+      )}
 
       {loading && plugins.length === 0 && !loadError && (
         <p role="status" className="text-xs text-redlog-text-faint py-3">{t('plugins.loading')}</p>
@@ -305,8 +342,9 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
           // A third-party tailer is refused whatever the operator agrees to
-          // (see the results line), so offering consent would only fail.
-          const cannotBeTrusted = p.source === 'user' && p.report?.tailers?.state === 'rejected'
+          // (see the results line), so offering consent would only fail, unless
+          // the plugin also declares profiles, which are the operator's to approve.
+          const cannotBeTrusted = tailerRefused(p) && !(p.terminalProfiles?.length)
           return (
             <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-start justify-between p-3">
@@ -384,22 +422,22 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           alert
           dismissOnBackdrop={false}
           onClose={() => setConfirmGrant(null)}
-          label={confirmGrant.tier === 'privileged' ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
+          label={approvesCode ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
           testId="plugin-consent-dialog"
           panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
         >
-            {/* Code gets the capability list and the isolation warning; a
-                plugin that only declares terminal profiles runs nothing, and
-                says what a profile can do instead. */}
+            {/* Code gets the capability list and the isolation warning. Terminal
+                profiles get a line each, since the approval is of those lines;
+                a plugin with only profiles runs nothing and does not say it does. */}
             <h3 className="text-sm font-semibold text-red-400 mb-1">
-              {confirmGrant.tier === 'privileged' ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
+              {approvesCode ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
             </h3>
             <p className="text-xs text-redlog-text-dim mb-2">
-              {confirmGrant.tier === 'privileged'
+              {approvesCode
                 ? t('plugins.consentBody', { name: confirmGrant.name })
                 : t('plugins.consentBodyProfiles', { name: confirmGrant.name })}
             </p>
-            {confirmGrant.tier === 'privileged' && (
+            {approvesCode && (
               <>
                 <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
                   <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
@@ -411,12 +449,25 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                 <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
               </>
             )}
+            {approvesProfiles.length > 0 && (
+              <>
+                {approvesCode && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentProfilesToo')}</p>}
+                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                  {approvesProfiles.map((profile, i) => (
+                    <li key={i} className="break-words">
+                      {t(PROFILE_LINE[profile.mode] ?? PROFILE_LINE.relayed, { name: profile.name, commands: profile.executables.join(', ') })}
+                      <span className="text-redlog-text-dim"> — {profile.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
               <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
-                {confirmGrant.tier === 'privileged' ? t('plugins.grantRun') : t('plugins.grantApprove')}
+                {approvesCode ? t('plugins.grantRun') : t('plugins.grantApprove')}
               </button>
             </div>
         </Modal>

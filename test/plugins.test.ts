@@ -59,6 +59,50 @@ describe('manifest validation', () => {
       contributes: { capture: [{ platforms: ['macOS'] }] } }, tmp)).toMatchObject({ ok: false })
   })
 
+  // applyContributions maps over each list and calls string methods on each
+  // entry's text, so a value of another shape used to throw out of it, in the
+  // middle of applying every plugin (`c.capture.map is not a function`).
+  it.each([
+    ['capture as text', { capture: 'abc' }],
+    ['capture as an object', { capture: { id: 'x' } }],
+    ['capture entry that is not an object', { capture: [null] }],
+    ['capture hookFile that is not text', { capture: [{ id: 'x', hookFile: 7 }] }],
+    ['capture id that is not text', { capture: [{ id: 7, hookFile: 'h.sh' }] }],
+    ['capture requires that is not a list', { capture: [{ id: 'x', hookFile: 'h.sh', requires: 'git' }] }],
+    ['capture manualSteps that is not a list', { capture: [{ id: 'x', hookFile: 'h.sh', manualSteps: 'run it' }] }],
+    ['capture manualSteps with no label', { capture: [{ id: 'x', hookFile: 'h.sh', manualSteps: [{ command: 'x' }] }] }],
+    ['lootPatterns as text', { lootPatterns: 'abc' }],
+    ['lootPatterns entry that is null', { lootPatterns: [null] }],
+    ['lootPatterns name that is not text', { lootPatterns: [{ type: 't', pattern: 'p', name: 5 }] }],
+    ['commandTags as an object', { commandTags: { name: 'x' } }],
+    ['targetExtractors as a number', { targetExtractors: 3 }],
+    ['targetExtractors name that is not text', { targetExtractors: [{ cmd: 'c', name: {} }] }],
+    ['eventTypes as text', { eventTypes: 'abc' }],
+    ['eventTypes entry that is a list', { eventTypes: [[]] }],
+    ['redaction as a list', { redaction: [] }],
+    ['redaction as text', { redaction: 'abc' }],
+    ['redaction denylist that is not a list', { redaction: { denylist: 'abc' } }],
+    ['redaction allowlist that is a number', { redaction: { allowlist: 5 } }],
+    ['tailers that is not a path', { tailers: 5 }],
+    ['null for a list', { capture: null }]
+  ])('rejects a contributes of the wrong shape: %s', (_what, contributes) => {
+    const r = validateManifest({ id: 'shape-test', name: 'x', version: '1.0.0', redlogApi: 1, contributes }, tmp)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/^contributes\./)
+  })
+
+  it('still accepts each key in the shape it is read in', () => {
+    const r = validateManifest({
+      id: 'shape-ok', name: 'x', version: '1.0.0', redlogApi: 1,
+      contributes: {
+        lootPatterns: [{ type: 't', pattern: 'p', name: 'n' }], commandTags: [{ name: 'n', match: 'm', stamp: {} }],
+        targetExtractors: [{ cmd: 'c', name: 'n' }], eventTypes: [{ agentType: 'a', label: 'l' }],
+        redaction: { denylist: ['a'], allowlist: ['b'] }, terminalProfiles: []
+      }
+    }, tmp)
+    expect(r).toMatchObject({ ok: true })
+  })
+
   it('rejects bad id, path traversal, unknown capability', () => {
     const dir = tmp
     expect(validateManifest({ id: 'Bad Id', name: 'x', version: '1.0.0', redlogApi: 1, contributes: {} }, dir).ok).toBe(false)
@@ -429,6 +473,28 @@ describe('terminalProfiles in a manifest', () => {
       removeContributions('tp-decl')
       revoke('tp-decl')
       warn.mockRestore()
+    }
+  })
+
+  // A user's tailer is refused whatever is agreed, so there is nothing to
+  // approve in it. Its profiles are another matter, and were left with no way to
+  // be approved.
+  it('a third-party tailer that also declares profiles can be approved for the profiles; the tailer still does not run', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    writePlugin('tp-tailer', { ...manifestBase, id: 'tp-tailer', contributes: { tailers: 'tailer.js', terminalProfiles: [ligolo] } },
+      { 'tailer.js': 'throw new Error("must never be loaded")' })
+    writePlugin('tp-tailer-only', { ...manifestBase, id: 'tp-tailer-only', contributes: { tailers: 'tailer.js' } },
+      { 'tailer.js': 'throw new Error("must never be loaded")' })
+    try {
+      initPlugins()
+      expect(grantPluginTrust('tp-tailer-only').error).toMatch(/Third-party tailers are not supported/)
+      expect(grantPluginTrust('tp-tailer')).toEqual({ ok: true })
+      expect(statusOf('tp-tailer')).toBe('active')
+      expect(snapshotIds()).toEqual(['tp-tailer/ligolo'])
+      expect(getContributionReport('tp-tailer')?.tailers?.state).toBe('rejected')
+    } finally {
+      removeContributions('tp-tailer'); removeContributions('tp-tailer-only')
+      revoke('tp-tailer'); warn.mockRestore()
     }
   })
 

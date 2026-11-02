@@ -214,8 +214,8 @@ export type PluginTier = 'declarative' | 'privileged'
 
 export type PluginStatus =
   | 'active'            // loaded and contributing
-  | 'needs-consent'     // 🔴 code plugin awaiting trust grant
-  | 'hash-changed'      // 🔴 previously trusted but code changed on disk → re-consent
+  | 'needs-consent'     // awaiting the operator's approval: it runs code, or declares terminal profiles
+  | 'hash-changed'      // approved before but its content changed on disk → re-approve
   | 'disabled'          // operator turned it off
   | 'error'             // manifest invalid / failed to load
 
