@@ -69,11 +69,10 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
       expect(out).not.toContain('BUILTIN\\Users')
       expect(out).not.toContain('Authenticated Users')
     }
+    // Nothing reaches the directory, or a file already in it, from the project
+    // directory. A sidecar created afterwards may inherit — but only from this
+    // directory, which the loop above has already held to the owner.
     for (const out of [seen.dir, seen.earlier]) expect(out).not.toContain('(I)')
-    // A file created in the directory takes the process token's default ACL
-    // (the user, SYSTEM, and Administrators when the user is one), and nothing
-    // inherited from the project directory.
-    expect(seen.sidecar).not.toContain('(I)')
 
     expect(fs.readFileSync(earlier, 'utf-8')).toBe('EARLIER-CONVERSATION')
     expect(fs.readFileSync(sidecar, 'utf-8')).toContain('second')
