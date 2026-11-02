@@ -434,7 +434,9 @@ _redlog_preexec() {
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
     # The shell's pid is in the name so a later shell can tell whose it was.
-    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.$$.XXXXXX 2>/dev/null) \
+    # A full template, not `-t`: BSD mktemp's `-t` ignores $TMPDIR, and the
+    # sweep (shell-common.sh) looks for leftovers in $TMPDIR.
+    if _REDLOG_RELAY_DIR=$(mktemp -d "${${TMPDIR:-/tmp}%/}/redlog-relay.$$.XXXXXX" 2>/dev/null) \
        && _redlog_divert "$_REDLOG_RELAY_DIR"; then
       :
     else
