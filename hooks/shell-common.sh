@@ -208,8 +208,15 @@ _redlog_adapter_shell() {
 # adapter: the rc line that sources the hook is appended at install, so any PATH
 # line a later installer adds comes after it and is only in effect by then.
 # Behind the prompt and silent; what it finds changes nothing the adapter does.
+#
+# Only while RedLog is reachable and this shell is recording: after `redlog stop`
+# RedLog writes nothing new for it. The flag is set here, once a report has
+# actually started, so a shell that begins stopped reports at its first prompt
+# after `redlog start`.
 _redlog_report_tools() {
   _redlog_is_running || return 0
+  _redlog_is_recording || return 0
+  _REDLOG_TOOLS_REPORTED=1
   _redlog_adapter_shell
   ( python3 "$_REDLOG_RELAY" detect --home "${_REDLOG_DIR%/*}" --session "${_REDLOG_SESSION_ID:-}" \
       --shell "$_redlog_shell" </dev/null >/dev/null 2>&1 & )

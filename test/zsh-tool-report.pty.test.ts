@@ -84,6 +84,40 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
     expect(run.steps[2].output).toContain('rc-1')
   }, 300_000)
 
+  // After `redlog stop` RedLog writes nothing new for that shell, and that
+  // includes this report. A shell that begins stopped (machine mode manual)
+  // reports at the first prompt after `redlog start`, once; stopping and
+  // starting again adds nothing.
+  it('writes no report while stopped, one after redlog start, and no second one after that', async () => {
+    const reports = 'rl_n' // defined in the rc: a long typed line wraps and is echoed into the output
+    const run = await runZsh(target!, {
+      rc: [
+        'export REDLOG_SESSION_TRACE="$HOME/detect-trace"',
+        'mkdir -p "$HOME/.redlog" && echo manual > "$HOME/.redlog/terminal-mode"',
+        `rl_n() { cat $HOME/detect-trace 2>/dev/null | grep -c ' relay detect checked='; }`,
+        `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+      ].join('\n'),
+      commands: [
+        'echo one', 'echo two',
+        'sleep 1; echo slept-$((1+1))',
+        `${reports}; test -d $HOME/.redlog/tool-detection; echo dir-rc-$?`, // 3: while stopped
+        'redlog start',
+        WAIT_FOR_REPORT,
+        'sleep 1; echo slept-$((1+1))',
+        reports, // 7: after start
+        'redlog stop', 'echo three', 'redlog start', 'echo four',
+        'sleep 1; echo slept-$((1+1))',
+        reports // 13: after stop and start again
+      ],
+      redlog: { port: collector.port, token },
+      timeoutSeconds: 60
+    })
+    expect(run.ok, run.error).toBe(true)
+    expect(run.steps[3].output, 'a stopped shell reported').toMatch(/^0\s+dir-rc-1/)
+    expect(run.steps[7].output.trim(), 'redlog start did not produce exactly one report').toBe('1')
+    expect(run.steps[13].output.trim(), 'stop and start again reported again').toBe('1')
+  }, 300_000)
+
   // Under WARN_CREATE_GLOBAL a function that assigns an undeclared parameter
   // prints a warning. The first prompt now runs the shell-name lookup, which on
   // main first ran at the first command; the adapter declares what it assigns.

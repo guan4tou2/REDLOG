@@ -487,7 +487,10 @@ _redlog_precmd() {
   local exit_code=$?
   # Once per shell, at the first prompt and ahead of the early return below,
   # which is what the first prompt takes: there is no command yet.
-  if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _REDLOG_TOOLS_REPORTED=1; _redlog_report_tools; fi
+  # The flag is set by the function once a report has started. Until then (RedLog
+  # down, or this shell stopped) each prompt runs the same recording check that
+  # preexec already pays per command, so a stopped shell costs nothing new.
+  if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _redlog_report_tools; fi
   [[ -n "$_REDLOG_LAST_CMD" ]] || return
 
   _redlog_warn_unreachable

@@ -59,6 +59,11 @@ describe('shell adapter boundaries', () => {
     const common = read('hooks/shell-common.sh')
     expect(common).toContain('_redlog_report_tools()')
     expect(common).not.toContain('tool-detection')
+    // Gated on the one recording rule, and the flag set only after the gate.
+    const report = common.slice(common.indexOf('_redlog_report_tools() {'))
+    const gate = report.indexOf('_redlog_is_recording || return 0')
+    expect(gate).toBeGreaterThan(-1)
+    expect(report.indexOf('_REDLOG_TOOLS_REPORTED=1')).toBeGreaterThan(gate)
     for (const adapter of ['hooks/shell-bash-hook.sh', 'hooks/shell-zsh-hook.zsh']) {
       const text = read(adapter)
       expect(text, adapter).not.toContain('tool-detection')
