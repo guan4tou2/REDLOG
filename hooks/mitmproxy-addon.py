@@ -258,21 +258,28 @@ def _save_gaps(records: list):
     """Write each gap record to the spool. One that cannot be written leaves a
     line in this form, whatever the gap, for the app to read (#460, #507):
 
-        [redlog] capture gap not saved: N event(s) reason=R started=MS ended=MS engagement=ID
+        [redlog] capture gap not saved: N event(s) reason=R started=MS ended=MS engagement=ID nonce=HEX
 
     The window is the one the record carries (a delivery-unconfirmed record has
     only the time it was reported). The engagement is the project that owns the
-    gap, which is not necessarily the one open when the app reads the line.
+    gap, which is not necessarily the one open when the app reads the line; "-"
+    when the record names none, which the app will not place in any project.
+    The nonce is the app's per-start secret from the environment: mitmproxy
+    echoes text a remote server sent it into the same output, so the app
+    accepts only a line that carries it. It is written nowhere else.
     Never a URL, header or body."""
+    nonce = os.environ.get("REDLOG_PROXY_GAP_NONCE", "")
     for record in records:
         if _write_spool_record(record):
             continue
         data = record["data"]
-        started = data.get("gap_started_at", data.get("reported_at"))
-        ended = data.get("gap_ended_at", data.get("reported_at"))
-        window = f" started={started} ended={ended}" if started is not None and ended is not None else ""
+        now_ms = int(time.time() * 1000)
+        started = data.get("gap_started_at", data.get("reported_at", now_ms))
+        ended = data.get("gap_ended_at", data.get("reported_at", now_ms))
+        engagement = "".join(str(record["_identity"].get("engagementId") or "-").split()) or "-"
         ctx.log.warn(f"[redlog] capture gap not saved: {data.get('skipped_units', 1)} event(s) "
-                     f"reason={data['reason']}{window} engagement={record['_identity'].get('engagementId')}")
+                     f"reason={data['reason']} started={started} ended={ended} engagement={engagement}"
+                     + (f" nonce={nonce}" if nonce else ""))
 
 
 def _note_refusal(payload: dict, reason: str):

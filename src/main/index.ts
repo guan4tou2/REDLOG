@@ -13,7 +13,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
-import { unsavedGapEventData } from '../core/unsaved-gap'
+import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
@@ -330,11 +330,12 @@ managedHttpProxy.onStatusChange((next, previous) => {
 // project the line says owns it, and only if that is the one open now (#507).
 managedHttpProxy.onUnsavedGap((gap) => {
   const open = projectRuntime.current()
-  if (!open || (gap.engagementId && gap.engagementId !== open.engagementId)) {
-    console.warn(`[http-proxy] a ${gap.reason} gap of ${gap.units} event(s) for engagement ${gap.engagementId ?? '?'} could not be saved and its project is not open`)
+  const data = unsavedGapForProject(gap, open)
+  if (!open || !data) {
+    console.warn(`[http-proxy] a ${gap.reason} gap of ${gap.units} event(s) for engagement ${gap.engagementId} could not be saved and its project is not open`)
     return
   }
-  ingestEvent('system', unsavedGapEventData(gap), open)
+  ingestEvent('system', data, open)
 })
 
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
