@@ -1738,7 +1738,10 @@ def detect_cmd(argv):
         pass
     shell = opts["shell"] if opts["shell"] and re.fullmatch(r"[A-Za-z0-9._-]{1,32}", opts["shell"]) else "unknown"
     distro = (os.environ.get("WSL_DISTRO_NAME") or "")[:128]
-    environment = "shell:%s:%s:%s" % (sys.platform, distro or "-", shell)
+    # The id is what RedLog reads back and matches against `^shell:[A-Za-z0-9._:-]{1,160}$`;
+    # the distro as WSL spells it stays in `wslDistro`.
+    distro_id = re.sub(r"[^A-Za-z0-9._-]", "_", distro[:64])
+    environment = "shell:%s:%s:%s" % (sys.platform, distro_id or "-", shell)
     report = {
         "version": 1,
         "environment": environment,

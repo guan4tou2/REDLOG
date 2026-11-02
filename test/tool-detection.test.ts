@@ -157,6 +157,42 @@ describe('shell reports', () => {
     expect(snap.environments.map((e) => e.id)).toEqual(['shell:linux:kali-linux:zsh'])
   })
 
+  it('only takes an environment id that is a shell id and cannot be the app\'s', async () => {
+    writeReport('app-id', report({ environment: 'app:linux' }))
+    writeReport('empty-tail', report({ environment: 'shell:' }))
+    writeReport('space', report({ environment: 'shell:linux:kali linux:zsh' }))
+    writeReport('slash', report({ environment: 'shell:linux:a/b:zsh' }))
+    writeReport('long', report({ environment: `shell:${'x'.repeat(161)}` }))
+    writeReport('ok-max', report({ environment: `shell:${'x'.repeat(160)}` }))
+    const detector = createToolDetector({ home, platform: 'linux', env: () => ({ PATH: '' }), profiles: () => PROFILES })
+    const snap = await detector.rescan('manual')
+    expect(snap.environments.map((e) => e.id)).toEqual(['app:linux', `shell:${'x'.repeat(160)}`])
+    expect(snap.environments.filter((e) => e.source === 'shell')).toHaveLength(1)
+  })
+
+  it('rejects a report with no real time on it', async () => {
+    writeReport('zero', report({ environment: 'shell:zero', detectedAt: 0 }))
+    writeReport('negative', report({ environment: 'shell:negative', detectedAt: -5 }))
+    writeReport('one', report({ environment: 'shell:one', detectedAt: 1 }))
+    const detector = createToolDetector({ home, platform: 'linux', env: () => ({}), profiles: () => PROFILES })
+    expect((await detector.snapshot()).environments.map((e) => e.id)).toEqual(['shell:one'])
+  })
+
+  it('calls a report from more than a day in the future stale', async () => {
+    const now = 5_000_000_000
+    writeReport('soon', report({ environment: 'shell:soon', detectedAt: now + DAY }))
+    writeReport('far', report({ environment: 'shell:far', detectedAt: now + DAY + 1 }))
+    const detector = createToolDetector({ home, platform: 'linux', env: () => ({}), profiles: () => PROFILES, now: () => now })
+    const snap = await detector.snapshot()
+    expect(Object.fromEntries(snap.environments.map((e) => [e.id, e.stale]))).toEqual({ 'shell:soon': false, 'shell:far': true })
+  })
+
+  it('rejects a report that lists a name twice', async () => {
+    writeReport('dup', report({ environment: 'shell:dup', checked: ['vim', 'vi', 'vim'], found: {} }))
+    const detector = createToolDetector({ home, platform: 'linux', env: () => ({}), profiles: () => PROFILES })
+    expect((await detector.snapshot()).environments).toEqual([])
+  })
+
   it('reads at most 64 reports, the newest by modification time', async () => {
     for (let i = 0; i < 70; i++) {
       const file = writeReport(`r${i}`, report({ environment: `shell:linux:-:e${i}`, detectedAt: i }))

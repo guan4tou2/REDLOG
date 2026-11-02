@@ -128,7 +128,9 @@ describeShell(`redlog-relay detect (${target?.label ?? 'no shell reachable'})`, 
     ].join('\n'), { timeoutMs: 60_000 })
     expect(run.stdout, run.stderr.slice(0, 400)).toContain('exit=0')
     const report = JSON.parse(section(run.stdout, 'report')) as Report
-    expect(report.environment).toBe(`shell:${report.platform}:kali linux/x:bash`)
+    // The id is made of characters RedLog's reader accepts; the distro as WSL spells it is kept beside it.
+    expect(report.environment).toBe(`shell:${report.platform}:kali_linux_x:bash`)
+    expect(report.environment).toMatch(/^shell:[A-Za-z0-9._:-]{1,160}$/)
     expect(report.wslDistro).toBe('kali linux/x')
     expect(report.shell).toBe('bash')
     expect(section(run.stdout, 'files').trim()).toBe(`shell_${report.platform}_kali_linux_x_bash.json`)

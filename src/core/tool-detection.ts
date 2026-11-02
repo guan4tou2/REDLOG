@@ -51,6 +51,8 @@ const MAX_REPORTS = 64
 const MAX_REPORT_BYTES = 65_536
 const MAX_EXECUTABLES = 64
 
+const MAX_FUTURE_MS = 86_400_000
+const SHELL_ENVIRONMENT = /^shell:[A-Za-z0-9._:-]{1,160}$/
 const MAX_CHECKED = 256
 const MAX_NAME = 128
 const MAX_PATH = 4096
@@ -82,13 +84,15 @@ const optionalString = (v: unknown): v is string | undefined => v === undefined 
 function parseReport(raw: unknown): ShellReport | null {
   if (!isRecord(raw) || raw.version !== 1) return null
   const { environment, platform, shell, wslDistro, sessionId, detectedAt, checked, found } = raw
-  if (typeof environment !== 'string' || typeof platform !== 'string') return null
+  // `shell:` and nothing else, so a report can never take the place of `app:*`.
+  if (typeof environment !== 'string' || !SHELL_ENVIRONMENT.test(environment) || typeof platform !== 'string') return null
   if (!optionalString(shell) || !optionalString(wslDistro) || !optionalString(sessionId)) return null
-  if (typeof detectedAt !== 'number' || !Number.isFinite(detectedAt)) return null
+  if (typeof detectedAt !== 'number' || !Number.isFinite(detectedAt) || detectedAt <= 0) return null
   if (!Array.isArray(checked) || checked.length > MAX_CHECKED) return null
   if (!checked.every((n): n is string => typeof n === 'string' && n.length <= MAX_NAME)) return null
   if (!isRecord(found)) return null
   const names = new Set<string>(checked)
+  if (names.size !== checked.length) return null
   const hits = new Map<string, string>()
   for (const [name, where] of Object.entries(found)) {
     if (!names.has(name) || typeof where !== 'string' || where.length === 0 || where.length > MAX_PATH) return null
@@ -206,7 +210,8 @@ export function createToolDetector(deps: {
     for (const r of shells) {
       const env: EnvironmentDetection = {
         id: r.id, source: 'shell', platform: r.platform, detectedAt: r.detectedAt,
-        stale: at - r.detectedAt > STALE_AFTER_MS,
+        // A clock that was far ahead when the report was written is as untrustworthy as an old one.
+        stale: at - r.detectedAt > STALE_AFTER_MS || r.detectedAt - at > MAX_FUTURE_MS,
         profiles: profiles.map((p) => profileDetection(r, p))
       }
       if (r.shell !== undefined) env.shell = r.shell
