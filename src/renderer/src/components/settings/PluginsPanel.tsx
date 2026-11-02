@@ -30,6 +30,7 @@ interface PluginView {
     commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
   } | null
 }
 
@@ -43,6 +44,7 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
   const commandTags = p.report?.commandTags
   const eventTypes = p.report?.eventTypes
   const capture = p.report?.capture
+  const terminalProfiles = p.report?.terminalProfiles
   const rejected = loot?.rejected ?? []
   const redactionRejected = redaction?.rejected ?? []
   // #348: the four kinds that could fail quietly now report like the other
@@ -51,9 +53,10 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
     { key: 'targetExtractors', label: 'plugins.results.targetExtractors', value: extractors },
     { key: 'commandTags', label: 'plugins.results.commandTags', value: commandTags },
     { key: 'eventTypes', label: 'plugins.results.eventTypes', value: eventTypes },
-    { key: 'capture', label: 'plugins.results.capture', value: capture }
+    { key: 'capture', label: 'plugins.results.capture', value: capture },
+    { key: 'terminalProfiles', label: 'plugins.results.terminalProfiles', value: terminalProfiles }
   ] as const
-  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture) return null
+  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture && !terminalProfiles) return null
   return (
     <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
       {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}

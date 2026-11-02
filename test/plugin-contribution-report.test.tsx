@@ -124,6 +124,20 @@ describe('plugins page shows results', () => {
     expect(screen.getByTestId('plugin-results-capture-p').textContent).toContain('needs both')
   })
 
+  // #499: terminal profiles report like the other kinds, by name.
+  it('lists how many terminal profiles took effect and names the refused ones', async () => {
+    const view = {
+      id: 'tp', name: 'TP', version: '1', description: '', author: '', source: 'user', tier: 'declarative',
+      status: 'active', capabilities: [], contributes: ['terminalProfiles'],
+      report: { terminalProfiles: { accepted: 2, rejected: [{ name: 'nc-pty', reason: 'nc is a shipped native default; change it with redlog class add' }] } }
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    render(<PluginsPanel t={t} />)
+    const box = await screen.findByTestId('plugin-results-terminalProfiles-tp')
+    expect(box.textContent).toContain('Tool profiles: 2 accepted, 1 rejected')
+    expect(box.textContent).toContain('nc-pty: nc is a shipped native default; change it with redlog class add')
+  })
+
   it('shows nothing extra for a plugin with no report', async () => {
     const view = { id: 'q', name: 'Q', version: '1', description: '', author: '', source: 'user', tier: 'declarative', status: 'active', capabilities: [], contributes: [], report: null }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
