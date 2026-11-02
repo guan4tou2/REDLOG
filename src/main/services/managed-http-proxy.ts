@@ -68,6 +68,9 @@ interface Dependencies {
   fingerprint: (caPath: string) => CaFingerprint | null
   readinessTimeoutMs: number
   probe: (url: string, token: string) => Promise<boolean>
+  requestStop: (url: string, token: string) => Promise<number | null>
+  /** How long a graceful stop waits for the child to leave before killing it. */
+  stopGraceMs: number
 }
 
 /** The token is delivered to the owned addon through its environment, never
@@ -93,6 +96,23 @@ export function probeManagedProxy(url: string, token: string): Promise<boolean> 
   })
 }
 
+/** Ask the owned addon to record what it still holds and shut down (#291).
+ *  The status code it answered with, or null when there was no answer. */
+export function requestManagedProxyStop(url: string, token: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const req = http.request(new URL(url), {
+      method: 'POST', path: `http://${VERIFY_HOST}/__redlog_stop`,
+      headers: { host: VERIFY_HOST, 'x-redlog-control': token, 'content-length': '0' }, agent: false
+    }, (res) => {
+      res.resume()
+      resolve(res.statusCode ?? null)
+    })
+    req.on('error', () => resolve(null))
+    req.setTimeout(1_000, () => { resolve(null); req.destroy() })
+    req.end()
+  })
+}
+
 const DEFAULT_DEPS: Dependencies = {
   spawn: nodeSpawn,
   exists: existsSync,
@@ -100,7 +120,11 @@ const DEFAULT_DEPS: Dependencies = {
   // First start after installing Python packages can still be importing them
   // at five seconds. Keep it starting, with a bounded opportunity to bind.
   readinessTimeoutMs: 30_000,
-  probe: probeManagedProxy
+  probe: probeManagedProxy,
+  requestStop: requestManagedProxyStop,
+  // The addon waits up to two seconds for sends already under way. Inside the
+  // five seconds a following start waits on `released()`.
+  stopGraceMs: 3_500
 }
 
 export function buildManagedProxyArgs(addonPath: string, port: number, listenHost = '127.0.0.1'): string[] {
@@ -131,6 +155,12 @@ export class ManagedHttpProxy {
   // replaced. A project switch is exactly that: close stops A's proxy, open
   // auto-starts B's, and B reported the port in use.
   private exiting: Promise<void> | null = null
+  // How to ask the running child to stop itself. Its own secret, not the
+  // readiness token: the addon hands that one to anyone who asks for it.
+  private control: { child: ChildProcess; url: string; token: string } | null = null
+  // A child asked to stop that has not exited yet. Quitting inside its grace
+  // must still kill it: the timer that would have done so dies with the app.
+  private leaving: ChildProcess | null = null
   private readonly deps: Dependencies
 
   constructor(deps: Partial<Dependencies> = {}) {
@@ -198,13 +228,36 @@ export class ManagedHttpProxy {
     clearTimeout(timer)
   }
 
-  private terminate(child: ChildProcess): void {
+  /**
+   * With `control`, the addon is asked to stop itself first (#291). On Windows
+   * `kill()` is TerminateProcess: mitmdump's shutdown hook never runs, and the
+   * events its send queue held were lost with nothing to say so. Asked, it
+   * records them and exits. A refusal — an addon without the stop path — is
+   * killed at once; no answer, or no exit within the grace, is killed then.
+   */
+  private terminate(child: ChildProcess, control?: { url: string; token: string }): void {
     if (child.exitCode !== null || child.killed) return
     // Listen before signalling: an exit can be delivered synchronously.
     const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
     this.exiting = exited
     void exited.then(() => { if (this.exiting === exited) this.exiting = null })
-    try { child.kill() } catch { /* already exited */ }
+    const kill = (signal?: NodeJS.Signals): void => {
+      if (child.exitCode !== null || child.killed) return
+      try { child.kill(signal) } catch { /* already exited */ }
+    }
+    if (!control) { kill(); return }
+    this.leaving = child
+    // Past the grace, SIGKILL: on POSIX a SIGTERM asks for the shutdown this
+    // child is already in, and one that hangs would hold the port past the
+    // five seconds a following start waits. Its marker covers what it held.
+    const fallback = setTimeout(() => kill('SIGKILL'), this.deps.stopGraceMs)
+    void exited.then(() => {
+      clearTimeout(fallback)
+      if (this.leaving === child) this.leaving = null
+    })
+    void this.deps.requestStop(control.url, control.token).then((status) => {
+      if (status !== null && status !== 202) { clearTimeout(fallback); kill() }
+    })
   }
 
   noteStartFailure(error: string): ManagedProxyStatus {
@@ -257,6 +310,7 @@ export class ManagedHttpProxy {
     this.update({ state: 'starting', url })
     const generation = ++this.generation
     const token = randomBytes(32).toString('hex')
+    const controlToken = randomBytes(32).toString('hex')
     this.startPromise = new Promise((resolve) => {
       let settled = false
       let diagnostics = ''
@@ -283,7 +337,7 @@ export class ManagedHttpProxy {
       try {
         child = this.deps.spawn('mitmdump', buildManagedProxyArgs(input.addonPath, input.port, listenHost), {
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, REDLOG_PROXY_READY_TOKEN: token }
+          env: { ...process.env, REDLOG_PROXY_READY_TOKEN: token, REDLOG_PROXY_CONTROL_TOKEN: controlToken }
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -292,6 +346,7 @@ export class ManagedHttpProxy {
       }
 
       this.child = child
+      this.control = { child, url, token: controlToken }
       let probing = false
       const checkReady = async (): Promise<void> => {
         if (settled || probing || generation !== this.generation || child.exitCode !== null || child.killed) return
@@ -348,16 +403,27 @@ export class ManagedHttpProxy {
     return started
   }
 
-  stop(): ManagedProxyStatus {
+  /** `graceful` asks a running child to record what it holds before it goes.
+   *  Quitting does not: the app may be gone before the answer, and a child left
+   *  running holds the port. What a kill loses, its in-flight marker bounds. */
+  stop(options: { graceful?: boolean } = {}): ManagedProxyStatus {
     this.generation++
     const child = this.child
     const cancel = this.cancelStart
+    const control = options.graceful && this.snapshot.state === 'running' && this.control?.child === child
+      ? this.control : null
     this.child = null
+    this.control = null
     this.startPromise = null
     this.cancelStart = null
     this.update({ state: 'stopped', url: null })
     cancel?.()
-    if (child) this.terminate(child)
+    const leaving = this.leaving
+    if (!options.graceful && leaving && leaving.exitCode === null && !leaving.killed) {
+      this.leaving = null
+      try { leaving.kill('SIGKILL') } catch { /* already exited */ }
+    }
+    if (child) this.terminate(child, control ?? undefined)
     return this.status()
   }
 }

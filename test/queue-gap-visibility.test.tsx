@@ -92,6 +92,16 @@ describe('a capture gap on the Timeline', () => {
     expect(title).not.toMatch(/\[capture_gap\]/)
   })
 
+  // #291: the proxy stopped with events it had admitted and not delivered.
+  it('says how many were never sent, and how many at most may be missing, when the proxy stopped', () => {
+    const stopped = eventTitle(ev('scanner', { subtype: 'capture_gap', source: 'mitmproxy', reason: 'proxy-stopped', skipped_units: 5 }))
+    const interrupted = eventTitle(ev('scanner', { subtype: 'capture_gap', source: 'mitmproxy', reason: 'delivery-interrupted', skipped_units: 16 }))
+    expect(stopped).toMatch(/5/)
+    expect(interrupted).toMatch(/16/)
+    expect(stopped).not.toBe(interrupted.replace('16', '5'))
+    for (const title of [stopped, interrupted]) expect(title).not.toMatch(/\[capture_gap\]|undefined/)
+  })
+
   it('names refusals that could not be recorded even as a gap', () => {
     const title = eventTitle(ev('system', { subtype: 'capture_gap', source: 'managed-http-proxy', reason: 'gap-unsaved', skipped_units: 4 }))
     expect(title).toMatch(/4/)

@@ -6,8 +6,10 @@ from urllib.parse import urlparse
 # Runs the production RedLogAddon and transport functions without mitmproxy.
 tree = ast.parse(pathlib.Path('hooks/mitmproxy-addon.py').read_text(encoding='utf-8'))
 names = {'_identity_matches_active', '_embed_identity', '_spool_payload', '_send_to_redlog', '_send_to_redlog_and_get_id', '_dns_type_name', '_dns_rcode_name',
-         '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps'}
-gap_state = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT'}
+         '_write_spool_record', '_note_refusal', '_note_switch_refusal', '_flush_gaps', '_declared_body_bytes', '_gap_record', '_save_gaps',
+         '_inflight_key', '_write_inflight_marker', '_inflight_admit', '_inflight_begin', '_inflight_end'}
+gap_state = {'_GAP_FLUSH_MS', '_GAP_WINDOWS', '_GAP_LOCK', '_GAP_TEXT',
+             '_INFLIGHT', '_INFLIGHT_LOCK', '_INFLIGHT_STATE', '_INFLIGHT_STEP', '_INFLIGHT_INSTANCE', '_INFLIGHT_STARTED_MS'}
 body = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name in names) or (isinstance(n, ast.ClassDef) and n.name == 'RedLogAddon')
         or (isinstance(n, (ast.Assign, ast.AnnAssign)) and any(isinstance(t, ast.Name) and t.id in gap_state for t in (n.targets if isinstance(n, ast.Assign) else [n.target])))]
 
@@ -30,7 +32,7 @@ with tempfile.TemporaryDirectory() as directory:
               http=stub, tcp=stub, tls=stub, ctx=types.SimpleNamespace(log=log),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
               _SEND_QUEUE=types.SimpleNamespace(put=pending.append),
-              _IDENTITY_PATH=root / 'identity', SPOOL_DIR=root / 'pending',
+              _IDENTITY_PATH=root / 'identity', SPOOL_DIR=root / 'pending', INFLIGHT_DIR=root / 'inflight', os=__import__('os'),
               _get_redlog_connection=lambda: ('1234', 'token'),
               _extract_params=stop, _client_addr=lambda _: '127.0.0.1:5353', _socket_owner_pid=lambda _: None)
     exec(compile(ast.Module(body=body, type_ignores=[]), '<production-addon>', 'exec'), ns)

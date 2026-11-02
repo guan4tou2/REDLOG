@@ -1328,6 +1328,8 @@
   "eventTitle.gapQueueFull": "[缺口] Proxy 佇列已滿，拒收 {{count}} 筆 HTTP 事件",
   "eventTitle.gapProjectSwitched": "[缺口] 已切換專案，拒收 {{count}} 筆 HTTP 事件",
   "eventTitle.gapDeliveryUnconfirmed": "[缺口] HTTP 事件未確認送達",
+  "eventTitle.gapProxyStopped": "[缺口] Proxy 已停止，{{count}} 筆 HTTP 事件未送出",
+  "eventTitle.gapDeliveryInterrupted": "[缺口] Proxy 停止時正在送出，最多 {{count}} 筆 HTTP 事件可能遺失",
   "eventTitle.gapUnsaved": "[缺口] {{count}} 筆 HTTP 事件遺失，缺口也未能寫入",
   "filter.title": "篩選",
   "filter.target": "目標",

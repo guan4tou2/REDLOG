@@ -67,6 +67,7 @@ Capture verification (#220):
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import sys
@@ -88,6 +89,7 @@ from mitmproxy import http, tcp, tls, ctx
 REDLOG_PORT_FILE = Path.home() / ".redlog" / "api-port"
 REDLOG_TOKEN_FILE = Path.home() / ".redlog" / "api-token"
 SPOOL_DIR = Path.home() / ".redlog" / "pending"
+INFLIGHT_DIR = Path.home() / ".redlog" / "inflight"
 
 # Which listener produced an HTTP event. The transparent-proxy producer launches
 # mitmdump with REDLOG_PROXY_MODE=transparent; anything else is a regular proxy.
@@ -208,6 +210,9 @@ _GAP_LOCK = threading.Lock()
 _GAP_TEXT = {
     "queue-full": ("not-queued", "The proxy's send queue was full, so these events were not recorded."),
     "project-switched": ("not-sent", "These events arrived after another project was opened, so they were not recorded."),
+    # #291: the proxy stopped holding events it had admitted.
+    "proxy-stopped": ("not-sent", "The proxy stopped before sending these events, so they were not recorded."),
+    "delivery-interrupted": ("unknown", "The proxy stopped while these events were being sent; some or all of them may not have been recorded."),
 }
 
 
@@ -224,13 +229,14 @@ def _declared_body_bytes(data: dict) -> int:
 
 def _gap_record(window: dict, now_ms: int) -> dict:
     delivery, cause = _GAP_TEXT[window["reason"]]
+    count = "an upper bound on what was lost" if delivery == "unknown" else "exact for this window"
     return {"agent_type": "scanner", "_identity": window["identity"], "data": {
         "subtype": "capture_gap", "source": "mitmproxy",
         "reason": window["reason"], "capture_delivery": delivery,
         "gap_started_at": window["started"], "gap_ended_at": window["last"],
         "skipped_units": window["units"], "skipped_body_bytes": window["bytes"],
         "reported_at": now_ms,
-        "description": f"{cause} The count is exact for this window; body bytes are those the events declared.",
+        "description": f"{cause} The count is {count}; body bytes are those the events declared.",
     }}
 
 
@@ -245,9 +251,12 @@ def _save_gaps(records: list):
         if record["data"]["reason"] == "queue-full":
             ctx.log.warn(f"[redlog] capture gap not saved: {units} event(s) "
                          "refused at a full send queue are not recorded anywhere")
-        else:
+        elif record["data"]["reason"] == "project-switched":
             ctx.log.warn(f"[redlog] project-switch gap not saved: {units} event(s) "
                          "for a closed project are not recorded anywhere")
+        else:
+            ctx.log.warn(f"[redlog] stop gap not saved: {units} event(s) "
+                         "held when the proxy stopped are not recorded anywhere")
 
 
 def _note_refusal(payload: dict, reason: str):
@@ -292,6 +301,162 @@ def _flush_gaps(sent: bool = False):
     _save_gaps(records)
 
 
+# #291: an event admitted to the send queue and not yet delivered was lost
+# with no record when the proxy stopped. While anything is in flight, a marker
+# under INFLIGHT_DIR holds an upper bound per project — when and how many,
+# never content — written before the event is queued, so a kill at any later
+# point leaves a bound that covers it. The app turns the marker of a proxy that
+# is gone into a capture_gap. The bound is rounded up to _INFLIGHT_STEP, so a
+# busy queue does not write a file per event, and a heartbeat lowers it to what
+# is really in flight each second and removes the marker once nothing is. A
+# stop the addon is told about (its shutdown hook, or the owner's stop request)
+# records the exact count instead, and removes the marker.
+_INFLIGHT: dict = {}
+_INFLIGHT_LOCK = threading.Lock()
+_INFLIGHT_STATE = {"stopping": False, "marker": False}
+_INFLIGHT_STEP = 8
+_INFLIGHT_INSTANCE = f"{os.getpid()}-{time.time_ns()}"
+_INFLIGHT_STARTED_MS = int(time.time() * 1000)
+
+
+def _inflight_key(payload: dict) -> tuple:
+    ident = payload["_identity"]
+    return (ident.get("engagementId"), ident.get("operatorId"))
+
+
+def _write_inflight_marker() -> bool:
+    """Write the bounds, or remove the marker when none is left. False when
+    the disk does not hold what memory does. Called with _INFLIGHT_LOCK held."""
+    path = INFLIGHT_DIR / f"{_INFLIGHT_INSTANCE}.json"
+    live = [entry for entry in _INFLIGHT.values() if entry["bound"]]
+    try:
+        if not live:
+            if _INFLIGHT_STATE["marker"]:
+                path.unlink(missing_ok=True)
+                _INFLIGHT_STATE["marker"] = False
+            return True
+        INFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
+        marker = {"version": 1, "instance": _INFLIGHT_INSTANCE, "pid": os.getpid(),
+                  "started_at": _INFLIGHT_STARTED_MS, "heartbeat_at": int(time.time() * 1000),
+                  "identities": [{"identity": entry["identity"], "upper_bound": entry["bound"],
+                                  "since": entry["since"], "last": entry["last"]} for entry in live]}
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(json.dumps(marker), encoding="utf-8")
+        temporary.replace(path)
+        _INFLIGHT_STATE["marker"] = True
+        return True
+    except Exception:
+        return False  # Capture must not wait on, or fail for, its own bookkeeping.
+
+
+def _inflight_admit(payload: dict) -> bool:
+    """Count an event into the queue. False once the proxy is stopping."""
+    key = _inflight_key(payload)
+    now_ms = int(time.time() * 1000)
+    with _INFLIGHT_LOCK:
+        if _INFLIGHT_STATE["stopping"]:
+            return False
+        entry = _INFLIGHT.setdefault(key, {"identity": payload["_identity"], "queued": 0, "queued_bytes": 0,
+                                           "sending": 0, "bound": 0, "since": now_ms})
+        entry["queued"] += 1
+        entry["queued_bytes"] += _declared_body_bytes(payload.get("data") or {})
+        entry["last"] = now_ms
+        held = entry["queued"] + entry["sending"]
+        if held > entry["bound"]:
+            # Only a bound on disk counts: one that failed to write (a reader
+            # holding the file on Windows) is tried again by the next event.
+            written = entry["bound"]
+            entry["bound"] = -(-held // _INFLIGHT_STEP) * _INFLIGHT_STEP
+            if not _write_inflight_marker():
+                entry["bound"] = written
+    return True
+
+
+def _inflight_begin(key: tuple, size: int) -> bool:
+    """A worker takes an event. False when a stop has already counted it as
+    not sent: it must not be sent after being recorded as lost."""
+    with _INFLIGHT_LOCK:
+        entry = _INFLIGHT.get(key)
+        if _INFLIGHT_STATE["stopping"] or entry is None:
+            return False
+        entry["queued"] -= 1
+        entry["queued_bytes"] -= size
+        entry["sending"] += 1
+    return True
+
+
+def _inflight_end(key: tuple):
+    with _INFLIGHT_LOCK:
+        entry = _INFLIGHT.get(key)
+        if entry is not None:
+            entry["sending"] -= 1
+
+
+def _inflight_beat():
+    """Lower each bound to what is still in flight and refresh the marker's
+    heartbeat, so the app can tell a live proxy's marker from a dead one's."""
+    with _INFLIGHT_LOCK:
+        if _INFLIGHT_STATE["stopping"] or not (_INFLIGHT or _INFLIGHT_STATE["marker"]):
+            return
+        for key, entry in list(_INFLIGHT.items()):
+            entry["bound"] = entry["queued"] + entry["sending"]
+            if not entry["bound"]:
+                del _INFLIGHT[key]
+        _write_inflight_marker()
+
+
+def _inflight_loop():
+    while True:
+        time.sleep(1)
+        _inflight_beat()
+
+
+def _stop_sending(wait_s: float):
+    """Stop admitting, and record what will now never be delivered: the events
+    still queued exactly, as not sent, and those a worker is still sending after
+    `wait_s` as unconfirmed — they may have arrived. Then remove the marker,
+    which these records replace. Only the first call does anything."""
+    now_ms = int(time.time() * 1000)
+    records = []
+    with _INFLIGHT_LOCK:
+        if _INFLIGHT_STATE["stopping"]:
+            return
+        _INFLIGHT_STATE["stopping"] = True
+        for entry in _INFLIGHT.values():
+            if entry["queued"]:
+                records.append(_gap_record({"reason": "proxy-stopped", "identity": entry["identity"],
+                                            "started": entry["since"], "last": entry["last"],
+                                            "units": entry["queued"], "bytes": entry["queued_bytes"]}, now_ms))
+                entry["queued"] = entry["queued_bytes"] = 0
+            # What is recorded exactly leaves the bound at once: a kill during
+            # the wait below must not count it a second time.
+            entry["bound"] = entry["sending"]
+        _write_inflight_marker()
+    _save_gaps(records)
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:
+        with _INFLIGHT_LOCK:
+            if not any(entry["sending"] for entry in _INFLIGHT.values()):
+                break
+        time.sleep(0.05)
+    now_ms = int(time.time() * 1000)
+    with _INFLIGHT_LOCK:
+        records = [_gap_record({"reason": "delivery-interrupted", "identity": entry["identity"],
+                                "started": entry["since"], "last": entry["last"],
+                                "units": entry["sending"], "bytes": 0}, now_ms)
+                   for entry in _INFLIGHT.values() if entry["sending"]]
+        _INFLIGHT.clear()
+        _write_inflight_marker()
+    _save_gaps(records)
+
+
+def _stop_and_exit():
+    """The owner's stop request: record, then shut down as a signal would."""
+    _stop_sending(2.0)
+    _flush_gaps()
+    ctx.master.shutdown()
+
+
 _SEND_SLOTS = threading.BoundedSemaphore(64)
 _SEND_QUEUE = queue.SimpleQueue()
 
@@ -307,6 +472,7 @@ def _send_worker():
 
 for _worker_number in range(4):
     threading.Thread(target=_send_worker, daemon=True).start()
+threading.Thread(target=_inflight_loop, daemon=True).start()
 
 
 def _send_to_redlog(payload: dict):
@@ -322,10 +488,18 @@ def _send_to_redlog(payload: dict):
         ctx.log.warn("[redlog] capture queue full; event not retained")
         _note_refusal(payload, "queue-full")
         return False
+    if not _inflight_admit(payload):
+        _SEND_SLOTS.release()
+        _note_refusal(payload, "proxy-stopped")
+        return False
     if _GAP_WINDOWS:
         _flush_gaps(sent=True)
+    key, size = _inflight_key(payload), _declared_body_bytes(payload.get("data") or {})
 
     def _do_send():
+        if not _inflight_begin(key, size):
+            _SEND_SLOTS.release()
+            return
         try:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -349,11 +523,14 @@ def _send_to_redlog(payload: dict):
             _spool_payload(payload)
 
         finally:
+            _inflight_end(key)
             _SEND_SLOTS.release()
 
     try:
         _SEND_QUEUE.put(_do_send)
     except Exception:
+        if _inflight_begin(key, size):
+            _inflight_end(key)
         _SEND_SLOTS.release()
         return False
     return True
@@ -1003,7 +1180,10 @@ class RedLogAddon:
         self._cookie_jar: dict[str, dict[str, str]] = {}
 
     def done(self):
-        # A clean shutdown writes the refusals still being counted (#459, #460).
+        # A clean shutdown records what the queue still held (#291) and writes
+        # the refusals still being counted (#459, #460). On Windows a kill
+        # never reaches here; the owner asks through /__redlog_stop instead.
+        _stop_sending(1.0)
         _flush_gaps()
 
     def _track_cookies(self, domain: str, set_cookies: list[dict], identity: dict):
@@ -1117,6 +1297,19 @@ class RedLogAddon:
             flow.response = http.Response.make(200 if token else 403, token.encode("utf-8"), {
                 "content-type": "text/plain", "cache-control": "no-store"
             })
+            return True
+        if flow.request.path == "/__redlog_stop":
+            # Private managed-process stop (#291). A kill on Windows never runs
+            # done(), so the owner asks here and the addon records what it
+            # still holds before shutting down. Its own token, not the
+            # readiness one: that is served to anyone who asks this host.
+            secret = os.environ.get("REDLOG_PROXY_CONTROL_TOKEN", "")
+            offered = flow.request.headers.get("x-redlog-control", "")
+            if not secret or not hmac.compare_digest(offered.encode("utf-8"), secret.encode("utf-8")):
+                flow.response = http.Response.make(403, b"", {"cache-control": "no-store"})
+                return True
+            flow.response = http.Response.make(202, b"", {"cache-control": "no-store"})
+            threading.Thread(target=_stop_and_exit, daemon=True).start()
             return True
         scheme = flow.request.scheme
         nonce = _verify_nonce(flow.request.path)
