@@ -572,6 +572,40 @@ else
   unset _redlog_user_pc
 fi
 unset _redlog_pc_plan _redlog_pc_set
+# A relayed command's directory is removed by the NEXT prompt command. `exit` is
+# a relayed command like any other, and no prompt follows it, so every shell
+# closed on purpose left one behind (#296). Nothing here restores the
+# descriptors: the shell is ending, and the relay treats a missing directory as
+# the end of the command (`redlog-relay.py`, the `not os.path.isdir` test).
+_redlog_exit_cleanup() {
+  [[ -n "${_REDLOG_RELAY_DIR:-}" ]] && rm -rf "$_REDLOG_RELAY_DIR" 2>/dev/null
+  return 0
+}
+
+# Bash keeps one EXIT trap, and the operator may already hold it. Theirs goes
+# first and ours is added to it, as `_redlog_trap_plan` does for DEBUG. The trap
+# is read through a file because `$(trap -p)` shows nothing before bash 4.4 (a
+# command substitution starts with the traps reset); trusting an empty answer
+# there would replace the operator's trap. With no file to read it, nothing is
+# installed and the sweep at the next load stays the backstop. A trap the
+# operator sets AFTER this loads replaces ours; the same backstop applies.
+_redlog_install_exit_cleanup() {
+  local file body=""
+  file=$(mktemp "${TMPDIR:-/tmp}/redlog-exittrap.XXXXXX" 2>/dev/null) || return 0
+  trap -p EXIT >"$file" 2>/dev/null
+  body=$(<"$file")
+  rm -f "$file"
+  [[ "$body" == *_redlog_exit_cleanup* ]] && return 0
+  if [[ -n "$body" ]]; then
+    eval "set -- $body"
+    # A newline, not `;`: the operator's last line may end in a comment.
+    trap -- "$3"$'\n''_redlog_exit_cleanup' EXIT
+  else
+    trap '_redlog_exit_cleanup' EXIT
+  fi
+}
+_redlog_install_exit_cleanup
+
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
