@@ -37,7 +37,8 @@ import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { readProfileFile } from '../core/profile-file'
 import type { ProfileImportResult } from '../core/profile-import'
-import { runScopeRecompute,queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { runScopeRecompute,queryScopeViolationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { activeViolationCount, invalidateViolationCount } from '../core/scope-violation-count'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/alert/policies'
@@ -635,21 +636,6 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | nul
 //   • project bail — a queued job must never write into the next project's
 //     chain.
 //   • hash gate — the run itself skips when the boundary did not actually move.
-// StatusBar and Sidebar both ask for the violation count on EVERY captured
-// event, so this cannot be a query per event during a scan. Cached, and dropped
-// only when a row that could change it lands.
-let cachedViolationCount: number | null = null
-function activeViolationCount(): number {
-  if (cachedViolationCount === null) cachedViolationCount = countActiveScopeViolations()
-  return cachedViolationCount
-}
-function invalidateViolationCount(): void { cachedViolationCount = null }
-
-const SCOPE_COUNT_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
-eventBus.on('event', (e: RedLogEvent) => {
-  if (e.agentType === 'system' && SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))) invalidateViolationCount()
-})
-
 const RECOMPUTE_DEBOUNCE_MS = 2000
 let recomputeTimer: NodeJS.Timeout | null = null
 let recomputePending: { projectId: string; before: ScopeSnapshot; configChangedId: string | null } | null = null
