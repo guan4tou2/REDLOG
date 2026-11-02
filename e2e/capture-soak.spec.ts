@@ -19,8 +19,9 @@ import { startStreamSources, proxiedWebSocket, treeRss, hardKill, type StreamSou
  *
  *   REDLOG_SOAK_MINUTES           minutes per source (opt-in: unset skips every test)
  *   REDLOG_SOAK_SOURCES           comma list of sse, ws, http, pty; default all four
- *   REDLOG_SOAK_RESTART           quit (the App quits as from the tray), kill (its process
- *                                 tree is killed), or none; default quit
+ *   REDLOG_SOAK_RESTART           quit (the App quits as from the tray), kill (its main
+ *                                 process is killed, as by a crash: what it spawned is
+ *                                 left running), or none; default quit
  *   REDLOG_SOAK_RESTART_AT        fraction of the run at which to restart, default 0.8
  *   REDLOG_SOAK_SAMPLE_S          seconds between samples, default 60
  *   REDLOG_SOAK_OUT_DIR           results directory, default test-results
@@ -230,7 +231,8 @@ async function launch(home?: string): Promise<{ app: ElectronApplication; page: 
 /** The managed proxy, started by the project's open (auto-start) or asked for. */
 async function captureRunning(page: Page): Promise<{ proxy: URL; pid: number }> {
   await page.evaluate(() => window.redlog.httpCapture.status().then(s => s.state === 'running' ? s : window.redlog.httpCapture.start()))
-  await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status().then(s => s.state)), { timeout: 60_000 }).toBe('running')
+  // A start that fails says why: the state alone named nothing.
+  await expect.poll(() => page.evaluate(() => window.redlog.httpCapture.status().then(s => s.state === 'failed' ? `failed: ${s.error}` : s.state)), { timeout: 60_000 }).toBe('running')
   const status = await page.evaluate(() => window.redlog.httpCapture.status())
   return { proxy: new URL(status.url!), pid: status.pid as number }
 }
@@ -644,7 +646,11 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
           if (source === 'pty') (ctx as Ctx & { shownBefore?: number }).shownBefore = await ctx.page.evaluate(() => (window as unknown as { __soakMax: Record<string, number> }).__soakMax.SOAKA)
           const atRestart: Record<string, any> = { t: Math.round((Date.now() - started) / 1000), progress: await driver.progress(), inflight: inflight(ctx.home) }
           const oldMitm = ctx.mitmPid
-          if (restartMode === 'kill') hardKill(ctx.app.process().pid!)
+          // A crash takes the main process only: what it spawned (mitmdump)
+          // is not killed with it, so neither is it here.
+          if (restartMode === 'kill') {
+            try { process.kill(ctx.app.process().pid!, 'SIGKILL') } catch (e) { atRestart.killError = (e as Error).message }
+          }
           // Bounded: a close that does not return is a finding, not a reason
           // to spend the rest of the run waiting on it.
           const closed = await Promise.race([ctx.app.close().then(() => true, () => true), new Promise<boolean>(r => setTimeout(() => r(false), 60_000))])
@@ -660,6 +666,8 @@ for (const source of ['sse', 'ws', 'http', 'pty'] as Source[]) {
           ctx.app = again.app; ctx.page = again.page; ctx.phase = 'after'
           watch(ctx.app)
           const reopenAt = Date.now()
+          result.restartRecord = atRestart
+          save()
           await ctx.page.evaluate(id => window.redlog.project.open(id), ctx.projectId)
           const cap2 = await captureRunning(ctx.page)
           ctx.proxy = cap2.proxy; ctx.mitmPid = cap2.pid
