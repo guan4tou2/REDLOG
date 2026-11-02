@@ -62,7 +62,7 @@ import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { compileClassPolicy, shippedProfiles } from '../core/terminal-class'
-import { createToolDetector } from '../core/tool-detection'
+import { createToolDetector, rescanTrigger } from '../core/tool-detection'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -1913,8 +1913,10 @@ app.whenReady().then(() => {
   // #499 PR B. `detection` only reads; `rescan` is the one way the renderer can
   // cause a lookup, and only for the two reasons it can have.
   ipcMain.handle('tools:detection', () => toolDetector.snapshot())
-  ipcMain.handle('tools:rescan', (_e, reason: unknown) =>
-    reason === 'settings-open' || reason === 'manual' ? toolDetector.rescan(reason) : toolDetector.snapshot())
+  ipcMain.handle('tools:rescan', (_e, reason: unknown) => {
+    const trigger = rescanTrigger(reason)
+    return trigger ? toolDetector.rescan(trigger) : toolDetector.snapshot()
+  })
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.

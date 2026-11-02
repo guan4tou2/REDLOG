@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { createToolDetector, type ToolDetectionSnapshot } from '../src/core/tool-detection'
+import { createToolDetector, rescanTrigger, type ToolDetectionSnapshot } from '../src/core/tool-detection'
 import { classifyCommand, compileClassPolicy, shippedProfiles, type TerminalProfile } from '../src/core/terminal-class'
 import { readClassOverlay } from '../src/core/terminal-enrollment'
 import shipped from '../hooks/command-class.json'
@@ -258,6 +258,97 @@ describe('triggers and bounds', () => {
     expect(snap.lastTrigger).toBe('settings-open')
   })
 
+  it('looks names up one at a time, so one dead PATH entry holds one thread and not all of them', async () => {
+    let active = 0
+    let most = 0
+    const detector = detectorWith(fakeLookup({}), {
+      lookup: async () => { active++; most = Math.max(most, active); await new Promise((r) => setTimeout(r, 2)); active--; return null }
+    })
+    await detector.rescan('manual')
+    expect(most).toBe(1)
+  })
+
+  it('stops starting lookups once the deadline has passed', async () => {
+    const calls: string[] = []
+    const detector = createToolDetector({
+      home, platform: 'linux', env: () => ({ PATH: '/x' }), profiles: () => PROFILES, scanTimeoutMs: 40,
+      lookup: (cmd) => { calls.push(cmd); return new Promise<string | null>(() => {}) }
+    })
+    const snap = await detector.rescan('manual')
+    expect(calls).toEqual(['claude'])
+    expect(snap.environments[0].profiles.flatMap((p) => p.executables).every((e) => e.state === 'unchecked')).toBe(true)
+  })
+
+  it('does not rescan on every settings-open when the last lookup hit its deadline less than 30 s ago', async () => {
+    let now = 1_000_000
+    const calls: string[] = []
+    const detector = createToolDetector({
+      home, platform: 'linux', env: () => ({ PATH: '/x' }), profiles: () => PROFILES, scanTimeoutMs: 30, now: () => now,
+      lookup: (cmd) => { calls.push(cmd); return cmd === 'vim' ? new Promise<string | null>(() => {}) : Promise.resolve(null) }
+    })
+    await detector.rescan('startup')
+    const after = calls.length
+    now += 10_000
+    await detector.rescan('settings-open')
+    expect(calls).toHaveLength(after)
+    now += 20_001
+    await detector.rescan('settings-open')
+    expect(calls.length).toBeGreaterThan(after)
+  })
+
+  it('counts a name as covered only if it was checked: a lookup that failed is looked up again', async () => {
+    let now = 1_000_000
+    let fail = true
+    const calls: string[] = []
+    const detector = createToolDetector({
+      home, platform: 'linux', env: () => ({ PATH: '/x' }), profiles: () => PROFILES, now: () => now,
+      lookup: async (cmd) => { calls.push(cmd); if (fail && cmd === 'ssh') throw new Error('EIO'); return null }
+    })
+    const first = await detector.rescan('startup')
+    expect(stateOf(first, 'app:linux', 'ssh')).toBe('unchecked')
+    fail = false
+    const before = calls.length
+    now += 5_000
+    const second = await detector.rescan('settings-open')
+    expect(calls.length - before).toBe(NAMES.length)
+    expect(stateOf(second, 'app:linux', 'ssh')).toBe('missing')
+  })
+
+  it('does not loop on a profile set that a deadline left partly unchecked', async () => {
+    const calls: string[] = []
+    const detector = createToolDetector({
+      home, platform: 'linux', env: () => ({ PATH: '/x' }), profiles: () => PROFILES, scanTimeoutMs: 30,
+      lookup: (cmd) => { calls.push(cmd); return cmd === 'claude' ? new Promise<string | null>(() => {}) : Promise.resolve(null) }
+    })
+    await detector.rescan('startup')
+    const after = calls.length
+    await detector.snapshot()
+    await detector.snapshot()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(calls).toHaveLength(after)
+  })
+
+  it('makes a manual rescan wait for the lookup in flight and then run a fresh one, shared by concurrent manuals', async () => {
+    const calls: string[] = []
+    let open = (): void => {}
+    const gate = new Promise<void>((resolve) => { open = resolve })
+    let gated = true
+    const detector = createToolDetector({
+      home, platform: 'linux', env: () => ({ PATH: '/x' }), profiles: () => PROFILES,
+      lookup: async (cmd) => { calls.push(cmd); if (gated) await gate; return null }
+    })
+    const startup = detector.rescan('startup')
+    const a = detector.rescan('manual')
+    const b = detector.rescan('manual')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(calls).toHaveLength(1) // only the startup lookup's first name: the manuals have not started theirs
+    gated = false
+    open()
+    await Promise.all([startup, a, b])
+    expect(calls).toHaveLength(NAMES.length * 2) // the one in flight, then exactly one fresh run for both
+    expect((await detector.snapshot()).lastTrigger).toBe('manual')
+  })
+
   it('does not skip a settings-open rescan for executables the last lookup did not cover', async () => {
     const h = fakeLookup({})
     const profiles = [...PROFILES]
@@ -351,6 +442,21 @@ describe('triggers and bounds', () => {
     await detector.rescan('manual')
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatch(/^trigger=manual checked=5 found=1 ms=\d+$/)
+  })
+})
+
+// What main hands tools:rescan is whatever the renderer sent. Only the two
+// reasons a person can have trigger a lookup; the others are RedLog's own.
+describe('the tools:rescan argument', () => {
+  it('lets settings-open and manual through', () => {
+    expect(rescanTrigger('settings-open')).toBe('settings-open')
+    expect(rescanTrigger('manual')).toBe('manual')
+  })
+
+  it('turns everything else into no rescan', () => {
+    for (const v of ['startup', 'profiles-changed', '', 'Manual', 'manual ', undefined, null, 0, 1, true, {}, ['manual'], { toString: () => 'manual' }]) {
+      expect(rescanTrigger(v), String(JSON.stringify(v))).toBeNull()
+    }
   })
 })
 

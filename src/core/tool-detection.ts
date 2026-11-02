@@ -70,9 +70,19 @@ interface ShellReport extends Finding {
 }
 
 interface AppLookup extends Finding {
-  /** Every name the lookup was asked about, answered or not: what "covered" means. */
+  /** Every name the lookup was set out to ask about, reached or not: how a
+   *  profile set that grew since is told from one a deadline cut short. */
   attempted: Set<string>
+  /** The deadline passed before every name was answered. */
+  timedOut: boolean
   finishedAt: number
+}
+
+/** What main does with the argument of `tools:rescan`: only the two reasons a
+ *  person can have cause a lookup, and anything else the renderer sends is a
+ *  plain read. `startup` and `profiles-changed` are RedLog's own. */
+export function rescanTrigger(reason: unknown): 'settings-open' | 'manual' | null {
+  return reason === 'settings-open' || reason === 'manual' ? reason : null
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -165,7 +175,10 @@ export function createToolDetector(deps: {
   const wanted = (): string[] =>
     [...new Set(deps.profiles().flatMap((p) => p.executables))].filter(isBareCommandName).sort().slice(0, MAX_EXECUTABLES)
 
-  const covers = (): boolean => last !== null && wanted().every((n) => last!.attempted.has(n))
+  /** A name counts as covered only if the last lookup answered it. */
+  const covers = (): boolean => last !== null && wanted().every((n) => last!.checked.has(n))
+  /** The profiles name an executable the last lookup was not set out to ask about. */
+  const grew = (): boolean => last !== null && !wanted().every((n) => last!.attempted.has(n))
 
   async function lookupAll(trigger: DetectionTrigger): Promise<void> {
     const started = now()
@@ -175,19 +188,24 @@ export function createToolDetector(deps: {
     // A lookup that never answers must not hold the scan: the signal wins the
     // race, and whatever it had not answered is unchecked, not missing.
     const expired = new Promise<'expired'>((resolve) => signal.addEventListener('abort', () => resolve('expired'), { once: true }))
-    const answers = await Promise.all(names.map(async (name) => {
+    const finding: AppLookup = { checked: new Set(), found: new Map(), attempted: new Set(names), timedOut: false, finishedAt: 0 }
+    // One name at a time, dirs in order inside it, and the deadline looked at
+    // before each: a PATH entry on a dead share blocks a libuv thread until the
+    // SMB timeout, and the abort frees the scan, not the thread. Sequential,
+    // that is one thread, not all four.
+    for (const name of names) {
+      if (signal.aborted) break
       const answer = await Promise.race([
-        lookup(name, { platform: deps.platform, env, signal }).then((where) => ({ where }), () => 'expired' as const),
+        lookup(name, { platform: deps.platform, env, signal }).then((where) => ({ where }), () => 'unanswered' as const),
         expired
       ])
-      return { name, answer }
-    }))
-    const finding: AppLookup = { checked: new Set(), found: new Map(), attempted: new Set(names), finishedAt: now() }
-    for (const { name, answer } of answers) {
-      if (answer === 'expired') continue
+      if (answer === 'expired') break
+      if (answer === 'unanswered') continue
       finding.checked.add(name)
       if (answer.where) finding.found.set(name, answer.where)
     }
+    finding.timedOut = signal.aborted && finding.checked.size < names.length
+    finding.finishedAt = now()
     last = finding
     deps.log?.(`trigger=${trigger} checked=${finding.checked.size} found=${finding.found.size} ms=${Math.max(0, finding.finishedAt - started)}`)
   }
@@ -195,7 +213,7 @@ export function createToolDetector(deps: {
   async function snapshot(): Promise<ToolDetectionSnapshot> {
     // Profiles that gained an executable since the last lookup: look again,
     // behind this snapshot, not in front of it.
-    if (last !== null && !inflight && !covers()) void rescan('profiles-changed').catch(() => {})
+    if (!inflight && grew()) void rescan('profiles-changed').catch(() => {})
     const profiles = deps.profiles()
     const environments: EnvironmentDetection[] = []
     if (last !== null) {
@@ -222,15 +240,37 @@ export function createToolDetector(deps: {
     return { environments, scanning: inflight !== null, lastTrigger }
   }
 
+  let inflightTrigger: DetectionTrigger | null = null
+  let freshManual: Promise<void> | null = null
+
+  // Set before anything is awaited: a second caller in the same tick joins
+  // this lookup instead of starting its own.
+  function startLookup(trigger: DetectionTrigger): Promise<void> {
+    lastTrigger = trigger
+    inflightTrigger = trigger
+    const run: Promise<void> = lookupAll(trigger).finally(() => {
+      if (inflight === run) { inflight = null; inflightTrigger = null }
+    })
+    inflight = run
+    return run
+  }
+
   async function rescan(trigger: DetectionTrigger): Promise<ToolDetectionSnapshot> {
-    const skippable = trigger === 'settings-open' || trigger === 'profiles-changed'
-    if (!inflight && !(skippable && last !== null && now() - last.finishedAt < FRESH_MS && covers())) {
-      lastTrigger = trigger
-      // Set before anything is awaited: a second caller in the same tick joins
-      // this lookup instead of starting its own.
-      inflight = lookupAll(trigger).finally(() => { inflight = null })
+    if (trigger === 'manual' && inflight && inflightTrigger !== 'manual') {
+      // The lookup in flight started before this click and may have read an
+      // environment older than it: wait for it, then run one that did not.
+      // Manuals that arrive meanwhile share that one run.
+      freshManual ??= (async () => {
+        while (inflight) await inflight.catch(() => {})
+        freshManual = null
+        return startLookup('manual')
+      })()
+      await freshManual
+    } else if (inflight) {
+      await inflight
+    } else if (!(trigger === 'settings-open' && last !== null && now() - last.finishedAt < FRESH_MS && (covers() || last.timedOut))) {
+      await startLookup(trigger)
     }
-    if (inflight) await inflight
     return snapshot()
   }
 
