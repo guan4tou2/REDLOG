@@ -145,8 +145,6 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
   return { dryRun: false, planned, applied: toWrite.length, sanitizedEventId: chained.id }
 }
 
-/** Lookup all sanitized replacements for an event, keyed by field. Used by the
- *  bundle export to swap raw bytes for the sanitized copy. */
 // One prepared statement per connection. Export reads this up to three times
 // per event (plan, redact, NDJSON), and preparing it per call dominated the
 // export profile (docs/PERF-AUDIT-2026-11.md §4). Keyed by the Database object
@@ -163,6 +161,8 @@ function sanitizedFieldsStatement(db: Database.Database): Database.Statement {
   return stmt
 }
 
+/** Lookup all sanitized replacements for an event, keyed by field. Used by the
+ *  bundle export to swap raw bytes for the sanitized copy. */
 export function getSanitizedFields(eventId: string): Record<string, string> {
   const rows = sanitizedFieldsStatement(getDB()).all(eventId) as Array<{ field: string; sanitized_value: string }>
   const out: Record<string, string> = {}
