@@ -114,6 +114,12 @@ function validProfile(p: unknown): p is TerminalProfile {
     && p.executables.every((c) => typeof c === 'string')
 }
 
+/** The shipped tool profiles the compiler would accept, in file order. Tool
+ *  detection joins its findings to these; it never feeds them back. */
+export function shippedProfiles(shipped: ShippedClassPolicy = SHIPPED): TerminalProfile[] {
+  return (shipped.terminalProfiles ?? []).filter(validProfile)
+}
+
 /** The shipped policy with the operator's overlay on top, layered.
  *
  *  The highest layer that names a command decides its mode: the operator's
