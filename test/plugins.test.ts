@@ -14,6 +14,8 @@ import { PLUGIN_API_VERSION } from '../src/core/plugins/types'
 import { setDisabled } from '../src/core/plugins/state'
 import { grant, isTrusted, revoke } from '../src/core/plugins/trust'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
+import { initPlugins, setPluginEnabled, listPlugins } from '../src/core/plugins'
+import { syncTerminalProfiles } from '../src/core/terminal-profiles'
 import { extractTargetWithProvenance, unregisterTargetExtractors } from '../src/core/target-extractor'
 
 const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
@@ -351,6 +353,86 @@ describe('tailer contributions respect the trust gate', () => {
 })
 
 const manifestBase = { id: 'sample-plugin', name: 'Sample', version: '1.0.0', redlogApi: 1 }
+
+// #499. A manifest may contribute terminal profiles. The per-profile rules are
+// in test/terminal-profiles.test.ts; what belongs here is the manifest, the
+// report, and the one thing that decides when the snapshot is rewritten.
+describe('terminalProfiles in a manifest', () => {
+  const ligolo = { id: 'ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'brings its own PTY' }
+  const withProfiles = (terminalProfiles: unknown) => ({ ...manifestBase, contributes: { terminalProfiles } })
+  const snapshotPath = (): string => path.join(tmp, '.redlog', 'terminal-profiles.json')
+  const snapshotIds = (): string[] => JSON.parse(fs.readFileSync(snapshotPath(), 'utf8')).profiles.map((p: { id: string }) => p.id)
+
+  it('is refused when it is not a list, and loads when it is', () => {
+    for (const bad of [{ id: 'x' }, 'x', 7, null]) {
+      expect(validateManifest(withProfiles(bad), '/tmp/x'), JSON.stringify(bad)).toEqual({
+        ok: false, error: 'contributes.terminalProfiles must be a list'
+      })
+    }
+    expect(validateManifest(withProfiles([ligolo]), '/tmp/x').ok).toBe(true)
+    expect(validateManifest(withProfiles([]), '/tmp/x').ok).toBe(true)
+    expect(validateManifest({ ...manifestBase, contributes: {} }, '/tmp/x').ok).toBe(true)
+  })
+
+  it('is a declarative contribution: it never makes a plugin privileged', () => {
+    expect(tierOf(validateManifest(withProfiles([ligolo]), '/tmp/x').manifest!)).toBe('declarative')
+  })
+
+  it('reports what took effect and what was refused, by name', () => {
+    writePlugin('tp-report', {
+      ...manifestBase, id: 'tp-report',
+      contributes: { terminalProfiles: [ligolo, { ...ligolo, id: 'bad', mode: 'sideways' }] }
+    })
+    const p = loadPlugins().find((x) => x.manifest.id === 'tp-report')!
+    expect(applyContributions(p).terminalProfiles).toEqual({
+      accepted: 1, rejected: [{ name: 'bad', reason: 'mode must be native, pty or relayed' }]
+    })
+    removeContributions('tp-report')
+  })
+
+  it('removeContributions takes the profiles back', () => {
+    writePlugin('tp-remove', { ...manifestBase, id: 'tp-remove', contributes: { terminalProfiles: [ligolo] } })
+    applyContributions(loadPlugins().find((x) => x.manifest.id === 'tp-remove')!)
+    expect(syncTerminalProfiles(tmp).written).toBe(true)
+    removeContributions('tp-remove')
+    syncTerminalProfiles(tmp)
+    expect(fs.existsSync(snapshotPath())).toBe(false)
+  })
+
+  it('initPlugins writes the snapshot; disabling the plugin removes it; enabling writes it again', () => {
+    writePlugin('tp-init', { ...manifestBase, id: 'tp-init', contributes: { terminalProfiles: [ligolo] } })
+    try {
+      initPlugins()
+      expect(snapshotIds()).toEqual(['tp-init/ligolo'])
+      setPluginEnabled('tp-init', false)
+      expect(fs.existsSync(snapshotPath())).toBe(false)
+      setPluginEnabled('tp-init', true)
+      expect(snapshotIds()).toEqual(['tp-init/ligolo'])
+    } finally {
+      removeContributions('tp-init')
+    }
+  })
+
+  it('a plugin that is in error contributes nothing', () => {
+    writePlugin('tp-error', { ...manifestBase, id: 'tp-error', redlogApi: 99, contributes: { terminalProfiles: [ligolo] } })
+    initPlugins()
+    expect(fs.existsSync(snapshotPath())).toBe(false)
+  })
+
+  it('a refusal to write is logged, and does not stop the plugins loading', () => {
+    writePlugin('tp-nowrite', { ...manifestBase, id: 'tp-nowrite', contributes: { terminalProfiles: [ligolo] } })
+    // `.redlog` exists (the plugin lives in it), so make the target a directory.
+    fs.mkdirSync(snapshotPath(), { recursive: true })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      expect(() => initPlugins()).not.toThrow()
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/terminal profiles not written/)
+      expect(listPlugins().some((x) => x.manifest.id === 'tp-nowrite')).toBe(true)
+    } finally {
+      removeContributions('tp-nowrite')
+    }
+  })
+})
 
 describe('retired code contributions are refused, not silently inert', () => {
   for (const retired of ['exporters', 'monitors']) {

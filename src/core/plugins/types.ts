@@ -21,6 +21,8 @@
 //      Spec 027, along with the `exporters` and `monitors` contributions that
 //      only it could have run.
 
+import type { TerminalProfile } from '../terminal-class'
+
 /** The plugin API contract version this manifest targets. Bump on breaking changes. */
 export const PLUGIN_API_VERSION = 1
 
@@ -158,6 +160,12 @@ export interface PluginContributes {
   targetExtractors?: TargetExtractorContribution[]
   eventTypes?: EventTypeContribution[]
   capture?: CaptureContribution[]
+  /** #499: tool profiles for the terminal adapter: the executables that run a
+   *  tool and the mode it gets (native, pty, relayed). The same shape as the
+   *  profiles in `hooks/command-class.json`; each id is prefixed with the
+   *  plugin's id. RedLog validates them and writes `~/.redlog/terminal-profiles.json`
+   *  for the shell adapter. Data only, so it is a declarative contribution. */
+  terminalProfiles?: TerminalProfile[]
   /** v0.8.2: TailerAdapter contribution. Module must `export const adapter =
    *  { agentKind, transcriptGlob, ... }` matching TailerAdapter. v0.8.2
    *  restricts this to bundled plugins only — user-plugin tailers require

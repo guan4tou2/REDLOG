@@ -6,6 +6,7 @@ import {
   classifyCommand, compileClassPolicy, type CommandClass, type CompiledClassPolicy, type ShippedClassPolicy
 } from '../src/core/terminal-class'
 import { readClassOverlay } from '../src/core/terminal-enrollment'
+import { readContributedProfiles } from '../src/core/terminal-profiles'
 import { findShellTarget, runInShell, hookPath, type ShellTarget } from './helpers/zsh-pty'
 import shipped from '../hooks/command-class.json'
 import golden from './fixtures/command-class-golden.json'
@@ -428,26 +429,45 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
   // profiles that clash, profiles that are broken, overlays that are broken.
   it('compiles every case the same way on both sides', async () => {
     const run = await runDriver(MIRROR_CASES)
-    for (const c of MIRROR_CASES) {
-      const mine = compileClassPolicy(parseOverlay(c.file), c.shipped, parseContributed(c.contributed))
-      const theirs = run.answers[c.id]
-      expect(theirs, `${c.id}: ${run.stderr.slice(0, 300)}`).toBeDefined()
-      expect(theirs.native, `${c.id} native`).toEqual(mine.native)
-      expect(theirs.pty, `${c.id} pty`).toEqual(mine.pty)
-      expect(theirs.entries, `${c.id} entries`).toEqual(mine.entries)
-      expect(theirs.problems, `${c.id} problems`).toEqual(mine.problems)
-      if (!c.shipped) expect(theirs.modes, `${c.id} modes`).toEqual(Object.fromEntries(
-        (c.probes ?? []).map((p) => [p, modeFor(mine, p)])))
-      // Not only the same on both sides: the same as having no snapshot.
-      if (c.zeroChange) {
-        const without = compileClassPolicy(parseOverlay(c.file), c.shipped)
-        for (const side of [mine, theirs]) {
-          expect(side.native, `${c.id} native vs no snapshot`).toEqual(without.native)
-          expect(side.pty, `${c.id} pty vs no snapshot`).toEqual(without.pty)
-          expect(side.entries, `${c.id} entries vs no snapshot`).toEqual(without.entries)
-          expect(side.problems, `${c.id} problems vs no snapshot`).toEqual(without.problems)
+    // The real policy is compiled from a temp home read the way the app reads
+    // it; a synthetic one cannot be, because the app only reads the shipped
+    // file beside it, so its inputs are parsed here.
+    const homes: string[] = []
+    const compileMine = (c: MirrorCase, withSnapshot: boolean): CompiledClassPolicy => {
+      if (c.shipped) {
+        return compileClassPolicy(parseOverlay(c.file), c.shipped, withSnapshot ? parseContributed(c.contributed) : null)
+      }
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-mirror-home-'))
+      homes.push(home)
+      fs.mkdirSync(path.join(home, '.redlog'))
+      if (c.file !== null) fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), c.file)
+      if (withSnapshot && c.contributed != null) fs.writeFileSync(path.join(home, '.redlog', 'terminal-profiles.json'), c.contributed)
+      return compileClassPolicy(readClassOverlay(home), undefined, readContributedProfiles(home))
+    }
+    try {
+      for (const c of MIRROR_CASES) {
+        const mine = compileMine(c, true)
+        const theirs = run.answers[c.id]
+        expect(theirs, `${c.id}: ${run.stderr.slice(0, 300)}`).toBeDefined()
+        expect(theirs.native, `${c.id} native`).toEqual(mine.native)
+        expect(theirs.pty, `${c.id} pty`).toEqual(mine.pty)
+        expect(theirs.entries, `${c.id} entries`).toEqual(mine.entries)
+        expect(theirs.problems, `${c.id} problems`).toEqual(mine.problems)
+        if (!c.shipped) expect(theirs.modes, `${c.id} modes`).toEqual(Object.fromEntries(
+          (c.probes ?? []).map((p) => [p, modeFor(mine, p)])))
+        // Not only the same on both sides: the same as having no snapshot.
+        if (c.zeroChange) {
+          const without = compileMine(c, false)
+          for (const side of [mine, theirs]) {
+            expect(side.native, `${c.id} native vs no snapshot`).toEqual(without.native)
+            expect(side.pty, `${c.id} pty vs no snapshot`).toEqual(without.pty)
+            expect(side.entries, `${c.id} entries vs no snapshot`).toEqual(without.entries)
+            expect(side.problems, `${c.id} problems vs no snapshot`).toEqual(without.problems)
+          }
         }
       }
+    } finally {
+      for (const h of homes) fs.rmSync(h, { recursive: true, force: true })
     }
   }, 300_000)
 

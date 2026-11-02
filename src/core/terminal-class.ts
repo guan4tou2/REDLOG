@@ -113,7 +113,7 @@ function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>
  *  adapter pastes each `pty` executable into the source of a wrapper function,
  *  so a name with a `;`, a space or a newline in it would be shell code.
  *  Mirrored by EXECUTABLE in `hooks/redlog-relay.py`. */
-const EXECUTABLE = /^[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}$/
+export const EXECUTABLE =/^[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}$/
 
 function validProfile(p: unknown): p is TerminalProfile {
   return isRecord(p)

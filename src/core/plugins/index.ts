@@ -3,6 +3,7 @@ import { applyContributions, removeContributions, tailerUnsupportedReason } from
 import { grant, revoke } from './trust'
 import { setDisabled } from './state'
 import { getEventTypes } from '../event-registry'
+import { syncTerminalProfiles } from '../terminal-profiles'
 import type { LoadedPlugin, Capability } from './types'
 
 // Public plugin API used by the main process + IPC. Owns the in-memory set of
@@ -41,7 +42,20 @@ export function initPlugins(): PluginInitSummary {
   removeAll(current)
   current = loadPlugins()
   applyAll(current)
+  writeTerminalProfiles()
   return summarise(current)
+}
+
+// Every way a plugin appears, goes, is enabled or disabled ends here, so this
+// is the one place the shell's snapshot of their tool profiles is rewritten.
+// A failure is the snapshot staying as it was: the plugins have loaded either way.
+function writeTerminalProfiles(): void {
+  try {
+    const r = syncTerminalProfiles()
+    if (r.error) console.warn(`[plugins] terminal profiles not written: ${r.error}`)
+  } catch (e) {
+    console.warn(`[plugins] terminal profiles not written: ${(e as Error).message}`)
+  }
 }
 
 /** Re-scan disk + re-apply. Call after install/enable/disable/trust changes. */

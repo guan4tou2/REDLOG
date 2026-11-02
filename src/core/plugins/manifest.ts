@@ -96,6 +96,12 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
 
   const contributes = m.contributes as PluginContributes
+  // The list's own entries are judged one by one at load (`registerTerminalProfiles`),
+  // so one bad profile does not cost the plugin; only a value that is not a list at all does.
+  if ((contributes as Record<string, unknown>).terminalProfiles !== undefined
+    && !Array.isArray(contributes.terminalProfiles)) {
+    return { ok: false, error: 'contributes.terminalProfiles must be a list' }
+  }
   for (const cap of contributes.capture ?? []) {
     if (cap.platforms !== undefined && (!Array.isArray(cap.platforms) || cap.platforms.length === 0
       || cap.platforms.some(p => !['darwin', 'linux', 'win32'].includes(p)))) {
