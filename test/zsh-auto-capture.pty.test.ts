@@ -286,6 +286,34 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end.data.output_disposition).toBe('interactive')
     })
 
+    // Issue #296. The wrapper asked only whether RedLog was running, so after
+    // `redlog stop` a pty-class program was still recorded in full by the
+    // session recorder — output and all — while the adapter correctly sent
+    // nothing. Stopped means the program runs as itself; started again means
+    // it is recorded again, in the same shell, without re-sourcing the hook.
+    it('runs a pty-class program as itself while recording is stopped, and records it again after start', async () => {
+      const result = await runZsh(target!, {
+        rc: `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`,
+        commands: ['redlog stop', 'ssh -V stopped-probe', 'redlog start', 'ssh -V started-probe'],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-harness', operatorId: 'op-harness' } },
+        timeoutSeconds: 60
+      })
+      expect(result.ok, result.error).toBe(true)
+
+      // It still ran, and nothing stood between the operator and it.
+      expect(result.steps[1].output).toContain('OpenSSH')
+      expect(result.steps[1].output).not.toContain('[redlog] session')
+      const sessionFor = (probe: string) => collector.events.find((e) => e.data.subtype === 'session_start'
+        && String(e.data.command ?? '').includes(probe))
+      expect(sessionFor('stopped-probe'), 'a stopped terminal handed the program to the session recorder').toBeUndefined()
+      expect(collector.events.some((e) => JSON.stringify(e.data).includes('stopped-probe')),
+        'something was recorded while stopped').toBe(false)
+
+      // The gate is read per call, so `redlog start` reopens it.
+      expect(sessionFor('started-probe'), `collector saw: ${JSON.stringify(collector.events.map((e) => e.data.subtype))}`)
+        .toBeTruthy()
+    }, 300_000)
+
     // Issue #288. The wrapper is a function named after the program, so a
     // function the operator already had under that name was silently replaced
     // — and, with RedLog not recording, replaced by `command ssh "$@"`, which

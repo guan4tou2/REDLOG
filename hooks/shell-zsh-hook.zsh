@@ -583,8 +583,11 @@ _redlog_install_pty_wrappers() {
     # "here".
     whence -p -- "$prog" >/dev/null 2>&1 || continue
     _redlog_is_user_function "$prog" && continue
+    # Read per call, like the adapter's own gate: `redlog stop` has to reach a
+    # program already wrapped, and `redlog start` has to bring it back, in this
+    # shell, without sourcing the hook again (#296).
     functions[$prog]='
-      if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
+      if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
         python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"
