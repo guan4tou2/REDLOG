@@ -45,6 +45,13 @@ describe('AI optional installation settings', () => {
     render(<Harness />); await screen.findByTestId('agent-install-codex')
     expect(screen.queryByTestId('agent-enabled-codex')).toBeNull(); expect(install).not.toHaveBeenCalled(); expect(saved).toBeUndefined()
   })
+  it('says what the raw copy holds once an integration is installed, and not before', async () => {
+    const { unmount } = render(<Harness />); await screen.findByTestId('agent-install-codex')
+    expect(screen.queryByText('settings.agents.rawCopy')).toBeNull()
+    unmount(); cleanup()
+    catalog.mockResolvedValue([installed]); render(<Harness />)
+    expect((await screen.findByTestId('agent-raw-copy')).textContent).toBe('settings.agents.rawCopy')
+  })
   it('installs only the chosen tool and does not activate capture', async () => {
     render(<Harness />); fireEvent.click(await screen.findByTestId('agent-install-codex'))
     await waitFor(() => expect(install).toHaveBeenCalledWith('codex')); expect(saved).toBeUndefined()

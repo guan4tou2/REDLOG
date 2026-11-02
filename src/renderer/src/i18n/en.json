@@ -1706,6 +1706,7 @@
   "export.range.all": "Entire project",
   "settings.agents.updateCapture": "Update integration",
   "settings.agents.captureBoundary": "Authorized conversations include tool content read from outside these working directories.",
+  "settings.agents.rawCopy": "The raw copy keeps each transcript as written, including thinking, unredacted credentials, tool input and output, and files the agent read outside the working directory; “Include thinking blocks” does not change it. Nothing is saved while capture is paused or off, resuming does not backfill, and no export includes the raw copy.",
   "settings.agents.sessions": "Conversations",
   "settings.agents.sessionExcluded": "Excluded",
   "settings.agents.sessionRecording": "Recording",

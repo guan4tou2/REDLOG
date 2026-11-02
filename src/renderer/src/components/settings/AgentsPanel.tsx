@@ -194,10 +194,13 @@ export default function AgentsPanel({ t, config, setConfig }: { t: T; config: Co
     {error && <div role="alert" className="mb-3 text-xs text-red-400"><p>{error}</p><Button level="secondary" type="button" onClick={() => void load()} className="underline">{t('common.retry')}</Button></div>}
     {!items && !error && <p role="status" className="text-xs text-redlog-text-dim">{t('common.loading')}</p>}
     <div data-testid="agent-sources" className="divide-y divide-redlog-border">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} sessions={sessions.filter(s => s.agentKind === item.agentKind)} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
-    {items?.some(item => item.state === 'installed') && <CheckRow
-      checked={config.agentTailer?.emitThinking ?? false}
-      onChange={(next) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: next } })}
-      label={t('settings.agents.emitThinking')}
-    />}
+    {items?.some(item => item.state === 'installed') && <>
+      <CheckRow
+        checked={config.agentTailer?.emitThinking ?? false}
+        onChange={(next) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: next } })}
+        label={t('settings.agents.emitThinking')}
+      />
+      <p data-testid="agent-raw-copy" className="text-xs text-redlog-text-dim">{t('settings.agents.rawCopy')}</p>
+    </>}
   </FieldGroup>
 }
