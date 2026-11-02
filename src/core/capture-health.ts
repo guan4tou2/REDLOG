@@ -282,46 +282,46 @@ const PROXY_MODE_PRODUCERS: Record<string, string> = {
 
 // System events (api_started/session_start) are RedLog's own housekeeping — they
 // don't prove anything is being captured, so they never count as "recording".
-function lastEventFor(where: string, params: unknown[] = []): number | null {
+/** One probe: a WHERE clause and what it binds. */
+type Probe = [where: string, params: unknown[]]
+
+/** The newest row matching ANY of `probes`, across both tiers: its timestamp
+ *  and, for the one probe that selects it, its `shell`.
+ *
+ *  A probe is a conjunction of EQUALITIES, so it is one index seek. A source
+ *  with several subtypes, or several shell names, is several probes with the
+ *  newest taken here — never `IN (...)`. With an IN list the planner walks
+ *  (agent_type, timestamp DESC) for the ORDER BY and filters row by row, so a
+ *  source that has never produced a row reads the whole bucket; json_extract
+ *  discriminators have no index at all unless the WHERE repeats an indexed
+ *  expression. The indexes these probes seek are created in db/index.ts, and
+ *  a partial index applies only when its terms appear in the query as
+ *  literals — keep the SQL text and those definitions identical. The plan
+ *  guard in test/query-plans.test.ts fails when they drift apart.
+ *
+ *  v0.13.0: DNS + scanner + browser.console + agent.thinking + a few system
+ *  rows land in `events_logged`, so both tiers are read — otherwise mitmproxy
+ *  running full-tilt on the logged tier would show as idle. Strict `>` keeps
+ *  the chained row on a tie.
+ *
+ *  System events (api_started/session_start) are RedLog's own housekeeping;
+ *  no probe matches them, so they never count as "recording". */
+function newestEvent(probes: Probe[], withShell = false): { t: number | null; s: string | null } {
   const db = getDB()
-  // v0.9.8: ORDER BY ... LIMIT 1 rather than MAX(timestamp). MAX() is an
-  // aggregate, so SQLite must visit every row matching the WHERE clause before
-  // it can answer — and most of these predicates include a json_extract() that
-  // no index can serve, so each probe scanned the whole agent_type bucket.
-  // Ordered + limited, the (agent_type, timestamp DESC) index walks newest
-  // first and stops at the first row that satisfies the json filter, which in
-  // practice is one of the first few. Same answer, bounded work.
-  //
-  // v0.13.0: DNS + scanner + browser.console + agent.thinking + a few system
-  // rows now land in `events_logged`. Capture-health measures "is this source
-  // feeding events", which needs to see BOTH tiers — otherwise mitmproxy
-  // running full-tilt on the logged tier would show as `idle`. Take the max
-  // of both tables. The chained table stays authoritative for tie-break
-  // (its row indexes are the smaller data set); the second query is a bounded
-  // walk of `idx_events_logged_type_ts`.
-  const chainedRow = db.prepare(
-    `SELECT timestamp AS t FROM events WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
-  ).get(...params) as { t: number | null } | undefined
-  const loggedRow = db.prepare(
-    `SELECT timestamp AS t FROM events_logged WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
-  ).get(...params) as { t: number | null } | undefined
-  const chained = chainedRow?.t ?? null
-  const logged = loggedRow?.t ?? null
-  if (chained === null) return logged
-  if (logged === null) return chained
-  return chained > logged ? chained : logged
+  let best: { t: number; s?: string | null } | null = null
+  for (const [where, params] of probes) {
+    for (const table of ['events', 'events_logged']) {
+      const row = db.prepare(
+        `SELECT timestamp AS t${withShell ? `, json_extract(data,'$.shell') AS s` : ''} FROM ${table} WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+      ).get(...params) as { t: number; s: string | null } | undefined
+      if (row && (best === null || row.t > best.t)) best = row
+    }
+  }
+  return { t: best?.t ?? null, s: best?.s ?? null }
 }
 
-/** The `shell` field of the newest row matching `where`, across both tiers. */
-function lastShellNameFor(where: string, params: unknown[] = []): string | null {
-  const db = getDB()
-  const q = (table: string): { t: number; s: string | null } | undefined => db.prepare(
-    `SELECT timestamp AS t, json_extract(data,'$.shell') AS s FROM ${table} WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
-  ).get(...params) as { t: number; s: string | null } | undefined
-  const a = q('events')
-  const b = q('events_logged')
-  const newest = !a ? b : !b ? a : (a.t >= b.t ? a : b)
-  return newest?.s ?? null
+function lastEventFor(where: string, params: unknown[] = []): number | null {
+  return newestEvent([[where, params]]).t
 }
 
 // getCaptureHealth runs eleven of those probes plus a hooks check. It is hit by
@@ -463,9 +463,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
   //
   // Commands only, from either: opening a pane writes a session_start, and a
   // pane with nothing typed in it has recorded nothing.
-  const terminalLast = lastEventFor(
-    `agent_type = 'shell' AND subtype IN ('command_start','command_end')`
-  )
+  const COMMAND_SUBTYPES = ['command_start', 'command_end']
+  const terminalLast = newestEvent(
+    COMMAND_SUBTYPES.map((s): Probe => [`agent_type = 'shell' AND subtype = ?`, [s]])
+  ).t
   // …and the same thing from a terminal that is NOT one of RedLog's panes.
   //
   // Spec 052 FR-015: an install is not finished because a file was copied. It
@@ -485,7 +486,9 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // tells them apart. Rows from before the stamp count as regular.
   const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
     AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
-  const connLast = lastEventFor(`agent_type = 'scanner' AND subtype IN ('connection','connection_end')`)
+  const connLast = newestEvent(
+    ['connection', 'connection_end'].map((s): Probe => [`agent_type = 'scanner' AND subtype = ?`, [s]])
+  ).t
   // v0.6.92: DNS/browser/process/file-watcher producers. `installed` is
   // undefined for these because "installed" doesn't really apply — the DNS
   // handler ships in the mitmproxy addon (so installation is coincident with
@@ -529,15 +532,24 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const installedShellNames = SHELL_HOOK_IDS
     .filter((id) => hookInstalled(id) === true)
     .map((id) => id.replace(/^shell-/, ''))
-  const ownShellWhere = `agent_type = 'shell'
-     AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
-     AND json_extract(data,'$.shell') IN (${installedShellNames.map(() => '?').join(',') || "''"})`
-  const ownShellLast = lastEventFor(
-    `${ownShellWhere} AND subtype IN ('command_start','command_end')`, installedShellNames)
-  const ownShellName = lastShellNameFor(`${ownShellWhere} AND subtype IN ('command_start','command_end')`, installedShellNames)
-  const ownShellOutput = lastEventFor(
-    `${ownShellWhere} AND subtype = 'command_end'
-     AND json_extract(data,'$.output_disposition') = 'captured'`, installedShellNames)
+  // One probe per shell name, and per subtype: the equalities are what the
+  // own-shell indexes seek (see newestEvent). The '' stands in for "no hook
+  // installed", which matches only a row whose shell is the empty string.
+  const OWN_SHELL = `agent_type = 'shell' AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'`
+  const shellNames = installedShellNames.length > 0 ? installedShellNames : ['']
+  const ownShell = newestEvent(
+    shellNames.flatMap((name) => COMMAND_SUBTYPES.map((s): Probe =>
+      [`${OWN_SHELL} AND json_extract(data,'$.shell') = ? AND subtype = ?`, [name, s]])),
+    true
+  )
+  const ownShellLast = ownShell.t
+  const ownShellName = ownShell.s
+  const ownShellOutput = newestEvent(
+    shellNames.map((name): Probe => [
+      `${OWN_SHELL} AND json_extract(data,'$.shell') = ? AND subtype = 'command_end' AND json_extract(data,'$.output_disposition') = 'captured'`,
+      [name]
+    ])
+  ).t
   // Which concrete hook id an Install button should act on. Prefer whichever
   // is already known to the detector for this platform.
   const shellHookId = hooks.find((h) => h.id === (process.platform === 'win32' ? 'shell-powershell' : 'shell-zsh'))?.id
@@ -675,12 +687,16 @@ function computeCaptureHealth(now: number): CaptureHealth {
       const emits = h.emits ?? []
       let last: number | null = null
       if (emits.length > 0) {
-        const placeholders = emits.map(() => '?').join(',')
         const mode = PROXY_MODE_PRODUCERS[h.id]
-        last = lastEventFor(
-          `agent_type = ? AND subtype IN (${placeholders})${mode ? ` AND json_extract(data,'$.proxy_mode') = ?` : ''}`,
-          [h.agentType, ...emits, ...(mode ? [mode] : [])]
-        )
+        // The transparent-proxy producer is the one whose rows have an index
+        // of their own, and a partial index applies only to literal terms, so
+        // its agent type and mode are written into the SQL rather than bound.
+        const transparent = mode === 'transparent' && h.agentType === 'scanner'
+        last = newestEvent(emits.map((s): Probe => transparent
+          ? [`agent_type = 'scanner' AND json_extract(data,'$.proxy_mode') = 'transparent' AND subtype = ?`, [s]]
+          : [`agent_type = ? AND ${mode ? `json_extract(data,'$.proxy_mode') = ? AND ` : ''}subtype = ?`,
+            [h.agentType, ...(mode ? [mode] : []), s]]
+        )).t
       }
       // E3: is the operator running this producer right now? A running producer
       // posts `system.producer_heartbeat` with its pluginId periodically; a
