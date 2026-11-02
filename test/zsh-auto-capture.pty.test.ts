@@ -285,6 +285,120 @@ describeShell(`auto capture in an enrolled zsh (${target?.label ?? 'no zsh reach
       expect(end, 'no command_end for the ssh').toBeTruthy()
       expect(end.data.output_disposition).toBe('interactive')
     })
+
+    // Issue #288. The wrapper is a function named after the program, so a
+    // function the operator already had under that name was silently replaced
+    // — and, with RedLog not recording, replaced by `command ssh "$@"`, which
+    // is not what their function did. A function defined BEFORE the hook is
+    // the operator's own and is left alone. (One defined after it replaces
+    // RedLog's wrapper instead; that is their choice, and that program goes
+    // native.)
+    describe('a function of the operator’s own', () => {
+      // Whether `ssh` is RedLog's wrapper, without printing its body: the
+      // answer has to differ from the typed line, which the pty echoes.
+      const wrapperProbe = '[[ "${functions[ssh]-}" == *_REDLOG_SESSION_HELPER* ]] && echo "wrapper:$((1+1))" || echo "wrapper:$((0+0))"'
+      const identity = { engagementId: 'eng-harness', operatorId: 'op-harness' }
+      const source = (): string => `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+
+      it('keeps a function defined before the hook, and records the command as metadata', async () => {
+        const result = await runZsh(target!, {
+          rc: `ssh() { print -r -- "USERFN-RAN:$1" }\n${source()}`,
+          commands: ['ssh userfn-probe', wrapperProbe, 'redlog class list'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+
+        // Their function ran, and not a wrapper standing in for it.
+        expect(result.steps[0].output).toContain('USERFN-RAN:userfn-probe')
+        expect(result.steps[0].output).not.toContain('[redlog] session')
+        expect(result.steps[1].output).toContain('wrapper:0')
+        expect(result.steps[1].output).not.toContain('wrapper:2')
+
+        // Never handed to the session recorder.
+        const session = collector.events.find((e) => e.data.subtype === 'session_start'
+          && String(e.data.command ?? '').includes('userfn-probe'))
+        expect(session, 'the operator’s function was handed to the session recorder').toBeUndefined()
+
+        // Still recorded, and as what it is: a pty-class command that nothing
+        // relayed, so there is a row with no body and a reason for that.
+        const start = shellEvents(collector.events, 'command_start', 'userfn-probe')[0]
+        const end = shellEvents(collector.events, 'command_end', 'userfn-probe')[0]
+        expect(start, 'no command_start for the skipped program').toBeTruthy()
+        expect(start.data.class).toBe('pty')
+        expect(end, 'no command_end for the skipped program').toBeTruthy()
+        expect(end.data).toMatchObject({ completeness: 'metadata-only', output_disposition: 'interactive' })
+        expect(String(end.data.stdout ?? '')).toBe('')
+
+        // The class is policy and says `pty`; what happened is a separate
+        // field, so nothing reading the row mistakes it for a PTY capture.
+        for (const e of [start, end]) {
+          expect(e.data).toMatchObject({ capture_mode: 'native', capture_reason: 'existing-shell-function' })
+          expect(e.data.source).not.toBe('auto-pty')
+          expect(e.data.captured_by).not.toBe('redlog-session')
+        }
+
+        // Discoverable: the class list names the program that is not wrapped.
+        expect(result.steps[2].output).toMatch(/pty:.*\bssh\b/)
+        expect(result.steps[2].output).toMatch(/ssh is your own function/)
+      }, 300_000)
+
+      it('wraps ssh as before when there is no function, and says nothing in the class list', async () => {
+        const result = await runZsh(target!, {
+          rc: source(),
+          commands: [wrapperProbe, 'redlog class list'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        expect(result.steps[0].output).toContain('wrapper:2')
+        expect(result.steps[1].output).not.toMatch(/your own function/)
+      }, 300_000)
+
+      it('still installs its own wrapper when the hook is sourced twice', async () => {
+        const result = await runZsh(target!, {
+          rc: `${source()}\n${source()}`,
+          commands: [wrapperProbe, 'ssh -4 -V', 'redlog class list'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        // RedLog's wrapper from the first source is not "a function of theirs".
+        expect(result.steps[0].output).toContain('wrapper:2')
+        const session = collector.events.find((e) => e.data.subtype === 'session_start'
+          && String(e.data.command ?? '').includes('ssh -4 -V'))
+        expect(session, 'the second source dropped the PTY wrapper').toBeTruthy()
+        // A wrapped program carries no capture_mode: nothing to qualify.
+        const start = shellEvents(collector.events, 'command_start', 'ssh -4 -V')[0]
+        expect(start.data.class).toBe('pty')
+        expect(start.data.capture_mode).toBeUndefined()
+        expect(result.steps[2].output).not.toMatch(/your own function/)
+      }, 300_000)
+
+      // Wrappers are installed at load from what is on PATH and not the
+      // operator's: no program behind the name means no wrapper, and a
+      // function with no program behind it is still theirs.
+      it('does not wrap a name with no program behind it, nor a function with none', async () => {
+        const result = await runZsh(target!, {
+          rc: `zz-fnonly() { print -r -- "FNONLY-RAN" }
+${source()}`,
+          commands: [
+            'redlog class add pty zz-nobinary',
+            'redlog class add pty zz-fnonly',
+            source(),
+            '[[ -z "${functions[zz-nobinary]-}" ]] && echo "nobinary:$((1+1))"',
+            'zz-fnonly',
+            '[[ "${functions[zz-fnonly]}" != *_REDLOG_SESSION_HELPER* ]] && echo "fnonly:$((1+1))"'
+          ],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        expect(result.steps[3].output).toContain('nobinary:2')
+        expect(result.steps[4].output).toContain('FNONLY-RAN')
+        expect(result.steps[5].output).toContain('fnonly:2')
+      }, 300_000)
+    })
   })
 
   // T021, FR-004. The bound is no longer a truncation limit: RedLog keeps a
