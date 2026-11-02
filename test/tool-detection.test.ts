@@ -105,8 +105,11 @@ describe('the app lookup', () => {
 
   it('wires the startup trigger behind loginPathReady, unawaited', () => {
     const main = fs.readFileSync(path.join(__dirname, '..', 'src/main/index.ts'), 'utf8')
-    expect(main).toContain("loginPathReady.then(() => toolDetector.rescan('startup'))")
-    expect(main).not.toMatch(/await\s+toolDetector/)
+    // A statement that starts with `void`: `await loginPathReady.then(…)` in the
+    // async ready handler would hold startup, and contains the same text.
+    expect(main).toMatch(/^\s*void loginPathReady\.then\(\(\) => toolDetector\.rescan\('startup'\)\)/m)
+    expect(main).not.toMatch(/await[^\n]*toolDetector/)
+    expect(main.match(/toolDetector\.rescan\('startup'\)/g)).toHaveLength(1)
   })
 })
 
@@ -378,10 +381,30 @@ describe('a miss never changes what a command is', () => {
       const text = fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
       expect(text, file).not.toMatch(/tool-detection|toolDetect|tool_detect/)
     }
+  })
+
+  it('is named by exactly one function of the relay: classify, finish, pty, policy and state never read a report', () => {
     const relay = fs.readFileSync(path.join(__dirname, '..', 'hooks/redlog-relay.py'), 'utf8')
-    // Only the detect code names the report directory: classify, finish,
-    // pty, policy and state never read it.
-    const outside = relay.split(/^def detect_cmd/m)[0]
-    expect(outside).not.toMatch(/tool-detection/)
+    // Every top-level def is a chunk of its own, the module header and any
+    // top-level code before the first def is chunk 0, and a def added later
+    // anywhere in the file is checked too.
+    const ALLOWED = new Set(['detect_cmd'])
+    const chunks = relay.split(/^(?=def \w)/m)
+    const named: string[] = []
+    for (const chunk of chunks) {
+      if (!/tool-detection/.test(chunk)) continue
+      named.push(/^def (\w+)/.exec(chunk)?.[1] ?? '<module level>')
+    }
+    expect(named.filter((n) => !ALLOWED.has(n)), 'functions other than the detect code name the report directory').toEqual([])
+    expect(named).toEqual(['detect_cmd'])
+  })
+
+  it('keeps hooks:terminalPolicy free of detection', () => {
+    const main = fs.readFileSync(path.join(__dirname, '..', 'src/main/index.ts'), 'utf8')
+    const start = main.indexOf("ipcMain.handle('hooks:terminalPolicy'")
+    expect(start).toBeGreaterThan(-1)
+    const handler = main.slice(start, main.indexOf('}))', start) + 3)
+    expect(handler).toContain('compileClassPolicy')
+    expect(handler).not.toMatch(/toolDetector|tool-detection|tools:/)
   })
 })
