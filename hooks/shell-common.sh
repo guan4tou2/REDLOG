@@ -126,6 +126,44 @@ _redlog_new_command_id() {
   printf '%s-%s-%s' "$stamp" "$$" "${RANDOM:-0}"
 }
 
+# A relayed command's working directory, `redlog-relay.<shell pid>.<random>` in
+# $TMPDIR, is removed by the shell at the next prompt. A shell killed while the
+# command runs never gets there, and the directories piled up (#296: 3,776, 55 MB,
+# on one box). A shell cannot clean up after its own SIGKILL, so the next shell
+# does, once, as the hook loads.
+#
+# A directory goes only when its owner is known to be gone:
+#   - the pid in the name is not a process (`kill -0`), or
+#   - the name carries no pid (the form zsh used to make), no running process
+#     names the directory — the relay is started with `--dir <it>` — and it is
+#     older than a minute, so one a shell has just made and not yet handed to
+#     its relay is left alone.
+# Only this user's directories, and only real directories, are considered.
+# `kill -0` also fails for a pid that is alive but not ours, which for a
+# directory of ours means the pid was reused after its owner died.
+_redlog_sweep_relay_dirs() {
+  local tmp="${TMPDIR:-/tmp}" dir name owner procs
+  tmp=${tmp%/}
+  procs=$(ps -eo args= 2>/dev/null)
+  find "$tmp" -maxdepth 1 -type d -user "$(id -u)" \
+    \( -name 'redlog-relay.*.*' -o \( -name 'redlog-relay.*' -mmin +1 \) \) 2>/dev/null |
+  while IFS= read -r dir; do
+    name=${dir##*/}
+    case "$name" in *[!A-Za-z0-9.-]*) continue ;; esac
+    owner=${name#redlog-relay.}
+    case "$owner" in
+      *.*) owner=${owner%%.*} ;;
+      *) owner="" ;;
+    esac
+    case "$owner" in
+      '') [[ -n "$procs" && "$procs" != *"$dir"* ]] || continue ;;
+      *[!0-9]*) continue ;;
+      *) kill -0 "$owner" 2>/dev/null && continue ;;
+    esac
+    rm -rf "$dir" 2>/dev/null
+  done
+}
+
 # Where the active project's identity lives. Paths into the RedLog directory
 # belong here rather than in an adapter: `shell-adapter-boundaries.test.ts`
 # holds that line, and it is the reason every POSIX adapter emits the same

@@ -433,7 +433,8 @@ _redlog_preexec() {
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
-    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.XXXXXX 2>/dev/null) \
+    # The shell's pid is in the name so a later shell can tell whose it was.
+    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.$$.XXXXXX 2>/dev/null) \
        && _redlog_divert "$_REDLOG_RELAY_DIR"; then
       :
     else
@@ -606,4 +607,6 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
 _redlog_install_pty_wrappers
+# Behind the prompt: with thousands left over it is not something to wait for.
+( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell
