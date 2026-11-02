@@ -586,8 +586,12 @@ _redlog_install_pty_wrappers() {
     # Read per call, like the adapter's own gate: `redlog stop` has to reach a
     # program already wrapped, and `redlog start` has to bring it back, in this
     # shell, without sourcing the hook again (#296).
+    # The class is read per call too, from the same cache preexec uses, so
+    # `redlog class add native ssh` takes ssh out of the recorder in this
+    # shell instead of only printing that it did (#296).
     functions[$prog]='
-      if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
+      if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]] \
+         && _redlog_class_of '"$prog"' && [[ "$REPLY" == pty ]]; then
         python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"
