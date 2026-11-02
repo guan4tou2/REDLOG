@@ -119,7 +119,8 @@ export interface ExportBundleOpts {
    *
    *  Refused (throws) together with `includeEventIds`: a sidecar is whole, so it
    *  cannot be trimmed to a plan-approved selection or time/session range;
-   *  and together with scope masking, which a sidecar cannot honour.
+   *  and together with scope masking, a snapshot, personal domains, or any
+   *  do-not-export mark, none of which a sidecar can honour.
    *  Only `*.jsonl` transcripts are copied, and the manifest lists each under
    *  `rawAgentTranscripts` with `redacted: false`. */
   includeAgentTranscripts?: boolean
@@ -164,6 +165,18 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // would still be in the raw transcript beside it, unmasked.
   if (opts.includeAgentTranscripts && opts.scope && opts.maskOutOfScope !== false) {
     throw new Error('Raw agent transcripts cannot be exported with scope masking: a sidecar is not masked, so it would carry what the events hide.')
+  }
+  // The rest narrow events.jsonl without a selection: a snapshot stops at the
+  // approved row, personal domains and do-not-export marks drop rows. The
+  // sidecar is copied live and whole, so it would still carry all of it.
+  if (opts.includeAgentTranscripts && opts.snapshot) {
+    throw new Error('Raw agent transcripts cannot be exported with a snapshot: a sidecar is copied live and would carry what was recorded after it.')
+  }
+  if (opts.includeAgentTranscripts && opts.scope?.personalDomains?.length) {
+    throw new Error('Raw agent transcripts cannot be exported with personal domains: those events are dropped, but the sidecar would still carry them.')
+  }
+  if (opts.includeAgentTranscripts && getDoNotExportIds().size > 0) {
+    throw new Error('Raw agent transcripts cannot be exported while events are marked do-not-export: those events are dropped, but the sidecar would still carry them.')
   }
   // __dirname resolves differently between dev (src/core/) and packaged
   // builds (out/main/). Try the same two-then-three-parents pattern
