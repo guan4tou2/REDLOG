@@ -58,16 +58,18 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
     const seen = { dir: icacls(dir), earlier: icacls(earlier), sidecar: icacls(sidecar) }
     console.log(`[ACL] dir\n${seen.dir}\n[ACL] earlier\n${seen.earlier}\n[ACL] new sidecar\n${seen.sidecar}`)
 
-    for (const out of [seen.dir, seen.earlier]) {
+    // What this protects against is another ordinary account on the machine.
+    // SYSTEM and Administrators can take any file whatever its ACL, and an
+    // elevated process (the CI runner) creates the directory with explicit
+    // entries for both, which `/inheritance:r` does not touch — so they are
+    // not asserted absent here.
+    for (const out of [seen.dir, seen.earlier, seen.sidecar]) {
       expect(out).toContain(user)
       expect(out).not.toContain('Everyone')
       expect(out).not.toContain('BUILTIN\\Users')
-      expect(out).not.toContain('BUILTIN\\Administrators')
-      expect(out).not.toContain('(I)')
+      expect(out).not.toContain('Authenticated Users')
     }
-    expect(seen.sidecar).toContain(user)
-    expect(seen.sidecar).not.toContain('Everyone')
-    expect(seen.sidecar).not.toContain('BUILTIN\\Users')
+    for (const out of [seen.dir, seen.earlier]) expect(out).not.toContain('(I)')
     // A file created in the directory takes the process token's default ACL
     // (the user, SYSTEM, and Administrators when the user is one), and nothing
     // inherited from the project directory.
