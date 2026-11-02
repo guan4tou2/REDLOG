@@ -38,8 +38,9 @@ Already emitted. Gains:
   "command_id": "<new per command>",   // NEW — the correlation key
   "class": "relayed",            // NEW — relayed | pty | native (policy)
   "cwd": "/root"
-  // pty-class only, when it ran native because the name is the operator's own shell function (#288):
-  // "capture_mode": "native", "capture_reason": "existing-shell-function" — also on `command_end`
+  // pty-class only, when it ran native instead of under the PTY recorder — also on `command_end`:
+  // "capture_mode": "native", "capture_reason": "existing-shell-function"  (zsh: the name is the operator's own function, #288)
+  // "capture_mode": "native", "capture_reason": "no-pty-wrapper"          (bash: it installs no PTY wrapper, #296)
 }
 ```
 

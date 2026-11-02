@@ -615,9 +615,20 @@ _redlog_install_pty_wrappers() {
 # re-sourcing the adapter does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
 
+# A relayed command's directory is removed by the NEXT prompt's `precmd`.
+# `exit` is a relayed command like any other, and no prompt follows it, so every
+# shell closed on purpose left one behind (#296). Nothing here restores the
+# descriptors: the shell is ending, and the relay treats a missing directory as
+# the end of the command (`redlog-relay.py`, the `not os.path.isdir` test).
+_redlog_zshexit() {
+  [[ -n "${_REDLOG_RELAY_DIR:-}" ]] && rm -rf "$_REDLOG_RELAY_DIR" 2>/dev/null
+  return 0
+}
+
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
+add-zsh-hook zshexit _redlog_zshexit
 _redlog_install_pty_wrappers
 # Behind the prompt: with thousands left over it is not something to wait for.
 ( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
