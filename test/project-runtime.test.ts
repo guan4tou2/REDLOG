@@ -123,6 +123,49 @@ describe('ProjectRuntime', () => {
     expect(second.operatorId).toBe('op-a')
   })
 
+  // The open project itself, not just its id: what the main process used to
+  // keep in a module variable of its own, set and cleared at different
+  // moments from the open it belonged to.
+  it('holds the open project from begin until close', () => {
+    const runtime = new ProjectRuntime()
+    expect(runtime.project()).toBeNull()
+    const open = runtime.begin(A, IDS)
+    expect(runtime.project()).toEqual(A)
+    runtime.activate(open)
+    expect(runtime.project()?.id).toBe('p-a')
+    // A cleanup of the open is taking it down, not acting on it.
+    let seenByCleanup: unknown = 'not run'
+    runtime.onStop(open, () => { seenByCleanup = runtime.project() })
+    runtime.close()
+    expect(seenByCleanup).toBeNull()
+    expect(runtime.project()).toBeNull()
+  })
+
+  it('keeps its own copy, so the caller cannot change the open project behind it', () => {
+    const runtime = new ProjectRuntime()
+    const meta = { ...A }
+    runtime.begin(meta, IDS)
+    meta.name = 'changed'
+    expect(runtime.project()?.name).toBe('Alpha')
+  })
+
+  it('renames the open project without ending the open', () => {
+    const runtime = new ProjectRuntime()
+    const open = runtime.begin(A, IDS)
+    runtime.activate(open)
+    expect(runtime.renameProject(open, 'Alpha 2')).toBe(true)
+    expect(runtime.project()).toEqual({ ...A, name: 'Alpha 2' })
+    expect(runtime.isCurrent(open)).toBe(true)
+  })
+
+  it('will not rename through an open that has ended', () => {
+    const runtime = new ProjectRuntime()
+    const first = runtime.begin(A, IDS); runtime.activate(first); runtime.close()
+    const second = runtime.begin(A, IDS); runtime.activate(second)
+    expect(runtime.renameProject(first, 'stale')).toBe(false)
+    expect(runtime.project()?.name).toBe('Alpha')
+  })
+
   it('keeps the engagement fixed for the life of an open', () => {
     const runtime = new ProjectRuntime()
     const open = runtime.begin(A, IDS)

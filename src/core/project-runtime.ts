@@ -40,6 +40,8 @@ export interface ProjectContext extends Readonly<ProjectIdentity> {
 
 interface Open {
   context: ProjectContext
+  /** Replaced, never mutated: a rename makes a new one. */
+  project: Readonly<ProjectMeta>
   controller: AbortController
   cleanups: Array<() => unknown>
   activated: boolean
@@ -55,6 +57,12 @@ export class ProjectRuntime {
 
   current(): ProjectContext | null { return this.open?.context ?? null }
 
+  /** The open project, from `begin` until `close` starts. Null while closing:
+   *  an open that is being taken down is no longer the one to act on. */
+  project(): Readonly<ProjectMeta> | null {
+    return this.open && this.status !== 'closing' ? this.open.project : null
+  }
+
   isCurrent(context: ProjectContext): boolean {
     return this.open?.context === context && !context.signal.aborted
   }
@@ -64,7 +72,9 @@ export class ProjectRuntime {
   begin(project: ProjectMeta, ids: Omit<ProjectIdentity, 'projectId'>): ProjectContext {
     if (this.open) throw new Error(`project runtime: generation ${this.open.context.generation} is still ${this.status}`)
     const controller = new AbortController()
-    const open: Open = { context: null!, controller, cleanups: [], activated: false, operatorId: ids.operatorId }
+    const open: Open = {
+      context: null!, project: Object.freeze({ ...project }), controller, cleanups: [], activated: false, operatorId: ids.operatorId
+    }
     open.context = Object.freeze({
       projectId: project.id,
       engagementId: ids.engagementId,
@@ -83,6 +93,14 @@ export class ProjectRuntime {
   setOperator(context: ProjectContext, operatorId: string): boolean {
     if (!this.isCurrent(context)) return false
     this.open!.operatorId = operatorId
+    return true
+  }
+
+  /** A rename of the open project. The open goes on: same generation, same
+   *  signal, same identity. Only the name a reader sees changes. */
+  renameProject(context: ProjectContext, name: string): boolean {
+    if (!this.isCurrent(context)) return false
+    this.open!.project = Object.freeze({ ...this.open!.project, name })
     return true
   }
 
