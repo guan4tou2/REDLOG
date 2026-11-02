@@ -53,10 +53,14 @@ export interface PolicyEntry {
 }
 
 export type PolicyProblem =
-  /** A shipped profile that is not usable and was skipped. `profile` is its id, or `#<index>`. */
+  /** `~/.redlog/terminal-profiles.json` is not usable, so no plugin profile applies. */
+  | { kind: 'invalid-snapshot'; reason: 'unreadable' | 'unsupported-version' }
+  /** A profile that is not usable and was skipped. `profile` is its id, or `#<index>`
+   *  counted across the shipped profiles and then the plugins'. */
   | { kind: 'invalid-profile'; profile: string }
-  /** Profiles naming one executable in different modes. The layer below keeps it. */
-  | { kind: 'conflict'; command: string; claims: Array<{ profile: string; mode: CommandClass }> }
+  /** Profiles naming one executable in different modes. Without `kept` the layer
+   *  below keeps it; with it, `kept` is the profile that had the command and still does. */
+  | { kind: 'conflict'; command: string; claims: Array<{ profile: string; mode: CommandClass }>; kept?: string }
   /** An overlay field that is not a list of commands, or holds an item that is not a string. */
   | { kind: 'invalid-overlay'; field: CommandClass }
 
@@ -105,13 +109,50 @@ function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>
   return { lists, problems }
 }
 
+/** A bare command name. This is a security bound, not tidiness: the shell
+ *  adapter pastes each `pty` executable into the source of a wrapper function,
+ *  so a name with a `;`, a space or a newline in it would be shell code.
+ *  Mirrored by EXECUTABLE in `hooks/redlog-relay.py`. */
+const EXECUTABLE = /^[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}$/
+
 function validProfile(p: unknown): p is TerminalProfile {
   return isRecord(p)
     && typeof p.id === 'string'
     && MODES.includes(p.mode as CommandClass)
     && Array.isArray(p.executables)
     && p.executables.length > 0
-    && p.executables.every((c) => typeof c === 'string')
+    && p.executables.every((c) => typeof c === 'string' && EXECUTABLE.test(c))
+}
+
+/** What `~/.redlog/terminal-profiles.json` adds to the compiler: the plugins'
+ *  profiles, and `held`, the profile that had each command when the file was
+ *  last written. */
+export interface ContributedProfiles {
+  profiles: unknown[]
+  held: Map<string, string>
+  problems: PolicyProblem[]
+}
+
+/** The snapshot as the compiler reads it. `null` is no file (and a file that
+ *  says `null`): nothing, silently. Anything that is not a version-1 object
+ *  with a list of profiles and an object of held is no snapshot at all, and
+ *  one problem says why; a version above 1 is a file a newer RedLog wrote.
+ *  A `held` value that is not a string is dropped, and each profile is passed
+ *  through for `validProfile` to judge. Mirrors `normalize_contributed` in
+ *  `hooks/redlog-relay.py`. */
+export function normalizeContributed(raw: unknown): ContributedProfiles {
+  const empty = (reason: 'unreadable' | 'unsupported-version'): ContributedProfiles =>
+    ({ profiles: [], held: new Map(), problems: [{ kind: 'invalid-snapshot', reason }] })
+  if (raw === null || raw === undefined) return { profiles: [], held: new Map(), problems: [] }
+  if (!isRecord(raw)) return empty('unreadable')
+  if (typeof raw.version === 'number' && raw.version > 1) return empty('unsupported-version')
+  if (typeof raw.version !== 'number' || raw.version !== 1) return empty('unreadable')
+  if (!Array.isArray(raw.profiles) || !isRecord(raw.held)) return empty('unreadable')
+  const held = new Map<string, string>()
+  for (const [command, profile] of Object.entries(raw.held)) {
+    if (typeof profile === 'string') held.set(command, profile)
+  }
+  return { profiles: raw.profiles, held, problems: [] }
 }
 
 /** The shipped policy with the operator's overlay on top, layered.
@@ -122,37 +163,62 @@ function validProfile(p: unknown): p is TerminalProfile {
  *  executable in different modes cancel out, so the layer below keeps it and
  *  the clash is reported as a problem.
  *
+ *  `contributed` is the plugins' snapshot (`~/.redlog/terminal-profiles.json`,
+ *  see `src/core/terminal-profiles.ts`): its profiles join the profile layer
+ *  after the shipped ones, and its `held` map is the one thing that changes
+ *  the rule above. When profiles disagree on a command and one of them is the
+ *  recorded holder, the holder keeps it and the clash is still reported, with
+ *  `kept` naming it: the claim in effect stays, so a plugin installed later
+ *  cannot take a command from the tool that already had it. With no snapshot
+ *  nothing holds anything and this is exactly the layering above.
+ *
  *  Mirrored in `hooks/redlog-relay.py` (`compile_policy`), because the shell
  *  cannot call this and RedLog will not spawn python3 to draw a settings
  *  panel. `test/command-class.test.ts` holds the two together: one golden
  *  table of modes under every overlay, and the same synthetic cases run
  *  through both sides and compared, list order included. */
-export function compileClassPolicy(overlay: unknown, shipped: ShippedClassPolicy = SHIPPED): CompiledClassPolicy {
+export function compileClassPolicy(
+  overlay: unknown,
+  shipped: ShippedClassPolicy = SHIPPED,
+  contributed: unknown = null
+): CompiledClassPolicy {
   const layer = new Map<string, { mode: CommandClass; source: PolicySource; profile?: string }>()
   for (const command of shipped.native ?? []) layer.set(command, { mode: 'native', source: 'default' })
   // After native, so a command in both lists is pty, as classifyCommand has it.
   for (const command of shipped.pty ?? []) layer.set(command, { mode: 'pty', source: 'default' })
 
-  const problems: PolicyProblem[] = []
+  const snapshot = normalizeContributed(contributed)
+  const problems: PolicyProblem[] = [...snapshot.problems]
   const claims = new Map<string, Array<{ profile: string; mode: CommandClass }>>()
-  ;(shipped.terminalProfiles ?? []).forEach((profile, index) => {
+  // The plugins' profiles join after the shipped ones, so `#<index>` keeps counting.
+  ;[...(shipped.terminalProfiles ?? []), ...snapshot.profiles].forEach((profile, index) => {
     if (!validProfile(profile)) {
       const id = isRecord(profile) && typeof profile.id === 'string' ? profile.id : `#${index}`
       problems.push({ kind: 'invalid-profile', profile: id })
       return
     }
     for (const command of profile.executables) {
-      const held = claims.get(command) ?? []
-      claims.set(command, held)
-      if (!held.some((c) => c.profile === profile.id)) held.push({ profile: profile.id, mode: profile.mode })
+      const claimed = claims.get(command) ?? []
+      claims.set(command, claimed)
+      if (!claimed.some((c) => c.profile === profile.id)) claimed.push({ profile: profile.id, mode: profile.mode })
     }
   })
   const conflicts: Array<Extract<PolicyProblem, { kind: 'conflict' }>> = []
-  for (const [command, held] of claims) {
-    if (new Set(held.map((c) => c.mode)).size === 1) {
-      layer.set(command, { mode: held[0].mode, source: 'profile', profile: held[0].profile })
+  for (const [command, claimed] of claims) {
+    // The profile that had this command when the snapshot was written, if it
+    // still claims it. With no snapshot nothing holds anything, and this is
+    // the layering without a plugin in it.
+    const holding = claimed.find((c) => c.profile === snapshot.held.get(command))
+    if (new Set(claimed.map((c) => c.mode)).size === 1) {
+      const winner = holding ?? claimed[0]
+      layer.set(command, { mode: winner.mode, source: 'profile', profile: winner.profile })
+    } else if (holding) {
+      // Disagreement over a command somebody already has: the holder keeps it,
+      // and the clash is still reported so the operator can settle it.
+      layer.set(command, { mode: holding.mode, source: 'profile', profile: holding.profile })
+      conflicts.push({ kind: 'conflict', command, claims: claimed, kept: holding.profile })
     } else {
-      conflicts.push({ kind: 'conflict', command, claims: held })
+      conflicts.push({ kind: 'conflict', command, claims: claimed })
     }
   }
   problems.push(...conflicts.sort((a, b) => byCommand(a.command, b.command)))

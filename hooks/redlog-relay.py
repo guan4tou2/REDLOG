@@ -1281,7 +1281,7 @@ def policy_field(argv):
 
     if action == "list":
         shipped = read_shipped()
-        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)))
+        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)), read_contributed_file(terminal_home(opts)))
         for name in ("native", "pty"):
             sys.stdout.write("%s: %s\n" % (name, " ".join(policy.get(name, []))))
         # `relayed` is not a list — it is what a command is when it is in no
@@ -1471,18 +1471,45 @@ def read_shipped():
         return json.load(fh)
 
 
-def load_policy(home=None):
-    """The shipped policy compiled with the operator's overlay on top.
+def contributed_path(opts):
+    return os.path.join(terminal_home(opts), ".redlog", "terminal-profiles.json")
 
-    The overlay lives under `~/.redlog/` and the defaults ship beside this
-    file, so an install can replace `hooks/command-class.json` without taking
-    the operator's choices with it, and `redlog class` never edits a file the
-    next install will overwrite. `home=None` compiles with no overlay.
+
+def read_contributed_file(home):
+    """The plugins' snapshot exactly as parsed: None when there is no file,
+    False when it cannot be read or parsed, else what it parsed to.
+
+    Not coerced: whether it is usable is normalize_contributed's call. A
+    constant JSON has no spelling for (NaN, Infinity) is a parse failure here,
+    as it is for JSON.parse in the app, so both sides see one answer.
     """
-    return build_policy(read_shipped(), None if home is None else read_overlay_file(home))
+    def refuse(name):
+        raise ValueError(name)
+    try:
+        with open(contributed_path({"home": home}), "r", encoding="utf-8") as fh:
+            return json.load(fh, parse_constant=refuse)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return False
 
 
-def build_policy(shipped, overlay):
+def load_policy(home=None):
+    """The shipped policy compiled with the operator's overlay on top, and the
+    plugins' snapshot beside it.
+
+    The overlay and the snapshot live under `~/.redlog/` and the defaults ship
+    beside this file, so an install can replace `hooks/command-class.json`
+    without taking the operator's choices with it, and `redlog class` never
+    edits a file the next install will overwrite. `home=None` compiles with
+    neither.
+    """
+    if home is None:
+        return build_policy(read_shipped(), None)
+    return build_policy(read_shipped(), read_overlay_file(home), read_contributed_file(home))
+
+
+def build_policy(shipped, overlay, contributed=None):
     """What classify_argv reads. Never the raw file: the shipped native and
     pty lists no longer hold every default, because tool profiles name the
     rest, and only compile_policy puts them together."""
@@ -1491,7 +1518,7 @@ def build_policy(shipped, overlay):
         "replScriptFlags": shipped.get("replScriptFlags", []),
         "wrappers": shipped.get("wrappers", {}),
     }
-    policy.update(compile_policy(overlay, shipped))
+    policy.update(compile_policy(overlay, shipped, contributed))
     return policy
 
 
@@ -1525,16 +1552,25 @@ def normalize_overlay(raw):
     return lists, problems
 
 
-def compile_policy(overlay, shipped):
+def compile_policy(overlay, shipped, contributed=None):
     """Layer the policy: defaults, then tool profiles, then the operator's overlay.
 
     Returns {native, pty, entries, problems}. The highest layer that names a
     command decides its mode; a command no layer names is relayed. Two
     profiles that claim one executable in different modes cancel out, so the
     layer below keeps it and the clash is a problem for the operator to
-    settle. Pure over its two arguments. Mirrored by compileClassPolicy in
-    src/core/terminal-class.ts, and test/command-class.test.ts runs both over
-    the same cases, including list order.
+    settle.
+
+    `contributed` is the plugins' snapshot, as read_contributed_file returns it
+    (`~/.redlog/terminal-profiles.json`): its profiles join the profile layer
+    after the shipped ones, and its `held` map is the one thing that changes
+    the rule above. When profiles disagree on a command and one is the
+    recorded holder, the holder keeps it and the clash is still reported, with
+    `kept` naming it. With no snapshot nothing holds anything and this is the
+    layering above. Pure over its three arguments. Mirrored by
+    compileClassPolicy in src/core/terminal-class.ts, and
+    test/command-class.test.ts runs both over the same cases, including list
+    order.
     """
     layer = {}  # command -> (mode, source, profile id); insertion order is list order
     for command in shipped.get("native", []):
@@ -1543,23 +1579,33 @@ def compile_policy(overlay, shipped):
     for command in shipped.get("pty", []):
         layer[command] = ("pty", "default", None)
 
-    problems = []
+    snapshot_profiles, held, problems = normalize_contributed(contributed)
     claims = {}  # command -> [{profile, mode}], first claimant first
-    for index, profile in enumerate(shipped.get("terminalProfiles", [])):
+    # The plugins' profiles join after the shipped ones, so `#<index>` keeps counting.
+    for index, profile in enumerate(list(shipped.get("terminalProfiles", [])) + snapshot_profiles):
         if not valid_profile(profile):
             ident = profile.get("id") if isinstance(profile, dict) and isinstance(profile.get("id"), str) else "#%d" % index
             problems.append({"kind": "invalid-profile", "profile": ident})
             continue
         for command in profile["executables"]:
-            held = claims.setdefault(command, [])
-            if not any(c["profile"] == profile["id"] for c in held):
-                held.append({"profile": profile["id"], "mode": profile["mode"]})
+            claimed = claims.setdefault(command, [])
+            if not any(c["profile"] == profile["id"] for c in claimed):
+                claimed.append({"profile": profile["id"], "mode": profile["mode"]})
     conflicts = []
-    for command, held in claims.items():
-        if len({c["mode"] for c in held}) == 1:
-            layer[command] = (held[0]["mode"], "profile", held[0]["profile"])
+    for command, claimed in claims.items():
+        # The profile that had this command when the snapshot was written, if
+        # it still claims it. With no snapshot nothing holds anything.
+        holding = next((c for c in claimed if c["profile"] == held.get(command)), None)
+        if len({c["mode"] for c in claimed}) == 1:
+            winner = holding or claimed[0]
+            layer[command] = (winner["mode"], "profile", winner["profile"])
+        elif holding is not None:
+            # Disagreement over a command somebody already has: the holder
+            # keeps it, and the clash is still reported.
+            layer[command] = (holding["mode"], "profile", holding["profile"])
+            conflicts.append({"kind": "conflict", "command": command, "claims": claimed, "kept": holding["profile"]})
         else:
-            conflicts.append({"kind": "conflict", "command": command, "claims": held})
+            conflicts.append({"kind": "conflict", "command": command, "claims": claimed})
     problems += sorted(conflicts, key=lambda p: p["command"])
 
     overlay_lists, overlay_problems = normalize_overlay(overlay)
@@ -1585,6 +1631,14 @@ def compile_policy(overlay, shipped):
     }
 
 
+# A bare command name. A security bound, not tidiness: the adapter pastes each
+# `pty` executable into the source of a wrapper function, so a name with a `;`,
+# a space or a newline in it would be shell code. `fullmatch`, because `$`
+# matches before a trailing newline here and `x\n` has to fail. Mirrored by
+# EXECUTABLE in src/core/terminal-class.ts.
+EXECUTABLE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}")
+
+
 def valid_profile(profile):
     return (
         isinstance(profile, dict)
@@ -1592,8 +1646,35 @@ def valid_profile(profile):
         and profile.get("mode") in MODES
         and isinstance(profile.get("executables"), list)
         and len(profile["executables"]) > 0
-        and all(isinstance(c, str) for c in profile["executables"])
+        and all(isinstance(c, str) and EXECUTABLE.fullmatch(c) for c in profile["executables"])
     )
+
+
+def normalize_contributed(raw):
+    """The plugins' snapshot as (profiles, held, problems).
+
+    None is no file (and a file that says `null`): nothing, silently. Anything
+    that is not a version-1 object with a list of profiles and an object of
+    held is no snapshot at all, and one problem says why; a version above 1 is
+    a file a newer RedLog wrote. A `held` value that is not a string is
+    dropped, and each profile is passed through for valid_profile to judge.
+    Mirrored by normalizeContributed in src/core/terminal-class.ts.
+    """
+    if raw is None:
+        return [], {}, []
+    unreadable = ([], {}, [{"kind": "invalid-snapshot", "reason": "unreadable"}])
+    if not isinstance(raw, dict):
+        return unreadable
+    version = raw.get("version")
+    number = not isinstance(version, bool) and isinstance(version, (int, float))
+    if number and version > 1:
+        return [], {}, [{"kind": "invalid-snapshot", "reason": "unsupported-version"}]
+    if not number or version != 1:
+        return unreadable
+    if not isinstance(raw.get("profiles"), list) or not isinstance(raw.get("held"), dict):
+        return unreadable
+    held = {c: p for c, p in raw["held"].items() if isinstance(p, str)}
+    return list(raw["profiles"]), held, []
 
 
 def policy_notes(shipped, policy):

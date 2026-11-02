@@ -128,7 +128,24 @@ const expectedLists = (c: { id: string; native: string[]; pty: string[] }): { na
 const profile = (id: string, name: string, mode: string, executables: string[]): Record<string, unknown> =>
   ({ id, name, mode, executables, reason: 'r' })
 
-interface MirrorCase { id: string; file: string | null; shipped?: ShippedClassPolicy; probes?: string[] }
+/** `contributed` is the exact text of ~/.redlog/terminal-profiles.json (null or
+ *  absent: no file). `zeroChange` marks a case whose answer must equal what the
+ *  same inputs give with no snapshot at all. */
+interface MirrorCase {
+  id: string; file: string | null; shipped?: ShippedClassPolicy; probes?: string[]
+  contributed?: string | null; zeroChange?: boolean
+}
+// The snapshot as the app reads it: no file is null, an unparseable one is
+// false, anything else is what it parsed to.
+const parseContributed = (text: string | null | undefined): unknown => {
+  if (text === undefined || text === null) return null
+  try { return JSON.parse(text) } catch { return false }
+}
+const snap = (profiles: unknown[], held: Record<string, unknown> = {}): string =>
+  JSON.stringify({ version: 1, profiles, held })
+// Which profile holds each command in a policy: what the writer records.
+const heldOf = (p: CompiledClassPolicy): Record<string, string> =>
+  Object.fromEntries(p.entries.filter((e) => e.source === 'profile').map((e) => [e.command, e.profile!]))
 const synthetic = (native: string[], pty: string[], terminalProfiles: unknown[]): ShippedClassPolicy =>
   ({ native, pty, terminalProfiles })
 
@@ -166,8 +183,85 @@ const MIRROR_CASES: MirrorCase[] = [
   { id: 'shipped overDefault, overridden', file: '{"relayed": ["x"]}', shipped: CLASHING.overDefault },
   { id: 'shipped nothingBelow, overridden', file: '{"pty": ["x"]}', shipped: CLASHING.nothingBelow },
   { id: 'shipped relayedProfile, moved', file: '{"native": ["z"], "pty": ["x"]}', shipped: CLASHING.relayedProfile },
-  { id: 'shipped broken, bad overlay', file: '{"native": 3, "pty": [false]}', shipped: CLASHING.broken }
+  { id: 'shipped broken, bad overlay', file: '{"native": 3, "pty": [false]}', shipped: CLASHING.broken },
+  ...contributedCases()
 ]
+
+// The snapshot a plugin writes (#499): profiles that join the profile layer
+// after the shipped ones, and `held`, the profile that had each command when
+// the file was last written. Every case here is run through both compilers.
+function contributedCases(): MirrorCase[] {
+  const bundledHeld = heldOf(compileClassPolicy(null))
+  const pack = (id: string, mode: string, executables: unknown[]) => profile(`pack/${id}`, id, mode, executables as string[])
+  const plain = (shippedPolicy: ShippedClassPolicy, held: Record<string, unknown>, profiles: unknown[], id: string): MirrorCase =>
+    ({ id, file: null, shipped: shippedPolicy, contributed: snap(profiles, held) })
+  const empty = synthetic([], [], [])
+  const vimKeys = [pack('vimkeys', 'pty', ['vim'])]
+  const two = [profile('a/p', 'P', 'pty', ['x']), profile('b/q', 'Q', 'native', ['x'])]
+  return [
+    // Zero change: a snapshot that names no profile, holding exactly the
+    // bundled winners, is PR A's answer under every overlay and every clash.
+    ...golden.cases.map((c): MirrorCase => ({
+      id: `empty snapshot over golden ${c.id}`, file: c.file, probes: golden.probes,
+      contributed: snap([], bundledHeld), zeroChange: true
+    })),
+    ...Object.entries(CLASHING).map(([name, s]): MirrorCase => ({
+      id: `empty snapshot over shipped ${name}`, file: null, shipped: s,
+      contributed: snap([], heldOf(compileClassPolicy(null, s))), zeroChange: true
+    })),
+    { id: 'snapshot text null is no snapshot', file: null, contributed: 'null', probes: golden.probes, zeroChange: true },
+
+    { id: 'contributed: a new tool with no clash', file: null, probes: ['ligolo-proxy', 'vim', 'ssh'],
+      contributed: snap([pack('ligolo', 'pty', ['ligolo-proxy'])]) },
+    { id: 'contributed: newcomer against bundled vim, no holder', file: null, probes: ['vim', 'vi'], contributed: snap(vimKeys) },
+    { id: 'contributed: newcomer against bundled vim, bundled holds it', file: null, probes: ['vim', 'vi'],
+      contributed: snap(vimKeys, { vim: 'vim', vi: 'vim' }) },
+    { id: 'contributed: operator overlay over a kept clash', file: '{"relayed": ["vim"]}', probes: ['vim'],
+      contributed: snap(vimKeys, { vim: 'vim' }) },
+    plain(synthetic([], [], [profile('b', 'B', 'native', ['x'])]), { x: 'pack/p' }, [pack('p', 'pty', ['x'])], 'contributed: held plugin against a newer bundled profile'),
+    plain(empty, {}, two, 'contributed: two plugins clash, no holder'),
+    plain(empty, { x: 'b/q' }, two, 'contributed: two plugins clash, one holds'),
+    plain(empty, { x: 'c/gone' }, two, 'contributed: the holder is no longer present'),
+    plain(synthetic(['x'], [], []), { x: 'a/p' }, two, 'contributed: a holder keeps the command over a default'),
+    plain(empty, { x: 'b/q' }, [profile('a/p', 'P', 'native', ['x']), profile('b/q', 'Q', 'native', ['x'])],
+      'contributed: agreement, the holder is the second claimant'),
+    plain(empty, {}, [profile('a/p', 'P', 'native', ['x']), profile('b/q', 'Q', 'native', ['x'])],
+      'contributed: agreement, no holder, the first claimant'),
+    plain(empty, { x: 'a/p' }, [profile('a/p', 'P', 'native', ['x']), profile('a/p', 'P', 'pty', ['x'])],
+      'contributed: one id twice'),
+    { id: 'contributed: a holder over an overlay, clash kept', file: '{"pty": ["x"]}', shipped: empty,
+      contributed: snap(two, { x: 'a/p' }) },
+
+    // A snapshot the compiler cannot use: one line in `list`, bundled and overlay stand.
+    ...[
+      ['not json', '{'], ['an array', '[]'], ['a string', '"x"'], ['a number', '7'], ['false', 'false'],
+      ['no profiles or held', '{"version":1}'],
+      ['profiles a string', '{"version":1,"profiles":"x","held":{}}'],
+      ['held an array', '{"version":1,"profiles":[],"held":[]}'],
+      ['version true', '{"version":true,"profiles":[],"held":{}}'],
+      ['version a string', '{"version":"1","profiles":[],"held":{}}'],
+      ['version 0', '{"version":0,"profiles":[],"held":{}}'],
+      ['version 2', '{"version":2,"profiles":[],"held":{}}'],
+      ['version 2, profiles a string', '{"version":2,"profiles":"x","held":{}}'],
+      ['version 1.0 is valid', '{"version":1.0,"profiles":[],"held":{}}']
+    ].map(([name, text]): MirrorCase => ({ id: `snapshot ${name}`, file: '{"pty": ["curl"]}', probes: ['vim', 'curl'], contributed: text })),
+    { id: 'snapshot held with a value that is not a string', file: null, probes: ['vim', 'claude'],
+      contributed: snap(vimKeys, { vim: 'vim', claude: 7, codex: null }) },
+
+    // The compiler, not the writer, is what keeps `executables` safe to paste into shell source.
+    { id: 'snapshot executables that are not bare names', file: null, probes: ['a', 'x'],
+      contributed: snap([
+        pack('semi', 'pty', ['a;b']), pack('dash', 'pty', ['-x']), pack('space', 'pty', ['a b']),
+        pack('newline', 'pty', ['x\n']), pack('good', 'pty', ['ok.tool_1+x-y']), pack('long', 'pty', ['a'.repeat(65)]),
+        pack('slash', 'pty', ['a/b']), pack('empty', 'pty', [''])
+      ]) },
+    { id: 'snapshot invalid profile counts on from the shipped ones', file: null,
+      contributed: snap([{ mode: 'pty', executables: ['x'] }, 'text', pack('fine', 'pty', ['f'])]) },
+    { id: 'snapshot invalid profile counts on from a synthetic shipped list', file: null,
+      shipped: synthetic([], [], [profile('a', 'A', 'pty', ['q']), { mode: 'pty' }]),
+      contributed: snap([{ mode: 'pty', executables: ['x'] }]) }
+  ]
+}
 
 interface DriverAnswer extends CompiledClassPolicy { modes: Record<string, string> }
 
@@ -335,7 +429,7 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
   it('compiles every case the same way on both sides', async () => {
     const run = await runDriver(MIRROR_CASES)
     for (const c of MIRROR_CASES) {
-      const mine = compileClassPolicy(parseOverlay(c.file), c.shipped)
+      const mine = compileClassPolicy(parseOverlay(c.file), c.shipped, parseContributed(c.contributed))
       const theirs = run.answers[c.id]
       expect(theirs, `${c.id}: ${run.stderr.slice(0, 300)}`).toBeDefined()
       expect(theirs.native, `${c.id} native`).toEqual(mine.native)
@@ -344,6 +438,16 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       expect(theirs.problems, `${c.id} problems`).toEqual(mine.problems)
       if (!c.shipped) expect(theirs.modes, `${c.id} modes`).toEqual(Object.fromEntries(
         (c.probes ?? []).map((p) => [p, modeFor(mine, p)])))
+      // Not only the same on both sides: the same as having no snapshot.
+      if (c.zeroChange) {
+        const without = compileClassPolicy(parseOverlay(c.file), c.shipped)
+        for (const side of [mine, theirs]) {
+          expect(side.native, `${c.id} native vs no snapshot`).toEqual(without.native)
+          expect(side.pty, `${c.id} pty vs no snapshot`).toEqual(without.pty)
+          expect(side.entries, `${c.id} entries vs no snapshot`).toEqual(without.entries)
+          expect(side.problems, `${c.id} problems vs no snapshot`).toEqual(without.problems)
+        }
+      }
     }
   }, 300_000)
 
@@ -630,6 +734,142 @@ describe('profiles that overlap or break', () => {
     expect(p.pty).toEqual(['k'])
     expect(p.native).toEqual(['n'])
     expect(entry(p, 'x')).toBeUndefined()
+  })
+})
+
+// #499. Plugins contribute profiles through ~/.redlog/terminal-profiles.json,
+// which adds one input to the compiler and replaces nothing. `held` is the
+// forward rule: the profile that had a command when the file was last written
+// keeps it against a profile that disagrees, and the clash is still reported.
+describe('plugin tool profiles in the compiler', () => {
+  const entry = (p: CompiledClassPolicy, command: string) => p.entries.find((e) => e.command === command)
+  const none = synthetic([], [], [])
+  const compileWith = (s: ShippedClassPolicy, profiles: unknown[], held: Record<string, unknown> = {}, overlay: unknown = null) =>
+    compileClassPolicy(overlay, s, parseContributed(snap(profiles, held)))
+
+  it('adds a profile after the shipped ones, as a profile source', () => {
+    const p = compileWith(synthetic(['n'], [], [profile('a', 'A', 'native', ['x'])]), [profile('pack/b', 'B', 'pty', ['y'])])
+    expect(entry(p, 'y')).toEqual({ command: 'y', mode: 'pty', source: 'profile', profile: 'pack/b' })
+    expect(p.native).toEqual(['n', 'x'])
+    expect(p.pty).toEqual(['y'])
+    expect(p.problems).toEqual([])
+  })
+
+  it('a newcomer against a bundled profile cancels, and the bundled one is kept once it holds the command', () => {
+    const bundled = synthetic([], [], [profile('vim', 'Vim', 'native', ['vim'])])
+    const keys = [profile('pack/keys', 'Keys', 'pty', ['vim'])]
+    const claims = [{ profile: 'vim', mode: 'native' }, { profile: 'pack/keys', mode: 'pty' }]
+
+    const without = compileWith(bundled, keys)
+    expect(entry(without, 'vim')).toEqual({ command: 'vim', mode: 'relayed', source: 'fallback' })
+    expect(without.problems).toEqual([{ kind: 'conflict', command: 'vim', claims }])
+
+    const held = compileWith(bundled, keys, { vim: 'vim' })
+    expect(entry(held, 'vim')).toEqual({ command: 'vim', mode: 'native', source: 'profile', profile: 'vim' })
+    expect(held.native).toEqual(['vim'])
+    expect(held.problems).toEqual([{ kind: 'conflict', command: 'vim', claims, kept: 'vim' }])
+  })
+
+  it('a plugin that holds a command keeps it against a newer bundled profile', () => {
+    const newer = synthetic([], [], [profile('b', 'B', 'native', ['x'])])
+    const p = compileWith(newer, [profile('pack/p', 'P', 'pty', ['x'])], { x: 'pack/p' })
+    expect(entry(p, 'x')).toEqual({ command: 'x', mode: 'pty', source: 'profile', profile: 'pack/p' })
+    expect(p.problems).toEqual([{
+      kind: 'conflict', command: 'x', kept: 'pack/p',
+      claims: [{ profile: 'b', mode: 'native' }, { profile: 'pack/p', mode: 'pty' }]
+    }])
+  })
+
+  it('two new plugins in one write cancel; with a recorded holder it stays with the holder', () => {
+    const two = [profile('a/p', 'P', 'pty', ['x']), profile('b/q', 'Q', 'native', ['x'])]
+    expect(entry(compileWith(none, two), 'x')).toEqual({ command: 'x', mode: 'relayed', source: 'fallback' })
+    const q = compileWith(none, two, { x: 'b/q' })
+    expect(entry(q, 'x')).toEqual({ command: 'x', mode: 'native', source: 'profile', profile: 'b/q' })
+    expect(q.problems).toHaveLength(1)
+    expect(q.problems[0]).toMatchObject({ kind: 'conflict', kept: 'b/q' })
+    // A holder that is not among the claimants holds nothing.
+    expect(entry(compileWith(none, two, { x: 'c/gone' }), 'x')).toEqual({ command: 'x', mode: 'relayed', source: 'fallback' })
+    expect(compileWith(none, two, { x: 'c/gone' }).problems[0]).not.toHaveProperty('kept')
+  })
+
+  it('profiles that agree on the mode go to the holder when it is among them, else the first', () => {
+    const agree = [profile('a/p', 'P', 'native', ['x']), profile('b/q', 'Q', 'native', ['x'])]
+    expect(entry(compileWith(none, agree, { x: 'b/q' }), 'x')).toMatchObject({ profile: 'b/q' })
+    expect(entry(compileWith(none, agree), 'x')).toMatchObject({ profile: 'a/p' })
+    expect(compileWith(none, agree, { x: 'b/q' }).problems).toEqual([])
+  })
+
+  it('the holder\'s own update to another mode keeps the command in the new mode', () => {
+    const p = compileWith(none, [profile('a/p', 'P', 'pty', ['x'])], { x: 'a/p' })
+    expect(entry(p, 'x')).toEqual({ command: 'x', mode: 'pty', source: 'profile', profile: 'a/p' })
+  })
+
+  it('the operator\'s overlay still wins over a kept clash, and the clash is still reported', () => {
+    const two = [profile('a/p', 'P', 'pty', ['x']), profile('b/q', 'Q', 'native', ['x'])]
+    const p = compileWith(none, two, { x: 'a/p' }, { relayed: ['x'] })
+    expect(entry(p, 'x')).toEqual({ command: 'x', mode: 'relayed', source: 'override' })
+    expect(p.problems).toHaveLength(1)
+  })
+
+  it('held is read, never extended: a command no profile claims is not touched by it', () => {
+    const p = compileWith(synthetic(['n'], [], []), [], { n: 'ghost', other: 'ghost' })
+    expect(p).toEqual(compileClassPolicy(null, synthetic(['n'], [], [])))
+  })
+
+  it('numbers an invalid profile on from the shipped ones, and skips an executable that is not a bare name', () => {
+    const p = compileWith(synthetic([], [], [profile('a', 'A', 'pty', ['q']), { mode: 'pty' }]), [
+      { mode: 'pty', executables: ['x'] },
+      profile('pack/semi', 'S', 'pty', ['a;b']), profile('pack/dash', 'D', 'pty', ['-x']),
+      profile('pack/space', 'W', 'pty', ['a b']), profile('pack/nl', 'N', 'pty', ['x\n']),
+      profile('pack/ok', 'K', 'pty', ['ok.tool_1+x-y'])
+    ])
+    expect(p.problems).toEqual([
+      { kind: 'invalid-profile', profile: '#1' },
+      { kind: 'invalid-profile', profile: '#2' },
+      { kind: 'invalid-profile', profile: 'pack/semi' },
+      { kind: 'invalid-profile', profile: 'pack/dash' },
+      { kind: 'invalid-profile', profile: 'pack/space' },
+      { kind: 'invalid-profile', profile: 'pack/nl' }
+    ])
+    expect(p.pty).toEqual(['q', 'ok.tool_1+x-y'])
+  })
+
+  describe('a snapshot it cannot use', () => {
+    const base = compileClassPolicy({ pty: ['curl'] })
+    const used = (raw: unknown) => compileClassPolicy({ pty: ['curl'] }, undefined, raw)
+
+    it('is no snapshot, with one problem first, for every shape that is not version 1', () => {
+      for (const text of ['{', '[]', '"x"', '7', 'false', '{"version":1}', '{"version":1,"profiles":"x","held":{}}',
+        '{"version":1,"profiles":[],"held":[]}', '{"version":true,"profiles":[],"held":{}}',
+        '{"version":"1","profiles":[],"held":{}}', '{"version":0,"profiles":[],"held":{}}']) {
+        const p = used(parseContributed(text))
+        expect(p.problems, text).toEqual([{ kind: 'invalid-snapshot', reason: 'unreadable' }])
+        expect({ ...p, problems: [] }, text).toEqual({ ...base, problems: [] })
+      }
+      for (const text of ['{"version":2,"profiles":[],"held":{}}', '{"version":2,"profiles":"x"}', '{"version":1.5,"profiles":[],"held":{}}']) {
+        expect(used(parseContributed(text)).problems, text).toEqual([{ kind: 'invalid-snapshot', reason: 'unsupported-version' }])
+      }
+    })
+
+    it('version 1.0 is version 1; text null, and no file, are no snapshot and say nothing', () => {
+      expect(used(parseContributed('{"version":1.0,"profiles":[],"held":{}}'))).toEqual(base)
+      expect(used(parseContributed('null'))).toEqual(base)
+      expect(used(null)).toEqual(base)
+      expect(used(undefined)).toEqual(base)
+    })
+
+    it('puts the snapshot problem before the profile problems', () => {
+      const p = compileClassPolicy({ native: 3 }, synthetic([], [], [{ mode: 'pty' }]), parseContributed('{"version":9}'))
+      expect(p.problems.map((q) => q.kind)).toEqual(['invalid-snapshot', 'invalid-profile', 'invalid-overlay'])
+    })
+
+    it('drops a held value that is not a string, silently', () => {
+      const p = compileClassPolicy(null, synthetic([], [], [profile('b', 'B', 'native', ['x'])]), parseContributed(
+        snap([profile('a', 'A', 'pty', ['x'])], { x: 7 })))
+      expect(p.problems).toEqual([{
+        kind: 'conflict', command: 'x', claims: [{ profile: 'b', mode: 'native' }, { profile: 'a', mode: 'pty' }]
+      }])
+    })
   })
 })
 
