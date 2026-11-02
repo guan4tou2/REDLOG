@@ -1463,7 +1463,10 @@ app.whenReady().then(() => {
     // main-window title bar reads it on subsequent renders.
     const open = projectRuntime.current()
     if (updated && open?.projectId === id) projectRuntime.renameProject(open, updated.name)
-    return updated
+    // The bridge contract (env.d.ts) is `{ ok, name?, error? }`. This returned
+    // the bare ProjectMeta, so both callers read `res.ok` as undefined and
+    // treated every successful rename as a refusal.
+    return updated ? { ok: true, name: updated.name } : { ok: false, error: 'rename-refused' }
   })
   ipcMain.handle('project:active', () => {
     const project = projectRuntime.project()
