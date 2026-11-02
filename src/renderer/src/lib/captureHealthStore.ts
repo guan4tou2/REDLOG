@@ -21,6 +21,9 @@
 // refresh is for). The poll runs at the fastest cadence any mounted reader asks
 // for and stops with the last of them.
 //
+// A read that never settles is a failed read too: after twice the poll interval
+// it is abandoned, the status goes 'unknown' and the next tick reads again.
+//
 // Reads are applied in the order they were issued. Two can overlap only when
 // every reader leaves and a new one arrives while the abandoned read is still
 // out; the late reply must not undo the newer one, success or failure.
@@ -46,6 +49,15 @@ let issued = 0
 let applied = 0
 let inFlight = 0
 let rerun = false
+let stallTimer: ReturnType<typeof setTimeout> | null = null
+
+/** How many poll intervals a read may take before it is called stalled. Two:
+ *  one interval is an ordinary slow read, and the tick after it is the first
+ *  that could have replaced it. */
+const STALL_INTERVALS = 2
+/** The interval to count in when no mounted reader polls (they read on arrival
+ *  and on refresh only): the status bar's, the slowest cadence in use. */
+const NO_POLL_STALL_BASE_MS = 30_000
 
 function set(next: CaptureHealthState): void {
   state = next
@@ -56,7 +68,24 @@ function read(): void {
   if (inFlight) return
   const seq = ++issued
   inFlight = seq
+  // A read that never settles (a stalled main process, a lost reply) would
+  // otherwise hold `inFlight` for good: every tick is dropped and the status
+  // stays 'ok' on a snapshot nobody is refreshing. So a read has this long, and
+  // then it is abandoned: the status goes 'unknown' (the last snapshot and
+  // lastOkAt stay, as "last confirmed"), the next tick reads again, and the
+  // abandoned read's reply — if it ever comes — is dropped by the ordering below.
+  const stallMs = STALL_INTERVALS * (timerMs || NO_POLL_STALL_BASE_MS)
+  const stall = setTimeout(() => {
+    if (inFlight !== seq) return
+    inFlight = 0
+    applied = Math.max(applied, seq)
+    if (state.status !== 'unknown') set({ ...state, status: 'unknown' })
+    if (rerun && readers.size > 0) { rerun = false; read() }
+  }, stallMs)
+  stallTimer = stall
   const done = (next: CaptureHealthState | null): void => {
+    clearTimeout(stall)
+    if (stallTimer === stall) stallTimer = null
     if (inFlight === seq) inFlight = 0
     if (seq > applied) {
       applied = seq
@@ -107,7 +136,10 @@ export function acquireCaptureHealth(pollMs: number): () => void {
     syncTimer()
     // The read in flight belongs to nobody now. A reader that arrives next
     // starts its own, and the ordering above keeps the two apart.
-    if (readers.size === 0) { inFlight = 0; rerun = false }
+    if (readers.size === 0) {
+      inFlight = 0; rerun = false
+      if (stallTimer) { clearTimeout(stallTimer); stallTimer = null }
+    }
   }
 }
 
@@ -122,6 +154,8 @@ export function listenCaptureHealth(cb: () => void): () => void {
 export function _resetCaptureHealth(): void {
   if (timer) clearInterval(timer)
   timer = null; timerMs = 0
+  if (stallTimer) clearTimeout(stallTimer)
+  stallTimer = null
   readers.clear(); listeners.clear()
   state = INITIAL
   issued = 0; applied = 0; inFlight = 0; rerun = false

@@ -45,7 +45,7 @@ describe('capture health store', () => {
 
   it('never has two reads in flight: a poll tick during a slow read is dropped', async () => {
     const off = acquireCaptureHealth(1_000)
-    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.advanceTimersByTimeAsync(1_900)   // under the stall limit, so the read is still the one in flight
     expect(health).toHaveBeenCalledTimes(1)
     off()
   })
@@ -182,6 +182,65 @@ describe('capture health store', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(health).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  describe('a read that never settles', () => {
+    it('is unknown after twice the poll interval, keeps what was last confirmed, and the next tick reads again', async () => {
+      const off = acquireCaptureHealth(5_000)
+      calls[0].resolve(snap('healthy', 'confirmed')); await flush()
+      const okAt = getCaptureHealth().lastOkAt
+      await vi.advanceTimersByTimeAsync(5_000)            // tick: read #2 starts and never settles
+      expect(health).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(5_000)            // one interval in: still not a verdict either way
+      expect(getCaptureHealth().status).toBe('ok')
+      expect(health).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(5_000)            // twice the interval
+      expect(getCaptureHealth()).toMatchObject({ status: 'unknown', lastOkAt: okAt })
+      expect((getCaptureHealth().health as unknown as { tag: string }).tag).toBe('confirmed')
+      await vi.advanceTimersByTimeAsync(5_000)            // the next tick is a new read
+      expect(health).toHaveBeenCalledTimes(3)
+      calls[2].resolve(snap('partial')); await flush()
+      expect(getCaptureHealth()).toMatchObject({ status: 'ok' })
+      expect(getCaptureHealth().health?.verdict).toBe('partial')
+      off()
+    })
+
+    it('the abandoned read settling later is dropped, whether it succeeds or fails, and does not move the status', async () => {
+      const off = acquireCaptureHealth(5_000)
+      await vi.advanceTimersByTimeAsync(10_000)           // read #1 abandoned
+      expect(getCaptureHealth().status).toBe('unknown')
+      await vi.advanceTimersByTimeAsync(5_000)            // read #2 in flight
+      const n = health.mock.calls.length
+      expect(n).toBe(2)
+      calls[0].resolve(snap('healthy', 'abandoned')); await flush()
+      expect(getCaptureHealth()).toMatchObject({ status: 'unknown', health: null })
+      calls[1].resolve(snap('dark', 'current')); await flush()
+      expect((getCaptureHealth().health as unknown as { tag: string }).tag).toBe('current')
+      calls[0].reject(new Error('late')); await flush()
+      expect(getCaptureHealth().status).toBe('ok')
+      off()
+    })
+
+    it('a slow read that finishes inside twice the interval is not reported as unknown', async () => {
+      const off = acquireCaptureHealth(5_000)
+      await vi.advanceTimersByTimeAsync(9_000)
+      expect(getCaptureHealth().status).toBe('ok')
+      calls[0].resolve(snap('healthy')); await flush()
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(getCaptureHealth().status).toBe('ok')
+      expect(getCaptureHealth().health?.verdict).toBe('healthy')
+      off()
+    })
+
+    it('is also called unknown for a reader that does not poll, after the fallback wait', async () => {
+      const off = acquireCaptureHealth(0)
+      await vi.advanceTimersByTimeAsync(59_000)
+      expect(getCaptureHealth().status).toBe('ok')
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(getCaptureHealth().status).toBe('unknown')
+      off()
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   it('a refresh with nobody listening reads nothing', () => {
