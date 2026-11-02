@@ -16,13 +16,11 @@ import policy from '../../hooks/command-class.json'
 
 export type CommandClass = 'relayed' | 'pty' | 'native'
 
-// The lists live in `hooks/command-class.json`, beside the adapter that also
-// reads them (through `hooks/redlog-relay.py`). One list, two readers. A
+// The names live in `hooks/command-class.json`, beside the adapter that also
+// reads them (through `hooks/redlog-relay.py`). One file, two readers. A
 // second copy of these names here would drift from the shell's, and the drift
 // would be silent until the day an operator's reverse shell went through a
 // relay mid-engagement — which is the failure the list exists to prevent.
-const NATIVE = new Set(policy.native)
-const PTY = new Set(policy.pty)
 const REPL = new Set(policy.repl)
 const REPL_SCRIPT_FLAGS = new Set(policy.replScriptFlags)
 const WRAPPERS: Record<string, Set<string>> = Object.fromEntries(
@@ -31,43 +29,160 @@ const WRAPPERS: Record<string, Set<string>> = Object.fromEntries(
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
-/** What `redlog class add|remove` wrote. Lives under `~/.redlog/`, never in
- *  the shipped `hooks/command-class.json`, so an install can replace the
- *  defaults without taking the operator's choices with it. */
-export interface ClassOverlay {
-  native?: string[]
-  pty?: string[]
-  /** Commands taken out of whichever default class shipped them. */
-  relayed?: string[]
+const MODES: readonly CommandClass[] = ['native', 'pty', 'relayed']
+
+/** Where a command's mode came from: the operator's overlay, a tool profile,
+ *  the shipped native/pty lists, or nothing naming it (relayed). */
+export type PolicySource = 'override' | 'profile' | 'default' | 'fallback'
+
+/** A tool, the executables that run it, and the mode it gets. */
+export interface TerminalProfile {
+  id: string
+  name: string
+  mode: CommandClass
+  executables: string[]
+  reason: string
 }
 
-export interface ClassPolicy { native: string[]; pty: string[] }
+export interface PolicyEntry {
+  command: string
+  mode: CommandClass
+  source: PolicySource
+  /** The profile's id, only when `source` is `profile`. */
+  profile?: string
+}
 
-/** The shipped defaults with the operator's overlay on top.
+export type PolicyProblem =
+  /** A shipped profile that is not usable and was skipped. `profile` is its id, or `#<index>`. */
+  | { kind: 'invalid-profile'; profile: string }
+  /** Profiles naming one executable in different modes. The layer below keeps it. */
+  | { kind: 'conflict'; command: string; claims: Array<{ profile: string; mode: CommandClass }> }
+  /** An overlay field that is not a list of commands, or holds an item that is not a string. */
+  | { kind: 'invalid-overlay'; field: CommandClass }
+
+export interface CompiledClassPolicy {
+  native: string[]
+  pty: string[]
+  entries: PolicyEntry[]
+  problems: PolicyProblem[]
+}
+
+/** The part of `hooks/command-class.json` the compiler reads. Profiles are
+ *  `unknown` because the compiler is what decides whether one is valid. */
+export interface ShippedClassPolicy {
+  native: string[]
+  pty: string[]
+  terminalProfiles: unknown[]
+}
+
+// The JSON import types a profile's mode as `string`, so this is a cast; the
+// contract test in test/command-class.test.ts is what holds the file to it.
+const SHIPPED = policy as ShippedClassPolicy
+
+const hasOwn = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key)
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+const byCommand = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+/** The operator's overlay as lists, plus what was wrong with it. Anything
+ *  that is not an object is no overlay; unknown keys, the retired `removed`
+ *  included, are ignored. A field that is not a list is ignored whole and a
+ *  non-string item is dropped; either is recorded once, per field, in the
+ *  order native, pty, relayed. Mirrors `normalize_overlay` in
+ *  `hooks/redlog-relay.py`. */
+function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>; problems: PolicyProblem[] } {
+  const lists: Record<CommandClass, string[]> = { native: [], pty: [], relayed: [] }
+  const problems: PolicyProblem[] = []
+  if (!isRecord(raw)) return { lists, problems }
+  for (const field of MODES) {
+    if (!hasOwn(raw, field)) continue
+    const value = raw[field]
+    if (!Array.isArray(value)) { problems.push({ kind: 'invalid-overlay', field }); continue }
+    const kept = value.filter((c): c is string => typeof c === 'string')
+    if (kept.length !== value.length) problems.push({ kind: 'invalid-overlay', field })
+    lists[field] = kept
+  }
+  return { lists, problems }
+}
+
+function validProfile(p: unknown): p is TerminalProfile {
+  return isRecord(p)
+    && typeof p.id === 'string'
+    && MODES.includes(p.mode as CommandClass)
+    && Array.isArray(p.executables)
+    && p.executables.length > 0
+    && p.executables.every((c) => typeof c === 'string')
+}
+
+/** The shipped policy with the operator's overlay on top, layered.
  *
- *  Mirrored in `hooks/redlog-relay.py`, because the shell cannot call this and
- *  RedLog will not spawn python3 to draw a settings panel. The two are held
- *  together by `test/command-class.test.ts`, which classifies the same lines
- *  on both sides and compares — the arrangement that has already caught two
- *  real divergences. */
-export function mergeClassPolicy(overlay: ClassOverlay | null | undefined): ClassPolicy {
-  const out: ClassPolicy = { native: [], pty: [] }
-  for (const name of ['native', 'pty'] as const) {
-    const base = [...(policy[name] as string[])]
-    for (const command of overlay?.[name] ?? []) if (!base.includes(command)) base.push(command)
-    out[name] = base
+ *  The highest layer that names a command decides its mode: the operator's
+ *  overlay, then the tool profiles, then the shipped native and pty lists;
+ *  a command no layer names is relayed. Two profiles that claim one
+ *  executable in different modes cancel out, so the layer below keeps it and
+ *  the clash is reported as a problem.
+ *
+ *  Mirrored in `hooks/redlog-relay.py` (`compile_policy`), because the shell
+ *  cannot call this and RedLog will not spawn python3 to draw a settings
+ *  panel. `test/command-class.test.ts` holds the two together: one golden
+ *  table of modes under every overlay, and the same synthetic cases run
+ *  through both sides and compared, list order included. */
+export function compileClassPolicy(overlay: unknown, shipped: ShippedClassPolicy = SHIPPED): CompiledClassPolicy {
+  const layer = new Map<string, { mode: CommandClass; source: PolicySource; profile?: string }>()
+  for (const command of shipped.native ?? []) layer.set(command, { mode: 'native', source: 'default' })
+  // After native, so a command in both lists is pty, as classifyCommand has it.
+  for (const command of shipped.pty ?? []) layer.set(command, { mode: 'pty', source: 'default' })
+
+  const problems: PolicyProblem[] = []
+  const claims = new Map<string, Array<{ profile: string; mode: CommandClass }>>()
+  ;(shipped.terminalProfiles ?? []).forEach((profile, index) => {
+    if (!validProfile(profile)) {
+      const id = isRecord(profile) && typeof profile.id === 'string' ? profile.id : `#${index}`
+      problems.push({ kind: 'invalid-profile', profile: id })
+      return
+    }
+    for (const command of profile.executables) {
+      const held = claims.get(command) ?? []
+      claims.set(command, held)
+      if (!held.some((c) => c.profile === profile.id)) held.push({ profile: profile.id, mode: profile.mode })
+    }
+  })
+  const conflicts: Array<Extract<PolicyProblem, { kind: 'conflict' }>> = []
+  for (const [command, held] of claims) {
+    if (new Set(held.map((c) => c.mode)).size === 1) {
+      layer.set(command, { mode: held[0].mode, source: 'profile', profile: held[0].profile })
+    } else {
+      conflicts.push({ kind: 'conflict', command, claims: held })
+    }
   }
-  // A command the operator moved INTO one class must leave the others.
-  for (const name of ['native', 'pty'] as const) {
-    const moved = new Set(
-      (['native', 'pty', 'relayed'] as const)
-        .filter((other) => other !== name)
-        .flatMap((other) => overlay?.[other] ?? [])
-    )
-    out[name] = out[name].filter((c) => !moved.has(c) || (overlay?.[name] ?? []).includes(c))
+  problems.push(...conflicts.sort((a, b) => byCommand(a.command, b.command)))
+
+  const normalized = normalizeOverlay(overlay)
+  problems.push(...normalized.problems)
+  // Ascending, so a hand-edit naming one command twice resolves
+  // pty over native over relayed.
+  for (const mode of ['relayed', 'native', 'pty'] as const) {
+    for (const command of normalized.lists[mode]) layer.set(command, { mode, source: 'override' })
   }
-  return out
+
+  const entries = [...new Set([...layer.keys(), ...conflicts.map((p) => p.command)])]
+    .sort(byCommand)
+    .map((command): PolicyEntry => {
+      const found = layer.get(command)
+      if (!found) return { command, mode: 'relayed', source: 'fallback' }
+      return found.source === 'profile'
+        ? { command, mode: found.mode, source: found.source, profile: found.profile }
+        : { command, mode: found.mode, source: found.source }
+    })
+  const listed = (mode: CommandClass): string[] => [...layer].filter(([, v]) => v.mode === mode).map(([c]) => c)
+  return { native: listed('native'), pty: listed('pty'), entries, problems }
 }
+
+// Defined after everything the compiler reads: a `const` used above its
+// declaration typechecks and throws at import.
+const DEFAULTS = compileClassPolicy(null)
+const NATIVE = new Set(DEFAULTS.native)
+const PTY = new Set(DEFAULTS.pty)
 
 function basename(token: string): string {
   const cut = token.lastIndexOf('/')

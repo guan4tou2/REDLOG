@@ -1280,19 +1280,26 @@ def policy_field(argv):
         return 0
 
     if action == "list":
-        policy = load_policy(terminal_home(opts))
+        shipped = read_shipped()
+        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)))
         for name in ("native", "pty"):
             sys.stdout.write("%s: %s\n" % (name, " ".join(policy.get(name, []))))
         # `relayed` is not a list — it is what a command is when it is in no
         # other one. Printing a list of "everything else" would be a lie the
         # moment the operator ran something new.
         sys.stdout.write("relayed: everything else\n")
+        for line in policy_notes(shipped, policy):
+            sys.stdout.write(line + "\n")
         return 0
 
     command = basename(opts["command"] or "")
     if not command:
         return 2
-    overlay = read_overlay(opts)
+    # Read through the same normalization the compiler uses, so a hand-edited
+    # field that is not a list is rewritten here instead of crashing the edit.
+    raw = read_overlay_file(terminal_home(opts))
+    overlay = dict(raw) if isinstance(raw, dict) else {}
+    overlay.update(normalize_overlay(raw)[0])
 
     # `remove` undoes the operator's own edit and nothing else, so the command
     # is back where the shipped defaults put it. Taking a command out of its
@@ -1322,13 +1329,17 @@ def overlay_path(opts):
     return os.path.join(terminal_home(opts), ".redlog", "command-class.json")
 
 
-def read_overlay(opts):
+def read_overlay_file(home):
+    """The operator's overlay exactly as parsed, or None when there is none.
+
+    Not coerced to a dict: whether it is usable is normalize_overlay's call,
+    so that a file that is not an object and a file that is both get one rule.
+    """
     try:
-        with open(overlay_path(opts), "r") as fh:
-            value = json.load(fh)
+        with open(overlay_path({"home": home}), "r") as fh:
+            return json.load(fh)
     except (OSError, ValueError):
-        return {}
-    return value if isinstance(value, dict) else {}
+        return None
 
 
 def classify_argv(command, policy):
@@ -1454,37 +1465,175 @@ def walk_wrappers(argv, policy):
     return i
 
 
+def read_shipped():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command-class.json")
+    with open(path, "r") as fh:
+        return json.load(fh)
+
+
 def load_policy(home=None):
-    """The shipped defaults, with the operator's overlay on top.
+    """The shipped policy compiled with the operator's overlay on top.
 
     The overlay lives under `~/.redlog/` and the defaults ship beside this
     file, so an install can replace `hooks/command-class.json` without taking
     the operator's choices with it, and `redlog class` never edits a file the
-    next install will overwrite.
+    next install will overwrite. `home=None` compiles with no overlay.
     """
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command-class.json")
-    with open(path, "r") as fh:
-        policy = json.load(fh)
-    if home is None:
-        return policy
-    overlay = read_overlay({"home": home})
-    if not overlay:
-        return policy
-    for name in CLASS_FIELDS:
-        if name == "relayed":
-            continue
-        base = list(policy.get(name, []))
-        for command in overlay.get(name, []):
-            if command not in base:
-                base.append(command)
-        policy[name] = base
-    # A command the operator moved INTO one class must leave the others.
-    for name in CLASS_FIELDS:
-        if name == "relayed":
-            continue
-        moved = {c for other in CLASS_FIELDS if other != name for c in overlay.get(other, [])}
-        policy[name] = [c for c in policy.get(name, []) if c not in moved or c in overlay.get(name, [])]
+    return build_policy(read_shipped(), None if home is None else read_overlay_file(home))
+
+
+def build_policy(shipped, overlay):
+    """What classify_argv reads. Never the raw file: the shipped native and
+    pty lists no longer hold every default, because tool profiles name the
+    rest, and only compile_policy puts them together."""
+    policy = {
+        "repl": shipped.get("repl", []),
+        "replScriptFlags": shipped.get("replScriptFlags", []),
+        "wrappers": shipped.get("wrappers", {}),
+    }
+    policy.update(compile_policy(overlay, shipped))
     return policy
+
+
+MODES = ("native", "pty", "relayed")
+
+
+def normalize_overlay(raw):
+    """The operator's overlay as {relayed, pty, native: [str]} plus problems.
+
+    Whatever else the file holds is ignored, the retired `removed` key
+    included. A field that is not a list is ignored whole, a non-string item
+    is dropped, and either one is recorded once for its field, in the order
+    native, pty, relayed. Mirrored by normalizeOverlay in
+    src/core/terminal-class.ts.
+    """
+    lists = {name: [] for name in CLASS_FIELDS}
+    problems = []
+    if not isinstance(raw, dict):
+        return lists, problems
+    for name in MODES:
+        if name not in raw:
+            continue
+        value = raw[name]
+        if not isinstance(value, list):
+            problems.append({"kind": "invalid-overlay", "field": name})
+            continue
+        kept = [c for c in value if isinstance(c, str)]
+        if len(kept) != len(value):
+            problems.append({"kind": "invalid-overlay", "field": name})
+        lists[name] = kept
+    return lists, problems
+
+
+def compile_policy(overlay, shipped):
+    """Layer the policy: defaults, then tool profiles, then the operator's overlay.
+
+    Returns {native, pty, entries, problems}. The highest layer that names a
+    command decides its mode; a command no layer names is relayed. Two
+    profiles that claim one executable in different modes cancel out, so the
+    layer below keeps it and the clash is a problem for the operator to
+    settle. Pure over its two arguments. Mirrored by compileClassPolicy in
+    src/core/terminal-class.ts, and test/command-class.test.ts runs both over
+    the same cases, including list order.
+    """
+    layer = {}  # command -> (mode, source, profile id); insertion order is list order
+    for command in shipped.get("native", []):
+        layer[command] = ("native", "default", None)
+    # After native, so a command in both lists is pty, as classify has it.
+    for command in shipped.get("pty", []):
+        layer[command] = ("pty", "default", None)
+
+    problems = []
+    claims = {}  # command -> [{profile, mode}], first claimant first
+    for index, profile in enumerate(shipped.get("terminalProfiles", [])):
+        if not valid_profile(profile):
+            ident = profile.get("id") if isinstance(profile, dict) and isinstance(profile.get("id"), str) else "#%d" % index
+            problems.append({"kind": "invalid-profile", "profile": ident})
+            continue
+        for command in profile["executables"]:
+            held = claims.setdefault(command, [])
+            if not any(c["profile"] == profile["id"] for c in held):
+                held.append({"profile": profile["id"], "mode": profile["mode"]})
+    conflicts = []
+    for command, held in claims.items():
+        if len({c["mode"] for c in held}) == 1:
+            layer[command] = (held[0]["mode"], "profile", held[0]["profile"])
+        else:
+            conflicts.append({"kind": "conflict", "command": command, "claims": held})
+    problems += sorted(conflicts, key=lambda p: p["command"])
+
+    overlay_lists, overlay_problems = normalize_overlay(overlay)
+    problems += overlay_problems
+    # Ascending, so a hand-edit naming one command twice resolves
+    # pty over native over relayed.
+    for mode in ("relayed", "native", "pty"):
+        for command in overlay_lists[mode]:
+            layer[command] = (mode, "override", None)
+
+    entries = []
+    for command in sorted(set(layer) | {p["command"] for p in problems if p["kind"] == "conflict"}):
+        mode, source, profile = layer.get(command, ("relayed", "fallback", None))
+        entry = {"command": command, "mode": mode, "source": source}
+        if source == "profile":
+            entry["profile"] = profile
+        entries.append(entry)
+    return {
+        "native": [c for c, v in layer.items() if v[0] == "native"],
+        "pty": [c for c, v in layer.items() if v[0] == "pty"],
+        "entries": entries,
+        "problems": problems,
+    }
+
+
+def valid_profile(profile):
+    return (
+        isinstance(profile, dict)
+        and isinstance(profile.get("id"), str)
+        and profile.get("mode") in MODES
+        and isinstance(profile.get("executables"), list)
+        and len(profile["executables"]) > 0
+        and all(isinstance(c, str) for c in profile["executables"])
+    )
+
+
+def policy_notes(shipped, policy):
+    """The lines `redlog class list` prints after the three class lines.
+
+    None of them may contain `native:`, `pty:` or `relayed:`: the tests, and
+    anyone grepping the listing, take those as the headers.
+    """
+    entries = {e["command"]: e for e in policy["entries"]}
+    profiles = [p for p in shipped.get("terminalProfiles", []) if isinstance(p, dict) and isinstance(p.get("id"), str)]
+    names = {}
+    for p in profiles:
+        names.setdefault(p["id"], p["name"] if isinstance(p.get("name"), str) and p["name"] else p["id"])
+
+    lines = []
+    shown = []
+    for p in profiles:
+        owned = [c for c in dict.fromkeys(p["executables"] if isinstance(p.get("executables"), list) else [])
+                 if c in entries and entries[c]["source"] == "profile" and entries[c].get("profile") == p["id"]]
+        if owned:
+            shown.append("%s (%s)" % (names[p["id"]], " ".join(owned)))
+    if shown:
+        lines.append("tool profiles: " + ", ".join(shown))
+    changes = ["%s (%s)" % (e["command"], e["mode"]) for e in policy["entries"] if e["source"] == "override"]
+    if changes:
+        lines.append("your changes: " + ", ".join(changes))
+    for problem in policy["problems"]:
+        if problem["kind"] != "conflict" or entries[problem["command"]]["source"] == "override":
+            continue
+        said = ["%s (%s)" % (names.get(c["profile"], c["profile"]), c["mode"]) for c in problem["claims"]]
+        joined = said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
+        lines.append("%s stays %s because profiles %s disagree; choose one with: redlog class add <class> %s"
+                     % (problem["command"], entries[problem["command"]]["mode"], joined, problem["command"]))
+    for problem in policy["problems"]:
+        if problem["kind"] == "invalid-overlay":
+            lines.append("ignored in ~/.redlog/command-class.json: %s is not a list of commands" % problem["field"])
+    for problem in policy["problems"]:
+        if problem["kind"] == "invalid-profile":
+            lines.append("skipped tool profile %s: not valid" % problem["profile"])
+    return lines
 
 
 def basename(token):

@@ -22,7 +22,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { classifyCommand, type CommandClass, type ClassOverlay } from './terminal-class'
+import { classifyCommand, type CommandClass } from './terminal-class'
 
 export type TerminalMode = 'auto' | 'manual'
 export type TerminalStopReason = 'operator' | 'project-switched' | 'hook-removed'
@@ -136,14 +136,11 @@ export function readTerminalMode(home: string = os.homedir()): TerminalMode {
   }
 }
 
-/** What `redlog class add|remove` wrote, or null when the operator has not
- *  moved anything. */
-export function readClassOverlay(home: string = os.homedir()): ClassOverlay | null {
+/** What `redlog class add|remove` wrote, as parsed, or null when there is no
+ *  readable file. Not validated: `compileClassPolicy` decides what in it counts. */
+export function readClassOverlay(home: string = os.homedir()): unknown {
   try {
-    const value = JSON.parse(
-      fs.readFileSync(path.join(home, '.redlog', 'command-class.json'), 'utf8')
-    ) as ClassOverlay
-    return value && typeof value === 'object' ? value : null
+    return JSON.parse(fs.readFileSync(path.join(home, '.redlog', 'command-class.json'), 'utf8'))
   } catch {
     return null
   }

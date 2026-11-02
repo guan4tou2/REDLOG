@@ -249,6 +249,9 @@ describeShell(`the redlog command (${target.label})`, () => {
       // other one, and printing "everything else" as a list would be a lie
       // the moment the operator ran something new.
       expect(listed).toMatch(/relayed: everything else/)
+      // vim and vi are native because a tool profile says so, not because a
+      // list does; the listing says where each name came from (#499).
+      expect(listed).toContain('tool profiles: Vim (vim vi)')
     })
 
     it('warns what moving a command into the PTY class costs', () => {
@@ -263,6 +266,8 @@ describeShell(`the redlog command (${target.label})`, () => {
       expect(run.steps[3].output).toMatch(/nc is now relayed/)
       expect(run.steps[4].output, 'nc is still native after add relayed').not.toMatch(/native:.*\bnc\b/)
       expect(run.steps[4].output).not.toMatch(/pty:.*\bnc\b/)
+      // curl (pty) is still there from the step before.
+      expect(run.steps[4].output).toContain('your changes: curl (pty), nc (relayed)')
     })
 
     // #296: remove used to drop a command from the shipped defaults as well.

@@ -125,6 +125,16 @@ PTY-captured command cannot be suspended, so the list *is* the product
 decision. Defaults that record `nc` would silently destroy the shell upgrade
 mid-engagement.
 
+**Where the names live (#499)**: still one file, `hooks/command-class.json`,
+but no longer only two flat lists. `native` and `pty` hold the plain defaults
+(`nc`, `ncat`, `stty`, `nvim`, `nano`, `emacs`, `less`, `more`; `socat`), and
+`terminalProfiles` holds the tools that have a reason of their own: Vim, SSH,
+pwncat-cs, Claude Code and Codex, each with its mode and the executables that
+run it. Both readers compile the file the same way — the shell through
+`compile_policy` in `hooks/redlog-relay.py`, RedLog through `compileClassPolicy`
+in `src/core/terminal-class.ts` — with the operator's overlay on top, and
+`test/command-class.test.ts` holds the two to one golden table of modes.
+
 **Must hold**: the classification survives `sudo`, `env`, `proxychains` and an
 absolute path (FR-027), so the classifier walks prefix wrappers before it looks
 at the program name.
@@ -210,7 +220,7 @@ and RedLog has an evidence store, so they are not.
 
 | `tlogger-v2` | This feature | Why |
 |---|---|---|
-| Capture list is a `TLOGGER_PTY_CMDS` array the operator edits in `.zshrc` | Class policy lives in RedLog's config; the shell reads what RedLog wrote | Principle III: one canonical policy that the card can show, Settings can change, and every adapter reads. An array per shell drifts per shell |
+| Capture list is a `TLOGGER_PTY_CMDS` array the operator edits in `.zshrc` | Class policy lives in RedLog's config; the shell reads what RedLog wrote | Principle III: one canonical policy that the card can show, Settings can change, and every adapter reads. An array per shell drifts per shell. Since #499 the policy is default lists plus `terminalProfiles` in the one file, compiled identically by both readers (D3) |
 | PTY capture via `script(1)` | PTY class uses `hooks/redlog-session.py` | Spec 022's recorder is already verified: bounded output, pinned identity, pause honoured at receipt. `script` would be a second recorder with different semantics and no identity pinning |
 | Writes `~/Desktop/logs/session_*.log` | Writes events only | A second plaintext record that is not chained is a liability, not a backup — it is exactly the "two records that disagree" problem this product exists to avoid |
 | `tlogger_note` writes `### NOTE ###` into the log | Dropped unless it maps onto RedLog's existing marker path | RedLog already has operator-attributed markers in the chained store |
