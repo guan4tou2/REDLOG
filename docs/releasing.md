@@ -14,7 +14,7 @@ git push origin main
 git push origin v0.2.0
 ```
 
-Before either phase, a `gate` job refuses the tag unless its commit is reachable from `origin/main` and the latest `CI` push run for that exact commit concluded `success` (`scripts/verify-release-ci.mjs`); if CI is still running, wait for it and re-run the release workflow.
+Before either phase, a `gate` job refuses the tag unless its commit is reachable from `origin/main` and the latest `CI` push run for that exact commit concluded `success` (`scripts/verify-release-ci.mjs`), and the build then checks out that commit rather than looking the tag up again; if CI is still running, wait for it and re-run the release workflow.
 
 The workflow has two phases:
 

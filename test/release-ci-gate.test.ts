@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 // @ts-expect-error — plain ESM script, also run directly by the Release workflow
-import { decideReleaseGate, verifyRelease } from '../scripts/verify-release-ci.mjs'
+import { decideReleaseGate, verifyRelease, resolveTagCommit } from '../scripts/verify-release-ci.mjs'
 
 const SHA = 'a'.repeat(40)
 const OTHER = 'b'.repeat(40)
@@ -118,6 +122,7 @@ describe('release gate: decision over the CI runs of the tagged commit', () => {
 describe('release gate: resolving the tag and reading the repository', () => {
   const io = (over: Record<string, unknown> = {}) => ({
     resolveTag: () => SHA,
+    headSha: () => SHA,
     isShallow: () => false,
     isAncestorOfMain: () => true,
     listCiRuns: () => [run()],
@@ -155,5 +160,71 @@ describe('release gate: resolving the tag and reading the repository', () => {
     expect(d.ok).toBe(false)
     expect(d.state).toBe('not-on-main')
     expect(called).toBe(false)
+  })
+})
+
+describe('release gate: the tag is resolved once, to a commit, from refs/tags only', () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', ...args],
+      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  let dir: string
+  let a: string
+  let b: string
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'redlog-release-tag-'))
+    git(dir, 'init', '-q', '-b', 'main')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'a')
+    a = git(dir, 'rev-parse', 'HEAD')
+    git(dir, 'commit', '-q', '--allow-empty', '-m', 'b')
+    b = git(dir, 'rev-parse', 'HEAD')
+    git(dir, 'tag', 'v1.0.0', a) // lightweight
+    git(dir, 'tag', '-a', 'v1.1.0', '-m', 'annotated', a) // annotated: the tag object differs from the commit
+    git(dir, 'branch', 'v2.0.0', b) // a branch named like a tag...
+    git(dir, 'tag', 'v2.0.0', a) // ...beside the tag itself
+    git(dir, 'branch', 'v3.0.0', b) // a branch with no tag at all
+    writeFileSync(join(dir, 'f'), 'x')
+    const blob = git(dir, 'hash-object', '-w', 'f')
+    git(dir, 'tag', 'v4.0.0', blob) // a tag that is not a commit
+  })
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('resolves a lightweight tag to its commit', () => {
+    expect(resolveTagCommit('v1.0.0', dir)).toBe(a)
+  })
+  it('peels an annotated tag to the commit, not the tag object', () => {
+    const tagObject = git(dir, 'rev-parse', 'refs/tags/v1.1.0')
+    expect(tagObject).not.toBe(a)
+    expect(resolveTagCommit('v1.1.0', dir)).toBe(a)
+  })
+  it('returns null for a tag that does not exist', () => {
+    expect(resolveTagCommit('v9.9.9', dir)).toBeNull()
+  })
+  it('takes the tag, not a branch of the same name', () => {
+    expect(b).not.toBe(a)
+    expect(resolveTagCommit('v2.0.0', dir)).toBe(a)
+  })
+  it('does not fall back to a branch when there is no such tag', () => {
+    expect(resolveTagCommit('v3.0.0', dir)).toBeNull()
+  })
+  it('returns null for a tag that does not point at a commit', () => {
+    expect(resolveTagCommit('v4.0.0', dir)).toBeNull()
+  })
+
+  it('verifyRelease fails when the checked-out HEAD is not the resolved commit', () => {
+    const d = verifyRelease('v1.2.3', {
+      resolveTag: () => SHA, headSha: () => OTHER, isShallow: () => false,
+      isAncestorOfMain: () => true, listCiRuns: () => [run()]
+    })
+    expect(d.ok).toBe(false)
+    expect(d.state).toBe('checkout-mismatch')
+    expect(d.message).toContain(SHA)
+  })
+  it('verifyRelease reports the resolved sha so the workflow can build exactly it', () => {
+    const d = verifyRelease('v1.2.3', {
+      resolveTag: () => SHA, headSha: () => SHA, isShallow: () => false,
+      isAncestorOfMain: () => true, listCiRuns: () => [run()]
+    })
+    expect(d.ok).toBe(true)
+    expect(d.sha).toBe(SHA)
   })
 })

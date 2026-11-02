@@ -9,7 +9,16 @@
 // green re-run of a flaky failure passes. A later, separate run that failed or
 // is still going outranks an earlier success: it is the newest evidence about
 // this same commit, and anyone who disagrees can re-run it to green.
+//
+// The tag is resolved here once, from refs/tags/<tag> only (a branch of the same
+// name is never consulted), peeled to its commit, and written to GITHUB_OUTPUT
+// as `sha`. The build and release jobs check out that sha instead of looking the
+// tag up again, so a tag moved after this gate passed is not built unchecked.
+// This guards against accidents, not a hostile writer: someone who can push to
+// the repository can also edit release.yml on the tagged commit. Tag rulesets
+// are what stop that.
 import { execFileSync } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 const CI_WORKFLOW = 'ci.yml'
@@ -46,27 +55,38 @@ export function verifyRelease(tag, io) {
     return { ok: false, state: 'bad-tag', message: `"${tag}" is not a release tag (expected vX.Y.Z).` }
   }
   const sha = io.resolveTag(tag)
-  if (!sha) return { ok: false, state: 'bad-tag', message: `Tag ${tag} does not exist in this clone.` }
+  if (!sha) return { ok: false, state: 'bad-tag', message: `Tag refs/tags/${tag} does not exist in this clone or does not point at a commit.` }
+  const head = io.headSha()
+  if (head !== sha) {
+    return { ok: false, state: 'checkout-mismatch', message: `Tag ${tag} resolves to ${sha} but the checkout is at ${head}. The tag moved after checkout, or the wrong ref was checked out.` }
+  }
   if (io.isShallow()) {
     return { ok: false, state: 'shallow', message: 'This clone is shallow, so reachability from main cannot be judged. Check out with fetch-depth: 0.' }
   }
   const onMain = io.isAncestorOfMain(sha)
-  if (!onMain) return decideReleaseGate({ sha, onMain, runs: [] })
-  return decideReleaseGate({ sha, onMain, runs: io.listCiRuns(sha) })
+  const decision = onMain
+    ? decideReleaseGate({ sha, onMain, runs: io.listCiRuns(sha) })
+    : decideReleaseGate({ sha, onMain, runs: [] })
+  return { ...decision, sha }
 }
 
-function git(...args) {
-  return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+function git(args, cwd) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+}
+
+// The commit a release tag points at: refs/tags/<tag> only, annotated tags
+// peeled to their commit. null if there is no such tag or it is not a commit.
+export function resolveTagCommit(tag, cwd) {
+  try { return git(['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`], cwd) || null } catch { return null }
 }
 
 function realIo(repo) {
   return {
-    resolveTag(tag) {
-      try { return git('rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`) } catch { return null }
-    },
-    isShallow: () => git('rev-parse', '--is-shallow-repository') === 'true',
+    resolveTag: (tag) => resolveTagCommit(tag),
+    headSha: () => git(['rev-parse', 'HEAD']),
+    isShallow: () => git(['rev-parse', '--is-shallow-repository']) === 'true',
     isAncestorOfMain(sha) {
-      try { git('merge-base', '--is-ancestor', sha, 'origin/main'); return true } catch (e) {
+      try { git(['merge-base', '--is-ancestor', sha, 'origin/main']); return true } catch (e) {
         if (e.status === 1) return false // 1 = not an ancestor; anything else is a real error
         throw e
       }
@@ -101,4 +121,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1)
   }
   console.log(`${tag}: ${decision.message}`)
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `sha=${decision.sha}\n`)
 }
