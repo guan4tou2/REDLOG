@@ -1,7 +1,9 @@
-#!/usr/bin/env node
 // Release gate: a tag may only be built if its commit is on main and the CI
 // workflow passed on that exact commit. Run first by .github/workflows/release.yml
 // (RELEASE_TAG, GITHUB_REPOSITORY and GH_TOKEN in the environment, full clone).
+// It is run as `node scripts/verify-release-ci.mjs` and has no shebang: a
+// Windows checkout turns the file CRLF, and the unit test that imports it then
+// fails to load ("Invalid or unexpected token").
 //
 // Which run counts: CI runs on every merge to main (`push`, grouped by sha, so
 // each commit gets its own). If several push runs exist for the sha, the LATEST
