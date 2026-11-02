@@ -492,6 +492,30 @@ ${source()}`,
         }
       }, 300_000)
 
+      // #499. A plugin's profile can name a program as pty while a terminal is
+      // open. The wrappers were installed at start, so there is none for it.
+      it('is marked no-pty-wrapper when a plugin\'s profile named it after the shell started', async () => {
+        const snapshot = JSON.stringify({
+          version: 1,
+          profiles: [{ id: 'pack/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'r' }],
+          held: {}
+        })
+        const result = await runZsh(target!, {
+          rc: `mkdir -p "$HOME/fakebin"\nprintf '#!/bin/sh\\necho ligolo-ran\\n' > "$HOME/fakebin/ligolo-proxy"\nchmod +x "$HOME/fakebin/ligolo-proxy"\nexport PATH="$HOME/fakebin:$PATH"\n${source()}`,
+          commands: ['ligolo-proxy plug-before', `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`, 'ligolo-proxy plug-after'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        expect(result.steps[2].output).toContain('ligolo-ran')
+        const before = shellEvents(collector.events, 'command_start', 'plug-before')[0]
+        expect(before.data.class).toBe('relayed')
+        expect(before.data.capture_mode).toBeUndefined()
+        const after = shellEvents(collector.events, 'command_start', 'plug-after')[0]
+        expect(after.data.class).toBe('pty')
+        expect(after.data).toMatchObject({ capture_mode: 'native', capture_reason: 'no-pty-wrapper' })
+      }, 300_000)
+
       it('is marked no-pty-wrapper behind sudo, and still carries nothing when wrapped', async () => {
         // A stand-in `sudo` that runs its arguments, so the case needs no
         // privilege: the class walks past it to `ssh`, and the word the shell

@@ -6,7 +6,9 @@ import {
   classifyCommand, compileClassPolicy, type CommandClass, type CompiledClassPolicy, type ShippedClassPolicy
 } from '../src/core/terminal-class'
 import { readClassOverlay } from '../src/core/terminal-enrollment'
-import { readContributedProfiles } from '../src/core/terminal-profiles'
+import {
+  readContributedProfiles, registerTerminalProfiles, unregisterTerminalProfiles, syncTerminalProfiles
+} from '../src/core/terminal-profiles'
 import { findShellTarget, runInShell, hookPath, type ShellTarget } from './helpers/zsh-pty'
 import shipped from '../hooks/command-class.json'
 import golden from './fixtures/command-class-golden.json'
@@ -569,6 +571,124 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
     ])
     for (const l of lines.slice(3)) expect(l, 'a header lookalike').not.toMatch(/\b(native|pty|relayed):/)
   }, 180_000)
+
+  // #499. The plugins' profiles are named on their own line, a clash that a
+  // holder kept says who kept it and who did not get it, and a snapshot the
+  // compiler could not use says so once.
+  describe('`redlog class list` with plugin profiles', () => {
+    const bundled = {
+      native: ['nc'], pty: ['socat'], repl: [], replScriptFlags: [], wrappers: {},
+      terminalProfiles: [profile('vim', 'Vim', 'native', ['vim', 'vi'])]
+    }
+    const run = async (snapshot: string | null, overlay: string | null = null): Promise<string[]> => {
+      const script = [
+        'D=$(mktemp -d -t redlog-plist.XXXXXX)',
+        `cp "${hookPath(target!, 'redlog-relay.py')}" "${hookPath(target!, 'terminal_app.py')}" "$D/"`,
+        `cat > "$D/command-class.json" <<'JSON'\n${JSON.stringify(bundled)}\nJSON`,
+        'mkdir -p "$D/home/.redlog"',
+        ...(snapshot === null ? [] : [`cat > "$D/home/.redlog/terminal-profiles.json" <<'JSON'\n${snapshot}\nJSON`]),
+        ...(overlay === null ? [] : [`cat > "$D/home/.redlog/command-class.json" <<'JSON'\n${overlay}\nJSON`]),
+        'python3 "$D/redlog-relay.py" policy --home "$D/home" --action list',
+        'rm -rf "$D"'
+      ].join('\n')
+      const r = await runInShell(target!, script, { timeoutMs: 120_000 })
+      const lines = r.stdout.split('\n').filter(Boolean)
+      expect(lines.length, r.stderr.slice(0, 300)).toBeGreaterThanOrEqual(3)
+      for (const l of lines.slice(3)) expect(l, 'a header lookalike').not.toMatch(/\b(native|pty|relayed):/)
+      return lines
+    }
+    const keys = { id: 'pack-a/keys', name: 'Vim Keys', mode: 'pty', executables: ['vim', 'vi'], reason: 'r' }
+
+    it('names a plugin\'s profile with the plugin it came from, once it owns an executable', async () => {
+      const lines = await run(snap([
+        { id: 'pack-b/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy', 'ligolo-agent'], reason: 'r' },
+        { id: 'pack-b/odd', name: 'a: b', mode: 'native', executables: ['odd-tool'], reason: 'r' },
+        keys
+      ], {}))
+      // Vim owns nothing here — a newcomer cancelled it — so it has no line.
+      expect(lines.slice(3)).toEqual([
+        'plugin profiles: Ligolo-ng from pack-b (ligolo-proxy ligolo-agent), pack-b/odd from pack-b (odd-tool)',
+        'vi stays relayed because profiles Vim (native) and Vim Keys from pack-a (pty) disagree; choose one with: redlog class add <class> vi',
+        'vim stays relayed because profiles Vim (native) and Vim Keys from pack-a (pty) disagree; choose one with: redlog class add <class> vim'
+      ])
+    }, 180_000)
+
+    it('says who kept a command a plugin wanted, and who did not get it', async () => {
+      const lines = await run(snap([keys, { id: 'pack-c/two', name: 'Vim Two', mode: 'relayed', executables: ['vi'], reason: 'r' }],
+        { vim: 'vim', vi: 'vim' }))
+      expect(lines.slice(0, 2)).toEqual(['native: nc vim vi', 'pty: socat'])
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vim vi)',
+        'vi stays native from Vim, which had it first; Vim Keys from pack-a (pty) and Vim Two from pack-c (relayed) are not applied; choose one with: redlog class add <class> vi',
+        'vim stays native from Vim, which had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vim'
+      ])
+    }, 180_000)
+
+    it('leaves out a kept clash the operator has already settled', async () => {
+      const lines = await run(snap([keys], { vim: 'vim', vi: 'vim' }), '{"relayed": ["vim"]}')
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vi)',
+        'your changes: vim (relayed)',
+        'vi stays native from Vim, which had it first; Vim Keys from pack-a (pty) is not applied; choose one with: redlog class add <class> vi'
+      ])
+    }, 180_000)
+
+    it('says once that a snapshot it cannot use is ignored, and keeps the bundled tools and the overlay', async () => {
+      for (const [text, why] of [
+        ['{', 'not readable'], ['[]', 'not readable'], ['{"version":1}', 'not readable'],
+        ['{"version":2,"profiles":[],"held":{}}', 'written by a newer RedLog']
+      ]) {
+        const lines = await run(text, '{"pty": ["curl"]}')
+        expect(lines.slice(3), text).toEqual([
+          'tool profiles: Vim (vim vi)',
+          'your changes: curl (pty)',
+          `ignored ~/.redlog/terminal-profiles.json: ${why}, so no plugin profile applies`
+        ])
+      }
+    }, 300_000)
+
+    it('says nothing about a snapshot that is not there, or that says null', async () => {
+      for (const text of [null, 'null']) {
+        expect((await run(text)).slice(3), String(text)).toEqual(['tool profiles: Vim (vim vi)'])
+      }
+    }, 180_000)
+
+    it('skips an invalid profile in the snapshot, by id, and keeps the rest', async () => {
+      const lines = await run(snap([
+        { id: 'pack-d/bad', name: 'Bad', mode: 'pty', executables: ['a;b'], reason: 'r' },
+        { id: 'pack-d/fine', name: 'Fine', mode: 'pty', executables: ['fine-tool'], reason: 'r' }
+      ]))
+      expect(lines.slice(3)).toEqual([
+        'tool profiles: Vim (vim vi)',
+        'plugin profiles: Fine from pack-d (fine-tool)',
+        'skipped tool profile pack-d/bad: not valid'
+      ])
+    }, 180_000)
+
+    // The same text, from the other end: what the app writes is what the shell reads.
+    it('reads a snapshot that RedLog itself wrote', async () => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-written-'))
+      try {
+        registerTerminalProfiles('written-pack', [{ id: 'ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'r' }])
+        expect(syncTerminalProfiles(home).written).toBe(true)
+        const relay = hookPath(target!, 'redlog-relay.py')
+        const h = target!.toShellPath(home)
+        const r = await runInShell(target!, [
+          `python3 "${relay}" classify --home "${h}" -- ligolo-proxy -x`, 'echo',
+          `python3 "${relay}" classify --home "${h}" -- vim x`, 'echo',
+          `python3 "${relay}" policy --home "${h}" --action list`
+        ].join('\n'), { timeoutMs: 120_000 })
+        const out = r.stdout.split('\n')
+        expect(out[0], r.stderr.slice(0, 300)).toBe('pty')
+        expect(out[1]).toBe('native')
+        expect(out).toContain('plugin profiles: Ligolo-ng from written-pack (ligolo-proxy)')
+        expect(compileClassPolicy(null, undefined, readContributedProfiles(home)).pty).toContain('ligolo-proxy')
+      } finally {
+        unregisterTerminalProfiles('written-pack')
+        fs.rmSync(home, { recursive: true, force: true })
+      }
+    }, 180_000)
+  })
 })
 
 // The merge itself, without a shell in the way.

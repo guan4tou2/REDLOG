@@ -75,7 +75,10 @@ _redlog_policy_sig() {
   local home=$HOME f
   [[ -n "${_REDLOG_DIR:-}" ]] && home="${_REDLOG_DIR:h}"
   local -a st
-  for f in "${_REDLOG_RELAY:h}/command-class.json" "$home/.redlog/command-class.json"; do
+  # Three files decide a class: the shipped defaults, the operator's overlay,
+  # and the plugins' profiles (#499). A plugin installed while this shell is
+  # open writes the third, and the answers cached before it are wrong.
+  for f in "${_REDLOG_RELAY:h}/command-class.json" "$home/.redlog/command-class.json" "$home/.redlog/terminal-profiles.json"; do
     # inode, size, mtime, ctime — fields 2, 8, 10 and 11 of a plain `zstat -A`.
     if zstat -A st -- "$f" 2>/dev/null; then
       REPLY+="${st[2]}:${st[8]}:${st[10]}:${st[11]}|"
@@ -209,8 +212,15 @@ redlog() {
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --action list
           local prog
           for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
-            [[ -n "$prog" ]] && _redlog_is_user_function "$prog" && \
+            [[ -n "$prog" ]] || continue
+            if _redlog_is_user_function "$prog"; then
               print -- "$prog is your own function, so it is not PTY-recorded"
+            elif whence -p -- "$prog" >/dev/null 2>&1 && ! _redlog_is_pty_wrapper "$prog"; then
+              # Wrappers are installed once, when a terminal starts. A program
+              # that joined the class since (a plugin's profile, `redlog class
+              # add pty`) is wrapped in the next terminal and not in this one.
+              print -- "$prog is PTY-recorded in a new terminal, not this one"
+            fi
           done
           print
           ;;

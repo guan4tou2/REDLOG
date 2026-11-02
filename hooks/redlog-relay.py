@@ -1281,14 +1281,15 @@ def policy_field(argv):
 
     if action == "list":
         shipped = read_shipped()
-        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)), read_contributed_file(terminal_home(opts)))
+        contributed = read_contributed_file(terminal_home(opts))
+        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)), contributed)
         for name in ("native", "pty"):
             sys.stdout.write("%s: %s\n" % (name, " ".join(policy.get(name, []))))
         # `relayed` is not a list — it is what a command is when it is in no
         # other one. Printing a list of "everything else" would be a lie the
         # moment the operator ran something new.
         sys.stdout.write("relayed: everything else\n")
-        for line in policy_notes(shipped, policy):
+        for line in policy_notes(shipped.get("terminalProfiles", []), normalize_contributed(contributed)[0], policy):
             sys.stdout.write(line + "\n")
         return 0
 
@@ -1677,40 +1678,87 @@ def normalize_contributed(raw):
     return list(raw["profiles"]), held, []
 
 
-def policy_notes(shipped, policy):
+def display_name(profile):
+    """What a profile is called in a listing: its name when that is one plain
+    line with no colon (a colon is how `native:` and `pty:` look like headers),
+    else its id."""
+    name = profile.get("name")
+    if isinstance(name, str) and name and ":" not in name and not any(ord(ch) < 0x20 for ch in name):
+        return name
+    return profile["id"]
+
+
+def policy_notes(bundled, contributed, policy):
     """The lines `redlog class list` prints after the three class lines.
 
-    None of them may contain `native:`, `pty:` or `relayed:`: the tests, and
-    anyone grepping the listing, take those as the headers.
+    `bundled` and `contributed` are the profiles of the shipped file and of the
+    plugins' snapshot, as parsed. None of the lines may contain `native:`,
+    `pty:` or `relayed:`: the tests, and anyone grepping the listing, take
+    those as the headers.
     """
     entries = {e["command"]: e for e in policy["entries"]}
-    profiles = [p for p in shipped.get("terminalProfiles", []) if isinstance(p, dict) and isinstance(p.get("id"), str)]
+
+    def usable(profiles):
+        return [p for p in profiles if isinstance(p, dict) and isinstance(p.get("id"), str)]
+
+    bundled = usable(bundled)
+    contributed = usable(contributed)
     names = {}
-    for p in profiles:
-        names.setdefault(p["id"], p["name"] if isinstance(p.get("name"), str) and p["name"] else p["id"])
+    for p in bundled + contributed:
+        names.setdefault(p["id"], display_name(p))
+    # A plugin's profile is named with the plugin it came from, which is its
+    # id's prefix. A bundled one is just its name.
+    plugins = {}
+    for p in contributed:
+        if p["id"] not in {b["id"] for b in bundled}:
+            plugins.setdefault(p["id"], p["id"].split("/", 1)[0] if "/" in p["id"] else None)
+
+    def label(ident):
+        origin = plugins.get(ident)
+        return names.get(ident, ident) if origin is None else "%s from %s" % (names[ident], origin)
+
+    def owned_by(p):
+        listed = [c for c in (p.get("executables") if isinstance(p.get("executables"), list) else []) if isinstance(c, str)]
+        return [c for c in dict.fromkeys(listed)
+                if c in entries and entries[c]["source"] == "profile" and entries[c].get("profile") == p["id"]]
 
     lines = []
-    shown = []
-    for p in profiles:
-        owned = [c for c in dict.fromkeys(p["executables"] if isinstance(p.get("executables"), list) else [])
-                 if c in entries and entries[c]["source"] == "profile" and entries[c].get("profile") == p["id"]]
-        if owned:
-            shown.append("%s (%s)" % (names[p["id"]], " ".join(owned)))
-    if shown:
-        lines.append("tool profiles: " + ", ".join(shown))
+    for heading, group in (("tool profiles", bundled), ("plugin profiles", contributed)):
+        shown = []
+        for p in group:
+            owned = owned_by(p)
+            if owned:
+                shown.append("%s (%s)" % (label(p["id"]), " ".join(owned)))
+        if shown:
+            lines.append("%s: %s" % (heading, ", ".join(shown)))
     changes = ["%s (%s)" % (e["command"], e["mode"]) for e in policy["entries"] if e["source"] == "override"]
     if changes:
         lines.append("your changes: " + ", ".join(changes))
+
+    def joined(said):
+        return said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
+
     for problem in policy["problems"]:
         if problem["kind"] != "conflict" or entries[problem["command"]]["source"] == "override":
             continue
-        said = ["%s (%s)" % (names.get(c["profile"], c["profile"]), c["mode"]) for c in problem["claims"]]
-        joined = said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
-        lines.append("%s stays %s because profiles %s disagree; choose one with: redlog class add <class> %s"
-                     % (problem["command"], entries[problem["command"]]["mode"], joined, problem["command"]))
+        command = problem["command"]
+        kept = problem.get("kept")
+        if kept is None:
+            said = ["%s (%s)" % (label(c["profile"]), c["mode"]) for c in problem["claims"]]
+            lines.append("%s stays %s because profiles %s disagree; choose one with: redlog class add <class> %s"
+                         % (command, entries[command]["mode"], joined(said), command))
+        else:
+            others = ["%s (%s)" % (label(c["profile"]), c["mode"]) for c in problem["claims"] if c["profile"] != kept]
+            lines.append("%s stays %s from %s, which had it first; %s %s not applied; choose one with: redlog class add <class> %s"
+                         % (command, entries[command]["mode"], label(kept), joined(others),
+                            "is" if len(others) == 1 else "are", command))
     for problem in policy["problems"]:
         if problem["kind"] == "invalid-overlay":
             lines.append("ignored in ~/.redlog/command-class.json: %s is not a list of commands" % problem["field"])
+    for problem in policy["problems"]:
+        if problem["kind"] == "invalid-snapshot":
+            why = "written by a newer RedLog" if problem["reason"] == "unsupported-version" else "not readable"
+            lines.append("ignored ~/.redlog/terminal-profiles.json: %s, so no plugin profile applies" % why)
     for problem in policy["problems"]:
         if problem["kind"] == "invalid-profile":
             lines.append("skipped tool profile %s: not valid" % problem["profile"])

@@ -286,6 +286,52 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
     })
   })
 
+  // #499. A plugin's tool profile can arrive while a terminal is open. The
+  // class list names it, and says the one thing that would otherwise surprise
+  // the operator: the PTY wrappers are installed when a terminal starts, so
+  // this one still runs the program on its own terminal.
+  describe('class list with a plugin profile that arrived after this terminal started', () => {
+    const snapshot = JSON.stringify({
+      version: 1,
+      profiles: [{ id: 'pack/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy', 'ligolo-gone'], reason: 'r' }],
+      held: {}
+    })
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: [
+          'mkdir -p "$HOME/fakebin"',
+          `printf '#!/bin/sh\\n' > "$HOME/fakebin/ligolo-proxy"`,
+          'chmod +x "$HOME/fakebin/ligolo-proxy"',
+          'export PATH="$HOME/fakebin:$PATH"',
+          `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+        ].join('\n'),
+        commands: [
+          'redlog class list',
+          `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`,
+          'redlog class list'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-plug', operatorId: 'op-plug' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('names the plugin\'s profile and that its program is recorded in a new terminal only', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(run.steps[0].output).not.toMatch(/plugin profiles|PTY-recorded in a new terminal/)
+
+      const after = run.steps[2].output
+      expect(after).toContain('plugin profiles: Ligolo-ng from pack (ligolo-proxy ligolo-gone)')
+      expect(after).toMatch(/pty:.*\bligolo-proxy\b/)
+      expect(after).toContain('ligolo-proxy is PTY-recorded in a new terminal, not this one')
+      // ssh was wrapped when this terminal started, and ligolo-gone has no
+      // program behind it: neither is something to warn about.
+      expect(after).not.toMatch(/ssh is PTY-recorded/)
+      expect(after).not.toMatch(/ligolo-gone is PTY-recorded/)
+    })
+  })
+
   describe('unknown subcommands', () => {
     it('print the list and exit non-zero', async () => {
       const run = await runZsh(target!, {
