@@ -21,6 +21,18 @@ const RETIRED_KEYS: Record<string, string> = {
   mappers: 'nothing applies mappers yet — producers post normalised events to POST /api/events'
 }
 
+/** Whether the plugin must be approved by the operator, at its current
+ *  content, before anything it contributes takes effect. Everything that runs
+ *  code does (the `privileged` tier). So does a plugin that declares
+ *  `terminalProfiles`, which runs nothing: a profile decides what the shell
+ *  records and what it leaves alone, so a manifest dropped into the plugins
+ *  folder must not be able to set it unasked. Everything else is data RedLog
+ *  reads and is active from the start. */
+export function requiresApproval(manifest: PluginManifest): boolean {
+  const c = manifest.contributes ?? {}
+  return tierOf(manifest) === 'privileged' || (Array.isArray(c.terminalProfiles) && c.terminalProfiles.length > 0)
+}
+
 export function tierOf(manifest: PluginManifest): PluginTier {
   const c = manifest.contributes ?? {}
   return PRIVILEGED_KEYS.some((k) => typeof c[k] === 'string' && (c[k] as string).length > 0)

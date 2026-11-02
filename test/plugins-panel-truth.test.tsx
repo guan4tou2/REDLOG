@@ -163,6 +163,26 @@ describe('the plugins page shows what main has done', () => {
       expect(body).not.toMatch(/separate process|walled off/)
     })
 
+    // A plugin with no code that declares terminal profiles needs approval too,
+    // and the dialog must not tell the operator it runs code: it says what a
+    // profile can do, which is stop a tool being recorded.
+    it('asks for approval of a plugin that only declares terminal profiles, without claiming it runs code', async () => {
+      const profiles = (over: Record<string, unknown> = {}) =>
+        ({ ...view('tp'), status: 'needs-consent', needsApproval: true, contributes: ['terminalProfiles'], ...over })
+      api.list.mockResolvedValue([profiles()])
+      api.grant.mockResolvedValue({ ok: true, plugins: [profiles({ status: 'active' })] })
+      draw()
+      expect(screen.queryByText(en['plugins.tier.privileged'])).toBeNull()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const dialog = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
+      expect(dialog).toContain('not recorded')
+      expect(dialog).not.toMatch(/main process|runs? code|ships code/)
+      expect(dialog).not.toContain(en['plugins.consentWarn'])
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      await waitFor(() => expect(api.grant).toHaveBeenCalledWith('tp'))
+      expect(await screen.findByRole('button', { name: 'Revoke trust' })).toBeTruthy()
+    })
+
     it('offers no consent for a third-party tailer, which is refused whatever is agreed', async () => {
       api.list.mockResolvedValue([privileged('t', { source: 'user', report: { tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' } } })])
       draw()

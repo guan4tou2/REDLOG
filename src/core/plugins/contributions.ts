@@ -90,9 +90,9 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
   }
   if (c.terminalProfiles?.length) {
     // A profile changes what the shell does to what the operator types, so it
-    // waits for the operator's approval of this exact content. `loader` only
-    // leaves `needs-consent` / `hash-changed` on a plugin whose code needs that
-    // approval; everything else it loads is already in a state to contribute.
+    // waits for the operator's approval of this exact content. `loader` gives a
+    // plugin that declares profiles `needs-consent` until it is approved (see
+    // `requiresApproval`), code or no code, and again when the manifest changes.
     if (AWAITING_APPROVAL.includes(p.status)) {
       report.terminalProfiles = { accepted: 0, rejected: [], waiting: true }
     } else {

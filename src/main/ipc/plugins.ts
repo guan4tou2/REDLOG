@@ -8,6 +8,7 @@ import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { testSample } from '../../core/plugins/test-sample'
 import { getContributionReport } from '../../core/plugins/contributions'
+import { requiresApproval } from '../../core/plugins/manifest'
 import { createOfficialAgentPluginManager } from '../../core/plugins/official-agents'
 import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins } from '../../core/plugins'
 import { invalidateHooksCache } from '../../core/capture-health'
@@ -23,7 +24,7 @@ function pluginView() {
     officialAgent: official.some(entry => entry.pluginId === p.manifest.id),
     id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
     description: p.manifest.description ?? '', author: p.manifest.author ?? '',
-    source: p.source, tier: p.tier, status: p.status,
+    source: p.source, tier: p.tier, needsApproval: requiresApproval(p.manifest), status: p.status,
     capabilities: p.manifest.capabilities ?? [],
     contributes: Object.keys(p.manifest.contributes ?? {}),
     error: p.error,

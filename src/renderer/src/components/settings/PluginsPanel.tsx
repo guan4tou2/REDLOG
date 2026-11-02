@@ -15,6 +15,9 @@ interface PluginView {
   author: string
   source: 'bundled' | 'user'
   tier: 'declarative' | 'privileged'
+  /** the plugin takes effect only once the operator approves its content:
+   *  code (privileged), or terminal profiles, which run nothing */
+  needsApproval?: boolean
   status: 'active' | 'needs-consent' | 'hash-changed' | 'disabled' | 'error'
   capabilities: string[]
   contributes: string[]
@@ -356,8 +359,8 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                       {t('plugins.review')}
                     </button>
                   )}
-                  {/* trusted privileged: allow revoke */}
-                  {privileged && p.status === 'active' && (
+                  {/* approved: allow revoke */}
+                  {(privileged || p.needsApproval) && p.status === 'active' && (
                     <button onClick={() => revoke(p)} disabled={busy === p.id}
                       className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
                       {t('plugins.revoke')}
@@ -381,28 +384,39 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           alert
           dismissOnBackdrop={false}
           onClose={() => setConfirmGrant(null)}
-          label={t('plugins.consentTitle')}
+          label={confirmGrant.tier === 'privileged' ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
           testId="plugin-consent-dialog"
           panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
         >
-            <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
+            {/* Code gets the capability list and the isolation warning; a
+                plugin that only declares terminal profiles runs nothing, and
+                says what a profile can do instead. */}
+            <h3 className="text-sm font-semibold text-red-400 mb-1">
+              {confirmGrant.tier === 'privileged' ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
+            </h3>
             <p className="text-xs text-redlog-text-dim mb-2">
-              {t('plugins.consentBody', { name: confirmGrant.name })}
+              {confirmGrant.tier === 'privileged'
+                ? t('plugins.consentBody', { name: confirmGrant.name })
+                : t('plugins.consentBodyProfiles', { name: confirmGrant.name })}
             </p>
-            <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
-              <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
-              <ul className="text-xs text-amber-400 space-y-0.5">
-                {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
-                {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
-              </ul>
-            </div>
-            <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
+            {confirmGrant.tier === 'privileged' && (
+              <>
+                <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
+                  <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
+                  <ul className="text-xs text-amber-400 space-y-0.5">
+                    {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
+                    {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
+                  </ul>
+                </div>
+                <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
+              </>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
               <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
-                {t('plugins.grantRun')}
+                {confirmGrant.tier === 'privileged' ? t('plugins.grantRun') : t('plugins.grantApprove')}
               </button>
             </div>
         </Modal>

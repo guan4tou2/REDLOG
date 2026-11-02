@@ -29,8 +29,11 @@ So plugins are split by how much they can affect that record:
 
 A plugin is 🔴 **only** if it contributes code, and the only code contribution is
 `tailers`. (`exporters` and `monitors` are refused — see below.)
-Everything else is 🟢 and loads automatically. 🔴 plugins are inert until you
-review and trust them (see [the trust gate](#the-trust-gate)).
+Everything else is 🟢 and loads automatically, with one exception that is not
+code: a plugin declaring [`terminalProfiles`](#terminalprofiles--tell-the-terminal-adapter-how-to-treat-a-tool)
+waits for your approval like a 🔴 one, because a profile decides what the shell
+records. 🔴 plugins are inert until you review and trust them (see
+[the trust gate](#the-trust-gate)).
 
 ---
 
@@ -189,10 +192,13 @@ and writes `~/.redlog/terminal-profiles.json`, which the shell adapters read
 next to the operator's `~/.redlog/command-class.json`. The operator's own
 `redlog class add` still decides last.
 
-Profiles are written only for a plugin that is approved at its current content.
-A plugin that ships code (`tailers`) waits in Settings ▸ Plugins until you approve
-it, and again after any change to its manifest or code; until then it contributes
-no profile. A manifest with no code is approved from the start.
+A plugin that declares `terminalProfiles` waits in Settings ▸ Plugins until you
+approve it, even though it ships no code: a profile can stop a tool being
+recorded (`native`) or wrap it in every new terminal (`pty`), so a manifest
+dropped into `~/.redlog/plugins/` cannot set one unasked. Until you approve it,
+and again after any change to its manifest, it contributes no profile. Other
+plugins that ship no code stay active from the start, and a plugin with an empty
+`terminalProfiles` list has nothing to approve.
 
 A profile that fails is refused whole and named under the plugin in Settings ▸
 Plugins; the rest load. These are refused:

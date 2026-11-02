@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { validateManifest, tierOf, computeContentHash } from './manifest'
+import { validateManifest, tierOf, requiresApproval, computeContentHash } from './manifest'
 import { isTrusted } from './trust'
 import { isDisabled } from './state'
 import { PLUGIN_API_VERSION } from './types'
@@ -37,8 +37,9 @@ function listPluginDirs(root: string): string[] {
 
 function statusFor(p: Omit<LoadedPlugin, 'status'>): PluginStatus {
   if (isDisabled(p.manifest.id)) return 'disabled'
-  if (p.tier === 'declarative') return 'active'
-  // privileged: gated on trust
+  if (!requiresApproval(p.manifest)) return 'active'
+  // privileged code, or a terminal profile: gated on the operator's approval of
+  // this exact content
   const requested = p.manifest.capabilities ?? []
   if (isTrusted(p.manifest.id, p.contentHash, requested)) return 'active'
   return 'needs-consent'
