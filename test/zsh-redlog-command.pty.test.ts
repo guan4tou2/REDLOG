@@ -332,6 +332,48 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
     })
   })
 
+  // A program that was in the pty class when the hook loaded but had no
+  // executable on PATH then gets no wrapper, and a PATH entry added afterwards
+  // does not give it one. "A new terminal" is true only if the class changed;
+  // here the next terminal would be wrapped, but this one and the line must not
+  // promise it for a program the class already had.
+  describe('class list for a pty program that was not on PATH when the hook loaded', () => {
+    const snapshot = JSON.stringify({
+      version: 1,
+      // A name no machine has: kali ships a real ligolo-proxy, which would be wrapped at load.
+      profiles: [{ id: 'pack/late', name: 'Late Tool', mode: 'pty', executables: ['late-pty-tool'], reason: 'r' }],
+      held: {}
+    })
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: [
+          'mkdir -p "$HOME/.redlog"',
+          `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`,
+          `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+        ].join('\n'),
+        commands: [
+          'mkdir -p "$HOME/latebin"',
+          `printf '#!/bin/sh\\n' > "$HOME/latebin/late-pty-tool"`,
+          'chmod +x "$HOME/latebin/late-pty-tool"',
+          'export PATH="$HOME/latebin:$PATH"',
+          'redlog class list'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-late', operatorId: 'op-late' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('says it was not on PATH when the hook loaded, and does not promise a new terminal', () => {
+      expect(run.ok, run.error).toBe(true)
+      const out = run.steps[4].output
+      expect(out).toContain('plugin profiles: Late Tool from pack (late-pty-tool)')
+      expect(out).toContain('late-pty-tool is not PTY-recorded: it was not on PATH when the RedLog hook loaded')
+      expect(out).not.toMatch(/late-pty-tool is PTY-recorded in a new terminal/)
+    })
+  })
+
   describe('unknown subcommands', () => {
     it('print the list and exit non-zero', async () => {
       const run = await runZsh(target!, {

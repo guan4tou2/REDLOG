@@ -219,7 +219,14 @@ redlog() {
               # Wrappers are installed once, when a terminal starts. A program
               # that joined the class since (a plugin's profile, `redlog class
               # add pty`) is wrapped in the next terminal and not in this one.
-              print -- "$prog is PTY-recorded in a new terminal, not this one"
+              # One that was already in the class but had no executable then
+              # is not wrapped by a PATH entry added since, so that is said
+              # as it is rather than as a new terminal's doing.
+              if (( ${_REDLOG_PTY_NOT_ON_PATH[(Ie)$prog]} )); then
+                print -- "$prog is not PTY-recorded: it was not on PATH when the RedLog hook loaded"
+              else
+                print -- "$prog is PTY-recorded in a new terminal, not this one"
+              fi
             fi
           done
           print
@@ -608,15 +615,26 @@ _redlog_is_pty_wrapper() {
   [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" == *_REDLOG_SESSION_HELPER* ]]
 }
 
+# The pty programs this hook found no executable for when it installed the
+# wrappers. `redlog class list` tells these apart from a program that joined the
+# class afterwards: a PATH entry added since does not wrap the first kind, and
+# only a new terminal wraps the second. One array per load, no cost per prompt.
+typeset -ga _REDLOG_PTY_NOT_ON_PATH
+_REDLOG_PTY_NOT_ON_PATH=()
+
 _redlog_install_pty_wrappers() {
   local prog
+  _REDLOG_PTY_NOT_ON_PATH=()
   for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
     [[ -n "$prog" ]] || continue
     # Only wrap what is actually here: an executable on PATH. A function named
     # `ssh` on a machine without ssh turns "command not found" into a confusing
     # python error, and `command -v` would call the operator's own function
     # "here".
-    whence -p -- "$prog" >/dev/null 2>&1 || continue
+    if ! whence -p -- "$prog" >/dev/null 2>&1; then
+      _REDLOG_PTY_NOT_ON_PATH+=("$prog")
+      continue
+    fi
     _redlog_is_user_function "$prog" && continue
     # Read per call, like the adapter's own gate: `redlog stop` has to reach a
     # program already wrapped, and `redlog start` has to bring it back, in this
