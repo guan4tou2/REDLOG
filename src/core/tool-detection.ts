@@ -48,6 +48,7 @@ const FRESH_MS = 30_000
 const STALE_AFTER_MS = 7 * 86_400_000
 const SCAN_TIMEOUT_MS = 5_000
 const MAX_REPORTS = 64
+const MAX_ENTRIES = 128
 const MAX_REPORT_BYTES = 65_536
 const MAX_EXECUTABLES = 64
 
@@ -111,26 +112,55 @@ function parseReport(raw: unknown): ShellReport | null {
   return { id: environment, platform, shell, wslDistro, sessionId, detectedAt, checked: names, found: hits }
 }
 
+// Whoever can write the report directory can put anything in it, so a file is
+// opened before it is believed: not followed if it is a link, not waited on if it
+// is a pipe, and judged by the handle it is read through rather than by a name
+// that may point at something else a moment later. A platform without a flag
+// (Windows has neither) simply has no such thing to guard against.
+const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0) | (fs.constants.O_NOFOLLOW ?? 0)
+
+/** The file's text if it is a regular file of at most MAX_REPORT_BYTES, else null.
+ *  Never reads past the cap, whatever the file has become since it was listed. */
+async function readRegularFile(file: string): Promise<{ text: string; mtimeMs: number } | null> {
+  let handle: fs.promises.FileHandle | undefined
+  try {
+    handle = await fs.promises.open(file, OPEN_FLAGS)
+    const st = await handle.stat()
+    if (!st.isFile() || st.size > MAX_REPORT_BYTES) return null
+    const buffer = Buffer.alloc(MAX_REPORT_BYTES + 1)
+    let length = 0
+    while (length < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null)
+      if (bytesRead === 0) break
+      length += bytesRead
+    }
+    return length > MAX_REPORT_BYTES ? null : { text: buffer.toString('utf8', 0, length), mtimeMs: st.mtimeMs }
+  } catch {
+    return null
+  } finally {
+    await handle?.close().catch(() => {})
+  }
+}
+
 async function readReports(dir: string): Promise<ShellReport[]> {
   let entries: string[]
   try { entries = await fs.promises.readdir(dir) } catch { return [] }
-  const stats = await Promise.all(entries.filter((n) => n.endsWith('.json')).map(async (name) => {
-    const file = path.join(dir, name)
-    try {
-      const st = await fs.promises.stat(file)
-      return st.isFile() && st.size <= MAX_REPORT_BYTES ? { file, mtimeMs: st.mtimeMs } : null
-    } catch { return null }
-  }))
-  const newest = stats.filter((s): s is { file: string; mtimeMs: number } => s !== null)
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, MAX_REPORTS)
+  // The bound comes before any file is touched: a directory of thousands of
+  // names costs one listing, not thousands of opens. Which names survive the cut
+  // is by name, since modification time is exactly what has not been read yet.
+  const names = entries.filter((n) => n.endsWith('.json')).sort().slice(0, MAX_ENTRIES)
+  const files: Array<{ text: string; mtimeMs: number }> = []
+  for (const name of names) {
+    const file = await readRegularFile(path.join(dir, name))
+    if (file) files.push(file)
+  }
   const reports: ShellReport[] = []
   const seen = new Set<string>()
-  for (const { file } of newest) {
+  for (const { text } of files.sort((a, b) => b.mtimeMs - a.mtimeMs).slice(0, MAX_REPORTS)) {
     try {
-      const parsed = parseReport(JSON.parse(await fs.promises.readFile(file, 'utf8')))
+      const parsed = parseReport(JSON.parse(text))
       if (parsed && !seen.has(parsed.id)) { seen.add(parsed.id); reports.push(parsed) }
-    } catch { /* unreadable or not JSON: not a report */ }
+    } catch { /* not JSON: not a report */ }
   }
   return reports
 }

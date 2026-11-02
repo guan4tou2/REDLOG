@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -204,6 +205,93 @@ describe('shell reports', () => {
     expect(ids).toContain('shell:linux:-:e69')
     expect(ids).toContain('shell:linux:-:e6')
     expect(ids).not.toContain('shell:linux:-:e5')
+  })
+
+  // The directory is writable by anyone who can write ~/.redlog, so what is in
+  // it is not trusted to be small, regular or finite. Each of these is a way a
+  // file there could cost the app more than reading one report does.
+  describe('a directory that cannot be trusted', () => {
+    const POSIX = process.platform !== 'win32'
+    const detector = () => createToolDetector({ home, platform: 'linux', env: () => ({}), profiles: () => PROFILES })
+    /** What stat says is no longer what is on disk by the time the file is read:
+     *  a lie, to stand in for a swap in the gap between the two. */
+    const statSaysSmallFile = (): void => {
+      const lie = { isFile: () => true, size: 10, mtimeMs: 1_700_000_000_000 }
+      vi.spyOn(fs.promises, 'stat').mockResolvedValue(lie as unknown as fs.Stats)
+      vi.spyOn(fs.promises, 'lstat').mockResolvedValue(lie as unknown as fs.Stats)
+    }
+    afterEach(() => vi.restoreAllMocks())
+
+    it('touches a bounded number of entries however many are there', async () => {
+      writeReport('good', report())
+      for (let i = 0; i < 5000; i++) fs.writeFileSync(path.join(reportDir, `junk${i}.json`), '')
+      const stat = vi.spyOn(fs.promises, 'stat')
+      const lstat = vi.spyOn(fs.promises, 'lstat')
+      const open = vi.spyOn(fs.promises, 'open')
+      const readFile = vi.spyOn(fs.promises, 'readFile')
+      await detector().snapshot()
+      expect(stat.mock.calls.length + lstat.mock.calls.length + open.mock.calls.length + readFile.mock.calls.length).toBeLessThanOrEqual(128)
+    }, 120_000)
+
+    it.skipIf(!POSIX)('does not hang on a FIFO, even one stat took for a file (POSIX)', async () => {
+      const fifo = path.join(reportDir, 'pipe.json')
+      execFileSync('mkfifo', [fifo])
+      statSaysSmallFile()
+      writeReport('good', report())
+      try {
+        const snap = await Promise.race([
+          detector().snapshot(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('snapshot hung on a FIFO')), 3000))
+        ])
+        expect(snap.environments.map((e) => e.id)).toEqual(['shell:linux:kali-linux:zsh'])
+      } finally {
+        // A blocked open is a blocked pool thread; a read/write open lets it through.
+        try { fs.closeSync(fs.openSync(fifo, 'r+')) } catch { /* nothing was waiting */ }
+      }
+    }, 15_000)
+
+    it.skipIf(!POSIX)('does not take a report out of a FIFO that has one in it (POSIX)', async () => {
+      const fifo = path.join(reportDir, 'pipe.json')
+      execFileSync('mkfifo', [fifo])
+      // A reader held open keeps what a writer puts in; the writer then goes, so
+      // a second reader finds the whole report and then end of file, as it would a file.
+      const held = fs.openSync(fifo, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK)
+      try {
+        const writer = fs.openSync(fifo, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK)
+        fs.writeSync(writer, JSON.stringify(report({ environment: 'shell:piped' })))
+        fs.closeSync(writer)
+        expect((await detector().snapshot()).environments).toEqual([])
+      } finally { fs.closeSync(held) }
+    })
+
+    it('does not read a file that has grown past the cap since it was looked at', async () => {
+      fs.writeFileSync(path.join(reportDir, 'big.json'), 'x'.repeat(10 * 1024 * 1024))
+      statSaysSmallFile()
+      let bytes = 0
+      const open = fs.promises.open.bind(fs.promises)
+      vi.spyOn(fs.promises, 'open').mockImplementation(async (...args: Parameters<typeof fs.promises.open>) => {
+        const handle = await open(...args)
+        const read = handle.read.bind(handle) as (...a: unknown[]) => Promise<{ bytesRead: number }>
+        ;(handle as unknown as { read: unknown }).read = async (...a: unknown[]) => { const r = await read(...a); bytes += r.bytesRead; return r }
+        return handle
+      })
+      const readFile = fs.promises.readFile.bind(fs.promises)
+      vi.spyOn(fs.promises, 'readFile').mockImplementation((async (...args: Parameters<typeof fs.promises.readFile>) => {
+        const data = await readFile(...args)
+        bytes += data.length
+        return data
+      }) as typeof fs.promises.readFile)
+      expect((await detector().snapshot()).environments).toEqual([])
+      expect(bytes).toBe(0)
+    })
+
+    it.skipIf(!POSIX)('does not follow a symlink (POSIX)', async () => {
+      const outside = path.join(home, 'outside.json')
+      fs.writeFileSync(outside, JSON.stringify(report({ environment: 'shell:linked' })))
+      fs.symlinkSync(outside, path.join(reportDir, 'link.json'))
+      writeReport('good', report())
+      expect((await detector().snapshot()).environments.map((e) => e.id)).toEqual(['shell:linux:kali-linux:zsh'])
+    })
   })
 
   it('lists the app first, then shells newest first', async () => {
