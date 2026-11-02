@@ -226,8 +226,11 @@ redlog() {
           print -- "[redlog] $3 is now $2"
           # FR-028. The cost is not obvious and it is paid in the middle of an
           # engagement, on the command the operator cares most about.
-          [[ "$2" == "pty" ]] && print -- \
-            "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          # An `if`, not `&&`: as the last command, a false test would be
+          # the function's status and a successful add would return 1.
+          if [[ "$2" == "pty" ]]; then
+            print -- "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          fi
           ;;
         remove)
           if [[ -z "${2:-}" ]]; then

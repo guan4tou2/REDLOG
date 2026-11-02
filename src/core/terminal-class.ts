@@ -37,9 +37,8 @@ const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 export interface ClassOverlay {
   native?: string[]
   pty?: string[]
-  relayed?: string[]
   /** Commands taken out of whichever default class shipped them. */
-  removed?: string[]
+  relayed?: string[]
 }
 
 export interface ClassPolicy { native: string[]; pty: string[] }
@@ -52,10 +51,9 @@ export interface ClassPolicy { native: string[]; pty: string[] }
  *  on both sides and compares — the arrangement that has already caught two
  *  real divergences. */
 export function mergeClassPolicy(overlay: ClassOverlay | null | undefined): ClassPolicy {
-  const dropped = new Set(overlay?.removed ?? [])
   const out: ClassPolicy = { native: [], pty: [] }
   for (const name of ['native', 'pty'] as const) {
-    const base = (policy[name] as string[]).filter((c) => !dropped.has(c))
+    const base = [...(policy[name] as string[])]
     for (const command of overlay?.[name] ?? []) if (!base.includes(command)) base.push(command)
     out[name] = base
   }
