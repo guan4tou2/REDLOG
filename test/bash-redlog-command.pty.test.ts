@@ -222,7 +222,13 @@ describeShell(`the redlog command (${target.label})`, () => {
           'redlog class list',
           'redlog class add pty curl',
           'redlog class list',
+          'redlog class add relayed nc',
+          'redlog class list',
           'redlog class remove nc',
+          'redlog class list',
+          'redlog class add native curl',
+          'echo code=$?',
+          'redlog class remove curl',
           'redlog class list',
           'redlog class add nonsense curl'
         ],
@@ -253,13 +259,32 @@ describeShell(`the redlog command (${target.label})`, () => {
       expect(run.steps[2].output).toMatch(/pty:.*\bcurl\b/)
     })
 
-    it('takes a command back out of a class it shipped in', () => {
-      expect(run.steps[4].output, 'nc is still native after remove').not.toMatch(/native:.*\bnc\b/)
+    it('moves a command out of the class it shipped in', () => {
+      expect(run.steps[3].output).toMatch(/nc is now relayed/)
+      expect(run.steps[4].output, 'nc is still native after add relayed').not.toMatch(/native:.*\bnc\b/)
+      expect(run.steps[4].output).not.toMatch(/pty:.*\bnc\b/)
+    })
+
+    // #296: remove used to drop a command from the shipped defaults as well.
+    // Remove undoes the operator's own edit and nothing else.
+    it('puts a command back where it shipped when its edit is removed', () => {
+      expect(run.steps[5].output).toMatch(/nc is back to the default/)
+      expect(run.steps[6].output, 'nc did not return to native').toMatch(/native:.*\bnc\b/)
+    })
+
+    it('takes a command the operator added out again when it is removed', () => {
+      expect(run.steps[10].output).not.toMatch(/native:.*\bcurl\b/)
+      expect(run.steps[10].output).not.toMatch(/pty:.*\bcurl\b/)
+    })
+
+    it('exits 0 when an add succeeds', () => {
+      expect(run.steps[7].output).toMatch(/curl is now native/)
+      expect(run.steps[8].output, 'a successful add returned non-zero').toContain('code=0')
     })
 
     it('refuses a class that does not exist, instead of inventing one', () => {
       // Rule 3: a typo must not be silently a no-op.
-      expect(run.steps[5].output).toMatch(/no such class: nonsense/)
+      expect(run.steps[11].output).toMatch(/no such class: nonsense/)
     })
   })
 

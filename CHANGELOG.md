@@ -5,6 +5,10 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Windows: the AI capture sidecar directory (`agent-transcripts/`) is restricted
+  to the current user, as the keys directory is. When that cannot be applied,
+  the session is not captured and the source reports a capture error (Refs #489).
+
 ## v0.18.6 — 2026-11-01
 
 Release. Supersedes v0.18.3 as the current download; carries everything in

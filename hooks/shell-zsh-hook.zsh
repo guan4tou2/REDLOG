@@ -226,8 +226,11 @@ redlog() {
           print -- "[redlog] $3 is now $2"
           # FR-028. The cost is not obvious and it is paid in the middle of an
           # engagement, on the command the operator cares most about.
-          [[ "$2" == "pty" ]] && print -- \
-            "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          # An `if`, not `&&`: as the last command, a false test would be
+          # the function's status and a successful add would return 1.
+          if [[ "$2" == "pty" ]]; then
+            print -- "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          fi
           ;;
         remove)
           if [[ -z "${2:-}" ]]; then
@@ -591,8 +594,15 @@ _redlog_install_pty_wrappers() {
     # "here".
     whence -p -- "$prog" >/dev/null 2>&1 || continue
     _redlog_is_user_function "$prog" && continue
+    # Read per call, like the adapter's own gate: `redlog stop` has to reach a
+    # program already wrapped, and `redlog start` has to bring it back, in this
+    # shell, without sourcing the hook again (#296).
+    # The class is read per call too, from the same cache preexec uses, so
+    # `redlog class add native ssh` takes ssh out of the recorder in this
+    # shell instead of only printing that it did (#296).
     functions[$prog]='
-      if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
+      if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]] \
+         && _redlog_class_of '"$prog"' && [[ "$REPLY" == pty ]]; then
         REDLOG_SESSION_COMMAND_ID="$_REDLOG_CMD_ID" python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"

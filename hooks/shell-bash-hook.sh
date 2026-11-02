@@ -142,8 +142,11 @@ redlog() {
           echo "[redlog] $3 is now $2"
           # zsh wraps the pty class in a recorder; bash does not (yet), and
           # saying otherwise would promise output that is not captured.
-          [[ "$2" == "pty" ]] && echo \
-            "[redlog] note: bash does not wrap pty-class commands — $3 will be recorded as interactive, without its output"
+          # An `if`, not `&&`: as the last command, a false test would be
+          # the function's status and a successful add would return 1.
+          if [[ "$2" == "pty" ]]; then
+            echo "[redlog] note: bash does not wrap pty-class commands — $3 will be recorded as interactive, without its output"
+          fi
           ;;
         remove)
           if [[ -z "${2:-}" ]]; then
