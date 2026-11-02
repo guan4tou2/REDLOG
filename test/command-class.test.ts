@@ -138,7 +138,15 @@ const profile = (id: string, name: string, mode: string, executables: string[]):
 interface MirrorCase {
   id: string; file: string | null; shipped?: ShippedClassPolicy; probes?: string[]
   contributed?: string | null; zeroChange?: boolean
+  /** The same two files as raw bytes, hex, for what text cannot say: a byte
+   *  that is not UTF-8. Used instead of `file` / `contributed`, never with a
+   *  synthetic policy. */
+  fileHex?: string; contributedHex?: string
+  /** Whether the case's file is meant to be read: `raw-tool` is a pty tool then. */
+  reads?: boolean
 }
+const hex = (...parts: Array<string | number[]>): string =>
+  Buffer.concat(parts.map((p) => (typeof p === 'string' ? Buffer.from(p, 'utf8') : Buffer.from(p)))).toString('hex')
 // The snapshot as the app reads it: no file is null, an unparseable one is
 // false, anything else is what it parsed to.
 const parseContributed = (text: string | null | undefined): unknown => {
@@ -235,8 +243,46 @@ const MIRROR_CASES: MirrorCase[] = [
     contributed: padded(snap([profile('pack/capped', 'Capped', 'pty', ['capped-tool'])]), CLASS_FILE_CAP) },
   { id: 'snapshot one byte over the cap is not', file: null, probes: ['capped-tool', 'vim'],
     contributed: padded(snap([profile('pack/capped', 'Capped', 'pty', ['capped-tool'])]), CLASS_FILE_CAP + 1) },
+  ...rawByteCases(),
   ...contributedCases()
 ]
+
+// What text cannot say, written as the bytes it is. JSON has no spelling for
+// NaN or Infinity and neither parser takes one; a byte that is not UTF-8 is a
+// file that cannot be read, not a file with a replacement character in it. Both
+// sides must call each of these unreadable, or the app and the shell disagree
+// about a file that one of them has just been handed.
+function rawByteCases(): MirrorCase[] {
+  const goodSnap = (reason: Array<string | number[]>): string => hex(
+    '{"version":1,"profiles":[{"id":"pack/x","name":"X","mode":"pty","executables":["raw-tool"],"reason":"', ...reason,
+    '"}],"held":{}}')
+  const overlayOf = (...tail: Array<string | number[]>): string => hex('{"pty":["raw-tool"],"note":', ...tail, '}')
+  const readable = [
+    { id: 'raw: an overlay of plain ASCII is read', fileHex: hex('{"pty":["raw-tool"]}') },
+    { id: 'raw: an overlay with valid multibyte text is read', fileHex: overlayOf('"café 中文"') },
+    { id: 'raw: a snapshot of plain ASCII is read', contributedHex: goodSnap(['why']) }
+  ]
+  const refused = [
+    { id: 'raw: an overlay with NaN', fileHex: overlayOf('NaN') },
+    { id: 'raw: an overlay with Infinity', fileHex: overlayOf('Infinity') },
+    { id: 'raw: an overlay with -Infinity', fileHex: overlayOf('-Infinity') },
+    { id: 'raw: an overlay with an invalid UTF-8 byte', fileHex: overlayOf('"', [0xff], '"') },
+    { id: 'raw: an overlay with a truncated multibyte character', fileHex: overlayOf('"', [0xe4, 0xb8], '"') },
+    { id: 'raw: an overlay with an encoded surrogate', fileHex: overlayOf('"', [0xed, 0xa0, 0x80], '"') },
+    { id: 'raw: an overlay with an overlong encoding', fileHex: overlayOf('"', [0xc0, 0xaf], '"') },
+    { id: 'raw: an overlay with a byte order mark', fileHex: 'efbbbf' + hex('{"pty":["raw-tool"]}') },
+    { id: 'raw: a snapshot with an invalid UTF-8 byte', contributedHex: goodSnap(['r', [0xff], 'r']) },
+    { id: 'raw: a snapshot with a truncated multibyte character', contributedHex: goodSnap([[0xe4, 0xb8]]) },
+    { id: 'raw: a snapshot with an encoded surrogate', contributedHex: goodSnap([[0xed, 0xa0, 0x80]]) },
+    { id: 'raw: a snapshot with NaN', contributedHex: hex('{"version":NaN,"profiles":[],"held":{}}') },
+    { id: 'raw: a snapshot with a byte order mark', contributedHex: 'efbbbf' + goodSnap(['why']) }
+  ]
+  // `reads` says what the file is for: `raw-tool` is a pty tool only if it was read.
+  return [
+    ...readable.map((c): MirrorCase => ({ file: null, probes: ['raw-tool', 'vim'], reads: true, ...c })),
+    ...refused.map((c): MirrorCase => ({ file: null, probes: ['raw-tool', 'vim'], reads: false, ...c }))
+  ]
+}
 
 // The snapshot a plugin writes (#499): profiles that join the profile layer
 // after the shipped ones, and `held`, the profile that had each command when
@@ -534,8 +580,13 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-mirror-home-'))
       homes.push(home)
       fs.mkdirSync(path.join(home, '.redlog'))
-      if (c.file !== null) fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), c.file)
-      if (withSnapshot && c.contributed != null) fs.writeFileSync(path.join(home, '.redlog', 'terminal-profiles.json'), c.contributed)
+      if (c.fileHex !== undefined) fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), Buffer.from(c.fileHex, 'hex'))
+      else if (c.file !== null) fs.writeFileSync(path.join(home, '.redlog', 'command-class.json'), c.file)
+      if (withSnapshot && c.contributedHex !== undefined) {
+        fs.writeFileSync(path.join(home, '.redlog', 'terminal-profiles.json'), Buffer.from(c.contributedHex, 'hex'))
+      } else if (withSnapshot && c.contributed != null) {
+        fs.writeFileSync(path.join(home, '.redlog', 'terminal-profiles.json'), c.contributed)
+      }
       return compileClassPolicy(readClassOverlay(home), undefined, readContributedProfiles(home))
     }
     try {
@@ -547,6 +598,10 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
         expect(theirs.pty, `${c.id} pty`).toEqual(mine.pty)
         expect(theirs.entries, `${c.id} entries`).toEqual(mine.entries)
         expect(theirs.problems, `${c.id} problems`).toEqual(mine.problems)
+        if (c.reads !== undefined) {
+          expect(mine.pty.includes('raw-tool'), `${c.id}: the app ${c.reads ? 'reads' : 'refuses'} it`).toBe(c.reads)
+          expect(theirs.pty.includes('raw-tool'), `${c.id}: the shell ${c.reads ? 'reads' : 'refuses'} it`).toBe(c.reads)
+        }
         if (!c.shipped) expect(theirs.modes, `${c.id} modes`).toEqual(Object.fromEntries(
           (c.probes ?? []).map((p) => [p, modeFor(mine, p)])))
         // Not only the same on both sides: the same as having no snapshot.
@@ -593,8 +648,10 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       expect(pty, run.stderr.slice(0, 300)).toContain('curl')
       expect(pty).toContain('ok.tool')
       expect(pty).not.toMatch(/a;b|x y|\$\(|`| /)
-      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: pty is not a list of commands\n')
-      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: native is not a list of commands\n')
+      // Both fields are lists; what was dropped is entries in them, and the line says that.
+      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: pty lists something that is not a command name\n')
+      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: native lists something that is not a command name\n')
+      expect(run.stdout).not.toContain('is not a list of commands')
     }, 180_000)
 
     it('refuses to add a name that is not a bare command name, exits 3, and writes nothing', async () => {
@@ -613,6 +670,64 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       expect(lines[7]).toBe('nothing-written')
       expect(lines.slice(8, 10)).toEqual(['rc=0', 'rc=0'])
       expect(JSON.parse(lines[10])).toEqual({ native: [], pty: ['ligolo-proxy', 'ssh'], relayed: [] })
+    }, 180_000)
+
+    // `foo/` has an empty basename, which came back as "no such class: pty".
+    it('says "not a bare command name" for a path with nothing after the slash, and not that the class is wrong', async () => {
+      const run = await runInShell(target!, [
+        'H=$(mktemp -d -t redlog-add.XXXXXX)',
+        `python3 "${relay()}" policy --home "$H" --action add --field pty --command 'foo/'; echo "rc=$?"`,
+        `python3 "${relay()}" policy --home "$H" --action add --field pty --command 'a/b/'; echo "rc=$?"`,
+        `python3 "${relay()}" policy --home "$H" --action remove --command 'foo/'; echo "rc=$?"`,
+        `python3 "${relay()}" policy --home "$H" --action add --field nonsense --command 'foo/'; echo "rc=$?"`,
+        'test -e "$H/.redlog/command-class.json" && echo written || echo nothing-written',
+        'rm -rf "$H"'
+      ].join('\n'), { timeoutMs: 120_000 })
+      expect(run.stdout, run.stderr.slice(0, 300)).toBe('rc=3\nrc=3\nrc=3\nrc=2\nnothing-written\n')
+      expect(run.stderr).toContain("'foo/' is not a bare command name")
+    }, 180_000)
+
+    // `class add` and `class remove` rewrite the whole overlay. One that cannot
+    // be read was read as no overlay, and replaced by an overlay holding only
+    // the one edit: the operator's own choices gone with no word said.
+    it('does not overwrite an overlay it cannot read: it says why, exits 4, and leaves the file as it was', async () => {
+      const cap = CLASS_FILE_MAX_BYTES
+      const shapes: Array<[string, string]> = [
+        ['nested too deep', `python3 -c "import sys; sys.stdout.write('{\\"pty\\": [\\"keep-me\\"], \\"x\\": ' + '['*200000 + ']'*200000 + '}')" > "$F"`],
+        ['over the size cap', `python3 -c "import sys; sys.stdout.write('{\\"pty\\": [\\"keep-me\\"], \\"pad\\": \\"' + 'a'*${cap} + '\\"}')" > "$F"`],
+        ['not UTF-8', `printf '{"pty": ["keep-me"], "note": "\\377"}' > "$F"`],
+        ['NaN', `printf '{"pty": ["keep-me"], "x": NaN}' > "$F"`],
+        ['truncated JSON', `printf '{"pty": ["keep-me"' > "$F"`]
+      ]
+      for (const [what, make] of shapes) {
+        const run = await runInShell(target!, [
+          'H=$(mktemp -d -t redlog-keep.XXXXXX)', 'mkdir -p "$H/.redlog"', `F="$H/.redlog/command-class.json"`, make,
+          'cp "$F" "$H/before"',
+          `python3 "${relay()}" policy --home "$H" --action add --field native --command ligolo-proxy; echo "add-rc=$?"`,
+          `python3 "${relay()}" policy --home "$H" --action remove --command keep-me; echo "remove-rc=$?"`,
+          'cmp -s "$F" "$H/before" && echo unchanged || echo CHANGED',
+          'ls "$H/.redlog"',
+          'rm -rf "$H"'
+        ].join('\n'), { timeoutMs: 120_000 })
+        expect(run.stdout, `${what}: ${run.stderr.slice(0, 300)}`).toBe('add-rc=4\nremove-rc=4\nunchanged\ncommand-class.json\n')
+        expect(run.stderr, what).toContain('command-class.json cannot be read')
+        expect(run.stderr, what).toContain('it was not changed')
+        expect(run.stderr, what).not.toMatch(/Traceback|RecursionError/)
+      }
+    }, 300_000)
+
+    it('an overlay that is not there, or is readable, is edited as before', async () => {
+      const run = await runInShell(target!, [
+        'H=$(mktemp -d -t redlog-keep.XXXXXX)',
+        `python3 "${relay()}" policy --home "$H" --action add --field pty --command first; echo "rc=$?"`,
+        `python3 "${relay()}" policy --home "$H" --action add --field native --command second; echo "rc=$?"`,
+        `python3 "${relay()}" policy --home "$H" --action remove --command first; echo "rc=$?"`,
+        'cat "$H/.redlog/command-class.json"; echo',
+        'rm -rf "$H"'
+      ].join('\n'), { timeoutMs: 120_000 })
+      const lines = run.stdout.split('\n')
+      expect(lines.slice(0, 3), run.stderr.slice(0, 300)).toEqual(['rc=0', 'rc=0', 'rc=0'])
+      expect(JSON.parse(lines[3])).toEqual({ native: ['second'], pty: [], relayed: [] })
     }, 180_000)
 
     // json.load recurses, and a deep enough file raised RecursionError: classify
@@ -677,7 +792,8 @@ describeShell(`the shell and RedLog agree (${target?.label ?? 'no shell reachabl
       const run = await runInShell(target!, inOverlay('{"pty": [1, "curl"]}', [classify('curl'), list()]), { timeoutMs: 120_000 })
       expect(run.stdout, run.stderr.slice(0, 300)).toContain('curl=pty\n')
       expect(run.stdout).toContain('list-exit=0')
-      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: pty is not a list of commands\n')
+      expect(run.stdout).toContain('ignored in ~/.redlog/command-class.json: pty lists something that is not a command name\n')
+      expect(run.stdout).not.toContain('is not a list of commands')
     }, 180_000)
 
     it('add and remove rewrite a malformed field instead of crashing', async () => {
@@ -1255,16 +1371,18 @@ describe('a hand-edited overlay that is not what `redlog class` writes', () => {
     expect(p.problems).toEqual([{ kind: 'invalid-overlay', field: 'native' }])
   })
 
-  it('{"pty": [1, "curl"]} drops the 1 and keeps curl', () => {
+  // A field that is a list with something wrong in it is not "not a list": the
+  // line the operator reads says which of the two it is.
+  it('{"pty": [1, "curl"]} drops the 1 and keeps curl, and says an entry was dropped, not that the field is no list', () => {
     const p = compileClassPolicy({ pty: [1, 'curl'] })
     expect(p.pty).toEqual([...defaults.pty, 'curl'])
-    expect(p.problems).toEqual([{ kind: 'invalid-overlay', field: 'pty' }])
+    expect(p.problems).toEqual([{ kind: 'invalid-overlay-names', field: 'pty' }])
   })
 
   it('reports each bad field once, in the order native, pty, relayed', () => {
     expect(compileClassPolicy({ relayed: 1, pty: [null, 2], native: {} }).problems).toEqual([
       { kind: 'invalid-overlay', field: 'native' },
-      { kind: 'invalid-overlay', field: 'pty' },
+      { kind: 'invalid-overlay-names', field: 'pty' },
       { kind: 'invalid-overlay', field: 'relayed' }
     ])
   })

@@ -474,11 +474,39 @@ describe('reading the files the policy reads', () => {
     expect(readClassOverlay(home)).toBeNull()
   })
 
+  // A byte that is not UTF-8 makes a file that cannot be read, not a file with a
+  // replacement character in it: the shell's reader (strict decode) refuses it,
+  // and the app must give the same answer about the same file.
+  it('reads a file with a byte that is not UTF-8 as unreadable, the snapshot and the overlay alike', () => {
+    const snapshot = (reason: Buffer): Buffer => Buffer.concat([
+      Buffer.from('{"version":1,"profiles":[{"id":"p/x","name":"X","mode":"pty","executables":["zzz"],"reason":"'), reason,
+      Buffer.from('"}],"held":{}}')
+    ])
+    const putBytes = (name: string, bytes: Buffer): void => {
+      fs.mkdirSync(path.join(home, '.redlog'), { recursive: true })
+      fs.writeFileSync(path.join(home, '.redlog', name), bytes)
+    }
+    putBytes('terminal-profiles.json', snapshot(Buffer.from('plain')))
+    expect(readContributedProfiles(home)).not.toBe(false)
+    for (const bad of [[0xff], [0xe4, 0xb8], [0xed, 0xa0, 0x80], [0xc0, 0xaf]]) {
+      putBytes('terminal-profiles.json', snapshot(Buffer.from(bad)))
+      expect(readContributedProfiles(home), `snapshot with ${bad.map((b) => b.toString(16))}`).toBe(false)
+      putBytes('command-class.json', Buffer.concat([Buffer.from('{"pty":["ok"],"note":"'), Buffer.from(bad), Buffer.from('"}')]))
+      expect(readClassOverlay(home), `overlay with ${bad.map((b) => b.toString(16))}`).toBeNull()
+    }
+    // multibyte text that is valid is read, and so is nothing wrong with a BOM-free file
+    putBytes('command-class.json', Buffer.from('{"pty":["ok"],"note":"café 中文"}'))
+    expect(readClassOverlay(home)).toMatchObject({ pty: ['ok'] })
+    // a byte order mark is not JSON, as it is not for the shell's parser
+    putBytes('command-class.json', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"pty":["ok"]}')]))
+    expect(readClassOverlay(home)).toBeNull()
+  })
+
   it('drops from the overlay a name that is not a bare command name, and says so once per field', () => {
     const p = compileClassPolicy({ pty: ['curl', 'a;b', 'x y', 'x\n', '-x', ''], native: ['$(id)'], relayed: ['ok.tool'] })
     expect(p.pty).toContain('curl')
     expect(p.pty.join(' ')).not.toMatch(/a;b|x y|\n|-x/)
     expect(p.native).not.toContain('$(id)')
-    expect(p.problems).toEqual([{ kind: 'invalid-overlay', field: 'native' }, { kind: 'invalid-overlay', field: 'pty' }])
+    expect(p.problems).toEqual([{ kind: 'invalid-overlay-names', field: 'native' }, { kind: 'invalid-overlay-names', field: 'pty' }])
   })
 })

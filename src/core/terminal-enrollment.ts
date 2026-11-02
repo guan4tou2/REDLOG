@@ -22,7 +22,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { classifyCommand, CLASS_FILE_MAX_BYTES, nestsDeeperThan, type CommandClass } from './terminal-class'
+import { classifyCommand, CLASS_FILE_MAX_BYTES, parseClassFile, type CommandClass } from './terminal-class'
 
 export type TerminalMode = 'auto' | 'manual'
 export type TerminalStopReason = 'operator' | 'project-switched' | 'hook-removed'
@@ -143,8 +143,7 @@ export function readClassOverlay(home: string = os.homedir()): unknown {
     const file = path.join(home, '.redlog', 'command-class.json')
     // Over the cap it is no overlay, as in the shell's reader (`read_json_capped`).
     if (fs.statSync(file).size > CLASS_FILE_MAX_BYTES) return null
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
-    return nestsDeeperThan(parsed) ? null : parsed
+    return parseClassFile(fs.readFileSync(file))
   } catch {
     return null
   }

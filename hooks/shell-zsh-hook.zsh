@@ -238,10 +238,13 @@ redlog() {
           fi
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
             --action add --field "$2" --command "$3" >/dev/null
-          # 3 is a name the wrapper cannot be built from; anything else is the class.
+          # 3 is a name the wrapper cannot be built from, 4 an overlay that was
+          # not rewritten because it could not be read (the relay said why);
+          # anything else is the class.
           case $? in
             0) ;;
             3) print -u2 -- "[redlog] not a command name: $3 (letters, digits, . _ + - only)"; return 2 ;;
+            4) return 2 ;;
             *) print -u2 -- "[redlog] no such class: $2"; return 2 ;;
           esac
           print -- "[redlog] $3 is now $2"
@@ -260,6 +263,12 @@ redlog() {
           fi
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
             --action remove --command "$2" >/dev/null
+          # The relay has said why when it did not rewrite the overlay.
+          case $? in
+            0) ;;
+            3) print -u2 -- "[redlog] not a command name: $2 (letters, digits, . _ + - only)"; return 2 ;;
+            *) return 2 ;;
+          esac
           print -- "[redlog] $2 is back to the default"
           ;;
         *)

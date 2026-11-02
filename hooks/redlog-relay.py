@@ -1293,12 +1293,33 @@ def policy_field(argv):
             sys.stdout.write(line + "\n")
         return 0
 
-    command = basename(opts["command"] or "")
-    if not command:
+    given = opts["command"] or ""
+    if not given or action not in ("add", "remove"):
         return 2
+    command = basename(given)
+    target = opts["field"]
+    if action == "add" and target not in CLASS_FIELDS:
+        return 2
+    # Not a name the wrapper can be built from: refused before anything is
+    # written, with its own status so the hook can say so (2 is "no such class").
+    # `foo/` is one: nothing is left of it once the directory is taken off.
+    if (action == "add" and not EXECUTABLE.fullmatch(command)) or (action == "remove" and not command):
+        sys.stderr.write("redlog-relay: %r is not a bare command name\n" % given)
+        return 3
     # Read through the same normalization the compiler uses, so a hand-edited
     # field that is not a list is rewritten here instead of crashing the edit.
-    raw = read_overlay_file(terminal_home(opts))
+    # A file that cannot be read at all is not an empty overlay: the edit
+    # rewrites the whole file, so it would replace what the operator wrote with
+    # one line of what they just did. It is left as it is (4).
+    path = overlay_path(opts)
+    try:
+        raw = read_json_capped(path)
+    except FileNotFoundError:
+        raw = None
+    except (OSError, ValueError) as exc:
+        sys.stderr.write("redlog-relay: %s cannot be read (%s); it was not changed. "
+                         "Fix or delete it, then run this again.\n" % (path, exc))
+        return 4
     overlay = dict(raw) if isinstance(raw, dict) else {}
     overlay.update(normalize_overlay(raw)[0])
 
@@ -1311,20 +1332,10 @@ def policy_field(argv):
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
     elif action == "add":
-        target = opts["field"]
-        if target not in CLASS_FIELDS:
-            return 2
-        # Not a name the wrapper can be built from: refused before anything is
-        # written, with its own status so the hook can say so (2 is "no such class").
-        if not EXECUTABLE.fullmatch(command):
-            sys.stderr.write("redlog-relay: %r is not a bare command name\n" % command)
-            return 3
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
         overlay[target].append(command)
-    else:
-        return 2
     overlay.pop("removed", None)
 
     write_json(overlay_path(opts), overlay)
@@ -1365,7 +1376,11 @@ def nests_deeper_than(value, limit=MAX_CLASS_JSON_DEPTH):
     return False
 
 
-def read_json_capped(path, parse_constant=None):
+def refuse_constant(name):
+    raise ValueError("not JSON: %s" % name)
+
+
+def read_json_capped(path):
     """JSON from a file the policy reads, or ValueError when it cannot be used.
 
     FileNotFoundError and other OSErrors pass through. A file over the cap is
@@ -1373,13 +1388,18 @@ def read_json_capped(path, parse_constant=None):
     (RecursionError, which is not a ValueError) is the same refusal: a hand-edit
     must not be able to stop `classify` and `--field pty` with a traceback,
     which leaves zsh without PTY wrappers and every command native, silently.
+
+    Three more things JSON.parse in the app refuses, and so must this: NaN and
+    Infinity, which Python's parser takes unless told not to; a byte that is not
+    UTF-8, which the strict decode refuses (the app decodes the same way); and a
+    byte order mark, which is not JSON in either.
     """
     with open(path, "rb") as fh:
         data = fh.read(MAX_CLASS_FILE_BYTES + 1)
     if len(data) > MAX_CLASS_FILE_BYTES:
         raise ValueError("file is larger than %d bytes" % MAX_CLASS_FILE_BYTES)
     try:
-        parsed = json.loads(data.decode("utf-8"), parse_constant=parse_constant)
+        parsed = json.loads(data.decode("utf-8"), parse_constant=refuse_constant)
     except RecursionError:
         raise ValueError("nested too deeply")
     if nests_deeper_than(parsed):
@@ -1536,14 +1556,11 @@ def read_contributed_file(home):
     """The plugins' snapshot exactly as parsed: None when there is no file,
     False when it cannot be read or parsed, else what it parsed to.
 
-    Not coerced: whether it is usable is normalize_contributed's call. A
-    constant JSON has no spelling for (NaN, Infinity) is a parse failure here,
-    as it is for JSON.parse in the app, so both sides see one answer.
+    Not coerced: whether it is usable is normalize_contributed's call. What
+    cannot be read is decided in read_json_capped, the same for the overlay.
     """
-    def refuse(name):
-        raise ValueError(name)
     try:
-        return read_json_capped(contributed_path({"home": home}), parse_constant=refuse)
+        return read_json_capped(contributed_path({"home": home}))
     except FileNotFoundError:
         return None
     except (OSError, ValueError):
@@ -1605,7 +1622,7 @@ def normalize_overlay(raw):
         # adapter pastes `--field pty` into the source of a wrapper function.
         kept = [c for c in value if isinstance(c, str) and EXECUTABLE.fullmatch(c)]
         if len(kept) != len(value):
-            problems.append({"kind": "invalid-overlay", "field": name})
+            problems.append({"kind": "invalid-overlay-names", "field": name})
         lists[name] = kept
     return lists, problems
 
@@ -1839,8 +1856,14 @@ def policy_notes(bundled, contributed, policy):
                          % (command, entries[command]["mode"], label(kept), joined(others),
                             "is" if len(others) == 1 else "are", command))
     for problem in policy["problems"]:
+        # The two are different faults, and the operator fixes them differently:
+        # a field that is no list is ignored whole; in a list, only the entries
+        # that are not command names are.
         if problem["kind"] == "invalid-overlay":
             lines.append("ignored in ~/.redlog/command-class.json: %s is not a list of commands" % problem["field"])
+        elif problem["kind"] == "invalid-overlay-names":
+            lines.append("ignored in ~/.redlog/command-class.json: %s lists something that is not a command name"
+                         % problem["field"])
     for problem in policy["problems"]:
         if problem["kind"] == "invalid-snapshot":
             why = "written by a newer RedLog" if problem["reason"] == "unsupported-version" else "not readable"

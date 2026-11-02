@@ -61,8 +61,11 @@ export type PolicyProblem =
   /** Profiles naming one executable in different modes. Without `kept` the layer
    *  below keeps it; with it, `kept` is the profile that had the command and still does. */
   | { kind: 'conflict'; command: string; claims: Array<{ profile: string; mode: CommandClass }>; kept?: string }
-  /** An overlay field that is not a list of commands, or holds an item that is not a string. */
+  /** An overlay field that is not a list at all, and is ignored whole. */
   | { kind: 'invalid-overlay'; field: CommandClass }
+  /** An overlay field that is a list but holds an entry that is not a bare
+   *  command name, which was dropped; the rest of the list stands. */
+  | { kind: 'invalid-overlay-names'; field: CommandClass }
 
 export interface CompiledClassPolicy {
   native: string[]
@@ -103,7 +106,7 @@ export const CLASS_FILE_MAX_DEPTH = 32
 
 /** Whether a parsed value nests deeper than `max` containers. Iterative: the
  *  point is to answer for a value too deep to recurse into. */
-export function nestsDeeperThan(value: unknown, max: number = CLASS_FILE_MAX_DEPTH): boolean {
+function nestsDeeperThan(value: unknown, max: number = CLASS_FILE_MAX_DEPTH): boolean {
   const stack: Array<[unknown, number]> = [[value, 1]]
   for (let item = stack.pop(); item !== undefined; item = stack.pop()) {
     const [v, depth] = item
@@ -114,11 +117,28 @@ export function nestsDeeperThan(value: unknown, max: number = CLASS_FILE_MAX_DEP
   return false
 }
 
+// Strict, and with the byte order mark left in so that JSON refuses it: the
+// default decoder replaces a byte that is not UTF-8 with U+FFFD and drops a BOM,
+// so a file the shell's parser calls unreadable would be a readable one here.
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
+/** What a file under ~/.redlog that the policy reads parses to. Throws when it
+ *  cannot be used: not UTF-8 (a byte order mark included), not JSON (NaN and
+ *  Infinity included), or nested past `CLASS_FILE_MAX_DEPTH`. The size cap is
+ *  the reader's, since it stops a file being read at all. Mirrors
+ *  `read_json_capped` in `hooks/redlog-relay.py`. */
+export function parseClassFile(bytes: Uint8Array): unknown {
+  const parsed: unknown = JSON.parse(STRICT_UTF8.decode(bytes))
+  if (nestsDeeperThan(parsed)) throw new Error('nested too deeply')
+  return parsed
+}
+
 /** The operator's overlay as lists, plus what was wrong with it. Anything
  *  that is not an object is no overlay; unknown keys, the retired `removed`
- *  included, are ignored. A field that is not a list is ignored whole and a
- *  non-string item is dropped; either is recorded once, per field, in the
- *  order native, pty, relayed. Mirrors `normalize_overlay` in
+ *  included, are ignored. A field that is not a list is ignored whole and an
+ *  entry that is not a bare command name is dropped; each is recorded once, per
+ *  field, as its own kind, in the order native, pty, relayed. Mirrors
+ *  `normalize_overlay` in
  *  `hooks/redlog-relay.py`. */
 function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>; problems: PolicyProblem[] } {
   const lists: Record<CommandClass, string[]> = { native: [], pty: [], relayed: [] }
@@ -131,7 +151,7 @@ function normalizeOverlay(raw: unknown): { lists: Record<CommandClass, string[]>
     // A bare command name only, as an executable of a profile is: the zsh
     // adapter pastes the pty list into the source of a wrapper function.
     const kept = value.filter((c): c is string => typeof c === 'string' && EXECUTABLE.test(c))
-    if (kept.length !== value.length) problems.push({ kind: 'invalid-overlay', field })
+    if (kept.length !== value.length) problems.push({ kind: 'invalid-overlay-names', field })
     lists[field] = kept
   }
   return { lists, problems }

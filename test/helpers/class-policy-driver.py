@@ -7,7 +7,8 @@ loads the relay module. Each case is {"id", "file", "probes", "shipped"}:
 `file` is the exact text of ~/.redlog/command-class.json (null: no file),
 `contributed` the exact text of ~/.redlog/terminal-profiles.json (null or
 absent: no file) and `shipped` is a synthetic stand-in for
-hooks/command-class.json (null: the real one).
+hooks/command-class.json (null: the real one). `fileHex` and `contributedHex`,
+when present, are the same two files as raw bytes in hex and win over the text.
 
 With the real policy the files are written into a fresh temp home and read the
 way the shell reads them, through load_policy(home). With a synthetic one the
@@ -41,8 +42,16 @@ for case in cases:
     try:
         if shipped is None:
             os.makedirs(os.path.join(home, ".redlog"))
-            for name, text in (("command-class.json", case["file"]), ("terminal-profiles.json", contributed)):
-                if text is not None:
+            for name, text, raw in (
+                ("command-class.json", case["file"], case.get("fileHex")),
+                ("terminal-profiles.json", contributed, case.get("contributedHex")),
+            ):
+                # `fileHex` / `contributedHex` are the same file as raw bytes,
+                # for what text cannot say (a byte that is not UTF-8).
+                if raw is not None:
+                    with open(os.path.join(home, ".redlog", name), "wb") as fh:
+                        fh.write(bytes.fromhex(raw))
+                elif text is not None:
                     with open(os.path.join(home, ".redlog", name), "w") as fh:
                         fh.write(text)
             policy = relay.load_policy(home)

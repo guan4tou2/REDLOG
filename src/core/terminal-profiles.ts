@@ -17,7 +17,7 @@ import os from 'os'
 import path from 'path'
 import policy from '../../hooks/command-class.json'
 import {
-  compileClassPolicy, normalizeContributed, EXECUTABLE, CLASS_FILE_MAX_BYTES, nestsDeeperThan,
+  compileClassPolicy, normalizeContributed, EXECUTABLE, CLASS_FILE_MAX_BYTES, parseClassFile,
   type CommandClass, type CompiledClassPolicy, type TerminalProfile
 } from './terminal-class'
 import type { RuleRejection } from './loot-detector'
@@ -143,19 +143,18 @@ const snapshotPath = (home: string): string => path.join(home, '.redlog', 'termi
  *  false when it exists and cannot be read or parsed, else what it parsed to.
  *  Not validated: `compileClassPolicy` decides what in it counts. */
 export function readContributedProfiles(home: string = os.homedir()): unknown {
-  let text: string
+  let bytes: Buffer
   try {
     const target = snapshotPath(home)
     // Over the cap it is not read at all: RedLog writes this file and it is a
     // few KB. The shell's reader draws the same line (`read_json_capped`).
     if (fs.statSync(target).size > CLASS_FILE_MAX_BYTES) return false
-    text = fs.readFileSync(target, 'utf8')
+    bytes = fs.readFileSync(target)
   } catch (e) {
     return (e as NodeJS.ErrnoException).code === 'ENOENT' ? null : false
   }
   try {
-    const parsed: unknown = JSON.parse(text)
-    return nestsDeeperThan(parsed) ? false : parsed
+    return parseClassFile(bytes)
   } catch {
     return false
   }
