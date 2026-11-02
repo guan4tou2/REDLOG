@@ -30,7 +30,7 @@ interface PluginView {
     commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
   } | null
 }
 
@@ -79,7 +79,9 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
       {otherGroups.map(({ key, label, value }) => value && (
         <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
           <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
-            {t(label, { accepted: value.accepted, rejected: value.rejected.length })}
+            {'waiting' in value && value.waiting
+              ? t('plugins.results.terminalProfilesWaiting')
+              : t(label, { accepted: value.accepted, rejected: value.rejected.length })}
           </p>
           {value.rejected.map((r) => (
             <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>

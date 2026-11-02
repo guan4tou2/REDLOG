@@ -138,6 +138,20 @@ describe('plugins page shows results', () => {
     expect(box.textContent).toContain('nc-pty: nc is a shipped native default; change it with redlog class add')
   })
 
+  // A plugin awaiting approval contributes no profile; the line says why instead
+  // of "0 accepted", which would read as a plugin that offered nothing.
+  it('says terminal profiles wait for approval, with no counts', async () => {
+    const view = {
+      id: 'tw', name: 'TW', version: '1', description: '', author: '', source: 'user', tier: 'privileged',
+      status: 'needs-consent', capabilities: [], contributes: ['terminalProfiles'],
+      report: { terminalProfiles: { accepted: 0, rejected: [], waiting: true } }
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    render(<PluginsPanel t={t} />)
+    const box = await screen.findByTestId('plugin-results-terminalProfiles-tw')
+    expect(box.textContent).toBe('Tool profiles wait for your approval of this plugin.')
+  })
+
   it('shows nothing extra for a plugin with no report', async () => {
     const view = { id: 'q', name: 'Q', version: '1', description: '', author: '', source: 'user', tier: 'declarative', status: 'active', capabilities: [], contributes: [], report: null }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }

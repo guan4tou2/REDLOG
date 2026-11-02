@@ -413,10 +413,38 @@ describe('terminalProfiles in a manifest', () => {
     }
   })
 
-  it('a plugin that is in error contributes nothing', () => {
-    writePlugin('tp-error', { ...manifestBase, id: 'tp-error', redlogApi: 99, contributes: { terminalProfiles: [ligolo] } })
-    initPlugins()
-    expect(fs.existsSync(snapshotPath())).toBe(false)
+  // The error and disabled cases need a plugin whose status is error while its
+  // manifest still carries profiles, which the loader never produces: they are
+  // in test/plugin-profile-gate.test.ts. This one goes through the real loader
+  // and the real trust store, for the state the loader does produce.
+  it('a plugin that has not been approved at its current content contributes nothing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const manifest = {
+      ...manifestBase, id: 'tp-trust', capabilities: ['read:events'],
+      contributes: { tailers: 'code/tools.js', terminalProfiles: [ligolo] }
+    }
+    const dir = writePlugin('tp-trust', manifest, { 'code/tools.js': 'exports.tools = []\n' })
+    try {
+      initPlugins()
+      expect(listPlugins().find((x) => x.manifest.id === 'tp-trust')?.status).toBe('needs-consent')
+      expect(fs.existsSync(snapshotPath())).toBe(false)
+
+      // approved: it contributes
+      grant('tp-trust', computeContentHash(validateManifest(manifest, dir).manifest!, dir), ['read:events'])
+      initPlugins()
+      expect(listPlugins().find((x) => x.manifest.id === 'tp-trust')?.status).toBe('active')
+      expect(snapshotIds()).toEqual(['tp-trust/ligolo'])
+
+      // the content changes: the approval no longer covers it, and it stops
+      fs.writeFileSync(path.join(dir, 'code', 'tools.js'), 'exports.tools = [1]\n')
+      initPlugins()
+      expect(listPlugins().find((x) => x.manifest.id === 'tp-trust')?.status).toBe('needs-consent')
+      expect(fs.existsSync(snapshotPath())).toBe(false)
+    } finally {
+      removeContributions('tp-trust')
+      revoke('tp-trust')
+      warn.mockRestore()
+    }
   })
 
   it('a refusal to write is logged, and does not stop the plugins loading', () => {

@@ -28,8 +28,11 @@ export interface ContributionReport {
   /** #499: tool profiles for the terminal adapter. Accepted ones reach the
    *  shell only when `syncTerminalProfiles` writes the snapshot, which
    *  `initPlugins` does after every plugin has applied. */
-  terminalProfiles?: { accepted: number; rejected: RuleRejection[] }
+  terminalProfiles?: { accepted: number; rejected: RuleRejection[]; waiting?: boolean }
 }
+
+/** Statuses in which a plugin has not been approved at its current hash. */
+const AWAITING_APPROVAL: readonly string[] = ['needs-consent', 'hash-changed']
 
 const reports = new Map<string, ContributionReport>()
 
@@ -86,8 +89,16 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     report.eventTypes = r
   }
   if (c.terminalProfiles?.length) {
-    const r = registerTerminalProfiles(id, c.terminalProfiles)
-    report.terminalProfiles = { accepted: r.accepted, rejected: r.rejected }
+    // A profile changes what the shell does to what the operator types, so it
+    // waits for the operator's approval of this exact content. `loader` only
+    // leaves `needs-consent` / `hash-changed` on a plugin whose code needs that
+    // approval; everything else it loads is already in a state to contribute.
+    if (AWAITING_APPROVAL.includes(p.status)) {
+      report.terminalProfiles = { accepted: 0, rejected: [], waiting: true }
+    } else {
+      const r = registerTerminalProfiles(id, c.terminalProfiles)
+      report.terminalProfiles = { accepted: r.accepted, rejected: r.rejected }
+    }
   }
   if (c.capture?.length) {
     const r = registerCapturePlugins(

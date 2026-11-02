@@ -1735,6 +1735,7 @@
   "plugins.results.eventTypes": "事件類型：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.capture": "擷取來源：{{accepted}} 條生效、{{rejected}} 條被拒絕",
   "plugins.results.terminalProfiles": "Tool Profile：{{accepted}} 個生效、{{rejected}} 個被拒絕",
+  "plugins.results.terminalProfilesWaiting": "工具設定檔會等你核准這個外掛後才生效。",
   "settings.wsl.status.pass": "通過",
   "settings.wsl.status.fail": "失敗",
   "settings.wsl.status.warn": "警告",

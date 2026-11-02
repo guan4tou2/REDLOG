@@ -189,6 +189,11 @@ and writes `~/.redlog/terminal-profiles.json`, which the shell adapters read
 next to the operator's `~/.redlog/command-class.json`. The operator's own
 `redlog class add` still decides last.
 
+Profiles are written only for a plugin that is approved at its current content.
+A plugin that ships code (`tailers`) waits in Settings ▸ Plugins until you approve
+it, and again after any change to its manifest or code; until then it contributes
+no profile. A manifest with no code is approved from the start.
+
 A profile that fails is refused whole and named under the plugin in Settings ▸
 Plugins; the rest load. These are refused:
 

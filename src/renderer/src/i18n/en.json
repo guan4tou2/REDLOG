@@ -1735,6 +1735,7 @@
   "plugins.results.eventTypes": "Event types: {{accepted}} accepted, {{rejected}} rejected",
   "plugins.results.capture": "Capture sources: {{accepted}} accepted, {{rejected}} rejected",
   "plugins.results.terminalProfiles": "Tool profiles: {{accepted}} accepted, {{rejected}} rejected",
+  "plugins.results.terminalProfilesWaiting": "Tool profiles wait for your approval of this plugin.",
   "settings.wsl.status.pass": "passed",
   "settings.wsl.status.fail": "failed",
   "settings.wsl.status.warn": "warning",
