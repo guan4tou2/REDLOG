@@ -44,7 +44,7 @@
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^13.0.3",
-    "chokidar": "^3.6.0",
+    "chokidar": "^6.0.0",
     "electron-updater": "^6.8.9",
     "js-yaml": "^4.1.0",
     "lucide-react": "^1.33.0",
