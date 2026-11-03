@@ -9,9 +9,11 @@ type Reading = 'activities' | 'io' | 'ai' | 'events'
 const READINGS: Reading[] = ['activities', 'io', 'ai', 'events']
 
 /** Reading modes share a query; visited readers retain their own position. */
-export default function RecordingWorkspace({ active = true, onOpenInTimeline }: {
+export default function RecordingWorkspace({ active = true, onOpenInTimeline, onOpenTimeline }: {
   active?: boolean
   onOpenInTimeline?: (id: string, ts: number) => void
+  /** Open the visual Timeline for this project, with no event focused. */
+  onOpenTimeline?: () => void
 }): JSX.Element {
   const { t } = useI18n()
   const [reading, setReading] = useState<Reading>('activities')
@@ -50,6 +52,11 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline }: 
           }}
           className={`px-3 py-2 text-xs border-b-2 ${reading === mode ? 'border-redlog-accent text-redlog-text' : 'border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
         >{t(`workspace.reading.${mode}`)}</button>)}
+        {onOpenTimeline && (
+          <button type="button" onClick={onOpenTimeline}
+            className="ml-auto px-3 py-2 text-xs text-redlog-text-dim hover:text-redlog-text"
+          >{t('workspace.openTimeline')} ↗</button>
+        )}
       </div>
       {(reading==='io'||reading==='ai') && <div className="flex flex-wrap gap-2 pb-2">
         {reading==='ai' && <select aria-label={t('workspace.provider')} value={provider} onChange={e=>{setProvider(e.target.value);setSessions(prev=>({...prev,ai:null}))}} className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs">
