@@ -457,8 +457,9 @@ interface RedLogAPI {
     /** Spec 052: what the SHELL will do — the machine's mode and the effective
      *  class lists, defaults with the operator's `redlog class` edits on top.
      *  `entries` say where each named command's mode came from; `problems` are
-     *  what the compiler skipped or could not settle. */
-    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; app: string } & import('../../core/terminal-class').CompiledClassPolicy>
+     *  what the compiler skipped or could not settle; `profiles` are the tool
+     *  profiles it read, shipped first and then the plugins'. */
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; app: string; profiles: import('../../core/terminal-class').TerminalProfile[] } & import('../../core/terminal-class').CompiledClassPolicy>
     setTerminalApp: (value: string) => Promise<string>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }

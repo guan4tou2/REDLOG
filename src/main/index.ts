@@ -1903,11 +1903,17 @@ app.whenReady().then(() => {
   // edits on top. Read on demand rather than cached: `redlog mode manual`
   // happens in a terminal RedLog knows nothing about, and a panel showing a
   // stale `auto` is worse than one showing nothing.
-  ipcMain.handle('hooks:terminalPolicy', () => ({
-    mode: readTerminalMode(),
-    app: readTerminalApp(),
-    ...compileClassPolicy(readClassOverlay(), undefined, readContributedProfiles())
-  }))
+  // `profiles` are the ones the compiler read, so a card can name the tool a
+  // mode came from; one read of the snapshot serves both.
+  ipcMain.handle('hooks:terminalPolicy', () => {
+    const contributed = readContributedProfiles()
+    return {
+      mode: readTerminalMode(),
+      app: readTerminalApp(),
+      ...compileClassPolicy(readClassOverlay(), undefined, contributed),
+      profiles: knownProfiles(undefined, contributed)
+    }
+  })
   // #499 PR B. `detection` only reads; `rescan` is the one way the renderer can
   // cause a lookup, and only for the two reasons it can have.
   ipcMain.handle('tools:detection', () => toolDetector.snapshot())

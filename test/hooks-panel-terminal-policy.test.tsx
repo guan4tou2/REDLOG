@@ -22,13 +22,11 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
       'settings.terminalMode': 'New terminals: {{mode}}',
       'settings.terminalMode.auto': 'recording from the first prompt',
       'settings.terminalMode.manual': 'not recording until redlog start',
-      'settings.terminalClassNative': 'left alone: {{commands}}',
-      'settings.terminalClassPty': 'given a PTY: {{commands}}',
       'settings.terminalClassEditedFromShell': 'Change it from the terminal.'
     } as Record<string, string>)[key] ?? key
   )
 
-const draw = (terminalPolicy?: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[] }>, hooks: HookInfo[] = []): void => {
+const draw = (terminalPolicy?: () => Promise<object>, hooks: HookInfo[] = []): void => {
   ;(window as unknown as { redlog: unknown }).redlog = {
     platform: 'darwin',
     hooks: {
@@ -47,14 +45,16 @@ const draw = (terminalPolicy?: () => Promise<{ mode: 'auto' | 'manual'; native: 
 describe('the hooks panel says what the shell will do', () => {
   afterEach(() => cleanup())
 
-  it('names the mode and both class lists', async () => {
-    draw(async () => ({ mode: 'manual', native: ['nc', 'vim'], pty: ['ssh'] }))
+  it('names the mode, and says where the per-tool policy is changed once there are tool cards', async () => {
+    draw(async () => ({
+      mode: 'manual', native: ['nc', 'vim'], pty: ['ssh'],
+      entries: [{ command: 'ssh', mode: 'pty', source: 'profile', profile: 'ssh' }], problems: [],
+      profiles: [{ id: 'ssh', name: 'SSH', mode: 'pty', executables: ['ssh'], reason: 'Brings its own TTY.' }]
+    }))
     await waitFor(() => expect(screen.getByText(/not recording until redlog start/)).toBeTruthy())
-    const text = document.body.textContent ?? ''
-    expect(text).toMatch(/left alone: nc vim/)
-    expect(text).toMatch(/given a PTY: ssh/)
-    // The third class is not a list, and saying so beats printing one.
-    expect(text).toMatch(/Change it from the terminal/)
+    await screen.findByRole('group', { name: 'SSH' })
+    // The note is a statement about the shell, not a list the page edits.
+    expect(document.body.textContent ?? '').toMatch(/Change it from the terminal/)
   })
 
   it('refreshes the actual mode on return without reinstalling a hook', async () => {
@@ -70,19 +70,6 @@ describe('the hooks panel says what the shell will do', () => {
     expect(policy).toHaveBeenCalledTimes(2)
     expect(detect).toHaveBeenCalledTimes(1)
     expect(install).not.toHaveBeenCalled()
-  })
-
-  it('keeps the current mode visible while tool classifications are expandable', async () => {
-    draw(async () => ({ mode: 'manual', native: ['nc', 'vim'], pty: ['ssh'] }))
-    const mode = await screen.findByText(/not recording until redlog start/)
-    const summary = mode.closest('summary')
-    expect(summary).not.toBeNull()
-    const details = summary!.closest('details')!
-    expect(details.open).toBe(false)
-    fireEvent.click(summary!)
-    expect(details.open).toBe(true)
-    expect(details.textContent).toContain('left alone: nc vim')
-    expect(details.textContent).toContain('given a PTY: ssh')
   })
 
   it('saves the terminal app independently of the shell and keeps a failed choice visible', async () => {

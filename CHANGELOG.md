@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Settings ▸ Capture sources: the native/PTY command lists are replaced by one
+  card per tool profile (shipped or a plugin's). Each card keeps four things
+  apart: where the profile comes from; whether each environment (the app, and
+  each shell's first-prompt report, with the time) found the executable, where a
+  miss reads "Not found on PATH" and changes no mode; the effective mode and the
+  source it came from (your override, a profile, a shipped default, or no rule),
+  with a conflict shown with the profile that kept the command and an unusable
+  profile named instead of skipped silently; and, as separate lines, how that mode
+  is captured and its limits (a PTY command runs native in bash, with
+  `capture_reason: no-pty-wrapper`). The card has no Start, Stop or override
+  control. Settings runs one PATH lookup when the page opens, and Rescan runs
+  another on request (Refs #499).
 - Shell senders (`shell-common.sh`, `redlog-send.sh`, `redlog-agent.sh`) no
   longer put the API token in a process's argument list, where a process
   listing shows it to other users on a shared host. `redlog-send.sh` and
