@@ -13,6 +13,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
+import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
@@ -323,16 +324,18 @@ managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
   }
-  // The addon could not write the gap itself, so its log line is all there
-  // is. Put the loss on the Timeline too, where an export will carry it.
-  const unsaved = (next.unsavedGapEvents ?? 0) - (previous.unsavedGapEvents ?? 0)
+})
+// The addon could not write the gap itself, so its log line is all there is.
+// Put the loss on the Timeline too, where an export will carry it — in the
+// project the line says owns it, and only if that is the one open now (#507).
+managedHttpProxy.onUnsavedGap((gap) => {
   const open = projectRuntime.current()
-  if (unsaved > 0 && open) {
-    ingestEvent('system', {
-      subtype: 'capture_gap', source: 'managed-http-proxy', reason: 'gap-unsaved', skipped_units: unsaved,
-      description: `${unsaved} HTTP event(s) refused at a full proxy queue; the addon could not record the gap`
-    }, open)
+  const data = unsavedGapForProject(gap, open)
+  if (!open || !data) {
+    console.warn(`[http-proxy] a ${gap.reason} gap of ${gap.units} event(s) for engagement ${gap.engagementId} could not be saved and its project is not open`)
+    return
   }
+  ingestEvent('system', data, open)
 })
 
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
