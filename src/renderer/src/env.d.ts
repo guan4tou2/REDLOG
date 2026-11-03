@@ -462,6 +462,12 @@ interface RedLogAPI {
     setTerminalApp: (value: string) => Promise<string>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
   }
+  tools: {
+    /** #499 PR B: what was found where, per environment. Reads reports and the last lookup; looks nothing up. */
+    detection: () => Promise<import('../../core/tool-detection').ToolDetectionSnapshot>
+    /** One PATH lookup of RedLog's own, unless a recent one already covered every executable (`settings-open`). */
+    rescan: (reason: 'settings-open' | 'manual') => Promise<import('../../core/tool-detection').ToolDetectionSnapshot>
+  }
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
     preflight: () => Promise<RuntimePreflight>

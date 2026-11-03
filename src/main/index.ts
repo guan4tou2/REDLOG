@@ -64,7 +64,8 @@ import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
-import { compileClassPolicy } from '../core/terminal-class'
+import { compileClassPolicy, knownProfiles } from '../core/terminal-class'
+import { createToolDetector, rescanTrigger } from '../core/tool-detection'
 import { readContributedProfiles } from '../core/terminal-profiles'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -1280,6 +1281,18 @@ const loginPathReady: Promise<void> = gotSingleInstanceLock
     .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
     .catch(() => { /* PATH stays as launched */ })
   : Promise.resolve()
+
+// #499 PR B. Which tools this machine has: RedLog's own PATH lookup, run on a
+// trigger and never per command, joined to the reports the shells write. Read
+// by the Tool Settings panel; it feeds nothing that decides how a command is
+// recorded.
+const toolDetector = createToolDetector({
+  home: homedir(),
+  platform: process.platform,
+  env: () => process.env,
+  profiles: () => knownProfiles(undefined, readContributedProfiles()),
+  log: (line) => debugLog('tools', 'scan', line)
+})
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1310,6 +1323,9 @@ app.whenReady().then(() => {
   // upgrade does not touch it otherwise.
   const refreshedHooks = refreshInstalledHooks()
   if (refreshedHooks.length) debugLog('hooks', 'refreshed', refreshedHooks.join(','))
+
+  // Behind the login PATH, and not awaited: this must never hold up startup.
+  void loginPathReady.then(() => toolDetector.rescan('startup')).catch((e) => debugLog('tools', 'startup detection failed', (e as Error).message))
 
   startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
 
@@ -1892,6 +1908,13 @@ app.whenReady().then(() => {
     app: readTerminalApp(),
     ...compileClassPolicy(readClassOverlay(), undefined, readContributedProfiles())
   }))
+  // #499 PR B. `detection` only reads; `rescan` is the one way the renderer can
+  // cause a lookup, and only for the two reasons it can have.
+  ipcMain.handle('tools:detection', () => toolDetector.snapshot())
+  ipcMain.handle('tools:rescan', (_e, reason: unknown) => {
+    const trigger = rescanTrigger(reason)
+    return trigger ? toolDetector.rescan(trigger) : toolDetector.snapshot()
+  })
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.
