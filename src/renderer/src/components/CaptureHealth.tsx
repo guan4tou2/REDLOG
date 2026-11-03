@@ -164,8 +164,12 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   )
 }
 
-export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
+export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onSetup }: {
   capture: CaptureHealthInfo
+  /** Set when the last read failed: what to say in place of a verdict. `capture`
+   *  is then the last good snapshot, and the rows and controls below stay
+   *  usable, but the headline and the "all good" line are not drawn. */
+  unknown?: string
   onNavigate: (v: string) => void
   onRefresh: () => void
   onSetup?: () => void
@@ -351,8 +355,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
   // and a card that reports both has to let the worse one win, or it prints a
   // reassurance directly above the row that contradicts it.
   const rogue = sources.filter(isRogue)
-  const dark = capture.verdict === 'dark' || rogue.length > 0
-  const partial = capture.verdict === 'partial'
+  const dark = unknown === undefined && (capture.verdict === 'dark' || rogue.length > 0)
+  const partial = unknown === undefined && capture.verdict === 'partial'
   // Pure + unit-tested in capture-readiness.ts; this card just renders it.
   // All that is left of it is the one next action — the checklist it used to
   // drive said the same two things as the core line above, in a third set of
@@ -390,8 +394,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
       ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
       : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
-  const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
-  const headline = rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
+  const barColor = unknown !== undefined ? 'bg-redlog-elevated-hover' : dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
+  const headline = unknown !== undefined ? unknown
+    : rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
     : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
@@ -419,7 +424,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: sources.length })}
             </button>
-            <span className={`text-xs font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
+            <span
+              data-testid={unknown !== undefined ? 'capture-unknown' : undefined}
+              className={`text-xs font-medium ${unknown !== undefined ? 'text-redlog-text-dim' : dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}
+            >{headline}</span>
           </div>
         </div>
         {/* #217: both core captures, always named. The checklist that used to
@@ -569,7 +577,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, onSetup }: {
               beneath "! HTTP(S) 未安裝 mitmproxy" is the card contradicting
               itself one row apart. An empty exception list means nothing is
               broken, which is not the same as nothing is missing. */}
-          {!manage && shown.length === 0 && problems.length === 0 && !coreGap && (
+          {!manage && unknown === undefined && shown.length === 0 && problems.length === 0 && !coreGap && (
             <p className="text-xs text-redlog-text-dim col-span-2">
               {t('capture.allGood', { active: healthy.length })}
             </p>

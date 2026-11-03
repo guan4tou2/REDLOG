@@ -5,10 +5,15 @@ Sonnet 5.5, and nothing here falls back to an older family.
 
 | agent | model | effort | use it when | tools |
 |---|---|---|---|---|
-| `scout` | Sonnet 5.5 | low | the answer is a fact to look up — grep, read a log, fetch a doc page | read-only |
+| `scout` | Haiku 5.5 | low | the answer is a fact to look up — grep, read a log, fetch a doc page | read-only |
 | `worker` | Sonnet 5.5 | medium | the change is decided and mostly mechanical — implement, run a test loop, draft a PR body | all, **no commit/push** |
 | `reviewer` | Opus 5.5 | high | before a large change is pushed, or when a claim is about to be asserted unverified | read + run, never edits |
 | `architect` | Opus 5.5 | xhigh | root cause has resisted two attempts, or a wrong design choice would be expensive | read + run, never edits |
+
+`scout` is the one on Haiku: it only looks things up and cannot edit or run
+anything, and its report is re-checked before it is relied on, so a miss costs a
+second look rather than a wrong commit. Do not move `worker`, which loops on
+failing tests, or the two Opus agents down to it.
 
 The main thread decides when to spawn one. The test is whether it **saves main
 context** or **gives an independent second view** — not whether it looks like
@@ -17,8 +22,8 @@ context, stays on the main thread.
 
 ## Calling them — do not pass `model`
 
-The models are pinned here by **full ID** (`claude-sonnet-5-5`,
-`claude-opus-5-5`). The `Agent` tool's own `model` parameter only takes the
+The models are pinned here by **full ID** (`claude-haiku-5-5`,
+`claude-sonnet-5-5`, `claude-opus-5-5`). The `Agent` tool's own `model` parameter only takes the
 aliases `sonnet` / `opus` / `haiku` / `fable`, and a per-invocation value is
 resolved **before** the definition's — so passing one would override the pin
 with whatever the alias currently resolves to. Pick the agent by

@@ -8,7 +8,7 @@ const m = vi.hoisted(() => ({
 }))
 vi.mock('electron', () => ({ shell: {} }))
 vi.mock('../src/core/plugins/official-agents', () => ({ createOfficialAgentPluginManager: m.factory }))
-vi.mock('../src/core/plugins', () => ({ listPlugins: m.plugins, listEventTypes: vi.fn(), setPluginEnabled: m.enable, grantPluginTrust: vi.fn(), revokePluginTrust: vi.fn(), reloadPlugins: m.reload }))
+vi.mock('../src/core/plugins', () => ({ listPlugins: m.plugins, listEventTypes: vi.fn(), setPluginEnabled: m.enable, grantPluginTrust: vi.fn(), revokePluginTrust: vi.fn(), reloadPlugins: m.reload, terminalProfilesError: () => undefined }))
 vi.mock('../src/core/config', () => ({ loadConfig: vi.fn() }))
 vi.mock('../src/core/project-manager', () => ({ getProjectDir: vi.fn() }))
 vi.mock('../src/core/plugins/test-sample', () => ({ testSample: vi.fn() }))

@@ -27,7 +27,9 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   CREATE TABLE IF NOT EXISTS body_event_refs (
    event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
    status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,sha256)
-  ); PRAGMA user_version=6;
+  );
+  CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
+  PRAGMA user_version=6;
   CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));`)
   indexDir = projectDir
   return index
@@ -165,6 +167,14 @@ function backfill(projectDir: string,snapshot?:ExportSnapshot): void {
     db.prepare('DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
     db.prepare("DELETE FROM body_fts WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=body_fts.event_id AND r.sha256=body_fts.sha256 AND r.status='indexed')").run()
   })()
+}
+/** The events that reference one body-store file, from the (event, sha256)
+ *  link table rather than a scan of `events`. Only events the index has been
+ *  told about appear: `ingest` links scanner rows, and a search links the rest. */
+export function eventIdsReferencingBody(sha256: string, projectDir = getProjectDir()): string[] {
+  const rows = getIndex(projectDir).prepare("SELECT event_id FROM body_event_refs WHERE sha256=? AND kind='body' AND file=?")
+    .all(sha256, `${sha256}.body`) as { event_id: string }[]
+  return rows.map(row => row.event_id)
 }
 export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir()): void {
   const db = getIndex(projectDir)

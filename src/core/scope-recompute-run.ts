@@ -26,7 +26,7 @@ import {
   insertEvent, invalidateChainHeadCache, resetEventCountCache, type RedLogEvent
 } from './db/events'
 import { getSanitizedFields } from './sanitize'
-import { violationStanding } from './scope-violation-standing'
+import { countsAsStandingVerdict, violationStanding } from './scope-violation-standing'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from './alert/scope-signal'
@@ -116,7 +116,7 @@ export function readExistingViolations(): ExistingViolation[] {
     // treating one as a standing record would turn a newly-excluded host into a
     // "regrade" of something that was never flagged. Floor-independent: no
     // floor ever makes in_scope reportable.
-    if (d.subtype !== 'scope_violation' || d.distance === 'in_scope') continue
+    if (!countsAsStandingVerdict(d)) continue
     const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
     violations.push({
       id,

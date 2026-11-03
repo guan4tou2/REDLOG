@@ -8,8 +8,10 @@ import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { testSample } from '../../core/plugins/test-sample'
 import { getContributionReport } from '../../core/plugins/contributions'
+import { requiresApproval } from '../../core/plugins/manifest'
 import { createOfficialAgentPluginManager } from '../../core/plugins/official-agents'
-import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins } from '../../core/plugins'
+import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins, terminalProfilesError } from '../../core/plugins'
+import { checkTerminalProfiles } from '../../core/terminal-profiles'
 import { invalidateHooksCache } from '../../core/capture-health'
 import { invalidateHooksCache as invalidateHooksDetectCache } from '../../core/hooks-manager'
 import { insertEvent } from '../../core/db/events'
@@ -17,15 +19,25 @@ import { eventBus } from '../../core/event-bus'
 
 // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we
 // don't need in the renderer; keep what the panel renders + acts on).
+//
+// `terminalProfiles` is what the approval dialog shows: the profiles the plugin
+// declares that RedLog would accept, read from the manifest and not from the
+// report, because a plugin awaiting approval has registered nothing yet.
+// `profilesError` is the same on every row: the shell's snapshot of the
+// profiles could not be brought up to date, whichever plugin the change was to.
 function pluginView() {
   const official = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins')).list()
+  const profilesError = terminalProfilesError() ?? null
   return listPlugins().map((p) => ({
     officialAgent: official.some(entry => entry.pluginId === p.manifest.id),
     id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
     description: p.manifest.description ?? '', author: p.manifest.author ?? '',
-    source: p.source, tier: p.tier, status: p.status,
+    source: p.source, tier: p.tier, needsApproval: requiresApproval(p.manifest), status: p.status,
     capabilities: p.manifest.capabilities ?? [],
     contributes: Object.keys(p.manifest.contributes ?? {}),
+    terminalProfiles: checkTerminalProfiles(p.manifest.id, p.manifest.contributes?.terminalProfiles).accepted
+      .map(({ name, mode, executables, reason }) => ({ name, mode, executables, reason })),
+    profilesError,
     error: p.error,
     apiAhead: p.apiAhead === true,
     report: getContributionReport(p.manifest.id) ?? null
@@ -105,9 +117,10 @@ export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     }, `Plugin ${enabled ? 'enabled' : 'disabled'}: ${before?.manifest.name ?? id}`)
     return pluginView()
   })
-  // Trust decides whether a plugin's code runs, so the grant and the revoke
-  // are as much a part of the record as enable/disable are: a handed-over
-  // record has to be able to explain why a source started or stopped.
+  // Approval decides whether a plugin's code runs, or what the shell does with
+  // the commands it names, so the grant and the revoke are as much a part of
+  // the record as enable/disable are: a handed-over record has to be able to
+  // explain why a source started or stopped.
   ipcMain.handle('plugins:grant', (_e, id: string) => {
     const project = ctx.getActiveProject()
     const opId = project ? loadConfig(getProjectPath(project)).operator.id : 'unknown'
