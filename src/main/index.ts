@@ -16,6 +16,7 @@ import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '.
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
+import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
@@ -63,7 +64,8 @@ import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
-import { compileClassPolicy } from '../core/terminal-class'
+import { compileClassPolicy, knownProfiles } from '../core/terminal-class'
+import { createToolDetector, rescanTrigger } from '../core/tool-detection'
 import { readContributedProfiles } from '../core/terminal-profiles'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -346,7 +348,7 @@ const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.jso
 // HTTP addon stamp what they capture with whatever this file says.
 function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
-    fs.mkdirSync(path.dirname(SPOOL_IDENTITY_PATH), { recursive: true })
+    mkdirPrivate(path.dirname(SPOOL_IDENTITY_PATH))
     fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
   } catch { /* best-effort */ }
 }
@@ -1279,6 +1281,18 @@ const loginPathReady: Promise<void> = gotSingleInstanceLock
     .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
     .catch(() => { /* PATH stays as launched */ })
   : Promise.resolve()
+
+// #499 PR B. Which tools this machine has: RedLog's own PATH lookup, run on a
+// trigger and never per command, joined to the reports the shells write. Read
+// by the Tool Settings panel; it feeds nothing that decides how a command is
+// recorded.
+const toolDetector = createToolDetector({
+  home: homedir(),
+  platform: process.platform,
+  env: () => process.env,
+  profiles: () => knownProfiles(undefined, readContributedProfiles()),
+  log: (line) => debugLog('tools', 'scan', line)
+})
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1301,10 +1315,17 @@ app.whenReady().then(() => {
   debugLog('app', 'start', `version=${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} platform=${process.platform}-${process.arch} packaged=${app.isPackaged}`)
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
+  // Installs made before modes were passed at creation: ~/.redlog and what is
+  // under it become owner-only, and a first run creates it that way.
+  restrictRedlogHome()
+
   // Before any terminal opens: an enrolled shell sources ~/.redlog, and an
   // upgrade does not touch it otherwise.
   const refreshedHooks = refreshInstalledHooks()
   if (refreshedHooks.length) debugLog('hooks', 'refreshed', refreshedHooks.join(','))
+
+  // Behind the login PATH, and not awaited: this must never hold up startup.
+  void loginPathReady.then(() => toolDetector.rescan('startup')).catch((e) => debugLog('tools', 'startup detection failed', (e as Error).message))
 
   startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
 
@@ -1882,11 +1903,24 @@ app.whenReady().then(() => {
   // edits on top. Read on demand rather than cached: `redlog mode manual`
   // happens in a terminal RedLog knows nothing about, and a panel showing a
   // stale `auto` is worse than one showing nothing.
-  ipcMain.handle('hooks:terminalPolicy', () => ({
-    mode: readTerminalMode(),
-    app: readTerminalApp(),
-    ...compileClassPolicy(readClassOverlay(), undefined, readContributedProfiles())
-  }))
+  // `profiles` are the ones the compiler read, so a card can name the tool a
+  // mode came from; one read of the snapshot serves both.
+  ipcMain.handle('hooks:terminalPolicy', () => {
+    const contributed = readContributedProfiles()
+    return {
+      mode: readTerminalMode(),
+      app: readTerminalApp(),
+      ...compileClassPolicy(readClassOverlay(), undefined, contributed),
+      profiles: knownProfiles(undefined, contributed)
+    }
+  })
+  // #499 PR B. `detection` only reads; `rescan` is the one way the renderer can
+  // cause a lookup, and only for the two reasons it can have.
+  ipcMain.handle('tools:detection', () => toolDetector.snapshot())
+  ipcMain.handle('tools:rescan', (_e, reason: unknown) => {
+    const trigger = rescanTrigger(reason)
+    return trigger ? toolDetector.rescan(trigger) : toolDetector.snapshot()
+  })
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.

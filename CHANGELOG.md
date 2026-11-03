@@ -5,6 +5,23 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Settings ▸ Capture sources: the native/PTY command lists are replaced by one
+  card per tool profile (shipped or a plugin's). Each card keeps four things
+  apart: where the profile comes from; whether each environment (the app, and
+  each shell's first-prompt report, with the time) found the executable, where a
+  miss reads "Not found on PATH" and changes no mode; the effective mode and the
+  source it came from (your override, a profile, a shipped default, or no rule),
+  with a conflict shown with the profile that kept the command and an unusable
+  profile named instead of skipped silently; and, as separate lines, how that mode
+  is captured and its limits (a PTY command runs native in bash, with
+  `capture_reason: no-pty-wrapper`). The card has no Start, Stop or override
+  control. Settings runs one PATH lookup when the page opens, and Rescan runs
+  another on request (Refs #499).
+- Shell senders (`shell-common.sh`, `redlog-send.sh`, `redlog-agent.sh`) no
+  longer put the API token in a process's argument list, where a process
+  listing shows it to other users on a shared host. `redlog-send.sh` and
+  `redlog-agent.sh` also send their payload on stdin instead of as an argument
+  (Refs #489).
 - Capture Health: the status bar dot and the dashboard card no longer keep the
   last verdict on screen after a failed read. They say "last confirmed … ;
   current state unknown" with the time, and a failed read neither raises nor
@@ -20,6 +37,18 @@ for full commit body + generated notes.
 - Windows: the AI capture sidecar directory (`agent-transcripts/`) is restricted
   to the current user, as the keys directory is. When that cannot be applied,
   the session is not captured and the source reports a capture error (Refs #489).
+- Plugins: a plugin with a capture entry that RedLog installs (`shell-source`
+  or `claude-settings`) now waits in Settings ▸ Plugins for your approval, at
+  its current content, like terminal profiles do; its install is not offered
+  until then, and a changed hook file asks again. A capture's `installMethod`
+  must be one of those two or `manual`, `installTarget` a bare `.sh`, `.zsh` or
+  `.bash` file name written inside `~/.redlog`, and `shellRcFile` one of
+  `.zshrc`, `.bashrc`, `.bash_profile`, `.profile`; a plugin that says otherwise
+  fails to load with the field named. A plugin can no longer declare a redaction
+  `allowlist` (a manifest that does fails to load); plugins can only add to what
+  is masked. A plugin's `commandTags` and `targetExtractors` patterns run under
+  the 250 ms time limit loot patterns have, and an extractor's `param` is a
+  flag name, matched literally (Refs #499).
 
 ## v0.18.6 — 2026-11-01
 

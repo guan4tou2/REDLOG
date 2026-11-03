@@ -51,6 +51,8 @@ _REDLOG_EVENT_SOURCE=auto-relay
 #   - a failure anywhere leaves the descriptors as they were. Unrecorded is
 #     bad; a wedged prompt is worse (FR-009).
 _REDLOG_RELAY_DIR=""
+# Not exported: a child shell reports for itself.
+_REDLOG_TOOLS_REPORTED=""
 _REDLOG_CMD_ID=""
 _REDLOG_CMD_CLASS=""
 _REDLOG_CMD_CAPTURE=""
@@ -493,6 +495,11 @@ _redlog_record_untraced_line() {
 _redlog_prompt_command() {
   local exit_code=$?
   _REDLOG_TRAP_ARMED=
+  # Once per shell, at the first prompt it can: see `_redlog_report_tools`, which
+  # sets the flag when a report starts. Until then (RedLog down, or this shell
+  # stopped) each prompt runs the recording check the DEBUG trap already pays
+  # per command, so a stopped shell costs nothing new.
+  if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _redlog_report_tools; fi
   # Nothing started and nothing was deliberately skipped (recording stopped):
   # the line, if there was one, is the untraced kind.
   local histnum

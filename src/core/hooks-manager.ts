@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSyn
 import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
+import { captureInstallProblem } from './plugins/manifest'
 import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
 import { stopOpenTerminals } from './hook-removal'
@@ -251,9 +252,20 @@ export function registerCapturePlugins(
       rejected.push({ name: e.id || e.name || '(unnamed capture)', reason: 'needs both `id` and `hookFile`' })
       continue
     }
+    // The manifest check already refuses these, and refuses the plugin. This
+    // is the same rule again where the fields turn into file writes, because
+    // this function is the way in for anything that does not come from a
+    // loaded manifest.
+    const problem = captureInstallProblem(e)
+    if (problem) {
+      rejected.push({ name: e.id, reason: problem })
+      continue
+    }
     // namespace the id so two plugins can't collide with each other or a built-in
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
-    externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
+    // A plugin names a file; where it goes is not the plugin's to say.
+    const installTarget = e.installTarget ? join(homedir(), '.redlog', e.installTarget) : undefined
+    externalCaptures.push({ ...e, id, installTarget, requires: e.requires ?? [], _dir: dir })
     const retired = retiredCaptures.findIndex((m) => m.id === id)
     if (retired >= 0) retiredCaptures.splice(retired, 1)
     accepted++

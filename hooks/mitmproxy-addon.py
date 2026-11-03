@@ -166,7 +166,7 @@ def _write_spool_record(record: dict) -> bool:
     `.json`, never sees half of one."""
     with _SPOOL_LOCK:
         try:
-            SPOOL_DIR.mkdir(parents=True, exist_ok=True)
+            SPOOL_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
             encoded = json.dumps(record).encode("utf-8")
             count = 0
             total = len(encoded)
@@ -178,10 +178,21 @@ def _write_spool_record(record: dict) -> bool:
                 count += 1
             if count >= 5000 or total > 64 * 1024 * 1024:
                 return False
-            filename = f"{time.time_ns()}-{id(record)}.json"
+            # A name no earlier record of this process has had. The clock alone
+            # is not that: Python before 3.13 reads it from a ~15 ms tick on
+            # Windows, and `id(record)` is reused once the last record is freed,
+            # so two records could share a name. `replace` then overwrote the
+            # first one (a lost gap) or, with the drain unlinking it, was
+            # refused with PermissionError (a write read as failed). Stamps
+            # only rise, so names still sort in write order, which the drain's
+            # sorted listing relies on. Held on the function, under the lock.
+            stamp = max(time.time_ns(), getattr(_write_spool_record, "last_ns", 0) + 1)
+            _write_spool_record.last_ns = stamp
+            filename = f"{stamp}-{os.getpid()}.json"
             temporary = SPOOL_DIR / (filename + ".tmp")
             try:
-                with temporary.open("xb") as output:
+                # Owner-only whatever the umask: a record holds the project identity.
+                with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
                     output.write(encoded)
                 temporary.replace(SPOOL_DIR / filename)
             finally:
@@ -362,13 +373,14 @@ def _write_inflight_marker() -> bool:
                 path.unlink(missing_ok=True)
                 _INFLIGHT_STATE["marker"] = False
             return True
-        INFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
+        INFLIGHT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         marker = {"version": 1, "instance": _INFLIGHT_INSTANCE, "pid": os.getpid(),
                   "started_at": _INFLIGHT_STARTED_MS, "heartbeat_at": int(time.time() * 1000),
                   "identities": [{"identity": entry["identity"], "upper_bound": entry["bound"],
                                   "since": entry["since"], "last": entry["last"]} for entry in live]}
         temporary = path.with_name(path.name + ".tmp")
-        temporary.write_text(json.dumps(marker), encoding="utf-8")
+        with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as output:
+            output.write(json.dumps(marker))
         temporary.replace(path)
         _INFLIGHT_STATE["marker"] = True
         return True

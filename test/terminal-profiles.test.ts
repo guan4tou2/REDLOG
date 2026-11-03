@@ -341,15 +341,20 @@ describe('who keeps a command across writes', () => {
   const heldNow = (): Record<string, string> => JSON.parse(text()).held
 
   it('a plugin that arrives after a bundled tool does not take its command', () => {
-    register('keys', [profile({ id: 'vimkeys', mode: 'pty', executables: ['vim'] })])
-    syncTerminalProfiles(home)
-    expect(heldNow().vim).toBe('vim')
+    // A bundled profile's executables are also in the shipped native/pty list
+    // (so a relay from before profiles reads the right class), which makes vim
+    // part of the floor a plugin cannot move: it is refused at registration, so
+    // there is nothing to hold and no clash to report, now or on any later write.
+    const r = register('keys', [profile({ id: 'vimkeys', mode: 'pty', executables: ['vim'] })])
+    expect(r.accepted).toBe(0)
+    expect(JSON.stringify(r.rejected)).toMatch(/vim is a shipped native default/)
+    expect(syncTerminalProfiles(home).written).toBe(false)
+    expect(fs.existsSync(file())).toBe(false)
     const p = compiled()
     expect(entry(p, 'vim')).toMatchObject({ mode: 'native', source: 'profile', profile: 'vim' })
-    expect(p.problems).toEqual([expect.objectContaining({ kind: 'conflict', command: 'vim', kept: 'vim' })])
-    // And it is the same answer the next time, and the time after.
+    expect(p.problems).toEqual([])
     syncTerminalProfiles(home)
-    expect(heldNow().vim).toBe('vim')
+    expect(fs.existsSync(file())).toBe(false)
   })
 
   it('the first plugin to hold a command keeps it, whichever order they are added in', () => {
@@ -405,17 +410,21 @@ describe('who keeps a command across writes', () => {
     expect(entry(compiled(), 'x')).toMatchObject({ mode: 'native', profile: 'bbb/q' })
   })
 
-  it('a corrupt previous file is no history: the bundled tools are the incumbents, and the file is rewritten', () => {
-    register('keys', [profile({ id: 'vimkeys', mode: 'pty', executables: ['vim'] })])
+  it('a corrupt previous file is no history: nobody is the incumbent, and the file is rewritten', () => {
+    register('aaa', [P()])
+    register('bbb', [Q()])
     fs.mkdirSync(path.join(home, '.redlog'))
     fs.writeFileSync(file(), '{"version":1,"profiles":"nope"')
     expect(syncTerminalProfiles(home)).toEqual({ written: true })
-    expect(heldNow().vim).toBe('vim')
-    expect(JSON.parse(text()).profiles).toHaveLength(1)
-    // A snapshot a newer RedLog wrote is no history either.
-    fs.writeFileSync(file(), '{"version":2,"profiles":[],"held":{"vim":"keys/vimkeys"}}')
+    // Both are newcomers, so they cancel out; the unreadable file made neither the holder.
+    expect(heldNow()).not.toHaveProperty('x')
+    expect(JSON.parse(text()).profiles).toHaveLength(2)
+    expect(entry(compiled(), 'x')).toMatchObject({ mode: 'relayed', source: 'fallback' })
+    // A snapshot a newer RedLog wrote is no history either, whoever it names.
+    fs.writeFileSync(file(), '{"version":2,"profiles":[],"held":{"x":"aaa/p"}}')
     syncTerminalProfiles(home)
-    expect(heldNow().vim).toBe('vim')
+    expect(heldNow()).not.toHaveProperty('x')
+    expect(entry(compiled(), 'x')).toMatchObject({ mode: 'relayed', source: 'fallback' })
   })
 
   it('a holder that changes its own mode keeps the command in the new mode', () => {

@@ -216,6 +216,18 @@ export function normalizeContributed(raw: unknown): ContributedProfiles {
   return { profiles: raw.profiles, held, problems: [] }
 }
 
+/** The tool profiles the compiler accepts, in the order it reads them: the
+ *  shipped ones, then the plugins' from `contributed`. Tool detection joins its
+ *  findings to these, so a plugin's tool is looked for the way a shipped one
+ *  is; it never feeds them back. The compiler and this read the same two
+ *  lists, and the detection test holds them to one set of ids. */
+export function knownProfiles(
+  shipped: ShippedClassPolicy = SHIPPED,
+  contributed: unknown = null
+): TerminalProfile[] {
+  return [...(shipped.terminalProfiles ?? []), ...normalizeContributed(contributed).profiles].filter(validProfile)
+}
+
 /** The shipped policy with the operator's overlay on top, layered.
  *
  *  The highest layer that names a command decides its mode: the operator's

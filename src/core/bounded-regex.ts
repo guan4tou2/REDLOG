@@ -16,6 +16,11 @@ export interface BoundedRule {
   flags: string
   /** 0 = whole match, n = capture group n. */
   group: number
+  /** Ask only whether the rule matches, and where it first does: one entry for
+   *  the first match, empty one included (`test` semantics, which a tag rule
+   *  and a command matcher mean), and none when it does not match. The value
+   *  is the group, or the whole match when the group did not take part. */
+  once?: boolean
 }
 
 export interface BoundedMatch { value: string; index: number }
@@ -38,10 +43,16 @@ parentPort.on('message', ({ rules, text }) => {
   const out = []
   for (let i = 0; i < rules.length; i++) {
     Atomics.store(words, 1, i)
-    const { source, flags, group } = rules[i]
+    const { source, flags, group, once } = rules[i]
     const re = new RegExp(source, flags.includes('g') ? flags : flags + 'g')
     const found = []
     let m
+    if (once) {
+      m = re.exec(text)
+      if (m) found.push({ value: m[group] ?? m[0], index: m.index })
+      out.push(found)
+      continue
+    }
     while ((m = re.exec(text)) !== null) {
       if (m[0].length === 0) { re.lastIndex++; continue }
       const value = m[group]
@@ -87,6 +98,32 @@ export function runBounded(rules: BoundedRule[], text: string, timeoutMs: number
   }
   const reply = receiveMessageOnPort(w.port)
   return { ok: true, matches: (reply?.message as BoundedMatch[][] | undefined) ?? rules.map(() => []) }
+}
+
+/** Time all of one plugin rule set may take on one text. A sound rule over a
+ *  100 KB command output takes a few milliseconds. */
+export const PLUGIN_RULES_BUDGET_MS = 250
+
+/** Run every rule in `all` that has not been stopped, in one trip to the
+ *  worker, and pair each with what it found. A rule that overruns the budget
+ *  is marked `stopped`, handed to `onStopped`, and skipped from then on; the
+ *  rest are run again without it. Nothing it would have matched is reported,
+ *  because a rule that cannot finish says nothing. */
+export function runBoundedRules<R extends { stopped?: 'time_limit' }>(
+  all: readonly R[],
+  toRule: (r: R) => BoundedRule,
+  text: string,
+  onStopped: (r: R) => void
+): Array<[R, BoundedMatch[]]> {
+  for (;;) {
+    const active = all.filter((r) => !r.stopped)
+    if (active.length === 0) return []
+    const res = runBounded(active.map(toRule), text, PLUGIN_RULES_BUDGET_MS)
+    if (res.ok) return active.map((r, i) => [r, res.matches[i] ?? []])
+    const stuck = active[res.stuckAt] ?? active[0]
+    stuck.stopped = 'time_limit'
+    onStopped(stuck)
+  }
 }
 
 /** Tests: stop the worker so the run can exit cleanly. */

@@ -7,6 +7,7 @@ import { registerEventTypes, unregisterEventTypes } from '../event-registry'
 import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manager'
 import { registerTerminalProfiles, unregisterTerminalProfiles } from '../terminal-profiles'
 import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
+import { installsHook } from './manifest'
 import type { LoadedPlugin } from './types'
 import type { RuleRejection } from '../loot-detector'
 import type { RedactionRuleRejection } from '../redaction'
@@ -24,7 +25,7 @@ export interface ContributionReport {
   targetExtractors?: { accepted: number; rejected: RuleRejection[] }
   commandTags?: { accepted: number; rejected: RuleRejection[] }
   eventTypes?: { accepted: number; rejected: RuleRejection[] }
-  capture?: { accepted: number; rejected: RuleRejection[] }
+  capture?: { accepted: number; rejected: RuleRejection[]; waiting?: boolean }
   /** #499: tool profiles for the terminal adapter. Accepted ones reach the
    *  shell only when `syncTerminalProfiles` writes the snapshot, which
    *  `initPlugins` does after every plugin has applied. */
@@ -77,7 +78,7 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     report.redaction = { accepted: r.accepted, rejected: r.rejected }
   }
   if (c.commandTags?.length) {
-    const r = registerCommandTags(id, c.commandTags)
+    const r = registerCommandTags(id, c.commandTags, p.source)
     report.commandTags = r
   }
   if (c.targetExtractors?.length) {
@@ -101,10 +102,16 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     }
   }
   if (c.capture?.length) {
+    // A capture RedLog installs becomes a script in the operator's shell or in
+    // Claude Code's settings, so it waits for approval of this exact content
+    // like terminal profiles do (see `requiresApproval`); a manual one only
+    // shows steps and registers at once.
+    const waiting = AWAITING_APPROVAL.includes(p.status)
+    const entries = waiting ? c.capture.filter((cap) => !installsHook(cap)) : c.capture
     const r = registerCapturePlugins(
       id,
       p.dir,
-      c.capture.map((cap) => ({
+      entries.map((cap) => ({
         id: cap.id,
         name: cap.name,
         description: cap.description,
@@ -120,7 +127,7 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
         manualSteps: fillHookPath(cap.manualSteps, join(p.dir, cap.hookFile))
       }))
     )
-    report.capture = r
+    report.capture = waiting && entries.length < c.capture.length ? { ...r, waiting: true } : r
   }
 
   // v0.8.2: `tailers` contribution. Bundled plugins only — user-plugin

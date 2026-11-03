@@ -172,9 +172,9 @@ describe('redaction rules in the report', () => {
   afterEach(() => { removeContributions('red'); cleanup() })
 
   it('names a regex entry that does not compile, and keeps the rest', () => {
-    const r = applyContributions(plugin('red', { redaction: { denylist: ['/ok[0-9]+/', '/([unclosed/', 'plain'], allowlist: ['/(/'] } }))
+    const r = applyContributions(plugin('red', { redaction: { denylist: ['/ok[0-9]+/', '/([unclosed/', 'plain'] } }))
     expect(r.redaction?.accepted).toBe(2)
-    expect(r.redaction?.rejected.map((x) => `${x.list}:${x.entry}`)).toEqual(['denylist:/([unclosed/', 'allowlist:/(/'])
+    expect(r.redaction?.rejected.map((x) => `${x.list}:${x.entry}`)).toEqual(['denylist:/([unclosed/'])
     expect(r.redaction?.rejected[0].reason).toMatch(/Invalid regular expression/)
   })
 

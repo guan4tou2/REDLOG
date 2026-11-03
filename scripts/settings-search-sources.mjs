@@ -5,6 +5,7 @@
 export const PAGE_SOURCES = {
   hooks: [
     { file: 'settings/HooksPanel.tsx' },
+    { file: 'settings/ToolProfileCards.tsx' },
     { file: 'settings/ManualStepList.tsx' },
     { file: 'WslPanel.tsx' },
     { file: 'RecordTerminalFlow.tsx' },
@@ -47,6 +48,7 @@ const KEY = /\bt\(\s*['"]([a-zA-Z]+\.[A-Za-z0-9_.]+)['"]/g
 // prefix here and every matching key in the locale is pulled in, so adding a
 // bundled plugin needs no edit to this file.
 const COMPUTED_KEY_PREFIXES = {
+  hooks: ['toolCard.'],
   plugins: ['plugins.builtin.'],
   captureControl: ['settings.externalDesc.']
 }

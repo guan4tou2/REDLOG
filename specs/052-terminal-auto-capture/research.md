@@ -135,6 +135,33 @@ run it. Both readers compile the file the same way — the shell through
 in `src/core/terminal-class.ts` — with the operator's overlay on top, and
 `test/command-class.test.ts` holds the two to one golden table of modes.
 
+**Tool detection (#499 PR B)**: which of those executables a machine has is a
+separate state, shown beside the profiles and never an input to them. A miss
+removes nothing and changes no mode; `test/tool-detection.test.ts` pins that
+against the golden table. There is no scanner. RedLog does its own PATH lookup
+(the `app` environment, in memory) only on a trigger: app start, Tool Settings
+opening, a manual rescan, or a profile set that gained an executable, one
+lookup at a time and never per command. The shells say the rest themselves:
+each bash or zsh runs `redlog-relay.py detect` in the background at its first
+prompt, not when the hook is sourced, because the rc line that sources it is
+appended at install and any PATH line a later installer adds comes after it.
+That writes `~/.redlog/tool-detection/<environment>.json`, one file per kind of
+shell, last writer wins; under WSL the home is the Windows profile's, so RedLog
+reads it without spawning `wsl.exe`. RedLog reads at most 64 reports of 64 KiB
+each when asked, marks one stale after 7 days, and never writes or deletes one.
+Executables added to the profiles after a report was written read as
+`unchecked`, not `missing`. PowerShell has no class policy and sends nothing.
+First-prompt PATH is a snapshot: a tool a venv or direnv adds later, or an
+alias with no executable behind it, reads as missing. That is display only.
+
+A profile's executables are also listed in the `native` or `pty` list of its
+mode. The support files are written one at a time, so an enrolled shell can run
+a relay from before profiles against this file, and that relay reads the two
+lists only. The profile still wins in the compiler, so the copies change no
+result; `test/hook-update-mixed-version.test.ts` runs every pairing of the two
+releases' relay and policy, and a write that fails at each file, and holds
+every shipped name to its class.
+
 **Plugins add profiles (#499)**: a plugin manifest may declare
 `terminalProfiles`; RedLog validates them, prefixes each id with the plugin id,
 and writes `~/.redlog/terminal-profiles.json`: the plugins' profiles plus `held`,

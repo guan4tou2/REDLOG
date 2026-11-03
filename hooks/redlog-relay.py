@@ -25,6 +25,14 @@ Four modes, two callers:
         it is handed in place of the terminal is a pseudo-terminal, not a pipe
         — see `pty_pipe`.
 
+    redlog-relay.py detect --home DIR [--session ID] [--shell NAME]
+
+        Once per shell, at its first prompt, in the background: which of the
+        tool profiles' executables the shell's own PATH reaches, written as one
+        small report per kind of shell for RedLog to display (#499). Nothing
+        in this file reads a report back; what a command is recorded as never
+        depends on what was found.
+
 The event is written to `--event-out` as JSON, never to stdout: stdout belongs
 to the command. `<event-out>.started` is created the moment the command is
 launched, and is how the caller knows not to run the command a second time —
@@ -614,8 +622,10 @@ def parse(argv):
         "err_fd": "2",
         "owner": None,
         "notify": None,
+        "shell": None,
     }
     flags = {
+        "--shell": "shell",
         "--dir": "dir",
         "--err-fd": "err_fd",
         "--owner": "owner",
@@ -1885,6 +1895,130 @@ def int_or(value, fallback):
         return fallback
 
 
+# ── Tool detection (#499 PR B) ──────────────────────────────────────────────
+#
+# Which of the tool profiles' executables this shell can reach. RedLog cannot
+# know the PATH a shell's commands resolve against — the rc files that set it
+# run after the hook is sourced — so the shell says, once, at its first prompt.
+# It is information for a settings panel and nothing else: it is never read by
+# `classify`, `policy`, `finish` or `pty`, and a name that is not found changes
+# no command's class.
+
+DETECT_MAX_EXECUTABLES = 64
+DETECT_DEADLINE_S = 2.0
+
+
+class DetectDeadline(Exception):
+    """The lookup ran out of time. Names it had not reached are unchecked, not missing."""
+
+
+def profile_executables(profiles):
+    """The bare executable names of the profiles `compile_policy` would accept,
+    sorted, unique and no more than a report may hold. `profiles` is the shipped
+    ones and then the plugins', in the order the compiler reads them (the seam
+    `knownProfiles` is in src/core/terminal-class.ts)."""
+    names = set()
+    for profile in profiles:
+        if valid_profile(profile):
+            names.update(c for c in profile["executables"] if re.fullmatch(r"[A-Za-z0-9._+-]+", c))
+    return sorted(names)[:DETECT_MAX_EXECUTABLES]
+
+
+def path_dirs(path_value):
+    """Absolute PATH entries, in order, once each. A relative entry means
+    something different in every process that reads it."""
+    seen = set()
+    dirs = []
+    for entry in path_value.split(os.pathsep):
+        if entry and os.path.isabs(entry) and entry not in seen:
+            seen.add(entry)
+            dirs.append(entry)
+    return dirs
+
+
+def find_executable(name, dirs, windows, pathext, deadline):
+    """Where `name` is, or None. POSIX wants a regular file with the execute
+    bit; Windows has no such bit, so the bare name and then each PATHEXT
+    spelling are tried, as src/core/command-lookup.ts does. `deadline` is a
+    time.monotonic() value, checked before every stat."""
+    names = [name] + [name + ext for ext in pathext] if windows else [name]
+    for directory in dirs:
+        for candidate in names:
+            if time.monotonic() > deadline:
+                raise DetectDeadline()
+            path = os.path.join(directory, candidate)
+            try:
+                if os.path.isfile(path) and (windows or os.access(path, os.X_OK)):
+                    return path
+            except OSError:
+                continue
+    return None
+
+
+def detect_cmd(argv):
+    opts = parse(argv)[0]
+    started = time.monotonic()
+    deadline = started + DETECT_DEADLINE_S
+    try:
+        shipped = read_shipped()
+        contributed = normalize_contributed(read_contributed_file(terminal_home(opts)))[0]
+        names = profile_executables(list(shipped.get("terminalProfiles", [])) + list(contributed))
+    except (OSError, ValueError):
+        return 0
+    windows = sys.platform == "win32"
+    pathext = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e]
+    dirs = path_dirs(os.environ.get("PATH", ""))
+    checked = []
+    found = {}
+    try:
+        for name in names:
+            where = find_executable(name, dirs, windows, pathext, deadline)
+            checked.append(name)
+            if where:
+                found[name] = where
+    except DetectDeadline:
+        pass
+    shell = opts["shell"] if opts["shell"] and re.fullmatch(r"[A-Za-z0-9._-]{1,32}", opts["shell"]) else "unknown"
+    distro = (os.environ.get("WSL_DISTRO_NAME") or "")[:128]
+    # The id is what RedLog reads back and matches against `^shell:[A-Za-z0-9._:-]{1,160}$`;
+    # the distro as WSL spells it stays in `wslDistro`.
+    distro_id = re.sub(r"[^A-Za-z0-9._-]", "_", distro[:64])
+    environment = "shell:%s:%s:%s" % (sys.platform, distro_id or "-", shell)
+    report = {
+        "version": 1,
+        "environment": environment,
+        "platform": sys.platform,
+        "shell": shell,
+        "sessionId": opts["session"] or "",
+        "detectedAt": int(time.time() * 1000),
+        "checked": checked,
+        "found": found,
+    }
+    if distro:
+        report["wslDistro"] = distro
+    file_name = re.sub(r"[^A-Za-z0-9._-]", "_", environment) + ".json"
+    write_detection(os.path.join(terminal_home(opts), ".redlog", "tool-detection", file_name), report)
+    trace("detect", "checked=%d found=%d ms=%d" % (len(checked), len(found), (time.monotonic() - started) * 1000))
+    return 0
+
+
+def write_detection(path, payload):
+    """One writer per file name at a time is not guaranteed — two shells of one
+    kind can open together — so the temporary name is this process's own, and
+    the last `os.replace` wins whole."""
+    tmp = "%s.%d.part" % (path, os.getpid())
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 def write_json(path, payload):
     if not path:
         return
@@ -1903,7 +2037,7 @@ def write_json(path, payload):
 def main():
     modes = {"run": run, "pty": pty_pipe, "finish": finish,
              "classify": classify, "policy": policy_field,
-             "state": state_cmd}
+             "state": state_cmd, "detect": detect_cmd}
     mode = modes.get(sys.argv[1]) if len(sys.argv) > 1 else None
     if mode is None:
         sys.stderr.write(__doc__)
