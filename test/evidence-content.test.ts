@@ -263,3 +263,29 @@ describe('complete saved-content delivery',()=>{
     }finally{fs.rmSync(output,{recursive:true,force:true})}
   })
 })
+
+describe('output held in the terminal recording (#550)', () => {
+  it('names the cast slice instead of claiming nothing was captured', () => {
+    // The built-in terminal writes io:{stream:'cast',off,len} and no inline
+    // `stdout`, so probing $.stdout found nothing and the reader said
+    // "not captured" about bytes it had just counted.
+    event('cast-out', {
+      command: 'yes ABCDEFGHIJ | head -c 2000000',
+      stdout_bytes: 2000000,
+      io: { stream: 'cast', ref: '/tmp/whatever.cast', off: 43116, len: 2604806, truncated: false }
+    })
+    const d = descriptor('cast-out', 'stdout')
+    expect(d.status).toBe('cast-recording')
+    expect(d.bytes).toBe(2604806)
+    expect(d.ref).toBeNull()
+    // A cast is one merged stream: it must not be offered as stderr too.
+    expect(descriptor('cast-out', 'stderr').status).toBe('not-captured')
+  })
+
+  it('still prefers inline bytes when they exist', () => {
+    event('both', { stdout: 'inline wins', io: { stream: 'cast', off: 0, len: 99 } })
+    const d = descriptor('both', 'stdout')
+    expect(d.status).toBe('available')
+    expect(readEventContent({ ref: d.ref! })).toMatchObject({ ok: true, value: { text: 'inline wins' } })
+  })
+})

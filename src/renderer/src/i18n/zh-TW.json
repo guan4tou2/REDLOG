@@ -1863,6 +1863,7 @@
   "content.status.missing": "找不到已保存的檔案",
   "content.status.changed": "內容已變更，請重新開啟來源",
   "content.status.denied": "無法存取此專案的來源內容",
+  "content.status.cast-recording": "終端輸出（合併）已保存在錄製中——用時間軸的「回放此指令輸出」檢視",
   "content.status.unsupported": "此內容不支援這項操作",
   "content.status.failed": "內容讀取失敗",
   "activity.castsRestricted": "錄影索引無法套用目前條件，已排除錄影結果。",
