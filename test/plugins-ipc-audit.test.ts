@@ -8,14 +8,15 @@ const m = vi.hoisted(() => ({
   publish: vi.fn(),
   grant: vi.fn(),
   revoke: vi.fn(),
-  list: vi.fn()
+  list: vi.fn(),
+  stale: vi.fn(() => undefined as string | undefined)
 }))
 vi.mock('electron', () => ({ shell: {} }))
 vi.mock('../src/core/db/events', () => ({ insertEvent: m.insertEvent }))
 vi.mock('../src/core/event-bus', () => ({ eventBus: { publish: m.publish } }))
 vi.mock('../src/core/plugins', () => ({
   listPlugins: m.list, listEventTypes: vi.fn(), setPluginEnabled: vi.fn(),
-  grantPluginTrust: m.grant, revokePluginTrust: m.revoke, reloadPlugins: vi.fn()
+  grantPluginTrust: m.grant, revokePluginTrust: m.revoke, reloadPlugins: vi.fn(), terminalProfilesError: m.stale
 }))
 vi.mock('../src/core/config', () => ({ loadConfig: () => ({ operator: { id: 'op' } }) }))
 vi.mock('../src/core/project-manager', () => ({ getProjectDir: () => '/p' }))
@@ -77,6 +78,51 @@ describe('plugins:grant / plugins:revoke audit', () => {
     expect(m.revoke).toHaveBeenCalledWith('x')
     expect(m.insertEvent).not.toHaveBeenCalled()
     expect(ctx.onPluginsChanged).toHaveBeenCalledTimes(1)
+  })
+
+  // The consent dialog shows what is being approved, so main sends the profiles
+  // the plugin declares, as RedLog would accept them, and not only the key names.
+  it('the plugin view carries the profiles that would take effect, and drops the ones RedLog would refuse', () => {
+    const declaring = {
+      manifest: {
+        id: 'tp', name: 'TP',
+        contributes: {
+          terminalProfiles: [
+            { id: 'ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'Brings its own PTY' },
+            { id: 'bad', name: 'Bad', mode: 'sideways', executables: ['x'], reason: 'r' }
+          ]
+        }
+      },
+      source: 'user', tier: 'declarative', status: 'needs-consent', contentHash: 'abc'
+    }
+    m.list.mockReturnValue([declaring])
+    const { call } = setup()
+    const rows = call('plugins:list') as Array<Record<string, unknown>>
+    expect(rows[0].terminalProfiles).toEqual([
+      { name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'Brings its own PTY' }
+    ])
+    expect(rows[0].needsApproval).toBe(true)
+    expect(rows[0].contributes).toEqual(['terminalProfiles'])
+  })
+
+  it('a plugin with no profiles has an empty list', () => {
+    const { call } = setup()
+    const rows = call('plugins:list') as Array<Record<string, unknown>>
+    expect(rows[0].terminalProfiles).toEqual([])
+    expect(rows[0].profilesError).toBeNull()
+  })
+
+  it('every answer carries why the shell\'s profiles could not be updated, when they could not', () => {
+    m.stale.mockReturnValue('EBUSY: held')
+    m.grant.mockReturnValue({ ok: true, profilesError: 'EBUSY: held' })
+    const { call } = setup()
+    for (const rows of [
+      call('plugins:revoke', 'x'), call('plugins:setEnabled', 'x', false), call('plugins:reload'),
+      (call('plugins:grant', 'x') as { plugins: unknown }).plugins
+    ]) {
+      expect((rows as Array<Record<string, unknown>>)[0].profilesError).toBe('EBUSY: held')
+    }
+    m.stale.mockReturnValue(undefined)
   })
 
   it('a failing insert does not undo or throw out of the revoke', () => {

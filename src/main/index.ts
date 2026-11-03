@@ -64,6 +64,7 @@ import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { compileClassPolicy } from '../core/terminal-class'
+import { readContributedProfiles } from '../core/terminal-profiles'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -1884,7 +1885,7 @@ app.whenReady().then(() => {
   ipcMain.handle('hooks:terminalPolicy', () => ({
     mode: readTerminalMode(),
     app: readTerminalApp(),
-    ...compileClassPolicy(readClassOverlay())
+    ...compileClassPolicy(readClassOverlay(), undefined, readContributedProfiles())
   }))
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains

@@ -40,7 +40,8 @@ Already emitted. Gains:
   "cwd": "/root"
   // pty-class only, when it ran native instead of under the PTY recorder — also on `command_end`:
   // "capture_mode": "native", "capture_reason": "existing-shell-function"  (zsh: the name is the operator's own function, #288)
-  // "capture_mode": "native", "capture_reason": "no-pty-wrapper"          (bash: it installs no PTY wrapper, #296)
+  // "capture_mode": "native", "capture_reason": "no-pty-wrapper"          (bash: it installs no PTY wrapper, #296;
+  //                                                                        zsh: the typed word is no wrapper — `sudo ssh`, a program added to the class after the shell started)
 }
 ```
 
