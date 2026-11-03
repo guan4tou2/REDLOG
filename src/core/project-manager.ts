@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { mkdirPrivate } from './private-fs'
 
 export interface ProjectMeta {
   id: string
@@ -19,7 +20,7 @@ const PROJECTS_DIR = path.join(os.homedir(), '.redlog', 'projects')
 const INDEX_PATH = path.join(os.homedir(), '.redlog', 'projects.json')
 
 function ensureDir(dir: string): void {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  if (!fs.existsSync(dir)) mkdirPrivate(dir)
 }
 
 function loadIndex(): ProjectsIndex {
@@ -32,7 +33,7 @@ function loadIndex(): ProjectsIndex {
 
 function saveIndex(index: ProjectsIndex): void {
   ensureDir(path.dirname(INDEX_PATH))
-  fs.writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8')
+  fs.writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2), { encoding: 'utf-8', mode: 0o600 })
 }
 
 function dirSize(dir: string): number {

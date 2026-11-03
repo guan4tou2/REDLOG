@@ -76,10 +76,10 @@ def _embed_identity(payload: dict) -> None:
 def _spool_payload(payload: dict) -> None:
     _embed_identity(payload)
     try:
-        SPOOL_DIR.mkdir(parents=True, exist_ok=True)
-        (SPOOL_DIR / f"{int(time.time() * 1000)}-{id(payload)}.json").write_text(
-            json.dumps(payload), encoding="utf-8"
-        )
+        SPOOL_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        spooled = SPOOL_DIR / f"{int(time.time() * 1000)}-{id(payload)}.json"
+        with os.fdopen(os.open(spooled, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as output:
+            output.write(json.dumps(payload))
     except Exception:
         pass
 

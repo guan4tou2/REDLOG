@@ -12,6 +12,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { mkdirPrivate } from './private-fs'
 
 const MAX_BYTES = 2 * 1024 * 1024
 
@@ -25,7 +26,7 @@ export function isDebugLogEnabled(): boolean {
 
 export function setDebugLogEnabled(on: boolean): void {
   if (on) {
-    fs.mkdirSync(dir(), { recursive: true })
+    mkdirPrivate(dir())
     fs.writeFileSync(flagPath(), '')
     debugLog('app', 'debug-log-on')
   } else {
