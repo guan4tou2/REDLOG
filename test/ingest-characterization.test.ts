@@ -226,7 +226,7 @@ describeDB('ingest characterization (R2-0a)', () => {
     it('lands a queue-full gap outside any pause unchanged', () => {
       const data = queueFull(T0 + 30 * MIN, T0 + 31 * MIN)
       const file = spoolFile('gap-a', data)
-      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0 })
+      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'gap-a.json' })
       expect(fs.existsSync(file)).toBe(false)
       const [row, ...rest] = gaps()
       expect(rest).toEqual([])
@@ -237,7 +237,7 @@ describeDB('ingest characterization (R2-0a)', () => {
 
     it('is done with a gap wholly inside a pause: no row, file consumed', () => {
       const file = spoolFile('gap-inside', queueFull(PAUSE[0] + MIN, PAUSE[1] - MIN))
-      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0 })
+      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'gap-inside.json' })
       expect(gaps()).toEqual([])
       expect(fs.existsSync(file)).toBe(false)
     })
