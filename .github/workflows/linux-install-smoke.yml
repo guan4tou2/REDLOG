@@ -99,7 +99,7 @@ jobs:
         run: sha256sum dist/*.deb > dist/SHA256SUMS.txt
       - name: Upload Linux candidates and reports
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: linux-install-smoke-artifacts
           path: |

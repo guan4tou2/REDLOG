@@ -106,7 +106,7 @@ jobs:
         # Per-leg name: the operating systems would otherwise overwrite each
         # other, and which platform failed is half the signal.
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: unit-report-${{ matrix.os }}
           path: test-results/unit-junit.xml
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload screenshots + report on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           # Per-shard name: the shards would otherwise overwrite each other.
           name: e2e-artifacts-${{ matrix.shard }}
