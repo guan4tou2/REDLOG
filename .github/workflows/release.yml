@@ -145,7 +145,7 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Download all installers
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
