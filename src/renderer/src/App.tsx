@@ -139,6 +139,15 @@ export default function App(): JSX.Element {
     setView('timeline')
   }, [view])
 
+  // The Activity workspace and the Timeline are two readings of the same
+  // material, but only the Timeline had no way in except the palette. This is
+  // the "open it" half of `openInTimeline`: no event to focus, back arrow on.
+  const openTimeline = useCallback((): void => {
+    setReturnTo(view === 'timeline' ? null : view)
+    setFocusEvent(null)
+    setView('timeline')
+  }, [view])
+
   const goBack = useCallback((): void => {
     if (!returnTo) return
     setFocusEvent(null)
@@ -411,7 +420,7 @@ export default function App(): JSX.Element {
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} /></div>}
+            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

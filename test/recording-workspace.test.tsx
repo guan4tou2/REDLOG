@@ -10,6 +10,19 @@ vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: (
 afterEach(cleanup)
 
 describe('recording workspace', () => {
+  // The Timeline is the other reading of the same material and had no way in
+  // except the command palette. The entry lives beside the reading tabs, so it
+  // is on screen whichever reading is open.
+  it('offers a way into the timeline, and hides it when there is no destination', () => {
+    const onOpenTimeline = vi.fn()
+    const { unmount } = render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} onOpenTimeline={onOpenTimeline} /></I18nProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Open timeline/ }))
+    expect(onOpenTimeline).toHaveBeenCalledTimes(1)
+    unmount()
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    expect(screen.queryByRole('button', { name: /Open timeline/ })).toBeNull()
+  })
+
   it('shares the query across reading modes and preserves a mounted reader when returning', async () => {
     render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
     expect(screen.getByTestId('workspace-search').dataset.mode).toBe('activities')
