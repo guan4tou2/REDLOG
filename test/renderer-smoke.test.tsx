@@ -381,6 +381,20 @@ describe('renderer views render without throwing', () => {
     }
   })
 
+  // The picker used to render while `project.active()` was in flight and then
+  // be replaced by the restored project: a flash of the project list on every
+  // launch for anyone who had one open.
+  it('holds the mark instead of flashing the picker while the project is restored', async () => {
+    let resolveActive: (p: unknown) => void = () => {}
+    ;(window as unknown as { redlog: { project: Record<string, unknown> } }).redlog.project.active = () =>
+      new Promise((resolve) => { resolveActive = resolve })
+    renderView(<App />)
+    expect(screen.queryByTestId('project-picker')).toBeNull()
+    expect(screen.getByRole('status')).toBeTruthy()
+    await act(async () => { resolveActive({ id: 'p1', name: 'Proj', createdAt: 1 }) })
+    expect(await screen.findByTestId('view-root')).toBeTruthy()
+  })
+
   // #49: the capture card lists a plugin producer read-only with its own label
   // and a "plugin" tag. It shows in the full inventory (manage), not the
   // compact problems view. Renders the actual UI I shipped, not just the mock.
