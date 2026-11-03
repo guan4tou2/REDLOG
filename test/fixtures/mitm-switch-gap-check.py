@@ -23,7 +23,9 @@ with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     pending = []
     ns = dict(json=json, urllib=urllib, VERBOSE=False, threading=__import__('threading'),
-              time=types.SimpleNamespace(time=lambda: clock[0], time_ns=time.time_ns),
+              # time_ns does not move: every record here is written inside one tick of
+              # the clock, as on Windows under the Python CI runs, and none may be lost.
+              time=types.SimpleNamespace(time=lambda: clock[0], time_ns=lambda: 1_700_000_000_000_000_000),
               ctx=types.SimpleNamespace(log=types.SimpleNamespace(warn=warnings.append)),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
               _SEND_QUEUE=types.SimpleNamespace(put=pending.append),

@@ -23,6 +23,13 @@ describe('the addon\'s spool write against the app\'s drain', () => {
     expect(r.threaded.failed).toBe(0)
   }, 60000)
 
+  it('keeps every record written inside one tick of the clock, in the order written', () => {
+    const r = run<{ written: boolean; kept: number[]; leftovers: string[] }>('tick')
+    expect(r.written).toBe(true)
+    expect(r.kept).toEqual(Array.from({ length: 50 }, (_, i) => i))
+    expect(r.leftovers).toEqual([])
+  })
+
   it('still refuses a write that would really pass the file or size cap, and writes nothing', () => {
     const r = run<{ count_cap: { written: boolean; unchanged: boolean }; size_cap: { written: boolean; files: string[] } }>('caps')
     expect(r.count_cap).toEqual({ written: false, unchanged: true })

@@ -21,9 +21,12 @@ B = {'engagementId': 'B', 'operatorId': 'op-B'}
 MIB = 1024 * 1024
 
 
-def load(root, warnings, clock=None):
+TICK_NS = 15_625_000  # Windows' clock tick on Python before 3.13, which CI runs
+
+
+def load(root, warnings, clock=None, time_ns=None):
     pending = []
-    t = types.SimpleNamespace(time=lambda: clock[0], time_ns=time.time_ns) if clock else time
+    t = types.SimpleNamespace(time=(lambda: clock[0]) if clock else time.time, time_ns=time_ns or time.time_ns) if (clock or time_ns) else time
     ns = dict(json=json, urllib=urllib, VERBOSE=False, threading=threading, time=t, os=os,
               ctx=types.SimpleNamespace(log=types.SimpleNamespace(warn=warnings.append)),
               _SPOOL_LOCK=threading.Lock(), _SEND_SLOTS=threading.BoundedSemaphore(64),
@@ -62,11 +65,29 @@ class DrainWinsTheRace:
         return str(self.real)
 
 
+def mode_tick():
+    """Records written inside one tick of the clock are all kept, in the order
+    they were written. A name from the clock and `id(record)` repeats here: the
+    clock does not move, and each record is freed before the next is made."""
+    out = {}
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        ns = load(root, [], time_ns=lambda: 1_700_000_000_000_000_000)
+        spool = ns['SPOOL_DIR']
+        results = [ns['_write_spool_record'](record(i)) for i in range(50)]
+        kept = [json.loads(p.read_text())['data']['i'] for p in sorted(spool.glob('*.json'))]
+        out = {'written': all(results), 'kept': kept, 'leftovers': sorted(p.name for p in spool.iterdir() if not p.name.endswith('.json'))}
+    print(json.dumps(out))
+
+
 def mode_race():
     out = {}
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
-        ns = load(root, [])
+        # The clock ticks as it does on Windows under the Python CI runs: a
+        # record written while the drain unlinks one is exactly where a name
+        # that repeats is refused rather than overwritten.
+        ns = load(root, [], time_ns=lambda: time.time_ns() // TICK_NS * TICK_NS)
         spool = ns['SPOOL_DIR']
         spool.mkdir()
         for n in range(6):
@@ -261,4 +282,4 @@ def mode_cleared():
     print(json.dumps(out))
 
 
-{'race': mode_race, 'caps': mode_caps, 'atomic': mode_atomic, 'unsaved': mode_unsaved, 'cleared': mode_cleared}[sys.argv[1]]()
+{'race': mode_race, 'tick': mode_tick, 'caps': mode_caps, 'atomic': mode_atomic, 'unsaved': mode_unsaved, 'cleared': mode_cleared}[sys.argv[1]]()
