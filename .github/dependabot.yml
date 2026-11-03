@@ -1,0 +1,57 @@
+version: 2
+
+updates:
+  # The app's own dependencies. redlog-share-worker/ has its own package.json
+  # and is not covered here.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # One PR per week for everything that is not a major bump. Majors stay
+      # individual PRs, so each one can be read and tested on its own.
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Native modules whose ABI is tied to the Electron version. A major bump
+      # of any of them means rebuilding against Electron, repackaging and
+      # re-running the installed-app smoke on every platform, so these stay
+      # deliberate manual upgrades. Minor and patch updates still arrive.
+      - dependency-name: electron
+        update-types: ["version-update:semver-major"]
+      - dependency-name: better-sqlite3
+        update-types: ["version-update:semver-major"]
+      - dependency-name: node-pty
+        update-types: ["version-update:semver-major"]
+
+  # Workflow action versions (actions/checkout@v5 and the like).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github_actions
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

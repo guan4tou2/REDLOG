@@ -17,7 +17,45 @@ on:
 # exactly how v0.2.1 first shipped mac-only. Collect the artifacts and let a
 # single downstream job create one release.
 jobs:
+  # A tag is only built if its commit is on main and CI passed on exactly that
+  # commit (see scripts/verify-release-ci.mjs). The build below then does not
+  # repeat typecheck or the verify:* gates: CI already ran them on this sha.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      # The commit the tag pointed at when this gate ran. build and release
+      # check out this sha, never the tag name again, so a tag moved (or a
+      # branch of the same name pushed) after the gate is not built unchecked.
+      sha: ${{ steps.verify.outputs.sha }}
+    steps:
+      - name: Checkout (full history, to judge reachability from main)
+        uses: actions/checkout@v5
+        with:
+          # Fully qualified: a bare name is looked up as a branch before a tag.
+          ref: ${{ github.ref_type == 'tag' && github.ref || format('refs/tags/{0}', inputs.tag) }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Require green CI on the tagged commit, on main
+        id: verify
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-release-ci.mjs
+
   build:
+    needs: gate
+    # npm install runs dependency install scripts here; keep the token that a
+    # compromised dependency would get read-only.
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +66,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -88,7 +126,7 @@ jobs:
           retention-days: 14
 
   release:
-    needs: build
+    needs: [gate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -96,7 +134,7 @@ jobs:
       - name: Checkout release verification and notes
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v5

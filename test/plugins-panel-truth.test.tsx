@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import PluginsPanel from '../src/renderer/src/components/settings/PluginsPanel'
 import en from '../src/renderer/src/i18n/en.json'
+import zh from '../src/renderer/src/i18n/zh-TW.json'
 
 // #347: what the page shows must be what main has done. Disabling used to be
 // drawn at once and written eight seconds later, with one toast that said both.
@@ -163,6 +164,101 @@ describe('the plugins page shows what main has done', () => {
       expect(body).not.toMatch(/separate process|walled off/)
     })
 
+    // A plugin with no code that declares terminal profiles needs approval too,
+    // and the dialog must not tell the operator it runs code: it says what a
+    // profile can do, which is stop a tool being recorded.
+    it('asks for approval of a plugin that only declares terminal profiles, without claiming it runs code', async () => {
+      const profiles = (over: Record<string, unknown> = {}) =>
+        ({ ...view('tp'), status: 'needs-consent', needsApproval: true, contributes: ['terminalProfiles'], ...over })
+      api.list.mockResolvedValue([profiles()])
+      api.grant.mockResolvedValue({ ok: true, plugins: [profiles({ status: 'active' })] })
+      draw()
+      expect(screen.queryByText(en['plugins.tier.privileged'])).toBeNull()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const dialog = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
+      expect(dialog).not.toMatch(/main process|runs? code|ships code/)
+      expect(dialog).not.toContain(en['plugins.consentWarn'])
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      await waitFor(() => expect(api.grant).toHaveBeenCalledWith('tp'))
+      expect(await screen.findByRole('button', { name: 'Revoke trust' })).toBeTruthy()
+    })
+
+    // The operator approves what is on the screen, so the screen has to say it:
+    // which tool, which commands, what happens to them, and why the plugin says so.
+    const ligolo = { name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy', 'ligolo-agent'], reason: 'Brings its own PTY' }
+    const vimKeys = { name: 'Vim Keys', mode: 'native', executables: ['vim2'], reason: 'Full-screen editor' }
+    const relayedTool = { name: 'Capture Me', mode: 'relayed', executables: ['capme'], reason: 'Plain output' }
+    const declaring = (over: Record<string, unknown> = {}) =>
+      ({ ...view('tp'), status: 'needs-consent', needsApproval: true, contributes: ['terminalProfiles'], terminalProfiles: [ligolo, vimKeys, relayedTool], ...over })
+
+    it('lists each profile, one line each: the tool, its commands, what happens to them, and why', async () => {
+      api.list.mockResolvedValue([declaring()])
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const items = Array.from((await screen.findByTestId('plugin-consent-dialog')).querySelectorAll('li')).map((li) => li.textContent ?? '')
+      expect(items).toHaveLength(3)
+      expect(items[0]).toBe('Ligolo-ng (ligolo-proxy, ligolo-agent): recorded through a PTY — Brings its own PTY')
+      expect(items[1]).toBe('Vim Keys (vim2): not recorded — Full-screen editor')
+      expect(items[2]).toBe('Capture Me (capme): output captured — Plain output')
+    })
+
+    it('says the same in Chinese, from the same three keys', async () => {
+      const tZh = (key: string, vars?: Record<string, string | number>): string =>
+        ((zh as Record<string, string>)[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars?.[k] ?? ''))
+      api.list.mockResolvedValue([declaring()])
+      ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
+      render(<PluginsPanel t={tZh} />)
+      fireEvent.click(await screen.findByRole('button', { name: zh['plugins.review'] }))
+      const items = Array.from((await screen.findByTestId('plugin-consent-dialog')).querySelectorAll('li')).map((li) => li.textContent ?? '')
+      expect(items).toEqual([
+        'Ligolo-ng（ligolo-proxy, ligolo-agent）：透過 PTY 記錄 — Brings its own PTY',
+        'Vim Keys（vim2）：不會被記錄 — Full-screen editor',
+        'Capture Me（capme）：擷取輸出 — Plain output'
+      ])
+    })
+
+    // A plugin that ships a tailer and also declares profiles is both. The code
+    // warning was all the dialog said, and the profiles were approved unseen.
+    it('shows the profiles of a plugin that also runs code, under the code warning', async () => {
+      api.list.mockResolvedValue([privileged('p', { source: 'bundled', contributes: ['tailers', 'terminalProfiles'], terminalProfiles: [vimKeys] })])
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const dialog = await screen.findByTestId('plugin-consent-dialog')
+      expect(dialog.textContent).toContain('not isolated')
+      expect(dialog.textContent).toContain(en['plugins.consentProfilesToo'])
+      expect(Array.from(dialog.querySelectorAll('li')).map((li) => li.textContent)).toContain('Vim Keys (vim2): not recorded — Full-screen editor')
+      expect(screen.getByRole('button', { name: 'Trust & run' })).toBeTruthy()
+    })
+
+    // A user's tailer never runs, so there is no code to approve, but its
+    // profiles are still the operator's to approve: no Review button would have
+    // left them with no way to.
+    it('a third-party tailer that also declares profiles can be reviewed, and the dialog claims no code', async () => {
+      api.list.mockResolvedValue([privileged('t', {
+        source: 'user', contributes: ['tailers', 'terminalProfiles'], terminalProfiles: [vimKeys],
+        report: { tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' } }
+      })])
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const dialog = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
+      expect(dialog).toContain('Vim Keys (vim2)')
+      expect(dialog).not.toMatch(/main process|not isolated/)
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
+    })
+
+    it('a refused approval of profiles does not say the plugin "stays unable to run"', async () => {
+      api.list.mockResolvedValue([declaring()])
+      api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [declaring()] })
+      draw()
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+      await waitFor(() => expect(toasts.plain.length).toBe(1))
+      const opts = JSON.stringify(toasts.plain[0].opts)
+      expect(opts).toContain(en['plugins.grantFailedWhyProfiles'])
+      expect(opts).not.toContain('unable to run')
+      expect(opts).toContain('plugin failed to load')
+    })
+
     it('offers no consent for a third-party tailer, which is refused whatever is agreed', async () => {
       api.list.mockResolvedValue([privileged('t', { source: 'user', report: { tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' } } })])
       draw()
@@ -181,6 +277,54 @@ describe('the plugins page shows what main has done', () => {
       expect(JSON.stringify(toasts.plain[0].opts)).toContain('plugin failed to load')
       expect(JSON.stringify(toasts.plain[0].opts)).not.toContain('manifest may have changed')
     })
+  })
+})
+
+// The snapshot the shell reads could not be updated: new terminals may still
+// apply profiles the operator has just revoked, and the page must not say "done".
+describe('when the shell\'s tool profiles could not be updated', () => {
+  const stale = 'EBUSY: resource busy or locked, unlink terminal-profiles.json'
+  const row = (over: Record<string, unknown> = {}) => ({ ...view('tp'), tier: 'declarative' as const, needsApproval: true, terminalProfiles: [], ...over })
+  beforeEach(() => {
+    toasts.plain.length = 0; toasts.undo.length = 0
+    Object.values(api).forEach((f) => f.mockReset())
+  })
+  afterEach(() => cleanup())
+
+  it('says so on the page, with the reason, when the list arrives with the failure', async () => {
+    api.list.mockResolvedValue([row({ profilesError: stale })])
+    draw()
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('may still apply')
+    expect(alert.textContent).toContain(stale)
+  })
+
+  it('says nothing when there is no failure', async () => {
+    api.list.mockResolvedValue([row({ profilesError: null })])
+    draw()
+    await screen.findByText('Plugin tp')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('a revoke that could not update them is not reported as plain success', async () => {
+    api.list.mockResolvedValue([row()])
+    api.revoke.mockResolvedValue([row({ status: 'needs-consent', profilesError: stale })])
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke trust' }))
+    await waitFor(() => expect(toasts.plain.length).toBe(1))
+    expect(toasts.plain[0].message).toContain('may still apply')
+    expect(JSON.stringify(toasts.plain[0].opts)).toContain(stale)
+  })
+
+  it('an approval that could not update them says so beside the success', async () => {
+    const waiting = row({ status: 'needs-consent', terminalProfiles: [{ name: 'T', mode: 'pty', executables: ['t'], reason: 'r' }] })
+    api.list.mockResolvedValue([waiting])
+    api.grant.mockResolvedValue({ ok: true, profilesError: stale, plugins: [row({ profilesError: stale })] })
+    draw()
+    fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(toasts.plain.length).toBe(1))
+    expect(toasts.plain[0].message).toContain('may still apply')
   })
 })
 

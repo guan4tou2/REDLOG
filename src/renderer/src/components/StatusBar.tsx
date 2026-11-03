@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
@@ -9,6 +9,8 @@ import { integrityFault } from '../lib/integrityPulse'
 import { scopeIssue } from '../lib/scopeIssue'
 import { settingsTarget } from '../lib/navigation'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
+import { useCaptureHealthState } from '../lib/useCaptureHealth'
+import { captureUnknownLine } from '../lib/captureUnknown'
 
 export default function StatusBar(): JSX.Element {
   // Narrow: one line, in this order of importance — the issue counters, whether
@@ -29,9 +31,15 @@ export default function StatusBar(): JSX.Element {
   const [pausedAt, setPausedAt] = useState<number | null>(null)
   const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
-  const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
-  const [lastEventAt, setLastEventAt] = useState<number | null>(null)
   const { t } = useI18n()
+  // 30 s: the bar is always mounted and only has to notice a change.
+  const capture = useCaptureHealthState(30_000)
+  const captureUnknown = capture.status === 'unknown'
+  // Only a verdict that is current. After a failed read the last one is history
+  // (captureUnknownLine names it) and must not colour the dot.
+  const current = captureUnknown ? null : (capture.health as { verdict?: 'healthy' | 'partial' | 'dark'; lastEventAt?: number | null } | null)
+  const captureVerdict = current?.verdict ?? null
+  const lastEventAt = current?.lastEventAt ?? null
   const issues = useIssues()
 
   useEffect(() => {
@@ -60,53 +68,26 @@ export default function StatusBar(): JSX.Element {
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
 
-    // Capture health polls — surfaces the "recording indicator says ON but
-    // capture is broken" case (P1b from the v0.6.85 audit). Dashboard
-    // has its own richer CaptureHealthCard; the StatusBar dot is the always-
-    // visible indicator so operators on the Timeline view still see a change
-    // from healthy → partial → dark.
-    //
-    // Fire a one-shot toast on healthy → partial/dark transitions
-    // so operators get an active notification, not just a passive dot colour
-    // change. Held in a ref (not state) so the previous verdict survives across
-    // re-renders and we only toast on the transition itself.
-    let prevVerdict: 'healthy' | 'partial' | 'dark' | null = null
-    const loadCapture = (): void => {
-      void window.redlog.capture.health().then((h) => {
-          if (!h || typeof h !== 'object' || !('verdict' in h)) return
-          const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
-          const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
-          const evAt = (h as { lastEventAt?: number | null }).lastEventAt ?? null
-          setCaptureVerdict(verdict)
-          setLastEventAt(evAt)
-          // A dark or partial pipeline is a *condition*, not an event, so it
-          // goes to the issue store rather than firing a toast every poll
-          // (§9). The one-shot toast on the healthy → not-healthy transition
-          // stays: that transition is an event, and it is the moment the
-          // operator needs to look up.
-          if (verdict === 'healthy') {
-            clearIssue('capture')
-          } else {
-            raiseIssue({
-              id: 'capture',
-              tier: 'attention',
-              title: verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
-              detail: dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 120)}` : t('issues.captureDetail'),
-              view: 'dashboard'
-            })
-          }
-          if (prevVerdict === 'healthy' && verdict !== 'healthy') {
-            toast(
-              verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
-              { type: 'warning', why: t('issues.captureDetail'), detail: dbErr ? `${dbErr.source}: ${dbErr.message}` : undefined }
-            )
-          }
-          prevVerdict = verdict
-          // Same tick, and the sample state rides the payload this call
-          // already fetched rather than costing a second round trip.
-          loadIntegrity(!!(h as { lastSampleBroken?: unknown }).lastSampleBroken)
-        }).catch(() => {})
-    }
+    return () => { unsubIp(); unsubRec(); unsubOverlay(); clearInterval(timer) }
+  }, [])
+
+  // Capture health — surfaces the "recording indicator says ON but capture is
+  // broken" case (P1b from the v0.6.85 audit). Dashboard has its own richer
+  // CaptureHealthCard; the StatusBar dot is the always-visible indicator so
+  // operators on the Timeline view still see a change from healthy → partial
+  // → dark.
+  //
+  // The snapshot is the store's, shared with every other reader. A failed read
+  // is not a verdict: status goes 'unknown', the dot says so, and nothing below
+  // runs — the issue is neither raised nor cleared and no toast fires, because
+  // none of them can be decided from a read that did not happen.
+  //
+  // Fire a one-shot toast on healthy → partial/dark transitions so operators
+  // get an active notification, not just a passive dot colour change. Held in a
+  // ref (not state) so the previous verdict survives across re-renders and we
+  // only toast on the transition itself.
+  const prevVerdict = useRef<'healthy' | 'partial' | 'dark' | null>(null)
+  useEffect(() => {
     // The chain gets the same tick. Until now it was checked only when the
     // operator pressed Verify in Settings ▸ Integrity or happened to look at
     // the dashboard tile, so a drifted chain or a dead anchor loop could run
@@ -146,11 +127,38 @@ export default function StatusBar(): JSX.Element {
       }).catch(() => { /* a failed probe must not clear a real fault */ })
     }
 
-    loadCapture()
-    const healthTimer = setInterval(loadCapture, 30_000)
-
-    return () => { unsubIp(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
-  }, [])
+    if (capture.status !== 'ok') return
+    const h = capture.health
+    if (!h || typeof h !== 'object' || !('verdict' in h)) return
+    const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
+    const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
+    // A dark or partial pipeline is a *condition*, not an event, so it
+    // goes to the issue store rather than firing a toast every poll
+    // (§9). The one-shot toast on the healthy → not-healthy transition
+    // stays: that transition is an event, and it is the moment the
+    // operator needs to look up.
+    if (verdict === 'healthy') {
+      clearIssue('capture')
+    } else {
+      raiseIssue({
+        id: 'capture',
+        tier: 'attention',
+        title: verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
+        detail: dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 120)}` : t('issues.captureDetail'),
+        view: 'dashboard'
+      })
+    }
+    if (prevVerdict.current === 'healthy' && verdict !== 'healthy') {
+      toast(
+        verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
+        { type: 'warning', why: t('issues.captureDetail'), detail: dbErr ? `${dbErr.source}: ${dbErr.message}` : undefined }
+      )
+    }
+    prevVerdict.current = verdict
+    // Same tick, and the sample state rides the payload this read already
+    // fetched rather than costing a second round trip.
+    loadIntegrity(!!(h as { lastSampleBroken?: unknown }).lastSampleBroken)
+  }, [capture])
 
   // Scope as a condition, raised here because this is the component that is
   // always mounted — the dashboard's panel reads the store, it does not fill
@@ -239,6 +247,9 @@ export default function StatusBar(): JSX.Element {
         const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
         const dotColor = !recording
           ? pauseWarn ? 'bg-amber-500 animate-pulse-slow' : 'bg-redlog-text-dim'
+          // Capture could not be read: neither the old colour nor a warning.
+          : captureUnknown
+            ? 'bg-redlog-text-faint'
           : captureVerdict === 'dark'
             ? 'bg-amber-500'
             : captureVerdict === 'partial'
@@ -246,6 +257,8 @@ export default function StatusBar(): JSX.Element {
               : 'bg-red-500 animate-pulse-slow'
         const labelColor = !recording
           ? pauseWarn ? 'text-amber-400/80' : 'text-redlog-text-dim'
+          : captureUnknown
+            ? 'text-redlog-text-dim'
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
             : 'text-red-400/80'
@@ -254,6 +267,8 @@ export default function StatusBar(): JSX.Element {
           : recording ? t('statusBar.lastEventNever') : ''
         const tooltip = !recording
           ? t('statusBar.clickToResume')
+          : captureUnknown
+            ? `${captureUnknownLine(t, capture.health, capture.lastOkAt)}\n${t('statusBar.clickToPause')}`
           : captureVerdict === 'dark'
             ? `${t('statusBar.captureDark')}\n${lastEventLine}`
             : captureVerdict === 'partial'
@@ -275,7 +290,7 @@ export default function StatusBar(): JSX.Element {
             <span className={`${labelColor} ${narrow ? 'min-w-0 truncate' : ''}`} title={tooltip}>{
               !recording
                 ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
-              : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
+              : !captureUnknown && (captureVerdict === 'dark' || (recording && !lastEventAt)) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
             <span

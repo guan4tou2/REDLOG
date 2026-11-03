@@ -124,6 +124,41 @@ describe('plugins page shows results', () => {
     expect(screen.getByTestId('plugin-results-capture-p').textContent).toContain('needs both')
   })
 
+  // #499: terminal profiles report like the other kinds, by name.
+  it('lists how many terminal profiles took effect and names the refused ones', async () => {
+    const view = {
+      id: 'tp', name: 'TP', version: '1', description: '', author: '', source: 'user', tier: 'declarative',
+      status: 'active', capabilities: [], contributes: ['terminalProfiles'],
+      report: { terminalProfiles: { accepted: 2, rejected: [{ name: 'nc-pty', reason: 'nc is a shipped native default; change it with redlog class add' }] } }
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    render(<PluginsPanel t={t} />)
+    const box = await screen.findByTestId('plugin-results-terminalProfiles-tp')
+    expect(box.textContent).toContain('Tool profiles: 2 accepted, 1 rejected')
+    expect(box.textContent).toContain('nc-pty: nc is a shipped native default; change it with redlog class add')
+  })
+
+  // A plugin awaiting approval contributes no profile; the line says why instead
+  // of "0 accepted", which would read as a plugin that offered nothing.
+  it('says terminal profiles wait for approval, with no counts', async () => {
+    const view = {
+      id: 'tw', name: 'TW', version: '1', description: '', author: '', source: 'user', tier: 'privileged',
+      status: 'needs-consent', capabilities: [], contributes: ['terminalProfiles'],
+      report: { terminalProfiles: { accepted: 0, rejected: [], waiting: true } }
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    render(<PluginsPanel t={t} />)
+    const box = await screen.findByTestId('plugin-results-terminalProfiles-tw')
+    expect(box.textContent).toBe('Tool profiles wait for your approval of this plugin.')
+  })
+
+  // The docs and the rows beside this one say 工具設定檔 and count with 條.
+  it('zh-TW names the terminal profile row like its neighbours', async () => {
+    const zh = (await import('../src/renderer/src/i18n/zh-TW.json')).default as Record<string, string>
+    expect(zh['plugins.results.terminalProfiles']).toBe('工具設定檔：{{accepted}} 條生效、{{rejected}} 條被拒絕')
+    expect(zh['plugins.results.capture']).toContain('條生效')
+  })
+
   it('shows nothing extra for a plugin with no report', async () => {
     const view = { id: 'q', name: 'Q', version: '1', description: '', author: '', source: 'user', tier: 'declarative', status: 'active', capabilities: [], contributes: [], report: null }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }

@@ -230,7 +230,10 @@ describeShell(`the redlog command (${target.label})`, () => {
           'echo code=$?',
           'redlog class remove curl',
           'redlog class list',
-          'redlog class add nonsense curl'
+          'redlog class add nonsense curl',
+          `redlog class add pty 'a;b'`,
+          'echo code=$?',
+          'redlog class list'
         ],
         redlog: {
           port: collector.port, token,
@@ -290,6 +293,62 @@ describeShell(`the redlog command (${target.label})`, () => {
     it('refuses a class that does not exist, instead of inventing one', () => {
       // Rule 3: a typo must not be silently a no-op.
       expect(run.steps[11].output).toMatch(/no such class: nonsense/)
+    })
+
+    it('refuses a name that is not a bare command name, says so, and does not write it', () => {
+      expect(run.steps[12].output).toMatch(/not a command name: a;b/)
+      expect(run.steps[12].output).not.toMatch(/no such class/)
+      expect(run.steps[13].output, 'a refused add returned zero').toContain('code=2')
+      expect(run.steps[14].output).not.toMatch(/a;b/)
+    })
+  })
+
+  // `redlog class add|remove` rewrite the whole overlay, so one that cannot be
+  // read is refused and left as it is, not replaced by a file with one edit.
+  describe('class add and remove on an overlay that cannot be read', () => {
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target, {
+        shellKind: 'bash',
+        rc: [
+          'mkdir -p "$HOME/.redlog"',
+          `printf '{"pty": ["keep-me"' > "$HOME/.redlog/command-class.json"`,
+          `source ${hookPath(target, 'shell-bash-hook.sh')}`
+        ].join('\n'),
+        commands: [
+          'redlog class add native some-tool',
+          'echo code=$?',
+          'redlog class remove keep-me',
+          'echo code=$?',
+          `redlog class add pty 'foo/'`,
+          'echo code=$?',
+          'cat "$HOME/.redlog/command-class.json"; echo'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-bad', operatorId: 'op-bad' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('says it cannot read the file, does not claim the change, and exits non-zero', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(run.steps[0].output).toMatch(/command-class\.json cannot be read/)
+      expect(run.steps[0].output).not.toMatch(/is now|no such class/)
+      expect(run.steps[1].output).toContain('code=2')
+      expect(run.steps[2].output).toMatch(/command-class\.json cannot be read/)
+      expect(run.steps[2].output).not.toMatch(/back to the default/)
+      expect(run.steps[3].output).toContain('code=2')
+    })
+
+    it('says a path with nothing after the slash is not a command name, and not that the class is wrong', () => {
+      expect(run.steps[4].output).toMatch(/not a command name: foo\//)
+      expect(run.steps[4].output).not.toMatch(/no such class/)
+      expect(run.steps[5].output).toContain('code=2')
+    })
+
+    it('leaves the file exactly as it was', () => {
+      expect(run.steps[6].output).toContain('{"pty": ["keep-me"')
+      expect(run.steps[6].output).not.toMatch(/some-tool|relayed/)
     })
   })
 

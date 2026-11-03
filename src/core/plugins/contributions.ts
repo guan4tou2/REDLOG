@@ -5,6 +5,7 @@ import { registerCommandTags, unregisterCommandTags } from '../command-tagger'
 import { registerTargetExtractors, unregisterTargetExtractors } from '../target-extractor'
 import { registerEventTypes, unregisterEventTypes } from '../event-registry'
 import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manager'
+import { registerTerminalProfiles, unregisterTerminalProfiles } from '../terminal-profiles'
 import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
 import type { LoadedPlugin } from './types'
 import type { RuleRejection } from '../loot-detector'
@@ -24,7 +25,14 @@ export interface ContributionReport {
   commandTags?: { accepted: number; rejected: RuleRejection[] }
   eventTypes?: { accepted: number; rejected: RuleRejection[] }
   capture?: { accepted: number; rejected: RuleRejection[] }
+  /** #499: tool profiles for the terminal adapter. Accepted ones reach the
+   *  shell only when `syncTerminalProfiles` writes the snapshot, which
+   *  `initPlugins` does after every plugin has applied. */
+  terminalProfiles?: { accepted: number; rejected: RuleRejection[]; waiting?: boolean }
 }
+
+/** Statuses in which a plugin has not been approved at its current hash. */
+const AWAITING_APPROVAL: readonly string[] = ['needs-consent', 'hash-changed']
 
 const reports = new Map<string, ContributionReport>()
 
@@ -79,6 +87,18 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
   if (c.eventTypes?.length) {
     const r = registerEventTypes(id, c.eventTypes)
     report.eventTypes = r
+  }
+  if (c.terminalProfiles?.length) {
+    // A profile changes what the shell does to what the operator types, so it
+    // waits for the operator's approval of this exact content. `loader` gives a
+    // plugin that declares profiles `needs-consent` until it is approved (see
+    // `requiresApproval`), code or no code, and again when the manifest changes.
+    if (AWAITING_APPROVAL.includes(p.status)) {
+      report.terminalProfiles = { accepted: 0, rejected: [], waiting: true }
+    } else {
+      const r = registerTerminalProfiles(id, c.terminalProfiles)
+      report.terminalProfiles = { accepted: r.accepted, rejected: r.rejected }
+    }
   }
   if (c.capture?.length) {
     const r = registerCapturePlugins(
@@ -162,6 +182,9 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
 
 export function removeContributions(pluginId: string): void {
   reports.delete(pluginId)
+  // First, and on its own: the profiles are what the shell acts on, so one
+  // kind failing to come back must not leave them registered.
+  unregisterTerminalProfiles(pluginId)
   unregisterLootPatterns(pluginId)
   unregisterRedactionRules(pluginId)
   unregisterCommandTags(pluginId)
