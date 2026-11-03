@@ -13,8 +13,10 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
+import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
+import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
@@ -37,7 +39,8 @@ import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { readProfileFile } from '../core/profile-file'
 import type { ProfileImportResult } from '../core/profile-import'
-import { runScopeRecompute,queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { runScopeRecompute,queryScopeViolationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { activeViolationCount, invalidateViolationCount } from '../core/scope-violation-count'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/alert/policies'
@@ -61,7 +64,9 @@ import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
-import { mergeClassPolicy } from '../core/terminal-class'
+import { compileClassPolicy, knownProfiles } from '../core/terminal-class'
+import { createToolDetector, rescanTrigger } from '../core/tool-detection'
+import { readContributedProfiles } from '../core/terminal-profiles'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -93,7 +98,7 @@ import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
-import { replaySpoolDirectory } from '../core/spool-replay'
+import { drainInSlices, replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
@@ -323,16 +328,18 @@ managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
   }
-  // The addon could not write the gap itself, so its log line is all there
-  // is. Put the loss on the Timeline too, where an export will carry it.
-  const unsaved = (next.unsavedGapEvents ?? 0) - (previous.unsavedGapEvents ?? 0)
+})
+// The addon could not write the gap itself, so its log line is all there is.
+// Put the loss on the Timeline too, where an export will carry it — in the
+// project the line says owns it, and only if that is the one open now (#507).
+managedHttpProxy.onUnsavedGap((gap) => {
   const open = projectRuntime.current()
-  if (unsaved > 0 && open) {
-    ingestEvent('system', {
-      subtype: 'capture_gap', source: 'managed-http-proxy', reason: 'gap-unsaved', skipped_units: unsaved,
-      description: `${unsaved} HTTP event(s) refused at a full proxy queue; the addon could not record the gap`
-    }, open)
+  const data = unsavedGapForProject(gap, open)
+  if (!open || !data) {
+    console.warn(`[http-proxy] a ${gap.reason} gap of ${gap.units} event(s) for engagement ${gap.engagementId} could not be saved and its project is not open`)
+    return
   }
+  ingestEvent('system', data, open)
 })
 
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
@@ -341,7 +348,7 @@ const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.jso
 // HTTP addon stamp what they capture with whatever this file says.
 function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
-    fs.mkdirSync(path.dirname(SPOOL_IDENTITY_PATH), { recursive: true })
+    mkdirPrivate(path.dirname(SPOOL_IDENTITY_PATH))
     fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
   } catch { /* best-effort */ }
 }
@@ -635,21 +642,6 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | nul
 //   • project bail — a queued job must never write into the next project's
 //     chain.
 //   • hash gate — the run itself skips when the boundary did not actually move.
-// StatusBar and Sidebar both ask for the violation count on EVERY captured
-// event, so this cannot be a query per event during a scan. Cached, and dropped
-// only when a row that could change it lands.
-let cachedViolationCount: number | null = null
-function activeViolationCount(): number {
-  if (cachedViolationCount === null) cachedViolationCount = countActiveScopeViolations()
-  return cachedViolationCount
-}
-function invalidateViolationCount(): void { cachedViolationCount = null }
-
-const SCOPE_COUNT_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
-eventBus.on('event', (e: RedLogEvent) => {
-  if (e.agentType === 'system' && SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))) invalidateViolationCount()
-})
-
 const RECOMPUTE_DEBOUNCE_MS = 2000
 let recomputeTimer: NodeJS.Timeout | null = null
 let recomputePending: { projectId: string; before: ScopeSnapshot; configChangedId: string | null } | null = null
@@ -882,9 +874,9 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
 
   // Replay only records belonging to the active engagement. Mismatches remain
   // recoverable on disk and are picked up when their owning project opens.
-  const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
-    if (!projectRuntime.isCurrent(opening)) return
-    if (eventBus.paused) return
+  const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
+    if (!projectRuntime.isCurrent(opening)) return null
+    if (eventBus.paused) return null
     let pauses: ReturnType<typeof pauseIntervals> | null = null
     const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
       // A queue-full or proxy-stop gap is judged against the pauses before it
@@ -916,15 +908,18 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     }
     // A proxy killed while it held events left a bound on disk (#291). Into
     // the spool with it, so its own project gets the gap and no other does.
-    reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-    const replayed = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit).replayed
-    if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+    if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
+    const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
+    if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
+    return run.last
   }
   try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
-  projectRuntime.setInterval(opening, () => {
-    try { drainSpool(200) } catch { /* next interval retries preserved files */ }
-  }, 30_000)
+  // The API shares this thread, so the periodic drain yields every ten files
+  // instead of holding it for all two hundred.
+  projectRuntime.setInterval(opening, drainInSlices({
+    drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
+  }), 30_000)
 
   alertRuntime.start()
   startLinkMonitor()
@@ -1286,6 +1281,18 @@ const loginPathReady: Promise<void> = gotSingleInstanceLock
     .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
     .catch(() => { /* PATH stays as launched */ })
   : Promise.resolve()
+
+// #499 PR B. Which tools this machine has: RedLog's own PATH lookup, run on a
+// trigger and never per command, joined to the reports the shells write. Read
+// by the Tool Settings panel; it feeds nothing that decides how a command is
+// recorded.
+const toolDetector = createToolDetector({
+  home: homedir(),
+  platform: process.platform,
+  env: () => process.env,
+  profiles: () => knownProfiles(undefined, readContributedProfiles()),
+  log: (line) => debugLog('tools', 'scan', line)
+})
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1308,10 +1315,17 @@ app.whenReady().then(() => {
   debugLog('app', 'start', `version=${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} platform=${process.platform}-${process.arch} packaged=${app.isPackaged}`)
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
+  // Installs made before modes were passed at creation: ~/.redlog and what is
+  // under it become owner-only, and a first run creates it that way.
+  restrictRedlogHome()
+
   // Before any terminal opens: an enrolled shell sources ~/.redlog, and an
   // upgrade does not touch it otherwise.
   const refreshedHooks = refreshInstalledHooks()
   if (refreshedHooks.length) debugLog('hooks', 'refreshed', refreshedHooks.join(','))
+
+  // Behind the login PATH, and not awaited: this must never hold up startup.
+  void loginPathReady.then(() => toolDetector.rescan('startup')).catch((e) => debugLog('tools', 'startup detection failed', (e as Error).message))
 
   startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
 
@@ -1889,11 +1903,24 @@ app.whenReady().then(() => {
   // edits on top. Read on demand rather than cached: `redlog mode manual`
   // happens in a terminal RedLog knows nothing about, and a panel showing a
   // stale `auto` is worse than one showing nothing.
-  ipcMain.handle('hooks:terminalPolicy', () => ({
-    mode: readTerminalMode(),
-    app: readTerminalApp(),
-    ...mergeClassPolicy(readClassOverlay())
-  }))
+  // `profiles` are the ones the compiler read, so a card can name the tool a
+  // mode came from; one read of the snapshot serves both.
+  ipcMain.handle('hooks:terminalPolicy', () => {
+    const contributed = readContributedProfiles()
+    return {
+      mode: readTerminalMode(),
+      app: readTerminalApp(),
+      ...compileClassPolicy(readClassOverlay(), undefined, contributed),
+      profiles: knownProfiles(undefined, contributed)
+    }
+  })
+  // #499 PR B. `detection` only reads; `rescan` is the one way the renderer can
+  // cause a lookup, and only for the two reasons it can have.
+  ipcMain.handle('tools:detection', () => toolDetector.snapshot())
+  ipcMain.handle('tools:rescan', (_e, reason: unknown) => {
+    const trigger = rescanTrigger(reason)
+    return trigger ? toolDetector.rescan(trigger) : toolDetector.snapshot()
+  })
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.

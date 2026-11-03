@@ -3,7 +3,7 @@ import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { DETECT_AS_LOOT, SECRET_SHAPES, compileShape } from './secret-patterns'
-import { runBounded, _shutdownBoundedRegex } from './bounded-regex'
+import { runBoundedRules, PLUGIN_RULES_BUDGET_MS, _shutdownBoundedRegex } from './bounded-regex'
 import type { ProjectIdentity } from './project-runtime'
 
 interface LootMatch {
@@ -50,10 +50,6 @@ interface ExternalPattern {
   stopped?: 'time_limit'
 }
 const externalPatterns: ExternalPattern[] = []
-
-/** Time all plugin rules together may take on one text (Spec 033). A sound
- *  rule over a 100 KB command output takes a few milliseconds. */
-const PLUGIN_RULES_BUDGET_MS = 250
 
 export interface RuleRejection { name: string; reason: string }
 
@@ -303,18 +299,12 @@ export class LootDetector {
  *  and the others are run again without it. Its values are no longer masked:
  *  a rule that cannot finish cannot mask anything either. */
 function runPluginRules(text: string): Array<[ExternalPattern, Array<{ value: string; index: number }>]> {
-  for (;;) {
-    const active = externalPatterns.filter((p) => !p.stopped)
-    if (active.length === 0) return []
-    const res = runBounded(
-      active.map((p) => ({ source: p.pattern.source, flags: p.pattern.flags, group: p.group })),
-      text, PLUGIN_RULES_BUDGET_MS
-    )
-    if (res.ok) return active.map((p, i) => [p, res.matches[i] ?? []])
-    const stuck = active[res.stuckAt] ?? active[0]
-    stuck.stopped = 'time_limit'
-    console.warn(`[loot] rule ${pluginRuleId(stuck.pluginId, stuck.patternName)} exceeded ${PLUGIN_RULES_BUDGET_MS} ms and was stopped`)
-  }
+  return runBoundedRules(
+    externalPatterns,
+    (p) => ({ source: p.pattern.source, flags: p.pattern.flags, group: p.group }),
+    text,
+    (stuck) => console.warn(`[loot] rule ${pluginRuleId(stuck.pluginId, stuck.patternName)} exceeded ${PLUGIN_RULES_BUDGET_MS} ms and was stopped`)
+  )
 }
 
 /** Tests: stop the plugin-rule worker so the run can exit. */

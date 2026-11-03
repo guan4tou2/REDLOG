@@ -13,6 +13,10 @@ export interface SpoolReplayResult {
   deferred: number
   unattributed: number
   invalid: number
+  /** The last file name looked at, replayed or not, or null when there was none.
+   *  Pass it back as `after` to carry on from there. Files left in place count:
+   *  another project's would otherwise pin a sliced drain behind them. */
+  last: string | null
 }
 
 /** What replay renames a spool file to when its payload carries no engagement
@@ -92,12 +96,14 @@ export function replaySpoolDirectory(
   directory: string,
   active: { engagementId: string; operatorId: string },
   emit: (event: SpoolReplayEvent) => boolean,
-  limit = Number.POSITIVE_INFINITY
+  limit = Number.POSITIVE_INFINITY,
+  after = ''
 ): SpoolReplayResult {
-  const result = { replayed: 0, deferred: 0, unattributed: 0, invalid: 0 }
+  const result: SpoolReplayResult = { replayed: 0, deferred: 0, unattributed: 0, invalid: 0, last: null }
   if (!fs.existsSync(directory)) return result
-  const files = fs.readdirSync(directory).filter((name) => name.endsWith('.json')).sort().slice(0, limit)
+  const files = fs.readdirSync(directory).filter((name) => name.endsWith('.json') && name > after).sort().slice(0, limit)
   for (const name of files) {
+    result.last = name
     const file = path.join(directory, name)
     try {
       const payload = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -144,4 +150,47 @@ export function replaySpoolDirectory(
     }
   }
   return result
+}
+
+export interface SlicedDrainOptions {
+  /** Replay up to `limit` files whose names sort after `after`, and return the
+   *  last name looked at — or null when there was nothing to look at or the
+   *  drain declined to run (recording paused, project gone). */
+  drainOnce: (limit: number, after: string) => string | null
+  /** The most files one tick may look at, across all its slices. */
+  total: number
+  /** The most files looked at before yielding to the event loop. */
+  slice: number
+  /** False once the project this drain belongs to has closed. */
+  isCurrent: () => boolean
+  schedule?: (next: () => void) => void
+}
+
+/** The periodic spool drain, split so the event loop runs between slices.
+ *
+ *  The main thread also serves the local API, and replaying a file costs about
+ *  20 ms through ingest(): two hundred in one call is a four-second stall of
+ *  /api/health (#291). Same files, same order, `slice` at a time. Returns the
+ *  tick to call on the interval; a tick that arrives while the last one is
+ *  still working does nothing, and each slice resumes after the last name the
+ *  previous one looked at, so a file is deleted only after ingest returns,
+ *  exactly as before. */
+export function drainInSlices(options: SlicedDrainOptions): () => void {
+  const { drainOnce, total, slice, isCurrent, schedule = setImmediate } = options
+  let running = false
+  const step = (cursor: string, left: number): void => {
+    let last: string | null = null
+    try {
+      if (isCurrent()) last = drainOnce(Math.min(slice, left), cursor)
+    } catch { /* the files still on disk are retried next tick */ }
+    const remaining = left - slice
+    if (last === null || remaining <= 0) { running = false; return }
+    const next = last
+    schedule(() => step(next, remaining))
+  }
+  return () => {
+    if (running) return
+    running = true
+    step('', total)
+  }
 }

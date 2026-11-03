@@ -68,6 +68,11 @@ _REDLOG_EVENT_SOURCE=auto-relay
 zmodload -F zsh/stat b:zstat 2>/dev/null
 typeset -gA _REDLOG_CLASS_CACHE
 typeset -g _REDLOG_CLASS_SIG=""
+# Not exported: a child shell reports for itself.
+typeset -g _REDLOG_TOOLS_REPORTED=""
+# Assigned by shell-common.sh functions the first prompt now reaches; declared
+# here so WARN_CREATE_GLOBAL stays quiet until the first command, as before.
+typeset -g _REDLOG_DIR _redlog_shell
 
 _redlog_policy_sig() {
   REPLY=""
@@ -75,7 +80,10 @@ _redlog_policy_sig() {
   local home=$HOME f
   [[ -n "${_REDLOG_DIR:-}" ]] && home="${_REDLOG_DIR:h}"
   local -a st
-  for f in "${_REDLOG_RELAY:h}/command-class.json" "$home/.redlog/command-class.json"; do
+  # Three files decide a class: the shipped defaults, the operator's overlay,
+  # and the plugins' profiles (#499). A plugin installed while this shell is
+  # open writes the third, and the answers cached before it are wrong.
+  for f in "${_REDLOG_RELAY:h}/command-class.json" "$home/.redlog/command-class.json" "$home/.redlog/terminal-profiles.json"; do
     # inode, size, mtime, ctime — fields 2, 8, 10 and 11 of a plain `zstat -A`.
     if zstat -A st -- "$f" 2>/dev/null; then
       REPLY+="${st[2]}:${st[8]}:${st[10]}:${st[11]}|"
@@ -209,8 +217,22 @@ redlog() {
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --action list
           local prog
           for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
-            [[ -n "$prog" ]] && _redlog_is_user_function "$prog" && \
+            [[ -n "$prog" ]] || continue
+            if _redlog_is_user_function "$prog"; then
               print -- "$prog is your own function, so it is not PTY-recorded"
+            elif whence -p -- "$prog" >/dev/null 2>&1 && ! _redlog_is_pty_wrapper "$prog"; then
+              # Wrappers are installed once, when a terminal starts. A program
+              # that joined the class since (a plugin's profile, `redlog class
+              # add pty`) is wrapped in the next terminal and not in this one.
+              # One that was already in the class but had no executable then
+              # is not wrapped by a PATH entry added since, so that is said
+              # as it is rather than as a new terminal's doing.
+              if (( ${_REDLOG_PTY_NOT_ON_PATH[(Ie)$prog]} )); then
+                print -- "$prog is not PTY-recorded: it was not on PATH when the RedLog hook loaded"
+              else
+                print -- "$prog is PTY-recorded in a new terminal, not this one"
+              fi
+            fi
           done
           print
           ;;
@@ -220,14 +242,24 @@ redlog() {
             return 2
           fi
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
-            --action add --field "$2" --command "$3" >/dev/null || {
-            print -u2 -- "[redlog] no such class: $2"; return 2
-          }
+            --action add --field "$2" --command "$3" >/dev/null
+          # 3 is a name the wrapper cannot be built from, 4 an overlay that was
+          # not rewritten because it could not be read (the relay said why);
+          # anything else is the class.
+          case $? in
+            0) ;;
+            3) print -u2 -- "[redlog] not a command name: $3 (letters, digits, . _ + - only)"; return 2 ;;
+            4) return 2 ;;
+            *) print -u2 -- "[redlog] no such class: $2"; return 2 ;;
+          esac
           print -- "[redlog] $3 is now $2"
           # FR-028. The cost is not obvious and it is paid in the middle of an
           # engagement, on the command the operator cares most about.
-          [[ "$2" == "pty" ]] && print -- \
-            "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          # An `if`, not `&&`: as the last command, a false test would be
+          # the function's status and a successful add would return 1.
+          if [[ "$2" == "pty" ]]; then
+            print -- "[redlog] note: a pty-captured command cannot be suspended locally — Ctrl-Z will not return you to this shell"
+          fi
           ;;
         remove)
           if [[ -z "${2:-}" ]]; then
@@ -236,6 +268,12 @@ redlog() {
           fi
           python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" \
             --action remove --command "$2" >/dev/null
+          # The relay has said why when it did not rewrite the overlay.
+          case $? in
+            0) ;;
+            3) print -u2 -- "[redlog] not a command name: $2 (letters, digits, . _ + - only)"; return 2 ;;
+            *) return 2 ;;
+          esac
           print -- "[redlog] $2 is back to the default"
           ;;
         *)
@@ -419,21 +457,29 @@ _redlog_preexec() {
   : ${_REDLOG_CMD_CLASS:=native}
 
   # `class` is the policy; it is not a claim about how this run was captured.
-  # A `pty` program whose name is the operator's own function was never
-  # wrapped (#288), so it ran native. The record says so beside the class
-  # rather than letting `pty` read as "PTY-captured".
+  # A `pty` run is PTY-recorded only when the word typed is RedLog's wrapper
+  # function. Otherwise it ran native, and the record says so beside the class
+  # rather than letting `pty` read as "PTY-captured": the operator's own
+  # function of that name (#288), or no wrapper at all — a program that joined
+  # the class after this shell started, a plugin's, `sudo ssh`, `/usr/bin/ssh`.
   _REDLOG_CMD_CAPTURE=""
   if [[ "$_REDLOG_CMD_CLASS" == "pty" ]]; then
     local -a _redlog_words
     _redlog_words=(${(z)1})
-    _redlog_is_user_function "${_redlog_words[1]:-}" && \
+    if _redlog_is_user_function "${_redlog_words[1]:-}"; then
       _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"existing-shell-function"'
+    elif ! _redlog_is_pty_wrapper "${_redlog_words[1]:-}"; then
+      _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"no-pty-wrapper"'
+    fi
   fi
 
   if [[ "$_REDLOG_CMD_CLASS" == "relayed" ]]; then
     # A failure anywhere here leaves the descriptors untouched and the command
     # runs unrecorded. Unrecorded is bad; a wedged prompt is worse (FR-009).
-    if _REDLOG_RELAY_DIR=$(mktemp -d -t redlog-relay.XXXXXX 2>/dev/null) \
+    # The shell's pid is in the name so a later shell can tell whose it was.
+    # A full template, not `-t`: BSD mktemp's `-t` ignores $TMPDIR, and the
+    # sweep (shell-common.sh) looks for leftovers in $TMPDIR.
+    if _REDLOG_RELAY_DIR=$(mktemp -d "${${TMPDIR:-/tmp}%/}/redlog-relay.$$.XXXXXX" 2>/dev/null) \
        && _redlog_divert "$_REDLOG_RELAY_DIR"; then
       :
     else
@@ -474,6 +520,12 @@ _redlog_warn_unreachable() {
 
 _redlog_precmd() {
   local exit_code=$?
+  # Once per shell, at the first prompt and ahead of the early return below,
+  # which is what the first prompt takes: there is no command yet.
+  # The flag is set by the function once a report has started. Until then (RedLog
+  # down, or this shell stopped) each prompt runs the same recording check that
+  # preexec already pays per command, so a stopped shell costs nothing new.
+  if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _redlog_report_tools; fi
   [[ -n "$_REDLOG_LAST_CMD" ]] || return
 
   _redlog_warn_unreachable
@@ -560,7 +612,10 @@ _redlog_precmd() {
 # program is not PTY-recorded either. `redlog class list` names the programs
 # this applies to, and the program's `command_start`/`command_end` carry
 # `capture_mode: native` and `capture_reason: existing-shell-function` beside
-# `class: pty`, so the policy is not read as a claim about the run.
+# `class: pty`, so the policy is not read as a claim about the run. A `pty`
+# command whose typed word is not a wrapper at all (`sudo ssh`, a program added
+# to the class after this shell started, one a plugin's tool profile named)
+# says `capture_reason: no-pty-wrapper`, as the bash adapter does for every one.
 #
 # Wrappers are installed once, when this hook loads, and not re-applied at each
 # prompt: a program added to the PTY class afterwards is wrapped in the next
@@ -569,23 +624,52 @@ _redlog_precmd() {
 #
 # RedLog's own wrapper is told apart by its body, which carries
 # `_REDLOG_SESSION_HELPER` — so sourcing the hook again reinstalls it.
+#
+# The wrapper hands the helper this command's `command_id` in the environment,
+# so the session's rows name the `command_start` they belong to (#296). An
+# environment variable rather than an option: a helper older than this hook
+# ignores it, where an unknown option would stop the operator's `ssh`.
 _redlog_is_user_function() {
   [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" != *_REDLOG_SESSION_HELPER* ]]
 }
 
+# The reverse: the name is RedLog's own PTY wrapper, so a `pty` run of it is
+# PTY-recorded. Everything else typed for a `pty` program ran on the terminal.
+_redlog_is_pty_wrapper() {
+  [[ -n "${1:-}" ]] && (( $+functions[$1] )) && [[ "${functions[$1]}" == *_REDLOG_SESSION_HELPER* ]]
+}
+
+# The pty programs this hook found no executable for when it installed the
+# wrappers. `redlog class list` tells these apart from a program that joined the
+# class afterwards: a PATH entry added since does not wrap the first kind, and
+# only a new terminal wraps the second. One array per load, no cost per prompt.
+typeset -ga _REDLOG_PTY_NOT_ON_PATH
+_REDLOG_PTY_NOT_ON_PATH=()
+
 _redlog_install_pty_wrappers() {
   local prog
+  _REDLOG_PTY_NOT_ON_PATH=()
   for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
     [[ -n "$prog" ]] || continue
     # Only wrap what is actually here: an executable on PATH. A function named
     # `ssh` on a machine without ssh turns "command not found" into a confusing
     # python error, and `command -v` would call the operator's own function
     # "here".
-    whence -p -- "$prog" >/dev/null 2>&1 || continue
+    if ! whence -p -- "$prog" >/dev/null 2>&1; then
+      _REDLOG_PTY_NOT_ON_PATH+=("$prog")
+      continue
+    fi
     _redlog_is_user_function "$prog" && continue
+    # Read per call, like the adapter's own gate: `redlog stop` has to reach a
+    # program already wrapped, and `redlog start` has to bring it back, in this
+    # shell, without sourcing the hook again (#296).
+    # The class is read per call too, from the same cache preexec uses, so
+    # `redlog class add native ssh` takes ssh out of the recorder in this
+    # shell instead of only printing that it did (#296).
     functions[$prog]='
-      if _redlog_terminal_allowed && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]]; then
-        python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
+      if _redlog_is_recording && _redlog_is_running && [[ -s "$(_redlog_identity_file)" ]] \
+         && _redlog_class_of '"$prog"' && [[ "$REPLY" == pty ]]; then
+        REDLOG_SESSION_COMMAND_ID="$_REDLOG_CMD_ID" python3 "$_REDLOG_SESSION_HELPER" --best-effort -- '"$prog"' "$@"
       else
         command '"$prog"' "$@"
       fi'
@@ -597,8 +681,21 @@ _redlog_install_pty_wrappers() {
 # re-sourcing the adapter does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
 
+# A relayed command's directory is removed by the NEXT prompt's `precmd`.
+# `exit` is a relayed command like any other, and no prompt follows it, so every
+# shell closed on purpose left one behind (#296). Nothing here restores the
+# descriptors: the shell is ending, and the relay treats a missing directory as
+# the end of the command (`redlog-relay.py`, the `not os.path.isdir` test).
+_redlog_zshexit() {
+  [[ -n "${_REDLOG_RELAY_DIR:-}" ]] && rm -rf "$_REDLOG_RELAY_DIR" 2>/dev/null
+  return 0
+}
+
 autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
+add-zsh-hook zshexit _redlog_zshexit
 _redlog_install_pty_wrappers
+# Behind the prompt: with thousands left over it is not something to wait for.
+( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell

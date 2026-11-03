@@ -15,9 +15,21 @@ interface PluginView {
   author: string
   source: 'bundled' | 'user'
   tier: 'declarative' | 'privileged'
+  /** the plugin takes effect only once the operator approves its content:
+   *  code (privileged), or terminal profiles, which run nothing */
+  needsApproval?: boolean
   status: 'active' | 'needs-consent' | 'hash-changed' | 'disabled' | 'error'
   capabilities: string[]
   contributes: string[]
+  /** the terminal profiles the plugin declares that RedLog would accept: what
+   *  an approval is an approval of */
+  terminalProfiles?: Array<{ name: string; mode: 'native' | 'pty' | 'relayed'; executables: string[]; reason: string }>
+  /** the capture entries RedLog would install (a shell hook, a Claude Code
+   *  hook): the other thing an approval is an approval of */
+  captureInstalls?: Array<{ name: string; installMethod: string }>
+  /** why the shell's profiles could not be brought up to date, the same on
+   *  every row; null when they were */
+  profilesError?: string | null
   error?: string
   /** manifest targets a newer plugin API than this RedLog implements */
   apiAhead?: boolean
@@ -29,7 +41,8 @@ interface PluginView {
     targetExtractors?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
+    terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
   } | null
 }
 
@@ -43,6 +56,7 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
   const commandTags = p.report?.commandTags
   const eventTypes = p.report?.eventTypes
   const capture = p.report?.capture
+  const terminalProfiles = p.report?.terminalProfiles
   const rejected = loot?.rejected ?? []
   const redactionRejected = redaction?.rejected ?? []
   // #348: the four kinds that could fail quietly now report like the other
@@ -51,9 +65,10 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
     { key: 'targetExtractors', label: 'plugins.results.targetExtractors', value: extractors },
     { key: 'commandTags', label: 'plugins.results.commandTags', value: commandTags },
     { key: 'eventTypes', label: 'plugins.results.eventTypes', value: eventTypes },
-    { key: 'capture', label: 'plugins.results.capture', value: capture }
+    { key: 'capture', label: 'plugins.results.capture', value: capture },
+    { key: 'terminalProfiles', label: 'plugins.results.terminalProfiles', value: terminalProfiles }
   ] as const
-  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture) return null
+  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture && !terminalProfiles) return null
   return (
     <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
       {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
@@ -76,7 +91,9 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
       {otherGroups.map(({ key, label, value }) => value && (
         <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
           <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
-            {t(label, { accepted: value.accepted, rejected: value.rejected.length })}
+            {'waiting' in value && value.waiting
+              ? (key === 'capture' ? t('plugins.results.captureWaiting') : t('plugins.results.terminalProfilesWaiting'))
+              : t(label, { accepted: value.accepted, rejected: value.rejected.length })}
           </p>
           {value.rejected.map((r) => (
             <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
@@ -90,6 +107,16 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
     </div>
   )
 }
+
+const PROFILE_LINE = {
+  native: 'plugins.profileNative',
+  pty: 'plugins.profilePty',
+  relayed: 'plugins.profileRelayed'
+} as const
+
+/** A third-party tailer is refused whatever the operator agrees to, so a plugin
+ *  whose only code is one has no code to approve. */
+const tailerRefused = (p: PluginView): boolean => p.source === 'user' && p.report?.tailers?.state === 'rejected'
 
 // SS10: two levels, not four. This page used to hold sub-tabs for installed
 // and marketplace, and the marketplace held its own for publishers and
@@ -168,7 +195,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     reload: () => Promise<PluginView[]>
     openFolder: () => Promise<string>
     setEnabled: (id: string, enabled: boolean) => Promise<PluginView[]>
-    grant: (id: string) => Promise<{ ok: boolean; error?: string; plugins: PluginView[] }>
+    grant: (id: string) => Promise<{ ok: boolean; error?: string; profilesError?: string; plugins: PluginView[] }>
     revoke: (id: string) => Promise<PluginView[]>
   } }).plugins
 
@@ -190,6 +217,12 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   }
   useEffect(() => { void load() }, [])
 
+  /** A change that went through but left the shell's profiles as they were is
+   *  not a plain success: a revoke or a disable would still be in effect there. */
+  const warnIfStale = (reason: string | null | undefined): void => {
+    if (reason) toast(t('plugins.profilesStale'), { type: 'warning', detail: reason })
+  }
+
   /** One operation on the plugin list. The screen shows what main answered, never
    *  what the operator asked for: on failure the real list is read back, so a
    *  switch that did not flip does not stay drawn as flipped. */
@@ -199,6 +232,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     try {
       const next = await op()
       if (mine === newest.current) setPlugins(next)
+      warnIfStale(next[0]?.profilesError)
       return true
     } catch (e) {
       toast(failure, { type: 'error', why: t('plugins.failedWhy'), detail: errorText(e) })
@@ -234,11 +268,16 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     try {
       const r = await api.grant(p.id)
       if (mine === newest.current) setPlugins(r.plugins)
-      if (r.ok) toast(t('plugins.granted'), 'success')
-      else {
+      if (r.ok) {
+        if (r.profilesError) warnIfStale(r.profilesError)
+        else toast(t('plugins.granted'), 'success')
+      } else {
         toast(t('plugins.grantFailed', { name: p.id }), {
           type: 'error',
-          why: t('plugins.grantFailedWhy'),
+          // "Unable to run" is about code; a plugin that is only profiles runs nothing.
+          why: p.tier === 'privileged' ? t('plugins.grantFailedWhy')
+            : (p.terminalProfiles?.length ?? 0) === 0 && (p.captureInstalls?.length ?? 0) > 0
+              ? t('plugins.grantFailedWhyInstall') : t('plugins.grantFailedWhyProfiles'),
           detail: r.error
         })
       }
@@ -262,6 +301,17 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   }
 
   const shown = plugins.filter((p) => !isHidden(p))
+  // What the open dialog asks the operator to approve: code (a third-party
+  // tailer, which never runs, is not), and the profiles the plugin declares.
+  const approvesCode = confirmGrant !== null && confirmGrant.tier === 'privileged' && !tailerRefused(confirmGrant)
+  const approvesProfiles = confirmGrant?.terminalProfiles ?? []
+  const approvesInstalls = confirmGrant?.captureInstalls ?? []
+  const consentTitle = approvesCode ? t('plugins.consentTitle')
+    : approvesProfiles.length > 0 ? t('plugins.consentTitleProfiles') : t('plugins.consentTitleInstall')
+  const consentBody = !confirmGrant ? ''
+    : approvesCode ? t('plugins.consentBody', { name: confirmGrant.name })
+      : approvesProfiles.length > 0 ? t('plugins.consentBodyProfiles', { name: confirmGrant.name })
+        : t('plugins.consentBodyInstall', { name: confirmGrant.name })
 
   return (
     <FieldGroup title={t('settings.plugins')}>
@@ -277,6 +327,13 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
       </div>
 
       <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
+
+      {plugins[0]?.profilesError && (
+        <div role="alert" data-testid="plugins-profiles-stale" className="text-xs mb-2 space-y-0.5">
+          <p className="text-amber-300">{t('plugins.profilesStale')}</p>
+          <p className="text-redlog-text-faint break-all">{plugins[0].profilesError}</p>
+        </div>
+      )}
 
       {loading && plugins.length === 0 && !loadError && (
         <p role="status" className="text-xs text-redlog-text-faint py-3">{t('plugins.loading')}</p>
@@ -297,8 +354,9 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
           // A third-party tailer is refused whatever the operator agrees to
-          // (see the results line), so offering consent would only fail.
-          const cannotBeTrusted = p.source === 'user' && p.report?.tailers?.state === 'rejected'
+          // (see the results line), so offering consent would only fail, unless
+          // the plugin also declares profiles, which are the operator's to approve.
+          const cannotBeTrusted = tailerRefused(p) && !(p.terminalProfiles?.length) && !(p.captureInstalls?.length)
           return (
             <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-start justify-between p-3">
@@ -351,8 +409,8 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                       {t('plugins.review')}
                     </button>
                   )}
-                  {/* trusted privileged: allow revoke */}
-                  {privileged && p.status === 'active' && (
+                  {/* approved: allow revoke */}
+                  {(privileged || p.needsApproval) && p.status === 'active' && (
                     <button onClick={() => revoke(p)} disabled={busy === p.id}
                       className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
                       {t('plugins.revoke')}
@@ -376,28 +434,60 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           alert
           dismissOnBackdrop={false}
           onClose={() => setConfirmGrant(null)}
-          label={t('plugins.consentTitle')}
+          label={consentTitle}
           testId="plugin-consent-dialog"
           panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
         >
-            <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
-            <p className="text-xs text-redlog-text-dim mb-2">
-              {t('plugins.consentBody', { name: confirmGrant.name })}
-            </p>
-            <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
-              <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
-              <ul className="text-xs text-amber-400 space-y-0.5">
-                {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
-                {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
-              </ul>
-            </div>
-            <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
+            {/* Code gets the capability list and the isolation warning. Terminal
+                profiles get a line each, since the approval is of those lines;
+                a plugin with only profiles runs nothing and does not say it does. */}
+            <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
+            <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>
+            {approvesCode && (
+              <>
+                <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
+                  <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
+                  <ul className="text-xs text-amber-400 space-y-0.5">
+                    {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
+                    {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
+                  </ul>
+                </div>
+                <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
+              </>
+            )}
+            {approvesProfiles.length > 0 && (
+              <>
+                {approvesCode && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentProfilesToo')}</p>}
+                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                  {approvesProfiles.map((profile, i) => (
+                    <li key={i} className="break-words">
+                      {t(PROFILE_LINE[profile.mode] ?? PROFILE_LINE.relayed, { name: profile.name, commands: profile.executables.join(', ') })}
+                      <span className="text-redlog-text-dim"> — {profile.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {approvesInstalls.length > 0 && (
+              <>
+                {(approvesCode || approvesProfiles.length > 0) && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentInstallsToo')}</p>}
+                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                  {approvesInstalls.map((hook, i) => (
+                    <li key={i} className="break-words">
+                      {hook.installMethod === 'claude-settings'
+                        ? t('plugins.installClaude', { name: hook.name })
+                        : t('plugins.installShell', { name: hook.name })}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
               <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
-                {t('plugins.grantRun')}
+                {approvesCode ? t('plugins.grantRun') : t('plugins.grantApprove')}
               </button>
             </div>
         </Modal>

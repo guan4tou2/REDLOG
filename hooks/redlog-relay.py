@@ -25,6 +25,14 @@ Four modes, two callers:
         it is handed in place of the terminal is a pseudo-terminal, not a pipe
         — see `pty_pipe`.
 
+    redlog-relay.py detect --home DIR [--session ID] [--shell NAME]
+
+        Once per shell, at its first prompt, in the background: which of the
+        tool profiles' executables the shell's own PATH reaches, written as one
+        small report per kind of shell for RedLog to display (#499). Nothing
+        in this file reads a report back; what a command is recorded as never
+        depends on what was found.
+
 The event is written to `--event-out` as JSON, never to stdout: stdout belongs
 to the command. `<event-out>.started` is created the moment the command is
 launched, and is how the caller knows not to run the command a second time —
@@ -614,8 +622,10 @@ def parse(argv):
         "err_fd": "2",
         "owner": None,
         "notify": None,
+        "shell": None,
     }
     flags = {
+        "--shell": "shell",
         "--dir": "dir",
         "--err-fd": "err_fd",
         "--owner": "owner",
@@ -1280,39 +1290,63 @@ def policy_field(argv):
         return 0
 
     if action == "list":
-        policy = load_policy(terminal_home(opts))
+        shipped = read_shipped()
+        contributed = read_contributed_file(terminal_home(opts))
+        policy = build_policy(shipped, read_overlay_file(terminal_home(opts)), contributed)
         for name in ("native", "pty"):
             sys.stdout.write("%s: %s\n" % (name, " ".join(policy.get(name, []))))
         # `relayed` is not a list — it is what a command is when it is in no
         # other one. Printing a list of "everything else" would be a lie the
         # moment the operator ran something new.
         sys.stdout.write("relayed: everything else\n")
+        for line in policy_notes(shipped.get("terminalProfiles", []), normalize_contributed(contributed)[0], policy):
+            sys.stdout.write(line + "\n")
         return 0
 
-    command = basename(opts["command"] or "")
-    if not command:
+    given = opts["command"] or ""
+    if not given or action not in ("add", "remove"):
         return 2
-    overlay = read_overlay(opts)
+    command = basename(given)
+    target = opts["field"]
+    if action == "add" and target not in CLASS_FIELDS:
+        return 2
+    # Not a name the wrapper can be built from: refused before anything is
+    # written, with its own status so the hook can say so (2 is "no such class").
+    # `foo/` is one: nothing is left of it once the directory is taken off.
+    if (action == "add" and not EXECUTABLE.fullmatch(command)) or (action == "remove" and not command):
+        sys.stderr.write("redlog-relay: %r is not a bare command name\n" % given)
+        return 3
+    # Read through the same normalization the compiler uses, so a hand-edited
+    # field that is not a list is rewritten here instead of crashing the edit.
+    # A file that cannot be read at all is not an empty overlay: the edit
+    # rewrites the whole file, so it would replace what the operator wrote with
+    # one line of what they just did. It is left as it is (4).
+    path = overlay_path(opts)
+    try:
+        raw = read_json_capped(path)
+    except FileNotFoundError:
+        raw = None
+    except (OSError, ValueError) as exc:
+        sys.stderr.write("redlog-relay: %s cannot be read (%s); it was not changed. "
+                         "Fix or delete it, then run this again.\n" % (path, exc))
+        return 4
+    overlay = dict(raw) if isinstance(raw, dict) else {}
+    overlay.update(normalize_overlay(raw)[0])
 
+    # `remove` undoes the operator's own edit and nothing else, so the command
+    # is back where the shipped defaults put it. Taking a command out of its
+    # default class is `add relayed`, which has to be recorded too: relayed is
+    # not a list in the defaults, but an override to it must be (#296).
     if action == "remove":
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
-        overlay.setdefault("removed", [])
-        if command not in overlay["removed"]:
-            overlay["removed"].append(command)
     elif action == "add":
-        target = opts["field"]
-        if target not in CLASS_FIELDS:
-            return 2
         for name in CLASS_FIELDS:
             overlay.setdefault(name, [])
             overlay[name] = [c for c in overlay[name] if c != command]
-        if target != "relayed":
-            overlay[target].append(command)
-        overlay["removed"] = [c for c in overlay.get("removed", []) if c != command]
-    else:
-        return 2
+        overlay[target].append(command)
+    overlay.pop("removed", None)
 
     write_json(overlay_path(opts), overlay)
     return 0
@@ -1322,13 +1356,77 @@ def overlay_path(opts):
     return os.path.join(terminal_home(opts), ".redlog", "command-class.json")
 
 
-def read_overlay(opts):
+# The most either file under ~/.redlog that the policy reads may hold. Both are
+# written by RedLog and are a few KB; anything bigger was not written by it, and
+# is read as not readable instead of being parsed. Mirrored by
+# CLASS_FILE_MAX_BYTES in src/core/terminal-class.ts.
+MAX_CLASS_FILE_BYTES = 1024 * 1024
+
+# How deep either file may nest. RedLog's own are four levels deep. Python's
+# parser gives up near a thousand levels with RecursionError and V8 parses any
+# depth, so an explicit cap is what makes "too deep" one answer on both sides.
+# Mirrored by CLASS_FILE_MAX_DEPTH in src/core/terminal-class.ts.
+MAX_CLASS_JSON_DEPTH = 32
+
+
+def nests_deeper_than(value, limit=MAX_CLASS_JSON_DEPTH):
+    """Whether a parsed value nests deeper than `limit` containers. Iterative."""
+    stack = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict):
+            children = node.values()
+        elif isinstance(node, list):
+            children = node
+        else:
+            continue
+        if depth > limit:
+            return True
+        stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def refuse_constant(name):
+    raise ValueError("not JSON: %s" % name)
+
+
+def read_json_capped(path):
+    """JSON from a file the policy reads, or ValueError when it cannot be used.
+
+    FileNotFoundError and other OSErrors pass through. A file over the cap is
+    not read past it, and a file nested so deep that json recurses out of stack
+    (RecursionError, which is not a ValueError) is the same refusal: a hand-edit
+    must not be able to stop `classify` and `--field pty` with a traceback,
+    which leaves zsh without PTY wrappers and every command native, silently.
+
+    Three more things JSON.parse in the app refuses, and so must this: NaN and
+    Infinity, which Python's parser takes unless told not to; a byte that is not
+    UTF-8, which the strict decode refuses (the app decodes the same way); and a
+    byte order mark, which is not JSON in either.
+    """
+    with open(path, "rb") as fh:
+        data = fh.read(MAX_CLASS_FILE_BYTES + 1)
+    if len(data) > MAX_CLASS_FILE_BYTES:
+        raise ValueError("file is larger than %d bytes" % MAX_CLASS_FILE_BYTES)
     try:
-        with open(overlay_path(opts), "r") as fh:
-            value = json.load(fh)
+        parsed = json.loads(data.decode("utf-8"), parse_constant=refuse_constant)
+    except RecursionError:
+        raise ValueError("nested too deeply")
+    if nests_deeper_than(parsed):
+        raise ValueError("nested too deeply")
+    return parsed
+
+
+def read_overlay_file(home):
+    """The operator's overlay exactly as parsed, or None when there is none.
+
+    Not coerced to a dict: whether it is usable is normalize_overlay's call,
+    so that a file that is not an object and a file that is both get one rule.
+    """
+    try:
+        return read_json_capped(overlay_path({"home": home}))
     except (OSError, ValueError):
-        return {}
-    return value if isinstance(value, dict) else {}
+        return None
 
 
 def classify_argv(command, policy):
@@ -1454,38 +1552,336 @@ def walk_wrappers(argv, policy):
     return i
 
 
-def load_policy(home=None):
-    """The shipped defaults, with the operator's overlay on top.
-
-    The overlay lives under `~/.redlog/` and the defaults ship beside this
-    file, so an install can replace `hooks/command-class.json` without taking
-    the operator's choices with it, and `redlog class` never edits a file the
-    next install will overwrite.
-    """
+def read_shipped():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command-class.json")
     with open(path, "r") as fh:
-        policy = json.load(fh)
+        return json.load(fh)
+
+
+def contributed_path(opts):
+    return os.path.join(terminal_home(opts), ".redlog", "terminal-profiles.json")
+
+
+def read_contributed_file(home):
+    """The plugins' snapshot exactly as parsed: None when there is no file,
+    False when it cannot be read or parsed, else what it parsed to.
+
+    Not coerced: whether it is usable is normalize_contributed's call. What
+    cannot be read is decided in read_json_capped, the same for the overlay.
+    """
+    try:
+        return read_json_capped(contributed_path({"home": home}))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return False
+
+
+def load_policy(home=None):
+    """The shipped policy compiled with the operator's overlay on top, and the
+    plugins' snapshot beside it.
+
+    The overlay and the snapshot live under `~/.redlog/` and the defaults ship
+    beside this file, so an install can replace `hooks/command-class.json`
+    without taking the operator's choices with it, and `redlog class` never
+    edits a file the next install will overwrite. `home=None` compiles with
+    neither.
+    """
     if home is None:
-        return policy
-    overlay = read_overlay({"home": home})
-    if not overlay:
-        return policy
-    dropped = set(overlay.get("removed", []))
-    for name in CLASS_FIELDS:
-        if name == "relayed":
-            continue
-        base = [c for c in policy.get(name, []) if c not in dropped]
-        for command in overlay.get(name, []):
-            if command not in base:
-                base.append(command)
-        policy[name] = base
-    # A command the operator moved INTO one class must leave the others.
-    for name in CLASS_FIELDS:
-        if name == "relayed":
-            continue
-        moved = {c for other in CLASS_FIELDS if other != name for c in overlay.get(other, [])}
-        policy[name] = [c for c in policy.get(name, []) if c not in moved or c in overlay.get(name, [])]
+        return build_policy(read_shipped(), None)
+    return build_policy(read_shipped(), read_overlay_file(home), read_contributed_file(home))
+
+
+def build_policy(shipped, overlay, contributed=None):
+    """What classify_argv reads. Never the raw file: the shipped native and
+    pty lists no longer hold every default, because tool profiles name the
+    rest, and only compile_policy puts them together."""
+    policy = {
+        "repl": shipped.get("repl", []),
+        "replScriptFlags": shipped.get("replScriptFlags", []),
+        "wrappers": shipped.get("wrappers", {}),
+    }
+    policy.update(compile_policy(overlay, shipped, contributed))
     return policy
+
+
+MODES = ("native", "pty", "relayed")
+
+
+def normalize_overlay(raw):
+    """The operator's overlay as {relayed, pty, native: [str]} plus problems.
+
+    Whatever else the file holds is ignored, the retired `removed` key
+    included. A field that is not a list is ignored whole, a non-string item
+    is dropped, and either one is recorded once for its field, in the order
+    native, pty, relayed. Mirrored by normalizeOverlay in
+    src/core/terminal-class.ts.
+    """
+    lists = {name: [] for name in CLASS_FIELDS}
+    problems = []
+    if not isinstance(raw, dict):
+        return lists, problems
+    for name in MODES:
+        if name not in raw:
+            continue
+        value = raw[name]
+        if not isinstance(value, list):
+            problems.append({"kind": "invalid-overlay", "field": name})
+            continue
+        # A bare command name only, as an executable of a profile is: the zsh
+        # adapter pastes `--field pty` into the source of a wrapper function.
+        kept = [c for c in value if isinstance(c, str) and EXECUTABLE.fullmatch(c)]
+        if len(kept) != len(value):
+            problems.append({"kind": "invalid-overlay-names", "field": name})
+        lists[name] = kept
+    return lists, problems
+
+
+def compile_policy(overlay, shipped, contributed=None):
+    """Layer the policy: defaults, then tool profiles, then the operator's overlay.
+
+    Returns {native, pty, entries, problems}. The highest layer that names a
+    command decides its mode; a command no layer names is relayed. Two
+    profiles that claim one executable in different modes cancel out, so the
+    layer below keeps it and the clash is a problem for the operator to
+    settle.
+
+    `contributed` is the plugins' snapshot, as read_contributed_file returns it
+    (`~/.redlog/terminal-profiles.json`): its profiles join the profile layer
+    after the shipped ones, and its `held` map is the one thing that changes
+    the rule above. When profiles disagree on a command and one is the
+    recorded holder, the holder keeps it and the clash is still reported, with
+    `kept` naming it. With no snapshot nothing holds anything and this is the
+    layering above. Pure over its three arguments. Mirrored by
+    compileClassPolicy in src/core/terminal-class.ts, and
+    test/command-class.test.ts runs both over the same cases, including list
+    order.
+    """
+    layer = {}  # command -> (mode, source, profile id); insertion order is list order
+    for command in shipped.get("native", []):
+        layer[command] = ("native", "default", None)
+    # After native, so a command in both lists is pty, as classify has it.
+    for command in shipped.get("pty", []):
+        layer[command] = ("pty", "default", None)
+
+    snapshot_profiles, held, problems = normalize_contributed(contributed)
+    claims = {}  # command -> [{profile, mode}], first claimant first
+    # The plugins' profiles join after the shipped ones, so `#<index>` keeps counting.
+    for index, profile in enumerate(list(shipped.get("terminalProfiles", [])) + snapshot_profiles):
+        if not valid_profile(profile):
+            # Named by its id only when that is safe to print: it comes out of a file.
+            ident = profile["id"] if isinstance(profile, dict) and valid_id(profile.get("id")) else "#%d" % index
+            problems.append({"kind": "invalid-profile", "profile": ident})
+            continue
+        for command in profile["executables"]:
+            claimed = claims.setdefault(command, [])
+            if not any(c["profile"] == profile["id"] for c in claimed):
+                claimed.append({"profile": profile["id"], "mode": profile["mode"]})
+    conflicts = []
+    for command, claimed in claims.items():
+        # The profile that had this command when the snapshot was written, if
+        # it still claims it. With no snapshot nothing holds anything.
+        holding = next((c for c in claimed if c["profile"] == held.get(command)), None)
+        if len({c["mode"] for c in claimed}) == 1:
+            winner = holding or claimed[0]
+            layer[command] = (winner["mode"], "profile", winner["profile"])
+        elif holding is not None:
+            # Disagreement over a command somebody already has: the holder
+            # keeps it, and the clash is still reported.
+            layer[command] = (holding["mode"], "profile", holding["profile"])
+            conflicts.append({"kind": "conflict", "command": command, "claims": claimed, "kept": holding["profile"]})
+        else:
+            conflicts.append({"kind": "conflict", "command": command, "claims": claimed})
+    problems += sorted(conflicts, key=lambda p: p["command"])
+
+    overlay_lists, overlay_problems = normalize_overlay(overlay)
+    problems += overlay_problems
+    # Ascending, so a hand-edit naming one command twice resolves
+    # pty over native over relayed.
+    for mode in ("relayed", "native", "pty"):
+        for command in overlay_lists[mode]:
+            layer[command] = (mode, "override", None)
+
+    entries = []
+    for command in sorted(set(layer) | {p["command"] for p in problems if p["kind"] == "conflict"}):
+        mode, source, profile = layer.get(command, ("relayed", "fallback", None))
+        entry = {"command": command, "mode": mode, "source": source}
+        if source == "profile":
+            entry["profile"] = profile
+        entries.append(entry)
+    return {
+        "native": [c for c, v in layer.items() if v[0] == "native"],
+        "pty": [c for c, v in layer.items() if v[0] == "pty"],
+        "entries": entries,
+        "problems": problems,
+    }
+
+
+# A bare command name. A security bound, not tidiness: the adapter pastes each
+# `pty` executable into the source of a wrapper function, so a name with a `;`,
+# a space or a newline in it would be shell code. `fullmatch`, because `$`
+# matches before a trailing newline here and `x\n` has to fail. Mirrored by
+# EXECUTABLE in src/core/terminal-class.ts.
+EXECUTABLE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._+-]{0,63}")
+
+
+# A profile id: lowercase words, optionally `<plugin>/<id>`, at most 129
+# characters. An id is printed by `redlog class list`, so what is not this shape
+# is never shown, only counted by position. Mirrored by PROFILE_ID in
+# src/core/terminal-class.ts. fullmatch, not `$`: Python's `$` also matches
+# before a trailing newline.
+PROFILE_ID = re.compile(r"[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)?")
+PROFILE_ID_MAX = 129
+
+
+def valid_id(ident):
+    return isinstance(ident, str) and len(ident) <= PROFILE_ID_MAX and PROFILE_ID.fullmatch(ident) is not None
+
+
+def valid_profile(profile):
+    return (
+        isinstance(profile, dict)
+        and valid_id(profile.get("id"))
+        and profile.get("mode") in MODES
+        and isinstance(profile.get("executables"), list)
+        and len(profile["executables"]) > 0
+        and all(isinstance(c, str) and EXECUTABLE.fullmatch(c) for c in profile["executables"])
+    )
+
+
+def normalize_contributed(raw):
+    """The plugins' snapshot as (profiles, held, problems).
+
+    None is no file (and a file that says `null`): nothing, silently. Anything
+    that is not a version-1 object with a list of profiles and an object of
+    held is no snapshot at all, and one problem says why; a version above 1 is
+    a file a newer RedLog wrote. A `held` value that is not a string is
+    dropped, and each profile is passed through for valid_profile to judge.
+    Mirrored by normalizeContributed in src/core/terminal-class.ts.
+    """
+    if raw is None:
+        return [], {}, []
+    unreadable = ([], {}, [{"kind": "invalid-snapshot", "reason": "unreadable"}])
+    if not isinstance(raw, dict):
+        return unreadable
+    version = raw.get("version")
+    number = not isinstance(version, bool) and isinstance(version, (int, float))
+    if number and version > 1:
+        return [], {}, [{"kind": "invalid-snapshot", "reason": "unsupported-version"}]
+    if not number or version != 1:
+        return unreadable
+    if not isinstance(raw.get("profiles"), list) or not isinstance(raw.get("held"), dict):
+        return unreadable
+    held = {c: p for c, p in raw["held"].items() if isinstance(p, str)}
+    return list(raw["profiles"]), held, []
+
+
+def display_name(profile):
+    """What a profile is called in a listing: its name when that is one plain
+    line with no colon (a colon is how `native:` and `pty:` look like headers),
+    else its id."""
+    name = profile.get("name")
+    if isinstance(name, str) and name and ":" not in name and plain_line(name):
+        return name
+    return profile["id"]
+
+
+def plain_line(text):
+    """True when text can be printed as one line: it encodes as UTF-8 (a lone
+    surrogate does not, and writing one to stdout raises), and holds no C0, DEL
+    or C1 control and no Unicode line or paragraph separator. The same rule as
+    NOT_A_PLAIN_LINE in src/core/terminal-profiles.ts, which refuses such a name
+    at registration; this covers a snapshot edited by hand."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return not any(ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F or ch in "\u2028\u2029" for ch in text)
+
+
+def policy_notes(bundled, contributed, policy):
+    """The lines `redlog class list` prints after the three class lines.
+
+    `bundled` and `contributed` are the profiles of the shipped file and of the
+    plugins' snapshot, as parsed. None of the lines may contain `native:`,
+    `pty:` or `relayed:`: the tests, and anyone grepping the listing, take
+    those as the headers.
+    """
+    entries = {e["command"]: e for e in policy["entries"]}
+
+    def usable(profiles):
+        return [p for p in profiles if isinstance(p, dict) and isinstance(p.get("id"), str)]
+
+    bundled = usable(bundled)
+    contributed = usable(contributed)
+    names = {}
+    for p in bundled + contributed:
+        names.setdefault(p["id"], display_name(p))
+    # A plugin's profile is named with the plugin it came from, which is its
+    # id's prefix. A bundled one is just its name.
+    plugins = {}
+    for p in contributed:
+        if p["id"] not in {b["id"] for b in bundled}:
+            plugins.setdefault(p["id"], p["id"].split("/", 1)[0] if "/" in p["id"] else None)
+
+    def label(ident):
+        origin = plugins.get(ident)
+        return names.get(ident, ident) if origin is None else "%s from %s" % (names[ident], origin)
+
+    def owned_by(p):
+        listed = [c for c in (p.get("executables") if isinstance(p.get("executables"), list) else []) if isinstance(c, str)]
+        return [c for c in dict.fromkeys(listed)
+                if c in entries and entries[c]["source"] == "profile" and entries[c].get("profile") == p["id"]]
+
+    lines = []
+    for heading, group in (("tool profiles", bundled), ("plugin profiles", contributed)):
+        shown = []
+        for p in group:
+            owned = owned_by(p)
+            if owned:
+                shown.append("%s (%s)" % (label(p["id"]), " ".join(owned)))
+        if shown:
+            lines.append("%s: %s" % (heading, ", ".join(shown)))
+    changes = ["%s (%s)" % (e["command"], e["mode"]) for e in policy["entries"] if e["source"] == "override"]
+    if changes:
+        lines.append("your changes: " + ", ".join(changes))
+
+    def joined(said):
+        return said[0] if len(said) == 1 else ", ".join(said[:-1]) + " and " + said[-1]
+
+    for problem in policy["problems"]:
+        if problem["kind"] != "conflict" or entries[problem["command"]]["source"] == "override":
+            continue
+        command = problem["command"]
+        kept = problem.get("kept")
+        if kept is None:
+            said = ["%s (%s)" % (label(c["profile"]), c["mode"]) for c in problem["claims"]]
+            lines.append("%s stays %s because profiles %s disagree; choose one with: redlog class add <class> %s"
+                         % (command, entries[command]["mode"], joined(said), command))
+        else:
+            others = ["%s (%s)" % (label(c["profile"]), c["mode"]) for c in problem["claims"] if c["profile"] != kept]
+            # No "from" here: label() already says it for a plugin's profile.
+            # And no colon after the class, which is how a header looks.
+            lines.append("%s stays %s because %s had it first; %s %s not applied; choose one with: redlog class add <class> %s"
+                         % (command, entries[command]["mode"], label(kept), joined(others),
+                            "is" if len(others) == 1 else "are", command))
+    for problem in policy["problems"]:
+        # The two are different faults, and the operator fixes them differently:
+        # a field that is no list is ignored whole; in a list, only the entries
+        # that are not command names are.
+        if problem["kind"] == "invalid-overlay":
+            lines.append("ignored in ~/.redlog/command-class.json: %s is not a list of commands" % problem["field"])
+        elif problem["kind"] == "invalid-overlay-names":
+            lines.append("ignored in ~/.redlog/command-class.json: %s lists something that is not a command name"
+                         % problem["field"])
+    for problem in policy["problems"]:
+        if problem["kind"] == "invalid-snapshot":
+            why = "written by a newer RedLog" if problem["reason"] == "unsupported-version" else "not readable"
+            lines.append("ignored ~/.redlog/terminal-profiles.json: %s, so no plugin profile applies" % why)
+    for problem in policy["problems"]:
+        if problem["kind"] == "invalid-profile":
+            lines.append("skipped tool profile %s: not valid" % problem["profile"])
+    return lines
 
 
 def basename(token):
@@ -1497,6 +1893,130 @@ def int_or(value, fallback):
         return int(value)
     except (TypeError, ValueError):
         return fallback
+
+
+# ── Tool detection (#499 PR B) ──────────────────────────────────────────────
+#
+# Which of the tool profiles' executables this shell can reach. RedLog cannot
+# know the PATH a shell's commands resolve against — the rc files that set it
+# run after the hook is sourced — so the shell says, once, at its first prompt.
+# It is information for a settings panel and nothing else: it is never read by
+# `classify`, `policy`, `finish` or `pty`, and a name that is not found changes
+# no command's class.
+
+DETECT_MAX_EXECUTABLES = 64
+DETECT_DEADLINE_S = 2.0
+
+
+class DetectDeadline(Exception):
+    """The lookup ran out of time. Names it had not reached are unchecked, not missing."""
+
+
+def profile_executables(profiles):
+    """The bare executable names of the profiles `compile_policy` would accept,
+    sorted, unique and no more than a report may hold. `profiles` is the shipped
+    ones and then the plugins', in the order the compiler reads them (the seam
+    `knownProfiles` is in src/core/terminal-class.ts)."""
+    names = set()
+    for profile in profiles:
+        if valid_profile(profile):
+            names.update(c for c in profile["executables"] if re.fullmatch(r"[A-Za-z0-9._+-]+", c))
+    return sorted(names)[:DETECT_MAX_EXECUTABLES]
+
+
+def path_dirs(path_value):
+    """Absolute PATH entries, in order, once each. A relative entry means
+    something different in every process that reads it."""
+    seen = set()
+    dirs = []
+    for entry in path_value.split(os.pathsep):
+        if entry and os.path.isabs(entry) and entry not in seen:
+            seen.add(entry)
+            dirs.append(entry)
+    return dirs
+
+
+def find_executable(name, dirs, windows, pathext, deadline):
+    """Where `name` is, or None. POSIX wants a regular file with the execute
+    bit; Windows has no such bit, so the bare name and then each PATHEXT
+    spelling are tried, as src/core/command-lookup.ts does. `deadline` is a
+    time.monotonic() value, checked before every stat."""
+    names = [name] + [name + ext for ext in pathext] if windows else [name]
+    for directory in dirs:
+        for candidate in names:
+            if time.monotonic() > deadline:
+                raise DetectDeadline()
+            path = os.path.join(directory, candidate)
+            try:
+                if os.path.isfile(path) and (windows or os.access(path, os.X_OK)):
+                    return path
+            except OSError:
+                continue
+    return None
+
+
+def detect_cmd(argv):
+    opts = parse(argv)[0]
+    started = time.monotonic()
+    deadline = started + DETECT_DEADLINE_S
+    try:
+        shipped = read_shipped()
+        contributed = normalize_contributed(read_contributed_file(terminal_home(opts)))[0]
+        names = profile_executables(list(shipped.get("terminalProfiles", [])) + list(contributed))
+    except (OSError, ValueError):
+        return 0
+    windows = sys.platform == "win32"
+    pathext = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e]
+    dirs = path_dirs(os.environ.get("PATH", ""))
+    checked = []
+    found = {}
+    try:
+        for name in names:
+            where = find_executable(name, dirs, windows, pathext, deadline)
+            checked.append(name)
+            if where:
+                found[name] = where
+    except DetectDeadline:
+        pass
+    shell = opts["shell"] if opts["shell"] and re.fullmatch(r"[A-Za-z0-9._-]{1,32}", opts["shell"]) else "unknown"
+    distro = (os.environ.get("WSL_DISTRO_NAME") or "")[:128]
+    # The id is what RedLog reads back and matches against `^shell:[A-Za-z0-9._:-]{1,160}$`;
+    # the distro as WSL spells it stays in `wslDistro`.
+    distro_id = re.sub(r"[^A-Za-z0-9._-]", "_", distro[:64])
+    environment = "shell:%s:%s:%s" % (sys.platform, distro_id or "-", shell)
+    report = {
+        "version": 1,
+        "environment": environment,
+        "platform": sys.platform,
+        "shell": shell,
+        "sessionId": opts["session"] or "",
+        "detectedAt": int(time.time() * 1000),
+        "checked": checked,
+        "found": found,
+    }
+    if distro:
+        report["wslDistro"] = distro
+    file_name = re.sub(r"[^A-Za-z0-9._-]", "_", environment) + ".json"
+    write_detection(os.path.join(terminal_home(opts), ".redlog", "tool-detection", file_name), report)
+    trace("detect", "checked=%d found=%d ms=%d" % (len(checked), len(found), (time.monotonic() - started) * 1000))
+    return 0
+
+
+def write_detection(path, payload):
+    """One writer per file name at a time is not guaranteed — two shells of one
+    kind can open together — so the temporary name is this process's own, and
+    the last `os.replace` wins whole."""
+    tmp = "%s.%d.part" % (path, os.getpid())
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def write_json(path, payload):
@@ -1517,7 +2037,7 @@ def write_json(path, payload):
 def main():
     modes = {"run": run, "pty": pty_pipe, "finish": finish,
              "classify": classify, "policy": policy_field,
-             "state": state_cmd}
+             "state": state_cmd, "detect": detect_cmd}
     mode = modes.get(sys.argv[1]) if len(sys.argv) > 1 else None
     if mode is None:
         sys.stderr.write(__doc__)

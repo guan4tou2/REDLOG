@@ -23,7 +23,9 @@ with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     pending = []
     ns = dict(json=json, urllib=urllib, VERBOSE=False, threading=__import__('threading'),
-              time=types.SimpleNamespace(time=lambda: clock[0], time_ns=time.time_ns),
+              # time_ns does not move: every record here is written inside one tick of
+              # the clock, as on Windows under the Python CI runs, and none may be lost.
+              time=types.SimpleNamespace(time=lambda: clock[0], time_ns=lambda: 1_700_000_000_000_000_000),
               ctx=types.SimpleNamespace(log=types.SimpleNamespace(warn=warnings.append)),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
               _SEND_QUEUE=types.SimpleNamespace(put=pending.append),
@@ -127,8 +129,9 @@ with tempfile.TemporaryDirectory() as directory:
     if len(sys.argv) > 1:
         shutil.copytree(root / 'pending', sys.argv[1], dirs_exist_ok=True)
 
-    # A gap that cannot be saved says so — in words the app does not read as a
-    # full queue in the project now open, which is B, not the gap's owner.
+    # A gap that cannot be saved says so, in the one form every gap uses (#507),
+    # naming its reason and its owner: the app does not read it as a loss in
+    # the project now open, which is B, not the gap's owner.
     activate(B)
     blocked = root / 'blocked'
     blocked.write_text('not a directory')
@@ -136,6 +139,6 @@ with tempfile.TemporaryDirectory() as directory:
     clock[0] += 5
     warnings.clear()
     assert send(late()) is False
-    assert any('gap' in w and 'not saved' in w for w in warnings), warnings
-    assert not any(re.search(r'\[redlog\] capture gap not saved: (\d+) event', w) for w in warnings), warnings
+    assert any(re.fullmatch(r'\[redlog\] capture gap not saved: 1 event\(s\) reason=project-switched started=\d+ ended=\d+ engagement=A', w)
+               for w in warnings), warnings
 print('switch gap checks passed')

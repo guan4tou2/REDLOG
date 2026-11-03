@@ -280,6 +280,10 @@ const api: RedLogAPI = {
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
+  tools: {
+    detection: () => ipcRenderer.invoke('tools:detection'),
+    rescan: (reason: 'settings-open' | 'manual') => ipcRenderer.invoke('tools:rescan', reason)
+  },
   runtime: {
     preflight: () => ipcRenderer.invoke('runtime:preflight'),
     install: (id: string) => ipcRenderer.invoke('runtime:install', id),

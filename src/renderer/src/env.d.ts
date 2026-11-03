@@ -455,10 +455,19 @@ interface RedLogAPI {
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     /** Spec 052: what the SHELL will do — the machine's mode and the effective
-     *  class lists, defaults with the operator's `redlog class` edits on top. */
-    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }>
+     *  class lists, defaults with the operator's `redlog class` edits on top.
+     *  `entries` say where each named command's mode came from; `problems` are
+     *  what the compiler skipped or could not settle; `profiles` are the tool
+     *  profiles it read, shipped first and then the plugins'. */
+    terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; app: string; profiles: import('../../core/terminal-class').TerminalProfile[] } & import('../../core/terminal-class').CompiledClassPolicy>
     setTerminalApp: (value: string) => Promise<string>
     /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
+  }
+  tools: {
+    /** #499 PR B: what was found where, per environment. Reads reports and the last lookup; looks nothing up. */
+    detection: () => Promise<import('../../core/tool-detection').ToolDetectionSnapshot>
+    /** One PATH lookup of RedLog's own, unless a recent one already covered every executable (`settings-open`). */
+    rescan: (reason: 'settings-open' | 'manual') => Promise<import('../../core/tool-detection').ToolDetectionSnapshot>
   }
   runtime: {
     /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */

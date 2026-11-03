@@ -157,18 +157,42 @@ _SPOOL_LOCK = threading.Lock()
 
 def _write_spool_record(record: dict) -> bool:
     """Write one record to the spool directory for later replay. False when it
-    could not be written, including when the spool is at its cap."""
+    could not be written, including when the spool is at its cap.
+
+    The app's drain unlinks a record once it has replayed it, with no lock in
+    common with this one (#507). A file that is gone by the time it is measured
+    is one fewer in the spool, not a reason to refuse the write. A record is
+    written under a `.tmp` name and renamed, so the drain, which reads only
+    `.json`, never sees half of one."""
     with _SPOOL_LOCK:
         try:
-            SPOOL_DIR.mkdir(parents=True, exist_ok=True)
+            SPOOL_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
             encoded = json.dumps(record).encode("utf-8")
-            files = list(SPOOL_DIR.glob("*.json"))
-            if len(files) >= 5000 or sum(f.stat().st_size for f in files) + len(encoded) > 64 * 1024 * 1024:
+            count = 0
+            total = len(encoded)
+            for existing in SPOOL_DIR.glob("*.json"):
+                try:
+                    total += existing.stat().st_size
+                except FileNotFoundError:
+                    continue
+                count += 1
+            if count >= 5000 or total > 64 * 1024 * 1024:
                 return False
-            filename = f"{time.time_ns()}-{id(record)}.json"
+            # A name no earlier record of this process has had. The clock alone
+            # is not that: Python before 3.13 reads it from a ~15 ms tick on
+            # Windows, and `id(record)` is reused once the last record is freed,
+            # so two records could share a name. `replace` then overwrote the
+            # first one (a lost gap) or, with the drain unlinking it, was
+            # refused with PermissionError (a write read as failed). Stamps
+            # only rise, so names still sort in write order, which the drain's
+            # sorted listing relies on. Held on the function, under the lock.
+            stamp = max(time.time_ns(), getattr(_write_spool_record, "last_ns", 0) + 1)
+            _write_spool_record.last_ns = stamp
+            filename = f"{stamp}-{os.getpid()}.json"
             temporary = SPOOL_DIR / (filename + ".tmp")
             try:
-                with temporary.open("xb") as output:
+                # Owner-only whatever the umask: a record holds the project identity.
+                with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
                     output.write(encoded)
                 temporary.replace(SPOOL_DIR / filename)
             finally:
@@ -185,12 +209,13 @@ def _spool_payload(payload: dict):
     # An unacknowledged POST cannot authorize raw offline capture:
     # the app may have paused while the API was unreachable. Preserve
     # only a project-bound delivery gap, never bodies, headers or URL.
-    _write_spool_record({"agent_type": "scanner", "_identity": payload["_identity"], "data": {
+    # A record that cannot be written is said so in the log, like any gap (#507).
+    _save_gaps([{"agent_type": "scanner", "_identity": payload["_identity"], "data": {
         "subtype": "capture_gap", "source": "mitmproxy",
         "reason": "delivery-unconfirmed", "capture_delivery": "unknown",
         "reported_at": int(time.time() * 1000),
         "description": "Proxy delivery was not confirmed; this spool contains no raw content."
-    }})
+    }}])
 
 
 # #460 and #459: an event refused at a full send queue, or because its project
@@ -241,22 +266,31 @@ def _gap_record(window: dict, now_ms: int) -> dict:
 
 
 def _save_gaps(records: list):
+    """Write each gap record to the spool. One that cannot be written leaves a
+    line in this form, whatever the gap, for the app to read (#460, #507):
+
+        [redlog] capture gap not saved: N event(s) reason=R started=MS ended=MS engagement=ID nonce=HEX
+
+    The window is the one the record carries (a delivery-unconfirmed record has
+    only the time it was reported). The engagement is the project that owns the
+    gap, which is not necessarily the one open when the app reads the line; "-"
+    when the record names none, which the app will not place in any project.
+    The nonce is the app's per-start secret from the environment: mitmproxy
+    echoes text a remote server sent it into the same output, so the app
+    accepts only a line that carries it. It is written nowhere else.
+    Never a URL, header or body."""
+    nonce = os.environ.get("REDLOG_PROXY_GAP_NONCE", "")
     for record in records:
         if _write_spool_record(record):
             continue
-        units = record["data"]["skipped_units"]
-        # The managed proxy counts the queue-full line against the project
-        # open now. A project-switched gap is another project's, so its line
-        # must not read the same.
-        if record["data"]["reason"] == "queue-full":
-            ctx.log.warn(f"[redlog] capture gap not saved: {units} event(s) "
-                         "refused at a full send queue are not recorded anywhere")
-        elif record["data"]["reason"] == "project-switched":
-            ctx.log.warn(f"[redlog] project-switch gap not saved: {units} event(s) "
-                         "for a closed project are not recorded anywhere")
-        else:
-            ctx.log.warn(f"[redlog] stop gap not saved: {units} event(s) "
-                         "held when the proxy stopped are not recorded anywhere")
+        data = record["data"]
+        now_ms = int(time.time() * 1000)
+        started = data.get("gap_started_at", data.get("reported_at", now_ms))
+        ended = data.get("gap_ended_at", data.get("reported_at", now_ms))
+        engagement = "".join(str(record["_identity"].get("engagementId") or "-").split()) or "-"
+        ctx.log.warn(f"[redlog] capture gap not saved: {data.get('skipped_units', 1)} event(s) "
+                     f"reason={data['reason']} started={started} ended={ended} engagement={engagement}"
+                     + (f" nonce={nonce}" if nonce else ""))
 
 
 def _note_refusal(payload: dict, reason: str):
@@ -282,7 +316,11 @@ def _note_switch_refusal(payload: dict):
     """A refusal by identity is a gap only for an event that has an owner."""
     ident = payload.get("_identity")
     if ident and ident.get("engagementId") and ident.get("operatorId"):
-        _note_refusal(payload, "project-switched")
+        # No identity file at all is a project that closed with none opened in
+        # its place. The app clears it as it shuts the proxy down, and on quit
+        # the proxy can still answer for a moment after (#507): that is the
+        # proxy stopping, not a switch to another project.
+        _note_refusal(payload, "project-switched" if _IDENTITY_PATH.exists() else "proxy-stopped")
 
 
 def _flush_gaps(sent: bool = False):
@@ -335,13 +373,14 @@ def _write_inflight_marker() -> bool:
                 path.unlink(missing_ok=True)
                 _INFLIGHT_STATE["marker"] = False
             return True
-        INFLIGHT_DIR.mkdir(parents=True, exist_ok=True)
+        INFLIGHT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         marker = {"version": 1, "instance": _INFLIGHT_INSTANCE, "pid": os.getpid(),
                   "started_at": _INFLIGHT_STARTED_MS, "heartbeat_at": int(time.time() * 1000),
                   "identities": [{"identity": entry["identity"], "upper_bound": entry["bound"],
                                   "since": entry["since"], "last": entry["last"]} for entry in live]}
         temporary = path.with_name(path.name + ".tmp")
-        temporary.write_text(json.dumps(marker), encoding="utf-8")
+        with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as output:
+            output.write(json.dumps(marker))
         temporary.replace(path)
         _INFLIGHT_STATE["marker"] = True
         return True

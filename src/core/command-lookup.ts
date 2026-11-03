@@ -15,11 +15,17 @@ import path from 'path'
 
 const BARE_NAME = /^[A-Za-z0-9._+-]+$/
 
-export function isOnPath(
-  cmd: string,
-  opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; delimiter?: string } = {}
-): boolean {
-  if (!BARE_NAME.test(cmd)) return false
+export interface LookupOptions { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; delimiter?: string }
+
+/** Whether `cmd` is a name this module will look up at all. Tool detection
+ *  uses it to tell "not checked" from "checked and absent". */
+export function isBareCommandName(cmd: string): boolean {
+  return BARE_NAME.test(cmd)
+}
+
+/** The PATH directories and the file names to try in each, in lookup order. */
+function lookupPlan(cmd: string, opts: LookupOptions): { win: boolean; dirs: string[]; names: string[] } | null {
+  if (!BARE_NAME.test(cmd)) return null
   const platform = opts.platform ?? process.platform
   const env = opts.env ?? process.env
   const win = platform === 'win32'
@@ -30,12 +36,37 @@ export function isOnPath(
   const names = win
     ? [cmd, ...(env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((ext) => cmd + ext)]
     : [cmd]
-  for (const dir of dirs) {
-    for (const name of names) {
-      if (isExecutableFile(path.join(dir, name), win)) return true
+  return { win, dirs, names }
+}
+
+export function isOnPath(cmd: string, opts: LookupOptions = {}): boolean {
+  const plan = lookupPlan(cmd, opts)
+  if (!plan) return false
+  for (const dir of plan.dirs) {
+    for (const name of plan.names) {
+      if (isExecutableFile(path.join(dir, name), plan.win)) return true
     }
   }
   return false
+}
+
+/** Where `cmd` is on PATH, or null — the same answer as `isOnPath`, with the
+ *  path, without blocking the event loop, and over absolute PATH entries only
+ *  (a relative entry means something different in every process that reads
+ *  it). Rejects with the signal's reason once it aborts. */
+export async function findOnPath(cmd: string, opts: LookupOptions & { signal?: AbortSignal } = {}): Promise<string | null> {
+  const plan = lookupPlan(cmd, opts)
+  if (!plan) return null
+  const { win, dirs, names } = plan
+  for (const dir of dirs) {
+    if (!path.isAbsolute(dir) && !(win && path.win32.isAbsolute(dir))) continue
+    for (const name of names) {
+      opts.signal?.throwIfAborted()
+      const candidate = path.join(dir, name)
+      if (await isExecutableFileAsync(candidate, win)) return candidate
+    }
+  }
+  return null
 }
 
 function isExecutableFile(p: string, win: boolean): boolean {
@@ -46,6 +77,24 @@ function isExecutableFile(p: string, win: boolean): boolean {
     return true
   } catch (e) {
     return win && (e as NodeJS.ErrnoException).code === 'EACCES' && isAppExecutionAlias(p)
+  }
+}
+
+async function isExecutableFileAsync(p: string, win: boolean): Promise<boolean> {
+  try {
+    if (!(await fs.promises.stat(p)).isFile()) return false
+    if (!win) await fs.promises.access(p, fs.constants.X_OK)
+    return true
+  } catch (e) {
+    return win && (e as NodeJS.ErrnoException).code === 'EACCES' && await isAppExecutionAliasAsync(p)
+  }
+}
+
+async function isAppExecutionAliasAsync(p: string): Promise<boolean> {
+  try {
+    return (await fs.promises.lstat(p)).isSymbolicLink()
+  } catch {
+    return false
   }
 }
 

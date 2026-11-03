@@ -21,6 +21,76 @@ const RETIRED_KEYS: Record<string, string> = {
   mappers: 'nothing applies mappers yet — producers post normalised events to POST /api/events'
 }
 
+/** The install methods a plugin's capture entry may name. `powershell-profile`
+ *  is the built-in PowerShell producer's own and is not offered to plugins. */
+const PLUGIN_INSTALL_METHODS = ['claude-settings', 'shell-source', 'manual'] as const
+
+/** The shell startup files a `shell-source` capture may name. */
+const PLUGIN_SHELL_RC_FILES = ['.zshrc', '.bashrc', '.bash_profile', '.profile'] as const
+
+/** A shell-source hook is copied to a file of this name directly inside
+ *  ~/.redlog: no folder, nothing that starts with a dot, and a script's
+ *  extension, so it cannot be written over a data file RedLog keeps there. */
+const HOOK_FILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:sh|zsh|bash)$/
+
+/** Whether a capture entry puts something on the machine for the operator
+ *  (their shell startup file, Claude Code's settings) rather than showing them
+ *  steps to follow. Anything that is not exactly `manual` does: an entry that
+ *  names no method is not given the benefit of the doubt. */
+export function installsHook(cap: unknown): boolean {
+  return (cap as { installMethod?: unknown } | null)?.installMethod !== 'manual'
+}
+
+/** Why a capture entry's install fields are not acceptable from a plugin, or
+ *  null. The fields decide what RedLog writes and where: a file under
+ *  ~/.redlog, a line in a shell startup file, an entry in Claude Code's
+ *  settings. They are therefore an enum and two short fixed shapes, and are
+ *  refused rather than rewritten. */
+export function captureInstallProblem(cap: {
+  installMethod?: unknown; installTarget?: unknown; shellRcFile?: unknown; hookFile?: unknown
+}): string | null {
+  if (!(PLUGIN_INSTALL_METHODS as readonly unknown[]).includes(cap.installMethod)) {
+    return `installMethod must be one of ${PLUGIN_INSTALL_METHODS.join(', ')}`
+  }
+  if (cap.installTarget !== undefined
+    && !(typeof cap.installTarget === 'string' && HOOK_FILE_NAME_RE.test(cap.installTarget))) {
+    return 'installTarget must be a file name ending in .sh, .zsh or .bash, with no folder: the hook is written to ~/.redlog'
+  }
+  if (cap.shellRcFile !== undefined
+    && !(PLUGIN_SHELL_RC_FILES as readonly unknown[]).includes(cap.shellRcFile)) {
+    return `shellRcFile must be one of ${PLUGIN_SHELL_RC_FILES.join(', ')}`
+  }
+  if (cap.installMethod === 'shell-source' && cap.installTarget === undefined && typeof cap.hookFile === 'string') {
+    const written = cap.hookFile.split(/[\\/]/).pop() ?? ''
+    if (!HOOK_FILE_NAME_RE.test(written)) {
+      return `a shell-source hook is written to ~/.redlog under its own file name, which must end in .sh, .zsh or .bash (got ${written})`
+    }
+  }
+  return null
+}
+
+/** Whether the plugin must be approved by the operator, at its current
+ *  content, before anything it contributes takes effect. Everything that runs
+ *  code does (the `privileged` tier). So does a plugin that declares
+ *  `terminalProfiles`, which runs nothing: a profile decides what the shell
+ *  records and what it leaves alone, so a manifest dropped into the plugins
+ *  folder must not be able to set it unasked. So does a plugin with a capture
+ *  entry that RedLog installs (`shell-source`, `claude-settings`): the hook
+ *  becomes a script that runs in every new shell, or after every tool call.
+ *  Everything else is data RedLog reads and is active from the start. */
+export function requiresApproval(manifest: PluginManifest): boolean {
+  const c = manifest.contributes ?? {}
+  return tierOf(manifest) === 'privileged'
+    || (Array.isArray(c.terminalProfiles) && c.terminalProfiles.length > 0)
+    || (Array.isArray(c.capture) && c.capture.some(installsHook))
+}
+
+/** The capture entries an approval is an approval of: the ones that install. */
+export function installingCaptures(manifest: PluginManifest): Array<{ name: string; installMethod: string }> {
+  return (manifest.contributes?.capture ?? []).filter(installsHook)
+    .map((cap) => ({ name: String(cap.name ?? cap.id), installMethod: String(cap.installMethod) }))
+}
+
 export function tierOf(manifest: PluginManifest): PluginTier {
   const c = manifest.contributes ?? {}
   return PRIVILEGED_KEYS.some((k) => typeof c[k] === 'string' && (c[k] as string).length > 0)
@@ -67,6 +137,57 @@ function isPluginKind(v: unknown): v is NonNullable<PluginManifest['kind']> {
   return typeof v === 'string' && PLUGIN_KINDS.has(v)
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStringList = (v: unknown): boolean => Array.isArray(v) && v.every((s) => typeof s === 'string')
+
+/** Why `contributes` has a shape `applyContributions` cannot take, or null.
+ *  It reads each list with `.map` or `for..of`, and each entry's strings with
+ *  `.trim`, `.startsWith` and `.replaceAll`, so a value of another shape does
+ *  not make a plugin that contributes less: it throws, in the middle of
+ *  applying everyone. Every key that function reads is checked here, in the
+ *  detail it needs; what an entry's own fields mean is for the registrars to
+ *  judge, entry by entry, at load. `terminalProfiles` is in `validateManifest`
+ *  itself, where its message is. */
+function contributesShapeError(c: Record<string, unknown>): string | null {
+  for (const key of ['lootPatterns', 'commandTags', 'targetExtractors', 'eventTypes', 'capture']) {
+    const v = c[key]
+    if (v !== undefined && !(Array.isArray(v) && v.every(isObject))) return `contributes.${key} must be a list of objects`
+  }
+  for (const key of ['lootPatterns', 'targetExtractors']) {
+    for (const entry of (c[key] ?? []) as Array<Record<string, unknown>>) {
+      if (entry.name !== undefined && typeof entry.name !== 'string') return `contributes.${key}: name must be text`
+    }
+  }
+  if (c.redaction !== undefined) {
+    if (!isObject(c.redaction)) return 'contributes.redaction must be an object'
+    // A plugin can only add to what is masked. Letting a value through is the
+    // operator's setting: a plugin allowlist is checked before the denylist and
+    // before the values loot detection found, so it could switch masking off
+    // at ingest, and the spans fixed there are what an export is masked by.
+    if (c.redaction.allowlist !== undefined) {
+      return 'contributes.redaction.allowlist is not supported: a plugin can only add to what is masked; letting a value through is the operator\'s setting'
+    }
+    if (c.redaction.denylist !== undefined && !Array.isArray(c.redaction.denylist)) return 'contributes.redaction.denylist must be a list'
+  }
+  for (const cap of (c.capture ?? []) as Array<Record<string, unknown>>) {
+    if (cap.id !== undefined && typeof cap.id !== 'string') return 'contributes.capture: id must be text'
+    if (cap.hookFile !== undefined && typeof cap.hookFile !== 'string') return 'contributes.capture: hookFile must be text'
+    for (const list of ['requires', 'emits']) {
+      if (cap[list] !== undefined && !isStringList(cap[list])) return `contributes.capture: ${list} must be a list of text`
+    }
+    if (cap.manualSteps !== undefined) {
+      const steps = cap.manualSteps
+      if (!Array.isArray(steps) || !steps.every((s) => isObject(s) && typeof s.label === 'string'
+        && (s.command === undefined || typeof s.command === 'string'))) {
+        return 'contributes.capture: manualSteps must be a list of steps with a text label'
+      }
+    }
+  }
+  if (c.tailers !== undefined && typeof c.tailers !== 'string') return 'contributes.tailers must be the path of a module'
+  return null
+}
+
 export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof raw !== 'object' || raw === null) return { ok: false, error: 'manifest is not an object' }
   const m = raw as Record<string, unknown>
@@ -88,6 +209,8 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof m.contributes !== 'object' || m.contributes === null) {
     return { ok: false, error: 'missing contributes block' }
   }
+  const shapeError = contributesShapeError(m.contributes as Record<string, unknown>)
+  if (shapeError) return { ok: false, error: shapeError }
 
   for (const [retired, why] of Object.entries(RETIRED_KEYS)) {
     if ((m.contributes as Record<string, unknown>)[retired] !== undefined) {
@@ -96,7 +219,15 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
 
   const contributes = m.contributes as PluginContributes
+  // The list's own entries are judged one by one at load (`registerTerminalProfiles`),
+  // so one bad profile does not cost the plugin; only a value that is not a list at all does.
+  if ((contributes as Record<string, unknown>).terminalProfiles !== undefined
+    && !Array.isArray(contributes.terminalProfiles)) {
+    return { ok: false, error: 'contributes.terminalProfiles must be a list' }
+  }
   for (const cap of contributes.capture ?? []) {
+    const installProblem = captureInstallProblem(cap)
+    if (installProblem) return { ok: false, error: `contributes.capture${cap.id ? ` "${cap.id}"` : ''}: ${installProblem}` }
     if (cap.platforms !== undefined && (!Array.isArray(cap.platforms) || cap.platforms.length === 0
       || cap.platforms.some(p => !['darwin', 'linux', 'win32'].includes(p)))) {
       return { ok: false, error: 'capture platforms must name darwin, linux or win32' }

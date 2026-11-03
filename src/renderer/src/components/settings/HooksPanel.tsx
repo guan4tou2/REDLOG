@@ -9,6 +9,7 @@ import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 import { useReadState } from '../../lib/readState'
 import { SetupAndTeardown } from './ManualStepList'
 import { Button } from '../Button'
+import { ToolProfileCards, type ToolPolicyView } from './ToolProfileCards'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -21,37 +22,28 @@ function hookDescription(hook: HookInfo, t: (key: string) => string): string {
   return localized === key ? hook.description : localized
 }
 
-interface TerminalPolicy { mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }
+interface TerminalPolicy extends ToolPolicyView { mode: 'auto' | 'manual'; native: string[]; pty: string[]; app: string }
 
-/** What the operator's shell will actually do, for the terminals this machine
- *  opens: the mode `redlog mode` last set, and the class lists as `redlog
- *  class` left them.
+/** The mode `redlog mode` last set, for the terminals this machine opens.
  *
- *  Read-only here on purpose. The lists are edited from the terminal, where
+ *  Read-only here on purpose. The policy is edited from the terminal, where
  *  the operator is when they discover that `nc` went through a relay, and a
- *  second editor in Settings would be a second place for the policy to be
- *  changed and a second thing to keep in step. What Settings owes is the
- *  answer to "what will my shell do", from the same file the shell reads
- *  (research.md D7).
+ *  second editor in Settings would be a second place for it to be changed and
+ *  a second thing to keep in step. What Settings owes is the answer to "what
+ *  will my shell do", from the same file the shell reads (research.md D7); the
+ *  per-tool answer is the card list below the capture sources.
  *
  *  Declared at module scope: a component defined inside another component's
  *  body is a new type on every render, and React remounts its subtree. */
-function TerminalPolicyNote({ policy, t }: {
+function TerminalModeNote({ policy, t }: {
   policy: TerminalPolicy | null
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element | null {
   if (!policy) return null
   return (
-    <details className="text-xs text-redlog-text-dim mb-3 leading-relaxed">
-      <summary className="min-h-8 cursor-pointer content-center break-words">
-        {t('settings.terminalMode', { mode: t(`settings.terminalMode.${policy.mode}`) })}
-      </summary>
-      <ul className="mt-2 space-y-1 break-words">
-        <li>{t('settings.terminalClassNative', { commands: policy.native.join(' ') })}</li>
-        <li>{t('settings.terminalClassPty', { commands: policy.pty.join(' ') })}</li>
-      </ul>
-      <p className="mt-2 break-words text-redlog-text-faint">{t('settings.terminalClassEditedFromShell')}</p>
-    </details>
+    <p className="text-xs text-redlog-text-dim mb-3 break-words">
+      {t('settings.terminalMode', { mode: t(`settings.terminalMode.${policy.mode}`) })}
+    </p>
   )
 }
 
@@ -226,7 +218,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
           <button type="button" className="min-h-8 underline" onClick={policy.retry}>{t('common.retry')}</button>
         </div>}
         {appError && <p role="alert" className="mb-3 text-xs text-red-400">{appError}</p>}
-        <TerminalPolicyNote policy={policy.state.value} t={t} />
+        <TerminalModeNote policy={policy.state.value} t={t} />
         {read.state.phase === 'loading' && (
           <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
@@ -250,6 +242,10 @@ export default function HooksPanel({ hooks, setHooks, t }: {
         )}
         {preparing && <RuntimePreparation source={preparing} onClose={() => { setPreparing(null); read.retry() }} />}
       </FieldGroup>
+      {/* Tools, not shells: which executable each profile covers, whether it
+          was found, and the mode and capture that follow. The panel's policy
+          read is the card list's source, so one revalidation serves both. */}
+      <ToolProfileCards policy={policy.state.value} t={t} />
     </>
   )
 }

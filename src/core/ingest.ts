@@ -17,6 +17,7 @@
 // `insertEvent` stays the DB write; ingest is the policy around it.
 
 import { insertEvent, lastRecordingResumeTime, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
+import { dbEngagement, dbGeneration } from './db/index'
 import { eventBus } from './event-bus'
 import { isCapturePlumbing } from './capture-plumbing'
 import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
@@ -132,6 +133,18 @@ export function ingest(input: IngestInput): IngestResult {
   const { agentType, engagementId, operatorId } = input
   const data = input.data
   let targetId = input.targetId
+
+  // A row for another engagement is work that outlived its project. insertEvent
+  // refuses it, but only after enrichment has stored the row's bodies under the
+  // OPEN project's directory and settled its command pairs in this project's
+  // runtime. Same check, earlier, so a refused row has no side effects.
+  // Reported as `dedup`, as it always was; the refusal is named in the log.
+  const bound = dbEngagement()
+  if (bound !== null && input.engagementId !== undefined && input.engagementId !== bound) {
+    console.error(`[ingest] refused a ${agentType} row for engagement ${input.engagementId}: the open database belongs to ${bound}`)
+    return { event: null, skipped: 'dedup', companions: [] }
+  }
+  dropStateOfClosedProject()
 
   // Runtime pairs must settle even if the evidence write is paused. Otherwise
   // a command_end seen during pause leaves a phantom active command that can
@@ -393,6 +406,29 @@ const LATE_TARGET_MAX = 256
 const SESSION_TAIL_CHARS = 4096
 const SESSION_TAIL_MAX = 64
 
+// The maps above are keyed by terminal id and command id, which a project does
+// not own: the next project's first row can carry the same id. When the
+// database has been closed since the last row, none of this belongs to the
+// project that is open now -- least of all sessionTail, whose bytes are the
+// closed project's output, and which would be joined to the new project's first
+// chunk and scanned into a loot row there. Keyed to the DB generation rather
+// than cleared by the main process, so every way of closing a project is covered.
+let seenGeneration = dbGeneration()
+
+function dropStateOfClosedProject(): void {
+  const now = dbGeneration()
+  if (now === seenGeneration) return
+  seenGeneration = now
+  clearPerProjectState()
+}
+
+function clearPerProjectState(): void {
+  castOffsetAtStart.clear()
+  sessionTail.clear()
+  lateTargetByCommand.clear()
+  lateChunkSeen.clear()
+}
+
 function emptyPlan(): Plan {
   return { lootValues: [], pendingLootMatches: [], pivot: null, pivotClose: null, cleanup: null, fileXfer: null, httpCred: null, commandCreds: [] }
 }
@@ -613,9 +649,8 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
 
 /** Test helper. */
 export function _resetIngest(): void {
-  castOffsetAtStart.clear()
-  sessionTail.clear()
-  lateTargetByCommand.clear()
+  clearPerProjectState()
+  seenGeneration = dbGeneration()
   resetCausesResolver()
   lootDetectorRef = null
   alertRuntimeRef = null

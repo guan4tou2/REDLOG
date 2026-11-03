@@ -52,6 +52,48 @@ describe('shell adapter boundaries', () => {
     expect(zsh).toContain('\\"cwd\\"')
   })
 
+  // #499 PR B. Where the report goes is the relay's business and when to take it
+  // is the adapter's; neither adapter learns the directory, and both ask the
+  // same shared function, once, at the first prompt.
+  it('keeps tool detection in common: the adapters only say when, and never where', () => {
+    const common = read('hooks/shell-common.sh')
+    expect(common).toContain('_redlog_report_tools()')
+    expect(common).not.toContain('tool-detection')
+    // Gated on the one recording rule, and the flag set only after the gate.
+    const report = common.slice(common.indexOf('_redlog_report_tools() {'))
+    const gate = report.indexOf('_redlog_is_recording || return 0')
+    expect(gate).toBeGreaterThan(-1)
+    expect(report.indexOf('_REDLOG_TOOLS_REPORTED=1')).toBeGreaterThan(gate)
+    for (const adapter of ['hooks/shell-bash-hook.sh', 'hooks/shell-zsh-hook.zsh']) {
+      const text = read(adapter)
+      expect(text, adapter).not.toContain('tool-detection')
+      expect(text, adapter).not.toContain(' detect ')
+      expect(text.match(/_redlog_report_tools$/gm), adapter).toBeNull()
+      expect(text.match(/_redlog_report_tools; fi/g), adapter).toHaveLength(1)
+      expect(text, adapter).toContain('_REDLOG_TOOLS_REPORTED=""')
+      expect(text, adapter).not.toMatch(/export\s+_REDLOG_TOOLS_REPORTED/)
+    }
+  })
+
+  // The first prompt of a shell has no command before it, which is exactly the
+  // prompt `_redlog_precmd` returns early from. A guard below that return is a
+  // report at the first COMMAND's prompt, and the PTY tests alone had stayed
+  // green with it moved (a late report still shows up). Order is the contract.
+  it('takes the report before anything that depends on a command having run', () => {
+    const body = (text: string, name: string): string => {
+      const start = text.indexOf(`${name}() {`)
+      expect(start, `${name} exists`).toBeGreaterThan(-1)
+      return text.slice(start, text.indexOf('\n}\n', start)).split('\n').filter((l) => !l.trim().startsWith('#')).join('\n')
+    }
+    for (const [file, fn] of [['hooks/shell-zsh-hook.zsh', '_redlog_precmd'], ['hooks/shell-bash-hook.sh', '_redlog_prompt_command']]) {
+      const text = body(read(file), fn)
+      const guard = text.indexOf('_redlog_report_tools')
+      expect(guard, `${file}: the guard is in ${fn}`).toBeGreaterThan(-1)
+      expect(guard, `${file}: before the first use of the last command`).toBeLessThan(text.indexOf('_REDLOG_LAST_CMD'))
+      expect(guard, `${file}: before the first return`).toBeLessThan(text.indexOf('return'))
+    }
+  })
+
   it('does not ship historical combined hook entry points', () => {
     expect(fs.existsSync(path.resolve('hooks/shell-preexec-hook.sh'))).toBe(false)
     expect(fs.existsSync(path.resolve('shell/redlog-hook.zsh'))).toBe(false)

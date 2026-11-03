@@ -5,6 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getCaptureHealth: typeof import('../src/core/capture-health').getCaptureHealth
 let configureCaptureHealth: typeof import('../src/core/capture-health').configureCaptureHealth
@@ -21,7 +22,7 @@ try {
   hooksMod = await import('../src/core/hooks-manager')
   pluginsIndex = await import('../src/core/plugins/index')
   eventBusMod = await import('../src/core/event-bus')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; closeDB = dbMod.closeDB; getDB = dbMod.getDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
   configureCaptureHealth = chMod.configureCaptureHealth
@@ -672,5 +673,242 @@ describeDB('each AI tool reports its own last event', () => {
     expect(row('agent-codex')?.lastEventAt).not.toBeNull()
     expect(row('agent-claude-code')?.lastEventAt).toBeNull()
     expect(row('agent-opencode')).toBeUndefined()
+  })
+})
+
+// The probes were rewritten from `IN (...)` lists into one equality seek per
+// value, so that an index can answer each one (see newestEvent). Nothing in the
+// suites above would notice a rewrite that quietly answers a different question:
+// they plant one row and read one source. This runs the ORIGINAL probes, kept
+// below as a verbatim copy of the SQL they replaced, against one database that
+// holds every awkward row at once, and requires the same answer from each.
+describeDB('capture-health: the indexed probes answer what the IN-list probes did', () => {
+  let tmp: string
+  const NOW = Date.now()
+  const MIN = 60_000
+  const HOUR = 60 * MIN
+  const DAY = 24 * HOUR
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-equiv-')); initDB(tmp)
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-windows-output')]
+    )
+  })
+  afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
+
+  const at = (agentType: string, data: Record<string, unknown>, agoMs: number): void => {
+    insertEventRaw(agentType, data, { operatorId: 'op', occurredAt: NOW - agoMs })
+  }
+
+  /** Every row below is chosen to separate a correct rewrite from a plausible
+   *  wrong one. No two different own shells share a millisecond: the original
+   *  answer for that case was whichever row the index happened to yield. */
+  function seed(): void {
+    // RedLog's own pane: not the operator's terminal, whatever it captured.
+    at('shell', { subtype: 'command_start', command: 'pane-1', shell: 'zsh', source: 'builtin-terminal' }, 5 * MIN)
+    at('shell', { subtype: 'command_end', command: 'pane-2', shell: 'zsh', source: 'builtin-terminal', output_disposition: 'captured' }, 4 * MIN)
+    // Own bash, and only 40 days old.
+    at('shell', { subtype: 'command_start', command: 'bash-1', shell: 'bash', source: 'auto-relay' }, 40 * DAY + 2000)
+    at('shell', { subtype: 'command_end', command: 'bash-1', shell: 'bash', source: 'auto-relay', output_disposition: 'none' }, 40 * DAY)
+    // No `source` at all (an older adapter) still counts as the operator's.
+    at('shell', { subtype: 'command_end', command: 'ps-1', shell: 'powershell', output_disposition: 'captured' }, 30 * MIN)
+    // No `shell`: cannot vouch for any adapter, and is the newest shell row.
+    at('shell', { subtype: 'command_start', command: 'anon-1', source: 'auto-relay' }, 1 * MIN)
+    // An empty shell name, which the no-hook probe matches by design.
+    at('shell', { subtype: 'command_start', command: 'empty-1', shell: '', source: 'auto-relay' }, 2 * HOUR)
+    // zsh: a newer command that was not captured, an older one that was.
+    at('shell', { subtype: 'command_end', command: 'zsh-1', shell: 'zsh', source: 'auto-relay', output_disposition: 'redacted' }, 1 * HOUR)
+    at('shell', { subtype: 'command_end', command: 'zsh-2', shell: 'zsh', source: 'auto-relay', output_disposition: 'captured' }, 3 * HOUR)
+    // Housekeeping and a row with no subtype are not commands.
+    at('shell', { subtype: 'session_start', shell: 'zsh', source: 'auto-relay' }, 10_000)
+    at('shell', { command: 'no-subtype', shell: 'zsh', source: 'auto-relay' }, 20_000)
+
+    // HTTP: regular, unstamped, an explicit regular stamp, and transparent rows
+    // that are old and nothing else.
+    at('scanner', { subtype: 'http_request_start', url: 'https://a.test/', method: 'GET' }, 15 * MIN)
+    at('scanner', { subtype: 'http_response', url: 'https://a.test/', status: 200 }, 20 * MIN)
+    at('scanner', { subtype: 'http_response', url: 'https://b.test/', status: 200, proxy_mode: 'regular' }, 25 * MIN)
+    at('scanner', { subtype: 'http_request_start', url: 'https://t.test/', proxy_mode: 'transparent' }, 50 * DAY + 1000)
+    at('scanner', { subtype: 'http_response', url: 'https://t.test/', proxy_mode: 'transparent' }, 50 * DAY)
+    at('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' }, 9 * MIN)
+    at('scanner', { subtype: 'packet_flow', src: '10.0.0.5', dst: '10.0.0.9' }, 60 * DAY)
+    at('dns', { subtype: 'dns_query', query_name: 'a.test' }, 70 * DAY)
+
+    // AI tools. claude-code is chained. codex has its newest row in BOTH tiers
+    // at one millisecond (thinking is logged, user_prompt is chained).
+    at('agent', { subtype: 'tool_call', agent: 'claude-code', session_id: 's1' }, 8 * MIN)
+    at('agent', { subtype: 'thinking', agent: 'codex', session_id: 's2' }, 90 * DAY)
+    at('agent', { subtype: 'user_prompt', agent: 'codex', session_id: 's2' }, 90 * DAY)
+
+    // Heartbeats and the rest.
+    at('system', { subtype: 'producer_heartbeat', producer: 'pcap-capture' }, 10_000)
+    at('system', { subtype: 'producer_heartbeat', producer: 'c2-tailers' }, 2 * DAY)
+    at('system', { subtype: 'api_started' }, 1000)
+    at('file_transfer', { subtype: 'file_created', source: 'file-watcher', path: '/tmp/a' }, 100 * DAY)
+    at('file_transfer', { subtype: 'file_created', source: 'upload', path: '/tmp/b' }, 1 * MIN)
+    at('browser', { subtype: 'console', level: 'log' }, 12 * MIN)
+    at('process', { subtype: 'process_spawn', pid: 1 }, 6 * DAY)
+    at('clipboard', { subtype: 'clipboard_copy', text: 'x' }, 3 * MIN)
+    at('screenshot', { subtype: 'screenshot', path: 'a.png' }, 4 * HOUR)
+  }
+
+  // ---- The original probes: verbatim copies of the SQL this replaced. ------
+
+  function oldLast(where: string, params: unknown[] = []): number | null {
+    const db = getDB()
+    const chainedRow = db.prepare(
+      `SELECT timestamp AS t FROM events WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+    ).get(...params) as { t: number | null } | undefined
+    const loggedRow = db.prepare(
+      `SELECT timestamp AS t FROM events_logged WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+    ).get(...params) as { t: number | null } | undefined
+    const chained = chainedRow?.t ?? null
+    const logged = loggedRow?.t ?? null
+    if (chained === null) return logged
+    if (logged === null) return chained
+    return chained > logged ? chained : logged
+  }
+
+  function oldShellName(where: string, params: unknown[] = []): string | null {
+    const db = getDB()
+    const q = (table: string): { t: number; s: string | null } | undefined => db.prepare(
+      `SELECT timestamp AS t, json_extract(data,'$.shell') AS s FROM ${table} WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+    ).get(...params) as { t: number; s: string | null } | undefined
+    const a = q('events')
+    const b = q('events_logged')
+    const newest = !a ? b : !b ? a : (a.t >= b.t ? a : b)
+    return newest?.s ?? null
+  }
+
+  const PROXY_MODE: Record<string, string> = { 'transparent-proxy.mitmproxy-transparent': 'transparent' }
+
+  function oracle(shellNames: string[], plugins: Array<{ id: string; agentType: string; emits: string[] }>) {
+    const ownShellWhere = `agent_type = 'shell'
+     AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
+     AND json_extract(data,'$.shell') IN (${shellNames.map(() => '?').join(',') || "''"})`
+    const mitm = oldLast(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
+    AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
+    const dns = oldLast(`agent_type = 'dns'`)
+    const core: Record<string, number | null> = {
+      terminal: oldLast(`agent_type = 'shell' AND subtype IN ('command_start','command_end')`),
+      mitmproxy: Math.max(mitm ?? 0, dns ?? 0) || null,
+      'browser-console': oldLast(`agent_type = 'browser'`),
+      'connection-monitor': oldLast(`agent_type = 'scanner' AND subtype IN ('connection','connection_end')`),
+      screenshot: oldLast(`agent_type = 'screenshot'`),
+      clipboard: oldLast(`agent_type = 'clipboard'`),
+      'process-monitor': oldLast(`agent_type = 'process'`),
+      'file-watcher': oldLast(`agent_type = 'file_transfer' AND json_extract(data,'$.source') = 'file-watcher'`)
+    }
+    const agentLast = (kind: string): number | null =>
+      oldLast(`agent_type = 'agent' AND json_extract(data,'$.agent') = ?`, [kind])
+    const own = {
+      last: oldLast(`${ownShellWhere} AND subtype IN ('command_start','command_end')`, shellNames),
+      name: oldShellName(`${ownShellWhere} AND subtype IN ('command_start','command_end')`, shellNames),
+      output: oldLast(`${ownShellWhere} AND subtype = 'command_end'
+     AND json_extract(data,'$.output_disposition') = 'captured'`, shellNames)
+    }
+    const pluginRows: Record<string, { last: number | null; hb: number | null }> = {}
+    for (const p of plugins) {
+      const mode = PROXY_MODE[p.id]
+      const placeholders = p.emits.map(() => '?').join(',')
+      pluginRows[p.id] = {
+        last: oldLast(
+          `agent_type = ? AND subtype IN (${placeholders})${mode ? ` AND json_extract(data,'$.proxy_mode') = ?` : ''}`,
+          [p.agentType, ...p.emits, ...(mode ? [mode] : [])]
+        ),
+        hb: oldLast(
+          `agent_type = 'system' AND subtype = 'producer_heartbeat' AND json_extract(data,'$.producer') = ?`,
+          [p.id.split('.')[0]]
+        )
+      }
+    }
+    return { core, agentLast, own, pluginRows }
+  }
+
+  const PLUGINS = [
+    { id: 'transparent-proxy.mitmproxy-transparent', agentType: 'scanner', emits: ['http_request_start', 'http_response'] },
+    { id: 'pcap-capture.pcap-tcpdump', agentType: 'scanner', emits: ['packet_flow', 'pcap_segment'] },
+    { id: 'c2-tailers.sliver', agentType: 'scanner', emits: ['c2_checkin'] }
+  ]
+
+  function compare(shells: string[], label: string): void {
+    invalidateHooksCache()
+    const hook = (id: string, extra: Record<string, unknown> = {}) => ({
+      id, name: id, description: '', agentType: 'shell', installed: true, available: true,
+      installMethod: 'shell-source' as const, hookFile: '', ...extra
+    })
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      hook('shell-zsh', { installed: shells.includes('zsh') }),
+      hook('shell-bash', { installed: shells.includes('bash') }),
+      hook('shell-powershell', { installed: shells.includes('powershell') }),
+      ...PLUGINS.map((p) => hook(p.id, { agentType: p.agentType, emits: p.emits, installed: false }))
+    ])
+    const h = getCaptureHealth(NOW)
+    const o = oracle(shells, PLUGINS)
+
+    let everFed = false
+    let anyWired = false
+    let anyErrored = false
+    let producerStalled = false
+    for (const s of h.sources) {
+      if (s.informational) {
+        const p = o.pluginRows[s.id]
+        expect(p, `${label}: unexpected plugin source ${s.id}`).toBeDefined()
+        expect(s.lastEventAt, `${label}: ${s.id} lastEventAt`).toBe(p.last)
+        const running = p.hb !== null && NOW - p.hb <= 60_000
+        expect(s.running, `${label}: ${s.id} running`).toBe(running)
+        expect(s.state, `${label}: ${s.id} state`).toBe(running || p.last !== null ? 'ready' : 'off')
+        if (p.last !== null) { everFed = true; anyWired = true }
+        if (running && (p.last === null || NOW - p.last > 10 * 60_000)) producerStalled = true
+        continue
+      }
+      const last = s.id.startsWith('agent-') ? o.agentLast(s.id.slice('agent-'.length)) : o.core[s.id]
+      expect(last, `${label}: no oracle for source ${s.id}`).not.toBeUndefined()
+      expect(s.lastEventAt, `${label}: ${s.id} lastEventAt`).toBe(last)
+      // `error` comes from the catalog and the filesystem, not from a probe.
+      if (s.state === 'error') anyErrored = true
+      else {
+        const ignoreInstalled = s.id === 'terminal'
+        const expected = s.enabled === false ? 'off'
+          : last !== null ? 'ready'
+            : !ignoreInstalled && s.installed === false ? 'unset' : 'ready'
+        expect(s.state, `${label}: ${s.id} state`).toBe(expected)
+      }
+      if (last !== null) everFed = true
+      if (s.state !== 'off' && (s.installed === true || (s.installed === undefined && last !== null))) anyWired = true
+      if (s.id === 'terminal') {
+        expect(s.ownShellLastEventAt, `${label}: ownShellLastEventAt`).toBe(o.own.last)
+        expect(s.ownShellOutputAt, `${label}: ownShellOutputAt`).toBe(o.own.output)
+        expect(s.ownShellName, `${label}: ownShellName`).toBe(o.own.name)
+      }
+    }
+    expect(h.hasRecorded, `${label}: hasRecorded`).toBe(everFed)
+    const verdict = !anyWired && !everFed ? 'dark' : anyErrored || producerStalled ? 'partial' : 'healthy'
+    expect(h.verdict, `${label}: verdict`).toBe(verdict)
+  }
+
+  const HOOK_SETS: string[][] = [[], ['zsh'], ['bash'], ['zsh', 'bash', 'powershell']]
+
+  it.each(HOOK_SETS.map((s) => [s]))('a database holding every awkward row, with shell hooks %j', (shells) => {
+    seed()
+    compare(shells, `hooks [${shells}]`)
+  })
+
+  it('the fixture separates the cases it is meant to separate', () => {
+    // A guard on the guard: if these stopped differing, the comparison above
+    // would pass for a probe that ignored the term in question.
+    seed()
+    const names = HOOK_SETS.map((s) => oracle(s, PLUGINS).own)
+    expect(new Set(names.map((n) => n.name)).size, 'each hook set should see a different newest shell').toBe(4)
+    expect(new Set(names.map((n) => n.output)).size, 'and a different captured-output time').toBeGreaterThanOrEqual(3)
+    const o = oracle(['zsh'], PLUGINS)
+    expect(o.pluginRows['transparent-proxy.mitmproxy-transparent'].last, 'old-only transparent rows').not.toBeNull()
+    expect(o.core.mitmproxy, 'must not be fed by the transparent rows').toBe(NOW - 15 * MIN)
+  })
+
+  it.each(HOOK_SETS.map((s) => [s]))('an empty database, with shell hooks %j', (shells) => {
+    compare(shells, `empty, hooks [${shells}]`)
   })
 })

@@ -148,6 +148,18 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(new Set(r.events.map(e => e.terminalId)).size).toBe(1)
   })
 
+  // #296. `ssh host 'sleep 20'` was recorded as `ssh host sleep 20`, which is a
+  // different command: the operator's own quoting is what says where one
+  // argument ends. The record has to be one that could be pasted back.
+  it('records the command with its quoting, so arguments keep their boundaries', async () => {
+    const r = await session(1024, false, ['/bin/echo', 'host', 'sleep 20', "it's", '', 'plain'])
+    expect(r.code).toBe(0)
+    expect(r.events[0]).toMatchObject({
+      subtype: 'session_start',
+      command: `/bin/echo host 'sleep 20' 'it'"'"'s' '' plain`
+    })
+  })
+
   it.each(['eof', 'eio'] as const)('drains real output after a transient PTY %s while the command is alive', async (failure) => {
     const r = await session(4096, false, ['/bin/sh', '-c', 'printf READ_RETRY; printf STDERR_RETRY >&2; sleep 0.1; exit 7'], false, failure)
     expect(r.diagnostic).toContain(`INJECTED_PTY_${failure}`)

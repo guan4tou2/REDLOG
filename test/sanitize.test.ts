@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let sanitize: typeof import('../src/core/sanitize').sanitize
@@ -17,6 +18,7 @@ try {
   const sanMod = await import('../src/core/sanitize')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  getDB = dbMod.getDB
   insertEvent = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   sanitize = sanMod.sanitize
@@ -116,5 +118,57 @@ describeDB('sanitize (four-layer redaction, layer 4)', () => {
     // But TWO system.sanitized events exist — each pass is auditable.
     const sanEvs = queryEvents({ agentType: 'system' }).filter((e) => e.data?.subtype === 'sanitized')
     expect(sanEvs.length).toBe(2)
+  })
+
+  // Export looks the fields up up to three times per event; preparing per call
+  // was the largest share of export time (docs/PERF-AUDIT-2026-11.md §4).
+  describe('getSanitizedFields statement reuse', () => {
+    const lookupPrepares = (spy: { mock: { calls: unknown[][] } }): number =>
+      spy.mock.calls.filter((c) => String(c[0]).includes('FROM sanitized_events WHERE source_event_id')).length
+
+    it('prepares once per connection however many lookups are made', () => {
+      const ev = insertEvent('shell', {
+        subtype: 'command_end',
+        output: 'raw AKIAIOSFODNN7EXAMPLE',
+        redactions: [{ field: 'output', start: 4, end: 24, pattern: 'entropy', hint: '' }]
+      }, OP)!
+      sanitize({ eventIds: [ev.id], fields: ['output'], ...OP })
+
+      const spy = vi.spyOn(getDB(), 'prepare')
+      for (let i = 0; i < 50; i++) getSanitizedFields(ev.id)
+      getSanitizedFields('no-such-event')
+      expect(lookupPrepares(spy)).toBe(1)
+      expect(Object.keys(getSanitizedFields(ev.id))).toEqual(['output'])
+    })
+
+    it('prepares again on a reopened connection and never reuses a closed one', () => {
+      const ev = insertEvent('shell', {
+        subtype: 'command_end',
+        output: 'raw AKIAIOSFODNN7EXAMPLE',
+        redactions: [{ field: 'output', start: 4, end: 24, pattern: 'entropy', hint: '' }]
+      }, OP)!
+      sanitize({ eventIds: [ev.id], fields: ['output'], ...OP })
+      const first = getSanitizedFields(ev.id)
+      expect(first.output).toBeDefined()
+
+      closeDB()
+      initDB(tmpDir)
+      const spy = vi.spyOn(getDB(), 'prepare')
+      // A statement kept from the closed connection would throw here.
+      expect(getSanitizedFields(ev.id)).toEqual(first)
+      getSanitizedFields(ev.id)
+      expect(lookupPrepares(spy)).toBe(1)
+
+      // A different project directory is a different connection too.
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sanitize-other-'))
+      try {
+        closeDB()
+        initDB(other)
+        expect(getSanitizedFields(ev.id)).toEqual({})
+      } finally {
+        closeDB()
+        fs.rmSync(other, { recursive: true, force: true })
+      }
+    })
   })
 })

@@ -215,9 +215,18 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
           'redlog class list',
           'redlog class add pty curl',
           'redlog class list',
+          'redlog class add relayed nc',
+          'redlog class list',
           'redlog class remove nc',
           'redlog class list',
-          'redlog class add nonsense curl'
+          'redlog class add native curl',
+          'echo code=$?',
+          'redlog class remove curl',
+          'redlog class list',
+          'redlog class add nonsense curl',
+          `redlog class add pty 'a;b'`,
+          'echo code=$?',
+          'redlog class list'
         ],
         redlog: {
           port: collector.port, token,
@@ -236,6 +245,9 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
       // other one, and printing "everything else" as a list would be a lie
       // the moment the operator ran something new.
       expect(listed).toMatch(/relayed: everything else/)
+      // vim and vi are native because a tool profile says so, not because a
+      // list does; the listing says where each name came from (#499).
+      expect(listed).toContain('tool profiles: Vim (vim vi)')
     })
 
     it('warns what moving a command into the PTY class costs', () => {
@@ -245,13 +257,179 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
       expect(run.steps[2].output).toMatch(/pty:.*\bcurl\b/)
     })
 
-    it('takes a command back out of a class it shipped in', () => {
-      expect(run.steps[4].output, 'nc is still native after remove').not.toMatch(/native:.*\bnc\b/)
+    it('moves a command out of the class it shipped in', () => {
+      expect(run.steps[3].output).toMatch(/nc is now relayed/)
+      expect(run.steps[4].output, 'nc is still native after add relayed').not.toMatch(/native:.*\bnc\b/)
+      expect(run.steps[4].output).not.toMatch(/pty:.*\bnc\b/)
+      // curl (pty) is still there from the step before.
+      expect(run.steps[4].output).toContain('your changes: curl (pty), nc (relayed)')
+    })
+
+    // #296: remove used to drop a command from the shipped defaults as well,
+    // so `remove pwncat-cs` left it relayed while saying "back to the
+    // default". Remove undoes the operator's own edit and nothing else.
+    it('puts a command back where it shipped when its edit is removed', () => {
+      expect(run.steps[5].output).toMatch(/nc is back to the default/)
+      expect(run.steps[6].output, 'nc did not return to native').toMatch(/native:.*\bnc\b/)
+    })
+
+    it('takes a command the operator added out again when it is removed', () => {
+      expect(run.steps[10].output).not.toMatch(/native:.*\bcurl\b/)
+      expect(run.steps[10].output).not.toMatch(/pty:.*\bcurl\b/)
+    })
+
+    it('exits 0 when an add succeeds', () => {
+      expect(run.steps[7].output).toMatch(/curl is now native/)
+      expect(run.steps[8].output, 'a successful add returned non-zero').toContain('code=0')
     })
 
     it('refuses a class that does not exist, instead of inventing one', () => {
       // Rule 3: a typo must not be silently a no-op.
-      expect(run.steps[5].output).toMatch(/no such class: nonsense/)
+      expect(run.steps[11].output).toMatch(/no such class: nonsense/)
+    })
+
+    // The wrapper function is built from this name, so it is not a free string.
+    it('refuses a name that is not a bare command name, says so, and does not write it', () => {
+      expect(run.steps[12].output).toMatch(/not a command name: a;b/)
+      expect(run.steps[12].output).not.toMatch(/no such class/)
+      expect(run.steps[13].output, 'a refused add returned zero').toContain('code=2')
+      expect(run.steps[14].output).not.toMatch(/a;b/)
+    })
+  })
+
+  // #499. A plugin's tool profile can arrive while a terminal is open. The
+  // class list names it, and says the one thing that would otherwise surprise
+  // the operator: the PTY wrappers are installed when a terminal starts, so
+  // this one still runs the program on its own terminal.
+  describe('class list with a plugin profile that arrived after this terminal started', () => {
+    const snapshot = JSON.stringify({
+      version: 1,
+      profiles: [{ id: 'pack/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy', 'ligolo-gone'], reason: 'r' }],
+      held: {}
+    })
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: [
+          'mkdir -p "$HOME/fakebin"',
+          `printf '#!/bin/sh\\n' > "$HOME/fakebin/ligolo-proxy"`,
+          'chmod +x "$HOME/fakebin/ligolo-proxy"',
+          'export PATH="$HOME/fakebin:$PATH"',
+          `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+        ].join('\n'),
+        commands: [
+          'redlog class list',
+          `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`,
+          'redlog class list'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-plug', operatorId: 'op-plug' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('names the plugin\'s profile and that its program is recorded in a new terminal only', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(run.steps[0].output).not.toMatch(/plugin profiles|PTY-recorded in a new terminal/)
+
+      const after = run.steps[2].output
+      expect(after).toContain('plugin profiles: Ligolo-ng from pack (ligolo-proxy ligolo-gone)')
+      expect(after).toMatch(/pty:.*\bligolo-proxy\b/)
+      expect(after).toContain('ligolo-proxy is PTY-recorded in a new terminal, not this one')
+      // ssh was wrapped when this terminal started, and ligolo-gone has no
+      // program behind it: neither is something to warn about.
+      expect(after).not.toMatch(/ssh is PTY-recorded/)
+      expect(after).not.toMatch(/ligolo-gone is PTY-recorded/)
+    })
+  })
+
+  // A program that was in the pty class when the hook loaded but had no
+  // executable on PATH then gets no wrapper, and a PATH entry added afterwards
+  // does not give it one. "A new terminal" is true only if the class changed;
+  // here the next terminal would be wrapped, but this one and the line must not
+  // promise it for a program the class already had.
+  describe('class list for a pty program that was not on PATH when the hook loaded', () => {
+    const snapshot = JSON.stringify({
+      version: 1,
+      // A name no machine has: kali ships a real ligolo-proxy, which would be wrapped at load.
+      profiles: [{ id: 'pack/late', name: 'Late Tool', mode: 'pty', executables: ['late-pty-tool'], reason: 'r' }],
+      held: {}
+    })
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: [
+          'mkdir -p "$HOME/.redlog"',
+          `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`,
+          `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+        ].join('\n'),
+        commands: [
+          'mkdir -p "$HOME/latebin"',
+          `printf '#!/bin/sh\\n' > "$HOME/latebin/late-pty-tool"`,
+          'chmod +x "$HOME/latebin/late-pty-tool"',
+          'export PATH="$HOME/latebin:$PATH"',
+          'redlog class list'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-late', operatorId: 'op-late' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('says it was not on PATH when the hook loaded, and does not promise a new terminal', () => {
+      expect(run.ok, run.error).toBe(true)
+      const out = run.steps[4].output
+      expect(out).toContain('plugin profiles: Late Tool from pack (late-pty-tool)')
+      expect(out).toContain('late-pty-tool is not PTY-recorded: it was not on PATH when the RedLog hook loaded')
+      expect(out).not.toMatch(/late-pty-tool is PTY-recorded in a new terminal/)
+    })
+  })
+
+  // `redlog class add|remove` rewrite the whole overlay, so one that cannot be
+  // read is refused and left as it is, not replaced by a file with one edit.
+  describe('class add and remove on an overlay that cannot be read', () => {
+    let run: Awaited<ReturnType<typeof runZsh>>
+
+    beforeAll(async () => {
+      run = await runZsh(target!, {
+        rc: [
+          'mkdir -p "$HOME/.redlog"',
+          `printf '{"pty": ["keep-me"' > "$HOME/.redlog/command-class.json"`,
+          `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+        ].join('\n'),
+        commands: [
+          'redlog class add native some-tool',
+          'echo code=$?',
+          'redlog class remove keep-me',
+          'echo code=$?',
+          `redlog class add pty 'foo/'`,
+          'echo code=$?',
+          'cat "$HOME/.redlog/command-class.json"; echo'
+        ],
+        redlog: { port: collector.port, token, identity: { engagementId: 'eng-bad', operatorId: 'op-bad' } },
+        timeoutSeconds: 60
+      })
+    }, 300_000)
+
+    it('says it cannot read the file, does not claim the change, and exits non-zero', () => {
+      expect(run.ok, run.error).toBe(true)
+      expect(run.steps[0].output).toMatch(/command-class\.json cannot be read/)
+      expect(run.steps[0].output).not.toMatch(/is now|no such class/)
+      expect(run.steps[1].output).toContain('code=2')
+      expect(run.steps[2].output).toMatch(/command-class\.json cannot be read/)
+      expect(run.steps[2].output).not.toMatch(/back to the default/)
+      expect(run.steps[3].output).toContain('code=2')
+    })
+
+    it('says a path with nothing after the slash is not a command name, and not that the class is wrong', () => {
+      expect(run.steps[4].output).toMatch(/not a command name: foo\//)
+      expect(run.steps[4].output).not.toMatch(/no such class/)
+      expect(run.steps[5].output).toContain('code=2')
+    })
+
+    it('leaves the file exactly as it was', () => {
+      expect(run.steps[6].output).toContain('{"pty": ["keep-me"')
+      expect(run.steps[6].output).not.toMatch(/some-tool|relayed/)
     })
   })
 

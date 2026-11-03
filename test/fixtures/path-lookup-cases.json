@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "One table, two lookups: findOnPath (src/core/command-lookup.ts) and the",
+    "`detect` mode of hooks/redlog-relay.py answer 'where is this command on",
+    "PATH' independently, because the shell cannot call TypeScript and RedLog",
+    "will not spawn python3 to ask. test/command-lookup.test.ts and",
+    "test/tool-detection-shell.test.ts both build `dirs` under a temp directory,",
+    "put them on PATH in the order listed, then `relative` last as a RELATIVE",
+    "entry, and compare each lookup against `found` (a path under the temp",
+    "directory, or null).",
+    "kinds: exec = executable file; plain = file without the execute bit;",
+    "dir = a directory; symlink = a link to `target` in the same directory."
+  ],
+  "dirs": {
+    "first": [
+      { "name": "exe-first", "kind": "exec" },
+      { "name": "plain-file", "kind": "plain" },
+      { "name": "a-dir", "kind": "dir" },
+      { "name": "linked", "kind": "symlink", "target": "exe-first" },
+      { "name": "dup", "kind": "exec" },
+      { "name": "plain-first", "kind": "plain" }
+    ],
+    "second": [
+      { "name": "exe-second", "kind": "exec" },
+      { "name": "dup", "kind": "exec" },
+      { "name": "plain-first", "kind": "exec" }
+    ]
+  },
+  "relative": { "dir": "rel", "files": [{ "name": "rel-exe", "kind": "exec" }] },
+  "lookups": [
+    { "name": "exe-first", "found": "first/exe-first" },
+    { "name": "plain-file", "found": null },
+    { "name": "a-dir", "found": null },
+    { "name": "linked", "found": "first/linked" },
+    { "name": "dup", "found": "first/dup" },
+    { "name": "exe-second", "found": "second/exe-second" },
+    { "name": "plain-first", "found": "second/plain-first" },
+    { "name": "rel-exe", "found": null },
+    { "name": "absent", "found": null }
+  ]
+}

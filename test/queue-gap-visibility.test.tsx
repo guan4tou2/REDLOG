@@ -29,16 +29,21 @@ class FakeChild extends EventEmitter {
 afterEach(() => { cleanup(); localStorage.clear() })
 
 describe('a gap the addon could not write', () => {
+  let nonce = ''
+  const spawnWith = (child: FakeChild) => vi.fn((_c: string, _a: string[], o: { env: Record<string, string> }) => {
+    nonce = o.env.REDLOG_PROXY_GAP_NONCE
+    return child as never
+  })
   it('is counted from the proxy output, even split across chunks, and kept after a restart', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists: () => true, fingerprint: () => null,
+    const proxy = new ManagedHttpProxy({ spawn: spawnWith(child) as never, exists: () => true, fingerprint: () => null,
       readinessTimeoutMs: 100, probe: async () => true })
     const seen: Array<[number | undefined, number | undefined]> = []
     proxy.onStatusChange((next: ManagedProxyStatus, previous: ManagedProxyStatus) => seen.push([next.unsavedGapEvents, previous.unsavedGapEvents]))
     await proxy.start({ addonPath: '/addon.py', port: 6661 })
     expect(proxy.status().unsavedGapEvents).toBeUndefined()
     child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] capture gap not sa'))
-    child.stdout.emit('data', Buffer.from('ved: 3 event(s) refused at a full send queue are not recorded anywhere\n[10:00:01.000] [redlog] capture gap not saved: 2 event(s) refused\n'))
+    child.stdout.emit('data', Buffer.from(`ved: 3 event(s) reason=queue-full started=1 ended=2 engagement=A nonce=${nonce}\n[10:00:01.000] [redlog] capture gap not saved: 2 event(s) reason=queue-full started=3 ended=4 engagement=A nonce=${nonce}\n`))
     expect(proxy.status().unsavedGapEvents).toBe(5)
     expect(seen.filter(([n]) => n !== undefined).at(-1)).toEqual([5, 3])
     proxy.stop()
@@ -49,10 +54,10 @@ describe('a gap the addon could not write', () => {
   // gap belongs to the project that was closed, so its line is not counted.
   it('does not count an unsaved project-switched gap against the open project', async () => {
     const child = new FakeChild()
-    const proxy = new ManagedHttpProxy({ spawn: vi.fn(() => child as never), exists: () => true, fingerprint: () => null,
+    const proxy = new ManagedHttpProxy({ spawn: spawnWith(child) as never, exists: () => true, fingerprint: () => null,
       readinessTimeoutMs: 100, probe: async () => true })
     await proxy.start({ addonPath: '/addon.py', port: 6661 })
-    child.stdout.emit('data', Buffer.from('[10:00:00.000] [redlog] project-switch gap not saved: 2 event(s) for a closed project are not recorded anywhere\n'))
+    child.stdout.emit('data', Buffer.from(`[10:00:00.000] [redlog] capture gap not saved: 2 event(s) reason=project-switched started=1 ended=2 engagement=A nonce=${nonce}\n`))
     expect(proxy.status().unsavedGapEvents).toBeUndefined()
     proxy.stop()
   })

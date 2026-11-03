@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -132,5 +132,91 @@ describeDB('query plans', () => {
     )
     expect(p).toContain('idx_events_type_ts')
     expect(p, 'ordering must come from the index, not a sort').not.toContain('TEMP B-TREE')
+  })
+
+  // The test above passes for a probe that reads the whole bucket: its plan is
+  // "SEARCH events USING INDEX idx_events_type_ts (agent_type=?)", which has no
+  // SCAN and no sort and still filters every shell row by json_extract. The
+  // probes that did this on a 198k-row project took 5-6 s per Capture Health
+  // read. So this one runs the REAL probes and asserts the plan reaches the
+  // discriminating column, not just an index.
+  it('every Capture Health probe seeks on its discriminator instead of filtering a bucket', async () => {
+    const hooksMod = await import('../src/core/hooks-manager')
+    const healthMod = await import('../src/core/capture-health')
+    const pluginsIndex = await import('../src/core/plugins/index')
+    const hook = (id: string, extra: Record<string, unknown> = {}) => ({
+      id, name: id, description: '', agentType: 'shell', installed: true, available: true,
+      installMethod: 'shell-source' as const, hookFile: '', ...extra
+    })
+    healthMod.invalidateHooksCache()
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      hook('shell-zsh'), hook('shell-bash'),
+      hook('transparent-proxy.mitmproxy-transparent', { agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false }),
+      hook('pcap-capture.pcap-tcpdump', { agentType: 'scanner', emits: ['packet_flow', 'pcap_segment'], installed: false }),
+      hook('c2-tailers.sliver', { agentType: 'scanner', emits: ['c2_checkin'], installed: false })
+    ])
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      ['pack-host-monitors', 'pack-windows-output'].map((id) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never)
+    )
+
+    const db = getDB()
+    const realPrepare = db.prepare.bind(db)
+    const seen: Array<{ sql: string; params: unknown[] }> = []
+    vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => {
+      const stmt = realPrepare(sql)
+      if (!sql.startsWith('SELECT timestamp AS t')) return stmt
+      const get = stmt.get.bind(stmt)
+      stmt.get = ((...params: unknown[]) => { seen.push({ sql, params }); return get(...params) }) as typeof stmt.get
+      return stmt
+    }) as typeof db.prepare)
+    healthMod.getCaptureHealth(Date.now())
+    vi.restoreAllMocks()
+
+    expect(seen.length, 'the probes were not captured').toBeGreaterThan(40)
+    // Known residuals, by SQL substring: the regular-proxy probe is a NOT IN
+    // over a bucket that is mostly its own rows (it stops at the first), and the
+    // other two have no discriminating column an index could serve.
+    const residual = ["NOT IN ('connection'", "'file-watcher'", 'producer_heartbeat']
+    let checked = 0
+    for (const { sql, params } of seen) {
+      const detail = plan(sql, ...params)
+      expect(detail, sql).not.toContain('SCAN')
+      expect(detail, sql).not.toContain('TEMP B-TREE')
+      if (residual.some((r) => sql.includes(r))) continue
+      checked++
+      expect(sql, 'no IN list: it is not an index seek').not.toMatch(/ IN \(/)
+      const where = sql.slice(sql.indexOf(' WHERE '))
+      // SQLite prints an indexed expression as `<expr>`, so the seek on the
+      // discriminator reads `(<expr>=? ...)`; a plan that only reaches
+      // `agent_type=?` is the bucket walk this test exists to refuse.
+      if (where.includes("'$.agent'") || where.includes("'$.shell'") || where.includes("= 'transparent'")) {
+        expect(detail, sql).toContain('<expr>=?')
+      } else if (where.includes('subtype = ')) {
+        expect(detail, sql).toContain('subtype=?')
+      }
+      // The captured-output probe is the one whose fallback still looks like a
+      // seek: without its own index it uses the own-shell one, matches on
+      // `<expr>=? AND subtype=?`, and then reads every command_end of that
+      // shell to find a captured one. Name the index it must reach.
+      if (where.includes("'$.output_disposition'")) expect(detail, sql).toContain('_own_shell_output_ts')
+      else if (where.includes("'$.shell'")) expect(detail, sql).toContain('_own_shell_ts')
+      else if (where.includes("= 'transparent'")) expect(detail, sql).toContain('_transparent_proxy_ts')
+      else if (where.includes("'$.agent'")) expect(detail, sql).toContain('_agent_kind_ts')
+    }
+    expect(checked, 'the allow-list swallowed the probes').toBeGreaterThan(30)
+  })
+
+  it('opening a project twice leaves each Capture Health index defined once', () => {
+    const names = ['agent_kind_ts', 'own_shell_ts', 'own_shell_output_ts', 'transparent_proxy_ts']
+    const count = (): Array<{ name: string }> => getDB()
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx\\_events%\\_ts' ESCAPE '\\'`)
+      .all() as Array<{ name: string }>
+    const before = count()
+    for (const table of ['events', 'events_logged']) {
+      for (const n of names) expect(before.filter((i) => i.name === `idx_${table}_${n}`), `${table} ${n}`).toHaveLength(1)
+    }
+    closeDB()
+    initDB(tmpDir)
+    expect(count()).toEqual(before)
   })
 })

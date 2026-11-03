@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { BODY_SOURCE_PREDICATE } from '../content-contract'
 import path from 'path'
 import fs from 'fs'
+import { mkdirPrivate, ensurePrivateFile, restrictFile } from '../private-fs'
 import { resetSession, assertEventsAppendOnly } from './events'
 
 function hasRows(db: import('better-sqlite3').Database, table: string): boolean {
@@ -126,15 +127,19 @@ export function initDB(projectDir: string): Database.Database {
   // (v0.6.87 audit A4).
   resetSession()
 
-  fs.mkdirSync(projectDir, { recursive: true })
-  fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })
-  fs.mkdirSync(path.join(projectDir, 'http-bodies'), { recursive: true })
+  mkdirPrivate(projectDir)
+  mkdirPrivate(path.join(projectDir, 'screenshots'))
+  mkdirPrivate(path.join(projectDir, 'http-bodies'))
 
   const dbPath = path.join(projectDir, 'timeline.db')
   currentDbPath = dbPath
+  // SQLite gives -wal and -shm the mode of the main file, so it is made first.
+  ensurePrivateFile(dbPath)
   db = new Database(dbPath)
 
   db.pragma('journal_mode = WAL')
+  restrictFile(`${dbPath}-wal`)
+  restrictFile(`${dbPath}-shm`)
   db.pragma('foreign_keys = ON')
 
   migrateAddedColumns(db)
@@ -342,6 +347,20 @@ export function initDB(projectDir: string): Database.Database {
 
   for (const table of ['events', 'events_logged']) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_content_refs ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
+  }
+
+  // The Capture Health probes (src/core/capture-health.ts, newestEvent). Each
+  // is an equality seek on one of these, and SQLite uses a partial index only
+  // when the query repeats its WHERE terms and its expressions character for
+  // character, so the probe SQL and these definitions are one contract; the
+  // plan guard in test/query-plans.test.ts fails when they drift. The repeated
+  // expression column in the last two keys is load-bearing: keyed as
+  // (subtype, timestamp) the planner chose idx_*_agent_subtype_ts instead.
+  for (const table of ['events', 'events_logged']) {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_agent_kind_ts ON ${table}(json_extract(data,'$.agent'), timestamp DESC) WHERE agent_type = 'agent'`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_own_shell_ts ON ${table}(json_extract(data,'$.shell'), subtype, timestamp DESC) WHERE agent_type = 'shell' AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_own_shell_output_ts ON ${table}(json_extract(data,'$.shell'), subtype, json_extract(data,'$.output_disposition'), timestamp DESC) WHERE agent_type = 'shell' AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal' AND json_extract(data,'$.output_disposition') = 'captured'`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_transparent_proxy_ts ON ${table}(json_extract(data,'$.proxy_mode'), subtype, timestamp DESC) WHERE agent_type = 'scanner' AND json_extract(data,'$.proxy_mode') = 'transparent'`)
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
