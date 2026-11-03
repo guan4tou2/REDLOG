@@ -7,6 +7,7 @@ import en from '../i18n/en.json'
 import { AMENDABLE_FIELDS } from './markerFold'
 import { firstStringArg } from './timelineDomain'
 import { formatBytes } from '../components/HttpDetail'
+import { safeDisplay } from './evidenceText'
 
 /** Exported for the first-run strip, which is a preview of this timeline and
  *  must name rows the same way it does. */
@@ -31,6 +32,14 @@ export const englishTitle: Translate = (key, vars) => {
  * the search index does so a query matches the same text in every locale.
  */
 export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): string {
+  // Every title that reaches a list, a search result or a marker reference
+  // goes through here, so this is the one place that has to neutralise the
+  // direction controls an untrusted producer can put in `command`, `url` or
+  // `target` (#549). The stored event is not modified.
+  return safeDisplay(rawEventTitle(event, t))
+}
+
+function rawEventTitle(event: RedLogEvent, t: Translate): string {
   const d = event.data
   switch (event.agentType) {
     case 'shell':

@@ -1,6 +1,7 @@
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useEffect, useRef, useState } from 'react'
 import type { ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow } from '../../../core/content-contract'
+import { safeDisplay, hasUnsafeText } from '../lib/evidenceText'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { Button } from './Button'
@@ -37,6 +38,11 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     finally{if(alive.current)setDelivery(null)}
   }
   const captureSelection=():void=>{
+    // #549: when the stored text carries direction/zero-width controls the
+    // <pre> does not show them verbatim, so a selection's character offsets no
+    // longer map onto the stored bytes. Refuse to mark rather than write byte
+    // offsets that would be wrong — copy and save still hand back the original.
+    if (window && hasUnsafeText(window.text)) return
     const selected=globalThis.window.getSelection(),root=pre.current
     if(!selected||!root||!window||selected.isCollapsed||!selected.rangeCount){setSelection(null);return}
     const range=selected.getRangeAt(0)
@@ -130,7 +136,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     {descriptor.capture === 'partial' && <p role="status" className="text-xs text-amber-300">{t('content.partial')}</p>}
     {descriptor.format === 'binary' && <p className="text-xs text-redlog-text-dim">{t('content.binary')}</p>}
     {window && <>
-      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{window.text.slice(0, highlightAt)}<mark className="bg-redlog-accent/25 text-redlog-text">{window.text.slice(highlightAt, highlightAt + highlightLength)}</mark>{window.text.slice(highlightAt + highlightLength)}</> : window.text || t('content.empty')}</pre>
+      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{safeDisplay(window.text.slice(0, highlightAt))}<mark className="bg-redlog-accent/25 text-redlog-text">{safeDisplay(window.text.slice(highlightAt, highlightAt + highlightLength))}</mark>{safeDisplay(window.text.slice(highlightAt + highlightLength))}</> : safeDisplay(window.text) || t('content.empty')}</pre>
       <div className="flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim">
         <span className="font-mono">{window.offset}–{window.end} / {window.total} B</span>
         <Button disabled={busy || window.offset === 0} onClick={() => void read(history.at(-1) ?? Math.max(0, window.offset - 65536), 'previous')}>{t('content.previous')}</Button>
