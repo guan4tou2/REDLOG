@@ -252,6 +252,17 @@ test.describe.serial('the first run', () => {
     await expect(page.getByTestId('first-run-start-work')).toBeVisible()
   })
 
+  // #559 / #558: this button said "Start working" and opened the Timeline. No
+  // test caught it because the assertions were `toBeVisible()` and a
+  // bounding-box comparison — they asked where the control was, never where it
+  // went. A label is a promise; this reads it.
+  test('the primary action goes where its label says', async () => {
+    const start = page.getByTestId('first-run-start-work')
+    await expect(start).toHaveText('View record')
+    await start.click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+  })
+
   test('hands over to the real dashboard, and does not come back', async () => {
     await page.reload()
     await openView(page, 'dashboard')

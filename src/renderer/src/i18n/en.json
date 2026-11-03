@@ -1513,7 +1513,7 @@
   "firstRun.core.verified": "✓ Verified",
   "firstRun.core.capturedTrustUnproven": "◐ Captured · CA unverified",
   "firstRun.core.ready": "✓ Core capture is ready",
-  "firstRun.core.start": "Start working",
+  "firstRun.core.viewRecord": "View record",
   "firstRun.core.later": "Finish later",
   "firstRun.core.laterWhy": "Core capture that is not verified stays flagged on the Dashboard until it is.",
   "firstRun.commands.title": "Commands & terminal",

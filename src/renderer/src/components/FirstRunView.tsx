@@ -205,7 +205,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         <div data-testid="first-run-core-footer" className="flex flex-col items-start gap-1.5 text-xs sm:items-end sm:max-w-sm">
           {commands !== 'none' && (
             <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-start-work">
-              {t('firstRun.core.start')}
+              {t('firstRun.core.viewRecord')}
             </Button>
           )}
           {ready ? (
