@@ -10,6 +10,7 @@
   "project.placeholder": "e.g. Client-Pentest-Q3",
   "project.delete": "Delete project",
   "project.rename": "Rename",
+  "project.renameFailed": "Could not rename the project",
   "replay.title": "Session replay",
   "replay.close": "Close replay",
   "replay.drawerLabel": "Session replay player",
