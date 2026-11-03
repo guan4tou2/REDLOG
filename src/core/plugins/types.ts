@@ -11,6 +11,12 @@
 //      patterns, event types) or capture scripts the *operator* runs that only
 //      talk to RedLog's authenticated HTTP API. None of this runs third-party
 //      code inside RedLog, so none of it can subvert the hash-chained log.
+//      Two kinds of declarative contribution still change what happens on the
+//      operator's machine, and wait for approval of the exact content like code
+//      does: `terminalProfiles`, and a `capture` entry RedLog installs
+//      (anything but `manual`), which becomes a script that runs in every new
+//      shell or after every Claude Code tool call. Regex rules from a user
+//      plugin run under a time limit.
 //   🔴 privileged — code RedLog itself executes. The only such contribution is
 //      `tailers`, and it is NOT isolated: a tailer module is loaded into the
 //      main process. It is therefore accepted from bundled plugins only, and
@@ -53,10 +59,11 @@ export interface LootPatternContribution {
   description?: string
 }
 
-/** 🟢 Redaction rule additions (merged into the active allow/denylist). */
+/** 🟢 Redaction rule additions (merged into the active denylist). A plugin can
+ *  only add to what is masked: there is no plugin allowlist, and a manifest
+ *  that declares one is refused. */
 export interface RedactionContribution {
   denylist?: string[]
-  allowlist?: string[]
 }
 
 /** 🟢 A command-pattern tagger: when the pattern matches a shell command, stamp
@@ -132,8 +139,16 @@ export interface CaptureContribution {
   requires?: string[]
   /** manifest-relative path to the hook script */
   hookFile: string
+  /** Anything but `manual` puts the hook on the operator's machine, so the
+   *  plugin waits for approval of its content (`requiresApproval`). A value
+   *  outside this list makes the plugin an error. */
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  /** `shell-source` only: the file name the hook is written under, directly
+   *  inside ~/.redlog. A bare name ending in .sh, .zsh or .bash; a folder or a
+   *  `..` makes the plugin an error. Defaults to the hook file's own name. */
   installTarget?: string
+  /** `shell-source` only: one of .zshrc, .bashrc, .bash_profile, .profile.
+   *  Anything else makes the plugin an error. */
   shellRcFile?: string
   claudeSettingsMatcher?: string
   /** for installMethod 'manual': ordered copy-paste setup steps */

@@ -1,3 +1,5 @@
+import { runBoundedRules } from './bounded-regex'
+
 const URL_RE = /https?:\/\/([^/:?\s]+)/
 const IP_RE = /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:\/\d{1,2})?)\b/
 const DOMAIN_RE = /\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+)\b/
@@ -18,8 +20,11 @@ const DOMAIN_RE = /\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]
  *  `param` carries a flag name for the flag-based strategies. */
 type Strategy = (cmd: string, param?: string) => string | null
 
+// `flag` is a flag name taken from a manifest (`param`), so it is matched
+// literally: as a pattern it could be one that never finishes, or one that
+// does not compile and throws out of the ingest path.
 const flagVal = (cmd: string, flag: string): string | null =>
-  cmd.match(new RegExp(`${flag}\\s+["']?([^\\s"']+)`))?.[1] ?? null
+  cmd.match(new RegExp(`${flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+["']?([^\\s"']+)`))?.[1] ?? null
 
 export const STRATEGIES: Record<string, Strategy> = {
   // ssh user@host — else a bare IP or domain in the args.
@@ -99,8 +104,23 @@ interface ExternalExtractor {
    *  pack), so an engagement can teach RedLog a tool the pack gets wrong.
    *  Matches the loader's same-id "user wins over bundled" rule. */
   source: 'bundled' | 'user'
+  /** Set when a pattern of this row overran the time bound and was stopped.
+   *  Cleared by reloading the plugin, which registers the row afresh. */
+  stopped?: 'time_limit'
 }
 const externalPatterns: ExternalExtractor[] = []
+/** The user-plugin rows of `externalPatterns`. They run under a time bound
+ *  (bounded-regex.ts, #499); the bundled pack ships with the app and runs
+ *  directly. Kept apart so a command with no user rows pays nothing for it. */
+let userExtractors: ExternalExtractor[] = []
+
+function refreshUserExtractors(): void {
+  userExtractors = externalPatterns.filter((p) => p.source === 'user')
+}
+
+function warnStopped(p: ExternalExtractor): void {
+  console.warn(`[target-extractor] rule ${p.pluginId}:${p.extractorName} exceeded its time limit and was stopped`)
+}
 
 export interface ExtractorRegistration {
   accepted: number
@@ -150,6 +170,7 @@ export function registerTargetExtractors(
       rejected.push({ name: extractorName, reason: (err as Error).message })
     }
   })
+  refreshUserExtractors()
   return { accepted: added, rejected }
 }
 
@@ -157,6 +178,7 @@ export function unregisterTargetExtractors(pluginId: string): void {
   for (let i = externalPatterns.length - 1; i >= 0; i--) {
     if (externalPatterns[i].pluginId === pluginId) externalPatterns.splice(i, 1)
   }
+  refreshUserExtractors()
 }
 
 /** v0.9.1: introspect the currently-registered plugin extractors for
@@ -169,6 +191,7 @@ export function _listExternalTargetExtractors(): Array<{
   flags: string
   strategy?: string
   description?: string
+  stopped?: 'time_limit'
 }> {
   return externalPatterns.map((p) => ({
     pluginId: p.pluginId,
@@ -177,7 +200,8 @@ export function _listExternalTargetExtractors(): Array<{
     extract: p.extract?.source ?? '',
     flags: p.extract?.flags ?? '',
     strategy: p.strategy,
-    description: p.description
+    description: p.description,
+    ...(p.stopped ? { stopped: p.stopped } : {})
   }))
 }
 
@@ -195,15 +219,29 @@ export function extractTargetWithProvenance(command: string): {
   // bundled built-in pack — they let an engagement teach RedLog a tool the
   // pack gets wrong, or one it doesn't know. A user extractor only "wins" when
   // it actually yields a host (a non-match falls through, exactly as before).
-  for (const p of externalPatterns) {
-    if (p.source !== 'user') continue
-    if (!p.cmd.test(trimmed)) continue
-    if (p.strategy) {
-      const host = STRATEGIES[p.strategy]?.(trimmed, p.param) ?? null
-      if (host) return { host, pluginId: p.pluginId, extractorName: p.extractorName }
-    } else if (p.extract) {
-      const m = trimmed.match(p.extract)
-      if (m) return { host: m[1] ?? m[0], pluginId: p.pluginId, extractorName: p.extractorName }
+  if (userExtractors.length > 0) {
+    // Every user row's `cmd` in one trip to the worker, then the `extract` of
+    // the rows that matched, each on its own as they are reached in order.
+    // The text is a shell command, or a page address the site chose.
+    const cmdMatched = new Set<ExternalExtractor>()
+    for (const [p, found] of runBoundedRules(
+      userExtractors,
+      (p) => ({ source: p.cmd.source, flags: p.cmd.flags, group: 0, once: true }),
+      trimmed, warnStopped
+    )) if (found.length > 0) cmdMatched.add(p)
+    for (const p of userExtractors) {
+      if (p.stopped || !cmdMatched.has(p)) continue
+      if (p.strategy) {
+        const host = STRATEGIES[p.strategy]?.(trimmed, p.param) ?? null
+        if (host) return { host, pluginId: p.pluginId, extractorName: p.extractorName }
+      } else if (p.extract) {
+        const extract = p.extract
+        const [, found] = runBoundedRules(
+          [p], () => ({ source: extract.source, flags: extract.flags, group: 1, once: true }),
+          trimmed, warnStopped
+        )[0] ?? [p, []]
+        if (found.length > 0) return { host: found[0].value, pluginId: p.pluginId, extractorName: p.extractorName }
+      }
     }
   }
   // Bundled built-in pack: the FIRST row whose cmd matches wins, and its
