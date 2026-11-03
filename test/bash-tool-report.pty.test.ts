@@ -67,7 +67,7 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no bash reachab
         environment: string; shell: string; found: Record<string, string>; checked: string[]
       }
       expect(report.shell).toBe('bash')
-      expect(report.environment).toMatch(new RegExp(`^shell:${process.platform}:[^:]+:bash$`))
+      expect(report.environment).toMatch(new RegExp(`^shell:${target!.prefix.length ? 'linux' : process.platform}:[^:]+:bash$`))
       expect(report.checked).toContain('pwncat-cs')
       expect(report.found['pwncat-cs']).toMatch(/\/late-bin\/pwncat-cs$/)
     })
