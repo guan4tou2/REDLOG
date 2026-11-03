@@ -116,3 +116,15 @@ WSL2 kali（Linux 6.18.54.1）、Node v24.15.0、xvfb、zsh；commit `894c7a5b`�
 - 原生 Windows PTY（PowerShell）、macOS、installer 版本均未跑此 soak。CI 的 e2e 使用 mitmproxy 11.0.2，本機為 12.2.3。
 
 T005 仍不勾。
+
+## 2026-11-02：各來源的長時間 soak 與中途重啟（#291）
+
+上一節「仍未完成」中的兩項有了量測，完整紀錄見 [capture-soak.md](capture-soak.md)：
+
+- **App 重啟（未殺 producer）**：SSE、WebSocket、HTTP、PTY 各 25 分鐘，第 20 分鐘 quit 並重開同一專案；另有一輪 6 分鐘的 HTTP 以 crash（只殺 main process）取代 quit。client 收到而未保存的單位，全部落在某筆 `capture_gap` 的時間窗內或由 stream completion 標出，沒有無聲遺失。
+- **mitmdump 被殺時佇列中的 event**：#291 的 in-flight marker 在真實 quit 下運作，SSE 重啟時少的 2 則正好等於 marker 的上界。
+- **原生 Windows PTY（PowerShell）**：首次跑長時間 soak，quit 前 renderer 顯示的 15,619 行全數在 cast 內、無洞。
+
+新發現：gap 紀錄本身可能因 spool 寫入與 drain 的競態而遺失（#507）；同專案重啟會留下一筆原因錯誤的 `project-switched`；高寫入量下 App 的 API 會停頓超過 addon 的 5 秒 POST timeout（最長量到 6.0 秒）。
+
+T005 仍不勾：仍只在 Windows 跑過，且每個來源 25 分鐘。
