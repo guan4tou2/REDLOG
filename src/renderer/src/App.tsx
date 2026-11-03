@@ -69,6 +69,11 @@ function PaneLoading(): JSX.Element {
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
+  // `project.active()` is an IPC round trip. Until it answers, `project` is
+  // null, which used to render the picker and then replace it with the restored
+  // project — a flash of the project list on every launch for anyone who had
+  // one open. Hold the mark until the answer is in (#542 startup).
+  const [restoring, setRestoring] = useState(true)
   const [view, setView] = useState<View>('dashboard')
 
   // A setup command sent from Settings needs the terminal on screen to
@@ -166,9 +171,12 @@ export default function App(): JSX.Element {
   const { visibility, firstRunActive } = useVisibility(project, view)
 
   useEffect(() => {
-    window.redlog.project.active().then((p) => {
-      if (p) setProject(p)
-    })
+    let alive = true
+    window.redlog.project.active()
+      .then((p) => { if (alive && p) setProject(p) })
+      .catch(() => { /* no restorable project: fall through to the picker */ })
+      .finally(() => { if (alive) setRestoring(false) })
+    return () => { alive = false }
   }, [])
 
   // Settings renames the project; the title bar reads this state.
@@ -214,6 +222,17 @@ export default function App(): JSX.Element {
   // Also handles app-wide shortcuts (palette, find-in-page, recording toggle,
   // HUD corner). Extracted to hooks/useAppShortcuts.ts.
   useAppShortcuts(project, view, navigate, setPaletteOpen, t)
+
+  if (restoring) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div role="status" aria-live="polite">
+          <Wordmark className="text-4xl" />
+          <span className="sr-only">{t('common.loading')}</span>
+        </div>
+      </div>
+    )
+  }
 
   if (!project) {
     return (
