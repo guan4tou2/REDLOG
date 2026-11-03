@@ -53,7 +53,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
           className={`px-3 py-2 text-xs border-b-2 ${reading === mode ? 'border-redlog-accent text-redlog-text' : 'border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
         >{t(`workspace.reading.${mode}`)}</button>)}
         {onOpenTimeline && (
-          <button type="button" onClick={onOpenTimeline}
+          <button type="button" onClick={onOpenTimeline} data-testid="workspace-open-timeline"
             className="ml-auto px-3 py-2 text-xs text-redlog-text-dim hover:text-redlog-text"
           >{t('workspace.openTimeline')} ↗</button>
         )}
