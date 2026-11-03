@@ -1863,6 +1863,7 @@
   "content.status.missing": "Saved file is missing",
   "content.status.changed": "Content changed; reopen the source",
   "content.status.denied": "Source content is unavailable in this project",
+  "content.status.cast-recording": "Merged terminal output is saved in the recording — open it with “Replay stdout” on the timeline",
   "content.status.unsupported": "This operation is unavailable for this content",
   "content.status.failed": "Content read failed",
   "activity.castsRestricted": "Recordings cannot apply these event filters and are excluded.",

@@ -103,6 +103,17 @@ export function describeEventContent(projectId: string, eventId: string): Conten
     const o = owner(projectId, eventId), descriptors: ContentDescriptor[] = []
     for (const field of FIELDS) {
       const p = probe(o, field)
+      // #550: a command that produced more than the inline threshold has its
+      // bytes in the terminal recording, not in `$.stdout`. Reporting that as
+      // "not captured" told the operator the output was lost when it was the
+      // one thing the row was sure about. The range is not served as text yet
+      // (a cast is JSONL records, not a byte range that can be windowed), so
+      // name it and point at the replay the timeline already offers.
+      const castBytes = castRangeBytes(o, field.field)
+      if (!p.kind && !p.ref && castBytes !== null) {
+        descriptors.push({ field: field.field, status: 'cast-recording', ref: null, bytes: castBytes, format: 'utf8', capture: 'unknown' })
+        continue
+      }
       if (!p.kind && !p.ref && !(o.agent_type === 'shell' && o.subtype === 'command_end' && ['stdout', 'stderr'].includes(field.field)))
         continue
       const found = result(() => withSource(o, field, (source, partial) => ({ field: field.field, status: 'available' as const, ref: refOf(projectId, eventId, field.field, source), bytes: source.bytes, format: source.format, capture: partial ? 'partial' as const : 'unknown' as const })))
@@ -110,6 +121,20 @@ export function describeEventContent(projectId: string, eventId: string): Conten
     }
     return descriptors
   })
+}
+
+/** Bytes this row recorded into the terminal cast for `field`, or null when
+ *  there is no cast slice. The built-in terminal writes `io: {stream:'cast',
+ *  ref, off, len}` instead of inlining stdout. */
+function castRangeBytes(o: Owner, field: string): number | null {
+  // A cast is one merged PTY stream: stdout and stderr interleave in the same
+  // range, so it cannot stand in for either one on its own. Report it once,
+  // on stdout, and let the status say it is the merged output.
+  if (field !== 'stdout') return null
+  const row = o.db.prepare(`SELECT json_extract(data,'$.io.stream') AS stream, json_extract(data,'$.io.len') AS len FROM ${o.tab} WHERE rowid=?`).get(o.rowid) as { stream: string | null; len: number | null }
+  if (row?.stream !== 'cast') return null
+  const len = Number(row.len ?? 0)
+  return len > 0 ? len : null
 }
 function access<T>(ref: ContentRef, use: (source: ByteSource) => T): ContentResult<T> {
   return result(() => {
