@@ -487,7 +487,7 @@ sys.stdout.write(json.dumps(d))
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
-    mkdir -p "$spool_dir" 2>/dev/null
+    mkdir -m 700 -p "$spool_dir" 2>/dev/null
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
@@ -495,6 +495,7 @@ sys.stdout.write(json.dumps(d))
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
         spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
+        chmod 600 "$payload_file" 2>/dev/null
         mv "$payload_file" "$spool_file" 2>/dev/null
       else
         # No work directory to borrow a unique name from. noclobber makes the
@@ -504,7 +505,7 @@ sys.stdout.write(json.dumps(d))
         local try
         for try in 1 2 3 4 5; do
           spool_file="$spool_dir/$(date +%s%N).$$.redlog-send.${RANDOM}${RANDOM}.json"
-          if ( set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
+          if ( umask 077; set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
             mv "$spool_file.tmp" "$spool_file" 2>/dev/null
             break
           fi

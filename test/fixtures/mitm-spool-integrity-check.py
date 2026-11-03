@@ -136,6 +136,9 @@ def mode_atomic():
             def open(self, *args, **kwargs):
                 return self.real.open(*args, **kwargs)
 
+            def __fspath__(self):
+                return str(self.real)
+
             def replace(self, target):
                 # Everything the drain's `*.json` listing would see right now.
                 seen['visible_before_rename'] = sorted(p.name for p in spool.glob('*.json'))
