@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
+import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { parseQuery } from './query/contract'
 import { decodeCursor } from './query-page'
@@ -146,7 +147,7 @@ export function setPrimaryOperator(id: string, name: string): boolean {
 
 function writePrimaryToken(): string {
   const token = generateToken()
-  fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+  mkdirPrivate(path.dirname(TOKEN_PATH))
   fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
   try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   primaryToken = token
@@ -870,7 +871,7 @@ export function onApiProjectOpen(): void {
       try { restrictToOwner(projTokenPath) } catch { /* best-effort on win32 */ }
     }
     primaryToken = token
-    fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+    mkdirPrivate(path.dirname(TOKEN_PATH))
     fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
     try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   } catch { /* keep the bootstrap token from startApiServer */ }
@@ -908,7 +909,7 @@ function selfHealSidecarFiles(): void {
   if (!primaryToken) return
   try {
     if (!fs.existsSync(TOKEN_PATH)) {
-      fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+      mkdirPrivate(path.dirname(TOKEN_PATH))
       fs.writeFileSync(TOKEN_PATH, primaryToken, { mode: 0o600 })
     }
     if (listeningPort && !fs.existsSync(PORT_PATH)) {

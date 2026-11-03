@@ -16,6 +16,7 @@ import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '.
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
+import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
@@ -344,7 +345,7 @@ const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.jso
 // HTTP addon stamp what they capture with whatever this file says.
 function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
-    fs.mkdirSync(path.dirname(SPOOL_IDENTITY_PATH), { recursive: true })
+    mkdirPrivate(path.dirname(SPOOL_IDENTITY_PATH))
     fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
   } catch { /* best-effort */ }
 }
@@ -1310,6 +1311,10 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
   debugLog('app', 'start', `version=${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'} platform=${process.platform}-${process.arch} packaged=${app.isPackaged}`)
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
+
+  // Installs made before modes were passed at creation: ~/.redlog and what is
+  // under it become owner-only, and a first run creates it that way.
+  restrictRedlogHome()
 
   // Before any terminal opens: an enrolled shell sources ~/.redlog, and an
   // upgrade does not touch it otherwise.

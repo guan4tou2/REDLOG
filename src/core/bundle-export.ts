@@ -3,6 +3,7 @@ import path from 'path'
 import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
+import { mkdirPrivate, restrictTree } from './private-fs'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
 import type { ExportCounts, ExportSnapshot, NormalizedExportRequest } from './export-plan'
 import { eventBus } from './event-bus'
@@ -205,7 +206,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // write can leave useful diagnostics behind, but recipients and callers must
   // never mistake that directory for a completed evidence bundle.
   const bundleDir = `${finalBundleDir}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
-  fs.mkdirSync(bundleDir, { recursive: true })
+  mkdirPrivate(bundleDir)
 
   const files: ManifestFile[] = []
   const excluded = opts.excludeAttachments ?? new Set<string>()
@@ -788,6 +789,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     )
   }
 
+  // Copies keep the source's mode and several files are opened without one, so
+  // the bundle is restricted as a whole once it is complete.
+  restrictTree(bundleDir)
   fs.renameSync(bundleDir, finalBundleDir)
   return { outDir: finalBundleDir, manifest }
 }
