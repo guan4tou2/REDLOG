@@ -178,7 +178,17 @@ def _write_spool_record(record: dict) -> bool:
                 count += 1
             if count >= 5000 or total > 64 * 1024 * 1024:
                 return False
-            filename = f"{time.time_ns()}-{id(record)}.json"
+            # A name no earlier record of this process has had. The clock alone
+            # is not that: Python before 3.13 reads it from a ~15 ms tick on
+            # Windows, and `id(record)` is reused once the last record is freed,
+            # so two records could share a name. `replace` then overwrote the
+            # first one (a lost gap) or, with the drain unlinking it, was
+            # refused with PermissionError (a write read as failed). Stamps
+            # only rise, so names still sort in write order, which the drain's
+            # sorted listing relies on. Held on the function, under the lock.
+            stamp = max(time.time_ns(), getattr(_write_spool_record, "last_ns", 0) + 1)
+            _write_spool_record.last_ns = stamp
+            filename = f"{stamp}-{os.getpid()}.json"
             temporary = SPOOL_DIR / (filename + ".tmp")
             try:
                 # Owner-only whatever the umask: a record holds the project identity.

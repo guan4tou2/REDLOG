@@ -73,13 +73,38 @@ def _embed_identity(payload: dict) -> None:
         pass
 
 
+_SPOOL_LOCK = threading.Lock()
+_last_spool_ns = 0
+
+
 def _spool_payload(payload: dict) -> None:
+    """Write one payload to the spool for the app to replay.
+
+    Sends run on their own threads, so two payloads can be spooled at once. The
+    name is one no earlier payload of this process has had: a millisecond clock
+    and `id(payload)` are not that (the clock repeats within a tick, and an id
+    is reused once the last payload is freed), and the old open truncated the
+    file it found, so the first payload was lost. Stamps only rise, so names
+    sort in write order, which the drain's sorted listing relies on. The record
+    is written under a `.tmp` name and renamed, so the drain, which reads only
+    `.json`, never sees half of one. Same rule as `_write_spool_record` in
+    mitmproxy-addon.py."""
+    global _last_spool_ns
     _embed_identity(payload)
     try:
-        SPOOL_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-        spooled = SPOOL_DIR / f"{int(time.time() * 1000)}-{id(payload)}.json"
-        with os.fdopen(os.open(spooled, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as output:
-            output.write(json.dumps(payload))
+        encoded = json.dumps(payload)
+        with _SPOOL_LOCK:
+            SPOOL_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+            stamp = max(time.time_ns(), _last_spool_ns + 1)
+            _last_spool_ns = stamp
+            filename = f"{stamp}-{os.getpid()}.json"
+            temporary = SPOOL_DIR / (filename + ".tmp")
+            try:
+                with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as output:
+                    output.write(encoded)
+                temporary.replace(SPOOL_DIR / filename)
+            finally:
+                temporary.unlink(missing_ok=True)
     except Exception:
         pass
 
