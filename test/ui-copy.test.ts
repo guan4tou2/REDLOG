@@ -47,6 +47,29 @@ describe('UI copy: no redundant descriptions', () => {
   // sentence is invisible in one language and obvious in another.
   const LOCALES = ['en', 'zh-TW'] as const
 
+  // A settings group title and a reading tab are different kinds of thing:
+  // one configures a producer, the other reads what was captured. When both
+  // read the same, the settings section looks like a reading mode that was
+  // dropped into the wrong page — which is exactly how `AI 對話` read before
+  // it was renamed to `AI 代理擷取`. Neither string was wrong on its own, so
+  // no existing rule could see it; only the pair was.
+  it('never gives a settings group the same name as a reading tab', () => {
+    const offenders: string[] = []
+    for (const loc of LOCALES) {
+      const dict = load(loc)
+      const tabs = new Map<string, string>()
+      for (const [k, v] of Object.entries(dict)) {
+        if (k.startsWith('workspace.reading.') && typeof v === 'string') tabs.set(norm(v), k)
+      }
+      for (const [k, v] of Object.entries(dict)) {
+        if (!/^(?:settings\.(?:agents|screenshotGroup|captureGroup|externalCapture)|settings\.page[A-Z])/.test(k)) continue
+        const hit = tabs.get(norm(v))
+        if (hit) offenders.push(`${loc}: ${k} and ${hit} are both "${v}"`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('does not store the same explanation under two keys', () => {
     const offenders: string[] = []
     for (const loc of LOCALES) {
