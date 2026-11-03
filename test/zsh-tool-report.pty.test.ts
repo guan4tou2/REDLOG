@@ -66,7 +66,7 @@ describeShell(`the first-prompt tool report (${target?.label ?? 'no zsh reachabl
         environment: string; shell: string; found: Record<string, string>; checked: string[]
       }
       expect(report.shell).toBe('zsh')
-      expect(report.environment).toMatch(/^shell:linux:[^:]+:zsh$/)
+      expect(report.environment).toMatch(new RegExp(`^shell:${process.platform}:[^:]+:zsh$`))
       expect(report.checked).toContain('pwncat-cs')
       expect(report.found['pwncat-cs']).toMatch(/\/late-bin\/pwncat-cs$/)
     })
