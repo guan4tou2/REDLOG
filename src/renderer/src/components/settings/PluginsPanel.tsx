@@ -24,6 +24,9 @@ interface PluginView {
   /** the terminal profiles the plugin declares that RedLog would accept: what
    *  an approval is an approval of */
   terminalProfiles?: Array<{ name: string; mode: 'native' | 'pty' | 'relayed'; executables: string[]; reason: string }>
+  /** the capture entries RedLog would install (a shell hook, a Claude Code
+   *  hook): the other thing an approval is an approval of */
+  captureInstalls?: Array<{ name: string; installMethod: string }>
   /** why the shell's profiles could not be brought up to date, the same on
    *  every row; null when they were */
   profilesError?: string | null
@@ -38,7 +41,7 @@ interface PluginView {
     targetExtractors?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
+    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
     terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
   } | null
 }
@@ -89,7 +92,7 @@ function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Recor
         <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
           <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
             {'waiting' in value && value.waiting
-              ? t('plugins.results.terminalProfilesWaiting')
+              ? (key === 'capture' ? t('plugins.results.captureWaiting') : t('plugins.results.terminalProfilesWaiting'))
               : t(label, { accepted: value.accepted, rejected: value.rejected.length })}
           </p>
           {value.rejected.map((r) => (
@@ -272,7 +275,9 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
         toast(t('plugins.grantFailed', { name: p.id }), {
           type: 'error',
           // "Unable to run" is about code; a plugin that is only profiles runs nothing.
-          why: p.tier === 'privileged' ? t('plugins.grantFailedWhy') : t('plugins.grantFailedWhyProfiles'),
+          why: p.tier === 'privileged' ? t('plugins.grantFailedWhy')
+            : (p.terminalProfiles?.length ?? 0) === 0 && (p.captureInstalls?.length ?? 0) > 0
+              ? t('plugins.grantFailedWhyInstall') : t('plugins.grantFailedWhyProfiles'),
           detail: r.error
         })
       }
@@ -300,6 +305,13 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
   // tailer, which never runs, is not), and the profiles the plugin declares.
   const approvesCode = confirmGrant !== null && confirmGrant.tier === 'privileged' && !tailerRefused(confirmGrant)
   const approvesProfiles = confirmGrant?.terminalProfiles ?? []
+  const approvesInstalls = confirmGrant?.captureInstalls ?? []
+  const consentTitle = approvesCode ? t('plugins.consentTitle')
+    : approvesProfiles.length > 0 ? t('plugins.consentTitleProfiles') : t('plugins.consentTitleInstall')
+  const consentBody = !confirmGrant ? ''
+    : approvesCode ? t('plugins.consentBody', { name: confirmGrant.name })
+      : approvesProfiles.length > 0 ? t('plugins.consentBodyProfiles', { name: confirmGrant.name })
+        : t('plugins.consentBodyInstall', { name: confirmGrant.name })
 
   return (
     <FieldGroup title={t('settings.plugins')}>
@@ -344,7 +356,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           // A third-party tailer is refused whatever the operator agrees to
           // (see the results line), so offering consent would only fail, unless
           // the plugin also declares profiles, which are the operator's to approve.
-          const cannotBeTrusted = tailerRefused(p) && !(p.terminalProfiles?.length)
+          const cannotBeTrusted = tailerRefused(p) && !(p.terminalProfiles?.length) && !(p.captureInstalls?.length)
           return (
             <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-start justify-between p-3">
@@ -422,21 +434,15 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           alert
           dismissOnBackdrop={false}
           onClose={() => setConfirmGrant(null)}
-          label={approvesCode ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
+          label={consentTitle}
           testId="plugin-consent-dialog"
           panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
         >
             {/* Code gets the capability list and the isolation warning. Terminal
                 profiles get a line each, since the approval is of those lines;
                 a plugin with only profiles runs nothing and does not say it does. */}
-            <h3 className="text-sm font-semibold text-red-400 mb-1">
-              {approvesCode ? t('plugins.consentTitle') : t('plugins.consentTitleProfiles')}
-            </h3>
-            <p className="text-xs text-redlog-text-dim mb-2">
-              {approvesCode
-                ? t('plugins.consentBody', { name: confirmGrant.name })
-                : t('plugins.consentBodyProfiles', { name: confirmGrant.name })}
-            </p>
+            <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
+            <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>
             {approvesCode && (
               <>
                 <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
@@ -457,6 +463,20 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
                     <li key={i} className="break-words">
                       {t(PROFILE_LINE[profile.mode] ?? PROFILE_LINE.relayed, { name: profile.name, commands: profile.executables.join(', ') })}
                       <span className="text-redlog-text-dim"> — {profile.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {approvesInstalls.length > 0 && (
+              <>
+                {(approvesCode || approvesProfiles.length > 0) && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentInstallsToo')}</p>}
+                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                  {approvesInstalls.map((hook, i) => (
+                    <li key={i} className="break-words">
+                      {hook.installMethod === 'claude-settings'
+                        ? t('plugins.installClaude', { name: hook.name })
+                        : t('plugins.installShell', { name: hook.name })}
                     </li>
                   ))}
                 </ul>

@@ -24,15 +24,21 @@ So plugins are split by how much they can affect that record:
 
 | Tier | What it contributes | Runs code in RedLog? | Can it subvert the evidence log? |
 |------|--------------------|----------------------|----------------------------------|
-| 🟢 **declarative** | loot/redaction/target patterns, event types, capture scripts | **No** — data the app reads, or scripts *you* run that only reach the authenticated HTTP API | No |
+| 🟢 **declarative** | loot/redaction/target patterns, event types, capture scripts | **No** — data the app reads, or scripts *you* run that only reach the authenticated HTTP API | **Not by itself.** The data cannot. A capture script that RedLog installs into your shell or Claude Code settings can: from then on it runs as you, outside RedLog, with your access to the files under `~/.redlog`, the evidence log included. That is why such a plugin waits for your approval (below) |
 | 🔴 **privileged** | `tailers` (bundled plugins only) | **Yes** — in the main process, only after you grant trust | Yes — it is not isolated, which is why only bundled plugins may contribute it |
 
 A plugin is 🔴 **only** if it contributes code, and the only code contribution is
 `tailers`. (`exporters` and `monitors` are refused — see below.)
-Everything else is 🟢 and loads automatically, with one exception that is not
-code: a plugin declaring [`terminalProfiles`](#terminalprofiles--tell-the-terminal-adapter-how-to-treat-a-tool)
-waits for your approval like a 🔴 one, because a profile decides what the shell
-records. 🔴 plugins are inert until you review and trust them (see
+Everything else is 🟢 and loads automatically, with two exceptions that are not
+code RedLog runs, and that wait for your approval like a 🔴 plugin does:
+
+- a plugin declaring [`terminalProfiles`](#terminalprofiles--tell-the-terminal-adapter-how-to-treat-a-tool),
+  because a profile decides what the shell records;
+- a plugin with a [`capture`](#capture--a-capture-integration-like-the-built-in-hooks)
+  entry whose `installMethod` is anything but `manual`, because RedLog would put
+  that hook in your shell startup file or in Claude Code's settings.
+
+🔴 plugins are inert until you review and trust them (see
 [the trust gate](#the-trust-gate)).
 
 ---
@@ -83,7 +89,9 @@ version: **1**.
 
 ## 🟢 Declarative contributions
 
-All of these are pure data. They load automatically and can never run code.
+All of these are pure data. They never run code inside RedLog. They load
+automatically, except the two that wait for your approval (see
+[Trust tiers](#trust-tiers)).
 
 ### `lootPatterns` — teach the loot detector new secret formats
 
@@ -113,17 +121,18 @@ longer runs, so it no longer masks what it would match, and Settings ▸ Capture
 Loot detection marks it. Reloading the plugin gives it a fresh start. Anchor
 patterns on a literal prefix and avoid nested quantifiers.
 
-### `redaction` — add allow/deny entries
+### `redaction` — add deny entries
 
 ```jsonc
 "redaction": {
-  "denylist": ["/CORP_[A-Z0-9]{20,}/"],   // /…/ = regex, otherwise substring
-  "allowlist": ["example.com"]
+  "denylist": ["/CORP_[A-Z0-9]{20,}/"]   // /…/ = regex, otherwise substring
 }
 ```
 
 Merged **additively** on top of the engagement's redaction rules; removed when
-the plugin is disabled.
+the plugin is disabled. A plugin can only add to what is masked: `allowlist` is
+not accepted from a plugin, and a manifest that declares one fails to load.
+Letting a value through is the operator's setting.
 
 ### `targetExtractors` — pull targets from bespoke tooling
 
@@ -136,6 +145,14 @@ the plugin is disabled.
 For a command matching `cmd`, capture group 1 of `extract` (or the whole match)
 becomes the target. **Plugin extractors take precedence** over the built-ins, so
 you can teach RedLog about tools it doesn't ship knowledge of.
+
+`cmd` and `extract` run on every shell command, and on every page address the
+browser connector sees, which the site chooses. They run in a worker thread
+with the same time bound as loot patterns: all of a plugin set's rules together
+get 250 ms per text. A rule still running when time is up is **stopped** and no
+longer runs; the others carry on, and reloading the plugin gives it a fresh
+start. Anchor on a literal prefix and avoid nested quantifiers. A strategy's
+`param` is a flag name and is matched literally, not as a pattern.
 
 ### `commandTags` — stamp fields onto shell events when a pattern matches
 
@@ -153,6 +170,9 @@ per field — an earlier pattern can shadow a later one for the same key. The
 `stamp` object's keys are free-form; reserved names that downstream tooling
 (Ghostwriter, VECTR) understands are `mitre_ttp`, `technique_tool`, and
 `technique_category`, but you can add your own for org-specific pipelines.
+
+`match` runs on every shell command under the same time bound as `targetExtractors`
+above: a pattern that overruns is stopped and the others carry on.
 
 **Why this is a plugin instead of a core feature:** ATT&CK tagging is opinionated,
 tool lists go stale, and most mature shops let a SIEM (ELK, Splunk, Chronicle)
@@ -244,7 +264,7 @@ started: the class list says so, and that command is recorded as metadata only
     "requires": ["acme-cli"],           // any-of; used for availability detection
     "platforms": ["darwin", "linux"],    // optional; omitted = all hosts
     "hookFile": "hooks/acme-wrapper.sh",
-    "installMethod": "manual",          // 'shell-source' | 'claude-settings' | 'manual'
+    "installMethod": "manual",          // 'shell-source' | 'claude-settings' | 'manual' — anything else fails the plugin
     "manualSteps": [
       { "label": "Wrap the CLI so RedLog captures each call", "command": "\"{hookFile}\" --help" }
     ]
@@ -254,7 +274,10 @@ started: the class list says so, and that command is recorded as metadata only
 
 Capture entries appear in **Settings ▸ Hooks** alongside the built-ins, with the
 same one-click install (`shell-source`/`claude-settings`) or guided steps
-(`manual`). Use the `{hookFile}` placeholder in `manualSteps` — RedLog fills in
+(`manual`). An entry that RedLog installs (anything but `manual`) is not offered
+until you approve the plugin in Settings ▸ Plugins, at its current content: the
+approval is pinned to the manifest and to the hook file's bytes, so a changed
+hook asks again. A `manual` entry only shows steps and needs no approval. Use the `{hookFile}` placeholder in `manualSteps` — RedLog fills in
 the absolute path. The capture id is namespaced as `<plugin-id>.<id>`.
 
 `platforms` accepts `darwin`, `linux`, and `win32`. Settings groups inapplicable
@@ -264,8 +287,9 @@ a different platform; this is presentation metadata, not an ingest permission.
 
 A capture script only records **while RedLog is open** — it reads
 `~/.redlog/api-port` and `~/.redlog/api-token` and POSTs to the local API. It is
-out-of-process and unprivileged: it can append events like any API client, but
-can't touch existing events or the chain. See
+out-of-process: through the API it can append events like any client, but cannot
+change existing events or the chain. It is still a script that runs as you, so
+what it can do to files on disk is what you approve when you install it. See
 [`examples/plugins/recon-pack`](../examples/plugins/recon-pack) for a full one.
 
 #### Wrapping a new AI agent (the practical guide)
@@ -294,7 +318,12 @@ environment:
   for it too. RedLog picks the matcher name from `claudeSettingsMatcher`.
 - **`shell-source`** — copies the hook to `~/.redlog/<name>` and appends a
   `source …` line to `shellRcFile` (default `.zshrc`). Fires on every shell
-  command; use it for wrappers whose entry point IS the shell.
+  command; use it for wrappers whose entry point IS the shell. `installTarget` is
+  the file name only (`acme-hook.sh`; default: the hook file's own name): a bare
+  name ending in `.sh`, `.zsh` or `.bash`, with no folder, written directly inside
+  `~/.redlog`. `shellRcFile` is one of `.zshrc`, `.bashrc`, `.bash_profile`,
+  `.profile`. A value outside these makes the plugin fail to load, with the
+  field named; RedLog does not rewrite it.
 - **`manual`** — RedLog just prints the setup steps and lets the operator
   paste them. Use for anything that needs manual `SHELL=…` env exports,
   custom systemd units, or agent-specific config edits.
@@ -373,7 +402,8 @@ code.
 
 ## The trust gate
 
-🔴 plugins are governed by a content-hash-pinned consent record
+🔴 plugins, and the 🟢 plugins that wait for approval (terminal profiles, an
+installable capture hook), are governed by a content-hash-pinned consent record
 (`~/.redlog/plugins/trust.json`):
 
 1. On load, RedLog computes a **content hash** over the manifest (id, version,
@@ -398,7 +428,8 @@ silently gain execution — a human re-approves every material change.
 1. Copy your plugin folder to `~/.redlog/plugins/<id>/`.
 2. Open **Settings ▸ Plugins** and click **Reload** (or restart RedLog).
 3. 🟢 plugins are active immediately; toggle them with **Enable/Disable**.
-4. 🔴 plugins show **NEEDS CONSENT** — **Review & trust** to run them.
+4. 🔴 plugins, and 🟢 plugins with terminal profiles or an installable capture
+   hook, show **NEEDS CONSENT** — **Review & trust** to approve them.
 
 The panel shows each plugin's tier, status, what it contributes, and (for 🔴)
 the capabilities it requests.

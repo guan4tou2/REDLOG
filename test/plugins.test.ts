@@ -82,7 +82,7 @@ describe('manifest validation', () => {
     ['redaction as a list', { redaction: [] }],
     ['redaction as text', { redaction: 'abc' }],
     ['redaction denylist that is not a list', { redaction: { denylist: 'abc' } }],
-    ['redaction allowlist that is a number', { redaction: { allowlist: 5 } }],
+    ['redaction allowlist, which a plugin may not have', { redaction: { allowlist: ['b'] } }],
     ['tailers that is not a path', { tailers: 5 }],
     ['null for a list', { capture: null }]
   ])('rejects a contributes of the wrong shape: %s', (_what, contributes) => {
@@ -97,7 +97,7 @@ describe('manifest validation', () => {
       contributes: {
         lootPatterns: [{ type: 't', pattern: 'p', name: 'n' }], commandTags: [{ name: 'n', match: 'm', stamp: {} }],
         targetExtractors: [{ cmd: 'c', name: 'n' }], eventTypes: [{ agentType: 'a', label: 'l' }],
-        redaction: { denylist: ['a'], allowlist: ['b'] }, terminalProfiles: []
+        redaction: { denylist: ['a'] }, terminalProfiles: []
       }
     }, tmp)
     expect(r).toMatchObject({ ok: true })

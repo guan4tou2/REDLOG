@@ -246,6 +246,34 @@ describe('the plugins page shows what main has done', () => {
       expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy()
     })
 
+    // #499: a capture RedLog installs becomes a script in the operator's shell
+    // or in Claude Code, so it is approved like a profile is: from this dialog,
+    // line by line, with no claim that it runs inside RedLog.
+    it('lists the hooks a plugin would install, and claims neither code in RedLog nor tool profiles', async () => {
+      const installing = (over: Record<string, unknown> = {}) => ({
+        ...view('hk'), status: 'needs-consent', needsApproval: true, contributes: ['capture'], terminalProfiles: [],
+        captureInstalls: [{ name: 'Acme Shell', installMethod: 'shell-source' }, { name: 'Acme Agent', installMethod: 'claude-settings' }],
+        report: { capture: { accepted: 0, rejected: [], waiting: true } }, ...over
+      })
+      api.list.mockResolvedValue([installing()])
+      api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [installing()] })
+      draw()
+      expect((await screen.findByTestId('plugin-results-capture-hk')).textContent).toBe(en['plugins.results.captureWaiting'])
+      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      const dialog = await screen.findByTestId('plugin-consent-dialog')
+      expect(dialog.textContent).toContain(en['plugins.consentTitleInstall'])
+      expect(dialog.textContent).not.toMatch(/main process|not isolated|tool profile|terminal treats/)
+      expect(Array.from(dialog.querySelectorAll('li')).map((li) => li.textContent)).toEqual([
+        'Acme Shell: runs in every new shell',
+        'Acme Agent: runs after every Claude Code Bash tool call'
+      ])
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      await waitFor(() => expect(toasts.plain.length).toBe(1))
+      const opts = JSON.stringify(toasts.plain[0].opts)
+      expect(opts).toContain(en['plugins.grantFailedWhyInstall'])
+      expect(opts).not.toContain('tool profiles')
+    })
+
     it('a refused approval of profiles does not say the plugin "stays unable to run"', async () => {
       api.list.mockResolvedValue([declaring()])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [declaring()] })
