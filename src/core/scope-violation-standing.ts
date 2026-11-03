@@ -18,6 +18,15 @@ export interface ViolationStanding {
   supersededBy: Map<string, string>
 }
 
+/** Whether a scope row's payload is a violation record at all. `in_scope`
+ *  verdicts share the subtype and are written once per in-scope request as the
+ *  adherence counter's positive proof, but they never stand, never supersede and
+ *  never change a count — so everything that reads violations, and everything
+ *  that decides when a cached answer about them is stale, asks this one question. */
+export function countsAsStandingVerdict(d: Record<string, unknown>): boolean {
+  return d.subtype === 'scope_violation' && d.distance !== 'in_scope'
+}
+
 export function violationStanding(rows: readonly StandingRow[]): ViolationStanding {
   const cleared = new Set<string>()
   const sourceOf = new Map<string, string>()
@@ -32,7 +41,7 @@ export function violationStanding(rows: readonly StandingRow[]): ViolationStandi
       if (typeof d.violation_id === 'string') cleared.add(d.violation_id)
       continue
     }
-    if (d.subtype !== 'scope_violation' || d.distance === 'in_scope') continue
+    if (!countsAsStandingVerdict(d)) continue
     const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
     const source = typeof causes[0] === 'string' ? causes[0] : null
     if (!source) continue

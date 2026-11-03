@@ -40,6 +40,8 @@
 // edge. It must never GUESS: a wrong edge is a false claim about who did what,
 // and this record is handed to a client.
 
+import { dbGeneration } from './db/index'
+
 const MAX_ENTRIES = 10_000
 
 class BoundedMap<K, V> {
@@ -83,13 +85,39 @@ export const MAX_ANCESTRY_DEPTH = 8
 let attempted = 0
 let resolved = 0
 
+// A pid is an OS number, and a project does not own it: the next project's
+// traffic can arrive on the pid a closed project ran a command on, and would
+// resolve to that project's command_start -- an event id that is not a row of
+// the database it is being written to. Nothing above belongs to the project
+// that is open once the database has been closed since the last call. Keyed to
+// the DB generation, as ingest does, so every way of closing a project is
+// covered without the main process remembering to call anything.
+let seenGeneration = dbGeneration()
+
+function dropStateOfClosedProject(): void {
+  const now = dbGeneration()
+  if (now === seenGeneration) return
+  clearAll()
+}
+
+function clearAll(): void {
+  portPid.clear()
+  pidCmd.clear()
+  parentOf.clear()
+  attempted = 0
+  resolved = 0
+  seenGeneration = dbGeneration()
+}
+
 /** Attribution attempts and successes since the project opened. */
 export function attributionStats(): { attempted: number; resolved: number } {
+  dropStateOfClosedProject()
   return { attempted, resolved }
 }
 
 /** connection-monitor: this local ephemeral port is owned by this pid. */
 export function notePortPid(localPort: number | undefined, pid: number | undefined): void {
+  dropStateOfClosedProject()
   if (typeof localPort === 'number' && localPort > 0 && typeof pid === 'number' && pid > 0) {
     portPid.set(localPort, pid)
   }
@@ -97,11 +125,13 @@ export function notePortPid(localPort: number | undefined, pid: number | undefin
 
 /** ingest: a shell command_start with this pid just landed as `eventId`. */
 export function noteCommandPid(pid: number | undefined, eventId: string): void {
+  dropStateOfClosedProject()
   if (typeof pid === 'number' && pid > 0 && eventId) pidCmd.set(pid, eventId)
 }
 
 /** process watcher: this pid was forked by this one. */
 export function noteProcessParent(pid: number | undefined, ppid: number | undefined): void {
+  dropStateOfClosedProject()
   if (typeof pid !== 'number' || pid <= 0) return
   if (typeof ppid !== 'number' || ppid <= 0 || ppid === pid) return
   parentOf.set(pid, ppid)
@@ -117,6 +147,7 @@ export function noteProcessParent(pid: number | undefined, ppid: number | undefi
  * the thing that hangs capture.
  */
 export function resolveByPid(pid: number | undefined): string | null {
+  dropStateOfClosedProject()
   if (typeof pid !== 'number' || pid <= 0) return null
   const seen = new Set<number>()
   let at: number | undefined = pid
@@ -132,6 +163,7 @@ export function resolveByPid(pid: number | undefined): string | null {
 
 /** The command eventId that owns this local port (port → pid → command), or null. */
 export function resolveByLocalPort(localPort: number | undefined): string | null {
+  dropStateOfClosedProject()
   if (typeof localPort !== 'number' || localPort <= 0) return null
   const pid = portPid.get(localPort)
   return pid === undefined ? null : resolveByPid(pid)
@@ -155,6 +187,7 @@ export function portOfSourceAddr(addr: unknown): number | undefined {
  */
 export function socketCausesFor(agentType: string, data: Record<string, unknown>): string[] {
   if (agentType !== 'scanner' && agentType !== 'dns' && agentType !== 'http_navigation') return []
+  dropStateOfClosedProject()
   attempted++
   const byPid = resolveByPid(data.pid as number | undefined)
   if (byPid) { resolved++; return [byPid] }
@@ -167,9 +200,5 @@ export function socketCausesFor(agentType: string, data: Record<string, unknown>
 
 /** Test helper. */
 export function _resetSocketAttribution(): void {
-  portPid.clear()
-  pidCmd.clear()
-  parentOf.clear()
-  attempted = 0
-  resolved = 0
+  clearAll()
 }

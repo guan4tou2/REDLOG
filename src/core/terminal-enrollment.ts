@@ -22,7 +22,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { classifyCommand, type CommandClass } from './terminal-class'
+import { classifyCommand, CLASS_FILE_MAX_BYTES, parseClassFile, type CommandClass } from './terminal-class'
 
 export type TerminalMode = 'auto' | 'manual'
 export type TerminalStopReason = 'operator' | 'project-switched' | 'hook-removed'
@@ -140,7 +140,10 @@ export function readTerminalMode(home: string = os.homedir()): TerminalMode {
  *  readable file. Not validated: `compileClassPolicy` decides what in it counts. */
 export function readClassOverlay(home: string = os.homedir()): unknown {
   try {
-    return JSON.parse(fs.readFileSync(path.join(home, '.redlog', 'command-class.json'), 'utf8'))
+    const file = path.join(home, '.redlog', 'command-class.json')
+    // Over the cap it is no overlay, as in the shell's reader (`read_json_capped`).
+    if (fs.statSync(file).size > CLASS_FILE_MAX_BYTES) return null
+    return parseClassFile(fs.readFileSync(file))
   } catch {
     return null
   }

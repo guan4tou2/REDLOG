@@ -29,8 +29,11 @@ So plugins are split by how much they can affect that record:
 
 A plugin is 🔴 **only** if it contributes code, and the only code contribution is
 `tailers`. (`exporters` and `monitors` are refused — see below.)
-Everything else is 🟢 and loads automatically. 🔴 plugins are inert until you
-review and trust them (see [the trust gate](#the-trust-gate)).
+Everything else is 🟢 and loads automatically, with one exception that is not
+code: a plugin declaring [`terminalProfiles`](#terminalprofiles--tell-the-terminal-adapter-how-to-treat-a-tool)
+waits for your approval like a 🔴 one, because a profile decides what the shell
+records. 🔴 plugins are inert until you review and trust them (see
+[the trust gate](#the-trust-gate)).
 
 ---
 
@@ -166,6 +169,68 @@ them downstream).
 ```
 
 Pure rendering metadata — it never changes how events are recorded or chained.
+
+### `terminalProfiles` — tell the terminal adapter how to treat a tool
+
+```jsonc
+"terminalProfiles": [
+  {
+    "id": "ligolo",                       // lowercase letters, digits, hyphens; unique in this plugin
+    "name": "Ligolo-ng",                  // one short line, no colon
+    "mode": "pty",                        // 'native' | 'pty' | 'relayed'
+    "executables": ["ligolo-proxy"],      // bare command names, at most 16
+    "reason": "Brings its own PTY"        // why this mode, one line
+  }
+]
+```
+
+The same shape as the tool profiles in `hooks/command-class.json`. A `pty` tool
+is recorded through a PTY, a `native` one is left alone (editors, full-screen
+tools, anything you suspend), a `relayed` one has its output captured. RedLog
+validates each profile, prefixes its id with the plugin's (`<plugin-id>/ligolo`),
+and writes `~/.redlog/terminal-profiles.json`, which the shell adapters read
+next to the operator's `~/.redlog/command-class.json`. The operator's own
+`redlog class add` still decides last.
+
+A plugin that declares `terminalProfiles` waits in Settings ▸ Plugins until you
+approve it, even though it ships no code: a profile can stop a tool being
+recorded (`native`) or wrap it in every new terminal (`pty`), so a manifest
+dropped into `~/.redlog/plugins/` cannot set one unasked. Until you approve it,
+and again after any change to its manifest, it contributes no profile. The
+approval dialog lists each profile that would take effect (the tool, its
+commands, what happens to them, and your plugin's `reason`), so write the
+`reason` for the person approving it. Other plugins that ship no code stay
+active from the start, and a plugin with an empty `terminalProfiles` list has
+nothing to approve. A third-party plugin that also declares a `tailers` module
+can be approved for its profiles; the tailer still does not run.
+
+If RedLog cannot rewrite `~/.redlog/terminal-profiles.json` (the file is held
+open by another program, say), Settings ▸ Plugins says so, and new terminals
+may still apply the profiles from before until the next successful reload.
+
+A profile that fails is refused whole and named under the plugin in Settings ▸
+Plugins; the rest load. These are refused:
+
+- an id or name that does not fit the shapes above, or a duplicate id;
+- an executable that is not a bare command name (`a;b`, `a b`, `/usr/bin/x`);
+  the `pty` wrapper pastes the name into shell source;
+- a name the adapter itself runs, in any mode: `sudo`, `env`, `python3`, `curl`,
+  `rm`, `echo` and the rest of the list in `ADAPTER_RESERVED`
+  (`src/core/terminal-profiles.ts`);
+- a command in the shipped `native` or `pty` default lists, in a different mode
+  (`nc`, `ncat`, `stty`, `socat`, …). Repeating the shipped mode is fine; changing
+  a default is the operator's call, with `redlog class add`;
+- more than 32 profiles in one plugin.
+
+When two profiles disagree on a command, the one that already had it keeps it:
+a plugin installed later does not take `vim` from the bundled Vim profile, and
+the clash is shown in `redlog class list`. Two plugins that arrive together
+cancel out and the command stays relayed until the operator chooses. A plugin
+that is removed or disabled gives its commands back at the next load.
+
+A shell already open does not wrap a program that became `pty` after it
+started: the class list says so, and that command is recorded as metadata only
+(`capture_reason: no-pty-wrapper`) until a new terminal.
 
 ### `capture` — a capture integration (like the built-in hooks)
 
@@ -359,6 +424,7 @@ RedLog's extension points, and their tier:
 | Target extractors | 🟢 | ✅ shipped (`targetExtractors`) |
 | Command taggers (MITRE / custom stamping) | 🟢 | ✅ shipped v0.6.15 (`commandTags`) |
 | Event types + timeline lanes | 🟢 | ✅ shipped (`eventTypes`) |
+| Terminal tool profiles (native / pty / relayed) | 🟢 | ✅ shipped (`terminalProfiles`) |
 | Tailer adapters | 🔴 | ✅ shipped v0.8.2 (`tailers`, bundled only) |
 | Exporters / reporters | 🔴 | 🛣️ reserved (`exporters`) |
 | Background monitors | 🔴 | 🛣️ reserved (`monitors`) |

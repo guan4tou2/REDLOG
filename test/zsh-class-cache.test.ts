@@ -77,6 +77,17 @@ _redlog_class_of 'nc -l 1'; print -- "STEP\\tnc as shipped\\t$REPLY"
 mv_overlay '{"relayed":["nc"],"removed":["nc"]}'
 _redlog_class_of 'nc -l 1'; print -- "STEP\\tnc after removed from native\\t$REPLY"
 
+# --- the plugins' snapshot changes under a warm cache (#499) ---
+rm -f "$W/.redlog/command-class.json"
+mv_snap() { print -r -- "$1" > "$W/.redlog/tmp.json"; mv "$W/.redlog/tmp.json" "$W/.redlog/terminal-profiles.json" }
+_redlog_class_of 'ligolo-proxy -x'; print -- "STEP\\tbefore snapshot\\t$REPLY"
+mv_snap '{"version":1,"profiles":[{"id":"pack/ligolo","name":"Ligolo-ng","mode":"native","executables":["ligolo-proxy"],"reason":"r"}],"held":{}}'
+_redlog_class_of 'ligolo-proxy -x'; print -- "STEP\\tsnapshot says native\\t$REPLY"
+mv_snap '{"version":1,"profiles":[{"id":"pack/ligolo","name":"Ligolo-ng","mode":"pty","executables":["ligolo-proxy"],"reason":"r"}],"held":{}}'
+_redlog_class_of 'ligolo-proxy -x'; print -- "STEP\\tsnapshot replaced, says pty\\t$REPLY"
+rm -f "$W/.redlog/terminal-profiles.json"
+_redlog_class_of 'ligolo-proxy -x'; print -- "STEP\\tsnapshot deleted\\t$REPLY"
+
 # --- python3 failing is not remembered ---
 rm -f "$W/.redlog/command-class.json"
 _REDLOG_CLASS_CACHE=(); _REDLOG_CLASS_SIG=""
@@ -150,6 +161,16 @@ rm -f "$S"
   it('lets the operator take a command out of the shipped policy under a warm cache', () => {
     expect(steps.get('nc as shipped')).not.toBe('relayed')
     expect(steps.get('nc after removed from native')).toBe('relayed')
+  })
+
+  // The plugins' snapshot is a third file the answer depends on. Left out of
+  // the signature, a plugin installed under a warm shell would be recorded as
+  // relayed until the cache happened to fill up.
+  it('picks up a snapshot written after the answer was cached, and one replaced, and one deleted', () => {
+    expect(steps.get('before snapshot')).toBe('relayed')
+    expect(steps.get('snapshot says native')).toBe('native')
+    expect(steps.get('snapshot replaced, says pty')).toBe('pty')
+    expect(steps.get('snapshot deleted')).toBe('relayed')
   })
 
   it('does not remember python3 failing', () => {
