@@ -635,6 +635,38 @@ describeDB('api entry gate', () => {
     })
   })
 
+  // ── 6b. the event payload's shape ───────────────────────────────────────
+  //
+  // #548: `const data = (body.data || {}) as Record<string, unknown>` was a
+  // type assertion, not a check. A caller that posted `"data": "str"` stored a
+  // row whose Activity key could not be computed; one such row failed the
+  // whole Activity page for the project, permanently (the chain is
+  // append-only). The shape is refused here now.
+  describe('event payload shape', () => {
+    const post = (body: string): Promise<{ status: number; text: string }> =>
+      rawCall(port, { method: 'POST', path: '/api/events', headers: { ...bearer(token), 'Content-Type': 'application/json' }, body })
+
+    it.each([
+      ['a string', '"str"'],
+      ['an array', '[1,2]'],
+      ['a number', '42'],
+      ['a boolean', 'true']
+    ])('refuses data that is %s, and writes nothing', async (_label, json) => {
+      const before = getEventCount()
+      const r = await post(`{"agent_type":"shell","data":${json}}`)
+      expect(r.status).toBe(400)
+      expect(errorOf(r)).toBe('data must be a JSON object')
+      expect(getEventCount()).toBe(before)
+    })
+
+    it('still accepts an object, and a body with no data at all', async () => {
+      const before = getEventCount()
+      expect((await post(JSON.stringify({ agent_type: 'shell', data: { subtype: 'shape-ok' } }))).status).toBe(201)
+      expect((await post(JSON.stringify({ agent_type: 'shell' }))).status).toBe(201)
+      expect(getEventCount()).toBe(before + 2)
+    })
+  })
+
   // ── 7. project identity across a body read ──────────────────────────────
   //
   // The body read yields, so a project switch can land between the token being
