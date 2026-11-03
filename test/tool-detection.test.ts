@@ -651,7 +651,8 @@ describe('a miss never changes what a command is', () => {
     const main = fs.readFileSync(path.join(__dirname, '..', 'src/main/index.ts'), 'utf8')
     const start = main.indexOf("ipcMain.handle('hooks:terminalPolicy'")
     expect(start).toBeGreaterThan(-1)
-    const handler = main.slice(start, main.indexOf('}))', start) + 3)
+    // To the handler's own closing line, whether it returns an object literal or a block.
+    const handler = main.slice(start, main.indexOf('\n  })', start) + 5)
     expect(handler).toContain('compileClassPolicy')
     expect(handler).not.toMatch(/toolDetector|tool-detection|tools:/)
   })
