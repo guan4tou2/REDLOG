@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Shell senders (`shell-common.sh`, `redlog-send.sh`, `redlog-agent.sh`) no
+  longer put the API token in a process's argument list, where a process
+  listing shows it to other users on a shared host. `redlog-send.sh` and
+  `redlog-agent.sh` also send their payload on stdin instead of as an argument
+  (Refs #489).
 - Capture Health: the status bar dot and the dashboard card no longer keep the
   last verdict on screen after a failed read. They say "last confirmed … ;
   current state unknown" with the time, and a failed read neither raises nor

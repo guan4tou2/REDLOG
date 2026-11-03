@@ -15,6 +15,36 @@ EXTRA="${3:-}"
 
 [[ -z "$COMMAND" ]] && exit 0
 
+# curl with the bearer token supplied as a config, never as an argument (#489).
+# Mirrors _redlog_curl_authed in shell-common.sh, which explains the two
+# branches; this script is run on its own and cannot source that file.
+_redlog_curl_authed() {
+  local token="$1" conf
+  shift
+  token=${token//\\/\\\\}
+  token=${token//\"/\\\"}
+  conf="header = \"Authorization: Bearer $token\""
+  case "${OSTYPE:-}" in
+    cygwin*|msys*|win32*)
+      local rc
+      if [[ -z "${_REDLOG_CURL_CONF:-}" ]]; then
+        # `pwd -W` is the Windows spelling of the directory: /tmp and /home are
+        # mounts that native curl cannot resolve, and only the shell knows
+        # where they point. One subshell, the first time.
+        local dir="${_REDLOG_DIR:-${HOME:-}/.redlog}" win
+        win=$(cd "$dir" 2>/dev/null && pwd -W 2>/dev/null) || win=$dir
+        _REDLOG_CURL_CONF="$win/.curl-auth.$$"
+      fi
+      printf '%s\n' "$conf" > "$_REDLOG_CURL_CONF" || return 1
+      curl -K "$_REDLOG_CURL_CONF" "$@"
+      rc=$?
+      : > "$_REDLOG_CURL_CONF"
+      return $rc ;;
+    *)
+      curl -K /dev/fd/4 "$@" 4<<<"$conf" ;;
+  esac
+}
+
 # --- Locate token / port files ---
 _resolve_redlog_dir() {
   # Native (macOS / Linux / WSL with symlink)
@@ -111,8 +141,10 @@ if sys.argv[3]:
 print(json.dumps(d))
 " "$SUBTYPE" "$COMMAND" "$EXTRA" "$REPORTED_SHELL" 2>/dev/null) || exit 0
 
-curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${PORT}/api/events" \
-  -H "Authorization: Bearer $TOKEN" \
+# Neither the token nor the payload (which carries the command text) goes in
+# argv: a process listing shows it to every user on the host (#489). The token
+# is a curl config, the payload is stdin.
+_redlog_curl_authed "$TOKEN" --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${PORT}/api/events" \
   -H "Content-Type: application/json" \
-  -d "$PAYLOAD" \
-  --connect-timeout 1 --max-time 2 >/dev/null 2>&1 &
+  --data-binary @- \
+  --connect-timeout 1 --max-time 2 <<<"$PAYLOAD" >/dev/null 2>&1 &

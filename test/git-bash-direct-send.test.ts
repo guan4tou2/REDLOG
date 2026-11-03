@@ -24,7 +24,7 @@ afterEach(() => { for (const home of homes.splice(0)) fs.rmSync(home, { recursiv
 
 // Async, never spawnSync: the collector lives in this process, and a blocked
 // event loop cannot answer the hook, which then times out into the spool.
-async function send(env: Record<string, string>, command: string): Promise<{ home: string; status: number | null; stderr: string; ms: number }> {
+async function send(env: Record<string, string>, command: string, sender: 'shell-common' | 'redlog-send' | 'redlog-agent' = 'shell-common'): Promise<{ home: string; status: number | null; stderr: string; ms: number }> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-git-bash-'))
   homes.push(home)
   const redlog = path.join(home, '.redlog')
@@ -32,9 +32,15 @@ async function send(env: Record<string, string>, command: string): Promise<{ hom
   fs.writeFileSync(path.join(redlog, 'api-port'), String(collector.port))
   fs.writeFileSync(path.join(redlog, 'api-token'), TOKEN)
   fs.writeFileSync(path.join(redlog, 'active-identity.json'), JSON.stringify({ engagementId: 'eng-345', operatorId: 'op-345' }))
-  const hook = path.join(__dirname, '..', 'hooks', 'shell-common.sh').replace(/\\/g, '/')
+  const repo = path.join(__dirname, '..').replace(/\\/g, '/')
+  const hook = `${repo}/hooks/shell-common.sh`
   const started = Date.now()
-  const child = spawn(GIT_BASH!, ['--noprofile', '--norc', '-c', `source "${hook}" && _redlog_send_event command_start "$1"`, 'bash', command], {
+  // `sender` swaps in another of the repository's shell senders; each carries
+  // its own copy of how it hands curl the token (#489), and each must work here.
+  const script = sender === 'redlog-send' ? `bash "${repo}/hooks/redlog-send.sh" "$1" command_start; wait`
+    : sender === 'redlog-agent' ? `source "${repo}/shell/redlog-agent.sh" && _redlog_post /api/events "{\\"agent_type\\":\\"agent\\",\\"data\\":{\\"command\\":\\"$1\\"}}"`
+    : `source "${hook}" && _redlog_send_event command_start "$1"`
+  const child = spawn(GIT_BASH!, ['--noprofile', '--norc', '-c', script, 'bash', command], {
     env: { ...process.env, HOME: home, USERPROFILE: home, ...env }
   })
   let stderr = ''
@@ -57,6 +63,27 @@ describeGitBash('Git Bash on Windows delivers hook events directly (#345)', () =
       expect(collector.events.slice(from).map(e => e.data.command)).toContain(command)
       const pending = path.join(home, '.redlog', 'pending')
       expect(fs.existsSync(pending) ? fs.readdirSync(pending) : []).toEqual([])
+      // The token reached curl as a config file (#489), and none is left holding it.
+      const redlog = path.join(home, '.redlog')
+      for (const name of fs.readdirSync(redlog).filter(n => n.startsWith('.curl-auth.'))) {
+        expect(fs.readFileSync(path.join(redlog, name), 'utf8'), name).toBe('')
+      }
+    })
+  }
+
+  // The collector answers 401 to a wrong or missing token, so an event that
+  // arrives is one whose token reached curl through the config file.
+  for (const sender of ['redlog-send', 'redlog-agent'] as const) {
+    it(`${sender} authenticates with MSYS_NO_PATHCONV=1`, async () => {
+      const from = collector.events.length
+      const command = `echo git-bash-${sender}`
+      const { status, stderr } = await send({ MSYS_NO_PATHCONV: '1' }, command, sender)
+      expect(status, stderr).toBe(0)
+      // redlog-send.sh posts in the background; give it the time it needs.
+      for (let i = 0; i < 50 && !collector.events.slice(from).some(e => e.data.command === command); i++) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      expect(collector.events.slice(from).map(e => e.data.command)).toContain(command)
     })
   }
 })
