@@ -132,7 +132,13 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
     {newEvents && <Button size="compact" level="quiet" onClick={refresh}>{t('workspace.newActivity')}</Button>}
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
-    {page && <>
+    {page && (() => {
+      // Matched vs context is only a fact once a query splits a group's sources
+      // into hits and everything else. With no query every group is 1 matched /
+      // 0 context, so the same "命中 1 · 相關 0" would repeat down the whole
+      // list and say nothing.
+      const filtering = request.parsed.text.trim().length > 0 || request.parsed.conditions.length > 0
+      return <>
       <SearchCoverage coverage={page.bodyCoverage} />
       <p className="text-xs text-redlog-text-dim mb-2">{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}</p>
       {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
@@ -144,7 +150,7 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
               <time className="font-mono">{formatTime(item.firstAt, { seconds: true })}</time>
               <span>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
               <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
-              <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>
+              {filtering && <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
             </div>
             <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
           </button>
@@ -153,6 +159,7 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
         </div>)}
       </div>
       {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}
-    </>}
+      </>
+    })()}
   </div>
 }
