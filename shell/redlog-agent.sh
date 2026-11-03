@@ -13,6 +13,37 @@
 _REDLOG_PORT_FILE="$HOME/.redlog/api-port"
 _REDLOG_TOKEN_FILE="$HOME/.redlog/api-token"
 
+# curl with the bearer token supplied as a config, never as an argument: a
+# process listing shows argv to every user on the host (#489). Mirrors
+# _redlog_curl_authed in hooks/shell-common.sh, which explains the two
+# branches; this file is sourced on its own and cannot source that one.
+_redlog_curl_authed() {
+  local token="$1" conf
+  shift
+  token=${token//\\/\\\\}
+  token=${token//\"/\\\"}
+  conf="header = \"Authorization: Bearer $token\""
+  case "${OSTYPE:-}" in
+    cygwin*|msys*|win32*)
+      local rc
+      if [[ -z "${_REDLOG_CURL_CONF:-}" ]]; then
+        # `pwd -W` is the Windows spelling of the directory: /tmp and /home are
+        # mounts that native curl cannot resolve, and only the shell knows
+        # where they point. One subshell, the first time.
+        local dir="${_REDLOG_DIR:-${HOME:-}/.redlog}" win
+        win=$(cd "$dir" 2>/dev/null && pwd -W 2>/dev/null) || win=$dir
+        _REDLOG_CURL_CONF="$win/.curl-auth.$$"
+      fi
+      printf '%s\n' "$conf" > "$_REDLOG_CURL_CONF" || return 1
+      curl -K "$_REDLOG_CURL_CONF" "$@"
+      rc=$?
+      : > "$_REDLOG_CURL_CONF"
+      return $rc ;;
+    *)
+      curl -K /dev/fd/4 "$@" 4<<<"$conf" ;;
+  esac
+}
+
 _redlog_post() {
   local endpoint="$1" payload="$2"
   local port token
@@ -23,11 +54,11 @@ _redlog_post() {
   port=$(<"$_REDLOG_PORT_FILE")
   token=$(<"$_REDLOG_TOKEN_FILE")
 
-  curl -sf -X POST "http://127.0.0.1:${port}${endpoint}" \
-    -H "Authorization: Bearer $token" \
+  # The payload is stdin as well: it carries what the agent was told to record.
+  _redlog_curl_authed "$token" -sf -X POST "http://127.0.0.1:${port}${endpoint}" \
     -H "Content-Type: application/json" \
-    -d "$payload" \
-    --connect-timeout 2 --max-time 5
+    --data-binary @- \
+    --connect-timeout 2 --max-time 5 <<<"$payload"
 }
 
 _redlog_get() {
@@ -40,8 +71,7 @@ _redlog_get() {
   port=$(<"$_REDLOG_PORT_FILE")
   token=$(<"$_REDLOG_TOKEN_FILE")
 
-  curl -sf "http://127.0.0.1:${port}${endpoint}" \
-    -H "Authorization: Bearer $token" \
+  _redlog_curl_authed "$token" -sf "http://127.0.0.1:${port}${endpoint}" \
     --connect-timeout 2 --max-time 5
 }
 
@@ -132,8 +162,7 @@ redlog_status() {
     local port=$(<"$_REDLOG_PORT_FILE")
     local token=$(<"$_REDLOG_TOKEN_FILE")
     local resp
-    resp=$(curl -sf "http://127.0.0.1:${port}/api/status" \
-      -H "Authorization: Bearer $token" \
+    resp=$(_redlog_curl_authed "$token" -sf "http://127.0.0.1:${port}/api/status" \
       --connect-timeout 1 --max-time 2 2>/dev/null)
     if [[ $? -eq 0 ]]; then
       echo "[redlog] running on port $port"

@@ -5,6 +5,11 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Shell senders (`shell-common.sh`, `redlog-send.sh`, `redlog-agent.sh`) no
+  longer put the API token in a process's argument list, where a process
+  listing shows it to other users on a shared host. `redlog-send.sh` and
+  `redlog-agent.sh` also send their payload on stdin instead of as an argument
+  (Refs #489).
 - HTTP capture: the proxy addon no longer reads a spool record the app's drain
   removed mid-write as a full spool, so a capture gap is not lost to that race.
   Every gap it still cannot save leaves one log line carrying its reason, window
