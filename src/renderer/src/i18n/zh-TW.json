@@ -10,6 +10,7 @@
   "project.placeholder": "例如 Client-Pentest-Q3",
   "project.delete": "刪除專案",
   "project.rename": "重新命名",
+  "project.renameFailed": "無法重新命名",
   "replay.title": "工作階段回放",
   "replay.close": "關閉回放",
   "replay.drawerLabel": "工作階段回放播放器",

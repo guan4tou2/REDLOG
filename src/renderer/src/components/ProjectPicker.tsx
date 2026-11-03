@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SectionLabel } from './SectionLabel'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -51,6 +51,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (name === orig) return
     const res = await window.redlog.project.rename(id, name)
     if (res.ok) setProjects((prev) => prev.map((p) => p.id === id ? { ...p, name: res.name ?? name } : p))
+    // A refused rename used to leave the old name on screen with no word about
+    // it: the row simply snapped back and the operator tried again.
+    else toast(t('project.renameFailed'), { type: 'error', why: res.error })
   }
 
   async function handleCreate(): Promise<void> {
@@ -156,7 +159,20 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // at a two-column split above ~800px — brand + new project on the left,
   // recent projects on the right — and a stacked single-column fallback
   // below that so narrow windows behave like the old picker.
+  // Focus follows the stage the operator is at. A first run wants the name
+  // field; someone with projects came back to open one, so stealing focus into
+  // "create" makes the most likely action the one they have to tab out of.
+  const nameInput = useRef<HTMLInputElement | null>(null)
+  const loaded = listRead.phase === 'loaded'
   const hasRecent = projects.length > 0
+  useEffect(() => {
+    if (loaded && projects.length === 0) nameInput.current?.focus()
+  }, [loaded, projects.length])
+
+  // The list arrives after first paint. Reserving the wide frame until the
+  // answer is in keeps a returning operator from watching the card change
+  // width under the cursor; only an empty first run settles narrower.
+  const wide = !loaded || hasRecent
   // What to say about the list itself, if anything. A loaded, non-empty list
   // says nothing; the rows are the answer.
   const listStatus: 'loading' | 'empty' | 'failed' | null = bridgeMissing ? null
@@ -189,7 +205,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="flex-1 flex justify-center px-6 pb-6 overflow-y-auto"
         style={{ alignItems: 'safe center' }}
       >
-      <div className={`w-full ${hasRecent ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
+      <div className={`w-full ${wide ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
 
         {bridgeMissing && (
           <div className="bg-red-950/40 border border-red-900/50 rounded-xl p-4 text-center">
@@ -203,7 +219,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             drops back to the single-column max-w-[480px] above, so the
             first-launch look stays a centered card rather than a lonely
             new-project card floating in a wide empty gutter. */}
-        <div className={`grid gap-6 ${hasRecent ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+        <div className={`grid gap-6 ${wide ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
         {/* New project */}
         <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
           <SectionLabel className="tracking-[0.15em] mb-3">{t('project.new')}</SectionLabel>
@@ -213,7 +229,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               placeholder={t('project.placeholder')}
-              autoFocus
+              ref={nameInput}
               className="flex-1 h-[34px] bg-redlog-bg border border-redlog-border rounded-lg px-3 text-sm text-redlog-text font-mono focus:outline-none focus:border-redlog-accent focus:ring-2 focus:ring-redlog-accent/40 focus:ring-offset-2 focus:ring-offset-redlog-surface placeholder-redlog-muted transition-colors"
             />
             <Button
@@ -274,12 +290,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                         className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
                       />
                     ) : (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleOpen(p.id) }}
+                        className="flex items-center gap-2 min-w-0 w-full text-left rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                      >
                         <span title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</span>
                         {isDup && (
                           <span className="text-redlog-text-faint text-xs font-mono shrink-0">{formatDate(p.createdAt)}</span>
                         )}
-                      </div>
+                      </button>
                     )}
                     <div className="flex items-center flex-wrap gap-x-2 gap-y-0 text-redlog-text-faint text-xs font-mono">
                       <span className="whitespace-nowrap">{formatFreshness(p.lastOpened, t)}</span>
