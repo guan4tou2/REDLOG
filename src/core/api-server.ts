@@ -30,7 +30,7 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { parseVerifyReport, type HttpVerifyReport } from './http-verify'
-import { exportHar } from './har-export'
+import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
@@ -457,7 +457,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (bodyMatch && req.method === 'GET') {
       const file = `${bodyMatch[1]}.body`
       const encoding = (url.searchParams.get('encoding') || 'text') as 'text' | 'base64'
-      const content = readHttpBody({ sha256: '', size: 0, file, encoding })
+      // The scope the HAR export applies, so a hash read from an event cannot
+      // fetch what the export masks. Same answer as a missing body.
+      const scope = { targets: configLoaderRef?.getTargets?.() ?? [] }
+      const content = bodyDeliverableUnderScope(bodyMatch[1], scope)
+        ? readHttpBody({ sha256: '', size: 0, file, encoding }) : null
       if (content === null) { json(res, 404, { error: 'body not found' }); return }
       json(res, 200, { data: content, encoding, file })
       return
