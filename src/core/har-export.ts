@@ -1,8 +1,9 @@
 import { capturedContentIsPartial } from './content-contract'
-import { queryEvents, type RedLogEvent } from './db/events'
-import { readBodyForDelivery, type BodyRef } from './http-body-store'
-import { redactEventsForExport, type RedactExportOpts } from './redact-export'
-import type { ScopeForSanitize } from './scope-sanitize'
+import { queryEvents, queryEventById, type RedLogEvent } from './db/events'
+import { BODY_REF_FIELDS, readBodyForDelivery, type BodyRef } from './http-body-store'
+import { eventIdsReferencingBody } from './http-body-index'
+import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from './redact-export'
+import { isOutOfScope, isUnclassifiedScope, type ScopeForSanitize } from './scope-sanitize'
 import type { ExportSnapshot } from './export-plan'
 
 interface HarWebSocketMessage {
@@ -319,4 +320,23 @@ export function exportHar(opts?: {
   }
 
   return JSON.stringify(har, null, 2)
+}
+
+/** Whether the HAR export would deliver this body-store file under `scope`:
+ *  true when at least one event that references it survives the export's own
+ *  redaction with the reference intact. `/api/http-body/<sha>` asks this so a
+ *  hash read from an event cannot fetch what the export masks.
+ *
+ *  The scope predicates are checked directly as well as through the redaction:
+ *  a reference with no preview field beside it is not masked by
+ *  `redactEventForExport`, so its out-of-scope row would otherwise pass. */
+export function bodyDeliverableUnderScope(sha256: string, scope: ScopeForSanitize): boolean {
+  const file = `${sha256}.body`
+  for (const id of eventIdsReferencingBody(sha256)) {
+    const event = queryEventById(id)
+    if (!event || isOutOfScope(event.targetId, scope) || isUnclassifiedScope(event.targetId, scope)) continue
+    const exported = redactEventForExport(event, { scope })
+    if (exported && BODY_REF_FIELDS.some(field => (exported.data[field] as BodyRef | undefined)?.file === file)) return true
+  }
+  return false
 }

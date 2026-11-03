@@ -154,6 +154,32 @@ Executables added to the profiles after a report was written read as
 First-prompt PATH is a snapshot: a tool a venv or direnv adds later, or an
 alias with no executable behind it, reads as missing. That is display only.
 
+A profile's executables are also listed in the `native` or `pty` list of its
+mode. The support files are written one at a time, so an enrolled shell can run
+a relay from before profiles against this file, and that relay reads the two
+lists only. The profile still wins in the compiler, so the copies change no
+result; `test/hook-update-mixed-version.test.ts` runs every pairing of the two
+releases' relay and policy, and a write that fails at each file, and holds
+every shipped name to its class.
+
+**Plugins add profiles (#499)**: a plugin manifest may declare
+`terminalProfiles`; RedLog validates them, prefixes each id with the plugin id,
+and writes `~/.redlog/terminal-profiles.json`: the plugins' profiles plus `held`,
+the profile that had each command when the file was last written. Both compilers
+read it next to the overlay and the shipped file, as one more input that
+replaces nothing. Its profiles join the profile layer after the bundled ones, and
+the one rule `held` adds is the forward one: when profiles disagree on a command
+and one is the recorded holder, the holder keeps it and the clash is still
+reported. With no file nothing holds anything, which is the layering above; the
+golden table and a mirror of every clashing policy run with and without an empty
+snapshot to say so. What a plugin may not do: change the mode of a command in
+the shipped `native`/`pty` lists, claim a name the shell adapter itself runs, or
+name an executable that is not a bare command name (the PTY wrapper pastes it
+into shell source). The zsh class cache signature includes the file, so a plugin
+installed under a warm shell takes effect on the next command. PTY wrappers are
+still installed once, at start, so a pty program that arrives mid-shell runs
+unwrapped and its events say `capture_reason: no-pty-wrapper`.
+
 **Must hold**: the classification survives `sudo`, `env`, `proxychains` and an
 absolute path (FR-027), so the classifier walks prefix wrappers before it looks
 at the program name.

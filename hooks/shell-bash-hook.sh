@@ -55,6 +55,7 @@ _REDLOG_RELAY_DIR=""
 _REDLOG_TOOLS_REPORTED=""
 _REDLOG_CMD_ID=""
 _REDLOG_CMD_CLASS=""
+_REDLOG_CMD_CAPTURE=""
 
 # --- This terminal's own state (spec 052 US2), same contract as zsh ---
 #
@@ -138,9 +139,16 @@ redlog() {
             return 2
           fi
           python3 "$_REDLOG_RELAY" policy --home "$home" \
-            --action add --field "$2" --command "$3" >/dev/null || {
-            echo "[redlog] no such class: $2" >&2; return 2
-          }
+            --action add --field "$2" --command "$3" >/dev/null
+          # 3 is a name the wrapper cannot be built from, 4 an overlay that was
+          # not rewritten because it could not be read (the relay said why);
+          # anything else is the class.
+          case $? in
+            0) ;;
+            3) echo "[redlog] not a command name: $3 (letters, digits, . _ + - only)" >&2; return 2 ;;
+            4) return 2 ;;
+            *) echo "[redlog] no such class: $2" >&2; return 2 ;;
+          esac
           echo "[redlog] $3 is now $2"
           # zsh wraps the pty class in a recorder; bash does not (yet), and
           # saying otherwise would promise output that is not captured.
@@ -157,6 +165,12 @@ redlog() {
           fi
           python3 "$_REDLOG_RELAY" policy --home "$home" \
             --action remove --command "$2" >/dev/null
+          # The relay has said why when it did not rewrite the overlay.
+          case $? in
+            0) ;;
+            3) echo "[redlog] not a command name: $2 (letters, digits, . _ + - only)" >&2; return 2 ;;
+            *) return 2 ;;
+          esac
           echo "[redlog] $2 is back to the default"
           ;;
         *)
@@ -328,8 +342,19 @@ _redlog_trace_command() {
     fi
   fi
 
+  # `class` is the policy; it is not a claim about how this run was captured.
+  # Bash installs no PTY wrapper (zsh does), so a `pty` program runs on the
+  # shell's own terminal and is recorded as metadata only. The record says so
+  # beside the class, as the zsh adapter does for its `existing-shell-function`
+  # case, rather than letting `pty` read as "PTY-captured". `redlog class add
+  # pty` already warns the operator of this; the evidence has to carry it too.
+  _REDLOG_CMD_CAPTURE=""
+  if [[ "$_REDLOG_CMD_CLASS" == "pty" ]]; then
+    _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"no-pty-wrapper"'
+  fi
+
   _redlog_send_event "command_start" "$cmd" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 # What the DEBUG trap runs. Alone when nothing else holds the trap; behind
@@ -517,13 +542,14 @@ _redlog_prompt_command() {
         native|pty) [[ -n "$_REDLOG_DIVERT_FAILED" ]] || disposition="interactive" ;;
         redirected) disposition="redirected" ;;
       esac
-      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"}"
+      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
     fi
     _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
     _REDLOG_LAST_CMD=""
     _REDLOG_CMD_START=""
     _REDLOG_CMD_ID=""
     _REDLOG_CMD_CLASS=""
+    _REDLOG_CMD_CAPTURE=""
   fi
   return $exit_code
 }
@@ -566,6 +592,40 @@ else
   unset _redlog_user_pc
 fi
 unset _redlog_pc_plan _redlog_pc_set
+# A relayed command's directory is removed by the NEXT prompt command. `exit` is
+# a relayed command like any other, and no prompt follows it, so every shell
+# closed on purpose left one behind (#296). Nothing here restores the
+# descriptors: the shell is ending, and the relay treats a missing directory as
+# the end of the command (`redlog-relay.py`, the `not os.path.isdir` test).
+_redlog_exit_cleanup() {
+  [[ -n "${_REDLOG_RELAY_DIR:-}" ]] && rm -rf "$_REDLOG_RELAY_DIR" 2>/dev/null
+  return 0
+}
+
+# Bash keeps one EXIT trap, and the operator may already hold it. Theirs goes
+# first and ours is added to it, as `_redlog_trap_plan` does for DEBUG. The trap
+# is read through a file because `$(trap -p)` shows nothing before bash 4.4 (a
+# command substitution starts with the traps reset); trusting an empty answer
+# there would replace the operator's trap. With no file to read it, nothing is
+# installed and the sweep at the next load stays the backstop. A trap the
+# operator sets AFTER this loads replaces ours; the same backstop applies.
+_redlog_install_exit_cleanup() {
+  local file body=""
+  file=$(mktemp "${TMPDIR:-/tmp}/redlog-exittrap.XXXXXX" 2>/dev/null) || return 0
+  trap -p EXIT >"$file" 2>/dev/null
+  body=$(<"$file")
+  rm -f "$file"
+  [[ "$body" == *_redlog_exit_cleanup* ]] && return 0
+  if [[ -n "$body" ]]; then
+    eval "set -- $body"
+    # A newline, not `;`: the operator's last line may end in a comment.
+    trap -- "$3"$'\n''_redlog_exit_cleanup' EXIT
+  else
+    trap '_redlog_exit_cleanup' EXIT
+  fi
+}
+_redlog_install_exit_cleanup
+
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1

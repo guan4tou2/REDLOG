@@ -323,15 +323,57 @@ _redlog_build_payload_fast() {
   [[ -z "$out" ]] || printf '%s' "$body" > "$out" 2>/dev/null
 }
 
+# curl with the bearer token supplied as a config, never as an argument (#489).
+# $1 is the token; the rest are curl's arguments, and stdin goes to curl as it
+# is, so the body can still be `--data-binary @-`.
+#
+# Where the shell has /dev/fd the config is a here-string on descriptor 4 and
+# curl is given `-K /dev/fd/4`: no file is made and no process is started.
+# Native Windows curl cannot open /dev/fd, so under Git Bash / Cygwin the
+# config is a file beside the token file, named for this shell and given in
+# Windows spelling (an MSYS path is what #345 was about), and emptied once
+# curl has returned. Emptied, not removed: `rm` is a process, and under Git
+# Bash a process is ~85 ms on the operator's prompt. The directory is the
+# operator's own, as the token file's is.
+_redlog_curl_authed() {
+  local token="$1" conf
+  shift
+  token=${token//\\/\\\\}
+  token=${token//\"/\\\"}
+  conf="header = \"Authorization: Bearer $token\""
+  case "${OSTYPE:-}" in
+    cygwin*|msys*|win32*)
+      local rc
+      if [[ -z "${_REDLOG_CURL_CONF:-}" ]]; then
+        # `pwd -W` is the Windows spelling of the directory: /tmp and /home are
+        # mounts that native curl cannot resolve, and only the shell knows
+        # where they point. One subshell, the first time.
+        local dir="${_REDLOG_DIR:-${HOME:-}/.redlog}" win
+        win=$(cd "$dir" 2>/dev/null && pwd -W 2>/dev/null) || win=$dir
+        _REDLOG_CURL_CONF="$win/.curl-auth.$$"
+      fi
+      printf '%s\n' "$conf" > "$_REDLOG_CURL_CONF" || return 1
+      curl -K "$_REDLOG_CURL_CONF" "$@"
+      rc=$?
+      : > "$_REDLOG_CURL_CONF"
+      return $rc ;;
+    *)
+      curl -K /dev/fd/4 "$@" 4<<<"$conf" ;;
+  esac
+}
+
 # POST one payload, read from stdin, to the running RedLog. stdin rather than
 # `@file`: bash opens the file itself, so the path never reaches a native
 # Windows curl, which cannot resolve an MSYS path like /tmp/x when
 # MSYS_NO_PATHCONV=1 (or an MSYS2_ARG_CONV_EXCL covering "@") turns argument
 # conversion off (#345). It stays out of argv, so the 128 KiB limit does not
 # apply either.
+#
+# The bearer token does not travel in argv either: a process listing shows the
+# argument vector of every process to every user on the host (#489). stdin is
+# the body, so the token reaches curl as a config file (`_redlog_curl_authed`).
 _redlog_post() {
-  curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1/api/events" \
-    -H "Authorization: Bearer $2" \
+  _redlog_curl_authed "$2" --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1/api/events" \
     -H "Content-Type: application/json" \
     --data-binary @- \
     --connect-timeout 1 --max-time 2 >/dev/null 2>&1
@@ -506,7 +548,7 @@ sys.stdout.write(json.dumps(d))
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
-    mkdir -p "$spool_dir" 2>/dev/null
+    mkdir -m 700 -p "$spool_dir" 2>/dev/null
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
@@ -514,6 +556,7 @@ sys.stdout.write(json.dumps(d))
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
         spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
+        chmod 600 "$payload_file" 2>/dev/null
         mv "$payload_file" "$spool_file" 2>/dev/null
       else
         # No work directory to borrow a unique name from. noclobber makes the
@@ -523,7 +566,7 @@ sys.stdout.write(json.dumps(d))
         local try
         for try in 1 2 3 4 5; do
           spool_file="$spool_dir/$(date +%s%N).$$.redlog-send.${RANDOM}${RANDOM}.json"
-          if ( set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
+          if ( umask 077; set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
             mv "$spool_file.tmp" "$spool_file" 2>/dev/null
             break
           fi

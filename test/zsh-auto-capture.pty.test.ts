@@ -464,6 +464,81 @@ ${source()}`,
         expect(result.steps[5].output).toContain('fnonly:2')
       }, 300_000)
     })
+
+    // The wrapper is a function installed when the hook loads, so a program
+    // that is `pty` for any other reason — added to the class afterwards, or
+    // reached through `sudo` — runs on the shell's own terminal. `class: pty`
+    // is the policy; the record has to say what happened beside it, as it does
+    // for the operator's own function and as bash does for every pty program.
+    describe('a pty program with no wrapper in this shell', () => {
+      const identity = { engagementId: 'eng-harness', operatorId: 'op-harness' }
+      const source = (): string => `source ${hookPath(target!, 'shell-zsh-hook.zsh')}`
+
+      it('is marked no-pty-wrapper when it joined the class after the shell started', async () => {
+        const result = await runZsh(target!, {
+          rc: source(),
+          commands: ['redlog class add pty uname', 'uname -s noshim-probe'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        const start = shellEvents(collector.events, 'command_start', 'noshim-probe')[0]
+        const end = shellEvents(collector.events, 'command_end', 'noshim-probe')[0]
+        expect(start, 'no command_start').toBeTruthy()
+        expect(end, 'no command_end').toBeTruthy()
+        expect(start.data.class).toBe('pty')
+        for (const e of [start, end]) {
+          expect(e.data).toMatchObject({ capture_mode: 'native', capture_reason: 'no-pty-wrapper' })
+        }
+      }, 300_000)
+
+      // #499. A plugin's profile can name a program as pty while a terminal is
+      // open. The wrappers were installed at start, so there is none for it.
+      it('is marked no-pty-wrapper when a plugin\'s profile named it after the shell started', async () => {
+        const snapshot = JSON.stringify({
+          version: 1,
+          profiles: [{ id: 'pack/ligolo', name: 'Ligolo-ng', mode: 'pty', executables: ['ligolo-proxy'], reason: 'r' }],
+          held: {}
+        })
+        const result = await runZsh(target!, {
+          rc: `mkdir -p "$HOME/fakebin"\nprintf '#!/bin/sh\\necho ligolo-ran\\n' > "$HOME/fakebin/ligolo-proxy"\nchmod +x "$HOME/fakebin/ligolo-proxy"\nexport PATH="$HOME/fakebin:$PATH"\n${source()}`,
+          commands: ['ligolo-proxy plug-before', `printf '%s' '${snapshot}' > "$HOME/.redlog/terminal-profiles.json"`, 'ligolo-proxy plug-after'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        expect(result.steps[2].output).toContain('ligolo-ran')
+        const before = shellEvents(collector.events, 'command_start', 'plug-before')[0]
+        expect(before.data.class).toBe('relayed')
+        expect(before.data.capture_mode).toBeUndefined()
+        const after = shellEvents(collector.events, 'command_start', 'plug-after')[0]
+        expect(after.data.class).toBe('pty')
+        expect(after.data).toMatchObject({ capture_mode: 'native', capture_reason: 'no-pty-wrapper' })
+      }, 300_000)
+
+      it('is marked no-pty-wrapper behind sudo, and still carries nothing when wrapped', async () => {
+        // A stand-in `sudo` that runs its arguments, so the case needs no
+        // privilege: the class walks past it to `ssh`, and the word the shell
+        // looks a function up by is `sudo`.
+        const result = await runZsh(target!, {
+          rc: `mkdir -p "$HOME/fakebin"\nprintf '#!/bin/sh\\nexec "$@"\\n' > "$HOME/fakebin/sudo"\nchmod +x "$HOME/fakebin/sudo"\nexport PATH="$HOME/fakebin:$PATH"\n${source()}`,
+          commands: ['sudo ssh -4 -V sudo-probe', 'ssh -4 -V shimmed-probe'],
+          redlog: { port: collector.port, token, identity },
+          timeoutSeconds: 60
+        })
+        expect(result.ok, result.error).toBe(true)
+        const sudoStart = shellEvents(collector.events, 'command_start', 'sudo-probe')[0]
+        expect(sudoStart, 'no command_start for sudo ssh').toBeTruthy()
+        expect(sudoStart.data.class).toBe('pty')
+        expect(sudoStart.data).toMatchObject({ capture_mode: 'native', capture_reason: 'no-pty-wrapper' })
+
+        const wrappedStart = shellEvents(collector.events, 'command_start', 'shimmed-probe')[0]
+        expect(wrappedStart, 'no command_start for ssh').toBeTruthy()
+        expect(wrappedStart.data.class).toBe('pty')
+        expect(wrappedStart.data.capture_mode).toBeUndefined()
+        expect(wrappedStart.data.capture_reason).toBeUndefined()
+      }, 300_000)
+    })
   })
 
   // T021, FR-004. The bound is no longer a truncation limit: RedLog keeps a

@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
 import { DEFAULT_BROWSER } from './browser-defaults'
+import { mkdirPrivate } from './private-fs'
 
 export interface VpnAdapter {
   name: string
@@ -437,7 +438,7 @@ export function loadConfig(projectDir: string): RedLogConfig {
 }
 
 export function saveConfig(projectDir: string, config: RedLogConfig): void {
-  fs.mkdirSync(projectDir, { recursive: true })
+  mkdirPrivate(projectDir)
   const configPath = path.join(projectDir, 'config.yaml')
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
 }

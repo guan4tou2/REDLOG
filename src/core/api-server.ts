@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
+import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { parseQuery } from './query/contract'
 import { decodeCursor } from './query-page'
@@ -30,7 +31,7 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { parseVerifyReport, type HttpVerifyReport } from './http-verify'
-import { exportHar } from './har-export'
+import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
@@ -146,7 +147,7 @@ export function setPrimaryOperator(id: string, name: string): boolean {
 
 function writePrimaryToken(): string {
   const token = generateToken()
-  fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+  mkdirPrivate(path.dirname(TOKEN_PATH))
   fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
   try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   primaryToken = token
@@ -457,7 +458,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (bodyMatch && req.method === 'GET') {
       const file = `${bodyMatch[1]}.body`
       const encoding = (url.searchParams.get('encoding') || 'text') as 'text' | 'base64'
-      const content = readHttpBody({ sha256: '', size: 0, file, encoding })
+      // The scope the HAR export applies, so a hash read from an event cannot
+      // fetch what the export masks. Same answer as a missing body.
+      const scope = { targets: configLoaderRef?.getTargets?.() ?? [] }
+      const content = bodyDeliverableUnderScope(bodyMatch[1], scope)
+        ? readHttpBody({ sha256: '', size: 0, file, encoding }) : null
       if (content === null) { json(res, 404, { error: 'body not found' }); return }
       json(res, 200, { data: content, encoding, file })
       return
@@ -870,7 +875,7 @@ export function onApiProjectOpen(): void {
       try { restrictToOwner(projTokenPath) } catch { /* best-effort on win32 */ }
     }
     primaryToken = token
-    fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+    mkdirPrivate(path.dirname(TOKEN_PATH))
     fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
     try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   } catch { /* keep the bootstrap token from startApiServer */ }
@@ -908,7 +913,7 @@ function selfHealSidecarFiles(): void {
   if (!primaryToken) return
   try {
     if (!fs.existsSync(TOKEN_PATH)) {
-      fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+      mkdirPrivate(path.dirname(TOKEN_PATH))
       fs.writeFileSync(TOKEN_PATH, primaryToken, { mode: 0o600 })
     }
     if (listeningPort && !fs.existsSync(PORT_PATH)) {

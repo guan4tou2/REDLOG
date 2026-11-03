@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { BODY_SOURCE_PREDICATE } from '../content-contract'
 import path from 'path'
 import fs from 'fs'
+import { mkdirPrivate, ensurePrivateFile, restrictFile } from '../private-fs'
 import { resetSession, assertEventsAppendOnly } from './events'
 
 function hasRows(db: import('better-sqlite3').Database, table: string): boolean {
@@ -126,15 +127,19 @@ export function initDB(projectDir: string): Database.Database {
   // (v0.6.87 audit A4).
   resetSession()
 
-  fs.mkdirSync(projectDir, { recursive: true })
-  fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })
-  fs.mkdirSync(path.join(projectDir, 'http-bodies'), { recursive: true })
+  mkdirPrivate(projectDir)
+  mkdirPrivate(path.join(projectDir, 'screenshots'))
+  mkdirPrivate(path.join(projectDir, 'http-bodies'))
 
   const dbPath = path.join(projectDir, 'timeline.db')
   currentDbPath = dbPath
+  // SQLite gives -wal and -shm the mode of the main file, so it is made first.
+  ensurePrivateFile(dbPath)
   db = new Database(dbPath)
 
   db.pragma('journal_mode = WAL')
+  restrictFile(`${dbPath}-wal`)
+  restrictFile(`${dbPath}-shm`)
   db.pragma('foreign_keys = ON')
 
   migrateAddedColumns(db)

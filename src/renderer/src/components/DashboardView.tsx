@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { Globe } from 'lucide-react'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
@@ -16,6 +16,8 @@ import { useAppCounts } from '../lib/useAppCounts'
 import { eventTileStatus } from '../lib/eventTileStatus'
 import { settingsTarget } from '../lib/navigation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
+import { useCaptureHealthState } from '../lib/useCaptureHealth'
+import { captureUnknownLine } from '../lib/captureUnknown'
 
 export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
@@ -118,8 +120,9 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
   const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
-  const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
-  const refreshCaptureRef = useRef<() => void>(() => {})
+  // The store's snapshot, shared with the status bar. After a failed read
+  // `capture` is the last good one, kept to date it and never drawn as current.
+  const { health: capture, status: captureStatus, lastOkAt, refresh: refreshCapture } = useCaptureHealthState()
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
@@ -131,6 +134,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   const loading = countsLoading || localLoading
 
   const { t } = useI18n()
+  const unknown = captureStatus === 'unknown' ? captureUnknownLine(t, capture, lastOkAt) : undefined
 
   useEffect(() => {
     // Dashboard-specific fetches — the shared counts (eventCount,
@@ -140,15 +144,6 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       .catch(() => {})
       .finally(() => setLocalLoading(false))
 
-    // Capture health is non-critical and loaded separately so a slow check
-    // never blocks the dashboard.
-    const loadCapture = (): void => {
-      void window.redlog.capture.health().then(setCapture).catch(() => {})
-    }
-    // v0.9.7: let the card re-poll right after an install / toggle instead of
-    // waiting out the 5s cycle — the button would otherwise look inert.
-    refreshCaptureRef.current = loadCapture
-    loadCapture()
     // Anchor age poll — same non-blocking pattern as capture health.
     const loadAnchor = (): void => {
       void window.redlog.chain.anchors().then((list) => {
@@ -159,10 +154,10 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
     loadAnchor()
     // The shared counts (eventCount, chainLen, scopeViolations) are refreshed
     // by useAppCounts's own onNew subscription.
-    const unsub = window.redlog.events.onNewBatch(() => { loadCapture(); loadAnchor() })
+    const unsub = window.redlog.events.onNewBatch(() => { refreshCapture(); loadAnchor() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
-  }, [])
+  }, [refreshCapture])
 
   if (loading) {
     return (
@@ -188,8 +183,9 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           capture
             ? <CaptureHealthCard
                 capture={capture}
+                unknown={unknown}
                 onNavigate={onNavigate}
-                onRefresh={() => refreshCaptureRef.current()}
+                onRefresh={refreshCapture}
               />
             : <></>
         )}
@@ -206,15 +202,20 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       {capture && (
         <CaptureHealthCard
           capture={capture}
+          unknown={unknown}
           onNavigate={onNavigate}
-          onRefresh={() => refreshCaptureRef.current()}
+          onRefresh={refreshCapture}
           onSetup={() => onNavigate(settingsTarget('hooks'))}
         />
       )}
       {!capture && (
-        <Button level="secondary" data-testid="capture-open-setup" onClick={() => onNavigate(settingsTarget('hooks'))}>
-          {t('capture.openSetup')}
-        </Button>
+        <>
+          {/* The first read failed: there is no card to put the line in. */}
+          {unknown && <p data-testid="capture-unknown" className="text-xs text-redlog-text-dim">{unknown}</p>}
+          <Button level="secondary" data-testid="capture-open-setup" onClick={() => onNavigate(settingsTarget('hooks'))}>
+            {t('capture.openSetup')}
+          </Button>
+        </>
       )}
 
       <section>
@@ -253,7 +254,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             // it the total would fire a tamper signal on every project with a
             // logged row in it.
             const { sub, tone } = eventTileStatus({
-              eventCount, chainLen, lastAnchor, sampleBroken: capture?.lastSampleBroken, now: Date.now()
+              eventCount, chainLen, lastAnchor, sampleBroken: captureStatus === 'ok' ? capture?.lastSampleBroken : undefined, now: Date.now()
             }, t)
             return <StatCard label={t('dashboard.events')} value={String(eventCount + loggedCount)} sub={sub} tone={tone} />
           })()}

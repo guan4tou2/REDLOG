@@ -220,3 +220,61 @@ describeShell(`bash auto capture when the relay cannot help (${target.label})`, 
       .toContain('after-background')
   }, 180_000)
 })
+
+// #296. `pty` is the class's policy; bash has no PTY wrapper, so a pty-class
+// program runs on the shell's own terminal and is recorded as metadata only.
+// The row said `class: pty` and nothing else, which read as "PTY-recorded" —
+// the zsh adapter already says otherwise for the one case where it also runs
+// native (`existing-shell-function`), and bash does the same for all of them.
+describeShell(`a pty-class command in bash is marked as not PTY-recorded (${target.label})`, () => {
+  let collector: Awaited<ReturnType<typeof startCollector>>
+  let report: Awaited<ReturnType<typeof runZsh>>
+  const token = 'bash-pty-class-token'
+
+  beforeAll(async () => {
+    collector = await startCollector(token)
+    report = await runZsh(target, {
+      shellKind: 'bash',
+      // A stand-in named for a default pty-class program, so the test does not
+      // depend on socat being installed.
+      rc: [
+        'mkdir -p $HOME/bin',
+        `printf '#!/bin/sh\necho fake-socat-ran\n' > $HOME/bin/socat`,
+        'chmod +x $HOME/bin/socat',
+        'export PATH=$HOME/bin:$PATH',
+        `source ${hookPath(target, 'shell-bash-hook.sh')}`
+      ].join('\n'),
+      commands: ['socat pty-probe', 'stty size', 'echo plain-probe'],
+      redlog: { port: collector.port, token },
+      timeoutSeconds: 40
+    })
+  }, 300_000)
+  afterAll(async () => { await collector?.close() })
+
+  it('keeps class pty and says on both rows that it ran native, and why', () => {
+    expect(report.ok, report.error).toBe(true)
+    expect(report.steps[0].output).toContain('fake-socat-ran')
+    const start = events(collector.events, 'command_start', 'socat pty-probe')[0]
+    const end = events(collector.events, 'command_end', 'socat pty-probe')[0]
+    expect(start, 'no command_start').toBeTruthy()
+    expect(end, 'no command_end').toBeTruthy()
+    // The policy is unchanged; the fields say what actually happened.
+    expect(start.data.class).toBe('pty')
+    for (const e of [start, end]) {
+      expect(e.data).toMatchObject({ capture_mode: 'native', capture_reason: 'no-pty-wrapper' })
+      expect(e.data.source).not.toBe('auto-pty')
+    }
+    expect(end.data).toMatchObject({ completeness: 'metadata-only', output_disposition: 'interactive' })
+  })
+
+  it('says nothing about capture on a relayed or a native command', () => {
+    for (const probe of ['stty size', 'echo plain-probe']) {
+      for (const subtype of ['command_start', 'command_end']) {
+        const e = events(collector.events, subtype, probe)[0]
+        expect(e, `no ${subtype} for ${probe}`).toBeTruthy()
+        expect(e.data.capture_mode).toBeUndefined()
+        expect(e.data.capture_reason).toBeUndefined()
+      }
+    }
+  })
+})

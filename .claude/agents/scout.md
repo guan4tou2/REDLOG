@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Cheap, read-only fact finding — grep the repo, read logs, fetch a doc page, find which file defines something. Use proactively when the answer is a fact to look up and the main thread would otherwise read many files to get it. Not for judgement or design.
-model: claude-sonnet-5-5
+model: claude-haiku-5-5
 effort: low
 tools: Read, Grep, Glob, WebFetch
 ---

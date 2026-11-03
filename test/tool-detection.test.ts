@@ -4,7 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { createToolDetector, rescanTrigger, type ToolDetectionSnapshot } from '../src/core/tool-detection'
-import { classifyCommand, compileClassPolicy, shippedProfiles, type TerminalProfile } from '../src/core/terminal-class'
+import { classifyCommand, compileClassPolicy, knownProfiles, type TerminalProfile } from '../src/core/terminal-class'
 import { readClassOverlay } from '../src/core/terminal-enrollment'
 import shipped from '../hooks/command-class.json'
 import golden from './fixtures/command-class-golden.json'
@@ -576,11 +576,11 @@ describe('a miss never changes what a command is', () => {
   // process's own PATH and from a shell, with the report where a reader that
   // went looking under HOME would find it.
   const allMissing = async (): Promise<ToolDetectionSnapshot> => {
-    const names = [...new Set(shippedProfiles().flatMap((p) => p.executables))].sort()
+    const names = [...new Set(knownProfiles().flatMap((p) => p.executables))].sort()
     writeReport('all-missing', report({ checked: names, found: {} }))
     process.env.HOME = home
     process.env.USERPROFILE = home
-    const detector = createToolDetector({ home, platform: process.platform, env: () => ({ PATH: '' }), profiles: () => shippedProfiles() })
+    const detector = createToolDetector({ home, platform: process.platform, env: () => ({ PATH: '' }), profiles: () => knownProfiles() })
     return detector.rescan('manual')
   }
 
@@ -596,9 +596,27 @@ describe('a miss never changes what a command is', () => {
 
   it('classifies every shipped profile executable as its profile says, with everything reported missing', async () => {
     await allMissing()
-    for (const p of shippedProfiles()) {
+    for (const p of knownProfiles()) {
       for (const exe of p.executables) expect(classifyCommand([exe]), `${p.id}: ${exe}`).toBe(p.mode)
     }
+  })
+
+  it('looks for a plugin\'s tool too: the profiles it joins to are the ones the compiler uses', async () => {
+    const plugin = { id: 'acme/scanner', name: 'Acme scanner', mode: 'pty', executables: ['acme-scan'], reason: 'test' }
+    const bad = { id: 'Not Valid', name: 'x', mode: 'pty', executables: ['y'], reason: 'test' }
+    const snapshot = { version: 1, profiles: [plugin, bad], held: {} }
+    const known = knownProfiles(undefined, snapshot)
+    expect(known.map((p) => p.id)).toContain('acme/scanner')
+    expect(known.map((p) => p.id)).not.toContain('Not Valid')
+    // The compiler credits a command to exactly the profiles detection joins to.
+    const compiled = compileClassPolicy(null, undefined, snapshot)
+    const credited = new Set(compiled.entries.filter((e) => e.source === 'profile').map((e) => e.profile))
+    for (const id of credited) expect(known.map((p) => p.id), String(id)).toContain(id)
+    expect(compiled.problems.filter((p) => p.kind === 'invalid-profile')).toHaveLength(1)
+    // And detection reports it.
+    const detector = createToolDetector({ home, platform: process.platform, env: () => ({ PATH: '' }), profiles: () => known })
+    const snap = await detector.rescan('manual')
+    expect(snap.environments.flatMap((e) => e.profiles.map((p) => p.profile))).toContain('acme/scanner')
   })
 
   it('carries no mode in a snapshot', async () => {

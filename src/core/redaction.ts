@@ -14,38 +14,37 @@ export const DEFAULT_RULES: RedactionRules = {
 
 let activeRules: RedactionRules = { ...DEFAULT_RULES }
 
-// Additive plugin layer (🟢 declarative): denylist/allowlist entries contributed
-// by plugins, kept per-plugin so they survive config reloads and can be removed
+// Additive plugin layer (🟢 declarative): denylist entries contributed by
+// plugins, kept per-plugin so they survive config reloads and can be removed
 // on disable. Merged into the effective rules at read time.
-const pluginRules = new Map<string, { denylist: string[]; allowlist: string[] }>()
-
-export interface RedactionRuleRejection { list: 'denylist' | 'allowlist'; entry: string; reason: string }
+//
+// There is no plugin allowlist (#499). The allowlist is checked before the
+// denylist and before the values loot detection found, so an entry from a
+// plugin could stop either from masking anything at ingest; the spans fixed
+// there are what an export is masked by, so nothing later would put it back.
+// Letting a value through is the operator's setting (`redaction.allowlist`).
+const pluginRules = new Map<string, string[]>()
+export interface RedactionRuleRejection { list: 'denylist'; entry: string; reason: string }
 
 /** Register a plugin's redaction entries. An entry written `/…/` is a regex;
  *  one that does not compile used to be dropped when the rules were first read,
  *  with nothing said, while the plugin stayed ACTIVE. It is kept out here and
  *  named in `rejected` so the caller can report it. Plain entries (substring
  *  matches) always compile. */
-export function registerRedactionRules(pluginId: string, rules: { denylist?: string[]; allowlist?: string[] }): { accepted: number; rejected: RedactionRuleRejection[] } {
+export function registerRedactionRules(pluginId: string, rules: { denylist?: string[] }): { accepted: number; rejected: RedactionRuleRejection[] } {
   const rejected: RedactionRuleRejection[] = []
-  let accepted = 0
-  const check = (list: 'denylist' | 'allowlist', entries: string[] | undefined): string[] => {
-    const kept: string[] = []
-    for (const entry of entries ?? []) {
-      if (typeof entry !== 'string' || entry === '') { rejected.push({ list, entry: String(entry), reason: 'empty entry' }); continue }
-      if (entry.startsWith('/') && entry.endsWith('/') && entry.length > 2) {
-        try { new RegExp(entry.slice(1, -1)) }
-        catch (e) { rejected.push({ list, entry, reason: (e as Error).message }); continue }
-      }
-      kept.push(entry); accepted++
+  const denylist: string[] = []
+  for (const entry of rules.denylist ?? []) {
+    if (typeof entry !== 'string' || entry === '') { rejected.push({ list: 'denylist', entry: String(entry), reason: 'empty entry' }); continue }
+    if (entry.startsWith('/') && entry.endsWith('/') && entry.length > 2) {
+      try { new RegExp(entry.slice(1, -1)) }
+      catch (e) { rejected.push({ list: 'denylist', entry, reason: (e as Error).message }); continue }
     }
-    return kept
+    denylist.push(entry)
   }
-  const denylist = check('denylist', rules.denylist)
-  const allowlist = check('allowlist', rules.allowlist)
-  pluginRules.set(pluginId, { denylist, allowlist })
+  pluginRules.set(pluginId, denylist)
   invalidateCache()
-  return { accepted, rejected }
+  return { accepted: denylist.length, rejected }
 }
 
 export function unregisterRedactionRules(pluginId: string): void {
@@ -95,12 +94,8 @@ function ensureCache(): CachedRules {
     ? activeRules
     : (() => {
         const denylist = [...activeRules.denylist]
-        const allowlist = [...activeRules.allowlist]
-        for (const r of pluginRules.values()) {
-          denylist.push(...r.denylist)
-          allowlist.push(...r.allowlist)
-        }
-        return { ...activeRules, denylist: [...new Set(denylist)], allowlist: [...new Set(allowlist)] }
+        for (const entries of pluginRules.values()) denylist.push(...entries)
+        return { ...activeRules, denylist: [...new Set(denylist)] }
       })()
   cachedRules = {
     rules,
