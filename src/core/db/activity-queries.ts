@@ -23,13 +23,24 @@ function validateParsed(parsed: ParsedQuery): void {
 function register(): ReturnType<typeof getReadonlyDB> {
   const db = getReadonlyDB()
   if (!registered.has(db)) {
+    // A row whose `data` is not an object has no activity key to compute. One
+    // such row must not take the whole page with it: the projection is
+    // read-only, the row is already in the chain, and failing the query
+    // repairs nothing — an operator who cannot open Activity cannot see the
+    // other 500 rows either. Treat the payload as empty and let the row fall
+    // under its generic classification. The chain keeps the original bytes.
+    const asObject = (raw: unknown): Record<string, unknown> => {
+      try {
+        const v = JSON.parse(String(raw)) as unknown
+        return v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
+      } catch { return {} }
+    }
     db.function('redlog_activity_key_v1', { deterministic: true }, (id, project, binding, agent, raw) => {
-      const data = JSON.parse(String(raw)) as Record<string, unknown>
-      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid Event payload')
+      const data = asObject(raw)
       const key = activityKey({ id: String(id), engagementId: String(project), sessionId: String(binding), agentType: String(agent), data })
       return `${JSON.parse(key)[1]}:${activityId(key)}`
     })
-    db.function('redlog_activity_class_v1', { deterministic: true }, (agent, raw) => JSON.stringify(activityClassification({ agentType: String(agent), data: JSON.parse(String(raw)) as Record<string, unknown> })))
+    db.function('redlog_activity_class_v1', { deterministic: true }, (agent, raw) => JSON.stringify(activityClassification({ agentType: String(agent), data: asObject(raw) })))
     db.function('redlog_activity_digest_v1', { deterministic: true }, raw => fingerprint(String(raw)))
     // Connection-local derived index. Closing a project drops it; original rows
     // and hashes are never changed, and no cache enters an evidence bundle.

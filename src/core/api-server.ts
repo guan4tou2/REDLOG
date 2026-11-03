@@ -327,7 +327,17 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
         return
       }
-      const data = (body.data || {}) as Record<string, unknown>
+      // `data` holds everything the readers index on — subtype, command,
+      // output, url, tool. An assertion here is not a check: a caller that
+      // posts `"data": "str"` used to be stored, and the Activity projection
+      // computed its key by throwing, which failed the page for every row in
+      // the project. Refuse the shape where the caller can still see why.
+      const rawData: unknown = body.data ?? {}
+      if (rawData === null || typeof rawData !== 'object' || Array.isArray(rawData)) {
+        json(res, 400, { error: 'data must be a JSON object' })
+        return
+      }
+      const data = rawData as Record<string, unknown>
       // A marker is the one operator-authored, authoritative type an outside
       // tool may report — and an amendment claims to be an operator changing
       // what a finding says. Validating a forged one would only make it

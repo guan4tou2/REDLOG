@@ -203,21 +203,23 @@ describe('Activity project query', () => {
     expect(() => queryActivityMembers({...request(),ref:page.items[0]} as never)).toThrow(/snapshot/i)
   })
 
-  it('recovers after a partial index build fails, and preserves IDs across project reopen', () => {
+  it('survives a corrupt payload row, and preserves IDs across project reopen', () => {
     add('first',100,'marker',{title:'first'})
     const first=queryActivityPage(request()).items[0].id
     add('second',200,'marker',{title:'second'})
-    // A readable SQLite row with an invalid Event payload forces failure after
-    // a new valid row has been visited, rather than before indexing starts.
+    // #548: a readable SQLite row whose `data` is not an object used to throw
+    // from the projection, which failed the page for every other row too —
+    // permanently, because the chain is append-only. The row is now projected
+    // with an empty payload: it still appears, so the operator can see that
+    // something is there, and the other rows are unaffected.
     getDB().exec(`INSERT INTO events (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at,hash)
-      VALUES ('corrupt',300,'eng','binding','operator','marker','marker','host','null',300,'fixture-hash')`)
-    expect(() => queryActivityPage(request())).toThrow(/payload/i)
-    for(const trigger of getDB().prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='events' AND sql LIKE '%BEFORE DELETE%'").all() as {name:string}[]) getDB().exec(`DROP TRIGGER "${trigger.name}"`)
-    getDB().prepare('DELETE FROM events WHERE id=?').run('corrupt')
-    expect(queryActivityPage(request()).totalGroups).toBe(2)
+      VALUES ('corrupt',300,'eng','binding','operator','marker','marker','host','"str"',300,'fixture-hash')`)
+    const withCorrupt = queryActivityPage(request())
+    expect(withCorrupt.totalGroups).toBe(3)
+    expect(withCorrupt.items.map(a=>a.anchor.id)).toContain('corrupt')
     closeDB(); initDB(dir)
     const reopened=queryActivityPage(request())
-    expect(reopened.items.map(a=>a.anchor.id)).toEqual(['second','first'])
+    expect(reopened.items.map(a=>a.anchor.id)).toEqual(['corrupt','second','first'])
     expect(reopened.items.find(a=>a.anchor.id==='first')?.id).toBe(first)
   })
 
@@ -253,4 +255,20 @@ it('uses a picked source Session in the same query engine as events and export',
   expect(executeEventQuery({parsed:request(`source:${picked.token}`).parsed}).items.map(event=>event.id)).toEqual(['claude'])
   expect(queryActivityPage(request(`provider:codex`)).items.map(item=>item.anchor.id)).toEqual(['codex'])
   expect(()=>executeEventQuery({parsed:request('source:bad-token').parsed})).toThrow(/source|Session/i)
+})
+
+it('keeps the page readable when one stored row has a non-object payload', () => {
+  // #548: the projection computed a key by throwing, so a single malformed row
+  // failed the whole query — permanently, because the chain is append-only and
+  // the row cannot be removed. The row still appears; it just has no fields.
+  add('good-a', 10, 'marker', { title: 'first' })
+  getDB().prepare(`INSERT INTO events (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,source_ip,target_id,data,created_at,hash,prev_hash)
+    VALUES ('bad-shape',20,'eng','binding','operator','shell','','host',NULL,NULL,'"str"',20,'fixture-hash',NULL)`).run()
+  add('good-b', 30, 'marker', { title: 'third' })
+
+  const page = queryActivityPage(request(''))
+  expect(page.items).toHaveLength(3)
+  expect(page.items.map((item) => item.anchor.id).sort()).toEqual(['bad-shape', 'good-a', 'good-b'])
+  // The malformed row is not silently dropped from the count either.
+  expect(page.totalGroups).toBe(3)
 })
