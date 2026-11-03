@@ -1912,11 +1912,13 @@ class DetectDeadline(Exception):
     """The lookup ran out of time. Names it had not reached are unchecked, not missing."""
 
 
-def profile_executables(shipped):
+def profile_executables(profiles):
     """The bare executable names of the profiles `compile_policy` would accept,
-    sorted, unique and no more than a report may hold."""
+    sorted, unique and no more than a report may hold. `profiles` is the shipped
+    ones and then the plugins', in the order the compiler reads them (the seam
+    `knownProfiles` is in src/core/terminal-class.ts)."""
     names = set()
-    for profile in shipped.get("terminalProfiles", []):
+    for profile in profiles:
         if valid_profile(profile):
             names.update(c for c in profile["executables"] if re.fullmatch(r"[A-Za-z0-9._+-]+", c))
     return sorted(names)[:DETECT_MAX_EXECUTABLES]
@@ -1958,7 +1960,9 @@ def detect_cmd(argv):
     started = time.monotonic()
     deadline = started + DETECT_DEADLINE_S
     try:
-        names = profile_executables(read_shipped())
+        shipped = read_shipped()
+        contributed = normalize_contributed(read_contributed_file(terminal_home(opts)))[0]
+        names = profile_executables(list(shipped.get("terminalProfiles", [])) + list(contributed))
     except (OSError, ValueError):
         return 0
     windows = sys.platform == "win32"

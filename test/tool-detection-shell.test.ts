@@ -27,7 +27,10 @@ const lookupNames = cases.lookups.map((c) => c.name)
 const SHIPPED = {
   native: [], pty: [], repl: [], replScriptFlags: [], wrappers: {},
   terminalProfiles: [
-    { id: 'table', name: 'Table', mode: 'native', executables: [...lookupNames, 'has space', 'a;b'], reason: 'r' },
+    { id: 'table', name: 'Table', mode: 'native', executables: lookupNames, reason: 'r' },
+    // A profile naming anything but a bare command is not a profile at all, so
+    // neither of these is looked for.
+    { id: 'spaced', name: 'Spaced', mode: 'native', executables: ['has space', 'a;b'], reason: 'r' },
     { id: 'bad', name: 'Bad', mode: 'sideways', executables: ['ghost'], reason: 'r' }
   ]
 }
@@ -117,6 +120,29 @@ describeShell(`redlog-relay detect (${target?.label ?? 'no shell reachable'})`, 
       { name: 'absent', state: 'missing' },
       { name: 'plain-file', state: 'missing' }
     ])
+  }, 90_000)
+
+  it('also looks for the executables of a plugin\'s valid profiles, and skips an invalid one', async () => {
+    const snapshot = {
+      version: 1, held: {},
+      profiles: [
+        { id: 'acme/scanner', name: 'Acme', mode: 'pty', executables: ['exe-first', 'acme-scan'], reason: 'r' },
+        { id: 'acme/broken', name: 'Broken', mode: 'pty', executables: ['acme-ok', 'not ok'], reason: 'r' }
+      ]
+    }
+    const run = await runInShell(target!, [
+      ...prologue(),
+      `mkdir -p "$T/home/.redlog"`,
+      `cat > "$T/home/.redlog/terminal-profiles.json" <<'JSON'\n${JSON.stringify(snapshot)}\nJSON`,
+      `cd "$T" && env PATH="$T/first" ${DETECT} --shell bash; echo "exit=$?"`,
+      `echo "=== report"; cat ${REPORTS}/*.json`
+    ].join('\n'), { timeoutMs: 60_000 })
+    expect(run.stdout, run.stderr.slice(0, 400)).toContain('exit=0')
+    const report = JSON.parse(section(run.stdout, 'report')) as Report
+    expect(report.checked).toContain('acme-scan')
+    expect(report.checked).not.toContain('acme-ok')
+    expect(report.checked).not.toContain('not ok')
+    expect(report.checked).toEqual([...new Set(report.checked)].sort())
   }, 90_000)
 
   it('names the distro and the shell it was told about, and sanitises the file name', async () => {
