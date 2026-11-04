@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import path from 'node:path'
-import { resolveAgentCapture, agentTranscriptRoot } from '../src/core/agent-capture-policy'
+import { resolveAgentCapture, agentTranscriptRoot, addWorkPath } from '../src/core/agent-capture-policy'
 const catalog = [{ agentKind: 'codex', pluginId: 'official-ai-codex', state: 'installed', installationId: 'install-1' }]
 const plugins = [{ manifest: { id: 'official-ai-codex' }, status: 'active' }]
 const config = { agentTailer: { sources: { codex: { enabled: true, installationId: 'install-1', workPaths: [path.resolve('work/client')], startedAt: 1000 } } } }
@@ -49,5 +49,29 @@ describe('AI transcript source location', () => {
       const source = { ...config.agentTailer.sources.codex, sourceRoot }
       expect(resolveAgentCapture({ agentTailer: { sources: { codex: source } } }, catalog as never, plugins as never)).toEqual([])
     }
+  })
+})
+
+describe('addWorkPath', () => {
+  it('trims and appends a manually typed directory', () => {
+    expect(addWorkPath([], '  C:\\code\\app  ')).toEqual(['C:\\code\\app'])
+  })
+  it('ignores empty input and returns the same array', () => {
+    const current = ['C:\\code\\app']
+    expect(addWorkPath(current, '   ')).toBe(current)
+  })
+  it('dedupes an entry that is already present', () => {
+    const current = ['\\\\wsl.localhost\\Ubuntu\\home\\me']
+    expect(addWorkPath(current, '\\\\wsl.localhost\\Ubuntu\\home\\me')).toBe(current)
+  })
+  it('strips one layer of matching quotes (a paste from a terminal)', () => {
+    expect(addWorkPath([], "'\\\\wsl.localhost\\Ubuntu\\home\\me'")).toEqual(['\\\\wsl.localhost\\Ubuntu\\home\\me'])
+    expect(addWorkPath([], '"\\\\wsl.localhost\\Ubuntu\\home\\me"')).toEqual(['\\\\wsl.localhost\\Ubuntu\\home\\me'])
+  })
+  it('does not mutate the input array', () => {
+    const current = ['/a']
+    const next = addWorkPath(current, '/b')
+    expect(current).toEqual(['/a'])
+    expect(next).toEqual(['/a', '/b'])
   })
 })

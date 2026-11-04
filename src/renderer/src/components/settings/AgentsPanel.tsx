@@ -7,6 +7,7 @@ import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 import type { OfficialAgentPlugin } from '../../../../core/plugins/official-agents'
 import type { AgentKind, AgentCaptureSourceConfig } from '../../../../core/agent-capture-policy'
+import { addWorkPath } from '../../../../core/agent-capture-policy'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 type Source = { id: string; label: string; root: string; detected: boolean }
@@ -29,6 +30,8 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
   const latest = useRef(config); latest.current = config
   const [error, setError] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
+  const [manualPath, setManualPath] = useState('')
+  const [manualSource, setManualSource] = useState('')
   const value = config.agentTailer?.sources?.[item.agentKind] ?? {}
   const paths = value.workPaths ?? []
   const authorized = value.installationId === item.installationId && !!item.installationId
@@ -87,6 +90,35 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
     if (!ok) return
     await mutate(item.agentKind, 'uninstall')
   }
+  /** Manual working-directory entry, for paths the native picker cannot open
+   *  — a `\\wsl.localhost\...` share on Windows is the case that got this
+   *  field. Same changeScope semantics as the picker: a widened range stops
+   *  recording until confirmed. */
+  const addManualPath = (): void => {
+    const current = latest.current.agentTailer?.sources?.[item.agentKind] ?? {}
+    const nextPaths = addWorkPath(current.workPaths ?? [], manualPath)
+    if (nextPaths.length === (current.workPaths ?? []).length) {
+      setError(manualPath.trim() ? t('settings.agents.pathAlreadyAdded') : t('settings.agents.pathRequired'))
+      setManualPath('')
+      return
+    }
+    setError(null)
+    changeScope(nextPaths)
+    setManualPath('')
+  }
+  const applyManualSource = (): void => {
+    const root = manualSource.trim()
+    if (!root) { setError(t('settings.agents.pathRequired')); return }
+    const current = latest.current.agentTailer?.sources?.[item.agentKind] ?? {}
+    if (root === (current.sourceRoot ?? source?.root)) {
+      setError(t('settings.agents.sourceUnchanged'))
+      setManualSource('')
+      return
+    }
+    setError(null)
+    update({ ...current, sourceRoot: root, enabled: false, startedAt: undefined, scopeChangedAt: current.enabled ? Date.now() : undefined })
+    setManualSource('')
+  }
   const pickSource = async (): Promise<void> => {
     const project = latest.current.engagement.id
     setPicking(true); setError(null)
@@ -118,6 +150,10 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
       <div className="space-y-2">
         {paths.length > 0 && <ul aria-label={t('settings.agents.projectWork')} className="space-y-1">{paths.map(dir => <li key={dir} className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 flex-1 break-all font-mono">{dir}</span><Button level="secondary" type="button" disabled={busy || picking} aria-label={t('settings.agents.removeWork', { path: dir })} onClick={() => changeScope(paths.filter(p => p !== dir))}>{t('settings.agents.removeDirectory')}</Button></li>)}</ul>}
         <Button level="secondary" type="button" data-testid={`agent-add-path-${item.agentKind}`} disabled={busy || picking} onClick={() => void pick()}>{t('settings.agents.pickWork')}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="text" data-testid={`agent-path-input-${item.agentKind}`} aria-label={t('settings.agents.workPathPlaceholder')} placeholder={t('settings.agents.workPathPlaceholder')} value={manualPath} onChange={(e) => setManualPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManualPath() } }} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500" disabled={busy || picking} />
+          <Button level="secondary" type="button" data-testid={`agent-path-add-${item.agentKind}`} disabled={busy || picking || !manualPath.trim()} onClick={addManualPath}>{t('settings.agents.addWork')}</Button>
+        </div>
       </div>
       {sessions.length > 0 && <details className="text-xs"><summary className="min-h-8 content-center cursor-pointer text-redlog-text-dim">{t('settings.agents.sessions')} ({sessions.length})</summary><ul className="space-y-2" aria-label={t('settings.agents.sessions')}>{sessions.map(session => {
         const excluded = value.excludedSessions?.includes(session.sessionId) === true
@@ -140,6 +176,10 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
           <code className="block break-all" data-testid={`agent-root-${item.agentKind}`}>{root}</code>
           <div className="flex flex-wrap gap-2">
             <Button level="secondary" type="button" data-testid={`agent-source-path-${item.agentKind}`} disabled={busy || picking} onClick={() => void pickSource()}>{t('settings.agents.changeSource')}</Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="text" data-testid={`agent-source-input-${item.agentKind}`} aria-label={t('settings.agents.sourcePathPlaceholder')} placeholder={t('settings.agents.sourcePathPlaceholder')} value={manualSource} onChange={(e) => setManualSource(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyManualSource() } }} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500" disabled={busy || picking} />
+              <Button level="secondary" type="button" data-testid={`agent-source-apply-${item.agentKind}`} disabled={busy || picking || !manualSource.trim()} onClick={applyManualSource}>{t('settings.agents.applySource')}</Button>
+            </div>
             {value.sourceRoot !== undefined && <Button level="secondary" type="button" disabled={busy || picking} onClick={() => update({ ...value, sourceRoot: undefined, enabled: false, startedAt: undefined, scopeChangedAt: value.enabled ? Date.now() : undefined })}>{t('settings.agents.defaultSource')}</Button>}
             <Button level="secondary" type="button" data-testid={`agent-remove-${item.agentKind}`} disabled={busy || picking} onClick={() => void uninstall()}>{t('settings.agents.removeCapture')}</Button>
           </div>

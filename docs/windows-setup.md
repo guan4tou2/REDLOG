@@ -32,6 +32,8 @@ RedLog 放在 Windows 主機，WSL 透過自己的 Bash／Zsh adapter 接入。
 
 連不上時先看 App 的發行版／網路診斷；NAT、mirrored 與轉送的可用方式依環境而異，不要求所有使用者先修改 `.wslconfig`。若需要重新啟動 WSL，先儲存其中工作。
 
+若要讓 AI 對話擷取來源以 WSL 內的路徑為工作目錄，Windows 的原生資料夾挑選器開不了 `\\wsl.localhost\...` (9P 掛載)。在工作目錄的「Add working directory」旁直接貼上路徑加入，例如 `\\wsl.localhost\Ubuntu\home\你的名稱\project`;「Source settings」的對話資料夾路徑也可手動輸入。輸入的路徑在 Windows 端以 UNC 絕對路徑處理，不需先掛載。
+
 ## 4. 接入網頁流量
 
 從「設定 → 瀏覽器與 HTTP 擷取」準備依賴並啟動代理。選自己的瀏覽器時，依序設定代理、信任這張擷取 CA，再按「開啟驗證網址」。也可選 RedLog 擷取瀏覽器。
