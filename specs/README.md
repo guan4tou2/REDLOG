@@ -1,19 +1,19 @@
 # Spec 索引
 
-更新：2026-10-30；基準 `ae0544b5`。每個編號保留原目錄、tasks ID 與驗收歷史；本次不改 feature 狀態、不重新編號，也不以此索引代勾 tasks。
+更新：2026-11-04；基準 `f51037e0`。每個編號保留原目錄、tasks ID 與驗收歷史；本次不改 feature 狀態、不重新編號，也不以此索引代勾 tasks。
 
 下一批與依賴見 [工作計畫](../docs/WORK-PLAN.md)；領域語意見 [domain](../docs/domain/glossary.md)。
 
 ## 狀態如何讀
 
-目前 64 份：Verified 44、Implemented 5、Draft 13、Withdrawn 2。這是 spec.md 的宣告統計，不是重新驗證全部產品。
+目前 65 份：Verified 44、Implemented 5、Draft 14、Withdrawn 2。這是 spec.md 的宣告統計，不是重新驗證全部產品。
 
 - `spec.md`：需求與正式狀態；`plan.md`：實作安排；`tasks.md`：執行項；`verification.md`／acceptance：測試及原生證據。部分舊 Draft 沒有完整 plan／tasks，先按現況補足而非增加平行 spec。
 - Implemented 表示不能當成未實作重做；Draft 可包含已合併的局部實作。unchecked 代表整項尚未完成，不代表其中每個子步驟都沒有程式碼。
 - Verified 的適用版本、平台與限制以該 verification 為準，不移植到新 build 或新平台；Withdrawn 不列待辦。
 - 更新狀態須依專案 gate 及實際證據，僅有 CI 綠燈、文件整理或相關 issue 合併都不足以代替完整驗收。
 
-## 當前與待對帳（047–064）
+## 當前與待對帳（047–065）
 
 | Spec | 正式狀態 | 剩餘工作／接續方式 |
 |---|---|---|
@@ -35,6 +35,7 @@
 | [062 紀錄工作流程與操作入口整合](062-recording-workflow-consolidation/spec.md) | Draft | 主工作流收斂；T008–013、T085／087–092 為剩餘驗收／視覺批次，含部分已實作。 |
 | [063 Long recording preservation](063-long-recording-segments/spec.md) | Draft | 分段及匯出已有 Mac 證據；先對帳 T002–007 與 064 T007，不重做 rotation。 |
 | [064 紀錄優先的工作區與操作流程](064-recording-first-workspace/spec.md) | Draft | 當前工作區整合；S1→S2→S3→S4，部分落地，跨閱讀面／導覽／平台 gate 尚未完成。 |
+| [065 統一探索與管理入口 — 插件列表與詳情](065-plugin-explore-and-manage/spec.md) | Draft | 設定→插件改為可搜尋列表＋詳情與「需處理」篩選,建立五維度 View Model;A 批次止於 Renderer,B 接官方整合統一入口與雙向定位。 |
 
 
 ## 交付版本、驗收與主要追蹤

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { applyContributions, removeContributions, getContributionReport, tailerUnsupportedReason } from '../src/core/plugins/contributions'
 import { registerLootPatterns, unregisterLootPatterns } from '../src/core/loot-detector'
 import type { LoadedPlugin } from '../src/core/plugins/types'
@@ -112,6 +112,8 @@ describe('plugins page shows results', () => {
     }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
+    // Spec 065: the report lives in the detail panel, not the row.
+    fireEvent.click(await screen.findByTestId('plugin-details-p'))
     const box = await screen.findByTestId('plugin-results-p')
     expect(box.textContent).toContain('1 accepted, 1 rejected')
     expect(box.textContent).toContain('broken: Invalid regular expression')
@@ -133,6 +135,7 @@ describe('plugins page shows results', () => {
     }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
+    fireEvent.click(await screen.findByTestId('plugin-details-tp'))
     const box = await screen.findByTestId('plugin-results-terminalProfiles-tp')
     expect(box.textContent).toContain('Tool profiles: 2 accepted, 1 rejected')
     expect(box.textContent).toContain('nc-pty: nc is a shipped native default; change it with redlog class add')
@@ -148,6 +151,7 @@ describe('plugins page shows results', () => {
     }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
+    fireEvent.click(await screen.findByTestId('plugin-details-tw'))
     const box = await screen.findByTestId('plugin-results-terminalProfiles-tw')
     expect(box.textContent).toBe('Tool profiles wait for your approval of this plugin.')
   })
@@ -164,7 +168,12 @@ describe('plugins page shows results', () => {
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     await screen.findByText('Q')
+    fireEvent.click(screen.getByTestId('plugin-details-q'))
+    await screen.findByTestId('plugin-detail-q')
+    // No report is not a verdict: the detail says no diagnosis yet, and never
+    // draws a results box full of accepted counts.
     expect(screen.queryByTestId('plugin-results-q')).toBeNull()
+    expect(screen.getByText(en['plugins.unknownDiagnosis'])).toBeTruthy()
   })
 })
 
@@ -188,8 +197,9 @@ describe('redaction rules in the report', () => {
     }
     ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
+    fireEvent.click(await screen.findByTestId('plugin-details-r'))
     const box = await screen.findByTestId('plugin-results-r')
     expect(box.textContent).toContain('Redaction rules: 2 accepted, 1 rejected')
-    expect(box.textContent).toContain('denylist: /(/ — Invalid regular expression')
+    expect(box.textContent).toContain('denylist: /(/: Invalid regular expression')
   })
 })
