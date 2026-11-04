@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// The create card's advanced modal, audited out (docs/UIUX-CONTROLS-AND-COPY.md
+// The create form's duplicate advanced controls, audited out (docs/UIUX-CONTROLS-AND-COPY.md
 // §5). It held four controls for three settings that Settings already owns —
 // safe IPs and exposed IPs on the Network page, the violation warning on the
 // Scope page — plus the modal's own open/close/done. Every one of them is a
@@ -44,11 +44,22 @@ function setup(...answers: ProfileImportResult[]) {
     ip: { getStatus: async () => ({ internalIP: null }) }
   }
   render(<I18nProvider><ProjectPicker onProjectOpen={vi.fn()} /></I18nProvider>)
+  fireEvent.click(screen.getByRole('button', { name: 'New Project' }))
   fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
   return { create }
 }
 
 describe('creating once', () => {
+  it('does not create while Enter confirms an IME composition', async () => {
+    const { create } = setup()
+    const input = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 })
+    expect(create).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+  })
+
   it('ignores repeated Enter and clicks while the first create is pending', async () => {
     const { create } = setup()
     let finish!: (project: Awaited<ReturnType<typeof create>>) => void
@@ -70,6 +81,7 @@ describe('creating once', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(false))
     expect(input.value).toBe('Lab')
+    expect(screen.getByRole('alert').textContent).toBe('create denied')
     fireEvent.keyDown(input, { key: 'Enter' })
     await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
   })
@@ -213,6 +225,17 @@ describe('importing a profile', () => {
     expect(screen.queryByTestId('profile-applied')).toBeNull()
   })
 
+  it('keeps the name and imported settings when the dialog transport rejects', async () => {
+    const { create } = setup(imp(A))
+    await importAgain()
+    window.redlog.config.importProfile = vi.fn().mockRejectedValue(new Error('picker unavailable'))
+    await importAgain()
+    expect(screen.getByTestId('profile-error').textContent).toContain('picker unavailable')
+    expect(screen.getByDisplayValue('Lab')).toBeTruthy()
+    const cfg = await createdWith(create)
+    expect(cfg.scope.targets).toEqual(['192.0.2.0/24'])
+  })
+
   it('the error goes away with the next good import', async () => {
     setup({ status: 'failed', failure: { code: 'empty' } }, imp(B))
     fireEvent.click(screen.getByText(/Import Profile/i))
@@ -223,10 +246,10 @@ describe('importing a profile', () => {
 })
 
 describe('create card', () => {
-  it('has no advanced modal', () => {
+  it('uses the create modal without duplicate settings', () => {
     setup()
     expect(screen.queryByText(/Advanced setup/i)).toBeNull()
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'New Project' })).toBeTruthy()
     // The three settings it held live on the Settings pages that own them.
     expect(screen.queryByText(/Safe IPs/i)).toBeNull()
     expect(screen.queryByText(/Exposed IPs/i)).toBeNull()
@@ -245,7 +268,7 @@ describe('create card', () => {
     expect(screen.queryByLabelText('Excluded targets')).toBeNull()
   })
 
-  it('imports a profile and says what it applied, with no modal to open', async () => {
+  it('imports a profile and says what it applied, inside the create modal', async () => {
     setup(imp(PROFILE))
     fireEvent.click(screen.getByText(/Import Profile/i))
     // Nothing it carries is visible on the card, so all of it is named.
@@ -253,7 +276,7 @@ describe('create card', () => {
     expect(applied.textContent).toContain('Scope 2')
     expect(applied.textContent).toContain('Safe IPs 1')
     expect(applied.textContent).toContain('Exposed IPs 2')
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'New Project' })).toBeTruthy()
   })
 
   it('still creates with everything the profile carried', async () => {

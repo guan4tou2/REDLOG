@@ -25,6 +25,7 @@ test.describe.serial('project flow', () => {
     await expect(page).toHaveTitle(/RedLog/)
     await expect(page.locator('[data-testid="project-picker"]')).toBeVisible()
 
+    await page.getByRole('button', { name: 'New Project' }).click()
     const name = page.getByPlaceholder('e.g. Client-Pentest-Q3')
     await name.fill('e2e-flow')
     // Deliver key repeats before IPC can answer. This exercises the real

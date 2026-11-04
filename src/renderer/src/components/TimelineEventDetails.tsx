@@ -67,6 +67,7 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
   const stderrRef = asRef(data.stderr_ref)
+  const hasStreamedOutput = (data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string'
   return (
     <div className="mt-2 space-y-1.5">
       {hasStdout && (
@@ -80,7 +81,7 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
         />
       )}
 
-      {hasStderr && (
+      {hasStderr && ((data.stderr as string).length > 0 || Number(data.stderr_bytes) > 0 || data.stderr_truncated === true) && (
         <CollapsibleStream
           label={t('timeline.detail.stderr')}
           content={data.stderr as string}
@@ -95,11 +96,11 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
         <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>
         {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} />}
       </>}
-      {(data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string' && (
-        <LateOutput commandId={data.command_id} />
+      {hasStreamedOutput && (
+        <LateOutput commandId={data.command_id as string} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && (
+      {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && !hasStreamedOutput && (
         <IoAbsenceNote
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}

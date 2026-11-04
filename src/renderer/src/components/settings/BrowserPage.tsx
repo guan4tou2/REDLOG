@@ -27,10 +27,10 @@ export default function BrowserPage({
   const [verify, setVerify] = useState(false)
   return (
     <>
-      <details onToggle={e => setVerify(e.currentTarget.open)} className="mb-4">
-        <summary className="min-h-8 cursor-pointer text-xs text-redlog-text content-center">{t('firstRun.http.verifySettings')}</summary>
-        {verify && <HttpCaptureStep onPrepare={() => setPreparing(true)} />}
-      </details>
+      <div className="mb-4">
+        <Button level="secondary" aria-expanded={verify} aria-controls="http-verification-panel" onClick={() => setVerify(open => !open)}>{t('firstRun.http.verifySettings')}</Button>
+        {verify && <div id="http-verification-panel" className="mt-3"><HttpCaptureStep onPrepare={() => setPreparing(true)} /></div>}
+      </div>
       {preparing && <RuntimePreparation source="web" onClose={() => setPreparing(false)} />}
       <BrowserPanel t={t} config={config} setConfig={setConfig} />
       {hook.state.phase === 'failed' && <div role="alert" className="text-xs text-redlog-danger">

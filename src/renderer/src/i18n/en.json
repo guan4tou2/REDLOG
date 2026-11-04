@@ -4,6 +4,7 @@
   "settings.routeTerminals": "Route new terminal panes through HTTP capture",
   "app.mark": "+ Mark",
   "app.closeProject": "Back to project list",
+  "project.keyboardHint": "↑ ↓ Browse projects · Enter Open",
   "project.new": "New Project",
   "project.create": "Create",
   "project.recent": "Recent Projects",
@@ -1179,7 +1180,7 @@
   "castSearch.statusIncomplete": "Terminal-output results may be incomplete, so no match does not mean there is none. Event results are not affected.",
   "search.typesFailed": "Could not load the event-type filters.",
   "project.listLoading": "Reading the project list…",
-  "project.listEmpty": "No projects yet. Create one above.",
+  "project.listEmpty": "No projects yet.",
   "project.listFailed": "Could not read the project list. Your projects are still on disk; only the listing failed.",
   "castSearch.tokenNote": "Matches whole words and word beginnings, not text inside a word.",
   "settings.vpnAdapters": "VPN adapter detection",
@@ -1986,5 +1987,9 @@
   "http.streamCapturePartial": "The stream was interrupted or some segments were not queued for capture.",
   "http.streamEndObserved": "Stream ended; all {{saved}} segments saved.",
   "http.streamMissingSegments": "{{missing}} of {{observed}} stream segments were not saved.",
-  "http.streamNoEnd": "No stream end recorded. It may still be open, or capture stopped first."
+  "http.streamNoEnd": "No stream end recorded. It may still be open, or capture stopped first.",
+  "project.name": "Project name",
+  "project.search": "Search projects",
+  "project.noResults": "No matching projects",
+  "project.opening": "Opening…"
 }
