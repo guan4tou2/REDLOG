@@ -1,122 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '../Button'
 import { toast, toastUndo } from '../Toast'
 import { FieldGroup } from './SettingsShared'
 import { Modal } from '../Modal'
 import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
+import { useContainerWidth } from '../../hooks/useContainerWidth'
+import { pluginViewModel, needsAttention, matchesQuery, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import PluginDetailPanel from './PluginDetailPanel'
 
-interface PluginView {
-  officialAgent?: boolean
-  id: string
-  name: string
-  version: string
-  description: string
-  author: string
-  source: 'bundled' | 'user'
-  tier: 'declarative' | 'privileged'
-  /** the plugin takes effect only once the operator approves its content:
-   *  code (privileged), or terminal profiles, which run nothing */
-  needsApproval?: boolean
-  status: 'active' | 'needs-consent' | 'hash-changed' | 'disabled' | 'error'
-  capabilities: string[]
-  contributes: string[]
-  /** the terminal profiles the plugin declares that RedLog would accept: what
-   *  an approval is an approval of */
-  terminalProfiles?: Array<{ name: string; mode: 'native' | 'pty' | 'relayed'; executables: string[]; reason: string }>
-  /** the capture entries RedLog would install (a shell hook, a Claude Code
-   *  hook): the other thing an approval is an approval of */
-  captureInstalls?: Array<{ name: string; installMethod: string }>
-  /** why the shell's profiles could not be brought up to date, the same on
-   *  every row; null when they were */
-  profilesError?: string | null
-  error?: string
-  /** manifest targets a newer plugin API than this RedLog implements */
-  apiAhead?: boolean
-  report?: {
-    lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    redaction?: { accepted: number; rejected: Array<{ list: string; entry: string; reason: string }> }
-    tailers?: { state: 'accepted' | 'rejected'; reason?: string }
-    /** #348: the kinds that used to register and say nothing. */
-    targetExtractors?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    commandTags?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    eventTypes?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
-    capture?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
-    terminalProfiles?: { accepted: number; rejected: Array<{ name: string; reason: string }>; waiting?: boolean }
-  } | null
-}
-
-// What took effect, not just what the manifest declared. A manifest that
-// loads says nothing about whether each rule in it works.
-function ContributionResults({ p, t }: { p: PluginView; t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element | null {
-  const loot = p.report?.lootPatterns
-  const tailer = p.report?.tailers
-  const redaction = p.report?.redaction
-  const extractors = p.report?.targetExtractors
-  const commandTags = p.report?.commandTags
-  const eventTypes = p.report?.eventTypes
-  const capture = p.report?.capture
-  const terminalProfiles = p.report?.terminalProfiles
-  const rejected = loot?.rejected ?? []
-  const redactionRejected = redaction?.rejected ?? []
-  // #348: the four kinds that could fail quietly now report like the other
-  // two. A manifest that loads is not every rule in it working.
-  const otherGroups = [
-    { key: 'targetExtractors', label: 'plugins.results.targetExtractors', value: extractors },
-    { key: 'commandTags', label: 'plugins.results.commandTags', value: commandTags },
-    { key: 'eventTypes', label: 'plugins.results.eventTypes', value: eventTypes },
-    { key: 'capture', label: 'plugins.results.capture', value: capture },
-    { key: 'terminalProfiles', label: 'plugins.results.terminalProfiles', value: terminalProfiles }
-  ] as const
-  if (!p.apiAhead && !loot && !tailer && !redaction && !extractors && !commandTags && !eventTypes && !capture && !terminalProfiles) return null
-  return (
-    <div data-testid={`plugin-results-${p.id}`} className="mt-1 text-xs space-y-0.5">
-      {p.apiAhead && <p className="text-amber-500">{t('plugins.apiAhead')}</p>}
-      {loot && (
-        <p className={rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
-          {t('plugins.results.loot', { accepted: loot.accepted, rejected: rejected.length })}
-        </p>
-      )}
-      {rejected.map((r) => (
-        <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
-      ))}
-      {redaction && (
-        <p className={redactionRejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
-          {t('plugins.results.redaction', { accepted: redaction.accepted, rejected: redactionRejected.length })}
-        </p>
-      )}
-      {redactionRejected.map((r) => (
-        <p key={`${r.list}:${r.entry}`} className="text-red-400 pl-3">{r.list}: {r.entry} — {r.reason}</p>
-      ))}
-      {otherGroups.map(({ key, label, value }) => value && (
-        <div key={key} data-testid={`plugin-results-${key}-${p.id}`}>
-          <p className={value.rejected.length ? 'text-amber-500' : 'text-redlog-text-dim'}>
-            {'waiting' in value && value.waiting
-              ? (key === 'capture' ? t('plugins.results.captureWaiting') : t('plugins.results.terminalProfilesWaiting'))
-              : t(label, { accepted: value.accepted, rejected: value.rejected.length })}
-          </p>
-          {value.rejected.map((r) => (
-            <p key={r.name} className="text-red-400 pl-3">{r.name}: {r.reason}</p>
-          ))}
-        </div>
-      ))}
-      {tailer?.state === 'rejected' && (
-        <p className="text-red-400">{t('plugins.results.tailerRejected', { reason: tailer.reason ?? '' })}</p>
-      )}
-      {tailer?.state === 'accepted' && <p className="text-redlog-text-dim">{t('plugins.results.tailerAccepted')}</p>}
-    </div>
-  )
-}
+type T = (key: string, vars?: Record<string, string | number>) => string
 
 const PROFILE_LINE = {
   native: 'plugins.profileNative',
   pty: 'plugins.profilePty',
   relayed: 'plugins.profileRelayed'
 } as const
-
-/** A third-party tailer is refused whatever the operator agrees to, so a plugin
- *  whose only code is one has no code to approve. */
-const tailerRefused = (p: PluginView): boolean => p.source === 'user' && p.report?.tailers?.state === 'rejected'
 
 // SS10: two levels, not four. This page used to hold sub-tabs for installed
 // and marketplace, and the marketplace held its own for publishers and
@@ -173,19 +72,81 @@ const isHidden = (p: { id: string; status: string; officialAgent?: boolean }): b
 // Bundled packs get a translated line each; a user's plugin still speaks for
 // itself through its own manifest.
 
-export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const describe = (p: PluginView): string => {
-    if (p.source !== 'bundled') return p.description
-    const key = `plugins.builtin.${p.id}`
-    const line = t(key)
-    return line === key ? p.description : line
-  }
+function PluginRow({ p, vm, t, busy, selected, onToggle, onReview, onRevoke, onSelect }: {
+  p: PluginView; vm: PluginViewModel; t: T; busy: boolean; selected: boolean
+  onToggle: (nextEnabled: boolean) => void; onReview: () => void; onRevoke: () => void; onSelect: () => void
+}): JSX.Element {
+  const privileged = p.tier === 'privileged'
+  const needsConsent = vm.trust.needsConsent
+  const cannotRevoke = vm.trust.cannotBeTrusted
+  const issue = vm.issues[0]
+  return (
+    <div
+      onClick={onSelect}
+      className={`rounded border ${selected ? 'border-redlog-accent/60' : 'border-redlog-border'} bg-redlog-surface/50 cursor-pointer`}
+    >
+      <div className="flex items-start justify-between p-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-redlog-text">{p.name}</span>
+            <span className="text-xs text-redlog-text-dim">v{p.version}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{t(`plugins.status.${p.status}`)}</span>
+            {privileged && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
+                {t('plugins.tier.privileged')}
+              </span>
+            )}
+          </div>
+          {issue && <p data-testid={`plugin-issue-${p.id}`} className="text-xs text-amber-400 mt-0.5">{t(issue.labelKey)}</p>}
+          <p className="text-xs text-redlog-text-dim mt-0.5 flex gap-2 items-center">
+            <span className="break-words">{descriptionOf(p, t)}</span>
+            <Button level="quiet" type="button" data-testid={`plugin-details-${p.id}`} onClick={(e) => { e.stopPropagation(); onSelect() }} className="shrink-0 underline">{t('plugins.details')}</Button>
+          </p>
+        </div>
+        <div className="ml-3 shrink-0 flex flex-col gap-1 items-end" onClick={(e) => e.stopPropagation()}>
+          {selected && <span className="text-xs text-redlog-text-faint">{t('plugins.managingHere')}</span>}
+          {!selected && p.status !== 'error' && !needsConsent && (
+            <button disabled={busy} onClick={() => onToggle(p.status === 'disabled')}
+              className={`px-3 py-1 text-xs rounded ${p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'}`}>
+              {busy ? '...' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
+            </button>
+          )}
+          {!selected && needsConsent && !cannotRevoke && (
+            <button disabled={busy} onClick={onReview}
+              className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600">
+              {t('plugins.review')}
+            </button>
+          )}
+          {!selected && (privileged || p.needsApproval) && p.status === 'active' && (
+            <button onClick={onRevoke} disabled={busy}
+              className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
+              {t('plugins.revoke')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function descriptionOf(p: PluginView, t: T): string {
+  if (p.source !== 'bundled') return p.description
+  const key = `plugins.builtin.${p.id}`
+  const line = t(key)
+  return line === key ? p.description : line
+}
+
+export default function PluginsPanel({ t }: { t: T }): JSX.Element {
+  const describe = (p: PluginView): string => descriptionOf(p, t)
 
   const [plugins, setPlugins] = useState<PluginView[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   // Every answer from main carries the whole list. Only the newest request may
   // replace what is on screen, so a slow reload cannot undo a later disable.
   const newest = useRef(0)
@@ -216,6 +177,19 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     }
   }
   useEffect(() => { void load() }, [])
+
+  const shown = useMemo(() => plugins.filter((p) => !isHidden(p)), [plugins])
+  const vms = useMemo(() => new Map<string, PluginViewModel>(shown.map((p) => [p.id, pluginViewModel(p, describe)])), [shown, describe])
+  // A plugin that no longer exists cannot stay selected.
+  useEffect(() => { if (selectedId !== null && !vms.has(selectedId)) setSelectedId(null) }, [vms, selectedId])
+
+  const attentionCount = useMemo(() => shown.filter((p) => needsAttention(p)).length, [shown])
+  const filtered = useMemo(() => shown.filter((p) => {
+    const vm = vms.get(p.id)
+    if (!vm) return false
+    if (attentionOnly && !needsAttention(p)) return false
+    return matchesQuery(vm.searchText, query)
+  }), [shown, vms, attentionOnly, query])
 
   /** A change that went through but left the shell's profiles as they were is
    *  not a plain success: a revoke or a disable would still be in effect there. */
@@ -292,26 +266,39 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
     await run(p.id, () => api.revoke(p.id), t('plugins.revokeFailed', { name: p.name }))
   }
 
-  const STATUS_STYLE: Record<PluginView['status'], string> = {
-    active: 'bg-green-900/50 text-green-400',
-    'needs-consent': 'bg-amber-900/50 text-amber-400',
-    'hash-changed': 'bg-amber-900/50 text-amber-400',
-    disabled: 'bg-redlog-elevated text-redlog-text-dim',
-    error: 'bg-red-900/50 text-red-400'
-  }
+  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
+  const narrow = containerWidth !== null && containerWidth < 720
+  const selected = vms.get(selectedId ?? '') ? plugins.find((p) => p.id === selectedId) : undefined
+  const selectedVm = selected ? vms.get(selected.id) : undefined
 
-  const shown = plugins.filter((p) => !isHidden(p))
   // What the open dialog asks the operator to approve: code (a third-party
   // tailer, which never runs, is not), and the profiles the plugin declares.
-  const approvesCode = confirmGrant !== null && confirmGrant.tier === 'privileged' && !tailerRefused(confirmGrant)
-  const approvesProfiles = confirmGrant?.terminalProfiles ?? []
-  const approvesInstalls = confirmGrant?.captureInstalls ?? []
-  const consentTitle = approvesCode ? t('plugins.consentTitle')
-    : approvesProfiles.length > 0 ? t('plugins.consentTitleProfiles') : t('plugins.consentTitleInstall')
-  const consentBody = !confirmGrant ? ''
-    : approvesCode ? t('plugins.consentBody', { name: confirmGrant.name })
-      : approvesProfiles.length > 0 ? t('plugins.consentBodyProfiles', { name: confirmGrant.name })
-        : t('plugins.consentBodyInstall', { name: confirmGrant.name })
+  const confirms = (p: PluginView | null): { code: boolean; profiles: NonNullable<PluginView['terminalProfiles']>; installs: NonNullable<PluginView['captureInstalls']> } => {
+    if (!p) return { code: false, profiles: [], installs: [] }
+    // A user plugin whose only code is a tailer runs nothing, whatever is
+    // agreed; even one that also declares profiles must not be called code.
+    const tailerRefused = p.source === 'user' && p.report?.tailers?.state === 'rejected'
+    return {
+      code: p.tier === 'privileged' && !tailerRefused,
+      profiles: p.terminalProfiles ?? [],
+      installs: p.captureInstalls ?? []
+    }
+  }
+  const consent = confirms(confirmGrant)
+  const consentTitle = consent.code ? t('plugins.consentTitle')
+    : consent.profiles.length > 0 ? t('plugins.consentTitleProfiles') : t('plugins.consentTitleInstall')
+  const consentBody = !confirmGrant ? '' : consent.code ? t('plugins.consentBody', { name: confirmGrant.name })
+    : consent.profiles.length > 0 ? t('plugins.consentBodyProfiles', { name: confirmGrant.name })
+      : t('plugins.consentBodyInstall', { name: confirmGrant.name })
+
+  const detail = selected && selectedVm ? (
+    <PluginDetailPanel
+      p={selected} vm={selectedVm} t={t} busy={busy === selected.id}
+      onEnable={() => void enable(selected)} onDisable={() => void toggle(selected, false)}
+      onReview={() => setConfirmGrant(selected)} onRevoke={() => void revoke(selected)}
+      onBack={() => setSelectedId(null)} showBack={narrow}
+    />
+  ) : null
 
   return (
     <FieldGroup title={t('settings.plugins')}>
@@ -322,7 +309,7 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           {t('plugins.openFolder')}
         </button>
         <Button level="secondary" onClick={doReload} disabled={busy === '*'} className="shrink-0">
-          {busy === '*' ? '…' : t('plugins.reload')}
+          {busy === '*' ? '...' : t('plugins.reload')}
         </Button>
       </div>
 
@@ -345,151 +332,111 @@ export default function PluginsPanel({ t }: { t: (key: string, vars?: Record<str
           <button type="button" onClick={() => void load()} className="underline text-redlog-cyan hover:text-redlog-text">{t('common.retry')}</button>
         </div>
       )}
-      {!loading && loadError === null && shown.length === 0 && (
-        <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>
-      )}
-
-      <div className="space-y-2">
-        {shown.map((p) => {
-          const privileged = p.tier === 'privileged'
-          const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
-          // A third-party tailer is refused whatever the operator agrees to
-          // (see the results line), so offering consent would only fail, unless
-          // the plugin also declares profiles, which are the operator's to approve.
-          const cannotBeTrusted = tailerRefused(p) && !(p.terminalProfiles?.length) && !(p.captureInstalls?.length)
-          return (
-            <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
-              <div className="flex items-start justify-between p-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-redlog-text">{p.name}</span>
-                    <span className="text-xs text-redlog-text-dim">v{p.version}</span>
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
-                      {t(`plugins.status.${p.status}`)}
-                    </span>
-                    {/* Only the dangerous tier gets a chip. The other one said
-                        "🟢 宣告式" -- the implementation category, not the
-                        consequence -- on every safe plugin, so the marker that
-                        matters sat in a row of markers that did not. §22: show
-                        the exception, and the exception here is code running. */}
-                    {privileged && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
-                        {t('plugins.tier.privileged')}
-                      </span>
-                    )}
-                  </div>
-                  {describe(p) && <p className="text-xs text-redlog-text-dim mt-0.5">{describe(p)}</p>}
-                  {privileged && p.capabilities.length > 0 && (
-                    <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
-                  )}
-                  {p.status === 'error' && p.error && <p className="text-xs text-red-400 mt-0.5">{p.error}</p>}
-                  <ContributionResults p={p} t={t} />
-                </div>
-
-                <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
-                  {/* declarative (or already-trusted privileged): enable/disable */}
-                  {p.status !== 'error' && !needsConsent && (
-                    <button
-                      disabled={busy === p.id}
-                      onClick={() => toggle(p, p.status === 'disabled')}
-                      className={`px-3 py-1 text-xs rounded ${
-                        p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-                      }`}
-                    >
-                      {busy === p.id ? '…' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
-                    </button>
-                  )}
-                  {/* privileged awaiting consent */}
-                  {needsConsent && !cannotBeTrusted && (
-                    <button
-                      disabled={busy === p.id}
-                      onClick={() => setConfirmGrant(p)}
-                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600"
-                    >
-                      {t('plugins.review')}
-                    </button>
-                  )}
-                  {/* approved: allow revoke */}
-                  {(privileged || p.needsApproval) && p.status === 'active' && (
-                    <button onClick={() => revoke(p)} disabled={busy === p.id}
-                      className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
-                      {t('plugins.revoke')}
-                    </button>
-                  )}
-                </div>
+      {!loading && loadError === null && (
+        <div ref={containerRef} className="min-w-0">
+          {shown.length === 0 && <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>}
+          {shown.length > 0 && (
+            <div className="mb-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="search" data-testid="plugin-search" value={query} onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('plugins.searchPlaceholder')} aria-label={t('plugins.search')}
+                  className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+                />
+                <label className="flex items-center gap-1.5 text-xs text-redlog-text-dim shrink-0">
+                  <input type="checkbox" data-testid="plugin-attention-toggle" checked={attentionOnly}
+                    onChange={(e) => setAttentionOnly(e.target.checked)} />
+                  <span>{t('plugins.filterAttention')} ({attentionCount})</span>
+                </label>
               </div>
+
+              {attentionOnly && attentionCount === 0 ? (
+                <p className="text-xs text-redlog-text-faint py-3">{t('plugins.allHandled')}</p>
+              ) : filtered.length === 0 ? (
+                <p className="text-xs text-redlog-text-faint py-3">{t('plugins.noSearchResults')}</p>
+              ) : narrow && selected !== undefined ? (
+                detail
+              ) : (
+                <div className={narrow ? 'space-y-0' : 'flex gap-4'}>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {filtered.map((p) => {
+                      const vm = vms.get(p.id)!
+                      return (
+                        <PluginRow key={p.id} p={p} vm={vm} t={t} busy={busy === p.id} selected={selectedId === p.id}
+                          onToggle={(enabled) => void toggle(p, enabled)} onReview={() => setConfirmGrant(p)}
+                          onRevoke={() => void revoke(p)} onSelect={() => setSelectedId(p.id)} />
+                      )
+                    })}
+                  </div>
+                  {!narrow && detail && <div className="w-1/2 max-w-md min-w-0 border-l border-redlog-border pl-4">{detail}</div>}
+                  {!narrow && !detail && <p className="w-1/2 max-w-md min-w-0 border-l border-redlog-border pl-4 text-xs text-redlog-text-faint self-start">{t('plugins.selectHint')}</p>}
+                </div>
+              )}
             </div>
-          )
-        })}
-      </div>
+          )}
+        </div>
+      )}
 
       <PluginSampleTester t={t} />
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (
-        // A security decision: a real dialog, with focus kept in it, Escape
-        // to back out, and no dismissal by a stray backdrop click.
         <Modal
-          open
-          alert
-          dismissOnBackdrop={false}
+          open alert dismissOnBackdrop={false}
           onClose={() => setConfirmGrant(null)}
           label={consentTitle}
           testId="plugin-consent-dialog"
           panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
         >
-            {/* Code gets the capability list and the isolation warning. Terminal
-                profiles get a line each, since the approval is of those lines;
-                a plugin with only profiles runs nothing and does not say it does. */}
-            <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
-            <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>
-            {approvesCode && (
-              <>
-                <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
-                  <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
-                  <ul className="text-xs text-amber-400 space-y-0.5">
-                    {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
-                    {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
-                  </ul>
-                </div>
-                <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
-              </>
-            )}
-            {approvesProfiles.length > 0 && (
-              <>
-                {approvesCode && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentProfilesToo')}</p>}
-                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
-                  {approvesProfiles.map((profile, i) => (
-                    <li key={i} className="break-words">
-                      {t(PROFILE_LINE[profile.mode] ?? PROFILE_LINE.relayed, { name: profile.name, commands: profile.executables.join(', ') })}
-                      <span className="text-redlog-text-dim"> — {profile.reason}</span>
-                    </li>
-                  ))}
+          <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
+          <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>
+          {consent.code && (
+            <>
+              <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
+                <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
+                <ul className="text-xs text-amber-400 space-y-0.5">
+                  {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">&mdash;</li>}
+                  {confirmGrant.capabilities.map((c) => <li key={c}>&bull; {c}</li>)}
                 </ul>
-              </>
-            )}
-            {approvesInstalls.length > 0 && (
-              <>
-                {(approvesCode || approvesProfiles.length > 0) && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentInstallsToo')}</p>}
-                <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
-                  {approvesInstalls.map((hook, i) => (
-                    <li key={i} className="break-words">
-                      {hook.installMethod === 'claude-settings'
-                        ? t('plugins.installClaude', { name: hook.name })
-                        : t('plugins.installShell', { name: hook.name })}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
-                {t('common.cancel')}
-              </button>
-              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
-                {approvesCode ? t('plugins.grantRun') : t('plugins.grantApprove')}
-              </button>
-            </div>
+              </div>
+              <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
+            </>
+          )}
+          {consent.profiles.length > 0 && (
+            <>
+              {consent.code && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentProfilesToo')}</p>}
+              <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                {consent.profiles.map((profile, i) => (
+                  <li key={i} className="break-words">
+                    {t(PROFILE_LINE[profile.mode] ?? PROFILE_LINE.relayed, { name: profile.name, commands: profile.executables.join(', ') })}
+                    <span className="text-redlog-text-dim"> — {profile.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {consent.installs.length > 0 && (
+            <>
+              {(consent.code || consent.profiles.length > 0) && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentInstallsToo')}</p>}
+              <ul className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                {consent.installs.map((hook, i) => (
+                  <li key={i} className="break-words">
+                    {hook.installMethod === 'claude-settings'
+                      ? t('plugins.installClaude', { name: hook.name })
+                      : t('plugins.installShell', { name: hook.name })}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
+              {t('common.cancel')}
+            </button>
+            <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
+              {consent.code ? t('plugins.grantRun') : t('plugins.grantApprove')}
+            </button>
+          </div>
         </Modal>
       )}
     </FieldGroup>

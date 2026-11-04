@@ -68,7 +68,6 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
   const c = p.manifest.contributes ?? {}
   const id = p.manifest.id
   const report: ContributionReport = {}
-  reports.set(id, report)
   if (c.lootPatterns?.length) {
     const r = registerLootPatterns(id, c.lootPatterns)
     report.lootPatterns = { accepted: r.added, rejected: r.rejected }
@@ -184,6 +183,11 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
       }
     }
   }
+  // A plugin that contributed nothing leaves no report behind: "no report" is
+  // the operator-facing state for "this plugin registered nothing", read as
+  // "no diagnosis yet" rather than "all accepted" (Spec 065). Storing the
+  // empty object here would make every contribution-less plugin look diagnosed.
+  if (Object.keys(report).length > 0) reports.set(id, report)
   return report
 }
 

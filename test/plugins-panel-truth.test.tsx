@@ -258,8 +258,10 @@ describe('the plugins page shows what main has done', () => {
       api.list.mockResolvedValue([installing()])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [installing()] })
       draw()
+      // Spec 065: the report lives in the detail panel, not the row.
+      fireEvent.click(await screen.findByTestId('plugin-details-hk'))
       expect((await screen.findByTestId('plugin-results-capture-hk')).textContent).toBe(en['plugins.results.captureWaiting'])
-      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      fireEvent.click(screen.getByTestId('plugin-detail-review-hk'))
       const dialog = await screen.findByTestId('plugin-consent-dialog')
       expect(dialog.textContent).toContain(en['plugins.consentTitleInstall'])
       expect(dialog.textContent).not.toMatch(/main process|not isolated|tool profile|terminal treats/)
@@ -292,7 +294,9 @@ describe('the plugins page shows what main has done', () => {
       draw()
       await screen.findByText('Plugin t')
       expect(screen.queryByRole('button', { name: 'Review & trust' })).toBeNull()
-      expect(screen.getByTestId('plugin-results-t').textContent).toContain('not supported')
+      fireEvent.click(screen.getByTestId('plugin-details-t'))
+      expect((await screen.findByTestId('plugin-results-t')).textContent).toContain('not supported')
+      expect(screen.queryByRole('button', { name: 'Review & trust' })).toBeNull()
     })
 
     it('does not blame the manifest when a grant is refused, and shows the real reason', async () => {

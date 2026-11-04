@@ -50,6 +50,14 @@ for full commit body + generated notes.
   the 250 ms time limit loot patterns have, and an extractor's `param` is a
   flag name, matched literally (Refs #499).
 
+- Settings ▸ Plugins: the page now lists every plugin with a search box and a
+  "Needs attention" filter, and full diagnosis moved to a detail panel. The
+  list keeps one line per anomaly; the detail reads five axes — trust, install,
+  project, health and what took effect — so a loaded plugin is never shown in a
+  single "OK" colour. "No contributions reported yet" is stated as such, never
+  as all-accepted. Wide windows show list and detail side by side; narrow
+  windows swap the list for the detail and offer a back entry (Spec 065).
+
 ## v0.18.6 — 2026-11-01
 
 Release. Supersedes v0.18.3 as the current download; carries everything in
