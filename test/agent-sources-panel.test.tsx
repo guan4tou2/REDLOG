@@ -210,6 +210,38 @@ describe('AI optional installation settings', () => {
     const card = await screen.findByTestId('agent-source-codex')
     expect(card.textContent).toContain('settings.agents.notDetected')
   })
+
+  // WSL: the native picker on Windows cannot open \\wsl.localhost\... shares
+  // (9P), so the operator can type a path. It must go through the same scope-
+  // change path as a pick, and the same dedupe feedback.
+  it('adds a manually typed working directory -- e.g. a WSL share the picker cannot open', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.change(await screen.findByTestId('agent-path-input-codex'), { target: { value: ' \\\\wsl.localhost\\Ubuntu\\home\\me ' } })
+    fireEvent.click(screen.getByTestId('agent-path-add-codex'))
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { workPaths: ['\\\\wsl.localhost\\Ubuntu\\home\\me'] } } } })
+  })
+  it('says when a manually typed directory is already on the list', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.change(await screen.findByTestId('agent-path-input-codex'), { target: { value: '\\\\wsl.localhost\\Ubuntu\\home\\me' } })
+    fireEvent.click(screen.getByTestId('agent-path-add-codex'))
+    fireEvent.change(screen.getByTestId('agent-path-input-codex'), { target: { value: '\\\\wsl.localhost\\Ubuntu\\home\\me' } })
+    fireEvent.click(screen.getByTestId('agent-path-add-codex'))
+    expect((await screen.findByRole('alert')).textContent).toContain('settings.agents.pathAlreadyAdded')
+  })
+  it('accepts a manually typed transcript folder for the source root', async () => {
+    catalog.mockResolvedValue([installed])
+    render(<Harness />)
+    fireEvent.click(await screen.findByTestId('agent-add-path-codex'))
+    await waitFor(() => expect((screen.getByTestId('agent-enabled-codex') as HTMLInputElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('agent-enabled-codex'))
+    fireEvent.change(screen.getByTestId('agent-source-input-codex'), { target: { value: '\\\\wsl.localhost\\Ubuntu\\home\\me\\.codex\\sessions' } })
+    fireEvent.click(screen.getByTestId('agent-source-apply-codex'))
+    await screen.findByTestId('agent-scope-changed-codex')
+    expect(saved).toMatchObject({ agentTailer: { sources: { codex: { sourceRoot: '\\\\wsl.localhost\\Ubuntu\\home\\me\\.codex\\sessions', enabled: false, startedAt: undefined } } } })
+  })
 })
 
 
