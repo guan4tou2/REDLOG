@@ -599,6 +599,8 @@
   "timeline.detail.empty": "(empty)",
   "timeline.detail.agentUser": "user prompt",
   "timeline.detail.agentAssistant": "assistant reply",
+  "timeline.detail.genericFields": "Recorded fields",
+  "timeline.detail.genericMore": "{{count}} more fields in the raw JSON",
   "timeline.detail.agentThinking": "thinking",
   "timeline.detail.agentToolInput": "tool input · {{name}}",
   "timeline.detail.agentToolOutput": "tool output",

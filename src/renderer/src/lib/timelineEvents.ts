@@ -81,3 +81,16 @@ export function formatGap(ms: number): string {
   const rem = min % 60
   return rem ? `${h}h${rem}m` : `${h}h`
 }
+
+/** Sources the Timeline inspector has a reader of its own for. Everything else
+ *  goes to the generic reader, so a new source needs no change to the core. */
+export function hasSpecificEventDetail(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  switch (e.agentType) {
+    case 'shell': case 'agent': case 'scanner': case 'browser': case 'marker': case 'screenshot':
+      return true
+    case 'file_transfer':
+      return e.data?.subtype === 'artifact_added'
+    default:
+      return false
+  }
+}

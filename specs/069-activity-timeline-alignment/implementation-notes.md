@@ -6,7 +6,7 @@
 
 | 項目 | 現況 | 結論 |
 | --- | --- | --- |
-| HTTP 排列(US2/FR-005) | `HttpDetail.tsx` 各段垂直堆疊,內容用 `<pre … whitespace-pre-wrap>`,已保留換行 | **已滿足**;S2 只補斷言 |
+| HTTP 排列(US2/FR-005) | ~~各段垂直堆疊,已滿足~~ **更正(T005/T006)**:段內垂直、保留換行沒錯,但 Request／Response 之間是**頁籤**,一次只看一半 | 已改為上下兩段(S2 完成) |
 | 選取與定位(US3/FR-006) | `App.tsx` 持有 `focusEvent`,`openInTimeline(id, ts)` 帶事件 id;Search、Activity、Scope 都走它。Timeline 內另有自己的 `selectedEvent`,`ActivityResults` 有自己的 `selected`(下拉選來源事件) | 跨檢視定位**已用 id**。缺口只在 Timeline 與 ActivityResults 各持選取,沒有「一個選取」;範圍比草稿小 |
 | Reader(US3/FR-007) | `EventContentReader` 以 `ContentDescriptor { field, status, format, capture }` 為單位,`status` 含 unavailable 各狀態;不是依來源類型分支 | 已是欄位導向的通用讀取;「新增來源不用改核心」大致成立。待確認:沒有 content 欄位的事件類型在詳情裡怎麼顯示 |
 | 文案(US1/FR-001) | 見下表 | S1 已處理 |

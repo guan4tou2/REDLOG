@@ -157,15 +157,12 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   const isRequest = subtype === 'http_request_start'
   const isResponse = subtype === 'http_response'
   const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
-  const ownHalf = isRequest ? 'request' : 'response'
-  const [half, setHalf] = useState<'request' | 'response'>(ownHalf)
   const [partner, setPartner] = useState<{ eventId: string; partnerId: string; data: Record<string, unknown> } | null>(null)
   const [pairedLoading, setPairedLoading] = useState(false)
   const [pairedError, setPairedError] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [completion, setCompletion] = useState<{ flowId: string; value: StreamCompletion | null } | null>(null)
 
-  useEffect(() => { setHalf(ownHalf) }, [ownHalf, eventId])
   useEffect(() => {
     if (!flowId) return
     let cancelled = false
@@ -193,29 +190,31 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
     return () => { cancelled = true }
   }, [flowId, eventId, isRequest, isResponse, attempt])
 
-  // Both tabs use the same body reader. A separate preview-only partner view
-  // hid captured inline/sidecar bodies, cookies and capture truncation.
+  // Request above, response below (Spec 069 FR-005): the two halves are read
+  // together, so neither hides behind a tab. Both use the same body reader.
   const pairedData = partner?.eventId === eventId ? partner.data : null
-  const selected = half !== ownHalf && pairedData ? pairedData : data
-  const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, selected)
+  const requestData = isRequest ? data : pairedData
+  const responseData = isResponse ? data : pairedData
+  const requestId = isRequest ? eventId : partner?.partnerId ?? eventId
+  const responseId = isResponse ? eventId : partner?.partnerId ?? eventId
+  const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, responseData ?? data)
   return (
     <div className="mt-2 space-y-1.5">
       {stream && <p role="status" data-testid="http-stream-status" className={`text-xs ${stream.settled ? 'text-redlog-text-dim' : 'text-amber-400'}`}>{stream.text}</p>}
-      {pairedData && (
-        <div role="tablist" className="flex gap-1 border-b border-redlog-border/60 -mx-1 px-1">
-          {(['request', 'response'] as const).map(side => (
-            <button
-              key={side}
-              role="tab"
-              data-testid={`http-tab-${side}`}
-              aria-selected={half === side}
-              onClick={() => setHalf(side)}
-              className={`px-3 py-1.5 text-xs -mb-px border-b-2 transition-colors ${half === side ? 'border-redlog-cyan text-redlog-text' : 'border-transparent text-redlog-text-faint hover:text-redlog-text-dim'}`}
-            >{t(side === 'request' ? 'timeline.detail.tabRequest' : 'timeline.detail.tabResponse')}</button>
-          ))}
-        </div>
+      {pairedData && requestData && responseData ? (
+        <>
+          <section data-testid="http-section-request" aria-labelledby={`http-request-${eventId}`}>
+            <h4 id={`http-request-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabRequest')}</h4>
+            <HttpHalf key={`${eventId}:request`} data={requestData} projectId={projectId} eventId={requestId} />
+          </section>
+          <section data-testid="http-section-response" aria-labelledby={`http-response-${eventId}`}>
+            <h4 id={`http-response-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabResponse')}</h4>
+            <HttpHalf key={`${eventId}:response`} data={responseData} projectId={projectId} eventId={responseId} />
+          </section>
+        </>
+      ) : (
+        <HttpHalf key={eventId} data={data} projectId={projectId} eventId={eventId} />
       )}
-      <HttpHalf key={`${eventId}:${half}`} data={selected} projectId={projectId} eventId={half !== ownHalf && pairedData ? partner!.partnerId : eventId} />
       {pairedLoading && <p role="status" className="text-xs text-redlog-text-dim">{t('http.loadingPaired')}</p>}
       {pairedError && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
         <span>{t('http.pairedFailed')}</span>

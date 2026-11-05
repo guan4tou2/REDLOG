@@ -46,28 +46,36 @@ beforeEach(() => localStorage.setItem('redlog-locale', 'zh-TW'))
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
 
 describe('an HTTP flow with both halves', () => {
-  it('opens on the half the operator clicked, not always the request', async () => {
-    // They selected a response row. Landing them on the request would make
-    // them click back to what they asked for.
+  it('stacks the request above the response, whichever half was selected', async () => {
     bridge(REQUEST)
-    draw(RESPONSE)
-    await screen.findByTestId('http-tab-response')
-    expect(screen.getByTestId('http-tab-response').getAttribute('aria-selected')).toBe('true')
+    const { container } = render(<I18nProvider><HttpDetail projectId="project" data={RESPONSE} eventId="self" /></I18nProvider>)
+    const req = await screen.findByTestId('http-section-request')
+    const res = screen.getByTestId('http-section-response')
+    expect(req.compareDocumentPosition(res) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(container.querySelector('[role="tablist"]')).toBeNull()
+    expect(screen.getByText(/REQUEST-BODY-MARKER/)).toBeTruthy()
     expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy()
   })
 
-  it('shows one half at a time', async () => {
+  it('shows both halves at once when opened from the request', async () => {
     bridge(RESPONSE)
     draw(REQUEST)
-    await screen.findByTestId('http-tab-request')
+    await screen.findByTestId('http-section-response')
     expect(screen.getByText(/REQUEST-BODY-MARKER/)).toBeTruthy()
-    expect(screen.queryByText(/RESPONSE-BODY-MARKER/)).toBeNull()
+    expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy()
+  })
+
+  it('keeps line breaks in the raw body', async () => {
+    bridge({ ...RESPONSE, response_preview: 'line one\nline two' })
+    draw(REQUEST)
+    const body = (await screen.findByText(/line one/)).closest('pre')!
+    expect(body.className).toContain('whitespace-pre-wrap')
+    expect(body.textContent).toBe('line one\nline two')
   })
 
   it('shows the paired full request body and its capture warning, not only a preview', async () => {
     bridge({ ...REQUEST, request_body: { data: 'complete paired request END', encoding: 'text', size: 4096, truncated: true } })
     draw(RESPONSE)
-    fireEvent.click(await screen.findByTestId('http-tab-request'))
     expect(await screen.findByText('complete paired request END')).toBeTruthy()
     expect(screen.getByText('已保存 27 B／共 4 KB')).toBeTruthy()
     expect(screen.queryByText('REQUEST-BODY-MARKER')).toBeNull()
@@ -76,7 +84,7 @@ describe('an HTTP flow with both halves', () => {
   it('can explicitly load the paired response sidecar', async () => {
     bridge({ ...RESPONSE, response_body_ref: { sha256: 'f'.repeat(64), file: 'http-bodies/test.txt', size: 42, encoding: 'text' } })
     draw(REQUEST)
-    fireEvent.click(await screen.findByTestId('http-tab-response'))
+    await screen.findByTestId('http-section-response')
     fireEvent.click(screen.getByRole('button', { name: '已保存內容' }))
     expect(await screen.findByText('complete paired sidecar END')).toBeTruthy()
     expect(window.redlog.content.list).toHaveBeenCalledWith({ projectId: 'project', eventId: 'other' })
@@ -89,18 +97,10 @@ describe('an HTTP flow with both halves', () => {
     draw(RESPONSE)
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy()
-    expect(screen.queryByTestId('http-tab-request')).toBeNull()
+    expect(screen.queryByTestId('http-section-request')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '重試' }))
-    expect(await screen.findByTestId('http-tab-request')).toBeTruthy()
+    expect(await screen.findByTestId('http-section-request')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
-  })
-
-  it('swaps on click', async () => {
-    bridge(RESPONSE)
-    draw(REQUEST)
-    fireEvent.click(await screen.findByTestId('http-tab-response'))
-    await waitFor(() => expect(screen.getByText(/RESPONSE-BODY-MARKER/)).toBeTruthy())
-    expect(screen.queryByText(/REQUEST-BODY-MARKER/)).toBeNull()
   })
 })
 
@@ -129,20 +129,20 @@ describe('a flow with only one half', () => {
     expect(screen.queryByText(/載入完整主體/)).toBeNull()
   })
 
-  it('draws no tab strip — a single tab asks a question with one answer', async () => {
+  it('draws no section headings — a single half asks a question with one answer', async () => {
     // A request whose response has not landed yet. Common, and not a defect.
     bridge(null)
     draw(REQUEST)
     await waitFor(() => expect(screen.getByText(/REQUEST-BODY-MARKER/)).toBeTruthy())
-    expect(screen.queryByTestId('http-tab-request')).toBeNull()
-    expect(screen.queryByTestId('http-tab-response')).toBeNull()
+    expect(screen.queryByTestId('http-section-request')).toBeNull()
+    expect(screen.queryByTestId('http-section-response')).toBeNull()
   })
 
   it('draws none for a websocket frame either', async () => {
     bridge(null)
     draw({ subtype: 'ws_message', ws_preview: 'WS-MARKER', direction: 'client' })
     await waitFor(() => expect(screen.getByText(/WS-MARKER/)).toBeTruthy())
-    expect(screen.queryByTestId('http-tab-request')).toBeNull()
+    expect(screen.queryByTestId('http-section-request')).toBeNull()
   })
 })
 

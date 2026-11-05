@@ -12,15 +12,15 @@
 
 ## S2 — HTTP(US2)
 
-- [ ] T005 [US2] 先 RED:Request 在上、Response 在下;內容保留換行(FR-005)。
-- [ ] T006 [US2] 實作或補斷言(視 T001)。
+- [x] T005 [US2] 先 RED:Request 在上、Response 在下;內容保留換行(FR-005)。(`test/http-detail-tabs.test.tsx`;舊實作 6 項失敗已確認)
+- [x] T006 [US2] 實作:`HttpDetail` 有配對時以兩個 section 上下排列、移除頁籤;`e2e/layout-reliability.spec.ts` 改指 `http-section-response`。調查筆記原判「已滿足」有誤:原本是頁籤,一次只看一半。
 
 ## S3 — 共用選取與 Reader(US3)
 
-- [ ] T007 [US3] 先 RED:列表選取後切到時間軸，選取不變;「在時間軸定位」定位當前事件(FR-006)。
-- [ ] T008 [US3] 先 RED:沒有專屬實作的來源走 Generic Reader，不報錯，顯示通用欄位(FR-007)。
-- [ ] T009 [US3] 實作單一選取來源與 Generic Reader。
-- [ ] T010 [US3] 計數由同一份資料算出;被截斷標示總數(FR-009)。
+- [x] T007 [US3] 先 RED:列表選取後切到時間軸，選取不變;「在時間軸定位」定位當前事件(FR-006)。
+- [x] T008 [US3] 先 RED:沒有專屬實作的來源走 Generic Reader，不報錯，顯示通用欄位(FR-007)。
+- [x] T009 [US3] 實作單一選取來源與 Generic Reader。
+- [x] T010 [US3] 計數由同一份資料算出;被截斷標示總數(FR-009)。(行為本來就成立;`test/timeline-count-truth.test.tsx` 兩種模式鎖住,非 RED 先行)
 
 ## S4 — 標準／泳道(US4)
 
