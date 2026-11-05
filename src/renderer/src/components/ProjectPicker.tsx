@@ -14,6 +14,36 @@ import { profileSummary, profileToInitialConfig, type ImportedProfile, type Prof
 /** Spec 068 D1: the search box appears from this many projects. */
 const SEARCH_MIN_PROJECTS = 6
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+/** What the picker shows for one project's scope (Spec 068 US2). `undefined`
+ *  means the answer has not arrived: the badge is BLANK then, never "not set".
+ *  "Not set" is a hint (the amber the issue list uses for pending things), not
+ *  the red of an alarm — an empty scope is a normal state at project start.
+ *  Declared at module scope: a component defined inside ProjectPicker would
+ *  remount every row on every keystroke in the search box. */
+function ScopeBadge({ summary, t }: { summary: ProjectScopeSummary | undefined; t: Translate }): JSX.Element | null {
+  if (!summary) return null
+  const base = 'shrink-0 rounded border px-2 py-0.5 text-xs font-mono'
+  if (summary.state === 'set') {
+    return <span data-testid="project-scope-badge" data-state="set" className={`${base} border-redlog-border text-redlog-text-dim`}>{t(summary.count === 1 ? 'project.scope.one' : 'project.scope.many', { count: summary.count })}</span>
+  }
+  if (summary.state === 'unset') {
+    return <span data-testid="project-scope-badge" data-state="unset" title={t('project.scope.unsetWhy')} className={`${base} border-amber-900/60 text-amber-300`}>{t('project.scope.unset')}</span>
+  }
+  return <span data-testid="project-scope-badge" data-state="unknown" title={t('project.scope.unknownWhy')} className={`${base} border-redlog-border text-redlog-text-faint`}>{t('project.scope.unknown')}</span>
+}
+
+/** One entry of the query answer, trusted only if it is one of the three
+ *  states. Anything else (a stale preload, a bad entry) is "unknown" — it must
+ *  not read as "not set". */
+function summaryFor(answer: Record<string, ProjectScopeSummary> | null, id: string): ProjectScopeSummary {
+  const s = answer?.[id]
+  if (s?.state === 'set' && Number.isInteger(s.count) && s.count > 0) return s
+  if (s?.state === 'unset') return s
+  return { state: 'unknown' }
+}
+
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
 }
@@ -31,6 +61,20 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     !bridgeMissing
   )
   const projects: ProjectMeta[] = listRead.value ?? []
+  // Scope badges. A separate read that starts once the list has answered
+  // (loaded or failed) so it can never delay the first paint of the list
+  // (FR-018). Each (re)read of the list is a new generation: useReadState drops
+  // an answer that arrives after the next read began, so a late reply cannot
+  // land on a list it was not asked about. Answers are looked up by project id.
+  const { state: scopeRead } = useReadState(
+    () => window.redlog.project.scopeSummaries(),
+    !bridgeMissing && listRead.phase !== 'loading',
+    [listRead.phase]
+  )
+  const scopeFor = (id: string): ProjectScopeSummary | undefined =>
+    scopeRead.phase === 'loaded' ? summaryFor(scopeRead.value, id)
+    : scopeRead.phase === 'failed' ? { state: 'unknown' }
+    : undefined
   const setProjects = (fn: (prev: ProjectMeta[]) => ProjectMeta[]): void => updateList((prev) => fn(prev ?? []))
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -243,6 +287,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               <span className="block text-xs text-redlog-text-faint font-mono">{opening === p.id ? t('project.opening') : formatFreshness(p.lastOpened, t)} · {t('project.created', { date: formatDate(p.createdAt) })}</span>
               {(nameCounts.get(p.name) ?? 0) > 1 && <span className="block break-all text-xs text-redlog-text-dim font-mono">{p.path}</span>}
             </button>}
+            <ScopeBadge summary={scopeFor(p.id)} t={t} />
             <span className="shrink-0 text-xs font-mono text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
             <button disabled={!!opening} onClick={() => { setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
             <button disabled={!!opening} onClick={() => void handleDelete(p.id)} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
