@@ -1323,18 +1323,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // should scroll to. Prior behaviour set the ref once at first-open and
   // never cleared it — so a second click on a Loot item (after coming back
   // to Timeline) would silently short-circuit (audit finding P0 #7).
-  useEffect(() => { didScrollToNow.current = false }, [focusEventId, focusTs])
+  // The lane track is a fresh element each time the swim lanes are shown, so
+  // it starts unscrolled and needs placing again.
+  useEffect(() => { didScrollToNow.current = false }, [focusEventId, focusTs, timelineMode])
+
+  // Jumping from Search, Loot or Targets hands over an event to open. Opening
+  // it is not a property of the lane track: the standard mode draws none, so
+  // this must not wait for one to exist.
+  const focusSelectedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (loading || !focusEventId || focusSelectedRef.current === focusEventId) return
+    const focused = events.find((e) => e.id === focusEventId)
+    if (!focused) return
+    focusSelectedRef.current = focusEventId
+    setSelectedEvent(focused)
+    setDetailOpen(true)
+  }, [loading, focusEventId, events])
 
   useEffect(() => {
     if (loading || didScrollToNow.current) return
     const el = scrollRef.current
     if (!el || el.clientWidth === 0) return
-    // Jumping from Loot (or elsewhere) focuses a specific event: select it and
-    // centre it. Otherwise land on the present, latest activity in view.
+    // Centre a focused event; otherwise land on the present, latest activity in view.
     const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
     if (focused) {
-      setSelectedEvent(focused)
-      setDetailOpen(true)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
       // no matching event (e.g. jumped from a bookmark) — centre on its time
@@ -1343,7 +1355,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
     }
     didScrollToNow.current = true
-  }, [loading, toX, TRACK_W, focusEventId, focusTs, events])
+  }, [loading, toX, TRACK_W, focusEventId, focusTs, events, timelineMode])
 
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.

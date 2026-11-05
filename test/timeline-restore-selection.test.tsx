@@ -46,8 +46,10 @@ describe('the Timeline restores the last selected event', () => {
     localStorage.setItem(KEY, 'e2')
     mount({ focusEventId: 'e1' })
     await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
-    // The restore has had its one attempt, and stood aside for the focus.
+    // The restore has had its one attempt, and stood aside for the focus: the
+    // pane is open on the focused event, not on the stored one.
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(screen.queryByTitle(DETAIL_HANDLE)).toBeNull()
+    expect(screen.queryByTitle(DETAIL_HANDLE)).not.toBeNull()
+    expect(localStorage.getItem(KEY)).toBe('e1')
   })
 })

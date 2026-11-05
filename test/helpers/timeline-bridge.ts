@@ -33,7 +33,8 @@ export interface TimelineBridge {
 export const page = (items: Ev[], hasMore = false, nextCursor: string | null = null): Page =>
   ({ items, hasMore, nextCursor })
 
-export function installTimelineBridge(): TimelineBridge {
+export function installTimelineBridge(opts: { timelineMode?: 'lanes' | 'standard' } = {}): TimelineBridge {
+  const timelineMode = opts.timelineMode ?? 'lanes'
   const batchListeners = new Set<(events: Ev[]) => void>()
   const queryPage = vi.fn(async () => page([]))
   const count = vi.fn(async () => 0)
@@ -68,7 +69,7 @@ export function installTimelineBridge(): TimelineBridge {
     // when the project is read, because several tests clear storage after
     // installing the bridge and before mounting.
     project: { active: async () => {
-      try { window.localStorage.setItem('redlog-timeline-mode:p1', 'lanes') } catch { /* no storage */ }
+      try { window.localStorage.setItem('redlog-timeline-mode:p1', timelineMode) } catch { /* no storage */ }
       return { id: 'p1', name: 'Proj' }
     } },
     operators: { list: async () => [] },
