@@ -63,7 +63,14 @@ export function installTimelineBridge(): TimelineBridge {
     platform: 'darwin',
     events,
     config: { get: async () => ({ scope: { targets: [], excludeTargets: [], personalDomains: [] } }), save: async () => true },
-    project: { active: async () => ({ id: 'p1', name: 'Proj' }) },
+    // The Timeline opens in standard mode (Spec 069); every consumer of this
+    // bridge asserts on the swim-lane dots and bands. The preference is written
+    // when the project is read, because several tests clear storage after
+    // installing the bridge and before mounting.
+    project: { active: async () => {
+      try { window.localStorage.setItem('redlog-timeline-mode:p1', 'lanes') } catch { /* no storage */ }
+      return { id: 'p1', name: 'Proj' }
+    } },
     operators: { list: async () => [] },
     plugins: { eventTypes: async () => [] }
   }

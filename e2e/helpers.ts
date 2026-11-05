@@ -150,6 +150,16 @@ export async function openView(page: Page, view: string): Promise<void> {
 
 /** Enter proof through the actual skip action if this host lacks tools.
  * This does not install a tool or count skipping as verified recording. */
+/** The Timeline opens in standard mode (Spec 069 FR-008). Specs that assert
+ *  on the swim-lane track ask for it by name rather than relying on a default. */
+export async function openSwimLanes(page: Page): Promise<void> {
+  await openView(page, 'timeline')
+  const lanes = page.getByTestId('timeline-mode-lanes')
+  await lanes.waitFor({ state: 'visible', timeout: 10_000 })
+  if ((await lanes.getAttribute('aria-pressed')) !== 'true') await lanes.click()
+  await page.getByTestId('timeline-lane-scroll').waitFor({ state: 'visible', timeout: 10_000 })
+}
+
 export async function openCaptureProof(page: Page): Promise<void> {
   const prepare = page.getByTestId('capture-prepare-skip')
   const proof = page.getByTestId('first-run-commands-status')

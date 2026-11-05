@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openSwimLanes } from './helpers'
 
 // Real idle-gap compression and keyboard access. Pure zoom/time-map behavior
 // lives in test/timeline-geometry.test.ts and test/timeline-time-map.test.ts.
@@ -33,7 +33,7 @@ test.describe.serial('timeline presentation', () => {
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '1'))
     await page.reload()
     await page.waitForTimeout(2500)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(1500)
   })
 
