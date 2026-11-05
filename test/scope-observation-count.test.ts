@@ -12,7 +12,7 @@ import path from 'path'
 
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
-let counter: typeof import('../src/core/scope-violation-count') | null = null
+let counter: typeof import('../src/core/scope-observation-count') | null = null
 let runner: typeof import('../src/core/scope-recompute-run') | null = null
 let bus: typeof import('../src/core/event-bus') | null = null
 try {
@@ -20,7 +20,7 @@ try {
   new D(':memory:').close()
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
-  counter = await import('../src/core/scope-violation-count')
+  counter = await import('../src/core/scope-observation-count')
   runner = await import('../src/core/scope-recompute-run')
   bus = await import('../src/core/event-bus')
 } catch { /* better-sqlite3 not built for this Node ABI */ }
@@ -37,7 +37,7 @@ describe.skipIf(!available)('the cached scope-violation count', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-violation-count-'))
     dbmod!.initDB(dir)
-    counter!.invalidateViolationCount()
+    counter!.invalidateObservationCount()
     // Count executions of the one statement that reads every scope row.
     scans = 0
     const db = dbmod!.getDB() as unknown as { prepare: (sql: string) => unknown }
@@ -65,13 +65,13 @@ describe.skipIf(!available)('the cached scope-violation count', () => {
   // keeps counting only what the cache did.
   const fresh = (): number => {
     const before = scans
-    const n = runner!.countActiveScopeViolations()
+    const n = runner!.countActiveScopeObservations()
     scans = before
     return n
   }
 
   it('survives 200 in_scope verdicts, and is dropped by the rows that can change it', async () => {
-    expect(counter!.activeViolationCount()).toBe(0)
+    expect(counter!.activeObservationCount()).toBe(0)
     expect(scans).toBe(1)
 
     for (let i = 0; i < 200; i++) {
@@ -79,7 +79,7 @@ describe.skipIf(!available)('the cached scope-violation count', () => {
         subtype: 'scope_violation', target: 'in.example', action: `GET /${i}`, source: 'mitm',
         distance: 'in_scope', authority: 'fact', severity: 'info'
       }, 'in.example'))
-      expect(counter!.activeViolationCount()).toBe(0)
+      expect(counter!.activeObservationCount()).toBe(0)
     }
     // The first read; none of the 200 verdicts forced another.
     expect(scans).toBe(1)
@@ -90,7 +90,7 @@ describe.skipIf(!available)('the cached scope-violation count', () => {
       distance: 'unrelated', authority: 'fact', severity: 'critical', _causes: ['src-1']
     }, 'out.example')
     await publish(violation)
-    expect(counter!.activeViolationCount()).toBe(1)
+    expect(counter!.activeObservationCount()).toBe(1)
     expect(scans).toBe(2)
     expect(fresh()).toBe(1)
 
@@ -98,15 +98,15 @@ describe.skipIf(!available)('the cached scope-violation count', () => {
       subtype: 'scope_cleared', target: 'out.example', violation_id: violation.id,
       distance_before: 'unrelated', distance_after: 'in_scope'
     }, 'out.example'))
-    expect(counter!.activeViolationCount()).toBe(0)
+    expect(counter!.activeObservationCount()).toBe(0)
     expect(scans).toBe(3)
     expect(fresh()).toBe(0)
   })
 
   it('is dropped by a recompute summary', async () => {
-    expect(counter!.activeViolationCount()).toBe(0)
+    expect(counter!.activeObservationCount()).toBe(0)
     await publish(system({ subtype: 'scope_recomputed', recompute_id: 'r1' }, 'scope'))
-    counter!.activeViolationCount()
+    counter!.activeObservationCount()
     expect(scans).toBe(2)
   })
 })

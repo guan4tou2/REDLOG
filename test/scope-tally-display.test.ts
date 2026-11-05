@@ -33,7 +33,7 @@ describe('scope_violation rows that are really an in-scope tally', () => {
       const violation = row({ distance, severity: 'warning' })
       expect(eventTitle(violation)).toMatch(/out of scope/i)
       expect(dotShape(violation).shape).toBe('diamond')
-      expect(shapeTitle(violation, t)).toContain('timeline.shape.scopeViolation')
+      expect(shapeTitle(violation, t)).toContain('timeline.shape.scopeObservation')
     }
   })
 

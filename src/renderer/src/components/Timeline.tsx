@@ -25,7 +25,7 @@ import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, binHeight, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
-import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
+import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
@@ -950,11 +950,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // event — so a withdrawn violation looks withdrawn on the track without the
   // original row being touched. Same slot and same TDZ contract as the fold
   // memos above: nothing higher may name these.
-  const violationStanding = useMemo(() => computeViolationStanding(events), [events])
+  const observationStanding = useMemo(() => computeObservationStanding(events), [events])
 
   const badgesById = useMemo(
-    () => buildBadgeIndex(events, brokenAtId, violationStanding.cleared, violationStanding.superseded),
-    [events, brokenAtId, violationStanding]
+    () => buildBadgeIndex(events, brokenAtId, observationStanding.cleared, observationStanding.superseded),
+    [events, brokenAtId, observationStanding]
   )
 
   // Project-wide causal focus. The old implementation walked only the 200 rows

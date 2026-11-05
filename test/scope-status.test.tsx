@@ -5,7 +5,7 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 
 // The Scope & Evidence page against a stubbed bridge. Its rows are a window,
-// the newest records the read model returns (queryScopeViolationRows), while
+// the newest records the read model returns (queryScopeObservationRows), while
 // the status bar counts every standing violation in the chain. The page must
 // not claim anything only the whole chain can know from the window alone: a
 // total, or "all commands within scope" (TESTING.md G-S3).
@@ -27,8 +27,8 @@ const row = (id: string, over: Partial<Row> = {}): Row => ({
 function installBridge(page: { rows: Row[]; truncated: boolean }, standing: number): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     scope: {
-      getViolations: async () => page,
-      getViolationCount: async () => standing,
+      getObservations: async () => page,
+      getObservationCount: async () => standing,
       isConfigured: async () => true,
       getLastRecompute: async () => null
     },
@@ -62,7 +62,7 @@ describe('Scope & Evidence page', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('v1.example')
   })
 
-  it.each(['getViolations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
+  it.each(['getObservations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
     installBridge({ rows: [], truncated: false }, 0)
     vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))
     render(<I18nProvider><ScopeStatus /></I18nProvider>)

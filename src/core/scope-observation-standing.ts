@@ -1,10 +1,11 @@
+import { SCOPE_VIOLATION_SUBTYPE } from './scope-vocabulary'
 // Which scope violations still stand. The recompute (main) and the Timeline
 // (renderer) both answer this, so the rule lives here once: a `scope_cleared`
 // naming a violation withdraws it, and of the violations about one source event
 // only the one written last stands. `in_scope` verdicts share the subtype but
 // are not violations, so they neither stand nor supersede.
 //
-// No imports: the renderer bundles this file.
+// Imports only scope-vocabulary, itself import-free: the renderer bundles this file.
 
 export interface StandingRow {
   id: string
@@ -12,7 +13,7 @@ export interface StandingRow {
   data: Record<string, unknown>
 }
 
-export interface ViolationStanding {
+export interface ObservationStanding {
   cleared: Set<string>
   /** Superseded violation id → the id of the violation written after it. */
   supersededBy: Map<string, string>
@@ -24,16 +25,16 @@ export interface ViolationStanding {
  *  never change a count — so everything that reads violations, and everything
  *  that decides when a cached answer about them is stale, asks this one question. */
 export function countsAsStandingVerdict(d: Record<string, unknown>): boolean {
-  return d.subtype === 'scope_violation' && d.distance !== 'in_scope'
+  return d.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance !== 'in_scope'
 }
 
-export function violationStanding(rows: readonly StandingRow[]): ViolationStanding {
+export function observationStanding(rows: readonly StandingRow[]): ObservationStanding {
   const cleared = new Set<string>()
   const sourceOf = new Map<string, string>()
   const latestBySource = new Map<string, string>()
   // "Written last" is insertion order, whatever order the caller holds its rows
   // in. The sort is stable, so rows sharing a createdAt keep the caller's order;
-  // readExistingViolations passes them in rowid order.
+  // readExistingObservations passes them in rowid order.
   const ordered = [...rows].sort((a, b) => a.createdAt - b.createdAt)
   for (const row of ordered) {
     const d = row.data

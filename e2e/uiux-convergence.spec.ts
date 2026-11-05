@@ -109,7 +109,7 @@ test('violation details resolve the full command and carry an uncommitted candid
     expect(posted.ok).toBe(true)
     await openView(page, 'scope')
     await page.getByTestId('scope-judged-live').first().click()
-    const detail = page.getByTestId('scope-violation-detail')
+    const detail = page.getByTestId('scope-observation-detail')
     await expect(detail.locator('pre')).toHaveText(command)
     await expect(detail).toContainText('Matched exclusion rule · outside.test')
     await detail.getByRole('button', { name: 'Edit related scope rules' }).click()

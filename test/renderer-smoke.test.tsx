@@ -161,8 +161,8 @@ function installBridge(): void {
     },
     screenshot: { capture: async () => '/tmp/x.jpg', read: async () => null },
     scope: {
-      getViolations: async () => ({ rows: [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }], truncated: false }),
-      getViolationCount: async () => 1,
+      getObservations: async () => ({ rows: [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }], truncated: false }),
+      getObservationCount: async () => 1,
       isConfigured: async () => true,
       getLastRecompute: async () => null
     },

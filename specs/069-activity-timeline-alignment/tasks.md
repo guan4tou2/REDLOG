@@ -29,8 +29,8 @@
 
 ## S5 — 識別字(FR-010)
 
-- [ ] T013 先 RED:既有事件(含 `scope_violation`)重載後 `chain.verify()` 為 ok;舊 `warnOnViolation` 的 config 仍被讀取。
-- [ ] T014 依 D1=A 實作程式內符號重命名(D2 範圍內的 key);持久化值 `scope_violation`／`warnOnViolation` 不變,集中成具名常數。
+- [x] T013 先 RED:既有事件(含 `scope_violation`)重載後 `chain.verify()` 為 ok;舊 `warnOnViolation` 的 config 仍被讀取。(`test/scope-persisted-contract.test.ts`;RED 是常數模組不存在,其餘為不變量守門)
+- [x] T014 依 D1=A 實作程式內符號重命名(D2 範圍內的 key);持久化值 `scope_violation`／`warnOnViolation` 不變,集中成具名常數。(`src/core/scope-vocabulary.ts`;不改:`scope_violation`、`violation_id`、`warnOnViolation`、HTTP API 回傳欄位 `scopeViolations`／`violations`／`violationCount`;其餘符號、IPC、i18n key、檔名、testid 皆改為 observation)
 
 ## S6 — 視覺重做(US5)
 

@@ -313,7 +313,7 @@ interface RedLogAPI {
   }
   scope: {
     policy: () => Promise<{ targets: string[]; excludeTargets: string[] } | null>
-    getViolations: () => Promise<{
+    getObservations: () => Promise<{
       rows: Array<{
         id: string; target: string; command: string; timestamp: number
         sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
@@ -321,7 +321,7 @@ interface RedLogAPI {
       /** More violation records exist than the page read (Constitution IV). */
       truncated: boolean
     }>
-    getViolationCount: () => Promise<number>
+    getObservationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
     /** Add one target to the scope of the project the caller meant. False: that
      *  project is no longer open, or the write failed. */
@@ -394,7 +394,7 @@ interface RedLogAPI {
       bookmarkSeen: boolean
       httpFlowSeen: boolean
       loggedEver: boolean
-      scopeViolationSeen: boolean
+      scopeObservationSeen: boolean
     } | null>
   }
   recording: {
