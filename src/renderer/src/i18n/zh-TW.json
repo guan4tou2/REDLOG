@@ -2018,5 +2018,6 @@
   "project.name": "專案名稱",
   "project.search": "搜尋專案",
   "project.noResults": "找不到符合的專案",
+  "project.clearSearch": "清除搜尋",
   "project.opening": "開啟中…"
 }

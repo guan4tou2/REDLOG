@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { matchesQuery } from '../lib/textQuery'
 import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
@@ -9,6 +10,9 @@ import { Button } from './Button'
 import { Modal } from './Modal'
 import { useReadState } from '../lib/readState'
 import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure } from '../../../core/profile-import'
+
+/** Spec 068 D1: the search box appears from this many projects. */
+const SEARCH_MIN_PROJECTS = 6
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -180,7 +184,21 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
   const nameInput = useRef<HTMLInputElement | null>(null)
   const hasRecent = projects.length > 0
-  const filtered = projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(search.trim().toLowerCase()))
+  // Spec 068 D1: the box exists once there are enough projects to need it, judged
+  // on the UNFILTERED total. A query typed before deletions brought the total
+  // under the threshold must not keep filtering with no box to clear it.
+  const searchVisible = projects.length >= SEARCH_MIN_PROJECTS
+  const query = searchVisible ? search : ''
+  const filtered = projects.filter(p => matchesQuery(p.name, query))
+  const searching = query.trim() !== ''
+  // D3: Enter opens a project only when the query is non-blank and names exactly
+  // one. Several matches or none leave the query and the focus where they are.
+  // An Enter that confirms an input-method composition is not an Enter.
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
+    e.preventDefault()
+    if (searching && filtered.length === 1) void handleOpen(filtered[0].id)
+  }
   const nameCounts = new Map<string, number>()
   for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
   const listStatus: 'loading' | 'empty' | 'failed' | null = bridgeMissing ? null
@@ -204,10 +222,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       <div className="w-full max-w-[740px] mx-auto space-y-4 bg-[#10141a] border border-[#262d38] rounded-xl p-6 shadow-2xl">
         {bridgeMissing && <p role="alert" className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#262d38]">
-          <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{filtered.length}</span></div>
+          <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
           <Button level="secondary" className="!bg-[#ef4444] hover:!bg-[#dc2626] !border-transparent !text-redlog-on-accent" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
         </div>
-        {hasRecent && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} className="w-full bg-[#0a0e14] border border-[#262d38] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
+        {searchVisible && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown} className="w-full bg-[#0a0e14] border border-[#262d38] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
         <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1" aria-busy={!!opening} onKeyDown={e => {
           if (!(e.target instanceof HTMLElement) || !e.target.matches('[data-project-open]') || !['ArrowUp', 'ArrowDown'].includes(e.key)) return
           const rows = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[data-project-open]'))
@@ -230,7 +248,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             <button disabled={!!opening} onClick={() => void handleDelete(p.id)} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
           </div>)}
         </div>
-        {hasRecent && filtered.length === 0 && <p role="status" className="text-xs text-redlog-text-faint text-center py-8">{t('project.noResults')}</p>}
+        {hasRecent && filtered.length === 0 && (
+          <div className="py-8 text-center space-y-2">
+            <p role="status" className="text-xs text-redlog-text-faint">{t('project.noResults')}</p>
+            {searching && <Button level="quiet" type="button" data-testid="project-search-clear" onClick={() => setSearch('')}>{t('project.clearSearch')}</Button>}
+          </div>
+        )}
 
         {listStatus === 'loading' && (
           <p data-testid="project-list-status" data-state="loading" role="status" className="text-center text-xs text-redlog-text-faint font-mono">

@@ -1,7 +1,8 @@
+import { matchesQuery } from '../src/renderer/src/lib/textQuery'
 import { describe, it, expect } from 'vitest'
 import {
   effectGroups, attentionIssues, needsAttention, cannotBeTrusted,
-  pluginSearchText, matchesQuery, pluginViewModel
+  pluginSearchText, pluginViewModel
 } from '../src/renderer/src/lib/pluginViewModel'
 import type { PluginView } from '../src/renderer/src/lib/pluginViewModel'
 

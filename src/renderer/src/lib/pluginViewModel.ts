@@ -148,11 +148,6 @@ export function pluginSearchText(p: PluginView, describe: (p: PluginView) => str
   ].filter(Boolean).join(' ').toLowerCase()
 }
 
-export function matchesQuery(searchText: string, query: string): boolean {
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
-  return terms.every((term) => searchText.includes(term))
-}
-
 /** The thin per-axis view. Install/project/health stay explicit rather than
  *  merging into the trust status: «loaded» is not a verdict on the others. */
 export interface PluginViewModel {

@@ -10,7 +10,8 @@ import { Modal } from '../Modal'
 import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 import { useContainerWidth } from '../../hooks/useContainerWidth'
-import { pluginViewModel, needsAttention, matchesQuery, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import { matchesQuery } from '../../lib/textQuery'
+import { pluginViewModel, needsAttention, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 import PluginDetailPanel from './PluginDetailPanel'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
