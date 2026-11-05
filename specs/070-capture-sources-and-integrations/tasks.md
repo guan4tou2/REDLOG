@@ -11,6 +11,19 @@
 - [ ] T004 定義 `capture_status`,決議 D2;對齊 `ActivityState`／`lateOutput`。
 - [ ] T005 Reader 在 partial／interrupted／unknown 時提示。
 
+## S1b — 程序到網路關聯(US10、US11、FR-015–017;P0 先於 S2)
+- [ ] T016 RED 測試重現背景指令誤歸因:同一 shell pid 先後兩個 `command_start`,舊指令的後續 socket 不得歸給新指令;不確定時回傳 null。
+- [ ] T017 歸因加入生命週期／時間區間與五元組;不確定時保留未歸因事件。
+- [ ] T018 輪詢缺口與 400 飽和在 Reader／時間軸可見(FR-016),不移除上限。
+- [ ] T019 指令 Reader 聚合網路活動摘要(目的地、Port、連線數、缺口提示)。
+- [ ] T020 以專案 Scope 標示範圍外目的地(連線與 DNS 分開)。
+- [ ] T021 專案選項:包含 loopback 測試流量(D6)。
+
+## S1c — DNS 與 PCAP(US12、FR-018–020)
+- [ ] T022 `pcap-parse.js` 解析標準 DNS,輸出獨立 DNS 事件(fixtures 先行,含 NXDOMAIN)。
+- [ ] T023 截取設定顯示 DNS 能力狀態與缺少的需求;DoH／DoT 文案。
+- [ ] T024 觀測位置說明(SSH／Docker／VM)。
+
 ## S2 — 狀態契約(US1、US2、US4、US7、US8)
 - [ ] T006 `CaptureSourceStatus` 與由觀測導出狀態的函式(先 RED)。
 - [ ] T007 HTTP 六態與「測試截取」診斷(FR-006)。
