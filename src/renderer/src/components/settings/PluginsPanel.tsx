@@ -162,6 +162,9 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
 
   const [loaded, setPlugins] = useState<PluginView[]>([])
   const [catalog, setCatalog] = useState<OfficialAgentPlugin[]>([])
+  // Spec 067: the catalog failing is its own error. The plugin list is a different
+  // question, and the operator's own plugins must not vanish because of it.
+  const [catalogError, setCatalogError] = useState<string | null>(null)
   // Loaded plugins and the official catalog meet by pluginId: a not-installed
   // integration has no loaded plugin and would otherwise have no row.
   const plugins = useMemo(() => mergeOfficialCatalog(loaded, catalog), [loaded, catalog])
@@ -190,14 +193,29 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
 
   const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
+  const applyCatalog = (listed: PluginView[], official: PromiseSettledResult<OfficialAgentPlugin[]>): void => {
+    setPlugins(listed)
+    if (official.status === 'fulfilled') { setCatalog(official.value); setCatalogError(null) }
+    else { setCatalog([]); setCatalogError(errorText(official.reason)) }
+  }
+  /** Re-read only the catalog (the retry beside its error). */
+  const retryCatalog = async (): Promise<void> => {
+    const mine = ++newest.current
+    const [official] = await Promise.allSettled([api.officialAgents()])
+    if (mine !== newest.current) return
+    if (official.status === 'fulfilled') { setCatalog(official.value); setCatalogError(null) }
+    else setCatalogError(errorText(official.reason))
+  }
+
   // A list that failed to load is not an empty list: the first says "try
   // again", the second says "there is nothing here".
   const load = async (): Promise<void> => {
     const mine = ++newest.current
     setLoading(true); setLoadError(null)
     try {
-      const [next, official] = await Promise.all([api.list(), api.officialAgents()])
-      if (mine === newest.current) { setPlugins(next); setCatalog(official) }
+      const [listed, official] = await Promise.allSettled([api.list(), api.officialAgents()])
+      if (listed.status === 'rejected') throw listed.reason
+      if (mine === newest.current) applyCatalog(listed.value, official)
     } catch (e) {
       if (mine === newest.current) setLoadError(errorText(e))
     } finally {
@@ -324,8 +342,9 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
     }
     try {
       const mine = ++newest.current
-      const [next, official] = await Promise.all([api.list(), api.officialAgents()])
-      if (mine === newest.current) { setPlugins(next); setCatalog(official) }
+      const [listed, official] = await Promise.allSettled([api.list(), api.officialAgents()])
+      if (listed.status === 'rejected') throw listed.reason
+      if (mine === newest.current) applyCatalog(listed.value, official)
     } catch (e) {
       toast(t('plugins.loadFailed'), { type: 'error', detail: errorText(e) })
     } finally {
@@ -409,6 +428,14 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
         <div role="alert" data-testid="plugins-profiles-stale" className="text-xs mb-2 space-y-0.5">
           <p className="text-amber-300">{t('plugins.profilesStale')}</p>
           <p className="text-redlog-text-faint break-all">{loaded[0].profilesError}</p>
+        </div>
+      )}
+
+      {catalogError !== null && !loadError && (
+        <div role="alert" data-testid="plugins-catalog-error" className="text-xs mb-2 space-y-0.5">
+          <p className="text-amber-300">{t('plugins.catalogLoadFailed')}</p>
+          <p className="text-redlog-text-faint break-all">{catalogError}</p>
+          <button type="button" data-testid="plugins-catalog-retry" onClick={() => void retryCatalog()} className="underline text-redlog-cyan hover:text-redlog-text">{t('common.retry')}</button>
         </div>
       )}
 

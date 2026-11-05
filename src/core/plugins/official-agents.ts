@@ -42,25 +42,56 @@ export function optionalAgentPackagesRoot(): string {
   return fs.existsSync(built) ? built : path.resolve(__dirname, '../../../out/optional-ai')
 }
 
-function packages(root: string): Package[] {
-  const items = fs.readdirSync(root, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => {
+/** A package that could not be read or verified. It keeps the catalog row (so
+ *  the operator sees it) but is never installable and never executes. */
+function invalidEntry(dirName: string, manifest: unknown, e: unknown): OfficialAgentPlugin {
+  const m = (manifest && typeof manifest === 'object' ? manifest : {}) as { id?: unknown; name?: unknown; redlogAgent?: { agentKind?: unknown } }
+  return {
+    agentKind: typeof m.redlogAgent?.agentKind === 'string' ? m.redlogAgent.agentKind : dirName,
+    pluginId: typeof m.id === 'string' ? m.id : dirName,
+    name: typeof m.name === 'string' ? m.name : dirName,
+    source: { defaultPath: '' },
+    state: 'error',
+    error: errorText(e)
+  }
+}
+
+/** Reads every package under `root`, one at a time: a package that fails its
+ *  checks becomes an `invalid` row and the rest are still returned. The root
+ *  itself being unreadable still throws — that is a packaging fault and must
+ *  not look like "no integrations". */
+function scanPackages(root: string): { valid: Package[]; invalid: OfficialAgentPlugin[] } {
+  const valid: Package[] = []
+  const invalid: OfficialAgentPlugin[] = []
+  const kinds = new Set<string>(), ids = new Set<string>()
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!e.isDirectory()) continue
     const dir = path.join(root, e.name)
-    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf8'))
-    const a = manifest.redlogAgent
-    if (manifest.redlogApi !== PLUGIN_API_VERSION || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(manifest.id)
-      || !a || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(a.agentKind) || a.entry !== 'adapter.cjs'
-      || !a.source || !safeRelative(a.source.defaultPath)
-      || (a.source.configEnv !== undefined && !/^[A-Z][A-Z0-9_]*$/.test(a.source.configEnv))
-      || (a.source.envSuffix !== undefined && !safeRelative(a.source.envSuffix))) throw new Error(`Invalid optional AI package: ${e.name}`)
-    const codePath = path.join(dir, 'adapter.cjs')
-    const stat = fs.lstatSync(codePath)
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 4 * 1024 * 1024) throw new Error(`Invalid AI adapter: ${e.name}`)
-    const code = fs.readFileSync(codePath)
-    if (sha256(code) !== a.sha256) throw new Error(`AI package checksum mismatch: ${e.name}`)
-    return { manifest, code, agentKind: a.agentKind, pluginId: manifest.id, name: manifest.name, source: a.source, order: Number(a.order) || 0 }
-  })
-  if (new Set(items.map(p => p.agentKind)).size !== items.length || new Set(items.map(p => p.pluginId)).size !== items.length) throw new Error('Duplicate optional AI package identity')
-  return items.sort((a, b) => a.order - b.order || a.pluginId.localeCompare(b.pluginId))
+    let manifest: any
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf8'))
+      const a = manifest.redlogAgent
+      if (manifest.redlogApi !== PLUGIN_API_VERSION || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(manifest.id)
+        || !a || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(a.agentKind) || a.entry !== 'adapter.cjs'
+        || !a.source || !safeRelative(a.source.defaultPath)
+        || (a.source.configEnv !== undefined && !/^[A-Z][A-Z0-9_]*$/.test(a.source.configEnv))
+        || (a.source.envSuffix !== undefined && !safeRelative(a.source.envSuffix))) throw new Error(`Invalid optional AI package: ${e.name}`)
+      const codePath = path.join(dir, 'adapter.cjs')
+      const stat = fs.lstatSync(codePath)
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 4 * 1024 * 1024) throw new Error(`Invalid AI adapter: ${e.name}`)
+      const code = fs.readFileSync(codePath)
+      if (sha256(code) !== a.sha256) throw new Error(`AI package checksum mismatch: ${e.name}`)
+      if (kinds.has(a.agentKind) || ids.has(manifest.id)) {
+        // Identity is the directory name here: reusing the clashing id would hide the valid row.
+        invalid.push(invalidEntry(e.name, undefined, new Error(`Duplicate optional AI package identity: ${e.name}`)))
+        continue
+      }
+      kinds.add(a.agentKind); ids.add(manifest.id)
+      valid.push({ manifest, code, agentKind: a.agentKind, pluginId: manifest.id, name: manifest.name, source: a.source, order: Number(a.order) || 0 })
+    } catch (err) { invalid.push(invalidEntry(e.name, manifest, err)) }
+  }
+  valid.sort((a, b) => a.order - b.order || a.pluginId.localeCompare(b.pluginId))
+  return { valid, invalid }
 }
 function manifestBytes(p: Package, installationId: string): string {
   return JSON.stringify({ ...p.manifest, redlogInstallationId: installationId }, null, 2) + '\n'
@@ -74,7 +105,7 @@ export function createOfficialAgentPluginManager(root: string, packageRoot = opt
   uninstall(agentKind: unknown): OfficialAgentMutation
   modulePath(agentKind: string): string | undefined
 } {
-  const available = (): Package[] => packages(packageRoot)
+  const available = (): Package[] => scanPackages(packageRoot).valid
   type Receipt = { installationId: string; manifestHash: string; codeHash: string }
   const ledgerPath = path.join(root, '.official-ai-installations.json')
   function receipts(): Record<string, Receipt> {
@@ -127,7 +158,10 @@ export function createOfficialAgentPluginManager(root: string, packageRoot = opt
   }
   const find = (id: unknown): Package | undefined => available().find(p => p.agentKind === id)
   return {
-    list: () => available().map(inspect),
+    list: () => {
+      const { valid, invalid } = scanPackages(packageRoot)
+      return [...valid.map(inspect), ...invalid]
+    },
     modulePath(kind) {
       const p = find(kind)
       return p && inspect(p).state === 'installed' ? path.join(root, p.pluginId, 'adapter.cjs') : undefined

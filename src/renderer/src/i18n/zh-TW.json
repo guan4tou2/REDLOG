@@ -980,6 +980,7 @@
   "plugins.globalNote": "這裡的開關對這台電腦上的所有專案生效；各專案自己的擷取來源在「{{page}}」設定。",
   "plugins.loading": "正在載入外掛…",
   "plugins.loadFailed": "無法載入外掛清單。這不代表沒有外掛。",
+  "plugins.catalogLoadFailed": "無法列出官方 AI 整合，所以下方看不到它們。你自己的插件不受影響。",
   "plugins.failedWhy": "沒有任何變更。下方清單是 RedLog 重新讀回的狀態。",
   "plugins.search": "依名稱、id、作者或描述搜尋外掛",
   "plugins.searchPlaceholder": "搜尋外掛…",
