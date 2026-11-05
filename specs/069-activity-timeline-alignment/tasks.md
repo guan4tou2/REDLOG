@@ -34,10 +34,11 @@
 
 ## S6 — 視覺重做(US5)
 
-- [ ] T016 產出 token／版面差異清單,由使用者確認以 #575 為基準(FR-011)。
+- [x] T016 產出 token／版面差異清單(implementation-notes.md);結論:#575 即現行 token,基準=現行 app,Stitch 的對比不足處不照抄(FR-011)。
 - [ ] T017 共用外框(Header／Sidebar／Footer)對齊基準;既有 e2e 維持綠。
 - [ ] T018 活動紀錄與時間軸頁面對齊基準。
 - [ ] T019 其餘頁面依批次對齊(各自一個 PR)。
+- [ ] T020 [US6] 為設定導航改型另寫規格(070):深層連結、`gen:settings-search`、e2e helper、`SettingsPage` 型別的遷移計畫;未完成前不動 `Settings.tsx` 結構。
 
 ## 收尾
 
