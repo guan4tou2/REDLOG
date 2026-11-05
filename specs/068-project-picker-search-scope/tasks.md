@@ -8,13 +8,13 @@
 
 ## S1 — 搜尋(US1)
 
-- [ ] T002 [US1] 先 RED:`matchesQuery` 從 `pluginViewModel.ts` 抽到 `lib/textQuery.ts`,兩處引用同一份;既有插件測試維持綠(FR-002)。
-- [ ] T003 [US1] 先 RED(`test/project-picker-search.test.tsx`):5 個專案不顯示搜尋框、6 個顯示;以篩選前總數判斷(FR-001)。
-- [ ] T004 [US1] 先 RED:輸入使結果為 0 或 1 筆,搜尋框仍在且 `document.activeElement` 是它(FR-001)。
-- [ ] T005 [US1] 先 RED:0 筆顯示「沒有符合」與清除,與「還沒有任何專案」文案不同;清除後回到完整清單(FR-003)。
-- [ ] T006 [US1] 先 RED:Enter 規則——非空白＋恰好 1 筆才開啟;0 筆、多筆、純空白、組字中(`isComposing`／keyCode 229)都不開啟,查詢與焦點保留(FR-004)。
-- [ ] T007 [US1] 實作搜尋框、符合數、`role="status"` 告知與 aria-label(FR-005);方向鍵不觸發列表導覽。
-- [ ] T008 [US1] 回歸:鍵盤開啟列表、建立欄位焦點、載入／空／失敗三態、改名／刪除在篩選中運作(FR-002、FR-004)。
+- [x] T002 [US1] 先 RED:`matchesQuery` 從 `pluginViewModel.ts` 抽到 `lib/textQuery.ts`,兩處引用同一份;既有插件測試維持綠(FR-002)。
+- [x] T003 [US1] 先 RED(`test/project-picker-search.test.tsx`):5 個專案不顯示搜尋框、6 個顯示;以篩選前總數判斷(FR-001)。
+- [x] T004 [US1] 先 RED:輸入使結果為 0 或 1 筆,搜尋框仍在且 `document.activeElement` 是它(FR-001)。
+- [x] T005 [US1] 先 RED:0 筆顯示「沒有符合」與清除,與「還沒有任何專案」文案不同;清除後回到完整清單(FR-003)。
+- [x] T006 [US1] 先 RED:Enter 規則——非空白＋恰好 1 筆才開啟;0 筆、多筆、純空白、組字中(`isComposing`／keyCode 229)都不開啟,查詢與焦點保留(FR-004)。
+- [x] T007 [US1] 實作搜尋框、符合數、`role="status"` 告知與 aria-label(FR-005);方向鍵不觸發列表導覽。
+- [x] T008 [US1] 回歸:鍵盤開啟列表、建立欄位焦點、載入／空／失敗三態、改名／刪除在篩選中運作(FR-002、FR-004)。
 
 ## S2 — 範圍摘要查詢(US2 資料層)
 
