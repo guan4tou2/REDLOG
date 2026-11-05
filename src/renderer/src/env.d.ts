@@ -11,6 +11,8 @@ interface TerminalCastState {
   recordingError?: string
 }
 
+type ProjectScopeSummary = { state: 'set'; count: number } | { state: 'unset' } | { state: 'unknown' }
+
 interface ProjectMeta {
   id: string
   name: string
@@ -174,6 +176,8 @@ interface RedLogAPI {
   }
   project: {
     list: () => Promise<ProjectMeta[]>
+    /** Read-only scope answer per project id; a scope that could not be read is `unknown`, not `unset`. */
+    scopeSummaries: () => Promise<Record<string, ProjectScopeSummary>>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>

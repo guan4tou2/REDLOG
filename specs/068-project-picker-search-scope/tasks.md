@@ -18,12 +18,12 @@
 
 ## S2 — 範圍摘要查詢(US2 資料層)
 
-- [ ] T009 [US2] 先 RED(`test/project-scope-summary.test.ts`):`config.yaml` 不存在 → `unset`;存在但空 → `unset`;有 targets → `set(count)`(FR-010)。
-- [ ] T010 [US2] 先 RED:只用範圍檔宣告 → 計入條目;與 `scope.targets` 重複者去重(FR-010)。
-- [ ] T011 [US2] 先 RED:`config.yaml` 損毀／無法讀取 → `unknown`,不是 `unset`;範圍檔 `unreadable`／`invalid` → `unknown`;兩個範圍檔其一失敗 → 整體 `unknown`、不含部分數量(FR-011)。
-- [ ] T012 實作 `readProjectScope`(不經 `loadConfig`、不呼叫會吞錯的 `snapshotScope`);抽出與 `snapshotScope` 共用的去重規則。
-- [ ] T013 [US2] 先 RED:`project:scopeSummaries` 單一專案例外只影響該 id;唯讀——呼叫前後 `projects.json` 的 `lastOpened` 與專案檔案不變(FR-012、FR-013)。
-- [ ] T014 實作 IPC handler、preload 與 `env.d.ts` 型別;`project:list` 回傳形狀不變(FR-016)。
+- [x] T009 [US2] 先 RED(`test/project-scope-summary.test.ts`):`config.yaml` 不存在 → `unset`;存在但空 → `unset`;有 targets → `set(count)`(FR-010)。
+- [x] T010 [US2] 先 RED:只用範圍檔宣告 → 計入條目;與 `scope.targets` 重複者去重(FR-010)。
+- [x] T011 [US2] 先 RED:`config.yaml` 損毀／無法讀取 → `unknown`,不是 `unset`;範圍檔 `unreadable`／`invalid` → `unknown`;兩個範圍檔其一失敗 → 整體 `unknown`、不含部分數量(FR-011)。
+- [x] T012 實作 `readProjectScope`(不經 `loadConfig`、不呼叫會吞錯的 `snapshotScope`);抽出與 `snapshotScope` 共用的去重規則。
+- [x] T013 [US2] 先 RED:`project:scopeSummaries` 單一專案例外只影響該 id;唯讀——呼叫前後 `projects.json` 的 `lastOpened` 與專案檔案不變(FR-012、FR-013)。
+- [x] T014 實作 IPC handler、preload 與 `env.d.ts` 型別;`project:list` 回傳形狀不變(FR-016)。
 
 ## S3 — 徽章與整合(US2 畫面)
 

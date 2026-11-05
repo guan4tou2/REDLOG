@@ -54,6 +54,7 @@ const api: RedLogAPI = {
   },
   project: {
     list: () => ipcRenderer.invoke('project:list'),
+    scopeSummaries: () => ipcRenderer.invoke('project:scopeSummaries'),
     create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),
     open: (id: string) => ipcRenderer.invoke('project:open', id),
     delete: (id: string) => ipcRenderer.invoke('project:delete', id),
