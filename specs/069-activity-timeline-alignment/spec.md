@@ -28,7 +28,7 @@
 - 同一個值也是 `scope-recompute-run.ts`、`alert/surface.ts`、`activity-projection.ts`、`scope-violation-standing.ts` 的查詢條件，以及 API／匯出（JSONL 為 canonical，藍隊交接）的對外契約。
 - 舊專案、舊 `.redlog` bundle 永遠會帶 `scope_violation`。
 
-所以「改識別字」只能是下列之一，**待使用者決議（D1）**:
+所以「改識別字」只能是下列之一（**D1 已決議採 A**,見文末）:
 
 | 選項 | 內容 | 風險 |
 | --- | --- | --- |
@@ -36,7 +36,7 @@
 | B | 新事件改寫 `scope_observation`，讀取端永久同時接受兩個值 | 中；查詢、匯出、API 都要雙值，舊 bundle 與新 bundle 在同一份分析裡混用兩個詞 |
 | C | 重寫既有事件 | **不可行**:破壞雜湊鏈 |
 
-設定鍵 `warnOnViolation` 是 `config.yaml` 內的持久化值：改名須 `loadConfig` 同時讀舊鍵（舊專案），寫入新鍵；視為選項 A／B 的同等級決議。
+設定鍵 `warnOnViolation` 是 `config.yaml` 內的持久化值,不在 A 的改名範圍內(見文末)。
 
 ## User Scenarios & Testing
 
@@ -58,7 +58,7 @@
 - **FR-007** Reader 對沒有專屬實作的來源提供 Generic Reader：標題、時間、來源、原始欄位的安全顯示;新增來源不需改核心 Reader。
 - **FR-008** 時間軸有「標準」與「進階泳道」兩種模式，預設標準;兩種模式共用同一時間座標與事件集合。
 - **FR-009** 事件數、來源數、狀態統計由同一份已載入資料計算;被截斷時標示總數（沿用 *Capped views* 原則）。
-- **FR-010** 識別字重命名依 D1 決議；任何持久化值的重命名都必須附讀取相容與 `chain.verify()` 不變的測試。
+- **FR-010** 識別字重命名依 D1(A):只改程式內符號;持久化值(`scope_violation`、`warnOnViolation`)不變,並有測試鎖住「既有事件重載後 `chain.verify()` 為 ok、舊 config 仍被讀取」。
 - **FR-011** 不更動 068 的專案選擇畫面、不更動外掛管理頁（本規格不含報告第二份的外掛頁修正，見下）。
 
 ## 不在範圍
@@ -67,8 +67,12 @@
 - 搬運 Stitch 原型的 JS、固定資料或 `alert()` 假提示。
 - 新增報告產生、漏洞判定、自動分析功能。
 
-## 待決（需使用者回答才能開工的部分）
+## 已決議(2026-11-05)
 
-- **D1** 識別字重命名採 A、B 或其他（見上表）。**建議 A**。在決議前，US1 只改使用者可見字串，不碰任何持久化值。
-- **D2** 「連同識別字一起改」對 i18n key 的範圍:只改 `scope.*violation*` 等與 Scope 觀測有關的 key，或全面?建議只改有關的 key。
-- **D3** 標準時間軸的呈現：沿用現有 Timeline 的點與泳道資料，另做「單軌依序」版面，或把現有版面標為「進階泳道」再補一個單軌?建議後者，因為現有 Timeline 已有大量互動。
+| # | 決策 | 定案 |
+| --- | --- | --- |
+| D1 | 識別字重命名 | **採 A**:改程式內符號與非持久化的設定鍵;`scope_violation` 這類**持久化／對外的值不改**,集中成一個具名常數與一處對照。不重寫既有事件,不做雙值讀取。 |
+| D2 | i18n key 範圍 | **只改與 Scope 觀測有關的 key**(`scope.*violation*`、`sidebar.violationsBadge`、`eventTitle.scopeViolation`、`statusBar.scopeViolations` 等),其餘不動。 |
+| D3 | 標準時間軸 | 現有 Timeline 版面標為「進階泳道」,**另補一個單軌依序的「標準時間軸」**並設為預設;不重寫現有 Timeline。 |
+
+D1 的後果:`warnOnViolation` 是 `config.yaml` 內的持久化鍵,屬於「持久化的值」,**本規格不改名**;只改它的使用者可見文案。若日後要改名,另開規格並附 `loadConfig` 讀舊鍵的相容測試。

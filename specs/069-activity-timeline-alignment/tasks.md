@@ -25,12 +25,12 @@
 ## S4 — 標準／泳道(US4)
 
 - [ ] T011 [US4] 先 RED:預設標準;切換保留選取與縮放;偏好 per-project 記住(FR-008)。
-- [ ] T012 [US4] 實作(依 D3)。
+- [ ] T012 [US4] 實作(D3):現有版面標為「進階泳道」,新增單軌依序的「標準時間軸」為預設。
 
 ## S5 — 識別字(FR-010)
 
 - [ ] T013 先 RED:既有事件(含 `scope_violation`)重載後 `chain.verify()` 為 ok;舊 `warnOnViolation` 的 config 仍被讀取。
-- [ ] T014 依 D1 實作符號重命名;持久化值不變，或依 B 雙值讀取。
+- [ ] T014 依 D1=A 實作程式內符號重命名(D2 範圍內的 key);持久化值 `scope_violation`／`warnOnViolation` 不變,集中成具名常數。
 
 ## 收尾
 
