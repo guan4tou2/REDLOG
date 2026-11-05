@@ -73,6 +73,7 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   }
 
   async function importFile(body: string, ext: 'json' | 'yaml' = 'json'): Promise<void> {
+    if (!await page.getByRole('dialog').count()) await page.getByRole('button', { name: /New Project|新專案|新增專案/ }).click()
     const filePath = join(home, `profile-${++n}.${ext}`)
     writeFileSync(filePath, body)
     await pickerReturns({ filePath })
@@ -88,7 +89,7 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
 
   /** Press Create with this name; resolves on the project's dashboard. */
   async function createProject(name: string): Promise<Cfg> {
-    await page.getByTestId('project-picker').locator('input').first().fill(name)
+    await page.getByRole('dialog').locator('input').fill(name)
     await page.getByRole('button', { name: CREATE }).click()
     await page.waitForSelector('[data-testid="view-root"]', { timeout: 15_000 })
     return config()

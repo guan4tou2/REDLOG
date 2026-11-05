@@ -3,7 +3,19 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import BrowserPage from '../src/renderer/src/components/settings/BrowserPage'
 vi.mock('../src/renderer/src/components/settings/BrowserPanel', () => ({ default: () => <div>web-capture-settings</div> }))
+vi.mock('../src/renderer/src/components/HttpCaptureStep', () => ({ HttpCaptureStep: () => <div>https-verification-flow</div> }))
 afterEach(cleanup)
+it('offers HTTPS verification as a visible button that opens the verification flow', async () => {
+  ;(window as any).redlog = { hooks: { detect: vi.fn().mockResolvedValue([]) } }
+  render(<BrowserPage config={{} as any} setConfig={vi.fn()} t={key => key} />)
+  const button = screen.getByRole('button', { name: 'firstRun.http.verifySettings' })
+  expect(button.getAttribute('aria-expanded')).toBe('false')
+  fireEvent.click(button)
+  expect(screen.getByText('https-verification-flow')).toBeTruthy()
+  expect(button.getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(button)
+  expect(screen.queryByText('https-verification-flow')).toBeNull()
+})
 it('keeps optional proxy setup and removal beside web capture', async () => {
   ;(window as any).redlog = { hooks: { detect: vi.fn().mockResolvedValue([
     { id: 'mitmproxy', manualSteps: [{ label: 'DNS setup', command: 'synthetic-dns-setup' }], removalSteps: [{ label: 'DNS removal', command: 'synthetic-dns-removal' }] }

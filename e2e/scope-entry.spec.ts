@@ -19,6 +19,7 @@ test.describe.serial('scope entry and project identity', () => {
     // Scope already owned them, and the create card was asking for a boundary
     // before the operator had seen a single event — the necessity test's third
     // question, answered by another surface that was already there.
+    await page.getByRole('button', { name: 'New Project' }).click()
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Scope Lab')
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'dashboard')

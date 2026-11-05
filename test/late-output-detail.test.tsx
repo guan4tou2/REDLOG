@@ -17,6 +17,21 @@ const install = (rows: unknown[]): void => {
 afterEach(() => { cleanup(); window.localStorage.clear() })
 
 describe('CommandEndDetail background output', () => {
+  it('omits a known empty stderr but preserves real error output', () => {
+    install([])
+    const view = render(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ stdout: 'file.txt', stderr: '', stderr_bytes: 0 }} /></I18nProvider>)
+    expect(screen.queryByText('stderr')).toBeNull()
+    view.rerender(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ stdout: '', stderr: 'permission denied' }} /></I18nProvider>)
+    expect(screen.getByText('stderr')).toBeTruthy()
+  })
+
+  it('does not claim streamed output was not captured', async () => {
+    install([{ id: 'a', data: { seq: 1, stdout: 'file.txt' } }])
+    render(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ command_id: 'c1', output_streamed: true }} /></I18nProvider>)
+    await screen.findByText('file.txt')
+    expect(screen.queryByText(/output not captured/)).toBeNull()
+  })
+
   const data = { command: 'sleep 1; echo hi &', command_id: 'c1', late_output: true, exit_code: 0 }
 
   it('shows a running state until the final row arrives', async () => {

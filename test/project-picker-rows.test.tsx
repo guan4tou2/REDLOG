@@ -43,14 +43,18 @@ describe('project list', () => {
   it('does not steal focus into "create" when there is something to open', async () => {
     mount({ projects: [project('p1', 'Proj')] })
     await screen.findByRole('button', { name: 'Proj' })
-    const name = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
-    expect(document.activeElement).not.toBe(name)
+    expect(screen.queryByPlaceholderText('e.g. Client-Pentest-Q3')).toBeNull()
   })
 
-  it('focuses the name field on a first run, where creating is the only action', async () => {
+  it('focuses the name field when creating and restores the trigger on cancel', async () => {
     mount({ projects: [] })
+    const trigger = screen.getByRole('button', { name: 'New Project' })
+    trigger.focus()
+    fireEvent.click(trigger)
     const name = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
     await waitFor(() => expect(document.activeElement).toBe(name))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
   it('says why a rename was refused instead of snapping back silently', async () => {
@@ -61,4 +65,28 @@ describe('project list', () => {
     fireEvent.keyDown(field, { key: 'Enter' })
     expect(await screen.findByText('Could not rename the project')).toBeTruthy()
   })
+  it('ignores repeated opens until the current open finishes', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj')] })
+    open.mockImplementation(() => new Promise(() => {}))
+    const row = await screen.findByRole('button', { name: 'Proj' })
+    fireEvent.click(row)
+    fireEvent.click(row)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect((row as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('searches names and paths, keeps duplicate names distinguishable, and reports no matches', async () => {
+    mount({ projects: [project('a', 'Same'), project('b', 'Same')] })
+    await screen.findAllByRole('button', { name: 'Same' })
+    expect(screen.getByText('/tmp/a')).toBeTruthy()
+    expect(screen.getByText('/tmp/b')).toBeTruthy()
+    const search = screen.getByRole('searchbox', { name: 'Search projects' })
+    fireEvent.change(search, { target: { value: '/tmp/b' } })
+    expect(screen.getAllByRole('button', { name: 'Same' })).toHaveLength(1)
+    fireEvent.change(search, { target: { value: 'missing' } })
+    expect(screen.getByRole('status').textContent).toBe('No matching projects')
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getAllByRole('button', { name: 'Same' })).toHaveLength(2)
+  })
+
 })

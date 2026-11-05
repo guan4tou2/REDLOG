@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { SectionLabel } from './SectionLabel'
-import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
+import { Modal } from './Modal'
 import { useReadState } from '../lib/readState'
-import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure, type ProfileImportResult } from '../../../core/profile-import'
+import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure } from '../../../core/profile-import'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -28,13 +28,20 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   )
   const projects: ProjectMeta[] = listRead.value ?? []
   const setProjects = (fn: (prev: ProjectMeta[]) => ProjectMeta[]): void => updateList((prev) => fn(prev ?? []))
+  const [createOpen, setCreateOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [opening, setOpening] = useState<string | null>(null)
+  const openPending = useRef(false)
   const [newName, setNewName] = useState('')
+  const [createError, setCreateError] = useState('')
+  const [importing, setImporting] = useState(false)
+  const importPending = useRef(false)
   const [creating, setCreating] = useState(false)
   const createPending = useRef(false)
   // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
-  // by Settings. The card holds them only when a profile was imported, because
+  // by Settings. The create form holds them only when a profile was imported, because
   // an import can carry them into a project that does not exist yet (#297).
-  // One resolved value: the summary below the button and the project.create
+  // One resolved value: the import summary and the project.create
   // argument are both derived from it, and importing replaces it whole.
   const [imported, setImported] = useState<ImportedProfile | null>(null)
   // A refused file leaves `imported` as it was; this says why.
@@ -58,11 +65,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
   async function handleCreate(): Promise<void> {
     const name = newName.trim()
-    if (!name || createPending.current) return
+    if (!name || createPending.current || importPending.current) return
+    setCreateError('')
     createPending.current = true
     setCreating(true)
     try {
-      // Only an imported profile puts anything here: the card asks for a
+      // Only an imported profile puts anything here: the form asks for a
       // name, and Settings ▸ Scope owns the rest. Whether one was imported is
       // the question, not what it holds — `false` and an empty list are
       // settings too.
@@ -70,6 +78,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       const project = await window.redlog.project.create(name, initialConfig)
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
+      setCreateError(String((e as Error)?.message ?? e))
       createPending.current = false
       setCreating(false)
       toast(t('project.openFailedTitle'), {
@@ -81,6 +90,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleOpen(id: string): Promise<void> {
+    if (openPending.current || createPending.current) return
+    openPending.current = true
+    setOpening(id)
     try {
       const project = await window.redlog.project.open(id)
       if (project) onProjectOpen({ id: project.id, name: project.name })
@@ -91,6 +103,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         why: t('project.openFailedWhy'),
         detail: String((e as Error)?.message ?? e)
       })
+    } finally {
+      openPending.current = false
+      setOpening(null)
     }
   }
 
@@ -119,18 +134,28 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleImportProfile(): Promise<void> {
-    const result = await window.redlog.config.importProfile()
-    // Backing out of the picker is not an error and changes nothing.
-    if (result.status === 'cancelled') return
-    if (result.status === 'failed') {
-      // The earlier import, if any, stays exactly as it was.
-      setImportFailure(result.failure)
-      return
+    if (importPending.current || createPending.current) return
+    importPending.current = true
+    setImporting(true)
+    try {
+      const result = await window.redlog.config.importProfile()
+      // Backing out of the picker is not an error and changes nothing.
+      if (result.status === 'cancelled') return
+      if (result.status === 'failed') {
+        // The earlier import, if any, stays exactly as it was.
+        setImportFailure(result.failure)
+        return
+      }
+      // Replace, never layer: what the file leaves out is the default.
+      setImportFailure(null)
+      setImported(result.profile)
+      toast(t('toast.profileImported'), 'success')
+    } catch (e) {
+      setImportFailure({ code: 'read', detail: String((e as Error)?.message ?? e) })
+    } finally {
+      importPending.current = false
+      setImporting(false)
     }
-    // Replace, never layer: what the file leaves out is the default.
-    setImportFailure(null)
-    setImported(result.profile)
-    toast(t('toast.profileImported'), 'success')
   }
 
   function handleClearImported(): void {
@@ -147,34 +172,17 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       case 'shape': return t('project.importFailedShape', { field: f.field, expected: t(`project.expect.${f.expected}`) })
     }
   }
-  // Nothing a profile carries is visible on this card, so all of it is named
+  // Nothing a profile carries is visible on this form, so all of it is named
   // here or it is applied in silence.
   const appliedText = imported
     ? profileSummary(imported).map((p) => t(p.key, { count: p.count ?? 0 })).join(' · ') || t('project.appliedNothing')
     : null
 
-  // The fixed 480px column left excessive empty
-  // gutters on wide displays and cramped-feeling recent-projects rows.
-  // Research (JetBrains + Cursor welcome screens, Win32 UX guidance) points
-  // at a two-column split above ~800px — brand + new project on the left,
-  // recent projects on the right — and a stacked single-column fallback
-  // below that so narrow windows behave like the old picker.
-  // Focus follows the stage the operator is at. A first run wants the name
-  // field; someone with projects came back to open one, so stealing focus into
-  // "create" makes the most likely action the one they have to tab out of.
   const nameInput = useRef<HTMLInputElement | null>(null)
-  const loaded = listRead.phase === 'loaded'
   const hasRecent = projects.length > 0
-  useEffect(() => {
-    if (loaded && projects.length === 0) nameInput.current?.focus()
-  }, [loaded, projects.length])
-
-  // The list arrives after first paint. Reserving the wide frame until the
-  // answer is in keeps a returning operator from watching the card change
-  // width under the cursor; only an empty first run settles narrower.
-  const wide = !loaded || hasRecent
-  // What to say about the list itself, if anything. A loaded, non-empty list
-  // says nothing; the rows are the answer.
+  const filtered = projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(search.trim().toLowerCase()))
+  const nameCounts = new Map<string, number>()
+  for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
   const listStatus: 'loading' | 'empty' | 'failed' | null = bridgeMissing ? null
     : listRead.phase === 'failed' ? 'failed'
     : listRead.phase === 'loading' ? (hasRecent ? null : 'loading')
@@ -184,159 +192,45 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // transparent now, so the picker showing a different window colour from the
   // title bar is something you can actually see.
   return (
-    <div className="h-full flex flex-col bg-redlog-bg" data-testid="project-picker">
+    <div className="h-full flex flex-col bg-[#0a0e14] text-redlog-text" data-testid="project-picker">
+      <div inert={createOpen} className="flex-1 min-h-0 flex flex-col">
       {/* Draggable title bar zone */}
       <div
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      {/* The wordmark is pinned, not centred with everything else. Centring
-          the whole column meant the identity drifted up and down with the
-          window height — the one thing on the screen that should be in the
-          same place every time you open the app.
-          The cards below it still centre in what is left, and `safe center`
-          is what keeps that survivable: `align-items: center` on a scrolling
-          box overflows in BOTH directions once the content is taller than the
-          box, and the half above the scroll origin cannot be reached. */}
-      <div className="shrink-0 pt-10 pb-8 text-center">
-        <Wordmark className="text-4xl" />
-      </div>
-      <div
-        className="flex-1 flex justify-center px-6 pb-6 overflow-y-auto"
-        style={{ alignItems: 'safe center' }}
-      >
-      <div className={`w-full ${wide ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
-
-        {bridgeMissing && (
-          <div className="bg-red-950/40 border border-red-900/50 rounded-xl p-4 text-center">
-            <p className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>
-          </div>
-        )}
-
-        {/* Two-column grid at ≥md (768px). Below that the grid collapses to
-            one column so the picker on a narrow window looks identical to
-            v0.13. When no recent projects exist, the wrapper container also
-            drops back to the single-column max-w-[480px] above, so the
-            first-launch look stays a centered card rather than a lonely
-            new-project card floating in a wide empty gutter. */}
-        <div className={`grid gap-6 ${wide ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
-        {/* New project */}
-        <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-          <SectionLabel className="tracking-[0.15em] mb-3">{t('project.new')}</SectionLabel>
-          <div className="flex gap-2">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              placeholder={t('project.placeholder')}
-              ref={nameInput}
-              className="flex-1 h-[34px] bg-redlog-bg border border-redlog-border rounded-lg px-3 text-sm text-redlog-text font-mono focus:outline-none focus:border-redlog-accent focus:ring-2 focus:ring-redlog-accent/40 focus:ring-offset-2 focus:ring-offset-redlog-surface placeholder-redlog-muted transition-colors"
-            />
-            <Button
-              level="primary"
-              className="shrink-0 whitespace-nowrap"
-              onClick={handleCreate}
-              disabled={!newName.trim() || creating}
-            >
-              {t('project.create')}
-            </Button>
-          </div>
-
-          <Button level="quiet" onClick={handleImportProfile} className="mt-3 text-xs">
-            {t('project.importProfile')}
-          </Button>
-          {appliedText && (
-            <div className="mt-1 flex items-center gap-2">
-              <p data-testid="profile-applied" className="text-xs text-redlog-text-dim font-mono">{appliedText}</p>
-              <Button level="quiet" onClick={handleClearImported} className="text-xs">
-                {t('project.clearImported')}
-              </Button>
-            </div>
-          )}
-          {failureText && (
-            <p role="alert" data-testid="profile-error" className="mt-1 text-xs text-red-300">{failureText}</p>
-          )}
+      <div className="flex-1 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
+      <div className="shrink-0 mb-8 text-center"><Wordmark className="text-4xl" /></div>
+      <div className="w-full max-w-[740px] mx-auto space-y-4 bg-[#10141a] border border-[#262d38] rounded-xl p-6 shadow-2xl">
+        {bridgeMissing && <p role="alert" className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#262d38]">
+          <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{filtered.length}</span></div>
+          <Button level="secondary" className="!bg-[#ef4444] hover:!bg-[#dc2626] !border-transparent !text-redlog-on-accent" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
         </div>
-
-        {/* Recent projects */}
-        {projects.length > 0 && (() => {
-          const nameCounts = new Map<string, number>()
-          for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
-          return (
-          <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-            <SectionLabel className="tracking-[0.15em] mb-3">{t('project.recent')}</SectionLabel>
-            <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
-              {projects.map((p) => {
-                const isDup = (nameCounts.get(p.name) ?? 0) > 1
-                return (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.03] cursor-pointer group transition-colors"
-                  onClick={() => renamingId === p.id ? undefined : handleOpen(p.id)}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500/40 group-hover:bg-red-500/80 transition-colors shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    {renamingId === p.id ? (
-                      <input
-                        autoFocus
-                        value={renameValue}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); handleRenameCommit(p.id) }
-                          if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
-                        }}
-                        onBlur={() => handleRenameCommit(p.id)}
-                        className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); handleOpen(p.id) }}
-                        className="flex items-center gap-2 min-w-0 w-full text-left rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-                      >
-                        <span title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</span>
-                        {isDup && (
-                          <span className="text-redlog-text-faint text-xs font-mono shrink-0">{formatDate(p.createdAt)}</span>
-                        )}
-                      </button>
-                    )}
-                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0 text-redlog-text-faint text-xs font-mono">
-                      <span className="whitespace-nowrap">{formatFreshness(p.lastOpened, t)}</span>
-                      <span className="text-redlog-muted">·</span>
-                      <span className="whitespace-nowrap">{t('project.created', { date: formatDate(p.createdAt) })}</span>
-                      {p.dbSize != null && p.dbSize > 0 && (
-                        <>
-                          <span className="text-redlog-muted">·</span>
-                          <span className="whitespace-nowrap">{formatSize(p.dbSize)}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}
-                    className="text-redlog-muted hover:text-redlog-text focus:text-redlog-text text-xs opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-all px-1"
-                    title={t('project.rename')}
-                    aria-label={t('project.rename')}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }}
-                    className="text-redlog-muted hover:text-red-400 focus:text-red-400 text-xs opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-all"
-                    title={t('project.delete')}
-                    aria-label={t('project.delete')}
-                  >
-                    ✕
-                  </button>
-                </div>
-                )
-              })}
-            </div>
-          </div>
-          )
-        })()}
-        </div>{/* end two-column grid */}
+        {hasRecent && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} className="w-full bg-[#0a0e14] border border-[#262d38] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
+        <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1" aria-busy={!!opening} onKeyDown={e => {
+          if (!(e.target instanceof HTMLElement) || !e.target.matches('[data-project-open]') || !['ArrowUp', 'ArrowDown'].includes(e.key)) return
+          const rows = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[data-project-open]'))
+          const index = rows.indexOf(e.target as HTMLButtonElement)
+          e.preventDefault()
+          rows[(index + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus()
+        }}>
+          {filtered.map(p => <div key={p.id} className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-3 hover:bg-[#161b22] hover:border-[#262d38] focus-within:bg-[#161b22] focus-within:border-redlog-border group">
+            {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
+              if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
+            }} onBlur={() => void handleRenameCommit(p.id)} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1" /> :
+            <button data-project-open type="button" disabled={!!opening} aria-label={p.name} onClick={() => void handleOpen(p.id)} className="min-w-0 flex-1 text-left rounded py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 disabled:opacity-60">
+              <span title={p.name} className="block truncate text-sm text-redlog-text">{p.name}</span>
+              <span className="block text-xs text-redlog-text-faint font-mono">{opening === p.id ? t('project.opening') : formatFreshness(p.lastOpened, t)} · {t('project.created', { date: formatDate(p.createdAt) })}</span>
+              {(nameCounts.get(p.name) ?? 0) > 1 && <span className="block break-all text-xs text-redlog-text-dim font-mono">{p.path}</span>}
+            </button>}
+            <span className="shrink-0 text-xs font-mono text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
+            <button disabled={!!opening} onClick={() => { setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
+            <button disabled={!!opening} onClick={() => void handleDelete(p.id)} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
+          </div>)}
+        </div>
+        {hasRecent && filtered.length === 0 && <p role="status" className="text-xs text-redlog-text-faint text-center py-8">{t('project.noResults')}</p>}
 
         {listStatus === 'loading' && (
           <p data-testid="project-list-status" data-state="loading" role="status" className="text-center text-xs text-redlog-text-faint font-mono">
@@ -358,8 +252,23 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
+        <div className="pt-4 border-t border-[#262d38] text-xs text-redlog-text-dim font-mono text-right">{t('project.keyboardHint')}</div>
       </div>
       </div>
+      </div>
+      <Modal open={createOpen} onClose={() => { if (!creating && !importing) setCreateOpen(false) }} label={t('project.new')} initialFocus={nameInput} panelClassName="w-full max-w-[560px] max-h-[calc(90vh/var(--app-zoom,0.9))] overflow-y-auto m-4 p-6 rounded-xl bg-[#10141a] border border-[#262d38] shadow-2xl">
+        <form onSubmit={e => { e.preventDefault(); void handleCreate() }} className="space-y-4">
+          <h2 className="text-sm font-medium pb-4 border-b border-[#262d38]">{t('project.new')}</h2>
+          <label className="block text-xs text-redlog-text-dim">{t('project.name')}
+            <input ref={nameInput} value={newName} disabled={creating || importing} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void handleCreate() } }} placeholder={t('project.placeholder')} className="block mt-1 w-full rounded-lg border border-redlog-border bg-redlog-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
+          </label>
+          <Button type="button" level="quiet" disabled={creating || importing} onClick={() => void handleImportProfile()} className="text-xs">{t('project.importProfile')}</Button>
+          {appliedText && <div className="flex gap-2 items-center"><p data-testid="profile-applied" className="text-xs text-redlog-text-dim">{appliedText}</p><Button type="button" level="quiet" disabled={creating || importing} onClick={handleClearImported}>{t('project.clearImported')}</Button></div>}
+          {failureText && <p role="alert" data-testid="profile-error" className="text-xs text-red-300">{failureText}</p>}
+          {createError && <p role="alert" className="text-xs text-red-300">{createError}</p>}
+          <div className="flex justify-end gap-2 pt-4 border-t border-[#262d38]"><Button type="button" level="quiet" disabled={creating || importing} onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button level="primary" type="submit" disabled={creating || importing || !newName.trim()}>{t('project.create')}</Button></div>
+        </form>
+      </Modal>
     </div>
   )
 }

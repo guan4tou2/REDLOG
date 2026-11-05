@@ -61,6 +61,7 @@ test.describe.serial('read failures and a small window (#298)', () => {
   })
 
   test('search: an index that cannot be read is not reported as fully indexed', async () => {
+    await page.getByRole('button', { name: 'New Project' }).click()
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Closeout')
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')

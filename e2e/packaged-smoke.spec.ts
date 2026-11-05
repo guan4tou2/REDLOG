@@ -100,6 +100,7 @@ test.describe('packaged app', () => {
       })
 
       await test.step('create a project', async () => {
+        await page.getByRole('button', { name: 'New Project' }).click()
         await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('pkg-smoke')
         await page.getByRole('button', { name: 'Create' }).click()
         await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
