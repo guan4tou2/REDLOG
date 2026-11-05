@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openSwimLanes } from './helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -39,7 +39,7 @@ test.describe.serial('event causal chain', () => {
     // newest row — the fillers stop ~33 minutes ago.
     await post({ subtype: 'created', title: 'causal effect', atTimestamp: now - 120_000, _causes: [parent.id] })
 
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(1800)
   })
 

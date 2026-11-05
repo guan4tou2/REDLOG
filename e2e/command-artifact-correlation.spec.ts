@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openSwimLanes } from './helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -34,7 +34,7 @@ test.describe.serial('command artifact correlation', () => {
     await post('shell', { subtype: 'command_start', ...command })
     await post('file_transfer', { subtype: 'file_created', source: 'file-watcher', path: '/tmp/work/loot/scan.xml' })
     await post('shell', { subtype: 'command_end', ...command })
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(800)
   })
 

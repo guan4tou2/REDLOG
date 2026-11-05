@@ -168,10 +168,19 @@ export function TimelineEventLog({
           return (
             <div
               key={evt.id}
-              className={`flex items-center gap-2 ${nested ? 'pl-8 pr-4' : 'px-4'} py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
+              className={`flex items-center gap-2 ${nested ? 'pl-8 pr-4' : 'px-4'} py-1 cursor-pointer transition-colors text-xs focus-visible:outline focus-visible:outline-red-400 border-b border-redlog-border-subtle/30 ${
                 isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
               }`}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSel}
               onClick={() => onSelect(evt)}
+              onKeyDown={(e) => {
+                // The standard Timeline is read from this list, so a row has to
+                // be reachable and selectable without a pointer.
+                if (e.target !== e.currentTarget) return
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(evt) }
+              }}
             >
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
               <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">

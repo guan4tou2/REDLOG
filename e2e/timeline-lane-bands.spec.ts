@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openSwimLanes } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §6: the 18 lanes banded by capture group.
 // The timeline opens as capture-group bands (collapsed), each expandable to its
@@ -35,7 +35,7 @@ test.describe.serial('timeline lane bands', () => {
     await post('screenshot', { trigger: 'manual' })                                          // artifacts
     await post('marker', { title: 'note', severity: 'info' })                                // signals
     await page.waitForTimeout(600)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     // Wait for the band row to render rather than a fixed sleep — under full-
     // suite load the render can lag past a fixed timeout.
     await page.locator('[data-testid="timeline-band-commands"]').waitFor({ state: 'visible', timeout: 10_000 })

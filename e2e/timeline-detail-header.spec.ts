@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openSwimLanes } from './helpers'
 
 // The detail pane's top row carries the ways out of an event — step to the
 // previous or next one, ask what else was running around it, exclude it from
@@ -40,7 +40,7 @@ test.describe.serial('timeline detail header', () => {
         body: JSON.stringify({ agent_type: 'marker', data: { subtype: 'created', title, atTimestamp } })
       })
     }
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(1500)
   })
 

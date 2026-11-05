@@ -298,6 +298,7 @@ describe('renderer views render without throwing', () => {
     // is expanded. Expanding is what puts the per-lane rows on screen, and a
     // lane label appearing proves the events flowed through toLane() into
     // populatedLanes without an undefined bucket.
+    fireEvent.click(await findByTestId('timeline-mode-lanes'))
     fireEvent.click(await findByTestId('timeline-band-commands'))
     const shellLabels = await findAllByText('Shell')
     expect(shellLabels.length).toBeGreaterThan(0)

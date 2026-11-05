@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, resizeMainWindow, openSwimLanes } from './helpers'
 
 // v0.11.4 (AUDIT V1/V2/V3): what the track says without being clicked.
 //
@@ -75,7 +75,7 @@ test.describe.serial('timeline visual encoding', () => {
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '0.25'))
     await page.reload()
     await page.waitForTimeout(2500)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(2000)
   })
 

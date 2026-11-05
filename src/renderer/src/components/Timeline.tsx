@@ -18,6 +18,7 @@ import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
+import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
@@ -266,6 +267,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     } catch { setCollapsedBands(new Set(BANDS.map((b) => b.id))) }
   }, [projectIdForKeys])
 
+  // Spec 069 FR-008: "standard" is a single sequential list; "lanes" adds the
+  // swim-lane track above it. Selection, zoom and hidden lanes live above this
+  // switch, so changing mode never discards them. Remembered per project.
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>('standard')
   const settingsLoadedFor = useRef<string | null>(null)
   useEffect(() => {
     // v0.6.100 F5: fall back to `__global__` sentinel when there's no active
@@ -286,6 +291,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         if (stored !== null) apply(decode(stored))
       } catch { /* ignore */ }
     }
+    load('redlog-timeline-mode', parseTimelineMode, setTimelineMode)
     load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
     load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
     load('redlog-timeline-hidden-lanes', (s) => {
@@ -1015,10 +1021,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     // not project state.
     if (!projectIdForKeys) return
     try {
+      localStorage.setItem(`redlog-timeline-mode:${projectIdForKeys}`, timelineMode)
       localStorage.setItem(`redlog-timeline-hidden-lanes:${projectIdForKeys}`, JSON.stringify([...hiddenLanes]))
       localStorage.setItem(`redlog-timeline-collapsed-bands:${projectIdForKeys}`, JSON.stringify([...collapsedBands]))
     } catch { /* ignore */ }
-  }, [hiddenLanes, collapsedBands, projectIdForKeys])
+  }, [hiddenLanes, collapsedBands, timelineMode, projectIdForKeys])
   // Set once the restore below has had its one attempt. Declared before the
   // save effect, which reads it.
   const initialFocusRestoreRef = useRef(false)
@@ -1316,18 +1323,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // should scroll to. Prior behaviour set the ref once at first-open and
   // never cleared it — so a second click on a Loot item (after coming back
   // to Timeline) would silently short-circuit (audit finding P0 #7).
-  useEffect(() => { didScrollToNow.current = false }, [focusEventId, focusTs])
+  // The lane track is a fresh element each time the swim lanes are shown, so
+  // it starts unscrolled and needs placing again.
+  useEffect(() => { didScrollToNow.current = false }, [focusEventId, focusTs, timelineMode])
+
+  // Jumping from Search, Loot or Targets hands over an event to open. Opening
+  // it is not a property of the lane track: the standard mode draws none, so
+  // this must not wait for one to exist.
+  const focusSelectedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (loading || !focusEventId || focusSelectedRef.current === focusEventId) return
+    const focused = events.find((e) => e.id === focusEventId)
+    if (!focused) return
+    focusSelectedRef.current = focusEventId
+    setSelectedEvent(focused)
+    setDetailOpen(true)
+  }, [loading, focusEventId, events])
 
   useEffect(() => {
     if (loading || didScrollToNow.current) return
     const el = scrollRef.current
     if (!el || el.clientWidth === 0) return
-    // Jumping from Loot (or elsewhere) focuses a specific event: select it and
-    // centre it. Otherwise land on the present, latest activity in view.
+    // Centre a focused event; otherwise land on the present, latest activity in view.
     const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
     if (focused) {
-      setSelectedEvent(focused)
-      setDetailOpen(true)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
       // no matching event (e.g. jumped from a bookmark) — centre on its time
@@ -1336,7 +1355,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
     }
     didScrollToNow.current = true
-  }, [loading, toX, TRACK_W, focusEventId, focusTs, events])
+  }, [loading, toX, TRACK_W, focusEventId, focusTs, events, timelineMode])
 
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.
@@ -1807,6 +1826,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             (TimelineEventInspector), so it sits with close and step like the
             HTTP log rather than off here on the toolbar. */}
 
+        {/* Standard / swim-lane switch (Spec 069 FR-008). */}
+        <div role="group" aria-label={t('timeline.mode.label')} className="flex items-center rounded border border-redlog-border overflow-hidden ml-1">
+          {(['standard', 'lanes'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              data-testid={`timeline-mode-${mode}`}
+              aria-pressed={timelineMode === mode}
+              onClick={() => setTimelineMode(mode)}
+              className={`px-2 h-6 text-xs transition-colors focus-visible:outline focus-visible:outline-red-400 ${timelineMode === mode ? 'bg-redlog-elevated text-redlog-text font-medium' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            >{t(`timeline.mode.${mode}`)}</button>
+          ))}
+        </div>
+
         {/* Zoom controls */}
         <div className="flex items-center gap-1 ml-2">
           <button
@@ -2077,6 +2110,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           of them ever tested. */}
       <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+        {timelineMode === 'lanes' && <>
         {/* Swim lanes */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
@@ -2590,6 +2624,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         >
           <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
         </div>
+        </>}
         {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
             scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog

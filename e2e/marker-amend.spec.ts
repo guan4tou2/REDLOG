@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView, resizeMainWindow, openSwimLanes } from './helpers'
 
 // Design turn 8b, end to end. Two things here can only be caught by the real
 // bundle: the temporal-dead-zone crash that a memo referencing a const declared
@@ -77,7 +77,7 @@ test.describe.serial('amending a marker', () => {
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '0.25'))
     await page.reload()
     await page.waitForTimeout(2500)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(1500)
   })
 
@@ -113,7 +113,7 @@ test.describe.serial('amending a marker', () => {
   test('survives a reload — the effective marker is derived, not remembered', async () => {
     await page.reload()
     await page.waitForTimeout(2500)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(1500)
     await selectMarker('amended title')
     await expect(page.locator('[data-testid="marker-amend-count"]').first()).toContainText('1')
@@ -151,7 +151,7 @@ test.describe.serial('amending a marker', () => {
     await page.waitForTimeout(3000)
     await page.reload()
     await page.waitForTimeout(3000)
-    await openView(page, 'timeline')
+    await openSwimLanes(page)
     await page.waitForTimeout(2000)
 
     const html = await page.content()
