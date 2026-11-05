@@ -297,13 +297,17 @@ test('optional AI recovers in its source entry and requires explicit project aut
     await other.click()
     const before = await page.evaluate(() => window.redlog.config.get())
     const row = page.getByTestId('agent-source-codex')
-    await row.getByTestId('agent-restore-codex').click()
+    // Spec 066: a disabled integration is re-enabled on the Plugins page; the
+    // Capture sources row only points there, and the jump writes nothing.
+    await expect(row.getByTestId('agent-manage-codex')).toHaveText('Enable on the Plugins page')
+    await row.getByTestId('agent-manage-codex').click()
+    await expect(page.getByTestId('plugin-detail-official-ai-codex')).toBeVisible()
+    expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
+    await page.getByTestId('plugin-restore-official-ai-codex').click()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
+    await page.getByTestId('plugin-open-capture-official-ai-codex').click()
     await expect(page.locator('[data-settings-page="captureControl"]')).toHaveAttribute('aria-current', 'page')
     expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
-    await page.getByRole('button', { name: 'Plugins', exact: true }).click()
-    await expect(page.getByText('Codex CLI', { exact: true })).toHaveCount(0)
-    await other.click()
     const setPicker = async (path: string) => app.evaluate(({ ipcMain }, next) => {
       ipcMain.removeHandler('hookConfig:pickPath')
       ipcMain.handle('hookConfig:pickPath', () => next)

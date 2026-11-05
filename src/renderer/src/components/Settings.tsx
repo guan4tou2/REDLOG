@@ -35,6 +35,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [config, setConfig] = useState<ConfigState | null>(null)
   const [tab, setTab] = useState<SettingsPage>(request?.page ?? 'hooks')
   useEffect(() => { if (request) setTab(request.page) }, [request])
+  // Spec 066: a link between an integration's plugin detail and its Capture
+  // sources row. View-only; each side clears it once it has landed.
+  const [pluginFocus, setPluginFocus] = useState<{ pluginId: string } | null>(null)
+  const [captureFocus, setCaptureFocus] = useState<string | null>(null)
   const [pageQuery, setPageQuery] = useState('')
   // Before the early returns below: a hook after `if (!config) return` is a
   // hook that runs on some renders and not others.
@@ -389,11 +393,14 @@ export default function Settings({ request = null }: { request?: { page: Setting
             {isWindows && <WslPanel t={t} />}
           </>
         )}
-        {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} onOpenPlugins={() => setTab('plugins')} />}
+        {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} onOpenPlugins={() => setTab('plugins')}
+          onOpenIntegration={(pluginId) => { setPluginFocus({ pluginId }); setTab('plugins') }}
+          focusAgentKind={captureFocus} onFocusHandled={() => setCaptureFocus(null)} />}
         {tab === 'loot' && <LootRulesGroup config={config} setConfig={setConfig} t={t} />}
         {tab === 'retention' && <RetentionPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
-        {tab === 'plugins' && <PluginsPanel t={t} />}
+        {tab === 'plugins' && <PluginsPanel t={t} config={config} focus={pluginFocus} onFocusHandled={() => setPluginFocus(null)}
+          onOpenCaptureSources={(agentKind) => { setCaptureFocus(agentKind); setTab('captureControl') }} />}
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
