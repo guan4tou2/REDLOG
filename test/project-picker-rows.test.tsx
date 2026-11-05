@@ -75,18 +75,14 @@ describe('project list', () => {
     expect((row as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('searches names and paths, keeps duplicate names distinguishable, and reports no matches', async () => {
+  it('keeps duplicate names distinguishable by their paths', async () => {
     mount({ projects: [project('a', 'Same'), project('b', 'Same')] })
     await screen.findAllByRole('button', { name: 'Same' })
     expect(screen.getByText('/tmp/a')).toBeTruthy()
     expect(screen.getByText('/tmp/b')).toBeTruthy()
-    const search = screen.getByRole('searchbox', { name: 'Search projects' })
-    fireEvent.change(search, { target: { value: '/tmp/b' } })
-    expect(screen.getAllByRole('button', { name: 'Same' })).toHaveLength(1)
-    fireEvent.change(search, { target: { value: 'missing' } })
-    expect(screen.getByRole('status').textContent).toBe('No matching projects')
-    fireEvent.change(search, { target: { value: '' } })
-    expect(screen.getAllByRole('button', { name: 'Same' })).toHaveLength(2)
+    // Fewer than six projects: no search box yet (Spec 068 D1). Searching is
+    // covered in project-picker-search.test.tsx.
+    expect(screen.queryByRole('searchbox')).toBeNull()
   })
 
 })

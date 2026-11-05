@@ -1991,5 +1991,6 @@
   "project.name": "Project name",
   "project.search": "Search projects",
   "project.noResults": "No matching projects",
+  "project.clearSearch": "Clear search",
   "project.opening": "Opening…"
 }
