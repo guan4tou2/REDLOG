@@ -194,3 +194,47 @@ it('rolls a managed package update back when its installation-record commit fail
   expect(managed.install('codex')).toMatchObject({ ok: true })
   expect(fs.readFileSync(managed.modulePath('codex')!)).toEqual(newCode)
 })
+
+// Spec 067 US7: one bad package must not take the whole catalog down.
+describe('catalog failure isolation', () => {
+  const goodPackage = (catalogRoot: string, name: string, kind: string) => {
+    const dir = path.join(catalogRoot, name)
+    fs.mkdirSync(dir, { recursive: true })
+    const code = `module.exports = { ${kind.replace(/-/g, '_')}: true }\n`
+    fs.writeFileSync(path.join(dir, 'adapter.cjs'), code)
+    fs.writeFileSync(path.join(dir, 'plugin.json'), JSON.stringify({
+      id: `official-${kind}`, name: kind, version: '1.0.0', redlogApi: 1, kind: 'pack', contributes: {},
+      redlogAgent: { agentKind: kind, entry: 'adapter.cjs', source: { defaultPath: `.${kind}/s` }, sha256: createHash('sha256').update(code).digest('hex') }
+    }))
+    return dir
+  }
+  it('lists the valid packages and reports an invalid one as an error row', () => {
+    const catalogRoot = path.join(base, 'catalog')
+    goodPackage(catalogRoot, 'good', 'good-agent')
+    const bad = goodPackage(catalogRoot, 'bad', 'bad-agent')
+    fs.appendFileSync(path.join(bad, 'adapter.cjs'), '// tampered after the checksum was taken')
+    const m = createOfficialAgentPluginManager(root, catalogRoot)
+    const list = m.list()
+    expect(list.find(p => p.agentKind === 'good-agent')).toMatchObject({ state: 'not-installed' })
+    const broken = list.find(p => p.state === 'error')!
+    expect(broken.error).toMatch(/checksum/i)
+    expect(list).toHaveLength(2)
+    // the valid one is still installable; the broken one is not
+    expect(m.install('good-agent')).toMatchObject({ ok: true })
+    expect(m.install(broken.agentKind).ok).toBe(false)
+    expect(fs.existsSync(path.join(root, broken.pluginId))).toBe(false)
+  })
+  it('reports a duplicate identity as an error row instead of failing the catalog', () => {
+    const catalogRoot = path.join(base, 'catalog')
+    goodPackage(catalogRoot, 'a', 'same-agent'); goodPackage(catalogRoot, 'b', 'same-agent')
+    const list = createOfficialAgentPluginManager(root, catalogRoot).list()
+    expect(list.filter(p => p.state === 'not-installed')).toHaveLength(1)
+    expect(list.filter(p => p.state === 'error')).toHaveLength(1)
+    // distinct identities, so neither row can hide the other
+    expect(new Set(list.map(p => p.pluginId)).size).toBe(2)
+    expect(new Set(list.map(p => p.agentKind)).size).toBe(2)
+  })
+  it('still throws when the package root itself is missing — a packaging fault must stay visible', () => {
+    expect(() => createOfficialAgentPluginManager(root, path.join(base, 'nope')).list()).toThrow()
+  })
+})

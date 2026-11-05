@@ -16,12 +16,16 @@ const MEMBER_HEALTH_ID: Record<string, string> = {
 }
 
 export default function CaptureControlPage({
-  config, setConfig, t, onOpenPlugins
+  config, setConfig, t, onOpenPlugins, onOpenIntegration, focusAgentKind, onFocusHandled
 }: {
   config: ConfigState
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
   onOpenPlugins?: () => void
+  /** Spec 066: open the Plugins page on one integration's detail. */
+  onOpenIntegration?: (pluginId: string) => void
+  focusAgentKind?: string | null
+  onFocusHandled?: () => void
 }): JSX.Element {
   // The same snapshot the dashboard's capture card reads. Every source row on
   // this page says when it last delivered, so the operator does not have to
@@ -38,7 +42,7 @@ export default function CaptureControlPage({
           capture inventory, where they carry whether they are actually feeding
           the record — which is what an operator came here to find out. */}
       {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <AgentsPanel config={config} setConfig={setConfig} t={t} />
+      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={focusAgentKind} onFocusHandled={onFocusHandled} />
 
 
       <FieldGroup title={t('settings.screenshotGroup')}>

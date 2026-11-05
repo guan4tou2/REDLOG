@@ -100,13 +100,12 @@ describe('search', () => {
 })
 
 describe('pluginViewModel', () => {
-  it('keys by plugin id and leaves install/project/health as explicit axes', () => {
-    const vm = pluginViewModel(view({ tier: 'privileged', status: 'active', needsApproval: true, officialAgent: true }), () => '')
-    expect(vm.pluginId).toBe('p')
-    expect(vm.trust.canRevoke).toBe(true)
-    expect(vm.install.managedBy).toBe('agentSources')
-    expect(vm.project.applicable).toBe(false)
-    expect(vm.health.applicable).toBe(false)
+  it('keys by plugin id; an official integration is managed as one, an ordinary plugin from the folder', () => {
+    const official = pluginViewModel(view({ tier: 'privileged', status: 'active', needsApproval: true, officialAgent: true, official: { agentKind: 'codex', state: 'installed' } }), () => '')
+    expect(official.pluginId).toBe('p')
+    expect(official.trust.canRevoke).toBe(true)
+    expect(official.install.managedBy).toBe('officialIntegration')
+    expect(pluginViewModel(view({}), () => '').install.managedBy).toBe('pluginFolder')
   })
   it('flags needs-consent and hash-changed together as the trust axis sees them', () => {
     for (const status of ['needs-consent', 'hash-changed'] as const) {

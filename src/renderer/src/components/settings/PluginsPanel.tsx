@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '../Button'
 import { toast, toastUndo } from '../Toast'
-import { FieldGroup } from './SettingsShared'
+import { FieldGroup, type ConfigState } from './SettingsShared'
+import { confirmGraded } from '../ConfirmDialog'
+import { useCaptureHealthState } from '../../lib/useCaptureHealth'
+import type { AgentKind } from '../../../../core/agent-capture-policy'
+import type { OfficialAgentPlugin, OfficialAgentMutation } from '../../../../core/plugins/official-agents'
 import { Modal } from '../Modal'
 import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 import { useContainerWidth } from '../../hooks/useContainerWidth'
 import { matchesQuery } from '../../lib/textQuery'
-import { pluginViewModel, needsAttention, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import { pluginViewModel, needsAttention, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 import PluginDetailPanel from './PluginDetailPanel'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
@@ -62,8 +66,12 @@ const OWNED_ELSEWHERE = new Set<string>([
 // existed would sit disabled forever, with 擷取 pack reporting it unavailable
 // and the only control that could bring it back hidden from the operator. A
 // row that is off is always shown, because that is the row someone needs.
-const isHidden = (p: { id: string; status: string; officialAgent?: boolean }): boolean =>
-  p.officialAgent === true || (OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled')
+//
+// Spec 066: the official AI integrations are no longer hidden here. This page is
+// the one place they are installed, updated and removed; Capture sources keeps
+// only the per-project settings and points back at this row.
+const isHidden = (p: { id: string; status: string }): boolean =>
+  OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
 
 // The manifests describe these packs to whoever maintains them: spec
 // numbers, doc paths, the identifiers the code uses, and the reason the
@@ -81,6 +89,7 @@ function PluginRow({ p, vm, t, busy, selected, onToggle, onReview, onRevoke, onS
   const needsConsent = vm.trust.needsConsent
   const cannotRevoke = vm.trust.cannotBeTrusted
   const issue = vm.issues[0]
+  const official = vm.install.official
   return (
     <div
       onClick={onSelect}
@@ -90,8 +99,10 @@ function PluginRow({ p, vm, t, busy, selected, onToggle, onReview, onRevoke, onS
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-medium text-redlog-text">{p.name}</span>
-            <span className="text-xs text-redlog-text-dim">v{p.version}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{t(`plugins.status.${p.status}`)}</span>
+            {p.version && <span className="text-xs text-redlog-text-dim">v{p.version}</span>}
+            <span data-testid={`plugin-state-${p.id}`} className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">
+              {vm.trust.applicable ? t(`plugins.status.${p.status}`) : t(`plugins.installState.${official?.state ?? 'not-installed'}`)}
+            </span>
             {privileged && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
                 {t('plugins.tier.privileged')}
@@ -106,19 +117,19 @@ function PluginRow({ p, vm, t, busy, selected, onToggle, onReview, onRevoke, onS
         </div>
         <div className="ml-3 shrink-0 flex flex-col gap-1 items-end" onClick={(e) => e.stopPropagation()}>
           {selected && <span className="text-xs text-redlog-text-faint">{t('plugins.managingHere')}</span>}
-          {!selected && p.status !== 'error' && !needsConsent && (
+          {!selected && vm.trust.canToggle && p.status !== 'error' && !needsConsent && (
             <button disabled={busy} onClick={() => onToggle(p.status === 'disabled')}
               className={`px-3 py-1 text-xs rounded ${p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'}`}>
               {busy ? '...' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
             </button>
           )}
-          {!selected && needsConsent && !cannotRevoke && (
+          {!selected && vm.trust.applicable && needsConsent && !cannotRevoke && (
             <button disabled={busy} onClick={onReview}
               className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600">
               {t('plugins.review')}
             </button>
           )}
-          {!selected && (privileged || p.needsApproval) && p.status === 'active' && (
+          {!selected && vm.trust.applicable && (privileged || p.needsApproval) && p.status === 'active' && (
             <button onClick={onRevoke} disabled={busy}
               className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
               {t('plugins.revoke')}
@@ -137,10 +148,27 @@ function descriptionOf(p: PluginView, t: T): string {
   return line === key ? p.description : line
 }
 
-export default function PluginsPanel({ t }: { t: T }): JSX.Element {
+export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenCaptureSources }: {
+  t: T
+  /** Needed for the project axis; without it that axis says it cannot tell. */
+  config?: ConfigState
+  /** Spec 066 FR-021: the integration to open, from a link on Capture sources.
+   *  A new object per request, so asking for the same one again selects it again. */
+  focus?: { pluginId: string } | null
+  onFocusHandled?: () => void
+  /** Spec 066 FR-020: jump to the integration's Capture sources row. View only. */
+  onOpenCaptureSources?: (agentKind: string) => void
+}): JSX.Element {
   const describe = (p: PluginView): string => descriptionOf(p, t)
 
-  const [plugins, setPlugins] = useState<PluginView[]>([])
+  const [loaded, setPlugins] = useState<PluginView[]>([])
+  const [catalog, setCatalog] = useState<OfficialAgentPlugin[]>([])
+  // Spec 067: the catalog failing is its own error. The plugin list is a different
+  // question, and the operator's own plugins must not vanish because of it.
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  // Loaded plugins and the official catalog meet by pluginId: a not-installed
+  // integration has no loaded plugin and would otherwise have no row.
+  const plugins = useMemo(() => mergeOfficialCatalog(loaded, catalog), [loaded, catalog])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -155,6 +183,9 @@ export default function PluginsPanel({ t }: { t: T }): JSX.Element {
   const api = (window.redlog as unknown as { plugins: {
     list: () => Promise<PluginView[]>
     reload: () => Promise<PluginView[]>
+    officialAgents: () => Promise<OfficialAgentPlugin[]>
+    installOfficialAgent: (kind: string) => Promise<OfficialAgentMutation>
+    uninstallOfficialAgent: (kind: string) => Promise<OfficialAgentMutation>
     openFolder: () => Promise<string>
     setEnabled: (id: string, enabled: boolean) => Promise<PluginView[]>
     grant: (id: string) => Promise<{ ok: boolean; error?: string; profilesError?: string; plugins: PluginView[] }>
@@ -163,14 +194,29 @@ export default function PluginsPanel({ t }: { t: T }): JSX.Element {
 
   const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
+  const applyCatalog = (listed: PluginView[], official: PromiseSettledResult<OfficialAgentPlugin[]>): void => {
+    setPlugins(listed)
+    if (official.status === 'fulfilled') { setCatalog(official.value); setCatalogError(null) }
+    else { setCatalog([]); setCatalogError(errorText(official.reason)) }
+  }
+  /** Re-read only the catalog (the retry beside its error). */
+  const retryCatalog = async (): Promise<void> => {
+    const mine = ++newest.current
+    const [official] = await Promise.allSettled([api.officialAgents()])
+    if (mine !== newest.current) return
+    if (official.status === 'fulfilled') { setCatalog(official.value); setCatalogError(null) }
+    else setCatalogError(errorText(official.reason))
+  }
+
   // A list that failed to load is not an empty list: the first says "try
   // again", the second says "there is nothing here".
   const load = async (): Promise<void> => {
     const mine = ++newest.current
     setLoading(true); setLoadError(null)
     try {
-      const next = await api.list()
-      if (mine === newest.current) setPlugins(next)
+      const [listed, official] = await Promise.allSettled([api.list(), api.officialAgents()])
+      if (listed.status === 'rejected') throw listed.reason
+      if (mine === newest.current) applyCatalog(listed.value, official)
     } catch (e) {
       if (mine === newest.current) setLoadError(errorText(e))
     } finally {
@@ -272,6 +318,66 @@ export default function PluginsPanel({ t }: { t: T }): JSX.Element {
   const selected = vms.get(selectedId ?? '') ? plugins.find((p) => p.id === selectedId) : undefined
   const selectedVm = selected ? vms.get(selected.id) : undefined
 
+  // Spec 066 FR-021/022: a link from Capture sources opens that integration's
+  // row — also when it is not installed. Only the selection and the filters
+  // move; nothing is written and nothing asks for confirmation.
+  useEffect(() => {
+    if (!focus || loading) return
+    if (!vms.has(focus.pluginId)) { onFocusHandled?.(); return }
+    setQuery(''); setAttentionOnly(false); setSelectedId(focus.pluginId)
+    onFocusHandled?.()
+  }, [focus, loading, vms])
+
+  // Install / update / remove: the only place they happen (FR-003). What is
+  // drawn afterwards is what main now says, read back — not the button pressed.
+  const mutateOfficial = async (p: PluginView, op: 'install' | 'uninstall'): Promise<void> => {
+    const kind = p.official?.agentKind
+    if (!kind) return
+    setBusy(p.id)
+    const failure = t(op === 'install' ? 'plugins.integration.installFailed' : 'plugins.integration.removeFailed', { name: p.name })
+    try {
+      const result = await (op === 'install' ? api.installOfficialAgent(kind) : api.uninstallOfficialAgent(kind))
+      if (!result.ok) toast(failure, { type: 'error', why: t('plugins.failedWhy'), detail: result.error })
+    } catch (e) {
+      toast(failure, { type: 'error', why: t('plugins.failedWhy'), detail: errorText(e) })
+    }
+    try {
+      const mine = ++newest.current
+      const [listed, official] = await Promise.allSettled([api.list(), api.officialAgents()])
+      if (listed.status === 'rejected') throw listed.reason
+      if (mine === newest.current) applyCatalog(listed.value, official)
+    } catch (e) {
+      toast(t('plugins.loadFailed'), { type: 'error', detail: errorText(e) })
+    } finally {
+      setBusy((current) => (current === p.id ? null : current))
+      refreshHealth()
+    }
+  }
+  /** Removing is machine-wide: say what stops and what stays before it happens. */
+  const removeOfficial = async (p: PluginView): Promise<void> => {
+    const ok = await confirmGraded({
+      title: t('settings.agents.removeTitle'),
+      message: t('settings.agents.removeWhy'),
+      level: 'plain',
+      confirmLabel: t('settings.agents.removeConfirm'),
+      cancelLabel: t('common.cancel'),
+      consequences: [t('settings.agents.removeStops'), t('settings.agents.removeKeeps')]
+    })
+    if (ok) await mutateOfficial(p, 'uninstall')
+  }
+
+  // Project axis and health axis, kept apart (FR-033). Health is the shared
+  // snapshot every other reader draws from; a failed read is "unknown".
+  const agentSignature = JSON.stringify(config?.agentTailer?.sources ?? {})
+  const { health: snapshot, status: healthStatus, refresh: refreshHealth } = useCaptureHealthState(5_000, agentSignature)
+  const officialAxes = selected?.official ? (() => {
+    const kind = selected.official.agentKind
+    const level = officialProjectLevel(selected, config ? (config.agentTailer?.sources?.[kind as AgentKind] ?? {}) : undefined)
+    const source = snapshot?.sources.find((s) => s.id === `agent-${kind}`)
+    const health = officialHealth(selected, level, { status: healthStatus === 'ok' && snapshot ? 'ok' : 'unknown', source })
+    return { level, health }
+  })() : undefined
+
   // What the open dialog asks the operator to approve: code (a third-party
   // tailer, which never runs, is not), and the profiles the plugin declares.
   const confirms = (p: PluginView | null): { code: boolean; profiles: NonNullable<PluginView['terminalProfiles']>; installs: NonNullable<PluginView['captureInstalls']> } => {
@@ -298,6 +404,9 @@ export default function PluginsPanel({ t }: { t: T }): JSX.Element {
       onEnable={() => void enable(selected)} onDisable={() => void toggle(selected, false)}
       onReview={() => setConfirmGrant(selected)} onRevoke={() => void revoke(selected)}
       onBack={() => setSelectedId(null)} showBack={narrow}
+      officialAxes={officialAxes}
+      onInstall={() => void mutateOfficial(selected, 'install')} onRemove={() => void removeOfficial(selected)}
+      onOpenCaptureSources={onOpenCaptureSources && selected.official ? () => onOpenCaptureSources(selected.official!.agentKind) : undefined}
     />
   ) : null
 
@@ -316,10 +425,18 @@ export default function PluginsPanel({ t }: { t: T }): JSX.Element {
 
       <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
 
-      {plugins[0]?.profilesError && (
+      {loaded[0]?.profilesError && (
         <div role="alert" data-testid="plugins-profiles-stale" className="text-xs mb-2 space-y-0.5">
           <p className="text-amber-300">{t('plugins.profilesStale')}</p>
-          <p className="text-redlog-text-faint break-all">{plugins[0].profilesError}</p>
+          <p className="text-redlog-text-faint break-all">{loaded[0].profilesError}</p>
+        </div>
+      )}
+
+      {catalogError !== null && !loadError && (
+        <div role="alert" data-testid="plugins-catalog-error" className="text-xs mb-2 space-y-0.5">
+          <p className="text-amber-300">{t('plugins.catalogLoadFailed')}</p>
+          <p className="text-redlog-text-faint break-all">{catalogError}</p>
+          <button type="button" data-testid="plugins-catalog-retry" onClick={() => void retryCatalog()} className="underline text-redlog-cyan hover:text-redlog-text">{t('common.retry')}</button>
         </div>
       )}
 

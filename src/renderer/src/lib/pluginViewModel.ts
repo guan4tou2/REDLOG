@@ -1,4 +1,5 @@
 import type { PluginStatus } from '../../../core/plugins/types'
+import type { OfficialAgentPlugin } from '../../../core/plugins/official-agents'
 
 // Plugin page view model — pure, jsdom-free.
 //
@@ -17,9 +18,23 @@ export interface PluginTerminalProfile {
 }
 export interface PluginCaptureInstall { name: string; installMethod: string }
 
+/** The catalog side of an official integration (`plugins:officialAgents`). */
+export interface OfficialInfo {
+  agentKind: string
+  state: OfficialAgentPlugin['state']
+  error?: string
+  installationId?: string
+}
+
 /** What main answers from `plugins:list` (src/main/ipc/plugins.ts). */
 export interface PluginView {
   officialAgent?: boolean
+  /** Spec 066: present when the row is an official integration. */
+  official?: OfficialInfo
+  /** Spec 066: no loaded plugin is behind this row (not installed, or the
+   *  directory is in conflict). Trust and effect do not apply — it is not
+   *  "disabled", it is not there. */
+  notLoaded?: boolean
   id: string
   name: string
   version: string
@@ -103,6 +118,9 @@ export function effectGroups(p: PluginView): PluginEffectGroup[] {
  *  shows the first one; the detail shows all of them. */
 export function attentionIssues(p: PluginView): PluginIssue[] {
   const out: PluginIssue[] = []
+  if (p.official?.state === 'conflict') out.push({ kind: 'official-conflict', labelKey: 'plugins.issue.officialConflict' })
+  if (p.official?.state === 'error') out.push({ kind: 'official-error', labelKey: 'plugins.issue.officialError' })
+  if (p.official?.state === 'update-available') out.push({ kind: 'official-update', labelKey: 'plugins.issue.officialUpdate' })
   if (p.status === 'error') out.push({ kind: 'error', labelKey: 'plugins.issue.error' })
   if (p.status === 'hash-changed') out.push({ kind: 'hash-changed', labelKey: 'plugins.issue.hashChanged' })
   if (p.status === 'needs-consent') out.push({ kind: 'needs-consent', labelKey: 'plugins.issue.needsConsent' })
@@ -138,15 +156,22 @@ export interface PluginViewModel {
   searchText: string
   issues: PluginIssue[]
   trust: {
+    /** false when no plugin is loaded behind the row (not installed). */
+    applicable: boolean
+    /** An official integration is switched on again by restoring it (install),
+     *  which main audits; `plugins:setEnabled` refuses it by design. */
+    canToggle: boolean
     status: PluginStatus
     needsConsent: boolean
     cannotBeTrusted: boolean
     canRevoke: boolean
   }
   effect: { groups: PluginEffectGroup[]; unknown: boolean; apiAhead: boolean }
-  install: { origin: 'bundled' | 'user'; managedBy: 'agentSources' | 'pluginFolder' }
-  project: { applicable: false }
-  health: { applicable: false }
+  install: {
+    origin: 'bundled' | 'user'
+    managedBy: 'officialIntegration' | 'pluginFolder'
+    official?: { agentKind: string; state: OfficialAgentPlugin['state']; error?: string }
+  }
 }
 
 export function pluginViewModel(p: PluginView, describe: (p: PluginView) => string): PluginViewModel {
@@ -157,14 +182,85 @@ export function pluginViewModel(p: PluginView, describe: (p: PluginView) => stri
     searchText: pluginSearchText(p, describe),
     issues: attentionIssues(p),
     trust: {
+      applicable: p.notLoaded !== true,
+      canToggle: p.notLoaded !== true && !p.official,
       status: p.status,
       needsConsent,
       cannotBeTrusted: cannotBeTrusted(p),
       canRevoke: (p.tier === 'privileged' || p.needsApproval === true) && p.status === 'active'
     },
     effect: { groups: effectGroups(p), unknown: p.report === null, apiAhead: p.apiAhead === true },
-    install: { origin: p.source, managedBy: p.officialAgent === true ? 'agentSources' : 'pluginFolder' },
-    project: { applicable: false },
-    health: { applicable: false }
+    install: {
+      origin: p.source,
+      managedBy: p.official ? 'officialIntegration' : 'pluginFolder',
+      ...(p.official ? { official: { agentKind: p.official.agentKind, state: p.official.state, error: p.official.error } } : {})
+    }
   }
+}
+
+const officialInfo = (c: OfficialAgentPlugin): OfficialInfo =>
+  ({ agentKind: c.agentKind, state: c.state, error: c.error, installationId: c.installationId })
+
+/** Merge the official-integration catalog into the loaded-plugin list by
+ *  `pluginId`. A not-installed integration has no loaded plugin, so it gets a
+ *  stub row (`notLoaded`) rather than vanishing or reading as "disabled". The
+ *  ordinary plugins keep their identity and every existing field (FR-006). */
+export function mergeOfficialCatalog(plugins: PluginView[], catalog: OfficialAgentPlugin[]): PluginView[] {
+  const byId = new Map(catalog.map((c) => [c.pluginId, c]))
+  const loaded = new Set(plugins.map((p) => p.id))
+  const merged = plugins.map((p) => {
+    const c = byId.get(p.id)
+    return c ? { ...p, officialAgent: true, official: officialInfo(c) } : p
+  })
+  for (const c of catalog) {
+    if (loaded.has(c.pluginId)) continue
+    merged.push({
+      id: c.pluginId, name: c.name, version: '', description: '', author: 'RedLog', source: 'bundled', tier: 'declarative',
+      status: 'disabled', capabilities: [], contributes: [], report: null,
+      officialAgent: true, official: officialInfo(c), notLoaded: true
+    })
+  }
+  return merged
+}
+
+/** What the operator has done for THIS project, kept apart from health: an
+ *  integration can be installed and healthy while this project never opted in. */
+export type OfficialProjectLevel = 'notInstalled' | 'unavailable' | 'installedNotEnabled' | 'recording' | 'unknown'
+
+export function officialProjectLevel(
+  p: PluginView,
+  source: { enabled?: boolean; installationId?: string } | undefined
+): OfficialProjectLevel {
+  const o = p.official
+  if (!o) return 'unknown'
+  if (o.state === 'not-installed') return 'notInstalled'
+  if (o.state === 'conflict' || o.state === 'error') return 'unavailable'
+  if (source === undefined) return 'unknown'
+  const authorized = !!o.installationId && source.installationId === o.installationId
+  return source.enabled === true && authorized && p.status === 'active' ? 'recording' : 'installedNotEnabled'
+}
+
+export type OfficialHealth =
+  | { kind: 'unknown' }
+  | { kind: 'error'; message: string }
+  | { kind: 'received'; at: number }
+  | { kind: 'inactive' }
+  | { kind: 'waiting' }
+
+/** Capture health from the shared snapshot. A failed read is `unknown` — the
+ *  previous verdict is never reused — and "nothing received" is only a fault
+ *  when the source reports its own error: a source that is not installed or not
+ *  enabled for this project is not expected to be delivering. */
+export function officialHealth(
+  p: PluginView,
+  level: OfficialProjectLevel,
+  snapshot: { status: 'ok' | 'unknown'; source?: { lastEventAt: number | null; lastError?: { message: string } } }
+): OfficialHealth {
+  if (snapshot.status === 'unknown') return { kind: 'unknown' }
+  const inactive = level === 'notInstalled' || level === 'unavailable' || level === 'installedNotEnabled'
+  const s = snapshot.source
+  if (!s) return inactive ? { kind: 'inactive' } : { kind: 'unknown' }
+  if (s.lastError) return { kind: 'error', message: s.lastError.message }
+  if (s.lastEventAt !== null) return { kind: 'received', at: s.lastEventAt }
+  return inactive || !p.official ? { kind: 'inactive' } : { kind: 'waiting' }
 }

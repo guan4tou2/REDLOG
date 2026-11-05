@@ -27,6 +27,7 @@ const view = (id: string, status: Status = 'active') => ({
 })
 
 const api = {
+  officialAgents: vi.fn(), installOfficialAgent: vi.fn(), uninstallOfficialAgent: vi.fn(),
   list: vi.fn(), reload: vi.fn(), openFolder: vi.fn(), setEnabled: vi.fn(), grant: vi.fn(), revoke: vi.fn()
 }
 const draw = (): void => {
@@ -44,6 +45,7 @@ describe('the plugins page shows what main has done', () => {
   beforeEach(() => {
     toasts.plain.length = 0; toasts.undo.length = 0
     Object.values(api).forEach((f) => f.mockReset())
+    api.officialAgents.mockResolvedValue([])
   })
   afterEach(() => cleanup())
 
@@ -320,6 +322,7 @@ describe('when the shell\'s tool profiles could not be updated', () => {
   beforeEach(() => {
     toasts.plain.length = 0; toasts.undo.length = 0
     Object.values(api).forEach((f) => f.mockReset())
+    api.officialAgents.mockResolvedValue([])
   })
   afterEach(() => cleanup())
 
@@ -360,12 +363,20 @@ describe('when the shell\'s tool profiles could not be updated', () => {
   })
 })
 
-// Official integrations have their installation and project controls on the source page.
-it('does not expose a second official AI switch alongside third-party plugins', async () => {
-  api.list.mockResolvedValue([view('official-ai-claude-code'), view('official-ai-codex', 'disabled'), view('third-party')])
+// Spec 066: the plugin page is the one place official integrations are installed,
+// updated and removed. Each has exactly one row, installed or not, and a
+// not-installed one is never drawn as a disabled plugin.
+it('lists each official integration once, including the one that is not installed', async () => {
+  api.list.mockResolvedValue([view('official-ai-claude-code'), view('third-party')])
+  api.officialAgents.mockResolvedValue([
+    { agentKind: 'claude-code', pluginId: 'official-ai-claude-code', name: 'Claude Code', source: {}, state: 'installed', installationId: 'i1' },
+    { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', source: {}, state: 'not-installed' }
+  ])
   draw()
   await screen.findByText('Plugin third-party')
-  expect(screen.queryByText('Plugin official-ai-codex')).toBeNull()
-  expect(screen.queryByText('Plugin official-ai-claude-code')).toBeNull()
+  expect(screen.getAllByText('Plugin official-ai-claude-code')).toHaveLength(1)
+  expect(screen.getAllByText('Codex')).toHaveLength(1)
+  expect(screen.getByTestId('plugin-state-official-ai-codex').textContent).toBe('Not installed')
+  expect(screen.queryByTestId('plugin-detail-toggle-official-ai-codex')).toBeNull()
   cleanup()
 })
