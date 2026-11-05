@@ -188,6 +188,32 @@ export async function openSettingsPage(page: Page, id: string): Promise<void> {
 }
 
 /**
+ * Spec 066: official AI integrations are installed, updated and removed on the
+ * Plugins page only. These walk that path and come back to Capture sources,
+ * where the per-project settings still live.
+ */
+export async function installOfficialAgentOnPlugins(page: Page, kind: string): Promise<void> {
+  await openSettingsPage(page, 'plugins')
+  await page.getByTestId(`plugin-details-official-ai-${kind}`).click()
+  await page.getByTestId(`plugin-install-official-ai-${kind}`).click()
+  await expect(page.getByTestId(`plugin-uninstall-official-ai-${kind}`)).toBeVisible()
+  await openSettingsPage(page, 'captureControl')
+}
+
+export async function removeOfficialAgentOnPlugins(page: Page, kind: string): Promise<void> {
+  await openSettingsPage(page, 'plugins')
+  await page.getByTestId(`plugin-details-official-ai-${kind}`).click()
+  await page.getByTestId(`plugin-uninstall-official-ai-${kind}`).click()
+  const removal = page.getByRole('dialog', { name: 'Remove capture integration' })
+  await expect(removal).toBeVisible()
+  await expect(removal).toContainText('Every project on this computer stops recording this source.')
+  await expect(removal).toContainText('Records already captured are kept.')
+  await removal.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(page.getByTestId(`plugin-install-official-ai-${kind}`)).toBeVisible()
+  await openSettingsPage(page, 'captureControl')
+}
+
+/**
  * Resize the MAIN window.
  *
  * Not `getAllWindows()[0]`. Opening a project creates the HUD overlay as a

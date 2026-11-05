@@ -1,5 +1,6 @@
 import { Button } from '../Button'
-import { effectGroups, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import { formatDateTime } from '../../lib/time'
+import { effectGroups, type OfficialHealth, type OfficialProjectLevel, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 
@@ -46,23 +47,41 @@ function ContributionResults({ p, t }: { p: PluginView; t: T }): JSX.Element | n
   )
 }
 
+/** One sentence for the capture-health axis. «Nothing received» is only ever
+ *  neutral here: a fault is a source's own error, never silence. */
+function HealthLine({ health, t, id }: { health: OfficialHealth; t: T; id: string }): JSX.Element {
+  const testId = `plugin-health-${id}`
+  switch (health.kind) {
+    case 'error': return <p role="alert" data-testid={testId} className="text-red-400 break-words">{t('plugins.healthAxis.error')}: {health.message}</p>
+    case 'received': return <p data-testid={testId}>{t('settings.source.lastReceived', { when: formatDateTime(health.at) })}</p>
+    case 'waiting': return <p data-testid={testId} className="text-redlog-text-dim">{t('settings.source.neverReceived')}</p>
+    case 'inactive': return <p data-testid={testId} className="text-redlog-text-dim">{t('plugins.healthAxis.inactive')}</p>
+    default: return <p data-testid={testId} className="text-redlog-text-dim">{t('plugins.healthAxis.unknown')}</p>
+  }
+}
+
 /** Single-column detail panel for one plugin. Reads whole diagnosis onto the
  *  screen as five explicit axes — a status chip must never be the only word on
  *  trust, and «loaded» is not a verdict on install or project (Spec 065). */
-export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable, onReview, onRevoke, onBack, showBack }:
+export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable, onReview, onRevoke, onBack, showBack, officialAxes, onInstall, onRemove, onOpenCaptureSources }:
 {
   p: PluginView; vm: PluginViewModel; t: T; busy: boolean
   onEnable: () => void; onDisable: () => void; onReview: () => void; onRevoke: () => void
   onBack?: () => void; showBack: boolean
+  /** Official integrations only: project level and capture health (Spec 066). */
+  officialAxes?: { level: OfficialProjectLevel; health: OfficialHealth }
+  onInstall?: () => void; onRemove?: () => void
+  onOpenCaptureSources?: () => void
 }): JSX.Element {
   const { trust } = vm
+  const official = vm.install.official
   const needsConsent = trust.needsConsent
   return (
     <section aria-label={p.name} data-testid={`plugin-detail-${p.id}`} className="min-w-0 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <strong className="text-sm text-redlog-text">{p.name}</strong>
-          <span className="text-xs text-redlog-text-dim">v{p.version}</span>
+          {p.version && <span className="text-xs text-redlog-text-dim">v{p.version}</span>}
         </div>
         {showBack && onBack && <Button level="secondary" type="button" data-testid={`plugin-back-${p.id}`} onClick={onBack}>{t('plugins.back')}</Button>}
       </div>
@@ -77,11 +96,11 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
         <div>
           <dt className="text-redlog-text-dim">{t('plugins.axis.trust')}</dt>
           <dd className="mt-0.5 space-y-1">
-            <p>{t(`plugins.status.${trust.status}`)}</p>
-            {p.status === 'error' && p.error && <p role="alert" className="text-red-400 break-words">{p.error}</p>}
+            <p>{trust.applicable ? t(`plugins.status.${trust.status}`) : t('plugins.trustAxis.notLoaded')}</p>
+            {trust.applicable && p.status === 'error' && p.error && <p role="alert" className="text-red-400 break-words">{p.error}</p>}
             {p.profilesError && <p role="alert" className="text-red-400 break-words">{t('plugins.issue.profilesStale')}: {p.profilesError}</p>}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {p.status !== 'error' && !needsConsent && (
+            {trust.applicable && <div className="flex flex-wrap gap-2 pt-1">
+              {trust.canToggle && p.status !== 'error' && !needsConsent && (
                 <Button level="secondary" type="button" data-testid={`plugin-detail-toggle-${p.id}`} disabled={busy} onClick={trust.status === 'disabled' ? onEnable : onDisable}>
                   {t(trust.status === 'disabled' ? 'plugins.enable' : 'plugins.disable')}
                 </Button>
@@ -92,36 +111,73 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
               {trust.canRevoke && (
                 <Button level="secondary" type="button" data-testid={`plugin-detail-revoke-${p.id}`} disabled={busy} onClick={onRevoke}>{t('plugins.revoke')}</Button>
               )}
-            </div>
+            </div>}
           </dd>
         </div>
 
         <div>
           <dt className="text-redlog-text-dim">{t('plugins.axis.install')}</dt>
           <dd className="mt-0.5 space-y-0.5">
-            <p>{t(`plugins.installOrigin.${vm.install.origin}`)}</p>
+            {official ? (
+              <p data-testid={`plugin-install-state-${p.id}`}>{t(`plugins.installState.${official.state}`)}</p>
+            ) : (
+              <p>{t(`plugins.installOrigin.${vm.install.origin}`)}</p>
+            )}
             <p className="text-redlog-text-dim">{t(`plugins.managedBy.${vm.install.managedBy}`)}</p>
+            {official && (official.state === 'conflict' || official.state === 'error') && (
+              <div className="space-y-1">
+                <p role="alert" data-testid={`plugin-install-error-${p.id}`} className="text-red-400 break-words">{official.error}</p>
+                <p className="text-redlog-text-dim">{t('plugins.integration.conflictHint')}</p>
+              </div>
+            )}
+            {official && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {official.state === 'not-installed' && (
+                  <Button level="secondary" type="button" data-testid={`plugin-install-${p.id}`} disabled={busy} onClick={onInstall}>{t('settings.agents.installCapture')}</Button>
+                )}
+                {official.state === 'installed' && trust.status === 'disabled' && (
+                  <Button level="secondary" type="button" data-testid={`plugin-restore-${p.id}`} disabled={busy} onClick={onInstall}>{t('settings.agents.restoreCapture')}</Button>
+                )}
+                {official.state === 'update-available' && (
+                  <Button level="secondary" type="button" data-testid={`plugin-update-${p.id}`} disabled={busy} onClick={onInstall}>{t('settings.agents.updateCapture')}</Button>
+                )}
+                {(official.state === 'installed' || official.state === 'update-available') && (
+                  <Button level="secondary" type="button" data-testid={`plugin-uninstall-${p.id}`} disabled={busy} onClick={onRemove}>{t('settings.agents.removeCapture')}</Button>
+                )}
+                {(official.state === 'conflict' || official.state === 'error') && (
+                  <Button level="quiet" type="button" data-testid={`plugin-open-folder-${p.id}`} onClick={() => { void window.redlog.plugins.openFolder() }}>{t('plugins.openFolder')}</Button>
+                )}
+              </div>
+            )}
           </dd>
         </div>
 
         <div>
           <dt className="text-redlog-text-dim">{t('plugins.axis.project')}</dt>
           <dd className="mt-0.5">
-            <p className="text-redlog-text-dim">{t('plugins.projectAxis.na')}</p>
+            {officialAxes
+              ? <p data-testid={`plugin-project-${p.id}`}>{t(`plugins.projectAxis.${officialAxes.level}`)}</p>
+              : <p className="text-redlog-text-dim">{t('plugins.projectAxis.na')}</p>}
+            {onOpenCaptureSources && (
+              <Button level="secondary" type="button" data-testid={`plugin-open-capture-${p.id}`} onClick={onOpenCaptureSources}>{t('plugins.integration.openCaptureSources')}</Button>
+            )}
           </dd>
         </div>
 
         <div>
           <dt className="text-redlog-text-dim">{t('plugins.axis.health')}</dt>
           <dd className="mt-0.5">
-            <p className="text-redlog-text-dim">{t('plugins.healthAxis.na')}</p>
+            {officialAxes
+              ? <HealthLine health={officialAxes.health} t={t} id={p.id} />
+              : <p className="text-redlog-text-dim">{t('plugins.healthAxis.na')}</p>}
           </dd>
         </div>
 
         <div>
           <dt className="text-redlog-text-dim">{t('plugins.axis.effect')}</dt>
           <dd className="mt-0.5">
-            {p.report === null && p.apiAhead !== true && <p className="text-redlog-text-dim">{t('plugins.unknownDiagnosis')}</p>}
+            {p.notLoaded === true && <p className="text-redlog-text-dim">{t('plugins.effectAxis.notLoaded')}</p>}
+            {p.notLoaded !== true && p.report === null && p.apiAhead !== true && <p className="text-redlog-text-dim">{t('plugins.unknownDiagnosis')}</p>}
             <ContributionResults p={p} t={t} />
             {p.tier === 'privileged' && p.capabilities.length > 0 && (
               <p className="text-xs text-amber-500/80 mt-1">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
