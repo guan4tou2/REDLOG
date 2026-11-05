@@ -78,7 +78,7 @@ describe('Scope & Evidence page', () => {
   it('counts the violations the status bar counts, not the ones in the window', async () => {
     installBridge({ rows: [row('a'), row('b'), row('c')], truncated: true }, 7)
     await open()
-    const label = screen.getByText('violations still standing')
+    const label = screen.getByText('observations still standing')
     expect(label.previousElementSibling?.textContent).toBe('7')
   })
 

@@ -2,13 +2,13 @@
 
 ## S0 — 現況調查
 
-- [ ] T001 調查 HTTP 詳情排列、選取狀態來源、Reader 後備、Scope／AI／截圖字串清單、統計來源;結果寫入 implementation-notes.md。
+- [x] T001 調查 HTTP 詳情排列、選取狀態來源、Reader 後備、Scope／AI／截圖字串清單、統計來源;結果寫入 implementation-notes.md。
 
 ## S1 — 文案語意(US1)
 
-- [ ] T002 [US1] 先 RED:黑名單斷言——使用者可見字串不含「凍結」「Chain-of-Thought」「已確認違規」等(FR-001、FR-003、FR-004)。
-- [ ] T003 [US1] 先 RED:Scope 未設定／未知時事件顯示「尚未判定」，不標範圍外(FR-002)。
-- [ ] T004 [US1] 實作 en／zh-TW 字串與標題;更新受影響的 test／e2e 斷言;`verify:i18n` 綠。
+- [x] T002 [US1] 先 RED:黑名單斷言——使用者可見字串不含「凍結」「Chain-of-Thought」「已確認違規」等(FR-001、FR-003、FR-004)。
+- [x] T003 [US1] 先 RED:未宣告 Scope 時任何目標都是 `no-scope`、不被標為範圍外(FR-002)。調查發現引擎已滿足,以測試鎖住;不另造「尚未判定」字樣。
+- [x] T004 [US1] 實作 en／zh-TW 字串與標題;更新受影響的 test／e2e 斷言;`verify:i18n` 綠。
 
 ## S2 — HTTP(US2)
 
@@ -31,6 +31,13 @@
 
 - [ ] T013 先 RED:既有事件(含 `scope_violation`)重載後 `chain.verify()` 為 ok;舊 `warnOnViolation` 的 config 仍被讀取。
 - [ ] T014 依 D1=A 實作程式內符號重命名(D2 範圍內的 key);持久化值 `scope_violation`／`warnOnViolation` 不變,集中成具名常數。
+
+## S6 — 視覺重做(US5)
+
+- [ ] T016 產出 token／版面差異清單,由使用者確認以 #575 為基準(FR-011)。
+- [ ] T017 共用外框(Header／Sidebar／Footer)對齊基準;既有 e2e 維持綠。
+- [ ] T018 活動紀錄與時間軸頁面對齊基準。
+- [ ] T019 其餘頁面依批次對齊(各自一個 PR)。
 
 ## 收尾
 

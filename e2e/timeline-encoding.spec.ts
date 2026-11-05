@@ -81,9 +81,9 @@ test.describe.serial('timeline visual encoding', () => {
 
   test.afterAll(async () => { if (app) await app.close() })
 
-  test('a scope violation is a diamond, not another red circle', async () => {
-    const d = (await dots(page)).find((x) => /scope violation/i.test(x.title))
-    expect(d, 'the scope violation did not render').toBeTruthy()
+  test('an out-of-scope observation is a diamond, not another red circle', async () => {
+    const d = (await dots(page)).find((x) => /out of scope/i.test(x.title))
+    expect(d, 'the out-of-scope observation did not render').toBeTruthy()
     // Diamond = a slightly-rounded square, rotated 45°.
     expect(d!.rotated, 'must be rotated into a diamond').toBe(true)
     expect(d!.radius).not.toBe('50%')
@@ -113,7 +113,7 @@ test.describe.serial('timeline visual encoding', () => {
   test('the tooltip names the emphasis, so shape is not the only channel', async () => {
     const all = await dots(page)
     expect(all.find((x) => /CRITICAL mark/.test(x.title))!.title).toMatch(/critical/i)
-    expect(all.find((x) => /scope violation/i.test(x.title))!.title).toMatch(/out of scope/i)
+    expect(all.find((x) => /⚠ out of scope/i.test(x.title))!.title).toMatch(/out of scope/i)
   })
 
 })
