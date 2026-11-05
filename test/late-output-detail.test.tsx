@@ -25,6 +25,15 @@ describe('CommandEndDetail background output', () => {
     expect(screen.getByText('stderr')).toBeTruthy()
   })
 
+  it('omits a known empty stdout but keeps real output and does not call it uncaptured', () => {
+    install([])
+    const view = render(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ stdout: '', stderr: 'cat: nope.txt: No such file', exit_code: 1 }} /></I18nProvider>)
+    expect(screen.queryByText('stdout')).toBeNull()
+    expect(screen.queryByText(/output not captured/)).toBeNull()
+    view.rerender(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ stdout: 'file.txt', stderr: '' }} /></I18nProvider>)
+    expect(screen.getByText('stdout')).toBeTruthy()
+  })
+
   it('does not claim streamed output was not captured', async () => {
     install([{ id: 'a', data: { seq: 1, stdout: 'file.txt' } }])
     render(<I18nProvider><CommandEndDetail projectId="project" eventId="command" data={{ command_id: 'c1', output_streamed: true }} /></I18nProvider>)

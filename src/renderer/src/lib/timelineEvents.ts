@@ -52,6 +52,27 @@ export function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   })
 }
 
+/** command_start rows whose source-scoped pair key has no command_end anywhere
+ * in `events`. "Unfinished" is a statement about what was loaded, not about the
+ * process: it may be running, interrupted, or ended outside this window, so
+ * callers say "running / unknown", never "failed". A start with no pair key
+ * cannot be matched at all and is left out rather than guessed at. */
+export function unfinishedCommandIds(events: RedLogEvent[]): Set<string> {
+  const ended = new Set<string>()
+  for (const event of events) {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_end') continue
+    const key = operationPairKey(event)
+    if (key) ended.add(key)
+  }
+  const out = new Set<string>()
+  for (const event of events) {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_start') continue
+    const key = operationPairKey(event)
+    if (key && !ended.has(key)) out.add(event.id)
+  }
+  return out
+}
+
 /** Compact duration for a compressed gap label — "2h", "45m". */
 export function formatGap(ms: number): string {
   const min = Math.round(ms / 60000)

@@ -63,6 +63,9 @@
 - **FR-010** 識別字重命名依 D1(A):只改程式內符號;持久化值(`scope_violation`、`warnOnViolation`)不變,並有測試鎖住「既有事件重載後 `chain.verify()` 為 ok、舊 config 仍被讀取」。
 - **FR-011** 視覺重做(US5)以 #575 的 Design System 為單一基準:Header、Sidebar、Footer、字型、色彩、間距沿用,不為單一頁面保留另一套 token。每個頁面分批,不一次替換整個 UI;每批須維持既有資料、鍵盤操作與 e2e。
 - **FR-012** 視覺重做不得搬運原型的 JS、固定資料或假提示。
+- **FR-013** 只有 `command_start`、找不到對應 `command_end` 的指令,在 Timeline 列與詳情、Activity 列都標示「執行中／狀態未知」,不得判為失敗(舊的 start 可能是被中斷的指令;已載入範圍外的 end 同理)。
+- **FR-014** 指令詳情的 STDOUT 區塊與 STDERR 同規則:空內容不顯示;「已知為空」不等於「未捕獲輸出」,後者的說明維持不變。
+- **FR-015** Activity 列顯示指令結果:結束碼 0 為成功,非 0 顯示結束碼,有結束事件但無結束碼顯示「已結束」;結果取自配對的 `command_end`,不另造狀態。列的標題樣式(`$ cmd → exit N`)不在本條範圍。
 
 ## 不在範圍
 

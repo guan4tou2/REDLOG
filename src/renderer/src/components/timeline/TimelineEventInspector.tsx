@@ -16,7 +16,7 @@ import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
 import { TierBadge } from '../TierBadge'
 import { ReplayCommand } from '../ReplayCommand'
-import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail } from '../TimelineEventDetails'
+import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail } from '../TimelineEventDetails'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
 
@@ -37,6 +37,8 @@ export interface TimelineEventInspectorProps {
   effects: string[] | undefined
   fold: MarkerFold | undefined
   paired: { kind: 'call' | 'result'; data: Record<string, unknown> } | undefined
+  /** A command_start with no end among the loaded events. */
+  unfinished?: boolean
   allLoaded: boolean
   focusChainOn: boolean
   showJson: boolean
@@ -66,7 +68,7 @@ export interface TimelineEventInspectorProps {
 
 export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
-  operatorLabel, titleOf, badges, effects, fold, paired, allLoaded, focusChainOn,
+  operatorLabel, titleOf, badges, effects, fold, paired, unfinished = false, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
   onStep, canStepPrev = false, canStepNext = false,
   layout, onToggleLayout, onClose
@@ -449,6 +451,7 @@ export function TimelineEventInspector({
         && (
           <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} />
         )}
+      {unfinished && event.agentType === 'shell' && event.data?.subtype === 'command_start' && <CommandUnfinishedNote />}
       {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
           assistant_message / thinking) shown open by default via
           CollapsibleStream so the operator sees the prompt/response
