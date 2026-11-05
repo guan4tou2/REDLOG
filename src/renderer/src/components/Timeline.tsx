@@ -25,7 +25,7 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, binHeight, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
@@ -524,8 +524,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // The lane an event's row is keyed on: its band's id when that band is
   // collapsed, otherwise the lane itself.
   const rowKeyOf = useCallback(
-    (lane: LaneId): string => (collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane),
-    [collapsedBands]
+    (lane: LaneId): string => (timelineMode === 'standard' ? STANDARD_ROW : collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane),
+    [collapsedBands, timelineMode]
   )
 
   // The rows actually rendered, in band order. A band with any populated lane
@@ -544,6 +544,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // Hiding is for the lane's dots, which are the noise; the row is the label
   // that says it is off, and clicking it again is the way back.
   const visibleRows = useMemo(() => {
+    // Standard mode: one track for everything (Spec 069 FR-008).
+    if (timelineMode === 'standard') return populatedLanes.size > 0 ? [STANDARD_ROW] : []
     const rows: string[] = []
     for (const band of BANDS) {
       const popLanes = band.lanes.filter((l) => populatedLanes.has(l))
@@ -552,7 +554,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       if (!collapsedBands.has(band.id)) rows.push(...popLanes)
     }
     return rows
-  }, [populatedLanes, collapsedBands])
+  }, [populatedLanes, collapsedBands, timelineMode])
 
   // Still keyed on individual lanes; retained for the zoom-ceiling scan below.
   const visibleLanes = useMemo(
@@ -804,8 +806,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   )
 
   const rowEvents = useMemo(
-    () => distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes, hiddenLanes),
-    [events, visibleRows, collapsedBands, pluginTypes, hiddenLanes]
+    () => timelineMode === 'standard'
+      ? { [STANDARD_ROW]: singleTrackEvents(events, displayTs) }
+      : distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes, hiddenLanes),
+    [events, visibleRows, collapsedBands, pluginTypes, hiddenLanes, timelineMode]
   )
 
   // Spec 038 US3: the box is read by the query contract — the same parse,
@@ -1073,12 +1077,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // DOM, which is what makes this affordable.
   const maxZoom = useMemo(() => computeMaxZoom({
     // Per-lane ascending display timestamps — markers sort by their `atTimestamp`.
-    laneTimestamps: LANES.map((lane) => laneEvents[lane].map(displayTs)),
+    // One track in standard mode, so the tightest gap is between ANY two events.
+    laneTimestamps: timelineMode === 'standard'
+      ? [singleTrackEvents(events, displayTs).map(displayTs)]
+      : LANES.map((lane) => laneEvents[lane].map(displayTs)),
     timeSpan,
     clusterPx: CLUSTER_PX,
     maxTrackW: MAX_TRACK_W,
     minBaseTrackW: MIN_BASE_TRACK_W
-  }), [laneEvents, timeSpan])
+  }), [laneEvents, events, timeSpan, timelineMode])
   // The wheel handler is bound once and reads this through a ref rather than
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
@@ -2110,8 +2117,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           of them ever tested. */}
       <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-        {timelineMode === 'lanes' && <>
-        {/* Swim lanes */}
+        {/* Swim lanes — one row of everything in standard mode (FR-008). */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
             putting it on the track alone would slide the lanes out from
@@ -2142,6 +2148,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           <div className="shrink-0 border-r border-redlog-border/60 bg-redlog-bg/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-redlog-border/60" />
             {visibleRows.map((rowKey) => {
+              if (rowKey === STANDARD_ROW) {
+                return (
+                  <div
+                    key={rowKey}
+                    data-testid="timeline-standard-track"
+                    className="w-full flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs text-redlog-text-dim"
+                    style={{ height: laneH }}
+                  >
+                    <span>{t('timeline.standard.track')}</span>
+                  </div>
+                )
+              }
               const band = BANDS.find((b) => b.id === rowKey)
               if (band) {
                 // The band row, rendered whether or not the band is expanded.
@@ -2624,7 +2642,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         >
           <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
         </div>
-        </>}
         {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
             scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog

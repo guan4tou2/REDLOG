@@ -5,6 +5,7 @@ import { EventContentReader } from './EventContentReader'
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 
 // ---------------------------------------------------------------------------
 // Shared constants & helpers
@@ -57,12 +58,15 @@ export function CollapsibleStream({
   const isLarge = content.length > INLINE_PREVIEW_BYTES
   const preview = isLarge ? content.slice(0, INLINE_PREVIEW_BYTES) : content
   const copyFull = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(content)
+    // The bridge, not navigator.clipboard: the renderer is denied that, and a
+    // dropped rejection made this button look dead.
+    if (await writeClipboard(content)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
       toast(t('toast.copied'), 'success')
-    } catch { /* ignore */ }
+    } else {
+      toast(t('toast.copyFailed'), 'error')
+    }
   }
   return (
     <div className={`border ${acc.bar} rounded ${acc.bg}`}>

@@ -26,6 +26,8 @@ describe('the Timeline opens an event it is sent to, in either mode', () => {
   it('selects the focused event with no swim lanes on screen', async () => {
     render(<I18nProvider><FilterProvider><TimelinePanel focusEventId="e1" /></FilterProvider></I18nProvider>)
     await waitFor(() => expect(screen.queryByTitle(DETAIL_HANDLE)).not.toBeNull())
-    expect(document.querySelector('[data-timeline-event]')).toBeNull()
+    // The one standard track draws both events; the swim-lane rows are absent.
+    await waitFor(() => expect(document.querySelectorAll('[data-timeline-event]').length).toBe(2))
+    expect(screen.queryByTestId('timeline-standard-track')).not.toBeNull()
   })
 })

@@ -12,3 +12,12 @@ describe('parseTimelineMode', () => {
     expect(parseTimelineMode('standard')).toBe('standard')
   })
 })
+
+import { singleTrackEvents } from '../src/renderer/src/lib/timelineFilters'
+describe('singleTrackEvents', () => {
+  const ev = (id: string, ts: number) => ({ id, ts } as never)
+  it('keeps every event, including ones from different lanes, in time order', () => {
+    const out = singleTrackEvents([ev('c', 30), ev('a', 10), ev('b', 20)], (e: { ts: number }) => e.ts)
+    expect(out.map((e: { id: string }) => e.id)).toEqual(['a', 'b', 'c'])
+  })
+})

@@ -152,6 +152,16 @@ export function distributeLaneEvents(
  * because a collapsed band's row would otherwise re-absorb the events of a
  * lane the operator hid — collapsing the band would silently undo the hide.
  */
+/** The one row of the standard Timeline: every loaded event on a single track,
+ * in time order. Lane hiding is an advanced-mode filter and is deliberately not
+ * applied here: the standard view has no lane rows to bring a hidden lane back
+ * with, so honouring it would make events vanish with no way to restore them.
+ * The setting itself is kept for when the swim lanes are shown again. */
+export const STANDARD_ROW = 'standard'
+export function singleTrackEvents(events: readonly RedLogEvent[], displayTs: (e: RedLogEvent) => number): RedLogEvent[] {
+  return [...events].sort((a, b) => displayTs(a) - displayTs(b))
+}
+
 export function distributeRowEvents(
   events: readonly RedLogEvent[],
   visibleRows: readonly string[],

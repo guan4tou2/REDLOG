@@ -34,9 +34,12 @@ test.describe.serial('timeline standard / swim-lane modes', () => {
   })
   test.afterAll(async () => { await app?.close() })
 
-  test('opens in standard mode: a sequential list, no swim lanes', async () => {
+  test('opens in standard mode: one track of every event, no swim-lane rows', async () => {
     await expect(page.getByTestId('timeline-mode-standard')).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByTestId('timeline-lane-scroll')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
+    await expect(page.locator('[data-testid^="timeline-band-"]')).toHaveCount(0)
+    // The shell command AND the Evidence marker share the one track.
+    expect(await page.locator('[data-timeline-event]').count()).toBeGreaterThanOrEqual(2)
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
@@ -46,7 +49,8 @@ test.describe.serial('timeline standard / swim-lane modes', () => {
     await page.getByRole('button', { name: /Zoom in/ }).click()
     const zoom = await page.getByRole('button', { name: /Reset zoom/ }).textContent()
     await page.getByTestId('timeline-mode-lanes').click()
-    await expect(page.getByTestId('timeline-lane-scroll')).toBeVisible()
+    await expect(page.getByTestId('timeline-standard-track')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="timeline-band-"]').first()).toBeVisible()
     await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
     await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
     expect(await page.getByRole('button', { name: /Reset zoom/ }).textContent()).toBe(zoom)
@@ -57,8 +61,8 @@ test.describe.serial('timeline standard / swim-lane modes', () => {
     await openView(page, 'dashboard')
     await openView(page, 'timeline')
     await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByTestId('timeline-lane-scroll')).toBeVisible()
+    await expect(page.getByTestId('timeline-standard-track')).toHaveCount(0)
     await page.getByTestId('timeline-mode-standard').click()
-    await expect(page.getByTestId('timeline-lane-scroll')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
   })
 })
