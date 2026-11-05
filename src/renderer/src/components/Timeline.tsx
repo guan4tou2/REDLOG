@@ -28,7 +28,7 @@ import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRe
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
-import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
+import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap, unfinishedCommandIds } from '../lib/timelineEvents'
 import {
   isMarkerAmendment,
   AMENDABLE_FIELDS, type MarkerValues
@@ -124,6 +124,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
     [rawEvents, collapseAgentTurns]
   )
+  // Starts with no end in what is loaded: "running or unknown", not failed.
+  const unfinishedIds = useMemo(() => unfinishedCommandIds(rawEvents), [rawEvents])
   // Count of hidden agent turns to surface on the chip so the operator
   // knows the toggle is doing something (else the empty agent lane looks
   // like a bug). Recomputed only when raw events or toggle change.
@@ -918,9 +920,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       return t('marker.amendmentRow', { title: of, fields })
     }
     const fold = foldById.get(e.id)
-    if (!fold) return eventTitle(e, t)
+    if (!fold) return unfinishedIds.has(e.id) ? `${eventTitle(e, t)} · ${t('timeline.command.unfinished')}` : eventTitle(e, t)
     return `${fold.effective.severity.toUpperCase()}: ${fold.effective.title}`
-  }, [foldById, t])
+  }, [foldById, t, unfinishedIds])
 
   // The hover suffix that says a finding has been corrected. Empty for
   // everything else, so it composes into an existing title without a branch.
@@ -2668,6 +2670,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
             effects={effectsById.get(selectedEvent.id)}
             fold={foldById.get(selectedEvent.id)}
             paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+            unfinished={unfinishedIds.has(selectedEvent.id)}
             allLoaded={!hasMore}
             focusChainOn={!!focusChain}
             showJson={showJson}

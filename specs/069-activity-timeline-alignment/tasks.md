@@ -40,6 +40,12 @@
 - [ ] T019 其餘頁面依批次對齊(各自一個 PR)。
 - [ ] T020 [US6] 為設定導航改型另寫規格(070):深層連結、`gen:settings-search`、e2e helper、`SettingsPage` 型別的遷移計畫;未完成前不動 `Settings.tsx` 結構。
 
+## S7 — 指令顯示(FR-013–015)
+
+- [x] T021 Timeline:`unfinishedCommandIds` 標出無結束事件的 `command_start`,列標題與詳情顯示「執行中／狀態未知」。
+- [x] T022 `CommandEndDetail` 空 STDOUT 不顯示(FR-014)。
+- [x] T023 Activity 列顯示結果(FR-015):`ActivitySummary.result` 取自配對的 `command_end`。
+
 ## 收尾
 
 - [ ] T015 五道 push gate + build;e2e;`verification.md`;Spec 069 在全部任務完成並驗證前維持 Draft。

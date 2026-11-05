@@ -8,6 +8,7 @@ import { useReadState } from '../lib/readState'
 import { eventTitle } from '../lib/eventTitle'
 import { formatTime } from '../lib/time'
 import { Button } from './Button'
+import { activityResultLabel } from '../lib/commandStatus'
 import { EventContentReader } from './EventContentReader'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
@@ -150,6 +151,10 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
               <time className="font-mono">{formatTime(item.firstAt, { seconds: true })}</time>
               <span>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
               <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
+              {(() => {
+                const r = activityResultLabel(item, t)
+                return r && <span data-testid="activity-result" className={r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}>{r.text}</span>
+              })()}
               {filtering && <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
             </div>
             <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>

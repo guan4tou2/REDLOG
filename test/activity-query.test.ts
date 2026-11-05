@@ -272,3 +272,25 @@ it('keeps the page readable when one stored row has a non-object payload', () =>
   // The malformed row is not silently dropped from the count either.
   expect(page.totalGroups).toBe(3)
 })
+
+describe('Activity command result', () => {
+  const cmd = (subtype: string, more: Record<string, unknown> = {}) => ({ subtype, shell: 'zsh', terminalId: 't1', command_id: 'c1', command: 'cat nope.txt', ...more })
+  it('carries the paired command_end exit code on the summary', () => {
+    add('s', 10, 'shell', cmd('command_start'))
+    add('e', 20, 'shell', cmd('command_end', { exit_code: 1 }))
+    const item = queryActivityPage(request()).items[0]
+    expect(item.state).toBe('paired')
+    expect(item.result).toEqual({ exitCode: 1 })
+  })
+  it('has no result while the command has no end', () => {
+    add('s', 10, 'shell', cmd('command_start'))
+    const item = queryActivityPage(request()).items[0]
+    expect(item.state).toBe('call-only')
+    expect(item.result).toBeUndefined()
+  })
+  it('reports a missing exit code as null, not as success', () => {
+    add('s', 10, 'shell', cmd('command_start'))
+    add('e', 20, 'shell', cmd('command_end'))
+    expect(queryActivityPage(request()).items[0].result).toEqual({ exitCode: null })
+  })
+})

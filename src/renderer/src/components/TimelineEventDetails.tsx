@@ -59,6 +59,17 @@ function LateOutput({ commandId }: { commandId: string }): JSX.Element {
   )
 }
 
+/** Said once on a command_start nothing has closed. Amber, not red: this is
+ * "not known to have ended", and an old start may be an interrupted command. */
+export function CommandUnfinishedNote(): JSX.Element {
+  const { t } = useI18n()
+  return (
+    <p role="status" className="mt-2 text-xs text-amber-300">
+      <strong className="font-semibold">{t('timeline.command.unfinished')}</strong> — {t('timeline.command.unfinishedHint')}
+    </p>
+  )
+}
+
 /** Structured detail body for a shell command_end event. */
 export function CommandEndDetail({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
   const { t } = useI18n()
@@ -70,7 +81,7 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
   const hasStreamedOutput = (data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string'
   return (
     <div className="mt-2 space-y-1.5">
-      {hasStdout && (
+      {hasStdout && ((data.stdout as string).length > 0 || Number(data.stdout_bytes) > 0 || data.stdout_truncated === true) && (
         <CollapsibleStream
           label={t('timeline.detail.stdout')}
           content={data.stdout as string}
