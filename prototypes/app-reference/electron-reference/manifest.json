@@ -1,0 +1,26 @@
+{
+  "description": "Electron, isolated empty project; HTML is a DOM snapshot, not a standalone app",
+  "viewport": "1440x900",
+  "pages": [
+    "projects",
+    "dashboard",
+    "search",
+    "http_history",
+    "targets",
+    "screenshots",
+    "terminal",
+    "settings",
+    "settings-hooks",
+    "settings-browser",
+    "settings-captureControl",
+    "settings-scope",
+    "settings-network",
+    "settings-loot",
+    "settings-retention",
+    "settings-integrity",
+    "settings-general",
+    "settings-hud",
+    "settings-plugins",
+    "settings-about"
+  ]
+}

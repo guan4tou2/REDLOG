@@ -1,0 +1,4649 @@
+{
+  "description": "可見原型 DOM；不是 Electron 實測資料",
+  "pages": [
+    {
+      "id": "projects",
+      "title": "專案選擇",
+      "html": "pages/projects.html",
+      "source": "ProjectPicker.tsx",
+      "screenshot": "screenshots/projects-1440.png",
+      "headings": [
+        {
+          "level": "H2",
+          "text": "最近專案"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "新增專案",
+          "target": null
+        },
+        {
+          "type": "input",
+          "label": "搜尋專案",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "Web Assessment今天 14:32",
+          "target": "#dashboard"
+        },
+        {
+          "type": "button",
+          "label": "重新命名專案",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "刪除專案",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "Internal Review昨天 18:40",
+          "target": "#dashboard"
+        },
+        {
+          "type": "button",
+          "label": "重新命名專案",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "刪除專案",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "API Security Review11 月 1 日",
+          "target": "#dashboard"
+        },
+        {
+          "type": "button",
+          "label": "重新命名專案",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "刪除專案",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "first-run",
+      "title": "首次準備",
+      "html": "pages/first-run.html",
+      "source": "FirstRunView.tsx, CapturePreparation.tsx, HttpCaptureStep.tsx",
+      "screenshot": "screenshots/first-run-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "開始記錄"
+        },
+        {
+          "level": "H3",
+          "text": "Shell 指令"
+        },
+        {
+          "level": "H3",
+          "text": "HTTP(S)"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "稍後設定，進入總覽",
+          "target": "#dashboard"
+        },
+        {
+          "type": "button",
+          "label": "記錄我的 zsh 終端機",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "開啟 HTTP(S) 設定",
+          "target": "#settings-http"
+        },
+        {
+          "type": "a",
+          "label": "管理來源",
+          "target": "#settings-sources"
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "title": "總覽",
+      "html": "pages/dashboard.html",
+      "source": "DashboardView.tsx, CaptureHealth.tsx, IPStatusCard.tsx",
+      "screenshot": "screenshots/dashboard-1440.png",
+      "headings": [
+        {
+          "level": "H2",
+          "text": "擷取狀態"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "設定擷取來源",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "網路與身分",
+          "target": "#settings-network"
+        },
+        {
+          "type": "a",
+          "label": "編輯專案與範圍",
+          "target": "#settings-project"
+        }
+      ]
+    },
+    {
+      "id": "activity",
+      "title": "活動紀錄 · 操作",
+      "html": "pages/activity.html",
+      "source": "SearchPanel.tsx, ActivityResults.tsx",
+      "screenshot": "screenshots/activity-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "活動紀錄"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "input",
+          "label": "搜尋活動紀錄",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部來源ShellHTTPAI",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新整理",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "操作",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "輸入／輸出",
+          "target": "#activity-io"
+        },
+        {
+          "type": "a",
+          "label": "AI 對話",
+          "target": "#activity-ai"
+        },
+        {
+          "type": "a",
+          "label": "原始事件",
+          "target": "#activity-raw"
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "時間軸",
+          "target": "#timeline"
+        },
+        {
+          "type": "button",
+          "label": "14:32:18zshoperator結束碼 0curl -I https://app.example.test",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "在時間軸查看",
+          "target": "#timeline"
+        },
+        {
+          "type": "button",
+          "label": "14:30:02zshoperator結束碼 0nmap -sV 192.0.2.10",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:27:45AIoperator結束碼 0檢查登入端點的回應與 cookie 屬性",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:25:09zshoperator結束碼 0dig app.example.test",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:22:31zshoperator結束碼 0pwd",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "activity-io",
+      "title": "活動紀錄 · 輸入／輸出",
+      "html": "pages/activity-io.html",
+      "source": "SearchPanel.tsx, ActivityResults.tsx, SourceSessionPicker.tsx",
+      "screenshot": "screenshots/activity-io-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "活動紀錄"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "input",
+          "label": "搜尋活動紀錄",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部來源ShellHTTPAI",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新整理",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "操作",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "輸入／輸出",
+          "target": "#activity-io"
+        },
+        {
+          "type": "a",
+          "label": "AI 對話",
+          "target": "#activity-ai"
+        },
+        {
+          "type": "a",
+          "label": "原始事件",
+          "target": "#activity-raw"
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "時間軸",
+          "target": "#timeline"
+        },
+        {
+          "type": "select",
+          "label": "zsh · 14:22–14:32 · workstation",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "回放",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "activity-ai",
+      "title": "活動紀錄 · AI 對話",
+      "html": "pages/activity-ai.html",
+      "source": "ActivityResults.tsx, AgentConversation.tsx, SourceSessionPicker.tsx",
+      "screenshot": "screenshots/activity-ai-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "活動紀錄"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "input",
+          "label": "搜尋活動紀錄",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部來源ShellHTTPAI",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新整理",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "操作",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "輸入／輸出",
+          "target": "#activity-io"
+        },
+        {
+          "type": "a",
+          "label": "AI 對話",
+          "target": "#activity-ai"
+        },
+        {
+          "type": "a",
+          "label": "原始事件",
+          "target": "#activity-raw"
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "時間軸",
+          "target": "#timeline"
+        },
+        {
+          "type": "select",
+          "label": "Claude Code · 14:27 · /work/web-assessmentCodex · 13:10 · /work/api-review",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出所選工作階段",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "activity-raw",
+      "title": "活動紀錄 · 原始事件",
+      "html": "pages/activity-raw.html",
+      "source": "SearchPanel.tsx, ActivityResults.tsx, timeline/TimelineEventLog.tsx",
+      "screenshot": "screenshots/activity-raw-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "活動紀錄"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "input",
+          "label": "搜尋活動紀錄",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部來源ShellHTTPAI",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新整理",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "操作",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "輸入／輸出",
+          "target": "#activity-io"
+        },
+        {
+          "type": "a",
+          "label": "AI 對話",
+          "target": "#activity-ai"
+        },
+        {
+          "type": "a",
+          "label": "原始事件",
+          "target": "#activity-raw"
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "時間軸",
+          "target": "#timeline"
+        },
+        {
+          "type": "button",
+          "label": "14:32:18zshcurl -I https://app.example.test",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:30:02zshnmap -sV 192.0.2.10",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:27:45AI檢查登入端點的回應與 cookie 屬性",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:25:09zshdig app.example.test",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:22:31zshpwd",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "terminal",
+      "title": "終端機",
+      "html": "pages/terminal.html",
+      "source": "TerminalView.tsx",
+      "screenshot": "screenshots/terminal-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "button",
+          "label": "zsh　~/web-assessment　4821",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "bash　~/api-review　4890",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增終端機",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "A−",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "A＋",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "搜尋",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "timeline",
+      "title": "時間軸與 Inspector",
+      "html": "pages/timeline.html",
+      "source": "Timeline.tsx, timeline/TimelineEventInspector.tsx, TimelineEventDetails.tsx",
+      "screenshot": "screenshots/timeline-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "時間軸"
+        },
+        {
+          "level": "H3",
+          "text": "Shell 指令 · curl -I https://app.example.test"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "← 活動紀錄",
+          "target": "#activity"
+        },
+        {
+          "type": "button",
+          "label": "事件流",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "−",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "＋",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "更多",
+          "target": null
+        },
+        {
+          "type": "input",
+          "label": "篩選事件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "全部泳道",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Shell 指令 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Shell 指令 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Shell 指令 · 14:24:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Shell 指令 · 14:25:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "終端機輸出 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "終端機輸出 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "終端機輸出 · 14:24:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "終端機輸出 · 14:25:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "HTTP · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "HTTP · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "HTTP · 14:24:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "HTTP · 14:25:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "AI 對話 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "AI 對話 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "AI 對話 · 14:24:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "AI 對話 · 14:25:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "標記 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "標記 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "範圍 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "範圍 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "剪貼簿 · 14:22:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "剪貼簿 · 14:23:18",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "關閉",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "查看輸入／輸出",
+          "target": "#activity-io"
+        }
+      ]
+    },
+    {
+      "id": "event-stream",
+      "title": "事件流",
+      "html": "pages/event-stream.html",
+      "source": "timeline/TimelineEventLog.tsx",
+      "screenshot": "screenshots/event-stream-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "原始事件"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "回到時間軸",
+          "target": "#timeline"
+        },
+        {
+          "type": "input",
+          "label": "篩選事件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "只看上鏈",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:32:18zshcurl -I https://app.example.test",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:30:02zshnmap -sV 192.0.2.10",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:27:45AI檢查登入端點的回應與 cookie 屬性",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:25:09zshdig app.example.test",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "14:22:31zshpwd",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "title": "HTTP 歷程",
+      "html": "pages/http.html",
+      "source": "HttpHistoryPanel.tsx, HttpDetail.tsx",
+      "screenshot": "screenshots/http-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "HTTP 歷程"
+        },
+        {
+          "level": "H3",
+          "text": "詳細資料"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "擷取設定",
+          "target": "#settings-http"
+        },
+        {
+          "type": "input",
+          "label": "搜尋 HTTP 歷程",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部方法GETPOSTOPTIONS",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部狀態2xx3xx4xx5xx",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新整理",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "回應",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "請求",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "內容",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "targets",
+      "title": "目標與範圍",
+      "html": "pages/targets.html",
+      "source": "TargetView.tsx, TargetScopeWorkspace.tsx",
+      "screenshot": "screenshots/targets-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "目標與範圍"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "目標",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "範圍",
+          "target": "#scope"
+        },
+        {
+          "type": "input",
+          "label": "搜尋目標",
+          "target": null
+        },
+        {
+          "type": "select",
+          "label": "全部目標範圍內範圍外",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "查看事件",
+          "target": "#timeline"
+        },
+        {
+          "type": "a",
+          "label": "查看事件",
+          "target": "#timeline"
+        },
+        {
+          "type": "a",
+          "label": "查看事件",
+          "target": "#timeline"
+        }
+      ]
+    },
+    {
+      "id": "scope",
+      "title": "範圍",
+      "html": "pages/scope.html",
+      "source": "TargetScopeWorkspace.tsx, ScopeStatus.tsx, settings/ScopePage.tsx",
+      "screenshot": "screenshots/scope-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "目標與範圍"
+        },
+        {
+          "level": "H2",
+          "text": "範圍規則"
+        },
+        {
+          "level": "H3",
+          "text": "允許清單"
+        },
+        {
+          "level": "H3",
+          "text": "排除清單"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "目標",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "範圍",
+          "target": "#scope"
+        },
+        {
+          "type": "a",
+          "label": "編輯專案與範圍",
+          "target": "#settings-project"
+        },
+        {
+          "type": "button",
+          "label": "顯示全部",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "證據 · 截圖與附件",
+      "html": "pages/evidence.html",
+      "source": "ScreenshotsView.tsx, EvidenceWorkspace.tsx",
+      "screenshot": "screenshots/evidence-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "證據"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "button",
+          "label": "加入檔案",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "截圖與附件",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "戰利品",
+          "target": "#loot"
+        },
+        {
+          "type": "a",
+          "label": "書籤",
+          "target": "#bookmarks"
+        },
+        {
+          "type": "button",
+          "label": "開啟截圖 登入畫面",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "來源事件",
+          "target": "#timeline"
+        },
+        {
+          "type": "button",
+          "label": "開啟截圖 個人資料回應",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "來源事件",
+          "target": "#timeline"
+        },
+        {
+          "type": "button",
+          "label": "開啟截圖 存取被拒絕",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "來源事件",
+          "target": "#timeline"
+        },
+        {
+          "type": "a",
+          "label": "查看事件",
+          "target": "#timeline"
+        }
+      ]
+    },
+    {
+      "id": "loot",
+      "title": "證據 · 戰利品",
+      "html": "pages/loot.html",
+      "source": "LootPanel.tsx",
+      "screenshot": "screenshots/loot-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "證據"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "a",
+          "label": "截圖與附件",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "戰利品",
+          "target": "#loot"
+        },
+        {
+          "type": "a",
+          "label": "書籤",
+          "target": "#bookmarks"
+        },
+        {
+          "type": "input",
+          "label": "搜尋戰利品",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "來源指令",
+          "target": "#activity-io"
+        }
+      ]
+    },
+    {
+      "id": "bookmarks",
+      "title": "證據 · 書籤",
+      "html": "pages/bookmarks.html",
+      "source": "BookmarksView.tsx",
+      "screenshot": "screenshots/bookmarks-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "證據"
+        },
+        {
+          "level": "H3",
+          "text": "登入回應"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "button",
+          "label": "新增書籤",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "截圖與附件",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "戰利品",
+          "target": "#loot"
+        },
+        {
+          "type": "a",
+          "label": "書籤",
+          "target": "#bookmarks"
+        },
+        {
+          "type": "input",
+          "label": "搜尋書籤",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "編輯",
+          "target": null
+        }
+      ]
+    },
+    {
+      "id": "settings-shell",
+      "title": "Shell 指令",
+      "html": "pages/settings-shell.html",
+      "source": "Settings.tsx, settings/HooksPanel.tsx",
+      "screenshot": "screenshots/settings-shell-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "指令與終端\nRedLog 內建的擷取來源\n記錄哪些終端 App\n所有終端 App\nWarpTerminal\nApple_Terminal\niTerm.app\nvscode\n\n新開的終端機：從第一個提示符就開始記錄\n\nzsh\n已安裝\n\n擷取 zsh 的每一道指令，含結束碼與耗時\n\n驗證／修復\n停用\n設定步驟\nbash\n\n透過 DEBUG trap / PROMPT_COMMAND 擷取 bash 的每一道指令與其輸出\n\n接入\n設定步驟\nCodex\n\n包住 Codex 的 shell，記下代理執行的指令\n\n接入\n其他平台 (2)\n工具 profile\n重新掃描\nAcme Nmap\nacme-tools/nmap\n外掛 acme-tools\n\n掃描輸出需要完整記錄。\n\n偵測\nShell zsh · 已找到 · /opt/homebrew/bin/nmap\n有效模式\nNative · 此 profile: nmap\n實際擷取\n只記指令與結束碼，不記輸出\nMSF Console\nacme-tools/msfconsole\n外掛 acme-tools\n\n互動式主控台需要 PTY 才能保留顏色。\n\n偵測\nShell zsh · 已找到 · /opt/metasploit-framework/bin/msfconsole\n有效模式\nPTY · 此 profile: msfconsole\n實際擷取\nzsh：PTY 錄製。bash：沒有 PTY wrapper，實際以 native 執行（capture_mode native、capture_reason no-pty-wrapper）\n限制\n本機暫停操作（Ctrl-Z、fg）有已知限制\n\n其餘一律經過 relay。要改請在終端機裡：redlog mode auto|manual、redlog class add|remove。",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "select",
+            "label": "所有終端 AppWarpTerminalApple_TerminaliTerm.appvscode"
+          },
+          {
+            "type": "button",
+            "label": "驗證／修復"
+          },
+          {
+            "type": "button",
+            "label": "停用"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "怎麼收掉"
+          },
+          {
+            "type": "button",
+            "label": "接入"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "怎麼收掉"
+          },
+          {
+            "type": "button",
+            "label": "接入"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "怎麼收掉"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "怎麼收掉"
+          },
+          {
+            "type": "button",
+            "label": "重新掃描"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-http",
+      "title": "HTTP(S)",
+      "html": "pages/settings-http.html",
+      "source": "Settings.tsx, settings/BrowserPage.tsx, BrowserPanel.tsx",
+      "screenshot": "screenshots/settings-http-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "瀏覽器與 HTTP 擷取\n驗證 HTTPS 擷取\nProxy 瀏覽器\n瀏覽器執行檔（留空 = 自動偵測）\n\n自動偵測到：/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n\nProxy（留空 = 不加 proxy 參數）\nRedLog 管理的 HTTP 擷取連接埠\n\n瀏覽器使用 loopback proxy 時會統一改用此連接埠；遠端或自訂 proxy 仍由操作者自行管理。\n\nHTTP 擷取綁定位址\n\n擷取 proxy 綁在哪個位址。127.0.0.1 只有本機連得到；放寬之後才能讓受害 VM、手機、容器或 NAT 模式的 WSL 發行版把流量導進來。\n\n讓新終端機透過 HTTP 擷取代理\n\n預設關閉。僅在代理執行時套用至新開的終端機；既有終端機及忽略代理變數的工具不受影響。\n\n代理狀態\nHTTP 擷取中\n127.0.0.1:8080\n停止 HTTP 擷取\n\n目前設定已驗證\n\nCA 憑證與信任命令\nCDP 連接埠\n起始網址（選填）\n使用專案獨立設定檔\n忽略憑證錯誤（僅供例外情境）\n啟動擷取瀏覽器\nChrome DevTools Protocol\n\n啟動 Chrome：google-chrome --remote-debugging-port=9222\n\n測試連線",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "停止 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "啟動擷取瀏覽器"
+          },
+          {
+            "type": "button",
+            "label": "測試連線"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-sources",
+      "title": "其他擷取來源",
+      "html": "pages/settings-sources.html",
+      "source": "Settings.tsx, settings/CaptureControlPage.tsx, CapturePackGroup.tsx, AgentsPanel.tsx",
+      "screenshot": "screenshots/settings-sources-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "其他擷取來源\nAI 代理擷取\nClaude Code\n啟用中\n在此專案記錄新對話\n~/work/engagements/acme\n×\n加入工作目錄…\n對話 (1)\n\n最後收到 2 分鐘前\n\n來源設定\n\n在「外掛」頁管理安裝與信任\n\nCodex CLI\n可更新\n有更新:到「外掛」頁更新\n在此專案記錄新對話\n加入工作目錄…\n對話 (1)\n\n授權對話會包含工具從其他目錄讀取的內容。\n\n最後收到 3 小時前\n\n來源設定\n\n在「外掛」頁管理安裝與信任\n\n截圖\n關閉定時截圖\n每 30 秒\n每 1 分鐘\n每 5 分鐘\n\n最後收到 2 分鐘前\n\n指令結束時截圖\n影像選項\nPack：主機監看\n在這個專案啟用此 pack\n\n行程、連線與檔案監看。剪貼簿另計——要在下方勾選才會記錄。\n\n剪貼簿\n記錄這一項\n\n預設關閉——開啟 pack 不會順帶開啟這一項。\n\n偵測到憑證或 token 被複製時，只存 SHA-256、長度、行數與符合的類型。原始文字不落地；偵測到的憑證另開 loot 事件。\n\n在專案開啟期間，會取樣你在這台機器上複製的所有內容 —— 不分是否在範圍內。\n\n檔案監控\n記錄這一項\n\n被監控的檔案變動時發出 file_transfer。預設忽略 node_modules/、.git/、dist/、out/、build/、.DS_Store 與編輯器暫存檔。\n\n監控路徑\n+\n~/work/acme\n×\n額外忽略樣式\n+\n*.log\n×\nnode_modules\n×\n\n在內建預設之上加的 gitignore 樣式，一行一個。\n\n程序監控（spawn tree）\n記錄這一項\n\n新程序出現或結束時發出 process_spawn / process_exit。Windows 尚未支援；RedLog 自己的程序會自動忽略。\n\n額外忽略的指令\n+\ngit\n×\nls\n×\n\n以首個 token（第一個字或 basename）比對。大小寫敏感。\n\n網路連線\n記錄這一項\n\n記錄已建立的連線——IP、埠、協定、持續時間。無 payload、不需 root。補上 proxy 看不到的 SMB、RDP、反向 shell、C2 beacon。\n\n只記錄已建立的連線。SYN 掃描（nmap -sS）不完成握手，不會出現——指令仍會記錄，連線不會。\n\n外部擷取來源\n\n部分步驟需要系統權限，或會變更本機網路設定。\n\nNuclei JSONL\n執行中\n\n由外掛提供的擷取來源。\n\n最後收到 2 分鐘前\n\n設定步驟\ntcpdump\n曾經擷取過，目前沒在跑\n\n由外掛提供的擷取來源。\n\n最後收到 昨天 18:04\n\n設定步驟",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "移除"
+          },
+          {
+            "type": "button",
+            "label": "加入工作目錄…"
+          },
+          {
+            "type": "button",
+            "label": "停止此對話"
+          },
+          {
+            "type": "button",
+            "label": "選擇對話資料夾…"
+          },
+          {
+            "type": "button",
+            "label": "移除整合"
+          },
+          {
+            "type": "button",
+            "label": "在「外掛」頁管理安裝與信任"
+          },
+          {
+            "type": "button",
+            "label": "有更新:到「外掛」頁更新"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "加入工作目錄…"
+          },
+          {
+            "type": "button",
+            "label": "停止此對話"
+          },
+          {
+            "type": "button",
+            "label": "選擇對話資料夾…"
+          },
+          {
+            "type": "button",
+            "label": "移除整合"
+          },
+          {
+            "type": "button",
+            "label": "在「外掛」頁管理安裝與信任"
+          },
+          {
+            "type": "button",
+            "label": "關閉定時截圖"
+          },
+          {
+            "type": "button",
+            "label": "每 30 秒"
+          },
+          {
+            "type": "button",
+            "label": "每 1 分鐘"
+          },
+          {
+            "type": "button",
+            "label": "每 5 分鐘"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "每幀都存"
+          },
+          {
+            "type": "button",
+            "label": "標準"
+          },
+          {
+            "type": "button",
+            "label": "只存明顯變動"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": "/絕對/路徑 或 **/*.pdf"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 ~/work/acme"
+          },
+          {
+            "type": "input",
+            "label": "**/vendor/**"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 *.log"
+          },
+          {
+            "type": "button",
+            "label": "移除 node_modules"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": "cargo"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 git"
+          },
+          {
+            "type": "button",
+            "label": "移除 ls"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "複製"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-project",
+      "title": "專案與範圍",
+      "html": "pages/settings-project.html",
+      "source": "Settings.tsx, settings/ProjectSettings.tsx, ScopePage.tsx",
+      "screenshot": "screenshots/settings-project-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "專案與範圍\n範圍警告\n碰到範圍外目標時示警\n\n指令目標在範圍外但與範圍目標同 root domain 時示警；明確排除的目標一律示警。RedLog 只記錄，不擋指令。\n\n範圍內目標\n目標（IP、CIDR、*.domain）\n+\n10.10.10.0/24\n×\nacme.example.com\n×\n*.acme.example.com\n×\n\n一般網域只比對該名稱本身；要包含子網域請寫 *.example.com。排除優先於包含。\n\n排除的目標\n從範圍排除\n+\n10.10.10.5\n×\n測試網址\n網址、主機或 IP\n\n僅預覽——依上方清單判定，不會寫入任何記錄。\n\n私人/本機流量\n匯出時整列丟掉（不只遮罩）\n+\n*.bank.example\n×\n\n永遠不屬於任何交戰的主機——私人瀏覽、localhost、更新 CDN。匹配的列在匯出時會被完全丟棄（不是遮罩）。語法同上：IP、CIDR、*.domain。\n\n範圍檔案\n從檔案載入目標（JSON 或純文字，每行一個）\n\n範圍檔案的絕對路徑。目標會與上方清單合併。\n\n任務資訊\nID ⓘ\n名稱 ⓘ\n操作員\nID ⓘ\n名稱 ⓘ\n交接設定檔\n匯出設定檔\n\n把這個專案的範圍、操作員、擷取設定與已存的時間軸視圖寫成一個檔案。隊友在建立專案時匯入。",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": "例如 192.168.1.0/24 或 *.example.com"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 10.10.10.0/24"
+          },
+          {
+            "type": "button",
+            "label": "移除 acme.example.com"
+          },
+          {
+            "type": "button",
+            "label": "移除 *.acme.example.com"
+          },
+          {
+            "type": "input",
+            "label": "例如 10.0.0.1"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 10.10.10.5"
+          },
+          {
+            "type": "input",
+            "label": "10.10.10.42"
+          },
+          {
+            "type": "input",
+            "label": "例如 *.google.com、127.0.0.0/8"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 *.bank.example"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "匯出設定檔"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-network",
+      "title": "網路與身分",
+      "html": "pages/settings-network.html",
+      "source": "Settings.tsx, settings/NetworkPage.tsx",
+      "screenshot": "screenshots/settings-network-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "IP 曝光與自身流量\n安全 IP / 暴露 IP\n安全 IP —— 可從這些 IP 對外攻擊（VPN/VPS 出口）。對外 IP 命中 → SAFE（綠）\n+\n203.0.113.10\n×\n暴露 IP —— 你自己的固定 IP（家用 ISP、公司）。對外 IP 命中 → EXPOSED（紅，身分外洩）\n+\nVPN 網卡偵測\n\n哪些介面名稱算 VPN 隧道。可切換預設，也可新增自訂 pattern（不分大小寫的正規表達式）。\n\nWireGuard\nwireguard|^wg\\d\nOpenVPN (tun/tap)\n^(tun|tap)\\d|openvpn\nTailscale\ntailscale\nNordVPN\nnordlynx|nordvpn\nProtonVPN\nproton\nCisco AnyConnect\ncisco\\s*anyconnect\nFortinet / FortiClient\nfortinet|forticlient\nGlobalProtect\nglobalprotect\nJuniper / Pulse Secure\njuniper|pulse\\s*secure\nIPSec\n^ipsec\nPPP\n^ppp\nmacOS utun\n^utun\n新增自訂介面規則\n+\nRedLog 自己發出的流量\nIP 偵測方式\n自動（DNS→HTTP）\nDNS\nHTTP\n\nDNS 較安靜但可能被擋；自動會先試 DNS，再退回 HTTP。\n\n顯示 Wi-Fi 名稱\n\nmacOS 會請求一次定位權限，讓 HUD 顯示實際 SSID。定位資料不會離開這台機器。\n\n檢查間隔（秒）\n\n每次輪詢都是對第三方的對外請求。10 秒約等於每天 8,600 次，防守方可辨識週期信標。建議 ≥60 秒或自架端點。\n\n位址變更所需的一致次數\n\nCGNAT 或負載平衡出口每次回應可能不同；要求連續一致可避免徽章亂閃。\n\nIP 查詢端點（留空 = 內建預設）\n+\n\n依序嘗試直到有回應。需回傳含 \"ip\" 欄位的 JSON。",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": "例如 10.8.0.0/24"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "移除 203.0.113.10"
+          },
+          {
+            "type": "input",
+            "label": "例如 114.24.97.0/24"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": "名稱"
+          },
+          {
+            "type": "input",
+            "label": "正規表達式"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "自動（DNS→HTTP）"
+          },
+          {
+            "type": "button",
+            "label": "DNS"
+          },
+          {
+            "type": "button",
+            "label": "HTTP"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": "https://ip.internal.example/json"
+          },
+          {
+            "type": "button",
+            "label": "+"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-loot",
+      "title": "戰利品偵測",
+      "html": "pages/settings-loot.html",
+      "source": "Settings.tsx, settings/LootRulesGroup.tsx",
+      "screenshot": "screenshots/settings-loot-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "戰利品偵測\n戰利品偵測\n\n關閉的規則不會記成戰利品；它比對到的內容在紀錄與匯出中仍會被遮蔽。\n\nAWS access key · high · 內建\nAWS 存取金鑰 ID\nPEM private key · high · 內建\nPEM 私鑰\nPassword · high · 內建\n密碼或口令欄位\nJWT · high · 內建\nJSON Web Token\nNTLM hash · medium · 內建\nNTLM 雜湊\nSession cookie · medium · 內建\n工作階段 Cookie\nTicket · medium · acme-pack\n自訂票券格式\n已停止：這條規則超過執行時間上限，不再執行，它比對的內容也不再被遮蔽。修正 pattern 後請重新載入 plugin。",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-retention",
+      "title": "資料保留",
+      "html": "pages/settings-retention.html",
+      "source": "Settings.tsx, settings/RetentionPage.tsx",
+      "screenshot": "screenshots/settings-retention-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "保留與清理\n保存與容量\n\n各儲存區容量上限（MB）；0＝全部保留。超過上限時優先淘汰最久未使用的範圍外檔案，範圍內目標釘選保留。事件與 SHA-256 一律保留。\n\nHTTP 內容儲存上限（MB）\n\n0 = 不設上限\n\n終端錄影儲存上限（MB）\n\n0 = 不設上限\n\n截圖儲存上限（MB）\n\n0 = 不設上限\n\nlogged 層列（HTTP 流量、DNS、行程監控）的保留天數。0 = 永久保留。這些列不上鏈，作為調查脈絡使用。\n\n流量事件（HTTP / DNS / 行程）保留天數\n有 3 個暫存檔，是沒開專案時 shell 留下的指令（2026-11-03 18:20 – 2026-11-03 21:04）。它們不屬於任何專案的紀錄。清除…",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "清除…"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-integrity",
+      "title": "完整性",
+      "html": "pages/settings-integrity.html",
+      "source": "Settings.tsx, settings/IntegrityPanel.tsx",
+      "screenshot": "screenshots/settings-integrity-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "證據鏈驗證\n時間軸完整性\n\n事件鏈每小時錨定到公開 OpenTimestamps calendar。每筆收據都能用 `ots` CLI 獨立證明鏈在該時間存在。\n\n立即錨定\n驗證完整證據鏈\n升級待處理錨點\n完成\n2026-11-04 09:00:12\n1284 筆事件\n\n鏈頭: 9f3c7a1e88b2d4c6f0a1b3c5d7e9f1a3…\n\ncalendar.example.com ✓\n部分\n2026-11-03 18:02:44\n903 筆事件\n\n鏈頭: 4a11c9d3e7b5a1f0c2d4e6a8b0c3d5e7…\n\ncalendar.example.com — timeout",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "button",
+            "label": "立即錨定"
+          },
+          {
+            "type": "button",
+            "label": "驗證完整證據鏈"
+          },
+          {
+            "type": "button",
+            "label": "升級待處理錨點"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-general",
+      "title": "一般",
+      "html": "pages/settings-general.html",
+      "source": "Settings.tsx, settings/GeneralPage.tsx",
+      "screenshot": "screenshots/settings-general-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "外觀與語言\n語言與時區\nEnglish\n繁體中文\n時區\n本地\nUTC\n\nApp 裡所有事件時間都以此時區顯示，UTC 時間結尾標示 Z。匯出一律是含時差的 ISO 8601。\n\n介面文字大小\n正常\n大\n特大\n最大\n100%",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "button",
+            "label": "English"
+          },
+          {
+            "type": "button",
+            "label": "繁體中文"
+          },
+          {
+            "type": "button",
+            "label": "本地"
+          },
+          {
+            "type": "button",
+            "label": "UTC"
+          },
+          {
+            "type": "button",
+            "label": "正常"
+          },
+          {
+            "type": "button",
+            "label": "大"
+          },
+          {
+            "type": "button",
+            "label": "特大"
+          },
+          {
+            "type": "button",
+            "label": "最大"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-hud",
+      "title": "HUD",
+      "html": "pages/settings-hud.html",
+      "source": "Settings.tsx, settings/HudPage.tsx",
+      "screenshot": "screenshots/settings-hud-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "覆蓋顯示\nHUD\n專案啟動時開啟 HUD\n\n關閉後，從狀態列或選單列圖示開啟 HUD。\n\n在展開的懸浮視窗顯示標記按鈕\nIP 暴露時閃爍警示\nHUD 文字大小\n迷你\n小\n中\n大\n特大\n巨大\n外部 IP 額外放大\n點擊穿透模式（HUD 不吃滑鼠）\n\n點擊穿透到底下的視窗，HUD 會變淡。⌘⇧P 或選單列退出。\n\n在 Dock 顯示圖示（macOS）\n\n關閉後 HUD 開啟時不顯示 Dock 圖示，從選單列操作。",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "迷你"
+          },
+          {
+            "type": "button",
+            "label": "小"
+          },
+          {
+            "type": "button",
+            "label": "中"
+          },
+          {
+            "type": "button",
+            "label": "大"
+          },
+          {
+            "type": "button",
+            "label": "特大"
+          },
+          {
+            "type": "button",
+            "label": "巨大"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-about",
+      "title": "關於",
+      "html": "pages/settings-about.html",
+      "source": "Settings.tsx, settings/AboutPage.tsx",
+      "screenshot": "screenshots/settings-about-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "關於\n版本\nRedLog v0.18.6\n2026-11-04\n開發版\n\n更新需手動安裝：這個版本沒有開發者憑證簽章，RedLog 無法自行替換。請下載 .dmg，把新的 App 拖進去覆蓋目前這個。\n\n目前已是最新版本。\n\n上次檢查：2026-11-04 09:12\n\nRedLog 啟動時檢查更新（air-gap 模式下一律不檢查）\n檢查更新\n除錯日誌\n寫入除錯日誌\n\n只記錄事件名稱與大小，不含指令輸出。開啟後新開的終端才會納入。回報問題時請附上這個檔案。\n\n~/Library/Logs/RedLog/main.log\n\n在資料夾中顯示",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "檢查更新"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "在資料夾中顯示"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "settings-plugins",
+      "title": "插件",
+      "html": "pages/settings-plugins.html",
+      "source": "Settings.tsx, settings/PluginsPanel.tsx, PluginSampleTester.tsx",
+      "screenshot": "screenshots/settings-plugins-1440.png",
+      "headings": [],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        }
+      ],
+      "embeddedSettings": {
+        "text": "外掛\n開啟資料夾\n重新載入\n\n這裡的開關對這台電腦上的所有專案生效；各專案自己的擷取來源在「其他擷取來源」設定。\n\n需處理 (3)\nClaude Code\nv1.0.0\n啟用中\n把 Claude Code 工作階段的工具呼叫記進紀錄。\n詳情\nCodex CLI\nv1.0.0\n可更新\n有可用的更新。\n把 Codex CLI 的執行記進紀錄。\n詳情\nLoot Extras\nv0.3.0\n待同意\n🔴 執行程式碼\n需先核准才會生效。\n使用者提供的掃描工具整合。\n詳情\n審查並信任\nJourney Scanner\nv1.2.0\n啟用中\n部分貢獻被拒絕。\n示範:一條規則無法編譯。\n詳情\n停用\nQuiet Pack\nv1.0.0\n啟用中\n示範:全部規則生效。\n詳情\n停用\nStarter Producers\nv1.0.0\n啟用中\n內建 shell hook 與 mitmproxy。\n詳情\n停用\nClaude Code\nv1.0.0\n信任\n\n啟用中\n\n停用\n安裝\n\n已安裝\n\n隨 RedLog 一起提供\n\n由擷取來源管理(依專案)\n\n解除安裝\n其他擷取來源\n專案\n\n已為此專案啟用擷取。\n\n擷取健康\n\n最近事件：2 分鐘前\n\n已生效的部分\n事件類型：2 條生效、0 條被拒絕\n擷取來源：1 條生效、0 條被拒絕",
+        "controls": [
+          {
+            "type": "input",
+            "label": "搜尋設定…"
+          },
+          {
+            "type": "button",
+            "label": "指令與終端"
+          },
+          {
+            "type": "button",
+            "label": "瀏覽器與 HTTP 擷取"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "專案與範圍"
+          },
+          {
+            "type": "button",
+            "label": "IP 曝光與自身流量"
+          },
+          {
+            "type": "button",
+            "label": "戰利品偵測"
+          },
+          {
+            "type": "button",
+            "label": "保留與清理"
+          },
+          {
+            "type": "button",
+            "label": "證據鏈驗證"
+          },
+          {
+            "type": "button",
+            "label": "外觀與語言"
+          },
+          {
+            "type": "button",
+            "label": "覆蓋顯示"
+          },
+          {
+            "type": "button",
+            "label": "外掛"
+          },
+          {
+            "type": "button",
+            "label": "關於"
+          },
+          {
+            "type": "button",
+            "label": "開啟資料夾"
+          },
+          {
+            "type": "button",
+            "label": "重新載入"
+          },
+          {
+            "type": "input",
+            "label": "依名稱、id、作者或描述搜尋外掛"
+          },
+          {
+            "type": "input",
+            "label": ""
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "審查並信任"
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "停用"
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "停用"
+          },
+          {
+            "type": "button",
+            "label": "詳情"
+          },
+          {
+            "type": "button",
+            "label": "停用"
+          },
+          {
+            "type": "button",
+            "label": "停用"
+          },
+          {
+            "type": "button",
+            "label": "解除安裝"
+          },
+          {
+            "type": "button",
+            "label": "其他擷取來源"
+          },
+          {
+            "type": "button",
+            "label": "原型控制"
+          }
+        ]
+      }
+    },
+    {
+      "id": "plugins-proposed",
+      "title": "插件探索 · 提案",
+      "html": "pages/plugins-proposed.html",
+      "source": "../docs/PLUGIN-MANAGEMENT-SPEC.md (Draft, not implemented)",
+      "screenshot": "screenshots/plugins-proposed-1440.png",
+      "headings": [
+        {
+          "level": "H1",
+          "text": "插件"
+        },
+        {
+          "level": "H2",
+          "text": "Claude Code"
+        },
+        {
+          "level": "H3",
+          "text": "權限與修改範圍"
+        }
+      ],
+      "controls": [
+        {
+          "type": "button",
+          "label": "◂ Web Assessment",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "匯出 ▾",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "啟動瀏覽器",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "截圖",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "加入附件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "新增標記",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "總覽1",
+          "target": "#dashboard"
+        },
+        {
+          "type": "a",
+          "label": "活動紀錄2",
+          "target": "#activity"
+        },
+        {
+          "type": "a",
+          "label": "HTTP 歷程3",
+          "target": "#http"
+        },
+        {
+          "type": "a",
+          "label": "目標與範圍4",
+          "target": "#targets"
+        },
+        {
+          "type": "a",
+          "label": "證據5",
+          "target": "#evidence"
+        },
+        {
+          "type": "a",
+          "label": "終端機6",
+          "target": "#terminal"
+        },
+        {
+          "type": "button",
+          "label": "收合側欄",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "設定9",
+          "target": "#settings-shell"
+        },
+        {
+          "type": "input",
+          "label": "搜尋插件",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "重新載入",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "已安裝",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "可用整合",
+          "target": null
+        },
+        {
+          "type": "input",
+          "label": "",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Claude Code對話與工具呼叫已安裝",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Codex工作階段記錄待授權",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "Gemini CLI終端 AI 對話可用整合",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "檢閱權限",
+          "target": null
+        },
+        {
+          "type": "button",
+          "label": "解除安裝",
+          "target": null
+        },
+        {
+          "type": "a",
+          "label": "管理擷取來源 →",
+          "target": "#settings-sources"
+        },
+        {
+          "type": "a",
+          "label": "← 回到現行插件管理",
+          "target": "#settings-plugins"
+        }
+      ]
+    }
+  ]
+}

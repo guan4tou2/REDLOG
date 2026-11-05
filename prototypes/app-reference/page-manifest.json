@@ -1,0 +1,176 @@
+[
+  {
+    "id": "projects",
+    "title": "專案選擇",
+    "html": "pages/projects.html",
+    "source": "ProjectPicker.tsx"
+  },
+  {
+    "id": "first-run",
+    "title": "首次準備",
+    "html": "pages/first-run.html",
+    "source": "FirstRunView.tsx, CapturePreparation.tsx, HttpCaptureStep.tsx"
+  },
+  {
+    "id": "dashboard",
+    "title": "總覽",
+    "html": "pages/dashboard.html",
+    "source": "DashboardView.tsx, CaptureHealth.tsx, IPStatusCard.tsx"
+  },
+  {
+    "id": "activity",
+    "title": "活動紀錄 · 操作",
+    "html": "pages/activity.html",
+    "source": "SearchPanel.tsx, ActivityResults.tsx"
+  },
+  {
+    "id": "activity-io",
+    "title": "活動紀錄 · 輸入／輸出",
+    "html": "pages/activity-io.html",
+    "source": "SearchPanel.tsx, ActivityResults.tsx, SourceSessionPicker.tsx"
+  },
+  {
+    "id": "activity-ai",
+    "title": "活動紀錄 · AI 對話",
+    "html": "pages/activity-ai.html",
+    "source": "ActivityResults.tsx, AgentConversation.tsx, SourceSessionPicker.tsx"
+  },
+  {
+    "id": "activity-raw",
+    "title": "活動紀錄 · 原始事件",
+    "html": "pages/activity-raw.html",
+    "source": "SearchPanel.tsx, ActivityResults.tsx, timeline/TimelineEventLog.tsx"
+  },
+  {
+    "id": "terminal",
+    "title": "終端機",
+    "html": "pages/terminal.html",
+    "source": "TerminalView.tsx"
+  },
+  {
+    "id": "timeline",
+    "title": "時間軸與 Inspector",
+    "html": "pages/timeline.html",
+    "source": "Timeline.tsx, timeline/TimelineEventInspector.tsx, TimelineEventDetails.tsx"
+  },
+  {
+    "id": "event-stream",
+    "title": "事件流",
+    "html": "pages/event-stream.html",
+    "source": "timeline/TimelineEventLog.tsx"
+  },
+  {
+    "id": "http",
+    "title": "HTTP 歷程",
+    "html": "pages/http.html",
+    "source": "HttpHistoryPanel.tsx, HttpDetail.tsx"
+  },
+  {
+    "id": "targets",
+    "title": "目標與範圍",
+    "html": "pages/targets.html",
+    "source": "TargetView.tsx, TargetScopeWorkspace.tsx"
+  },
+  {
+    "id": "scope",
+    "title": "範圍",
+    "html": "pages/scope.html",
+    "source": "TargetScopeWorkspace.tsx, ScopeStatus.tsx, settings/ScopePage.tsx"
+  },
+  {
+    "id": "evidence",
+    "title": "證據 · 截圖與附件",
+    "html": "pages/evidence.html",
+    "source": "ScreenshotsView.tsx, EvidenceWorkspace.tsx"
+  },
+  {
+    "id": "loot",
+    "title": "證據 · 戰利品",
+    "html": "pages/loot.html",
+    "source": "LootPanel.tsx"
+  },
+  {
+    "id": "bookmarks",
+    "title": "證據 · 書籤",
+    "html": "pages/bookmarks.html",
+    "source": "BookmarksView.tsx"
+  },
+  {
+    "id": "settings-shell",
+    "title": "Shell 指令",
+    "html": "pages/settings-shell.html",
+    "source": "Settings.tsx, settings/HooksPanel.tsx"
+  },
+  {
+    "id": "settings-http",
+    "title": "HTTP(S)",
+    "html": "pages/settings-http.html",
+    "source": "Settings.tsx, settings/BrowserPage.tsx, BrowserPanel.tsx"
+  },
+  {
+    "id": "settings-sources",
+    "title": "其他擷取來源",
+    "html": "pages/settings-sources.html",
+    "source": "Settings.tsx, settings/CaptureControlPage.tsx, CapturePackGroup.tsx, AgentsPanel.tsx"
+  },
+  {
+    "id": "settings-project",
+    "title": "專案與範圍",
+    "html": "pages/settings-project.html",
+    "source": "Settings.tsx, settings/ProjectSettings.tsx, ScopePage.tsx"
+  },
+  {
+    "id": "settings-network",
+    "title": "網路與身分",
+    "html": "pages/settings-network.html",
+    "source": "Settings.tsx, settings/NetworkPage.tsx"
+  },
+  {
+    "id": "settings-loot",
+    "title": "戰利品偵測",
+    "html": "pages/settings-loot.html",
+    "source": "Settings.tsx, settings/LootRulesGroup.tsx"
+  },
+  {
+    "id": "settings-retention",
+    "title": "資料保留",
+    "html": "pages/settings-retention.html",
+    "source": "Settings.tsx, settings/RetentionPage.tsx"
+  },
+  {
+    "id": "settings-integrity",
+    "title": "完整性",
+    "html": "pages/settings-integrity.html",
+    "source": "Settings.tsx, settings/IntegrityPanel.tsx"
+  },
+  {
+    "id": "settings-general",
+    "title": "一般",
+    "html": "pages/settings-general.html",
+    "source": "Settings.tsx, settings/GeneralPage.tsx"
+  },
+  {
+    "id": "settings-hud",
+    "title": "HUD",
+    "html": "pages/settings-hud.html",
+    "source": "Settings.tsx, settings/HudPage.tsx"
+  },
+  {
+    "id": "settings-about",
+    "title": "關於",
+    "html": "pages/settings-about.html",
+    "source": "Settings.tsx, settings/AboutPage.tsx"
+  },
+  {
+    "id": "settings-plugins",
+    "title": "插件",
+    "html": "pages/settings-plugins.html",
+    "source": "Settings.tsx, settings/PluginsPanel.tsx, PluginSampleTester.tsx"
+  },
+  {
+    "id": "plugins-proposed",
+    "title": "插件探索 · 提案",
+    "html": "pages/plugins-proposed.html",
+    "source": "../docs/PLUGIN-MANAGEMENT-SPEC.md (Draft, not implemented)"
+  }
+]

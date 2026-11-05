@@ -1,0 +1,9 @@
+{
+  "target": "standalone HTML prototype",
+  "viewports": [
+    "1440x900",
+    "900x700"
+  ],
+  "pages": 29,
+  "pageErrors": []
+}
