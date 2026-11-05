@@ -15,7 +15,7 @@ vi.mock('../src/renderer/src/hooks/useContainerWidth', () => ({
   useContainerWidth: () => [() => undefined, width.value]
 }))
 
-const api = { list: vi.fn(), reload: vi.fn(), openFolder: vi.fn(), setEnabled: vi.fn(), grant: vi.fn(), revoke: vi.fn() }
+const api = { officialAgents: vi.fn(), installOfficialAgent: vi.fn(), uninstallOfficialAgent: vi.fn(), list: vi.fn(), reload: vi.fn(), openFolder: vi.fn(), setEnabled: vi.fn(), grant: vi.fn(), revoke: vi.fn() }
 const draw = (): void => {
   ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
   render(<PluginsPanel t={t} />)
@@ -26,7 +26,7 @@ const view = (id: string, over: Record<string, unknown> = {}) => ({
 })
 
 describe('plugin page — batch A', () => {
-  beforeEach(() => { width.value = NaN; Object.values(api).forEach((f) => f.mockReset()) })
+  beforeEach(() => { width.value = NaN; Object.values(api).forEach((f) => f.mockReset()); api.officialAgents.mockResolvedValue([]) })
   afterEach(() => cleanup())
 
   describe('search', () => {

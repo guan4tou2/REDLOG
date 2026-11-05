@@ -110,7 +110,7 @@ describe('plugins page shows results', () => {
         tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' }
       }
     }
-    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: async () => [], list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     // Spec 065: the report lives in the detail panel, not the row.
     fireEvent.click(await screen.findByTestId('plugin-details-p'))
@@ -133,7 +133,7 @@ describe('plugins page shows results', () => {
       status: 'active', capabilities: [], contributes: ['terminalProfiles'],
       report: { terminalProfiles: { accepted: 2, rejected: [{ name: 'nc-pty', reason: 'nc is a shipped native default; change it with redlog class add' }] } }
     }
-    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: async () => [], list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     fireEvent.click(await screen.findByTestId('plugin-details-tp'))
     const box = await screen.findByTestId('plugin-results-terminalProfiles-tp')
@@ -149,7 +149,7 @@ describe('plugins page shows results', () => {
       status: 'needs-consent', capabilities: [], contributes: ['terminalProfiles'],
       report: { terminalProfiles: { accepted: 0, rejected: [], waiting: true } }
     }
-    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: async () => [], list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     fireEvent.click(await screen.findByTestId('plugin-details-tw'))
     const box = await screen.findByTestId('plugin-results-terminalProfiles-tw')
@@ -165,7 +165,7 @@ describe('plugins page shows results', () => {
 
   it('shows nothing extra for a plugin with no report', async () => {
     const view = { id: 'q', name: 'Q', version: '1', description: '', author: '', source: 'user', tier: 'declarative', status: 'active', capabilities: [], contributes: [], report: null }
-    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: async () => [], list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     await screen.findByText('Q')
     fireEvent.click(screen.getByTestId('plugin-details-q'))
@@ -195,7 +195,7 @@ describe('redaction rules in the report', () => {
       status: 'active', capabilities: [], contributes: ['redaction'],
       report: { redaction: { accepted: 2, rejected: [{ list: 'denylist', entry: '/(/', reason: 'Invalid regular expression' }] } }
     }
-    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { list: async () => [view], reload: async () => [view] } }
+    ;(window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: async () => [], list: async () => [view], reload: async () => [view] } }
     render(<PluginsPanel t={t} />)
     fireEvent.click(await screen.findByTestId('plugin-details-r'))
     const box = await screen.findByTestId('plugin-results-r')

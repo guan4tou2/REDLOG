@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { launchWithTempHome, openTestProject, openView, openSettingsPage } from './helpers'
+import { launchWithTempHome, openTestProject, openView, openSettingsPage, installOfficialAgentOnPlugins } from './helpers'
 
 // Opt-in vendor serializer acceptance. All model responses come from loopback;
 // no real account, key, external model or operator transcript is used.
@@ -39,7 +39,7 @@ for (const precreated of [false, true]) test(`installed Claude Code preserves pr
     const project = await openTestProject(page, 'Real-Claude-Code-serializer')
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en')); await page.reload()
     await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
-    await page.getByTestId('agent-install-claude-code').click()
+    await installOfficialAgentOnPlugins(page, 'claude-code')
     await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }) }, work)
     await page.getByTestId('agent-add-path-claude-code').click(); await page.getByTestId('agent-enabled-claude-code').check()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.config.get())).agentTailer?.sources?.['claude-code']?.enabled).toBe(true)
