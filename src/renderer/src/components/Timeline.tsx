@@ -2156,7 +2156,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     className="w-full flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs text-redlog-text-dim"
                     style={{ height: laneH }}
                   >
-                    <span title={t('timeline.standard.track')} className="truncate">{t('timeline.standard.track')}</span>
+                    <span className="truncate">{t('timeline.standard.track')}</span>
                   </div>
                 )
               }
