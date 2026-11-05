@@ -2019,5 +2019,11 @@
   "project.search": "Search projects",
   "project.noResults": "No matching projects",
   "project.clearSearch": "Clear search",
+  "project.scope.one": "1 target",
+  "project.scope.many": "{{count}} targets",
+  "project.scope.unset": "Scope not set",
+  "project.scope.unsetWhy": "No targets are configured for this project yet.",
+  "project.scope.unknown": "Scope unknown",
+  "project.scope.unknownWhy": "The scope could not be read, so this does not mean it is empty.",
   "project.opening": "Opening…"
 }

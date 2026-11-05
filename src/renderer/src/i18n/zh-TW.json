@@ -2019,5 +2019,11 @@
   "project.search": "搜尋專案",
   "project.noResults": "找不到符合的專案",
   "project.clearSearch": "清除搜尋",
+  "project.scope.one": "1 個目標",
+  "project.scope.many": "{{count}} 個目標",
+  "project.scope.unset": "未設定範圍",
+  "project.scope.unsetWhy": "這個專案還沒有設定任何目標。",
+  "project.scope.unknown": "範圍未知",
+  "project.scope.unknownWhy": "無法讀取範圍，所以不代表範圍是空的。",
   "project.opening": "開啟中…"
 }
