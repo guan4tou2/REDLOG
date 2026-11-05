@@ -344,3 +344,31 @@ export function BrowserConsoleDetail({ data }: { data: Record<string, unknown> }
     </div>
   )
 }
+
+// ── Any other source ─────────────────────────────────────────────────
+
+const GENERIC_MAX_FIELDS = 40
+const GENERIC_MAX_VALUE = 500
+
+function genericValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.length}]`
+  if (value && typeof value === 'object') return `{${Object.keys(value).length}}`
+  const text = String(value)
+  return text.length > GENERIC_MAX_VALUE ? `${text.slice(0, GENERIC_MAX_VALUE)}…` : text
+}
+
+/** The Reader for a source with no reader of its own (Spec 069 FR-007): the
+ *  fields the event actually recorded, as text. Values are never interpreted,
+ *  nested ones are only counted, and nothing here can throw on an odd shape. */
+export function GenericEventDetail({ data }: { data: Record<string, unknown> | undefined }): JSX.Element {
+  const { t } = useI18n()
+  const entries = Object.entries(data ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  if (entries.length === 0) return <></>
+  return (
+    <div className="mt-2" data-testid="generic-event-detail">
+      <p className="mb-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericFields')}</p>
+      <MetadataGrid entries={entries.slice(0, GENERIC_MAX_FIELDS).map(([k, v]): [string, unknown] => [k, genericValue(v)])} />
+      {entries.length > GENERIC_MAX_FIELDS && <p className="mt-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericMore', { count: entries.length - GENERIC_MAX_FIELDS })}</p>}
+    </div>
+  )
+}

@@ -599,6 +599,8 @@
   "timeline.detail.empty": "(空)",
   "timeline.detail.agentUser": "使用者輸入",
   "timeline.detail.agentAssistant": "助理回覆",
+  "timeline.detail.genericFields": "已記錄的欄位",
+  "timeline.detail.genericMore": "另有 {{count}} 個欄位，見原始 JSON",
   "timeline.detail.agentThinking": "思考",
   "timeline.detail.agentToolInput": "工具輸入 · {{name}}",
   "timeline.detail.agentToolOutput": "工具輸出",

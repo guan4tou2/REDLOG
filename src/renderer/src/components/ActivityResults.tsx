@@ -1,3 +1,4 @@
+import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import type { ExportRequest } from '../../../core/export-plan'
 import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
@@ -49,7 +50,11 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh, active }:
     finally { if (live.current) setBusy(false) }
   }
   const sources = read.state.value?.items ?? []
+  // The event selected elsewhere (Timeline, another view) wins when it is one of
+  // this activity's sources; otherwise the most telling source, as before.
+  const shared = readSelectedEventId()
   const current = sources.find(r => r.event.id === selected)
+    ?? sources.find(r => r.event.id === shared)
     ?? sources.find(r => r.matched && ['command_end', 'tool_result', 'http_response'].includes(String(r.event.data.subtype)))
     ?? sources.find(r => r.matched)
     ?? sources[0]
@@ -58,6 +63,7 @@ function ActivitySources({ item, request, snapshot, onOpen, onRefresh, active }:
   useEffect(() => {
     if (!current) return
     if (selected === null) setSelected(current.event.id)
+    writeSelectedEventId(current.event.id)
     setVisited(prev => prev.has(current.event.id) ? prev : new Set([...prev, current.event.id]))
   }, [current?.event.id])
   return <div className="p-3 space-y-3 min-w-0 bg-redlog-elevated/40">

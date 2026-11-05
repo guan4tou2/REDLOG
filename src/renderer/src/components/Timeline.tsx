@@ -1,5 +1,6 @@
 import { Button } from './Button'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useI18n } from '../i18n'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
@@ -143,6 +144,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // a partner not yet paged in is simply absent — a graceful no-op.
   const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
+  // A selection made in another view that is older than the drawn range: it is
+  // loaded back to and opened exactly like an explicit "open in Timeline".
+  const [restoreFocusId, setRestoreFocusId] = useState<string | undefined>(undefined)
   const [dneFlag, setDneFlag] = useState(false)
   // §6: the Inspector is a separate layer from the selection. They used to be
   // the same state, so an operator could not walk the timeline by keyboard
@@ -1035,10 +1039,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   const initialFocusRestoreRef = useRef(false)
   useEffect(() => {
     try {
-      if (selectedEvent?.id) localStorage.setItem('redlog-timeline-focus-event', selectedEvent.id)
+      if (selectedEvent?.id) writeSelectedEventId(selectedEvent.id)
       // Nothing is selected on mount, so clearing then erased the id the
       // restore was about to read: clear only once the restore has run.
-      else if (initialFocusRestoreRef.current) localStorage.removeItem('redlog-timeline-focus-event')
+      else if (initialFocusRestoreRef.current) writeSelectedEventId(null)
     } catch { /* ignore */ }
   }, [selectedEvent])
   // On first successful load, if no explicit prop-driven focus is in play,
@@ -1050,10 +1054,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     initialFocusRestoreRef.current = true
     if (focusEventId || focusTs || selectedEvent) return
     try {
-      const id = localStorage.getItem('redlog-timeline-focus-event')
+      const id = readSelectedEventId()
       if (!id) return
       const evt = eventsMapRef.current.get(id)
-      if (evt) { setSelectedEvent(evt); setDetailOpen(true) }
+      if (evt) { setSelectedEvent(evt); setDetailOpen(true) } else setRestoreFocusId(id)
     } catch { /* ignore */ }
   }, [loading, events, focusEventId, focusTs, selectedEvent])
 
@@ -1337,15 +1341,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // Jumping from Search, Loot or Targets hands over an event to open. Opening
   // it is not a property of the lane track: the standard mode draws none, so
   // this must not wait for one to exist.
+  const wantedFocusId = focusEventId ?? restoreFocusId
   const focusSelectedRef = useRef<string | null>(null)
   useEffect(() => {
-    if (loading || !focusEventId || focusSelectedRef.current === focusEventId) return
-    const focused = events.find((e) => e.id === focusEventId)
+    if (loading || !wantedFocusId || focusSelectedRef.current === wantedFocusId) return
+    const focused = events.find((e) => e.id === wantedFocusId)
     if (!focused) return
-    focusSelectedRef.current = focusEventId
+    focusSelectedRef.current = wantedFocusId
     setSelectedEvent(focused)
     setDetailOpen(true)
-  }, [loading, focusEventId, events])
+  }, [loading, wantedFocusId, events])
 
   useEffect(() => {
     if (loading || didScrollToNow.current) return
@@ -1641,7 +1646,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     { state: 'loading'; loaded: number } | { state: 'cancelled' } | { state: 'failed'; eventId: string } | null
   >(null)
   const loadBackCancelRef = useRef(false)
-  const loadBackTo = useCallback(async (eventId: string): Promise<void> => {
+  // `quiet`: a remembered selection may be stale (filtered out, deleted); that is
+  // not worth a banner the operator never asked for.
+  const loadBackTo = useCallback(async (eventId: string, quiet = false): Promise<void> => {
     const select = (evt: RedLogEvent): void => {
       setSelectedEvent(evt)
       setDetailOpen(true)
@@ -1656,7 +1663,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     let loaded = 0
     try {
       const admitted = await window.redlog.events.matchIds({ ids: [eventId], filter, excludeHousekeeping: true })
-      if (!admitted.includes(eventId)) { setLoadBack(null); setOutsideFilter(true); return }
+      if (!admitted.includes(eventId)) { setLoadBack(null); if (!quiet) setOutsideFilter(true); return }
       while (!eventsMapRef.current.has(eventId) && pageCursorRef.current) {
         const from = pageCursorRef.current
         const page = await window.redlog.events.queryPage({ ...filter, excludeHousekeeping: true, limit: 1000, cursor: from })
@@ -1676,7 +1683,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       const evt = eventsMapRef.current.get(eventId)
       if (evt) select(evt)
     } catch {
-      if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack({ state: 'failed', eventId })
+      if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack(quiet ? null : { state: 'failed', eventId })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToEvent])
@@ -1697,10 +1704,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // one older than the drawn range is loaded back to rather than missed.
   const focusLoadBackRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!focusEventId || loading || focusLoadBackRef.current === focusEventId) return
-    focusLoadBackRef.current = focusEventId
-    if (!eventsMapRef.current.has(focusEventId)) void loadBackTo(focusEventId)
-  }, [focusEventId, loading, loadBackTo])
+    if (!wantedFocusId || loading || focusLoadBackRef.current === wantedFocusId) return
+    focusLoadBackRef.current = wantedFocusId
+    if (!eventsMapRef.current.has(wantedFocusId)) void loadBackTo(wantedFocusId, !focusEventId)
+  }, [wantedFocusId, loading, loadBackTo])
 
   if (loading && events.length === 0) {
     return (
