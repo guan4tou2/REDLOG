@@ -35,7 +35,7 @@
 ## S6 — 視覺重做(US5)
 
 - [x] T016 產出 token／版面差異清單(implementation-notes.md);結論:#575 即現行 token,基準=現行 app,Stitch 的對比不足處不照抄(FR-011)。
-- [ ] T017 共用外框(Header／Sidebar／Footer)對齊基準;既有 e2e 維持綠。
+- [x] T017 共用外框:標題列已是 40px(原型 h-10);狀態列 32→28px(原型 h-7),控制項保 24px 目標;側邊欄**維持 150px**——寬度是最長導覽標籤加快捷鍵欄,原型的 224/240px 只會在名稱與數字之間造成空白欄(Sidebar.tsx 註解)。尺寸由 `e2e/shared-frame.spec.ts` 鎖住。
 - [ ] T018 活動紀錄與時間軸頁面對齊基準。
 - [ ] T019 其餘頁面依批次對齊(各自一個 PR)。
 - [ ] T020 [US6] 為設定導航改型另寫規格(070):深層連結、`gen:settings-search`、e2e helper、`SettingsPage` 型別的遷移計畫;未完成前不動 `Settings.tsx` 結構。

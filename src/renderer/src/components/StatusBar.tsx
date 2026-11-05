@@ -210,7 +210,7 @@ export default function StatusBar(): JSX.Element {
     <div
       data-testid="status-bar"
       data-narrow={narrow ? 'true' : 'false'}
-      className={`h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 text-xs font-mono shrink-0 select-none whitespace-nowrap overflow-hidden ${narrow ? 'gap-2' : 'gap-3'}`}
+      className={`h-7 bg-redlog-bg border-t border-redlog-border flex items-center px-3 text-xs font-mono shrink-0 select-none whitespace-nowrap overflow-hidden ${narrow ? 'gap-2' : 'gap-3'}`}
     >
       {/* §9: persistent faults pinned to the left, split by whether they
           affect the evidence. Attention cannot be dismissed — it clears when
