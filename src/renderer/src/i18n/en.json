@@ -555,6 +555,7 @@
   "terminal.newTab": "New Terminal",
   "terminal.pickShell": "Choose the shell for the next pane",
   "terminal.notRecorded": "not recorded",
+  "timeline.standard.track": "All events",
   "timeline.mode.label": "Timeline view",
   "timeline.mode.standard": "Standard",
   "timeline.mode.lanes": "Swim lanes",

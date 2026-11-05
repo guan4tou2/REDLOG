@@ -555,6 +555,7 @@
   "terminal.newTab": "新增終端",
   "terminal.pickShell": "選擇下一個分頁要用的 shell",
   "terminal.notRecorded": "不會記錄",
+  "timeline.standard.track": "全部事件",
   "timeline.mode.label": "時間軸檢視",
   "timeline.mode.standard": "標準",
   "timeline.mode.lanes": "進階泳道",
