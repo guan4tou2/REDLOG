@@ -138,7 +138,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   useEffect(() => {
     // Dashboard-specific fetches — the shared counts (eventCount,
-    // scopeViolations, scopeConfigured) come from useAppCounts.
+    // scopeObservations, scopeConfigured) come from useAppCounts.
     window.redlog.config.get()
       .then((c) => setConfig(c as Record<string, Record<string, unknown>>))
       .catch(() => {})
@@ -152,7 +152,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
       }).catch(() => {})
     }
     loadAnchor()
-    // The shared counts (eventCount, chainLen, scopeViolations) are refreshed
+    // The shared counts (eventCount, chainLen, scopeObservations) are refreshed
     // by useAppCounts's own onNew subscription.
     const unsub = window.redlog.events.onNewBatch(() => { refreshCapture(); loadAnchor() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
@@ -235,7 +235,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
             No scope tile either, for the same reason and one more. Its four
             states were three different kinds of thing wearing one shape: a
-            violation count, which the sidebar badge carries next to the page
+            observation count, which the sidebar badge carries next to the page
             that opens it; a failed read and an undeclared scope, which are
             conditions and now sit in the panel above with somewhere to go and
             something to press; and "configured", a green box whose whole

@@ -49,7 +49,7 @@ beforeEach(() => {
     events: { getCount: vi.fn(async () => 0), onNewBatch: () => () => {} },
     loot: { getCount: vi.fn(async () => 0) },
     chain: { length: vi.fn(async () => 0) },
-    scope: { getViolationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
+    scope: { getObservationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
     config: { get: async () => structuredClone(CONFIG), save: async () => true },
     targetContext: { get: vi.fn(async () => null), onChange: () => () => {}, set: vi.fn() },
     project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => {} },

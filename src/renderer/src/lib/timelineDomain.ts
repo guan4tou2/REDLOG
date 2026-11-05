@@ -5,6 +5,7 @@
 // referentially transparent function. The time labels are the one
 // exception: they print in the display zone, which `lib/time` holds.
 
+import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { formatTime, formatDate, formatDateTime } from './time'
 import { compareMonotonicNs } from './eventOrder'
 
@@ -147,7 +148,7 @@ export function toLane(agentType: string, subtype?: string, pluginTypes?: Plugin
   // Scope violations are stored under agent_type='system' for historical reasons
   // (historical: a since-removed webhook filter watched 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
-  if (agentType === 'system' && (subtype === 'scope_violation' || subtype === 'scope_recomputed' || subtype === 'scope_cleared')) return 'scope'
+  if (agentType === 'system' && (subtype === SCOPE_VIOLATION_SUBTYPE || subtype === 'scope_recomputed' || subtype === 'scope_cleared')) return 'scope'
   if (LANES.includes(agentType as LaneId)) return agentType as LaneId
   // Plugin-registered event type maps into whichever built-in lane the plugin
   // declared (its `lane` field). Falls back to `system` when the plugin didn't
@@ -228,7 +229,7 @@ export function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: D
   const sub = e.data?.subtype as string | undefined
   // An in-scope hit is an adherence tally stored under the same subtype; only
   // a real violation earns the diamond.
-  if (e.agentType === 'system' && sub === 'scope_violation' && e.data?.distance !== 'in_scope') return { shape: 'diamond', scale: 1.25 }
+  if (e.agentType === 'system' && sub === SCOPE_VIOLATION_SUBTYPE && e.data?.distance !== 'in_scope') return { shape: 'diamond', scale: 1.25 }
   if (e.agentType === 'marker') {
     if (sub === 'amended') return { shape: 'circle', scale: 1 }
     const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
@@ -240,7 +241,7 @@ export function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: D
 
 export function shapeTitle(e: RedLogEvent, t: (k: string) => string, effectiveSeverity?: string): string {
   const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation' && e.data?.distance !== 'in_scope') return ` · ${t('timeline.shape.scopeViolation')}`
+  if (e.agentType === 'system' && sub === SCOPE_VIOLATION_SUBTYPE && e.data?.distance !== 'in_scope') return ` · ${t('timeline.shape.scopeObservation')}`
   if (e.agentType === 'marker') {
     if (sub === 'amended') return ''
     const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
@@ -260,8 +261,8 @@ export function ioTitle(m: { io: IoMark; fail: boolean }, t: (k: string) => stri
 export function computeBadges(
   evt: RedLogEvent,
   brokenAtId?: string | null,
-  clearedViolations?: ReadonlySet<string>,
-  supersededViolations?: ReadonlySet<string>
+  clearedObservations?: ReadonlySet<string>,
+  supersededObservations?: ReadonlySet<string>
 ): EventBadge[] {
   const b: EventBadge[] = []
   const d = (evt.data as Record<string, unknown> | undefined) ?? {}
@@ -291,11 +292,11 @@ export function computeBadges(
   if (evt.agentType === 'agent' && d.is_sidechain === true) {
     b.push({ icon: '↪', reason: 'subagent (Task tool) turn — separate reasoning thread', key: 'sidechain' })
   }
-  if (evt.agentType === 'system' && sub === 'scope_violation' && d.judged === 'retroactive') {
+  if (evt.agentType === 'system' && sub === SCOPE_VIOLATION_SUBTYPE && d.judged === 'retroactive') {
     b.push({ icon: '⟲', reasonKey: 'timeline.badge.retroactive', key: 'retro' })
   }
-  if (evt.agentType === 'system' && sub === 'scope_violation'
-      && (clearedViolations?.has(evt.id) || supersededViolations?.has(evt.id))) {
+  if (evt.agentType === 'system' && sub === SCOPE_VIOLATION_SUBTYPE
+      && (clearedObservations?.has(evt.id) || supersededObservations?.has(evt.id))) {
     b.push({ icon: '✓', reasonKey: 'timeline.badge.cleared', key: 'cleared' })
   }
   return b

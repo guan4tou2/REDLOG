@@ -21,7 +21,7 @@ export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   useDisplayZone()
-  const { eventCount, loggedCount, scopeViolations, scopeConfigured, scopeUnknown, loading: countsLoading } = useAppCounts()
+  const { eventCount, loggedCount, scopeObservations, scopeConfigured, scopeUnknown, loading: countsLoading } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
@@ -339,10 +339,10 @@ export default function StatusBar(): JSX.Element {
         // floor as the HUD toggle beside it (e2e/ui-closeout hit-area check).
         className="flex items-center gap-1.5 shrink-0 min-w-6 min-h-6 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim/40 transition-colors"
       >
-        {scopeViolations > 0 ? (
+        {scopeObservations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-red-400/80'}>{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-red-400/80'}>{t('statusBar.scopeObservations', { count: scopeObservations })}</span>
           </>
         ) : scopeUnknown ? (
           <>

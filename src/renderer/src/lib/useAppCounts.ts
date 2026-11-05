@@ -39,7 +39,7 @@ export interface AppCounts {
    *  number the word 證據鏈 actually means. */
   chainLen: number
   lootCount: number
-  scopeViolations: number
+  scopeObservations: number
   scopeConfigured: boolean
   /** The violation count or the scope configuration could not be read. */
   scopeUnknown: boolean
@@ -52,15 +52,15 @@ export function useAppCounts(): AppCounts {
   const [loggedCount, setLoggedCount] = useState(0)
   const [chainLen, setChainLen] = useState(0)
   const [lootCount, setLootCount] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
+  const [scopeObservations, setScopeObservations] = useState(0)
   const [scopeConfigured, setScopeConfigured] = useState(false)
-  const [violationsFailed, setViolationsFailed] = useState(false)
+  const [observationsFailed, setObservationsFailed] = useState(false)
   const [configuredFailed, setConfiguredFailed] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const readViolations = useCallback(() => window.redlog.scope.getViolationCount()
-    .then((n) => { setScopeViolations(n); setViolationsFailed(false) })
-    .catch(() => setViolationsFailed(true)), [])
+  const readObservations = useCallback(() => window.redlog.scope.getObservationCount()
+    .then((n) => { setScopeObservations(n); setObservationsFailed(false) })
+    .catch(() => setObservationsFailed(true)), [])
   const readConfigured = useCallback(() => window.redlog.scope.isConfigured()
     .then((v) => { setScopeConfigured(v); setConfiguredFailed(false) })
     .catch(() => setConfiguredFailed(true)), [])
@@ -70,9 +70,9 @@ export function useAppCounts(): AppCounts {
     window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {}),
     window.redlog.chain.length().then(setChainLen).catch(() => {}),
     window.redlog.loot.getCount().then(setLootCount).catch(() => {}),
-    readViolations(),
+    readObservations(),
     readConfigured()
-  ]).then(() => setLoading(false)), [readViolations, readConfigured])
+  ]).then(() => setLoading(false)), [readObservations, readConfigured])
 
   useEffect(() => {
     void load()
@@ -81,13 +81,13 @@ export function useAppCounts(): AppCounts {
       window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
       window.redlog.chain.length().then(setChainLen).catch(() => {})
       window.redlog.loot.getCount().then(setLootCount).catch(() => {})
-      void readViolations()
+      void readObservations()
     })
     const onRecount = (): void => { void load() }
     // A saved config can change what "configured" means (a scope target added
     // from Settings or from the Targets view). Without this the status bar
     // kept saying "scope not set" until something else forced a recount.
-    const onConfigSaved = (): void => { void readConfigured(); void readViolations() }
+    const onConfigSaved = (): void => { void readConfigured(); void readObservations() }
     window.addEventListener(RECOUNT_EVENT, onRecount)
     window.addEventListener('redlog:config-saved', onConfigSaved)
     return () => {
@@ -95,11 +95,11 @@ export function useAppCounts(): AppCounts {
       window.removeEventListener(RECOUNT_EVENT, onRecount)
       window.removeEventListener('redlog:config-saved', onConfigSaved)
     }
-  }, [load, readViolations, readConfigured])
+  }, [load, readObservations, readConfigured])
 
   return {
-    eventCount, loggedCount, chainLen, lootCount, scopeViolations, scopeConfigured,
-    scopeUnknown: violationsFailed || configuredFailed,
+    eventCount, loggedCount, chainLen, lootCount, scopeObservations, scopeConfigured,
+    scopeUnknown: observationsFailed || configuredFailed,
     loading, retry: recountAll
   }
 }

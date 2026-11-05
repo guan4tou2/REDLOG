@@ -150,7 +150,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       expect(events!.getEventCount()).toBeGreaterThan(countBefore)
       const [cleared] = rowsOfSubtype('scope_cleared')
       expect(cleared).toMatchObject({ violation_id: v.id, distance_before: 'excluded', distance_after: 'in_scope' })
-      expect(runner!.countActiveScopeViolations()).toBe(0)
+      expect(runner!.countActiveScopeObservations()).toBe(0)
     })
 
     it('clears a violation whose source row has been pruned', async () => {
@@ -198,8 +198,8 @@ describe.skipIf(!available)('running a scope recompute', () => {
         source: 'shell', distance: 'in_scope', authority: 'unknown', severity: 'clean',
         _causes: [e.id]
       }, { ...IDS, targetId: 'evil.example' })
-      expect(runner!.countActiveScopeViolations(), 'in_scope counted as a violation').toBe(0)
-      expect(runner!.queryScopeViolationRows().rows).toHaveLength(0)
+      expect(runner!.countActiveScopeObservations(), 'in_scope counted as a violation').toBe(0)
+      expect(runner!.queryScopeObservationRows().rows).toHaveLength(0)
 
       await runner!.runScopeRecompute({
         before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
@@ -298,7 +298,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       await runner!.runScopeRecompute({
         before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
       })
-      let rows = runner!.queryScopeViolationRows().rows
+      let rows = runner!.queryScopeObservationRows().rows
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ judged: 'retroactive', target: 'evil.example', cleared: false })
       expect(rows[0].command).toContain('curl')
@@ -306,9 +306,9 @@ describe.skipIf(!available)('running a scope recompute', () => {
       await runner!.runScopeRecompute({
         before: scope(['*.target.com'], ['evil.example']), after: scope(['*.target.com', 'evil.example']), ...IDS
       })
-      rows = runner!.queryScopeViolationRows().rows
+      rows = runner!.queryScopeObservationRows().rows
       expect(rows[0].cleared).toBe(true)
-      expect(runner!.countActiveScopeViolations()).toBe(0)
+      expect(runner!.countActiveScopeObservations()).toBe(0)
       expect(e).toBeTruthy()
     })
 
@@ -316,10 +316,10 @@ describe.skipIf(!available)('running a scope recompute', () => {
     // there are more, it has to know, or the list and its count read as all.
     it('says when the list is only the newest records', () => {
       for (const target of ['a.example', 'b.example', 'c.example']) liveViolation(target, shell(target).id)
-      const page = runner!.queryScopeViolationRows(2)
+      const page = runner!.queryScopeObservationRows(2)
       expect(page.rows).toHaveLength(2)
       expect(page.truncated).toBe(true)
-      expect(runner!.queryScopeViolationRows(3).truncated).toBe(false)
+      expect(runner!.queryScopeObservationRows(3).truncated).toBe(false)
     })
 
     // G-S3: every in-scope hit is chained under the same subtype. The window
@@ -333,8 +333,8 @@ describe.skipIf(!available)('running a scope recompute', () => {
         const s = shell('www.target.com', `curl www.target.com/${i}`)
         liveViolation('www.target.com', s.id, 'in_scope')
       }
-      expect(runner!.countActiveScopeViolations()).toBe(1)
-      const page = runner!.queryScopeViolationRows(2)
+      expect(runner!.countActiveScopeObservations()).toBe(1)
+      const page = runner!.queryScopeObservationRows(2)
       expect(page.rows.map((r) => r.target)).toEqual(['evil.example'])
       expect(page.truncated).toBe(false)
     })
@@ -347,7 +347,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       liveViolation('a.example', a.id, 'adjacent_domain')
       liveViolation('a.example', a.id, 'excluded')
       liveViolation('b.example', shell('b.example').id)
-      const page = runner!.queryScopeViolationRows(2)
+      const page = runner!.queryScopeObservationRows(2)
       expect(page.rows.map((r) => [r.target, r.distance])).toEqual([['b.example', 'excluded'], ['a.example', 'excluded']])
       expect(page.truncated).toBe(false)
     })

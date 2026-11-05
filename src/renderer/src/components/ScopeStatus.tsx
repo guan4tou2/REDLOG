@@ -1,3 +1,4 @@
+import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
@@ -8,7 +9,7 @@ import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { useReadState } from '../lib/readState'
 
-const SCOPE_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
+const SCOPE_SUBTYPES = new Set([SCOPE_VIOLATION_SUBTYPE, 'scope_cleared', 'scope_recomputed'])
 
 /** What the last boundary change did to what was already recorded.
  *
@@ -64,7 +65,7 @@ function RecomputeBanner({ summary, onOpenInTimeline }: {
   )
 }
 
-interface ViolationRow {
+interface ObservationRow {
   id: string
   target: string
   command: string
@@ -78,14 +79,14 @@ interface ViolationRow {
 export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
   const loadScope = async () => {
     const [configured, result, standing, chainLen, lastRecompute] = await Promise.all([
-      window.redlog.scope.isConfigured(), window.redlog.scope.getViolations(),
-      window.redlog.scope.getViolationCount(), window.redlog.chain.length(),
+      window.redlog.scope.isConfigured(), window.redlog.scope.getObservations(),
+      window.redlog.scope.getObservationCount(), window.redlog.chain.length(),
       window.redlog.scope.getLastRecompute()
     ])
-    return { configured, violations: result.rows as ViolationRow[], truncated: result.truncated, standing, chainLen, lastRecompute }
+    return { configured, observations: result.rows as ObservationRow[], truncated: result.truncated, standing, chainLen, lastRecompute }
   }
   const read = useReadState<Awaited<ReturnType<typeof loadScope>> | null>(loadScope)
-  const { configured = false, violations = [], truncated = false, standing = 0, chainLen = 0, lastRecompute = null } = read.state.value ?? {}
+  const { configured = false, observations = [], truncated = false, standing = 0, chainLen = 0, lastRecompute = null } = read.state.value ?? {}
 
   // Ephemeral: whether the withdrawn rows are expanded. Not persisted and not
   // navigation state — reopening the page starts from the active rows again,
@@ -94,7 +95,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const detail = useReadState(async () => {
     const [event] = await window.redlog.events.getById([expandedId!])
-    if (!event) throw new Error('Violation unavailable')
+    if (!event) throw new Error('Observation unavailable')
     const ids = Array.isArray(event.data._causes) ? event.data._causes.filter((id): id is string => typeof id === 'string') : []
     const causes = ids.length ? await window.redlog.events.getById(ids) : []
     const source = causes.find(row => row.agentType === 'shell' && typeof row.data.command === 'string')
@@ -104,14 +105,14 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
 
   // The store holds more violation records than the page read.
 
-  // How many violations stand across the whole chain: the status bar's number.
+  // How many observations stand across the whole chain: the status bar's number.
   // The rows are only the newest records, so a count or an "all within scope"
   // taken from them alone could contradict it (TESTING.md G-S3).
 
   const { t } = useI18n()
 
-  const active = violations.filter((v) => !v.cleared)
-  const cleared = violations.filter((v) => v.cleared)
+  const active = observations.filter((v) => !v.cleared)
+  const cleared = observations.filter((v) => v.cleared)
 
   // §9's list contract, same as Findings/Loot/Search. The violation list is
   // the one an operator reaches for under time pressure — "which rule did this
@@ -122,11 +123,11 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   // Paged like every other list (§9): the page used to cut at 10 of up to 500
   // with nothing saying so (Constitution IV).
   const paged = useInfiniteScroll(showCleared ? [...active, ...cleared] : active)
-  const shownViolations = paged.visible
+  const shownObservations = paged.visible
   const listNav = useListKeyboard({
-    count: shownViolations.length,
-    onActivate: (i) => { const v = shownViolations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
-    onJumpToTimeline: (i) => { const v = shownViolations[i]; if (v) onOpenInTimeline?.(v.timestamp) }
+    count: shownObservations.length,
+    onActivate: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
+    onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) }
   })
 
   useEffect(() => {
@@ -173,7 +174,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <span className="text-redlog-text-dim text-xs bg-redlog-elevated px-2 py-0.5 rounded">{t('scope.notSet')}</span>
           )}
         </div>
-        {configured && standing === 0 && violations.length === 0 && (
+        {configured && standing === 0 && observations.length === 0 && (
           <p className="text-green-400 text-xs">{t('scope.allInScope')}</p>
         )}
         {standing > 0 && (
@@ -182,7 +183,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
           // screen — the wording carries the severity, the number stays legible.
           <div className="text-sm flex items-baseline gap-1.5">
             <span className="font-mono tabular-nums text-redlog-text">{standing}</span>
-            <span className="text-redlog-text-dim">{t('scope.violationsCountLabel')}</span>
+            <span className="text-redlog-text-dim">{t('scope.observationsCountLabel')}</span>
             {cleared.length > 0 && (
               <button
                 onClick={() => setShowCleared((v) => !v)}
@@ -211,15 +212,15 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
         </div>
       </div>
 
-      {shownViolations.length > 0 && (
+      {shownObservations.length > 0 && (
         <div className="space-y-1">
-          <h3 className="text-sm text-redlog-text-dim">{t('scope.recentViolations')}</h3>
+          <h3 className="text-sm text-redlog-text-dim">{t('scope.recentObservations')}</h3>
           <div
             className="space-y-1"
             {...listNav.containerProps}
-            aria-label={t('scope.violationsLabel', { count: paged.total })}
+            aria-label={t('scope.observationsLabel', { count: paged.total })}
           >
-          {shownViolations.map((v, i) => {
+          {shownObservations.map((v, i) => {
             const rowProps = listNav.itemProps(i)
             return (
             <div key={v.id}>
@@ -259,7 +260,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
                 {formatTime(v.sourceTs ?? v.timestamp, { seconds: true })}
               </div>
             </button>
-            {expandedId === v.id && <div className="px-3 py-2 space-y-2 text-xs" data-testid="scope-violation-detail">
+            {expandedId === v.id && <div className="px-3 py-2 space-y-2 text-xs" data-testid="scope-observation-detail">
               <p className="text-redlog-text-dim">{t(`scope.distance.${['excluded', 'adjacent_domain', 'adjacent_subnet', 'unrelated'].includes(v.distance) ? v.distance : 'unknown'}`)}{detail.state.value?.id === v.id && detail.state.value.rule ? ` · ${detail.state.value.rule}` : ''}</p>
               {detail.state.phase === 'loading' && <LoadingSpinner />}
               {detail.state.phase === 'failed' && <div role="alert">{t('scope.detailFailed')} <Button level="quiet" size="compact" onClick={detail.retry}>{t('common.retry')}</Button></div>}

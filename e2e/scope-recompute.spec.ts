@@ -19,7 +19,7 @@ interface ScopeBridge {
     save: (c: Record<string, unknown>) => Promise<boolean>
   }
   scope: {
-    getViolations: () => Promise<{ rows: Array<{ judged: string; cleared: boolean; target: string }>; truncated: boolean }>
+    getObservations: () => Promise<{ rows: Array<{ judged: string; cleared: boolean; target: string }>; truncated: boolean }>
     getLastRecompute: () => Promise<Record<string, unknown> | null>
   }
   chain: { verify: () => Promise<{ ok: boolean }> }
@@ -110,7 +110,7 @@ test.describe.serial('recomputing scope after the boundary moves', () => {
 
     // The violations are still there — withdrawn, not deleted.
     const { rows } = await page.evaluate(() =>
-      (window as unknown as { redlog: ScopeBridge }).redlog.scope.getViolations())
+      (window as unknown as { redlog: ScopeBridge }).redlog.scope.getObservations())
     expect(rows.length).toBe(3)
     expect(rows.every((r) => r.cleared)).toBe(true)
     // And the page leads with what still stands, which is now nothing.

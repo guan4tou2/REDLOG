@@ -37,7 +37,7 @@ import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function Sidebar({ active, onNavigate, projectId }: SidebarProps): JSX.Element {
-  const { lootCount, scopeViolations } = useAppCounts()
+  const { lootCount, scopeObservations } = useAppCounts()
   const { t } = useI18n()
 
   // §4: 12% tint + same-colour text, the same vocabulary the badges elsewhere
@@ -61,7 +61,7 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
     dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
     terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
     screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', {count:lootCount}) },
-    targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.violationsBadge',{count:scopeViolations}) },
+    targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeObservations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.observationsBadge',{count:scopeObservations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }

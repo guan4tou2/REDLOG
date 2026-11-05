@@ -3,6 +3,7 @@
 // search index can import it directly without pulling in 4000 lines of
 // component code.
 
+import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import en from '../i18n/en.json'
 import { AMENDABLE_FIELDS } from './markerFold'
 import { firstStringArg } from './timelineDomain'
@@ -213,11 +214,11 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       return `agent: ${sub}`
     }
     case 'system':
-      if (d.subtype === 'scope_violation') {
+      if (d.subtype === SCOPE_VIOLATION_SUBTYPE) {
         // A hit that landed inside the scope is stored under the same subtype
         // so adherence can be counted; it is a tally, not a violation, and
         // must not read as one.
-        const key = d.distance === 'in_scope' ? 'eventTitle.scopeInScope' : 'eventTitle.scopeViolation'
+        const key = d.distance === 'in_scope' ? 'eventTitle.scopeInScope' : 'eventTitle.scopeObservation'
         return t(key, { target: String(d.target || d.command || '') })
       }
       if (d.subtype === 'ip_transition') return `⇋ ${d.description || t('eventTitle.ipTransition')}`

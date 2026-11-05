@@ -37,7 +37,7 @@ function installBridge(): void {
     ip: { getStatus: async () => null, onStatus: () => noop },
     recording: { get: async () => true, onChange: () => noop },
     overlay: { isVisible: async () => false, onVisibilityChanged: () => noop },
-    scope: { getViolationCount: async () => 0, isConfigured: async () => true, getLastRecompute: async () => null },
+    scope: { getObservationCount: async () => 0, isConfigured: async () => true, getLastRecompute: async () => null },
     loot: { getCount: async () => 0 },
     config: { get: async () => ({}) }
   }

@@ -39,8 +39,8 @@ import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { readProfileFile } from '../core/profile-file'
 import type { ProfileImportResult } from '../core/profile-import'
-import { runScopeRecompute,queryScopeViolationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
-import { activeViolationCount, invalidateViolationCount } from '../core/scope-violation-count'
+import { runScopeRecompute,queryScopeObservationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { activeObservationCount, invalidateObservationCount } from '../core/scope-observation-count'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/alert/policies'
@@ -738,7 +738,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     captureOnCommand: config.screenshot.captureOnCommand ?? false
   })
 
-  invalidateViolationCount()
+  invalidateObservationCount()
   resetVisibilitySignalsCache()
   recomputePending = null
   const scopeTargets = snapshotScope(config).targets
@@ -1705,8 +1705,8 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (projectRuntime.project() ? queryScopeViolationRows() : { rows: [], truncated: false }))
-  ipcMain.handle('scope:getViolationCount', () => (projectRuntime.project() ? activeViolationCount() : 0))
+  ipcMain.handle('scope:getObservations', () => (projectRuntime.project() ? queryScopeObservationRows() : { rows: [], truncated: false }))
+  ipcMain.handle('scope:getObservationCount', () => (projectRuntime.project() ? activeObservationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (projectRuntime.project() ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
   // The scope file merged into the lists, as the app enforces it. Only the
