@@ -980,6 +980,7 @@
   "plugins.globalNote": "Switches here apply to every project on this computer. Each project's own capture sources are set under {{page}}.",
   "plugins.loading": "Loading plugins…",
   "plugins.loadFailed": "The plugin list could not be loaded. This does not mean there are none.",
+  "plugins.catalogLoadFailed": "The official AI integrations could not be listed, so they are missing below. Your own plugins are unaffected.",
   "plugins.failedWhy": "Nothing was changed. The list below is what RedLog read back.",
   "plugins.search": "Search plugins by name, id, author or description",
   "plugins.searchPlaceholder": "Search plugins…",

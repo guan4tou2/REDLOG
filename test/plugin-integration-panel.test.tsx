@@ -165,3 +165,32 @@ describe('official integrations on the plugin page (Spec 066)', () => {
     await waitFor(() => expect(screen.getByTestId('plugin-health-official-ai-codex').textContent).toBe(en['plugins.healthAxis.unknown']))
   })
 })
+
+// Spec 067 US7: the catalog failing must not take the user's plugins with it.
+describe('official catalog failure (Spec 067)', () => {
+  beforeEach(() => {
+    _resetCaptureHealth(); toasts.length = 0
+    Object.values(api).forEach((f) => f.mockReset()); health.mockReset(); health.mockResolvedValue(snapshot([]))
+  })
+  afterEach(() => cleanup())
+  const userPlugin = { ...loadedView(), id: 'mine', name: 'My plugin', source: 'user' }
+
+  it('still lists the user plugins and says why the integrations are missing, with a retry', async () => {
+    api.list.mockResolvedValue([userPlugin])
+    api.officialAgents.mockRejectedValueOnce(new Error('ENOENT: optional-ai'))
+    draw()
+    await screen.findByText('My plugin')
+    expect(screen.queryByTestId('plugins-load-error')).toBeNull()
+    expect(screen.getByTestId('plugins-catalog-error').textContent).toContain('ENOENT: optional-ai')
+    api.officialAgents.mockResolvedValue([entry('not-installed')])
+    fireEvent.click(screen.getByTestId('plugins-catalog-retry'))
+    await screen.findByTestId('plugin-details-official-ai-codex')
+    expect(screen.queryByTestId('plugins-catalog-error')).toBeNull()
+    expect(screen.getByText('My plugin')).toBeTruthy()
+  })
+  it('a failing plugin list is still the page-level load error', async () => {
+    api.list.mockRejectedValue(new Error('list down')); api.officialAgents.mockResolvedValue([])
+    draw()
+    expect((await screen.findByTestId('plugins-load-error')).textContent).toContain('list down')
+  })
+})

@@ -444,6 +444,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'plugins.reload',
     'plugins.globalNote',
     'settings.pageCaptureControl',
+    'plugins.catalogLoadFailed',
     'plugins.loading',
     'plugins.empty',
     'plugins.searchPlaceholder',
