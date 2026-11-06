@@ -1,3 +1,4 @@
+import { commandOutputState } from '../../../core/content-contract'
 import { useReadState } from '../lib/readState'
 import { EventContentReader } from './EventContentReader'
 import { Button } from './Button'
@@ -178,17 +179,17 @@ export function EvidenceFileDetail({ data }: { data: Record<string, unknown> }):
  *  command's output, so an empty panel is never ambiguous. */
 export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
-  const len = typeof io?.len === 'number' ? (io.len as number) : null
-  const bracketed = len !== null && !io?.unbracketed
+  const state = commandOutputState({ source: builtin ? 'builtin-terminal' : undefined, io })
+  const len = typeof io?.len === 'number' ? (io.len as number) : 0
 
-  if (bracketed && len > 0) {
+  if (state === 'recorded') {
     return (
       <p className="text-xs text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
         {t('timeline.detail.ioOnDisk', { size: formatBytes(len) })}
       </p>
     )
   }
-  if (bracketed && len === 0) {
+  if (state === 'empty') {
     return (
       <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
         {t('timeline.detail.ioNone')}
@@ -197,7 +198,7 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
   }
   return (
     <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-      {t(builtin ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
+      {t(state === 'unbracketed' ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
     </p>
   )
 }

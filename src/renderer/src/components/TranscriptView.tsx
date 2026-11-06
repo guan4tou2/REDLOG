@@ -1,4 +1,4 @@
-import { capturedContentIsPartial } from '../../../core/content-contract'
+import { capturedContentIsPartial, commandOutputState, responseBodyState } from '../../../core/content-contract'
 import { operationPairKey } from '../../../core/operation-pair-key'
 import { buildToolPairIndex } from '../lib/toolPairing'
 import type { ToolPairKey } from '../../../core/db/events'
@@ -208,10 +208,17 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       let output: string | undefined
       let outputBytes: number | undefined
       if (inlineOut) { output = inlineOut; outputBytes = inlineOut.length }
-      else if (io && typeof io.len === 'number' && !io.unbracketed && io.len > 0) {
-        outputNote = 'recorded'; outputBytes = io.len
-      } else if (d.source === 'builtin-terminal') outputNote = 'unbracketed'
-      else outputNote = 'uncaptured'
+      else {
+        // The same question the Timeline asks, answered by the same function
+        // (#591): nothing printed is not "not captured", and output saved by
+        // reference is not either.
+        const state = commandOutputState(d)
+        if (state === 'recorded') { outputNote = 'recorded'; outputBytes = io?.len }
+        else if (state === 'empty') outputNote = 'empty'
+        else if (state === 'saved') outputNote = 'saved'
+        else if (state === 'unbracketed') outputNote = 'unbracketed'
+        else if (state === 'not-captured') outputNote = 'uncaptured'
+      }
       out.push({
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
@@ -312,7 +319,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
         if (b) {
           b.output = preview || undefined
           b.outputBytes = len
-          b.outputNote = preview ? undefined : 'uncaptured'
+          const body = responseBodyState(d)
+          b.outputNote = body === 'inline' ? undefined : body === 'not-captured' ? 'uncaptured' : body
           b.meta = `${d.status}${d.duration_ms != null ? ` · ${d.duration_ms}ms` : ''}`
           b.events.push(e)
           if (flow) pendingHttp.delete(flow)
