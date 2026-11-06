@@ -68,7 +68,7 @@ describe('empty bookmarks', () => {
   })
 })
 
-it('returns to the narrow list without losing search, selection, scroll or an editing draft', async () => {
+it('returns to the list without losing search, selection, scroll or an editing draft', async () => {
   let width = 600
   let resized = () => {}
   vi.spyOn(HTMLElement.prototype,'clientWidth','get').mockImplementation(()=>width)
@@ -92,8 +92,9 @@ it('returns to the narrow list without losing search, selection, scroll or an ed
     expect(list.scrollTop).toBe(48)
     fireEvent.click(screen.getByText('Current mark'))
     expect((screen.getByRole('textbox',{name:'Note'}) as HTMLTextAreaElement).value).toBe('unsaved draft')
+    // One column at every width: a wider window does not bring a second pane back.
     act(() => { width=1200; resized() })
-    expect(screen.queryByRole('button',{name:'Back to bookmarks'})).toBeNull()
+    expect(screen.getByRole('button',{name:'Back to bookmarks'})).toBeTruthy()
     expect((screen.getByRole('textbox',{name:'Note'}) as HTMLTextAreaElement).value).toBe('unsaved draft')
   } finally { vi.restoreAllMocks(); vi.unstubAllGlobals() }
 })
@@ -112,4 +113,18 @@ it('does not report a pending or failed bookmark read as an empty collection, an
   fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
   expect(await screen.findByText('Current mark')).toBeTruthy()
   expect(screen.queryByRole('alert')).toBeNull()
+})
+
+it('is one column at any width: search is there from the first bookmark, the list shows the note, and a bookmark opens in place of the list', async () => {
+  window.redlog.bookmarks.list = vi.fn(async () => [{ ...marks[0], note: 'first line\nsecond line' }])
+  render(<I18nProvider><BookmarksView /></I18nProvider>)
+  expect(await screen.findByPlaceholderText('Search bookmarks (title / URL / note)')).toBeTruthy()
+  expect(screen.getByText('first line')).toBeTruthy()
+  expect(screen.queryByText('second line')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Back to bookmarks' })).toBeNull()
+  fireEvent.click(screen.getByText('Current mark'))
+  expect(screen.getByRole('button', { name: 'Back to bookmarks' })).toBeTruthy()
+  expect(screen.getByRole('listbox', { hidden: true }).closest('[hidden]')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Back to bookmarks' }))
+  expect(screen.getByRole('listbox')).toBeTruthy()
 })
