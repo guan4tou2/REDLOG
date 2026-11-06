@@ -93,3 +93,20 @@ CaptureHealth 不得因版面改版移除的操作:開關、安裝／移除與�
 
 已知但不屬於 Stitch 差異:選取共用靠 `localStorage` 單一 id(`lib/selectedEvent.ts`),App 層沒有單一 `selectedEventId` state;返回保留活動紀錄位置缺專門測試。
 
+### 更正:「未見」與「確認」分開(2026-11-07,核對原始碼與探測)
+
+上表由唯讀代理比對,其中「React 沒有」多為「未見」。逐項核對後:
+
+| 項目 | 結果 |
+|---|---|
+| 時間軸詳情上一個／下一個按鈕 | **已實作**(`TimelineEventInspector.tsx` 的 `detail-step-prev`／`detail-step-next`),不重做 |
+| 活動紀錄日期分隔列 | **已實作**(`ActivityResults.tsx` 的 `activity-day`),不重做 |
+| Pivot 讀取失敗與重試 | **已實作**(`usePivotRead`);IP 本身的重試是缺的,已補 |
+| 返回保留位置 e2e | **已有**(`e2e/activity-return-state.spec.ts`:查詢、展開列、捲動);補了「Reader 定位後返回」與「換專案不沿用」兩個情境 |
+| 換專案是否沿用選取事件 | 選取 id 是全域 `localStorage` 單一 key,換專案後該 id 仍在但在新專案不匹配任何事件;e2e 確認新專案的時間軸不開詳情、活動紀錄無 Reader、查詢為空。不需重構 |
+| Reader 定位到時間軸後返回 | Reader、查詢、展開列都恢復(e2e 已鎖) |
+| 時間軸 → Reader 額外入口 | 暫緩,先驗證是否需要:Inspector 已有完整內容 Reader,避免重複入口 |
+| 終端機緩衝區搜尋計數 | 已加(`SearchAddon.onDidChangeResults`);**只在 jsdom 驗證**,本機 PTY 環境讓終端機 e2e 在 `main` 上就失敗,真實 xterm 上的表現待 CI |
+
+交付包 ZIP 的權威等級(使用者 2026-11-07 檢查):01 是舊雙欄稿,不得採用(專案啟動最終稿是單欄);04／05 含「疑似越界」「阻斷」「已錨定」示範;06 含未建立契約的「複製脫敏」;08 含「已確認路由鏈」示範;07 含「被動旁路審計」提示。以上文案一律不採用;02、03 為提案,不取代已完成的 React。
+
