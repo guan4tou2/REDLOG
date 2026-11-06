@@ -345,8 +345,6 @@
   "overlay.net": "NET",
   "overlay.network": "Network",
   "overlay.wired": "Wired",
-  "overlay.topology": "Topology",
-  "overlay.internalNet": "internal",
   "overlay.lastCheck": "Last check",
   "browser.launch": "Launch capture browser",
   "browser.stop": "Stop Browser",

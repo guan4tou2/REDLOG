@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
-import { usePivots } from './lib/usePivots'
-import { formatTime, useDisplayZone } from './lib/time'
+import { usePivotRead } from './lib/usePivots'
+import { formatTime, formatFreshness, useDisplayZone } from './lib/time'
+import { useTick } from './lib/useTick'
 import { hudWindowWidth, hudWindowHeight } from '../../core/overlay-layout'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
@@ -34,7 +35,9 @@ export default function OverlayApp(): JSX.Element {
   // washed out by the compositor.
   const [passThrough, setPassThrough] = useState(false)
   const [passThroughOpacity, setPassThroughOpacity] = useState(0.4)
-  const pivots = usePivots()
+  const pivotRead = usePivotRead()
+  useTick()   // keeps "last seen" current
+  const pivots = pivotRead.pivots
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Inline confirmation for the instant mark. Without it the button gives no
   // sign anything happened — there is no dialog and no window change, which is
@@ -299,7 +302,7 @@ export default function OverlayApp(): JSX.Element {
               {latestPivot && (
                 <span
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', clipPath: 'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', background: hexA(CYAN, 0.2), border: `1px solid ${hexA(CYAN, 0.6)}`, boxShadow: `0 0 5px ${hexA(CYAN, 0.2)}`, maxWidth: 160 }}
-                  title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
+                  title={pivots.map((p) => `${p.tool} ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
                 >
                   <span style={{ color: CYAN, fontSize: fs(9), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
                   <span style={{ color: '#bff2ff', fontSize: fs(9.5), fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
@@ -349,38 +352,33 @@ export default function OverlayApp(): JSX.Element {
                 <p style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint', { page: t('settings.pageNetwork') })}</p>
               )}
 
-              {pivots.length > 0 && (() => {
-                const chain = [...pivots].sort((a, b) => a.ts - b.ts)
-                const arrow = <span style={{ color: hexA(CYAN, 0.8), fontSize: fs(11), flexShrink: 0 }}>▸</span>
-                const nodeClip = 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)'
-                const pill = (color: string, bg: string, brd: string, top: string, sub: string): JSX.Element => (
-                  <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', clipPath: nodeClip, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
-                    <span style={{ color, fontSize: fs(10), fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 134 }}>{top}</span>
-                    <span style={{ color: MUTED, fontSize: fs(8), letterSpacing: '0.08em' }}>{sub.toUpperCase()}</span>
-                  </span>
-                )
-                return (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
-                      <span style={{ color: CYAN, fontSize: fs(10), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                      <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('overlay.topology').toUpperCase()}</span>
-                      <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
-                    </div>
-                    {/* our host outward: internal → external egress → pivot hops */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, rowGap: 6 }}>
-                      {pill('#a6e8c6', hexA(HUD.green, 0.2), hexA(HUD.green, 0.6), status?.internalIP ?? t('overlay.internalNet'), t('overlay.internalNet'))}
-                      {arrow}
-                      {pill('#eaf7fb', 'rgba(255,255,255,0.09)', 'rgba(150,170,180,0.6)', status?.externalIP ?? '—', t('overlay.external'))}
-                      {chain.map((p) => (
-                        <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          {arrow}
-                          {pill('#d6f7fd', hexA(CYAN, 0.22), hexA(CYAN, 0.6), p.route ? `${p.via} (${p.route})` : p.via, p.tool)}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                )
-              })()}
+              {/* Relay nodes seen in commands, listed — not drawn as a route. A
+                  detected node does not say which node forwards to which, nor
+                  that its channel is up, so no arrows and no health. A failed
+                  read says so instead of looking like "none". */}
+              {pivotRead.status === 'error' && (
+                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8 }}>⚠ {pivots.length ? t('pivot.readFailedStale', { count: pivots.length }) : t('pivot.readFailed')}</p>
+              )}
+              {pivots.length > 0 && (
+                <div data-testid="hud-pivot-nodes">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
+                    <span style={{ color: CYAN, fontSize: fs(10), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                    <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('pivot.detected', { count: pivots.length }).toUpperCase()}</span>
+                    <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {pivots.map((p) => (
+                      <div key={p.via + p.tool + p.ts} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 8px', padding: '3px 8px', background: hexA(CYAN, 0.14), border: `1px solid ${hexA(CYAN, 0.45)}`, fontSize: fs(10) }}>
+                        <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{p.tool}</span>
+                        <span style={{ color: '#d6f7fd', fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>
+                        {p.route && <span style={{ color: '#9fd8e6', overflowWrap: 'anywhere' }}>{t('pivot.route', { route: p.route })}</span>}
+                        <span style={{ marginLeft: 'auto', color: MUTED }}>{t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ color: MUTED, fontSize: fs(8.5), marginTop: 4 }}>{t('pivot.unverified')}</p>
+                </div>
+              )}
 
               {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: fs(10) }}>{status.error}</p>}
 

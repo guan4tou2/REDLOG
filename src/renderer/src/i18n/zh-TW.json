@@ -345,8 +345,6 @@
   "overlay.net": "網",
   "overlay.network": "網路",
   "overlay.wired": "有線",
-  "overlay.topology": "網路拓樸",
-  "overlay.internalNet": "內網",
   "overlay.lastCheck": "最後檢查",
   "browser.launch": "啟動擷取瀏覽器",
   "browser.stop": "關閉瀏覽器",
