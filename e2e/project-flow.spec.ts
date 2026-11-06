@@ -49,10 +49,11 @@ test.describe.serial('project flow', () => {
 
     for (const [key, expected] of [
       ['2', 'search'],
-      ['3', 'http_history'],
-      ['4', 'targets'],
-      ['5', 'screenshots'],
-      ['6', 'terminal'],
+      ['3', 'timeline'],
+      ['4', 'http_history'],
+      ['5', 'targets'],
+      ['6', 'screenshots'],
+      ['7', 'terminal'],
       ['1', 'dashboard'],
       ['9', 'settings']
     ] as const) {

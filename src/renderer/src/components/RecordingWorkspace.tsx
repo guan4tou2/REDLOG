@@ -3,6 +3,19 @@ import type { SourceSession } from '../../../core/source-sessions'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { SearchPanel } from './SearchPanel'
+import { useSharedFilter } from '../lib/FilterContext'
+import { useDisplayZone } from '../lib/time'
+import { agentTypeLabel } from '../lib/timelineDomain'
+
+/** `UTC` or `Local (UTC+8)`: the zone every time on this page is drawn in. */
+function zoneText(zone: 'local' | 'utc', t: (k: string) => string): string {
+  if (zone === 'utc') return 'UTC'
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const abs = Math.abs(off)
+  const hm = `${Math.trunc(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`
+  return `${t('filter.localTime')} (UTC${sign}${hm})`
+}
 
 const TranscriptView = lazy(() => import('./TranscriptView'))
 type Reading = 'activities' | 'io' | 'ai' | 'events'
@@ -35,11 +48,27 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     return () => window.removeEventListener('redlog:find-in-page', focus)
   }, [active])
   const searching = reading === 'activities' || reading === 'events'
+  // The source choice is the shared filter's own agent type, not a second state:
+  // the FilterBar's chip, every other view and this select all read one value.
+  const { filter, setAgentType, knownAgentTypes } = useSharedFilter()
+  const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
     <div className="px-4 pt-3 space-y-3 shrink-0">
+      <div>
+        <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
+        <p className="text-xs text-redlog-text-dim">{t('activity.pageHint')}</p>
+      </div>
       <input ref={field} type="search" data-testid="search-input" aria-label={t('search.placeholder')}
         value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search.placeholder')}
         className="w-full min-w-0 rounded border border-redlog-border bg-redlog-elevated px-3 py-2 text-sm focus:outline-none focus:border-redlog-accent" />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {searching && <select data-testid="activity-source" aria-label={t('activity.sourceLabel')} value={filter.agentType ?? ''} onChange={e => setAgentType(e.target.value || null)}
+          className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">
+          <option value="">{t('activity.sourceAll')}</option>
+          {knownAgentTypes.map(at => <option key={at} value={at}>{agentTypeLabel(at, t)}</option>)}
+        </select>}
+        <span data-testid="activity-zone" className="ml-auto text-redlog-text-dim">{t('activity.zone', { zone: zoneText(zone, t) })}</span>
+      </div>
       <div role="tablist" aria-label={t('activity.view')} className="flex flex-wrap gap-1 border-b border-redlog-border">
         {READINGS.map((mode, index) => <button key={mode} type="button" role="tab"
           id={`reading-tab-${mode}`} aria-controls={mode === 'activities' || mode === 'events' ? 'reading-panel-search' : `reading-panel-${mode}`} aria-selected={reading === mode}
@@ -67,7 +96,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     </div>
     <div role="tabpanel" id="reading-panel-search" aria-labelledby={`reading-tab-${reading === 'events' ? 'events' : 'activities'}`}
       hidden={!searching} className={searching ? 'flex-1 min-h-0' : undefined}>
-      <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
+      <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} onClearQuery={() => setQuery('')} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
     </div>
     {query.trim() && <details className="shrink-0 px-4 pb-2 text-xs text-redlog-text-dim"><summary>{t('workspace.searchCoverage')}</summary><p className="pt-1">{t('workspace.coverageBoundary')}</p></details>}
     {(['io', 'ai'] as const).filter(mode => visited.has(mode)).map(mode => <div key={mode} role="tabpanel"

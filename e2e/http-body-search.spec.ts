@@ -43,7 +43,9 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('tab', { name: 'Operations', exact: true }).click()
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await page.getByTestId('activity-row').click()
-    await expect(page.getByLabel('Source event')).toBeVisible()
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
+    await expect(page.getByRole('tablist',{name:'Source event'})).toBeVisible()
     await expect(page.getByRole('searchbox', { name: 'Find in content' })).toBeVisible()
     await expect(page.getByText('Saved source content does not apply web scope or sensitive-data redaction.', { exact: true })).toBeVisible()
     await page.getByRole('button',{name:'Copy saved content',exact:true}).click()
@@ -64,7 +66,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('button', { name: 'Next window' }).click()
     await expect(page.locator('pre:visible mark')).toHaveText(marker)
     await page.screenshot({path:testInfo.outputPath('activity-desktop.png')})
-    await page.getByRole('button', { name: 'Open original event' }).click()
+    await page.getByTestId('reader-locate').click()
     await expect(page.getByTestId('search-input')).toBeHidden()
     await page.getByRole('button', { name: /Back to Activity/ }).click()
     await expect(page.getByTestId('search-input')).toHaveValue(marker)
@@ -85,6 +87,8 @@ test('Search opens indexed Activity output and returns from original evidence wi
       })).toBe(true)
       await page.screenshot({path:testInfo.outputPath(`activity-${name}.png`)})
     }
+    // The Reader was left open under the Timeline; close it to search again.
+    await page.getByTestId('reader-close').click()
     const aiMarker = 'AI-SAVED-RESULT-482'
     for (const data of [
       {subtype:'tool_call',agent:'claude-code',session_id:'activity-ai',tool_use_id:'tool-ai',tool_name:'Bash',tool_input:{command:'printf sample'}},
@@ -100,7 +104,9 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
     await page.getByTestId('activity-row').click()
-    await expect(page.getByLabel('Source event').locator('option:checked')).toContainText('Tool result')
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
+    await expect(page.locator('[data-testid="reader-source-tab"][aria-selected="true"]')).toContainText('Tool result')
     await expect(page.locator('pre:visible')).toContainText(aiMarker)
     const shellMarker = 'SHELL-SAVED-RESULT-611'
     for (const data of [
@@ -118,14 +124,20 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
     await expect(page.getByTestId('activity-row')).toContainText('Command operation')
     await page.getByTestId('activity-row').click()
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
     await expect(page.locator('pre:visible')).toContainText(shellMarker)
     await page.getByLabel('Content field').selectOption('stderr')
     await expect(page.locator('pre:visible')).toHaveText('synthetic stderr')
+    await page.keyboard.press('Escape')
     await page.getByTestId('search-input').fill('shell-e2e-input')
     await expect(page.getByTestId('activity-row')).toContainText('2 matching · 0 context')
     await page.getByTestId('activity-row').click()
-    await expect(page.getByLabel('Source event').locator('option:checked')).toContainText('Command result')
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
+    await expect(page.locator('[data-testid="reader-source-tab"][aria-selected="true"]')).toContainText('Command result')
     await expect(page.locator('pre:visible')).toHaveText(shellMarker)
+    await page.keyboard.press('Escape')
     // The same running app proves both explicit scopes, including members
     // that did not match the search text. No separate launch per assertion.
     for (const kind of ['activity','session'] as const) {
@@ -230,7 +242,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('button',{name:/Back to Activity/}).click()
     // Root workspaces own their real secondary routes; no duplicate Sidebar
     // entries or query shortcuts masquerade as the removed primary pages.
-    await expect(page.locator('nav').first().locator('[data-view-btn]')).toHaveCount(7)
+    await expect(page.locator('nav').first().locator('[data-view-btn]')).toHaveCount(8)
     await openView(page,'bookmarks')
     await expect(page.getByRole('tab',{name:'Bookmarks',exact:true})).toHaveAttribute('aria-selected','true')
     await openView(page,'scope')
@@ -264,7 +276,10 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('search-input').fill('ATTACHMENT-CONTENT-694')
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await page.getByTestId('activity-row').click()
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
     await expect(page.locator('pre:visible')).toHaveText(attachmentText)
+    await page.getByTestId('reader-close').click()
     const projectDir=join(tmpHome,'.redlog','projects',project.id)
     const rawDir=join(projectDir,'agent-transcripts');mkdirSync(rawDir,{recursive:true})
     const rawFile=join(rawDir,'coverage.jsonl'),rawText='{"saved":"RAW-CONTENT-695"}\n'
@@ -280,7 +295,10 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('search-input').fill('RAW-CONTENT-695')
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await page.getByTestId('activity-row').click()
+    // An operation is read in the Reader (Spec 069 T019).
+    await page.getByTestId('activity-read').click()
     await expect(page.locator('pre:visible')).toHaveText(rawText)
+    await page.keyboard.press('Escape')
     await expect(page.getByText(/Saved AI source.*Pending source indexes/)).toBeVisible()
     await page.screenshot({path:testInfo.outputPath('search-saved-raw-coverage.png')})
     await page.locator('summary').filter({hasText:'Search coverage'}).click()

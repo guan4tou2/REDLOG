@@ -2,7 +2,7 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { SIDEBAR_COLLAPSED_EVENT, setSidebarCollapsed, storedSidebarCollapsed } from '../lib/sidebarCollapsed'
 import {
   Gauge, ChevronRight, Files, Crosshair,
-  Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
+  Search, Rows3, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
@@ -63,6 +63,7 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
     screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', {count:lootCount}) },
     targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeObservations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.observationsBadge',{count:scopeObservations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
@@ -95,19 +96,20 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   // every collapse, so the thing the eye tracks jumped while the panel
   // animated. It does not move now; only the right edge does.
   //
-  // 150 = the same 8+8+16 lead, the 8px gap, the longest label the nav can
-  // hold ("Transcript"), then the 8px gap, the 12px chord column and the two
-  // 8px paddings back out. 186 was sized for a label no row has: the surplus
-  // showed up as a gutter between every name and its number, which reads as
-  // two columns of unrelated things rather than one row.
+  // 240 = the Stitch prototype's w-60 (#590 follow-up: layout follows the
+  // prototype, colour and type stay the app's). Room for the longest label, a
+  // count badge and the chord in its box ("⌘1", "Ctrl+1").
   return (
-    <nav className={`${collapsed ? 'w-[48px]' : 'w-[150px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
+    <nav className={`${collapsed ? 'w-[48px]' : 'w-[240px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
       {/* The rows scroll; the footer does not. With `overflow-hidden` on the
           nav and the footer pushed by `mt-auto`, turning every page on clipped
           Settings and the collapse toggle straight off the bottom — and which
           of the two carried `mt-auto` changed with the row count, so the
           footer moved as pages appeared. Three fixed bands instead: rows that
           scroll, then the hint, then the footer. */}
+      {!collapsed && (
+        <p className="px-2 pb-2 mb-2 border-b border-redlog-border-subtle text-xs font-semibold tracking-[0.18em] text-redlog-muted">{t('sidebar.workspaces')}</p>
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto rl-thin-scroll space-y-0.5">
         {items.map((item) => {
           const isActive = primaryViewFor(active) === item.id
@@ -155,12 +157,12 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
                   The column is reserved even on a row with no chord. Without
                   the placeholder, a count badge on such a row slid into the
                   number column, and a red "1" beside 範圍 read as ⌘1. */}
-                <span
-                  className={`inline-block w-3 text-right text-xs font-mono tabular-nums ${isActive ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
+                <kbd
+                  className={`inline-block min-w-[2.25rem] text-center text-xs font-mono tabular-nums rounded border px-1 ${chord ? (isActive ? 'border-redlog-accent/40 text-redlog-accent/80' : 'border-redlog-border-subtle text-redlog-text-faint') : 'border-transparent'}`}
                   aria-hidden
                 >
-                  {chord ?? ''}
-                </span>
+                  {chord ? `${isMac ? '⌘' : 'Ctrl+'}${chord}` : ''}
+                </kbd>
               </span>
             </button>
           )
@@ -207,10 +209,10 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
           {!collapsed && (
             <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-redlog-accent' : ''}`}>{t('sidebar.config')}</span>
           )}
-          <span
-            className={`ml-auto shrink-0 text-xs font-mono tabular-nums ${collapsed ? 'hidden' : ''} ${active === 'settings' ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
+          <kbd
+            className={`ml-auto shrink-0 min-w-[2.25rem] text-center text-xs font-mono tabular-nums rounded border px-1 ${collapsed ? 'hidden' : ''} ${active === 'settings' ? 'border-redlog-accent/40 text-redlog-accent/80' : 'border-redlog-border-subtle text-redlog-text-faint'}`}
             aria-hidden
-          >9</span>
+          >{isMac ? '⌘' : 'Ctrl+'}9</kbd>
         </button>
       </div>
     </nav>

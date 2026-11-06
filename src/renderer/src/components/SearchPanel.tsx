@@ -135,9 +135,11 @@ interface SearchPanelProps {
   browse?: boolean
   controlledQuery?: string
   viewMode?: 'events' | 'activities'
+  /** Empties the shared query field that owns the conditions. */
+  onClearQuery?: () => void
 }
 
-export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode }: SearchPanelProps = {}): JSX.Element {
+export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode, onClearQuery }: SearchPanelProps = {}): JSX.Element {
   const { filter: sharedFilter } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [localMode, setMode] = useState<'events' | 'activities'>('events')
@@ -372,7 +374,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
         {(browse || mode === 'activities') && (browse || submitted.trim()) && (() => {
           const parsed = parseQuery(submitted)
-          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} onExportSelection={setOperationExport} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
+          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} onExportSelection={setOperationExport} onClearQuery={onClearQuery} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
         })()}
         <SearchCoverage coverage={bodyCoverage} />
         {mode === 'events' && toolSession && (
