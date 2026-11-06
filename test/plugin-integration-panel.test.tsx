@@ -120,8 +120,8 @@ describe('official integrations on the plugin page (Spec 066)', () => {
     expect(screen.queryByTestId('plugin-uninstall-official-ai-codex')).toBeNull()
     fireEvent.click(screen.getByTestId('plugin-open-folder-official-ai-codex'))
     expect(api.openFolder).toHaveBeenCalled()
-    // and it is counted as needing attention
-    expect(screen.getByTestId('plugin-issue-official-ai-codex').textContent).toBe(en['plugins.issue.officialConflict'])
+    // and the detail names it as needing attention
+    expect(screen.getByTestId('plugin-issues-official-ai-codex').textContent).toContain(en['plugins.issue.officialConflict'])
   })
 
   it('opens the integration the Capture sources link asked for — also when it is not installed — and writes nothing', async () => {
