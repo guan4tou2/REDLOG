@@ -1282,6 +1282,7 @@
   "timeline.detail.cookies": "Cookies sent",
   "timeline.detail.setCookies": "Set-Cookie",
   "httpHistory.title": "HTTP History",
+  "httpHistory.captureSettings": "Capture settings",
   "httpHistory.colMethod": "Method",
   "httpHistory.colHost": "Host",
   "httpHistory.colUrl": "Path",
