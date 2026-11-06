@@ -694,6 +694,8 @@
   "project.appliedNoWarn": "不警告範圍外目標",
   "project.appliedNothing": "已匯入設定檔；內容與預設值相同",
   "project.clearImported": "清除已匯入的設定",
+  "project.scopeAdvanced": "進階範圍設定",
+  "project.scopeHint": "選填。留空表示尚未判定，之後可在專案設定補上。",
   "project.importFailedRead": "未匯入設定檔，目前的設定維持不變。無法讀取檔案：{{detail}}",
   "project.importFailedParse": "未匯入設定檔，目前的設定維持不變。檔案不是有效的 YAML 或 JSON：{{detail}}",
   "project.importFailedShape": "未匯入設定檔，目前的設定維持不變。{{field}} 必須是{{expected}}。",

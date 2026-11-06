@@ -256,16 +256,17 @@ describe('create card', () => {
     expect(screen.queryByText(/Warn on scope violation/i)).toBeNull()
   })
 
-  it('asks for a name, and nothing else', () => {
+  it('asks for a name and the in-scope targets, and keeps the rest in Settings', () => {
     setup()
-    // Settings > Scope owns in-scope targets, exclusions, the violation
-    // warning and personal domains. Asking for them again here is asking the
-    // same question twice, on the screen an operator sees before every
-    // engagement.
+    // #588 reverses the old "name only" card for the two fields an operator
+    // needs before the first command: the name and the authorised targets.
+    // Exclusions are folded away; the violation warning and personal domains
+    // stay in Settings, where asking is not asking the same question twice.
     expect(screen.getByPlaceholderText('e.g. Client-Pentest-Q3')).toBeTruthy()
-    expect(screen.getAllByRole('textbox')).toHaveLength(1)
-    expect(screen.queryByLabelText('Scope')).toBeNull()
-    expect(screen.queryByLabelText('Excluded targets')).toBeNull()
+    expect(screen.getByLabelText('Targets (IPs, CIDRs, *.domain)')).toBeTruthy()
+    expect((screen.getByText('Advanced scope').closest('details') as HTMLDetailsElement).open).toBe(false)
+    expect(screen.queryByLabelText(/warn/i)).toBeNull()
+    expect(screen.queryByLabelText(/personal/i)).toBeNull()
   })
 
   it('imports a profile and says what it applied, inside the create modal', async () => {

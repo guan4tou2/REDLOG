@@ -694,6 +694,8 @@
   "project.appliedNoWarn": "No warning on out-of-scope targets",
   "project.appliedNothing": "Profile imported; nothing differs from the defaults",
   "project.clearImported": "Clear imported settings",
+  "project.scopeAdvanced": "Advanced scope",
+  "project.scopeHint": "Optional. Leave empty to decide later in the project settings.",
   "project.importFailedRead": "Profile not imported, your current settings were kept. The file could not be read: {{detail}}",
   "project.importFailedParse": "Profile not imported, your current settings were kept. The file is not valid YAML or JSON: {{detail}}",
   "project.importFailedShape": "Profile not imported, your current settings were kept. {{field}} must be {{expected}}.",

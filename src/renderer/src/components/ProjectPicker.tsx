@@ -8,6 +8,8 @@ import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
 import { Modal } from './Modal'
+import { ListField } from './settings/SettingsShared'
+import { parseScopeInput } from '../lib/scopeInput'
 import { useReadState } from '../lib/readState'
 import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure } from '../../../core/profile-import'
 
@@ -86,12 +88,17 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const importPending = useRef(false)
   const [creating, setCreating] = useState(false)
   const createPending = useRef(false)
-  // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
-  // by Settings. The create form holds them only when a profile was imported, because
-  // an import can carry them into a project that does not exist yet (#297).
+  // The safe/exposed IPs and the violation warning are owned by Settings; the
+  // create form holds them only when a profile was imported, because an import
+  // can carry them into a project that does not exist yet (#297). Scope targets
+  // and exclusions can also be typed here (#588).
   // One resolved value: the import summary and the project.create
   // argument are both derived from it, and importing replaces it whole.
   const [imported, setImported] = useState<ImportedProfile | null>(null)
+  // Targets typed on the card (#588). They sit beside an imported profile and
+  // are added to what it carries, so importing never discards what was typed.
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [scopeExcludes, setScopeExcludes] = useState<string[]>([])
   // A refused file leaves `imported` as it was; this says why.
   const [importFailure, setImportFailure] = useState<ProfileFailure | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -118,11 +125,25 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     createPending.current = true
     setCreating(true)
     try {
-      // Only an imported profile puts anything here: the form asks for a
-      // name, and Settings ▸ Scope owns the rest. Whether one was imported is
-      // the question, not what it holds — `false` and an empty list are
-      // settings too.
-      const initialConfig = imported ? profileToInitialConfig(imported) : undefined
+      // An imported profile or typed scope entries put something here;
+      // Settings ▸ Scope still owns everything else. For a profile, whether
+      // one was imported is the question, not what it holds — `false` and an
+      // empty list are settings too.
+      const fromProfile = imported ? profileToInitialConfig(imported) : undefined
+      // Typed entries are sent only when there are some: an empty card must
+      // stay "not decided yet", not become an empty scope the operator chose.
+      const typed = scopeTargets.length > 0 || scopeExcludes.length > 0
+      const union = (a: string[] | undefined, b: string[]): string[] => [...(a ?? []), ...b.filter((x) => !(a ?? []).includes(x))]
+      const initialConfig = typed
+        ? {
+            ...fromProfile,
+            scope: {
+              ...fromProfile?.scope,
+              targets: union(fromProfile?.scope.targets, scopeTargets),
+              excludeTargets: union(fromProfile?.scope.excludeTargets, scopeExcludes)
+            }
+          }
+        : fromProfile
       const project = await window.redlog.project.create(name, initialConfig)
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
@@ -330,6 +351,14 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <label className="block text-xs text-redlog-text-dim">{t('project.name')}
             <input ref={nameInput} value={newName} disabled={creating || importing} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void handleCreate() } }} placeholder={t('project.placeholder')} className="block mt-1 w-full rounded-lg border border-redlog-border bg-redlog-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
           </label>
+          <div>
+            <ListField label={t('settings.targetsLabel')} items={scopeTargets} onChange={setScopeTargets} placeholder={t('settings.targetsPlaceholder')} parse={parseScopeInput} />
+            <p className="text-xs text-redlog-text-faint mt-1">{t('project.scopeHint')}</p>
+          </div>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-redlog-text-dim">{t('project.scopeAdvanced')}</summary>
+            <div className="pt-2"><ListField label={t('settings.excludeLabel')} items={scopeExcludes} onChange={setScopeExcludes} placeholder={t('settings.excludePlaceholder')} parse={parseScopeInput} /></div>
+          </details>
           <Button type="button" level="quiet" disabled={creating || importing} onClick={() => void handleImportProfile()} className="text-xs">{t('project.importProfile')}</Button>
           {appliedText && <div className="flex gap-2 items-center"><p data-testid="profile-applied" className="text-xs text-redlog-text-dim">{appliedText}</p><Button type="button" level="quiet" disabled={creating || importing} onClick={handleClearImported}>{t('project.clearImported')}</Button></div>}
           {failureText && <p role="alert" data-testid="profile-error" className="text-xs text-red-300">{failureText}</p>}
