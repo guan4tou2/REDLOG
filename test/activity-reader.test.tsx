@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+//
+// Spec 069 T019: an expanded operation is a summary and two actions; the
+// reading happens in the Reader, which steps between operations and keeps the
+// saved-content reader inside it unchanged.
+
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { ActivityResults } from '../src/renderer/src/components/ActivityResults'
+
+vi.mock('../src/renderer/src/i18n', () => ({ useI18n: () => ({ t: (k: string, v?: Record<string, unknown>) => v ? `${k} ${JSON.stringify(v)}` : k }) }))
+vi.mock('../src/renderer/src/components/CopyButton', () => ({ CopyButton: ({ text }: { text: string }) => <button>{text}</button> }))
+
+const ev = (id: string, over: Record<string, unknown> = {}) => ({
+  id, timestamp: 1000, agentType: 'shell', sessionId: `sess-${id}`, targetId: null, hash: `hash-${id}`, prevHash: `prev-${id}`,
+  data: { command: id, subtype: 'command_start' }, ...over
+})
+const summary = (id: string, anchor = ev(id)) => ({
+  id, kind: 'command', toolAction: 'unknown', provider: null, firstAt: 1000, anchor, matchedCount: 1, sourceCount: 1, contextCount: 0
+})
+
+const api = { activityPage: vi.fn(), activityMembers: vi.fn() }
+const onOpen = vi.fn()
+function mount(items: ReturnType<typeof summary>[], over: { hasMore?: boolean } = {}): void {
+  api.activityPage.mockResolvedValueOnce({ items, hasMore: over.hasMore ?? false, nextCursor: over.hasMore ? 'next' : null, totalGroups: items.length, totalMatches: items.length, snapshot: {} })
+  api.activityMembers.mockImplementation(({ ref }: { ref: { id: string } }) => Promise.resolve({
+    items: [{ event: items.find((i) => i.id === ref.id)?.anchor ?? ev(ref.id), matched: true }], hasMore: false, nextCursor: null, sourceCount: 1, matchedCount: 1, snapshot: {}
+  }))
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  render(<ActivityResults onOpen={onOpen} request={{ parsed: { text: '', conditions: [], tokens: [] } } as any} />)
+}
+const rows = async (): Promise<HTMLElement[]> => { await screen.findAllByTestId('activity-row'); return screen.getAllByTestId('activity-row') }
+const open = async (n = 0): Promise<void> => {
+  fireEvent.click((await rows())[n])
+  fireEvent.click(await screen.findByTestId('activity-read'))
+  await screen.findByTestId('activity-reader')
+}
+
+beforeEach(() => { localStorage.clear(); onOpen.mockReset(); Object.values(api).forEach((f) => f.mockReset()) })
+afterEach(() => cleanup())
+
+it('expands to a summary with the two actions, and reads nothing until asked', async () => {
+  mount([summary('a')])
+  fireEvent.click((await rows())[0])
+  expect(await screen.findByTestId('activity-summary')).toBeTruthy()
+  expect(screen.getByTestId('activity-read')).toBeTruthy()
+  expect(screen.getByTestId('activity-locate')).toBeTruthy()
+  expect(screen.queryByTestId('activity-reader')).toBeNull()
+  expect(api.activityMembers).not.toHaveBeenCalled()
+})
+
+it('names the operation and its place among those loaded, and steps between them', async () => {
+  mount([summary('a'), summary('b'), summary('c')])
+  await open(0)
+  expect(screen.getByTestId('reader-headline').textContent).toContain('a')
+  expect(screen.getByTestId('reader-counter').textContent).toContain('"index":1')
+  expect((screen.getByTestId('reader-prev') as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(screen.getByTestId('reader-next'))
+  await waitFor(() => expect(screen.getByTestId('reader-counter').textContent).toContain('"index":2'))
+  expect(screen.getByTestId('reader-headline').textContent).toContain('b')
+  fireEvent.click(screen.getByTestId('reader-next'))
+  await waitFor(() => expect(screen.getByTestId('reader-counter').textContent).toContain('"index":3'))
+  expect((screen.getByTestId('reader-next') as HTMLButtonElement).disabled).toBe(true)
+})
+
+it('steps with the arrow keys, but leaves the arrows to text being read or typed', async () => {
+  mount([summary('a'), summary('b')])
+  await open(0)
+  const reader = screen.getByTestId('activity-reader')
+  fireEvent.keyDown(reader, { key: 'ArrowDown' })
+  await waitFor(() => expect(screen.getByTestId('reader-headline').textContent).toContain('b'))
+  const field = document.createElement('input')
+  reader.appendChild(field)
+  fireEvent.keyDown(field, { key: 'ArrowUp' })
+  expect(screen.getByTestId('reader-headline').textContent).toContain('b')
+  fireEvent.keyDown(reader, { key: 'ArrowUp' })
+  await waitFor(() => expect(screen.getByTestId('reader-headline').textContent).toContain('a'))
+})
+
+it('closes with Escape and with the close control', async () => {
+  mount([summary('a')])
+  await open()
+  fireEvent.keyDown(screen.getByTestId('activity-reader'), { key: 'Escape' })
+  expect(screen.queryByTestId('activity-reader')).toBeNull()
+  // The row stays expanded behind it, so the Reader opens again from there.
+  fireEvent.click(screen.getByTestId('activity-read'))
+  fireEvent.click(await screen.findByTestId('reader-close'))
+  expect(screen.queryByTestId('activity-reader')).toBeNull()
+})
+
+it('reads on into the next page when stepping past the last loaded operation', async () => {
+  mount([summary('a')], { hasMore: true })
+  api.activityPage.mockResolvedValueOnce({ items: [summary('b')], hasMore: false, nextCursor: null, totalGroups: 2, totalMatches: 2, snapshot: {} })
+  await open()
+  fireEvent.click(screen.getByTestId('reader-next'))
+  await waitFor(() => expect(screen.getByTestId('reader-headline').textContent).toContain('b'))
+})
+
+it('locates the event being read in the Timeline, and keeps the Reader where it was for the way back', async () => {
+  mount([summary('a')])
+  await open()
+  await screen.findAllByTestId('reader-source-tab')
+  await waitFor(() => expect((screen.getByTestId('reader-locate') as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(screen.getByTestId('reader-locate'))
+  expect(onOpen).toHaveBeenCalledWith('a', 1000)
+  expect(screen.getByTestId('activity-reader')).toBeTruthy()
+})
+
+it('shows the event as stored: its identifiers, and its hashes without claiming they were checked', async () => {
+  mount([summary('a')])
+  await open()
+  const info = await screen.findByTestId('reader-event-info')
+  expect(info.textContent).toContain('sess-a')
+  const integrity = screen.getByTestId('reader-integrity') as HTMLDetailsElement
+  expect(integrity.open).toBe(false)
+  expect(integrity.textContent).toContain('hash-a')
+  expect(integrity.textContent).toContain('prev-a')
+  expect(integrity.textContent).toContain('activity.reader.integrityNote')
+  // A row outside the chain has no hash to show; it says so.
+  cleanup()
+  mount([summary('b', ev('b', { hash: null, prevHash: null }))])
+  await open()
+  expect((await screen.findByTestId('reader-integrity')).textContent).toContain('activity.reader.notChained')
+})
