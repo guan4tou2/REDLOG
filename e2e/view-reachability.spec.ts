@@ -55,6 +55,15 @@ test('the timeline is reachable from the activity workspace, not only the palett
   await expect(viewRoot()).toHaveAttribute('data-view', 'timeline')
 })
 
+test('the activity page names itself, its time zone and offers a source filter', async () => {
+  await page.locator('nav [data-view-btn="search"]').first().click()
+  await expect(page.getByTestId('activity-title')).toHaveText('Activity')
+  await expect(page.getByTestId('activity-zone')).toContainText(/Time zone: (UTC|local \(UTC[+-]\d)/)
+  await expect(page.getByTestId('activity-source')).toHaveValue('')
+  // The collapsed "more filters" entrance is the existing shared FilterBar.
+  await expect(page.getByRole('button', { name: /Filters?/ }).first()).toHaveAttribute('aria-expanded', 'false')
+})
+
 test('the timeline is its own sidebar row on ⌘3, and entering it directly offers no way back', async () => {
   await page.locator('nav [data-view-btn="dashboard"]').first().click()
   const row = page.locator('nav [data-view-btn="timeline"]').first()
