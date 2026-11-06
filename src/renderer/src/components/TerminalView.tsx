@@ -553,7 +553,7 @@ function TerminalHeader({ onAbout }: { onAbout: () => void }): JSX.Element {
     <div data-testid="terminal-header" className="flex shrink-0 items-center justify-between gap-3 border-b border-redlog-border px-3 py-1.5">
       <div className="flex min-w-0 items-baseline gap-3">
         <h1 className="text-sm font-semibold text-redlog-text">{t('terminal.title')}</h1>
-        <p className="hidden truncate text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('terminal.hint')}</p>
+        <p className="hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('terminal.hint')}</p>
       </div>
       <Button size="compact" data-testid="terminal-about-open" onClick={onAbout}>{t('terminal.about')}</Button>
     </div>
