@@ -120,6 +120,8 @@ test('the terminal names itself, explains its two capture tracks, and shows the 
   await expect(about).toContainText('Command events (shell hook)')
   await page.keyboard.press('Escape')
   await expect(about).toHaveCount(0)
+})
+
 test('the dashboard names itself, keeps shortcuts folded, and shows relay nodes only as a read of its own', async () => {
   // A project with nothing recorded opens the first-run page; one event takes
   // it past that, which is the dashboard this checks.
