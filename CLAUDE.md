@@ -2,6 +2,8 @@
 
 UI copy rules and the Electron sandbox note live in `AGENTS.md` and apply to
 every agent, including Claude Code.
+The single global UI/UX standard is `docs/UIUX-STANDARD.md`; `AGENTS.md`
+§"Which document is authoritative" says which documents may be relied on.
 
 ## Before you push
 
