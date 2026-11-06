@@ -67,7 +67,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     </div>
     <div role="tabpanel" id="reading-panel-search" aria-labelledby={`reading-tab-${reading === 'events' ? 'events' : 'activities'}`}
       hidden={!searching} className={searching ? 'flex-1 min-h-0' : undefined}>
-      <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
+      <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} onClearQuery={() => setQuery('')} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
     </div>
     {query.trim() && <details className="shrink-0 px-4 pb-2 text-xs text-redlog-text-dim"><summary>{t('workspace.searchCoverage')}</summary><p className="pt-1">{t('workspace.coverageBoundary')}</p></details>}
     {(['io', 'ai'] as const).filter(mode => visited.has(mode)).map(mode => <div key={mode} role="tabpanel"
