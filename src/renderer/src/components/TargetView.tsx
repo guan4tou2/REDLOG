@@ -259,14 +259,18 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     ? <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.inScopeBadge')}</span>
     : inScope === false
       ? <span className="text-xs text-amber-300 bg-amber-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
-      : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{t('targets.scopeUnknown')}</span>
+      // Two different facts: no rule was ever declared, or the rules could not be read.
+      : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
 
   return (
     <div className="p-pad space-y-4 h-full overflow-auto">
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-redlog-border">
+        <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
+          <div>
           <h2 className="text-sm font-semibold text-redlog-text">{t('targets.panelTitle')}</h2>
           <p className="text-xs text-redlog-text-faint mt-0.5">{t('targets.panelCaption')}</p>
+          </div>
+          <span className="text-xs text-redlog-text-dim">{t('targets.sortedByRecent')}</span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <input type="search" data-testid="targets-search" value={query} onChange={(e) => setQuery(e.target.value)}

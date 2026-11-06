@@ -202,6 +202,8 @@
   "scope.integrityCaption": "Scope observations are part of the record; the original events and the change log stay in the project.",
   "scope.rulesLiveInSettings": "Scope rules, and testing whether a target matches, stay in",
   "scope.openSettingsLink": "Settings ▸ {{page}}",
+  "targets.scopeUnset": "Not set",
+  "targets.sortedByRecent": "Most recent activity first",
   "targets.title": "Targets ({{count}})",
   "targets.all": "All",
   "targets.inScope": "In Scope",
