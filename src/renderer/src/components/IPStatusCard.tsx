@@ -57,30 +57,33 @@ export default function IPStatusCard(): JSX.Element {
 
   const safety = status.ipSafety
   const STATUS_CONFIG = {
-    safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
-    exposed: { indicator: 'bg-redlog-danger', label: t('ip.exposedIp'), color: 'text-red-400' },
-    unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400' }
+    safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400', chip: 'border-green-500/40 bg-green-500/10' },
+    exposed: { indicator: 'bg-redlog-danger', label: t('ip.exposedIp'), color: 'text-red-400', chip: 'border-redlog-danger/50 bg-redlog-danger/10' },
+    unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400', chip: 'border-yellow-500/40 bg-yellow-500/10' }
   }
   const cfg = STATUS_CONFIG[safety]
 
   return (
     <div data-testid="ip-status-card" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
-      <div className="flex items-center gap-3">
-        <span className={`w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
-        <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
-        <span className="ml-auto text-xs text-redlog-text-dim">{status.lastCheck ? formatFreshness(status.lastCheck, t) : '—'}</span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-sm font-semibold text-redlog-text">{t('ip.cardTitle')}</span>
+        <span className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs font-mono ${cfg.chip} ${cfg.color}`}>
+          <span className={`w-2 h-2 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
+          {cfg.label}
+        </span>
+        <span className="ml-auto text-xs font-mono text-redlog-text-dim">{status.lastCheck ? formatFreshness(status.lastCheck, t) : '—'}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-xs text-redlog-text-dim mb-1">{t('ip.externalIp')}</p>
-          <p className="text-lg font-mono text-redlog-text">{status.externalIP ?? '—'}</p>
+      <dl className="space-y-2 text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <dt className="text-redlog-text-dim">{t('ip.externalIp')}</dt>
+          <dd className="font-mono text-redlog-text [overflow-wrap:anywhere]">{status.externalIP ?? '—'}</dd>
         </div>
-        <div>
-          <p className="text-xs text-redlog-text-dim mb-1">{t('ip.internalIp')}</p>
-          <p className="text-lg font-mono text-redlog-text">{status.internalIP ?? '—'}</p>
+        <div className="flex items-center justify-between gap-4">
+          <dt className="text-redlog-text-dim">{t('ip.internalIp')}</dt>
+          <dd className="font-mono text-redlog-text [overflow-wrap:anywhere]">{status.internalIP ?? '—'}</dd>
         </div>
-      </div>
+      </dl>
 
       <PivotNodes read={pivotRead} />
 

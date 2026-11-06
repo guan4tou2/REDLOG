@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Globe } from 'lucide-react'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
@@ -12,6 +12,7 @@ import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
 import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
+import { formatFreshness } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { eventTileStatus } from '../lib/eventTileStatus'
 import { settingsTarget } from '../lib/navigation'
@@ -19,28 +20,55 @@ import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
 
-export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
+type HudTone = 'red' | 'amber' | 'cyan'
 
-export const StatCard = memo(function StatCard({ label, value, sub, tone = 'neutral' }: {
-  label: string; value: string; sub?: string; tone?: HudTone
+const ANCHOR_KEY: Record<string, string> = {
+  complete: 'dashboard.anchor.complete', pending: 'dashboard.anchor.pending',
+  partial: 'dashboard.anchor.partial', failed: 'dashboard.anchor.failed'
+}
+
+/** The project's recorded total and where it stands: how many rows are in the
+ *  hash chain, how many are kept locally outside it, and the anchor's own
+ *  state. A pending anchor is "submitted", never "anchored". Anything wrong
+ *  (drift, a stale or failed anchor, a broken sample) rides underneath. */
+function RecordSummary({ chained, localOnly, lastAnchor, sub, tone, onOpenActivity }: {
+  chained: number; localOnly: number; lastAnchor: { createdAt: number; status: string } | null
+  sub: string | undefined; tone: HudTone; onOpenActivity: () => void
 }): JSX.Element {
-  const bar = tone === 'red' ? 'bg-red-500' : tone === 'green' ? 'bg-emerald-500'
-    : tone === 'amber' ? 'bg-amber-500' : tone === 'cyan' ? 'bg-cyan-500' : 'bg-redlog-elevated-hover'
-  const valueColor = tone === 'red' ? 'text-red-400' : tone === 'green' ? 'text-emerald-400'
-    : tone === 'amber' ? 'text-amber-400' : tone === 'cyan' ? 'text-cyan-400' : 'text-redlog-text'
+  const { t } = useI18n()
+  const anchor = lastAnchor
+    ? t(ANCHOR_KEY[lastAnchor.status] ?? 'dashboard.anchor.unknown', { when: formatFreshness(lastAnchor.createdAt, t) })
+    : t('dashboard.anchor.none')
+  const note = tone === 'red' ? 'text-red-400' : 'text-amber-400'
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 pl-5 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
-      {/* §4: state rides a left colour block, not a top bar; the card ground
-          stays surface regardless of tone. */}
-      <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${bar}`} />
-      <SectionLabel>{label}</SectionLabel>
-      {/* §4/PHASE1-TOKENS: the StatCard headline number is the "value size"
-          (xl = 22px), not a heading (lg = 19px) — it was on text-lg. */}
-      <p className={`text-xl font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
-      {sub && <p className="text-xs text-redlog-text-faint mt-0.5">{sub}</p>}
+    <div data-testid="dashboard-record-summary" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <span data-testid="dashboard-record-total" className="text-xl font-mono font-semibold tabular-nums text-redlog-text">{chained + localOnly}</span>
+            <span className="text-sm text-redlog-text-dim">{t('dashboard.recordedEvents')}</span>
+          </div>
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-redlog-text-dim">
+            <div><dt className="inline">{t('dashboard.chained')} </dt><dd className="inline font-mono text-redlog-text">{chained}</dd></div>
+            <div><dt className="inline">{t('dashboard.localOnly')} </dt><dd className="inline font-mono text-redlog-text">{localOnly}</dd></div>
+            <div><dt className="inline">{t('dashboard.anchorLabel')} </dt><dd data-testid="dashboard-anchor" className="inline font-mono text-redlog-text">{anchor}</dd></div>
+          </dl>
+        </div>
+        <Button data-testid="dashboard-open-activity" onClick={onOpenActivity}>{t('dashboard.openActivity')}</Button>
+      </div>
+      {sub && <p data-testid="dashboard-record-warning" className={`mt-3 text-xs ${note}`}>{sub}</p>}
     </div>
   )
-})
+}
+
+function SummaryRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2">
+      <dt className="text-xs text-redlog-text-dim">{label}</dt>
+      <dd className="m-0 flex items-center">{children}</dd>
+    </div>
+  )
+}
 
 export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [running, setRunning] = useState(false)
@@ -132,6 +160,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
   const shortcutOrder = currentShortcutOrder()
 
   const loading = countsLoading || localLoading
+  const scopeCount = ((config?.scope?.targets as string[] | undefined) ?? []).length
 
   const { t } = useI18n()
   const unknown = captureStatus === 'unknown' ? captureUnknownLine(t, capture, lastOkAt) : undefined
@@ -195,10 +224,15 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   return (
     <div className="p-pad space-y-section overflow-auto h-full">
-      <div data-testid="dashboard-header">
-        <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.dashboard')}</h1>
-        {/* Gives way when the window is short, as on the evidence page. */}
-        <p className="mt-1 hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('dashboard.hint')}</p>
+      <div data-testid="dashboard-header" className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          {/* The small label and the hint give way when the window is short, as on the evidence page. */}
+          <p className="hidden text-xs font-semibold tracking-[0.15em] text-redlog-accent [@media(min-height:640px)]:block">{t('dashboard.eyebrow')}</p>
+          <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.dashboard')}</h1>
+          <p className="mt-1 hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('dashboard.hint')}</p>
+        </div>
+        {/* Says how to read every status on the page; carries no status itself. */}
+        <p data-testid="dashboard-freshness-note" className="rounded border border-redlog-border px-2 py-1 text-xs text-redlog-text-dim">{t('dashboard.freshnessNote')}</p>
       </div>
       {/* First, and above the capture card: what is wrong now outranks what is
           merely true now. Renders nothing when nothing is wrong. */}
@@ -246,24 +280,17 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             something to press; and "configured", a green box whose whole
             content was that there was nothing to say. A tile is for a number
             that moves. */}
-        <div className="grid grid-cols-1 gap-3">
-          {(() => {
-            // The number shown is every recorded row — the same total the
-            // status bar prints and the same set the Timeline scrolls at its
-            // default tier: 'all'. It used to show the chained tier alone,
-            // which disagreed with both and could only be read by someone who
-            // already knew the two tiers existed.
-            //
-            // The drift check below still compares chainLen against the
-            // *chained* count — that is the pair that must match, and feeding
-            // it the total would fire a tamper signal on every project with a
-            // logged row in it.
-            const { sub, tone } = eventTileStatus({
-              eventCount, chainLen, lastAnchor, sampleBroken: captureStatus === 'ok' ? capture?.lastSampleBroken : undefined, now: Date.now()
-            }, t)
-            return <StatCard label={t('dashboard.events')} value={String(eventCount + loggedCount)} sub={sub} tone={tone} />
-          })()}
-        </div>
+        <RecordSummary
+          chained={eventCount}
+          localOnly={loggedCount}
+          lastAnchor={lastAnchor}
+          onOpenActivity={() => onNavigate('search')}
+          {...eventTileStatus({
+            // The drift check compares the chain length with the *chained* count; the
+            // total shown above it is every recorded row (see RecordSummary).
+            eventCount, chainLen, lastAnchor, sampleBroken: captureStatus === 'ok' ? capture?.lastSampleBroken : undefined, now: Date.now()
+          }, t)}
+        />
       </section>
 
       {config && (
@@ -271,36 +298,23 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           <SectionLabel className="tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </SectionLabel>
-          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm [overflow-wrap:anywhere]">
-              <div>
-                <span className="text-redlog-text-dim text-xs">{t('dashboard.id')}</span>
-                <p className="text-redlog-text font-mono text-sm mt-0.5">{config.engagement?.id as string}</p>
-              </div>
-              <div>
-                <span className="text-redlog-text-dim text-xs">{t('dashboard.name')}</span>
-                <p className="text-redlog-text text-sm mt-0.5">{projectName}</p>
-              </div>
-              <div>
-                <span className="text-redlog-text-dim text-xs">{t('dashboard.operator')}</span>
-                <p className="text-redlog-text text-sm mt-0.5">{config.operator?.name as string}</p>
-              </div>
-              <div>
-                <span className="text-redlog-text-dim text-xs">{t('dashboard.scopeLabel')}</span>
-                <p className="text-redlog-text text-sm mt-0.5">
-                  {t('dashboard.targets', {
-                    count: (config.scope?.targets as string[])?.length || 0,
-                    mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
-                  })}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate(settingsTarget('scope'))}
-              className="mt-3 text-xs text-red-400/80 hover:text-red-300 transition-colors"
-            >
-              {t('dashboard.editSettings')}
-            </button>
+          <div className="rounded-lg bg-redlog-surface border border-redlog-border px-4 py-1 shadow-card">
+            <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
+              <SummaryRow label={t('dashboard.name')}><span className="text-redlog-text">{projectName}</span></SummaryRow>
+              <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
+              <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span></SummaryRow>
+              <SummaryRow label={t('dashboard.scopeLabel')}>
+                <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-redlog-text'}>
+                  {scopeCount === 0
+                    ? t('dashboard.scopeNotSet')
+                    : t('dashboard.targets', {
+                      count: scopeCount,
+                      mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
+                    })}
+                </span>
+                <Button size="compact" className="ml-3" data-testid="dashboard-view-scope" onClick={() => onNavigate('targets')}>{t('dashboard.viewScope')}</Button>
+              </SummaryRow>
+            </dl>
           </div>
         </section>
       )}

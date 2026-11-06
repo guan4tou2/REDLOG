@@ -143,6 +143,13 @@ test('the dashboard names itself, keeps shortcuts folded, and shows relay nodes 
   await expect(shortcuts).toHaveAttribute('open', '')
   await expect(page.getByTestId('ip-status-card')).toBeVisible()
   await expect(page.getByTestId('ip-status-card')).not.toContainText('→')
+  // Layout blocks from the Stitch draft: the record summary's breakdown and the project summary's scope row.
+  await expect(page.getByTestId('dashboard-freshness-note')).toBeVisible()
+  await expect(page.getByTestId('dashboard-record-total')).toBeVisible()
+  await expect(page.getByTestId('dashboard-record-summary')).toContainText('Local only (not in the chain hash)')
+  await expect(page.getByTestId('dashboard-scope-state')).toHaveText('Not set')
+  await page.getByTestId('dashboard-open-activity').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'search')
 })
 
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {
