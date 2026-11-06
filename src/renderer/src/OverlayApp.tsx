@@ -19,7 +19,9 @@ export default function OverlayApp(): JSX.Element {
   useDisplayZone()
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
-  const [recording, setRecording] = useState(true)
+  // null until the main process has answered, and again if it cannot: the HUD
+  // must not say "recording" before it knows.
+  const [recording, setRecording] = useState<boolean | null>(null)
   const [interactive, setInteractive] = useState(false)
   const [showMark, setShowMark] = useState(true)
   const [flashExposed, setFlashExposed] = useState(true)
@@ -106,7 +108,7 @@ export default function OverlayApp(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.redlog.recording.get().then(setRecording)
+    window.redlog.recording.get().then(setRecording).catch(() => setRecording(null))
     return window.redlog.recording.onChange(setRecording)
   }, [])
 
@@ -142,15 +144,18 @@ export default function OverlayApp(): JSX.Element {
   // enters the overlay window (main-process tracker). An exposed IP holds it
   // open (§8) — never auto-collapse while the address is out.
   useEffect(() => {
-    if (!expanded || interactive || pinned || status?.ipSafety === 'exposed') return
+    if (!expanded || interactive || pinned || markOpen || status?.ipSafety === 'exposed') return
     timerRef.current = setTimeout(() => collapse(), 8000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [expanded, interactive, pinned, status?.ipSafety])
+  }, [expanded, interactive, pinned, markOpen, status?.ipSafety])
 
   // The window height follows the content through overlay:autosize, so expanding
   // is renderer state only.
   const collapse = (): void => setExpanded(false)
-  const toggleExpand = (): void => setExpanded(!expanded)
+  // §8: while the address is exposed the details stay on screen, so the
+  // collapse control does nothing then (and says why).
+  const exposedNow = status?.ipSafety === 'exposed'
+  const toggleExpand = (): void => { if (expanded && exposedNow) return; setExpanded(!expanded) }
 
   // fs = font-size scaler; ip = extra emphasis for the external IP.
   // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond
@@ -242,7 +247,8 @@ export default function OverlayApp(): JSX.Element {
     border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
     transition: 'background 0.12s, border-color 0.12s'
   }
-  const latestPivot = pivots[0]
+  // The newest by time, not by position: nothing promises the list is ordered.
+  const latestPivot = pivots.reduce<(typeof pivots)[number] | undefined>((a, p) => (!a || p.ts > a.ts ? p : a), undefined)
   const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
 
   // Pass-through dimming — applied to individual "chrome" children instead
@@ -288,7 +294,7 @@ export default function OverlayApp(): JSX.Element {
           <div style={{ display: 'flex', alignItems: 'center', gap: px(8), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(12)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, ...dimStyle }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
-              <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
+              <span data-testid="hud-rec" style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording === null ? t('overlay.recUnknown') : recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
             <span style={dimStyle}>{hair}</span>
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined, ...dimStyle }} />
@@ -301,6 +307,7 @@ export default function OverlayApp(): JSX.Element {
               </span>
               {latestPivot && (
                 <span
+                  data-testid="hud-pivot-latest"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', clipPath: 'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', background: hexA(CYAN, 0.2), border: `1px solid ${hexA(CYAN, 0.6)}`, boxShadow: `0 0 5px ${hexA(CYAN, 0.2)}`, maxWidth: 160 }}
                   title={pivots.map((p) => `${p.tool} ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
                 >
@@ -513,7 +520,7 @@ export default function OverlayApp(): JSX.Element {
                 announced as controls, matching the mark/pin buttons below
                 (§21 — icon-only controls must be focusable; the focus ring is
                 the .hudBtn rule in the <style> block). */}
-            <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
+            <button data-testid="hud-expand" type="button" aria-disabled={expanded && exposedNow ? true : undefined} className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? (exposedNow ? t('overlay.collapseBlocked') : t('overlay.collapse')) : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
             <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t(placeKey('overlay.hide'))} aria-label={t(placeKey('overlay.hide'))}>✕</button>
           </div>
         </div>
