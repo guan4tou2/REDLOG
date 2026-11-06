@@ -37,8 +37,8 @@ test.afterAll(async () => { if (app) await app.close() })
 
 const viewRoot = (): ReturnType<Page['locator']> => page.locator('[data-testid="view-root"]')
 
-test('the six daily workspaces each have a sidebar control', async () => {
-  for (const view of ['dashboard', 'search', 'http_history', 'targets', 'screenshots', 'terminal']) {
+test('the seven daily workspaces each have a sidebar control', async () => {
+  for (const view of ['dashboard', 'search', 'timeline', 'http_history', 'targets', 'screenshots', 'terminal']) {
     const button = page.locator(`nav [data-view-btn="${view}"]`).first()
     await expect(button, `${view} has no sidebar row`).toBeVisible()
     await button.click()
@@ -53,6 +53,20 @@ test('the timeline is reachable from the activity workspace, not only the palett
   await expect(entry, 'the timeline has no in-page entrance').toBeVisible()
   await entry.click()
   await expect(viewRoot()).toHaveAttribute('data-view', 'timeline')
+})
+
+test('the timeline is its own sidebar row on ⌘3, and entering it directly offers no way back', async () => {
+  await page.locator('nav [data-view-btn="dashboard"]').first().click()
+  const row = page.locator('nav [data-view-btn="timeline"]').first()
+  await expect(row).toHaveAttribute('title', /Timeline · (⌘|Ctrl\+)3/)
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+3' : 'Control+3')
+  await expect(viewRoot()).toHaveAttribute('data-view', 'timeline')
+  await expect(row).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('timeline-return')).toHaveCount(0)
+  // Activity is no longer the timeline's owner: its row is not the current one.
+  await expect(page.locator('nav [data-view-btn="search"]').first()).not.toHaveAttribute('aria-current', 'page')
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+7' : 'Control+7')
+  await expect(viewRoot()).toHaveAttribute('data-view', 'terminal')
 })
 
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {

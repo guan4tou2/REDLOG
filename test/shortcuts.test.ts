@@ -60,7 +60,7 @@ describe('the cheatsheet table', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true)
     const nav = rows.filter((r) => r.scope === 'nav')
     expect(nav).toHaveLength(SIDEBAR_ORDER.length + 1)
-    expect(nav.map((r) => r.keys)).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6', '⌘9'])
+    expect(nav.map((r) => r.keys)).toEqual(['⌘1', '⌘2', '⌘3', '⌘4', '⌘5', '⌘6', '⌘7', '⌘9'])
     expect(nav.at(-1)?.label).toBe('sidebar.settings')
   })
 
@@ -244,6 +244,7 @@ describe('the number a view wears', () => {
     for (const view of DEFAULT_ORDER.slice(NUMBERED_SLOTS)) {
       expect(shortcutNumberFor(view), `${view} should carry no chord`).toBeNull()
     }
-    for(const secondary of ['scope','loot','bookmarks','timeline','transcript'] as const)expect(shortcutNumberFor(secondary)).toBeNull()
+    for(const secondary of ['scope','loot','bookmarks','transcript'] as const)expect(shortcutNumberFor(secondary)).toBeNull()
+    expect(shortcutNumberFor('timeline')).toBe(3)
   })
 })
