@@ -44,12 +44,16 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
 let ndjson: typeof import('../src/core/ndjson-export')
+let redact: typeof import('../src/core/redact-export')
+let dbIndex: typeof import('../src/core/db/index')
 let dbAvailable = false
 try {
   const dbMod = await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   ndjson = await import('../src/core/ndjson-export')
+  redact = await import('../src/core/redact-export')
+  dbIndex = dbMod
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   dbAvailable = true
 } catch { /* better-sqlite3 not compiled for this runtime */ }
@@ -80,6 +84,34 @@ describeDB('ndjson-export — eventsToNdjson', () => {
     // A chained row keeps its hash so integrity survives ingestion.
     const chained = JSON.parse(lines.find((l) => JSON.parse(l).agentType === 'shell')!)
     expect(typeof chained.hash).toBe('string')
+  })
+
+  // Export redacts once, verifies that result against the plan, then writes
+  // those same rows (data-export.ts passes alreadyRedacted). The bytes must be
+  // exactly what the writer produced when it redacted for itself.
+  it('writes already-redacted rows byte-for-byte as it would redact them itself', () => {
+    const plain = events.insertEvent('shell', { subtype: 'command_end', command: 'ls', stdout: 'ok' }, { operatorId })!
+    const secret = events.insertEvent('shell', { subtype: 'command_end', command: 'cat k', stdout: 'AKIA-SECRET', stdout_ref: 'sha256:abc', output_body: 'AKIA-SECRET' }, { operatorId })!
+    const masked = events.insertEvent('scanner', { subtype: 'http_request_start', url: 'https://other.test/', request_body: 'payload', request_body_ref: 'sha256:def' }, { operatorId, targetId: 'other.test' })!
+    dbIndex.getDB().prepare(
+      `INSERT INTO sanitized_events (source_event_id, field, sanitized_value, replacement_sha256, created_at, sanitized_event_id)
+       VALUES (?, 'stdout', '[redacted]', 'x', 1, ?)`
+    ).run(secret.id, plain.id)
+    const scope = { targets: ['in-scope.test'] }
+    const all = events.queryEvents({ limit: -1 })
+    for (const opts of [{}, { scope }]) {
+      const own = ndjson.eventsToNdjson(all, opts)
+      const pre = ndjson.eventsToNdjson(redact.redactEventsForExport(all, opts), { ...opts, alreadyRedacted: true })
+      expect(pre).toBe(own)
+    }
+    // The fixture really exercised both kinds of redaction.
+    const swapped = ndjson.eventsToNdjson(all)
+    expect(swapped).toContain('"stdout":"[redacted]"')
+    expect(swapped).not.toContain('AKIA-SECRET')
+    const scoped = ndjson.eventsToNdjson(all, { scope })
+    const maskedRow = JSON.parse(scoped.split('\n').find((l) => l.includes(masked.id))!)
+    expect(maskedRow.data.request_body).toMatch(/^\[redacted: out of scope/)
+    expect(maskedRow.data.request_body_ref).toBeUndefined()
   })
 
   it('empty input yields an empty string (no stray newline)', () => {
