@@ -242,7 +242,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('button',{name:/Back to Activity/}).click()
     // Root workspaces own their real secondary routes; no duplicate Sidebar
     // entries or query shortcuts masquerade as the removed primary pages.
-    await expect(page.locator('nav').first().locator('[data-view-btn]')).toHaveCount(7)
+    await expect(page.locator('nav').first().locator('[data-view-btn]')).toHaveCount(8)
     await openView(page,'bookmarks')
     await expect(page.getByRole('tab',{name:'Bookmarks',exact:true})).toHaveAttribute('aria-selected','true')
     await openView(page,'scope')

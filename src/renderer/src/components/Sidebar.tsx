@@ -2,7 +2,7 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { SIDEBAR_COLLAPSED_EVENT, setSidebarCollapsed, storedSidebarCollapsed } from '../lib/sidebarCollapsed'
 import {
   Gauge, ChevronRight, Files, Crosshair,
-  Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
+  Search, Rows3, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon, PanelLeft } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
@@ -63,6 +63,7 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
     screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', {count:lootCount}) },
     targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeObservations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.observationsBadge',{count:scopeObservations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
