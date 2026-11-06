@@ -78,6 +78,19 @@ test('the timeline is its own sidebar row on ⌘3, and entering it directly offe
   await expect(viewRoot()).toHaveAttribute('data-view', 'terminal')
 })
 
+test('targets and scope share a heading, counted tabs and the state of the rules', async () => {
+  await page.locator('nav [data-view-btn="targets"]').first().click()
+  await expect(page.getByTestId('targets-scope-header').getByRole('heading', { level: 1 })).toHaveText('Targets & scope')
+  await expect(page.getByTestId('tab-count-targets')).toBeVisible()
+  // A fresh project declares no rules: said so, never shown as in scope.
+  await expect(page.getByTestId('scope-context')).toContainText('Scope is not set')
+  await page.locator('[data-view-btn="scope"][role="tab"]').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'scope')
+  await expect(page.getByTestId('targets-scope-header')).toBeVisible()
+  await page.getByTestId('targets-scope-settings').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'settings')
+})
+
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {
   await page.locator('nav [data-view-btn="targets"]').first().click()
   for (const view of ['targets', 'scope']) {

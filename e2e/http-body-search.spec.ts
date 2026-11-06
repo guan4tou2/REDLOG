@@ -246,7 +246,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await openView(page,'bookmarks')
     await expect(page.getByRole('tab',{name:'Bookmarks',exact:true})).toHaveAttribute('aria-selected','true')
     await openView(page,'scope')
-    await expect(page.getByRole('tab',{name:'Scope',exact:true})).toHaveAttribute('aria-selected','true')
+    await expect(page.getByRole('tab',{name:/^Scope observations/})).toHaveAttribute('aria-selected','true')
     await openView(page,'search')
     await expect(page.getByTestId('search-input')).toHaveValue('Exact saved output fragment')
     await page.getByRole('tab',{name:'Operations',exact:true}).click()

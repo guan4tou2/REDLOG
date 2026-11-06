@@ -39,7 +39,7 @@ function installBridge(page: { rows: Row[]; truncated: boolean }, standing: numb
 
 const open = async (): Promise<void> => {
   render(<I18nProvider><ScopeStatus /></I18nProvider>)
-  await screen.findByText('Scope Monitor')
+  await screen.findByText('Out-of-scope observations')
 }
 
 beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
@@ -70,7 +70,7 @@ describe('Scope & Evidence page', () => {
     expect(screen.queryByText('All commands within scope')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
-    await screen.findByText('Scope Monitor')
+    await screen.findByText('Out-of-scope observations')
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByText('All commands within scope')).toBeTruthy()
   })
@@ -100,12 +100,12 @@ describe('Scope & Evidence page', () => {
     await open()
     expect(screen.queryByText('All commands within scope')).not.toBeNull()
   })
-  it('opens scope settings from an unconfigured monitor', async () => {
+  it('points an unconfigured scope at the settings page that owns the rules', async () => {
     installBridge({ rows: [], truncated: false }, 0)
     window.redlog.scope.isConfigured = vi.fn(async () => false)
     const onOpenSettings = vi.fn()
     render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Settings ▸/ }))
     expect(onOpenSettings).toHaveBeenCalledOnce()
     expect(screen.queryByText('All commands within scope')).toBeNull()
   })

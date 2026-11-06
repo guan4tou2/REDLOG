@@ -86,8 +86,9 @@ test.describe.serial('active target context', () => {
 
     await post({ subtype: 'command_start', command: 'ssh 10.10.11.99' }, '10.10.11.99')
     await page.click('[data-view-btn="targets"]')
-    const targetRow = page.getByText('10.10.11.99', { exact: true }).locator('..')
-    await targetRow.getByRole('button', { name: 'Work on this' }).click()
+    // The action sits inside the expanded target (Spec 069 T019).
+    await page.getByText('10.10.11.99', { exact: true }).click()
+    await page.getByRole('button', { name: 'Work on this' }).click()
     // The Targets page is now the control, so this is the case that matters
     // most: the one surface that can still set it, still does.
     await expect.poll(activeTarget).toBe('10.10.11.99')
