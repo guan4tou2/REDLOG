@@ -7,7 +7,7 @@
 // than whichever screen someone happened to open.
 //
 // A report, not a gate. It fails nothing; the rules that have stabilised move
-// into test/ as they do (docs/UIUX-CONTROLS-AND-COPY.md §6).
+// into test/ as they do (docs/UIUX-STANDARD.md §25.8).
 //
 //   node scripts/audit-ui.mjs          all findings, grouped by file
 //   node scripts/audit-ui.mjs --rule=button
@@ -115,7 +115,7 @@ const ranked = [...findings.entries()]
   .map(([file, byRule]) => [file, byRule, [...byRule.values()].reduce((a, b) => a + b, 0)])
   .sort((a, b) => b[2] - a[2])
 
-console.log('UI audit — docs/UIUX-CONTROLS-AND-COPY.md\n')
+console.log('UI audit — docs/UIUX-STANDARD.md §25\n')
 for (const rule of RULES) {
   if (only && rule.id !== only) continue
   console.log(`  ${String(totals.get(rule.id) ?? 0).padStart(4)}  ${rule.id}  — ${rule.what}`)

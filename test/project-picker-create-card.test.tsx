@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// The create form's duplicate advanced controls, audited out (docs/UIUX-CONTROLS-AND-COPY.md
+// The create form's duplicate advanced controls, audited out (docs/UIUX-STANDARD §25.md
 // §5). It held four controls for three settings that Settings already owns —
 // safe IPs and exposed IPs on the Network page, the violation warning on the
 // Scope page — plus the modal's own open/close/done. Every one of them is a

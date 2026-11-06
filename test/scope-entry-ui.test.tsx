@@ -12,7 +12,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('scope and project identity entry', () => {
   // The create card no longer asks for scope or exclusions: Settings > Scope
   // owns them, and asking twice is asking twice
-  // (docs/UIUX-CONTROLS-AND-COPY.md §2). What it still carries at create time
+  // (docs/UIUX-STANDARD.md §25.2). What it still carries at create time
   // comes from an imported profile, covered in
   // test/project-picker-create-card.test.tsx.
 

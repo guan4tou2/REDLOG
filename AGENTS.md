@@ -3,6 +3,22 @@
 `CLAUDE.md` remains the source of truth for verification, e2e and git workflow.
 The rules below are additional and apply to every agent working in this repo.
 
+## Which document is authoritative
+
+- Product principles: `docs/DESIGN-PRINCIPLES.md`.
+- Global UI/UX rules, controls and copy, and confirmed design decisions
+  (appendix UX-001…): `docs/UIUX-STANDARD.md`. It is the only global UI/UX
+  standard; do not start a second one.
+- A feature's requirements and acceptance: its `specs/NNN-*/`. Technical and
+  data contracts: `docs/DESIGN-*.md`.
+- `docs/archive/`, `docs/records/` and dated audits (`docs/AUDIT-*`, `UIUX-*-2026-*`)
+  are history, not a basis for current design. A document headed
+  `ARCHIVED — NOT AUTHORITATIVE` is never a source.
+- Design decisions go in `UIUX-STANDARD.md`; implementation detail goes in the
+  spec. A finished audit is closed or deleted, not kept as a standing document.
+- If the standard and the code disagree, report the difference; do not decide on
+  your own that either one is right.
+
 ## UI: let the layout explain
 
 Avoid unnecessary secondary labels and descriptions.
@@ -24,7 +40,7 @@ Let the layout do the explaining.
   boundaries and empty states. Deleting a required warning is not simplification.
 - When in doubt, remove the text and check whether the screen still reads.
 
-`docs/UIUX-CONTROLS-AND-COPY.md` §2 is the necessity test; `docs/UIUX-STANDARD.md`
+`docs/UIUX-STANDARD.md` §25.2 is the necessity test; the same file
 holds the empty-state and settings conventions.
 
 `test/ui-copy.test.ts` is the mechanical half of this rule and runs in CI. It

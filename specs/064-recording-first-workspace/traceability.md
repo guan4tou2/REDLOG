@@ -51,7 +51,7 @@
 | FR-039 | 網頁 Scope／附件限制 | ScopeStatus、ScopePage、TargetView；canonical scope／export policy | C5 | UX-11/13；CT-07 | S1/S3 |
 | FR-040 | Settings 五目的分類 | Settings 及既有各設定頁；config ownership | UX | UX-15/19 | S4 |
 | FR-041 | HUD 獨立用途 | HudPage；既有 HUD window／焦點／穿透 | UX | UX-17 | S4 |
-| FR-042 | 品牌與少文案布局 | 既有 CSS tokens／共用控制；UIUX-CONTROLS-AND-COPY | UX | UX-16 | S4 |
+| FR-042 | 品牌與少文案布局 | 既有 CSS tokens／共用控制；UIUX-STANDARD §25 | UX | UX-16 | S4 |
 | FR-043 | 尺寸／語系／鍵盤／狀態 | 各受影響控制、windows 最小尺寸、locales | UX/C3 | UX-16 | 全階段，S4 總驗收 |
 | FR-044 | 安全內容呈現 | TimelineEventDetails、TranscriptView、ReplayCommand；既有安全轉換 | C3/C4 | UX-16；CT-12 | 全階段，S3 共用契約 |
 | FR-045 | 退出／更新／恢復 | App；既有 updater／shutdown／Terminal Manager | UX/C6 | UX-17 | S1/S4 |

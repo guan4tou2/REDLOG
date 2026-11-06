@@ -1,5 +1,7 @@
 # Feature Specification: 活動紀錄與時間軸 — 對齊 Stitch 設計決策
 
+> **部分設計決策已被取代。** 活動紀錄與時間軸目前採獨立主要入口(側邊欄各有直接入口),下列「採用的設計決策」第 1 點「同一工作區」不再適用。相關歷史需求保留作為決策背景;實作應遵循最新 `docs/UIUX-STANDARD.md`(設計決策附錄 UX-002)。
+
 **Feature Branch**: `docs/069-activity-timeline-alignment`
 **Created**: 2026-11-05
 **Status**: Draft
