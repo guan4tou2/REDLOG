@@ -4,6 +4,7 @@ import { Button } from './Button'
 import { eventTitle } from '../lib/eventTitle'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { useKeepScroll } from '../lib/useKeepScroll'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
@@ -172,6 +173,8 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const queryRef = useRef(query)
+  const resultsRef = useRef<HTMLDivElement>(null)
+  useKeepScroll(resultsRef, active)
   queryRef.current = query
   const { t } = useI18n()
   const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
@@ -361,7 +364,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
       </div>}
 
-      <div data-testid="search-results" className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
+      <div data-testid="search-results" ref={resultsRef} className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
         {parse && (
           <div className="mb-2">
             <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />
