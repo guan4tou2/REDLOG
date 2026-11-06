@@ -2184,5 +2184,12 @@
   "terminal.meta.ended": "Session ended",
   "terminal.meta.endedNoGap": "no gap reported",
   "terminal.meta.cwd": "Dir",
-  "terminal.meta.exit": "Exit"
-}
+  "terminal.meta.exit": "Exit",
+  "dashboard.hint": "Project record, what is being captured, and what needs attention.",
+  "ip.readFailed": "Could not read the IP status.",
+  "pivot.detected": "{{count}} relay node(s) detected from commands",
+  "pivot.route": "route {{route}}",
+  "pivot.lastSeen": "last seen {{when}}",
+  "pivot.unverified": "Seen in commands only. Which node forwards to which, and whether a channel is up now, is not checked.",
+  "pivot.readFailed": "Could not read relay nodes. This is not the same as none.",
+  "pivot.readFailedStale": "Could not refresh relay nodes; the {{count}} below are the last list read."}

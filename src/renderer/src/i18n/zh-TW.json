@@ -2184,5 +2184,12 @@
   "terminal.meta.ended": "工作階段已結束",
   "terminal.meta.endedNoGap": "未回報中斷",
   "terminal.meta.cwd": "目錄",
-  "terminal.meta.exit": "Exit"
-}
+  "terminal.meta.exit": "Exit",
+  "dashboard.hint": "專案記錄、擷取狀態與需要處理的事項。",
+  "ip.readFailed": "無法讀取 IP 狀態。",
+  "pivot.detected": "從指令偵測到 {{count}} 個中繼節點",
+  "pivot.route": "路由 {{route}}",
+  "pivot.lastSeen": "最後出現 {{when}}",
+  "pivot.unverified": "僅根據指令偵測。節點之間的轉送關係，以及通道目前是否可用，並未檢查。",
+  "pivot.readFailed": "無法讀取中繼節點。這不代表沒有。",
+  "pivot.readFailedStale": "無法更新中繼節點；以下 {{count}} 個是上次讀到的清單。"}

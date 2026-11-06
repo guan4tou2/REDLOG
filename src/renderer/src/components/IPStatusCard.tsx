@@ -1,25 +1,56 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
-import { usePivots } from '../lib/usePivots'
+import { usePivotRead, type ActivePivot } from '../lib/usePivots'
 import { formatFreshness } from '../lib/time'
+import { Button } from './Button'
 import { useTick } from '../lib/useTick'
+
+/** Relay nodes RedLog has seen in commands. Listed, not drawn as a route: a
+ *  detected node says nothing about which node forwards to which, nor that the
+ *  channel is up now, so no arrows and no health. Independent of the IP read. */
+function PivotNodes({ read }: { read: ReturnType<typeof usePivotRead> }): JSX.Element | null {
+  const { t } = useI18n()
+  if (read.status === 'loading') return null
+  if (read.status === 'error') {
+    return <div data-testid="pivot-error" className="pt-2 border-t border-redlog-border flex items-center gap-3 text-xs text-redlog-warn">
+      <span>{read.pivots.length ? t('pivot.readFailedStale', { count: read.pivots.length }) : t('pivot.readFailed')}</span>
+      <Button size="compact" onClick={read.retry}>{t('common.retry')}</Button>
+    </div>
+  }
+  if (read.pivots.length === 0) return null
+  const nodes: ActivePivot[] = read.pivots
+  return <div data-testid="pivot-nodes" className="pt-2 border-t border-redlog-border space-y-1.5">
+    <p className="text-xs text-redlog-text-dim">{t('pivot.detected', { count: nodes.length })}</p>
+    <ul className="space-y-1">
+      {nodes.map((p) => <li key={p.via + p.tool + p.ts} data-testid="pivot-node" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-redlog-border bg-redlog-elevated/40 px-2 py-1 text-xs">
+        <span className="font-mono text-redlog-text-dim">{p.tool}</span>
+        <span className="font-mono text-redlog-text [overflow-wrap:anywhere]">{p.via}</span>
+        {p.route && <span className="font-mono text-redlog-text-dim [overflow-wrap:anywhere]">{t('pivot.route', { route: p.route })}</span>}
+        <span className="ml-auto text-redlog-text-faint">{t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })}</span>
+      </li>)}
+    </ul>
+    <p className="text-xs text-redlog-text-faint">{t('pivot.unverified')}</p>
+  </div>
+}
 
 export default function IPStatusCard(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
-  const pivots = usePivots()
+  const pivotRead = usePivotRead()
+  const [failed, setFailed] = useState(false)
   useTick()
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.ip.getStatus().then(setStatus)
+    window.redlog.ip.getStatus().then(setStatus).catch(() => setFailed(true))
     const unsub = window.redlog.ip.onStatus(setStatus)
     return () => unsub()
   }, [])
 
   if (!status) {
     return (
-      <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
-        <p className="text-redlog-text-dim">{t('ip.checking')}</p>
+      <div data-testid="ip-status-card" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
+        <p className={failed ? 'text-redlog-warn' : 'text-redlog-text-dim'}>{failed ? t('ip.readFailed') : t('ip.checking')}</p>
+        <PivotNodes read={pivotRead} />
       </div>
     )
   }
@@ -33,7 +64,7 @@ export default function IPStatusCard(): JSX.Element {
   const cfg = STATUS_CONFIG[safety]
 
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
+    <div data-testid="ip-status-card" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
       <div className="flex items-center gap-3">
         <span className={`w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
         <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
@@ -51,40 +82,7 @@ export default function IPStatusCard(): JSX.Element {
         </div>
       </div>
 
-      {pivots.length > 0 && (() => {
-        const chain = [...pivots].sort((a, b) => a.ts - b.ts)
-        const Arrow = (): JSX.Element => <span className="text-cyan-500/50 text-sm shrink-0">→</span>
-        const Pill = ({ top, sub, tone }: { top: string; sub: string; tone: 'ext' | 'pivot' | 'int' }): JSX.Element => {
-          const c = tone === 'ext'
-            ? 'bg-redlog-elevated/60 border-redlog-border/50 text-redlog-text'
-            : tone === 'pivot'
-              ? 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200'
-              : 'bg-green-500/10 border-green-400/30 text-green-300'
-          return (
-            <span className={`inline-flex flex-col items-start px-2 py-1 rounded border ${c} shrink-0 max-w-[140px]`}>
-              <span title={top} className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
-              <span className="text-xs text-redlog-text-dim uppercase tracking-wide">{sub}</span>
-            </span>
-          )
-        }
-        return (
-          <div className="pt-2 border-t border-redlog-border">
-            <p className="text-xs text-cyan-400/80 font-medium uppercase tracking-wider mb-2">⇄ {t('overlay.topology')}</p>
-            {/* our host outward: internal → external egress → pivot hops */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Pill top={status.internalIP ?? t('overlay.internalNet')} sub={t('overlay.internalNet')} tone="int" />
-              <Arrow />
-              <Pill top={status.externalIP ?? '—'} sub={t('ip.externalIp')} tone="ext" />
-              {chain.map((p) => (
-                <span key={p.via + p.ts} className="flex items-center gap-1.5">
-                  <Arrow />
-                  <Pill top={p.route ? `${p.via} (${p.route})` : p.via} sub={p.tool} tone="pivot" />
-                </span>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
+      <PivotNodes read={pivotRead} />
 
       {safety === 'exposed' && (
         <p className="text-xs text-red-400/90 flex items-start gap-1.5">
