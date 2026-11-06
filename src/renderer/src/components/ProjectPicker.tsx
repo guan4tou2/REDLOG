@@ -288,7 +288,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {bridgeMissing && <p role="alert" className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-redlog-border-subtle">
           <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
-          <Button level="primary" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
+          <Button level="secondary" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
         </div>
         {searchVisible && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown} className="w-full bg-redlog-bg border border-redlog-border-subtle rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
         <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1" aria-busy={!!opening} onKeyDown={e => {
