@@ -15,10 +15,10 @@ test.describe.serial('scope entry and project identity', () => {
   test.afterAll(async () => { if (app) await app.close() })
 
   test('takes excludes in Settings and keeps the engagement ID read-only', async () => {
-    // Spec 037 put excludes on the create card. They came off it: Settings ▸
-    // Scope already owned them, and the create card was asking for a boundary
-    // before the operator had seen a single event — the necessity test's third
-    // question, answered by another surface that was already there.
+    // Spec 037 put excludes on the create card, they came off it, and #588
+    // put the targets back (excludes folded under "Advanced scope"). This test
+    // creates by name only and sets the exclude in Settings, which still owns
+    // every scope setting; create-project-scope.spec.ts covers the card.
     await page.getByRole('button', { name: 'New Project' }).click()
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Scope Lab')
     await page.getByRole('button', { name: 'Create' }).click()
