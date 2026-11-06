@@ -275,7 +275,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // transparent now, so the picker showing a different window colour from the
   // title bar is something you can actually see.
   return (
-    <div className="h-full flex flex-col bg-[#0a0e14] text-redlog-text" data-testid="project-picker">
+    <div className="h-full flex flex-col bg-redlog-bg text-redlog-text" data-testid="project-picker">
       <div inert={createOpen} className="flex-1 min-h-0 flex flex-col">
       {/* Draggable title bar zone */}
       <div
@@ -284,13 +284,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       />
       <div className="flex-1 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
       <div className="shrink-0 mb-8 text-center"><Wordmark className="text-4xl" /></div>
-      <div className="w-full max-w-[740px] mx-auto space-y-4 bg-[#10141a] border border-[#262d38] rounded-xl p-6 shadow-2xl">
+      <div className="w-full max-w-[740px] mx-auto space-y-4 bg-redlog-surface border border-redlog-border-subtle rounded-xl p-6 shadow-2xl">
         {bridgeMissing && <p role="alert" className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#262d38]">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-redlog-border-subtle">
           <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
-          <Button level="secondary" className="!bg-[#ef4444] hover:!bg-[#dc2626] !border-transparent !text-redlog-on-accent" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
+          <Button level="secondary" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
         </div>
-        {searchVisible && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown} className="w-full bg-[#0a0e14] border border-[#262d38] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
+        {searchVisible && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown} className="w-full bg-redlog-bg border border-redlog-border-subtle rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
         <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1" aria-busy={!!opening} onKeyDown={e => {
           if (!(e.target instanceof HTMLElement) || !e.target.matches('[data-project-open]') || !['ArrowUp', 'ArrowDown'].includes(e.key)) return
           const rows = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[data-project-open]'))
@@ -298,7 +298,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           e.preventDefault()
           rows[(index + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus()
         }}>
-          {filtered.map(p => <div key={p.id} className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-3 hover:bg-[#161b22] hover:border-[#262d38] focus-within:bg-[#161b22] focus-within:border-redlog-border group">
+          {filtered.map(p => <div key={p.id} className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-3 hover:bg-redlog-elevated-hover hover:border-redlog-border-subtle focus-within:bg-[#161b22] focus-within:border-redlog-border group">
             {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onKeyDown={e => {
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
               if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
@@ -341,13 +341,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
-        <div className="pt-4 border-t border-[#262d38] text-xs text-redlog-text-dim font-mono text-right">{t('project.keyboardHint')}</div>
+        <div className="pt-4 border-t border-redlog-border-subtle text-xs text-redlog-text-dim font-mono text-right">{t('project.keyboardHint')}</div>
       </div>
       </div>
       </div>
-      <Modal open={createOpen} onClose={() => { if (!creating && !importing) setCreateOpen(false) }} label={t('project.new')} initialFocus={nameInput} panelClassName="w-full max-w-[560px] max-h-[calc(90vh/var(--app-zoom,0.9))] overflow-y-auto m-4 p-6 rounded-xl bg-[#10141a] border border-[#262d38] shadow-2xl">
+      <Modal open={createOpen} onClose={() => { if (!creating && !importing) setCreateOpen(false) }} label={t('project.new')} initialFocus={nameInput} panelClassName="w-full max-w-[560px] max-h-[calc(90vh/var(--app-zoom,0.9))] overflow-y-auto m-4 p-6 rounded-xl bg-redlog-surface border border-redlog-border-subtle shadow-2xl">
         <form onSubmit={e => { e.preventDefault(); void handleCreate() }} className="space-y-4">
-          <h2 className="text-sm font-medium pb-4 border-b border-[#262d38]">{t('project.new')}</h2>
+          <h2 className="text-sm font-medium pb-4 border-b border-redlog-border-subtle">{t('project.new')}</h2>
           <label className="block text-xs text-redlog-text-dim">{t('project.name')}
             <input ref={nameInput} value={newName} disabled={creating || importing} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void handleCreate() } }} placeholder={t('project.placeholder')} className="block mt-1 w-full rounded-lg border border-redlog-border bg-redlog-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
           </label>
@@ -363,7 +363,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           {appliedText && <div className="flex gap-2 items-center"><p data-testid="profile-applied" className="text-xs text-redlog-text-dim">{appliedText}</p><Button type="button" level="quiet" disabled={creating || importing} onClick={handleClearImported}>{t('project.clearImported')}</Button></div>}
           {failureText && <p role="alert" data-testid="profile-error" className="text-xs text-red-300">{failureText}</p>}
           {createError && <p role="alert" className="text-xs text-red-300">{createError}</p>}
-          <div className="flex justify-end gap-2 pt-4 border-t border-[#262d38]"><Button type="button" level="quiet" disabled={creating || importing} onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button level="primary" type="submit" disabled={creating || importing || !newName.trim()}>{t('project.create')}</Button></div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-redlog-border-subtle"><Button type="button" level="quiet" disabled={creating || importing} onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button level="primary" type="submit" disabled={creating || importing || !newName.trim()}>{t('project.create')}</Button></div>
         </form>
       </Modal>
     </div>
