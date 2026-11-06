@@ -2167,5 +2167,22 @@
   "loot.searchLabel": "搜尋戰利品",
   "loot.searchPlaceholder": "類型、內容摘錄、來源或目標…",
   "loot.searchLoadedOnly": "目前只搜尋已載入的項目。載入更早的才會搜尋到更早的。",
-  "loot.hitNotProof": "規則命中不等於憑證有效。"
+  "loot.hitNotProof": "規則命中不等於憑證有效。",
+  "terminal.title": "終端機",
+  "terminal.hint": "多個 shell 分頁，各自以兩條獨立軌道記錄。",
+  "terminal.about": "擷取方式說明",
+  "terminal.aboutTitle": "終端機如何被擷取",
+  "terminal.aboutCastTitle": "畫面錄製（.cast）",
+  "terminal.aboutCastBody": "記錄這個終端機顯示的輸出與時間點，格式相容 asciinema v2。暫停期間、錄製停止後，或超過大小上限之後的輸出不會保存。",
+  "terminal.aboutHookTitle": "指令事件（shell hook）",
+  "terminal.aboutHookBody": "shell 載入 hook 後，每個指令、工作目錄與 exit code 會成為結構化事件。沒有對應 hook 的 shell 仍有畫面錄製，但指令不會被抽成事件。",
+  "terminal.aboutIndependent": "兩條軌道各自獨立：沒接上 hook 不會停止畫面錄製，反之亦然。",
+  "terminal.meta.screenLabel": "畫面",
+  "terminal.meta.hookLabel": "指令",
+  "terminal.meta.hookOn": "事件已接入",
+  "terminal.meta.hookOff": "事件未接入",
+  "terminal.meta.ended": "工作階段已結束",
+  "terminal.meta.endedNoGap": "未回報中斷",
+  "terminal.meta.cwd": "目錄",
+  "terminal.meta.exit": "Exit"
 }

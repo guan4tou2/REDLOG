@@ -2167,5 +2167,22 @@
   "loot.searchLabel": "Search loot",
   "loot.searchPlaceholder": "Type, preview, source or target…",
   "loot.searchLoadedOnly": "Searching the loaded set only. Load older loot to search further back.",
-  "loot.hitNotProof": "A rule match is not proof the credential is valid."
+  "loot.hitNotProof": "A rule match is not proof the credential is valid.",
+  "terminal.title": "Terminal",
+  "terminal.hint": "Several shells, each recorded on two separate tracks.",
+  "terminal.about": "How capture works",
+  "terminal.aboutTitle": "How the terminal is captured",
+  "terminal.aboutCastTitle": "Screen recording (.cast)",
+  "terminal.aboutCastBody": "Records what this terminal prints, with timing, in asciinema v2 format. Output is not saved while recording is paused, after it stops, or past the size limit.",
+  "terminal.aboutHookTitle": "Command events (shell hook)",
+  "terminal.aboutHookBody": "When the shell loads the hook, each command, its directory and its exit code become a structured event. A shell with no hook is still screen-recorded, but its commands are not turned into events.",
+  "terminal.aboutIndependent": "The two tracks are independent: a missing hook does not stop the screen recording, and the reverse.",
+  "terminal.meta.screenLabel": "Screen",
+  "terminal.meta.hookLabel": "Commands",
+  "terminal.meta.hookOn": "events connected",
+  "terminal.meta.hookOff": "events not connected",
+  "terminal.meta.ended": "Session ended",
+  "terminal.meta.endedNoGap": "no gap reported",
+  "terminal.meta.cwd": "Dir",
+  "terminal.meta.exit": "Exit"
 }

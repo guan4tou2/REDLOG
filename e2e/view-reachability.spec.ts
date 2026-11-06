@@ -108,6 +108,19 @@ test('evidence shares a heading and counted tabs, and each page opens with its o
   await expect(header).toBeVisible()
 })
 
+test('the terminal names itself, explains its two capture tracks, and shows the active pane\'s state line', async () => {
+  await page.locator('nav [data-view-btn="terminal"]').first().click()
+  await expect(page.getByTestId('terminal-header').getByRole('heading', { level: 1 })).toHaveText('Terminal')
+  await expect(page.getByTestId('terminal-session-meta')).toBeVisible()
+  await expect(page.getByTestId('terminal-meta-screen')).toBeVisible()
+  await page.getByTestId('terminal-about-open').click()
+  const about = page.getByTestId('terminal-about')
+  await expect(about).toContainText('Screen recording (.cast)')
+  await expect(about).toContainText('Command events (shell hook)')
+  await page.keyboard.press('Escape')
+  await expect(about).toHaveCount(0)
+})
+
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {
   await page.locator('nav [data-view-btn="targets"]').first().click()
   for (const view of ['targets', 'scope']) {
