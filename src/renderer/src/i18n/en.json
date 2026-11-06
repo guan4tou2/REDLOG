@@ -916,6 +916,8 @@
   "transcript.note.recorded": "output recorded — {{size}} of session capture, open this event on the Timeline to replay it",
   "transcript.note.unbracketed": "output not bracketed — use the full session replay on the Timeline",
   "transcript.note.uncaptured": "output not captured",
+  "transcript.note.empty": "no output",
+  "transcript.note.saved": "output saved — open this event on the Timeline and use Saved content to read it",
   "transcript.note.pending": "no result received",
   "transcript.note.unpaired": "counterpart not found — this exchange is incomplete",
   "transcript.note.interrupted": "tool execution interrupted",
