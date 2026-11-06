@@ -6,10 +6,12 @@ import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { eventTitle } from '../lib/eventTitle'
-import { formatTime } from '../lib/time'
+import { formatDate, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
 import { ActivityReader } from './ActivityReader'
+
+const ROW_GRID = 'grid grid-cols-[72px_96px_minmax(0,1fr)_24px] gap-x-3 items-start'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
@@ -27,7 +29,7 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection, active = true }: { active?: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true }: { active?: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -37,9 +39,9 @@ export function ActivityResults({ request, onOpen, onExportSelection, active = t
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} />
 }
-function ActivityList({ request, onOpen, onExportSelection, active }: { active: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active }: { active: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
@@ -84,7 +86,6 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
     return ()=>onExportSelection?.(null)
   },[active,anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
-    {newEvents && <Button size="compact" level="quiet" onClick={refresh}>{t('workspace.newActivity')}</Button>}
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
     {page && (() => {
@@ -95,23 +96,37 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
       const filtering = request.parsed.text.trim().length > 0 || request.parsed.conditions.length > 0
       return <>
       <SearchCoverage coverage={page.bodyCoverage} />
-      <p className="text-xs text-redlog-text-dim mb-2">{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}</p>
+      <div data-testid="activity-stats" className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-redlog-text-dim">
+        <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
+          {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
+        </span>
+        {newEvents && <button type="button" data-testid="activity-new-events" onClick={refresh} className="rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400">{t('workspace.newActivity')}</button>}
+      </div>
+      {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
+        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span><span className="text-right">{t('activity.col.view')}</span>
+      </div>}
       {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
       <div className="divide-y divide-redlog-border-subtle">
-        {page.items.map(item => <div key={item.id} className={expanded === item.id ? "min-w-0 bg-white/[0.012]" : "min-w-0"}>
-          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className="w-full text-left py-3 px-2 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400"
+        {page.items.map((item, at) => <div key={item.id} className={expanded === item.id ? "min-w-0 bg-white/[0.012]" : "min-w-0"}>
+          {(at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(item.firstAt)) && <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
+            <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(item.firstAt)}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
+          </div>}
+          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} w-full text-left py-2.5 px-2 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-redlog-text-dim">
-              <time className="font-mono">{formatTime(item.firstAt, { seconds: true })}</time>
-              <span>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
-              <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
-              {(() => {
-                const r = activityResultLabel(item, t)
-                return r && <span data-testid="activity-result" className={r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}>{r.text}</span>
-              })()}
-              {filtering && <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
-            </div>
-            <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
+            <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
+            <span className="min-w-0 truncate text-xs text-redlog-text-dim" title={item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
+            <span className="min-w-0">
+              <span className="block font-mono text-sm break-words">{eventTitle(item.anchor)}</span>
+              <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-redlog-text-dim">
+                <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
+                {(() => {
+                  const r = activityResultLabel(item, t)
+                  return r && <span data-testid="activity-result" className={r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}>{r.text}</span>
+                })()}
+                {filtering && <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
+              </span>
+            </span>
+            <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${expanded === item.id ? 'rotate-90' : ''}`}>›</span>
           </button>
           {expanded === item.id && <div data-testid="activity-summary" className="px-2 pb-3 space-y-2">
             <p className="text-xs text-redlog-text-dim">{filtering ? t('activity.sources', { matches: item.matchedCount, context: item.contextCount }) : t('activity.summary.sources', { count: item.sourceCount })}</p>
