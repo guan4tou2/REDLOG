@@ -29,9 +29,11 @@ export function usePivotRead(): PivotRead & { retry: () => void } {
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     const pv = (window.redlog as { pivots?: PivotsBridge }).pivots
-    const set = (pivots: ActivePivot[]): void => setState({ status: 'ready', pivots })
+    const fail = (): void => setState((prev) => ({ status: 'error', pivots: prev.pivots }))
+    // An answer that is not a list is a failed read, not an empty one.
+    const set = (pivots: ActivePivot[]): void => (Array.isArray(pivots) ? setState({ status: 'ready', pivots }) : fail())
     if (!pv?.getActive) { set([]); return }
-    pv.getActive().then(set).catch(() => setState((prev) => ({ status: 'error', pivots: prev.pivots })))
+    pv.getActive().then(set).catch(fail)
     return pv.onChange?.(set)
   }, [attempt])
   return { ...state, retry: () => setAttempt((n) => n + 1) }

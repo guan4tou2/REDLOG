@@ -77,3 +77,10 @@ it('follows pushed changes', async () => {
   act(() => change(two))
   expect(await screen.findAllByTestId('pivot-node')).toHaveLength(2)
 })
+
+it('treats an answer that is not a list as a failed read, not as none', async () => {
+  install({ list: [] })
+  ;(window as unknown as { redlog: { pivots: { getActive: () => Promise<unknown> } } }).redlog.pivots.getActive = async () => undefined
+  mount()
+  expect(await screen.findByTestId('pivot-error')).toBeTruthy()
+})
