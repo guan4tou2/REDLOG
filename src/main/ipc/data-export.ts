@@ -303,16 +303,15 @@ export function registerDataExportIpc(
       if (plan.request.format === 'json') {
         const projectDir = getProjectPath(project)
         const config = loadConfig(projectDir)
-        const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: plan.snapshot }), planRedaction)
-          .filter((event) => selectedIds.has(event.id))
+        // The rows just verified against the plan's digest, not a second read.
+        const events = approvedNow
         const outDir = destination.dir
         let content = JSON.stringify({ config: exportableConfig(config), events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
         if (plan.request.scrubPii) content = scrubOperatorPii(content)
         artifactPath = writeExportFile(outDir, 'redlog', 'json', content)
       } else if (plan.request.format === 'ndjson') {
         const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
-        const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
-        const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
+        const content = eventsToNdjson(approvedNow, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set(), alreadyRedacted: true })
         const outDir = destination.dir
         artifactPath = writeExportFile(outDir, 'redlog', 'ndjson', content)
       } else if (plan.request.format === 'bundle') {
