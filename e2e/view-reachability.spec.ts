@@ -91,6 +91,23 @@ test('targets and scope share a heading, counted tabs and the state of the rules
   await expect(viewRoot()).toHaveAttribute('data-view', 'settings')
 })
 
+test('evidence shares a heading and counted tabs, and each page opens with its own controls', async () => {
+  await page.locator('nav [data-view-btn="screenshots"]').first().click()
+  const header = page.getByTestId('evidence-header')
+  await expect(header.getByRole('heading', { level: 1 })).toHaveText('Evidence')
+  // Screenshots and bookmarks are counted over the project; loot has no second number.
+  await expect(page.getByTestId('tab-count-screenshots')).toBeVisible()
+  await expect(page.getByTestId('tab-count-bookmarks')).toBeVisible()
+  await expect(page.getByTestId('tab-count-loot')).toHaveCount(0)
+  await page.locator('[data-view-btn="loot"][role="tab"]').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'loot')
+  await expect(header).toBeVisible()
+  await expect(page.getByTestId('loot-disclaimer')).toContainText('does not mean the credential works')
+  await page.locator('[data-view-btn="bookmarks"][role="tab"]').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'bookmarks')
+  await expect(header).toBeVisible()
+})
+
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {
   await page.locator('nav [data-view-btn="targets"]').first().click()
   for (const view of ['targets', 'scope']) {
