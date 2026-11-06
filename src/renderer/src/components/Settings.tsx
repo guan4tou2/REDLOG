@@ -21,7 +21,6 @@ import IntegrityPanel from './settings/IntegrityPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
-import { useNarrowViewport } from '../hooks/useNarrowViewport'
 
 // Existing settings routes. A typo must fail typechecking, not open an empty pane.
 export type SettingsPage =
@@ -33,16 +32,16 @@ export type SettingsPage =
  *  per request, so asking again for the same page switches back to it. */
 export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string } | null } = {}): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<SettingsPage>(request?.page ?? 'hooks')
+  // `null` is the home list. Settings is one column: a list of pages, and a
+  // page opened from it with a way back (#590) — no second sidebar. A link that
+  // names a page (`request`) lands on that page directly.
+  const [tab, setTab] = useState<SettingsPage | null>(request?.page ?? null)
   useEffect(() => { if (request) setTab(request.page) }, [request])
   // Spec 066: a link between an integration's plugin detail and its Capture
   // sources row. View-only; each side clears it once it has landed.
   const [pluginFocus, setPluginFocus] = useState<{ pluginId: string } | null>(null)
   const [captureFocus, setCaptureFocus] = useState<string | null>(null)
   const [pageQuery, setPageQuery] = useState('')
-  // Before the early returns below: a hook after `if (!config) return` is a
-  // hook that runs on some renders and not others.
-  const narrow = useNarrowViewport()
   // The setting a search result points at: after its page renders, the text is
   // scrolled into view and marked briefly.
   const [findText, setFindText] = useState<{ key: string; text: string } | null>(null)
@@ -253,7 +252,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
     }
   ]
 
-  const wideContent = ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
+  const wideContent = tab !== null && ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
   const q = pageQuery.trim().toLowerCase()
   const visible = groups
     .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
@@ -262,122 +261,71 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
 
   return (
-    // Narrow, the 212px category column is a strip above the page instead of a
-    // column beside it (#298): at the window's floor with the shell zoomed it
-    // took a third of the width, and the page it was there to choose between
-    // was below the fold. Same nav, same search, same results — the pages
-    // become a select, which a keyboard and a screen reader already know.
-    <div className={narrow ? 'flex flex-col h-full' : 'flex h-full'}>
-      <nav
-        aria-label={t('settings.categories')}
-        className={narrow
-          ? 'shrink-0 max-h-[45%] border-b border-redlog-border flex flex-col overflow-hidden'
-          : 'w-[212px] shrink-0 border-r border-redlog-border flex flex-col overflow-hidden'}
-      >
-        <div className={`p-2 border-b border-redlog-border ${narrow ? 'flex gap-2' : ''}`}>
-          <input
-            value={pageQuery}
-            onChange={(e) => setPageQuery(e.target.value)}
-            placeholder={t('settings.searchSettings')}
-            aria-label={t('settings.searchSettings')}
-            className={`${narrow ? 'flex-1 min-w-0' : 'w-full'} px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60`}
-          />
-          {narrow && (
-            // Every page, whatever the search says: the current page must
-            // always be among the options, or the control would show one page
-            // while the content shows another.
-            <select
-              data-testid="settings-page-select"
-              value={tab}
-              onChange={(e) => setTab(e.target.value as SettingsPage)}
-              aria-label={t('settings.categories')}
-              className="min-w-0 max-w-[50%] px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text outline-none focus:border-redlog-accent/60"
-            >
-              {groups.map((g) => (
-                <optgroup key={g.heading} label={g.heading}>
-                  {g.pages.map((pg) => <option key={pg.id} value={pg.id}>{pg.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          )}
-        </div>
-        {(!narrow || q) && (
-        <div className="flex-1 min-h-0 overflow-y-auto py-2">
-          {visible.length === 0 && hits.length === 0 && (
-            <p className="px-3 py-4 text-xs text-redlog-text-faint text-center">
-              {t('settings.noSettingMatches', { query: pageQuery })}
-            </p>
-          )}
-          {/* A heading and a page used to differ by one weight step and two
-              greys three units apart, with `uppercase` doing the rest — and
-              `uppercase` does nothing to Chinese. In this locale they read as
-              one flat list, so which rows are clickable had to be guessed.
-              The difference is structural now: headings sit at the margin in
-              the muted grey and never highlight, pages are indented, have a
-              row height, and light up under the pointer. */}
-          {visible.map((g, i) => (
-            <div key={g.heading} className={i > 0 ? 'mt-3 pt-3 border-t border-redlog-border-subtle' : ''}>
-              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
-                {g.heading}
-              </p>
-              {g.pages.map((pg) => (
-                <button
-                  key={pg.id}
-                  data-settings-page={pg.id}
-                  onClick={() => setTab(pg.id)}
-                  aria-current={tab === pg.id ? 'page' : undefined}
-                  className={`w-full text-left pl-5 pr-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
-                    tab === pg.id
-                      ? 'bg-redlog-elevated text-redlog-text'
-                      : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
-                  }`}
-                >
-                  {pg.label}
-                </button>
-              ))}
-            </div>
-          ))}
-          {hits.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-redlog-border-subtle" data-testid="settings-search-results">
-              <p className="px-3 pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">
-                {t('settings.searchResults')}
-              </p>
-              {hits.map((h) => (
-                <button
-                  key={`${h.page}:${h.text}`}
-                  onClick={() => { setTab(h.page); setFindText({ key: h.key, text: h.text }) }}
-                  className="w-full text-left pl-5 pr-3 py-1 text-xs rounded-md text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
-                >
-                  <span className="block truncate" title={h.text}>{h.text}</span>
-                  <span className="block text-redlog-text-faint">{pageLabel.get(h.page)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
-        {saveState !== 'idle' && (
-          <p
-            data-testid={`settings-save-${saveState}`}
-            role="status"
-            className={`px-3 py-2 text-xs border-t border-redlog-border ${
-              saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'
-            }`}
-          >
-            {t(`settings.save.${saveState}`)}
-            {saveState === 'failed' && (
-              <button
-                onClick={() => { if (config) writeConfig(config) }}
-                className="ml-2 underline hover:text-red-300"
-              >{t('settings.save.retry')}</button>
-            )}
-          </p>
-        )}
-      </nav>
-
+    <div className="flex flex-col h-full">
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-      <div ref={pane} data-testid="settings-content" className={`flex-1 min-w-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent ? '' : 'max-w-[900px]'}`}>
+      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className={`flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent || tab === null ? '' : 'max-w-[900px]'}`}>
+        {tab === null ? (
+          <div className="max-w-[720px] mx-auto space-y-4" data-testid="settings-home">
+            <input
+              value={pageQuery}
+              onChange={(e) => setPageQuery(e.target.value)}
+              placeholder={t('settings.searchSettings')}
+              aria-label={t('settings.searchSettings')}
+              className="w-full px-3 py-2 bg-redlog-elevated border border-redlog-border rounded text-sm text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
+            />
+            {visible.length === 0 && hits.length === 0 && (
+              <p className="py-4 text-xs text-redlog-text-faint text-center">
+                {t('settings.noSettingMatches', { query: pageQuery })}
+              </p>
+            )}
+            {/* Headings sit at the margin in the muted grey and never light
+                up; a page is a row with a height that does. */}
+            <nav aria-label={t('settings.categories')} className="space-y-4">
+              {visible.map((g) => (
+                <section key={g.heading} aria-label={g.heading}>
+                  <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{g.heading}</p>
+                  <div className="divide-y divide-redlog-border-subtle rounded-lg border border-redlog-border-subtle bg-redlog-surface">
+                    {g.pages.map((pg) => (
+                      <button
+                        key={pg.id}
+                        data-settings-page={pg.id}
+                        onClick={() => setTab(pg.id)}
+                        className="w-full text-left px-3 h-[var(--row-h)] flex items-center justify-between text-sm text-redlog-text hover:bg-white/[0.03] first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        <span>{pg.label}</span>
+                        <span aria-hidden className="text-redlog-text-faint">›</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </nav>
+            {hits.length > 0 && (
+              <section data-testid="settings-search-results">
+                <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{t('settings.searchResults')}</p>
+                <div className="divide-y divide-redlog-border-subtle rounded-lg border border-redlog-border-subtle bg-redlog-surface">
+                  {hits.map((h) => (
+                    <button
+                      key={`${h.page}:${h.text}`}
+                      onClick={() => { setTab(h.page); setFindText({ key: h.key, text: h.text }) }}
+                      className="w-full text-left px-3 py-2 text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]"
+                    >
+                      <span className="block truncate" title={h.text}>{h.text}</span>
+                      <span className="block text-redlog-text-faint">{pageLabel.get(h.page)}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 pb-1">
+            <Button size="compact" level="quiet" data-testid="settings-back" onClick={() => setTab(null)}>
+              ← {t('nav.backTo', { view: t('sidebar.settings') })}
+            </Button>
+            <h2 className="text-sm font-semibold text-redlog-text">{pageLabel.get(tab)}</h2>
+          </div>
+        )}
         {tab === 'general' && <GeneralPage />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
@@ -404,9 +352,23 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      <div className={`px-4 py-2 border-t border-redlog-border shrink-0 ${wideContent ? '' : 'max-w-[900px]'}`}>
+      <div className="px-4 py-2 border-t border-redlog-border shrink-0 flex flex-wrap items-center gap-x-3">
         <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
-      </div>
+        {saveState !== 'idle' && (
+          <span
+            data-testid={`settings-save-${saveState}`}
+            role="status"
+            className={`text-xs ${saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'}`}
+          >
+            {t(`settings.save.${saveState}`)}
+            {saveState === 'failed' && (
+              <button
+                onClick={() => { if (config) writeConfig(config) }}
+                className="ml-2 underline hover:text-red-300"
+              >{t('settings.save.retry')}</button>
+            )}
+          </span>
+        )}
       </div>
     </div>
   )

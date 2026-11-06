@@ -283,10 +283,7 @@ test.describe.serial('the first run', () => {
     await expect(setup).toBeVisible()
     await setup.focus()
     await page.keyboard.press('Enter')
-    // Below the sidebar breakpoint the page list is a <select>.
-    const select = page.getByTestId('settings-page-select')
-    if (await select.count()) await expect(select).toHaveValue('hooks')
-    else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
+    await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'hooks')
     await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toHaveCount(0)
     await openView(page, 'dashboard')
     await expect(page.getByTestId('first-run-strip')).toHaveCount(0)

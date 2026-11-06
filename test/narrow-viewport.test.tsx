@@ -128,50 +128,55 @@ describe('the main sidebar in a narrow layout', () => {
   })
 })
 
-describe('Settings in a narrow layout', () => {
-  const draw = (): void => {
-    render(<I18nProvider><Settings request={{ page: 'scope' }} /></I18nProvider>)
+// #590: Settings is one column at every width — a list of pages, and a page
+// opened from it with a way back. The 212px category column and the narrow-only
+// select it needed are gone, so there is nothing left to switch between.
+describe('Settings is one column', () => {
+  const draw = (request: { page: 'scope' } | null): void => {
+    render(<I18nProvider><Settings request={request} /></I18nProvider>)
   }
   const ready = async (): Promise<void> => {
     await waitFor(() => expect(document.querySelector('[data-testid="settings-load-failed"]')).toBeNull())
-    await screen.findByRole('navigation', { name: '設定分類' })
+    await waitFor(() => expect(document.querySelector('[data-testid="settings-content"]')).not.toBeNull())
   }
 
-  it('lists its pages down the side when there is room', async () => {
-    draw()
+  it.each([['wide', WIDE], ['narrow', NARROW]])('opens on the list of pages when nothing asked for one (%s)', async (_name, size) => {
+    resizeTo(size)
+    draw(null)
     await ready()
+    expect(screen.getByTestId('settings-home')).toBeTruthy()
     expect(document.querySelectorAll('[data-settings-page]').length).toBeGreaterThan(5)
     expect(screen.queryByTestId('settings-page-select')).toBeNull()
+    expect(screen.queryByTestId('settings-back')).toBeNull()
   })
 
-  it('lists them as a select above the content when there is not', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('lands on the page a link asked for, with a way back to the list', async () => {
+    draw({ page: 'scope' })
     await ready()
+    expect(screen.queryByTestId('settings-home')).toBeNull()
     expect(document.querySelectorAll('[data-settings-page]')).toHaveLength(0)
-    const select = screen.getByTestId('settings-page-select') as HTMLSelectElement
-    // The page being shown is the one selected, and every page is reachable.
-    expect(select.value).toBe('scope')
-    const options = [...select.querySelectorAll('option')].map((o) => o.value)
-    expect(options).toEqual(expect.arrayContaining(['hooks', 'scope', 'general', 'about']))
+    fireEvent.click(screen.getByTestId('settings-back'))
+    expect(screen.getByTestId('settings-home')).toBeTruthy()
   })
 
-  it('switches page from the select', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('opens a page from its row', async () => {
+    draw(null)
     await ready()
-    fireEvent.change(screen.getByTestId('settings-page-select'), { target: { value: 'about' } })
-    expect((screen.getByTestId('settings-page-select') as HTMLSelectElement).value).toBe('about')
+    fireEvent.click(document.querySelector('[data-settings-page="about"]') as HTMLElement)
+    expect(screen.queryByTestId('settings-home')).toBeNull()
+    expect(screen.getByTestId('settings-back')).toBeTruthy()
   })
 
-  it('brings the page rows back for a query', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('narrows the rows to a query', async () => {
+    draw(null)
     await ready()
+    const before = document.querySelectorAll('[data-settings-page]').length
     fireEvent.change(screen.getByLabelText('搜尋設定…'), { target: { value: '範圍' } })
-    // A query brings the page rows back: the select has no way to say "these
-    // match".
-    await waitFor(() => expect(document.querySelectorAll('[data-settings-page]').length).toBeGreaterThan(0))
+    await waitFor(() => {
+      const now = document.querySelectorAll('[data-settings-page]').length
+      expect(now).toBeGreaterThan(0)
+      expect(now).toBeLessThan(before)
+    })
   })
 })
 
