@@ -195,6 +195,11 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   return (
     <div className="p-pad space-y-section overflow-auto h-full">
+      <div data-testid="dashboard-header">
+        <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.dashboard')}</h1>
+        {/* Gives way when the window is short, as on the evidence page. */}
+        <p className="mt-1 hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('dashboard.hint')}</p>
+      </div>
       {/* First, and above the capture card: what is wrong now outranks what is
           merely true now. Renders nothing when nothing is wrong. */}
       <DashboardIssues onNavigate={onNavigate} />
@@ -300,11 +305,11 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
         </section>
       )}
 
-      <section>
-        <SectionLabel className="tracking-[0.15em] mb-3">
+      <details data-testid="dashboard-shortcuts" className="group">
+        <summary className="cursor-pointer select-none text-xs text-redlog-text-dim hover:text-redlog-text">
           {t('dashboard.shortcuts')}
-        </SectionLabel>
-        <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+        </summary>
+        <div className="mt-3 rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {appShortcuts(shortcutOrder, isMac).map((row) => (
               <div key={row.keys} className="flex items-center gap-2.5">
@@ -314,7 +319,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             ))}
           </div>
         </div>
-      </section>
+      </details>
     </div>
   )
 }

@@ -14,17 +14,30 @@ interface PivotsBridge {
   onChange?: (cb: (p: ActivePivot[]) => void) => () => void
 }
 
+export type PivotRead =
+  | { status: 'loading'; pivots: ActivePivot[] }
+  | { status: 'ready'; pivots: ActivePivot[] }
+  | { status: 'error'; pivots: ActivePivot[] }
+
 /**
- * Subscribe to the active pivot chain. Used by both the HUD overlay and the
- * dashboard IP card so the subscription wiring and the (previously untyped,
- * cast-through) bridge access live in exactly one place.
+ * Subscribe to the active pivots with the state of the read, so a failed read
+ * is not drawn as "no pivots". `pivots` is the last good list, which a failed
+ * re-read leaves in place for the caller to date, not to present as current.
  */
-export function usePivots(): ActivePivot[] {
-  const [pivots, setPivots] = useState<ActivePivot[]>([])
+export function usePivotRead(): PivotRead & { retry: () => void } {
+  const [state, setState] = useState<PivotRead>({ status: 'loading', pivots: [] })
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     const pv = (window.redlog as { pivots?: PivotsBridge }).pivots
-    pv?.getActive?.().then(setPivots).catch(() => {})
-    return pv?.onChange?.(setPivots)
-  }, [])
-  return pivots
+    const set = (pivots: ActivePivot[]): void => setState({ status: 'ready', pivots })
+    if (!pv?.getActive) { set([]); return }
+    pv.getActive().then(set).catch(() => setState((prev) => ({ status: 'error', pivots: prev.pivots })))
+    return pv.onChange?.(set)
+  }, [attempt])
+  return { ...state, retry: () => setAttempt((n) => n + 1) }
+}
+
+/** Every consumer that only needs the list (the HUD overlay). */
+export function usePivots(): ActivePivot[] {
+  return usePivotRead().pivots
 }
