@@ -31,8 +31,9 @@ function mount(): void {
 const numberOn = (viewId: string): string | null => {
   const btn = document.querySelector(`[data-view-btn="${viewId}"]`)
   if (!btn) return null
-  const spans = [...btn.querySelectorAll('span')].map((s) => s.textContent?.trim() ?? '')
-  return spans.find((t) => /^\d+$/.test(t)) ?? null
+  // The chord is printed in a box as "⌘1" / "Ctrl+1"; the number is what counts.
+  const chords = [...btn.querySelectorAll('kbd')].map((k) => (k.textContent ?? '').trim().replace(/^(⌘|Ctrl\+)/, ''))
+  return chords.find((t) => /^\d+$/.test(t)) ?? null
 }
 
 describe('sidebar numbering', () => {
@@ -55,7 +56,7 @@ describe('sidebar numbering', () => {
   it('leaves exactly one row wearing a 9, and it is Settings', () => {
     mount()
     const nines = [...document.querySelectorAll('[data-view-btn]')]
-      .filter((b) => [...b.querySelectorAll('span')].some((s) => s.textContent?.trim() === '9'))
+      .filter((b) => [...b.querySelectorAll('kbd')].some((k) => /^(⌘|Ctrl\+)9$/.test(k.textContent?.trim() ?? '')))
       .map((b) => b.getAttribute('data-view-btn'))
     expect(nines).toEqual(['settings'])
   })

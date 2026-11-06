@@ -8,10 +8,8 @@ import { launchWithTempHome, openTestProject } from './helpers'
 //   title bar   40  matches the Stitch prototypes (h-10)
 //   status bar  28  the prototype's h-7; was 32. Its controls keep WCAG 2.5.8's
 //                   24px floor, so 28 is the smallest the bar can be.
-//   sidebar    150  deliberately NOT the prototypes' 224/240: the width is the
-//                   longest nav label plus the chord column (Sidebar.tsx), and
-//                   a wider rail only adds a gutter between each name and its
-//                   number.
+//   sidebar    240  the prototype's w-60 (it was 150 until the layout was
+//                   asked to follow the prototype; colour and type stay the app's).
 test('shared frame keeps its sizes and the status bar controls keep a 24px target', async () => {
   test.setTimeout(60_000)
   const { app, page } = await launchWithTempHome()
@@ -31,7 +29,7 @@ test('shared frame keeps its sizes and the status bar controls keep a 24px targe
     })
     expect(m.title, 'title bar').toBe(40)
     expect(m.status, 'status bar').toBe(28)
-    expect(m.sidebar, 'sidebar').toBe(150)
+    expect(m.sidebar, 'sidebar').toBe(240)
     expect(m.smallestControl, 'smallest status-bar control').toBeGreaterThanOrEqual(24)
     expect(m.smallestControl, 'and it fits inside the bar').toBeLessThanOrEqual(m.status)
   } finally {
