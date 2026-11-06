@@ -36,6 +36,12 @@ const mountPage = (): void => {
   render(<I18nProvider><FilterProvider><ToastContainer /><TargetView /></FilterProvider></I18nProvider>)
 }
 
+// The action lives inside the expanded target (Spec 069 T019), not on every row.
+const expandTarget = async (name: string): Promise<void> => {
+  fireEvent.click(await screen.findByText(name))
+  await screen.findByTestId('target-add-to-scope')
+}
+
 describe('adding a target to the scope from the Targets page', () => {
   beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
@@ -43,8 +49,8 @@ describe('adding a target to the scope from the Targets page', () => {
   it('sends one target and the project it was pressed in, after the undo window', async () => {
     const b = install(async () => true)
     mountPage()
-    const buttons = await screen.findAllByRole('button', { name: /加入範圍|Add to scope/i })
-    await act(async () => { fireEvent.click(buttons[0]) })
+    await expandTarget('a.example')
+    await act(async () => { fireEvent.click(screen.getByTestId('target-add-to-scope')) })
 
     expect(b.addTarget, 'written before the undo window closed').not.toHaveBeenCalled()
     await act(async () => { vi.advanceTimersByTime(UNDO_MS + 50) })
@@ -57,9 +63,12 @@ describe('adding a target to the scope from the Targets page', () => {
   it('two targets added inside one window are two single-target requests, not two whole configs', async () => {
     const b = install(async () => true)
     mountPage()
-    const buttons = await screen.findAllByRole('button', { name: /加入範圍|Add to scope/i })
-    await act(async () => { fireEvent.click(buttons[0]) })
-    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /加入範圍|Add to scope/i })[0]) })
+    await expandTarget('a.example')
+    await act(async () => { fireEvent.click(screen.getByTestId('target-add-to-scope')) })
+    // The first row is now in scope; the second is expanded in its place.
+    fireEvent.click(screen.getByText('b.example'))
+    await screen.findByTestId('target-add-to-scope')
+    await act(async () => { fireEvent.click(screen.getByTestId('target-add-to-scope')) })
     await act(async () => { vi.advanceTimersByTime(UNDO_MS + 50) })
     await waitFor(() => expect(b.addTarget).toHaveBeenCalledTimes(2))
     expect(b.addTarget.mock.calls.map((c) => c[0]).sort()).toEqual(['a.example', 'b.example'])
@@ -69,12 +78,13 @@ describe('adding a target to the scope from the Targets page', () => {
   it('takes the chip back and says so when the project changed or the write failed', async () => {
     const b = install(async () => false)
     mountPage()
-    const buttons = await screen.findAllByRole('button', { name: /加入範圍|Add to scope/i })
-    await act(async () => { fireEvent.click(buttons[0]) })
+    await expandTarget('a.example')
+    await act(async () => { fireEvent.click(screen.getByTestId('target-add-to-scope')) })
     await act(async () => { vi.advanceTimersByTime(UNDO_MS + 50) })
     await waitFor(() => expect(b.addTarget).toHaveBeenCalled())
     // Out of scope again, and an error toast instead of a silent success.
     expect(await screen.findByText(/無法將 a\.example 加入範圍|Could not add a\.example to scope/)).not.toBeNull()
-    expect(screen.getAllByRole('button', { name: /加入範圍|Add to scope/i }).length).toBe(2)
+    // The row is out of scope again, so its action is offered again.
+    expect(screen.getByTestId('target-add-to-scope')).not.toBeNull()
   })
 })

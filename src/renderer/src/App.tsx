@@ -37,6 +37,7 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
 import { parseTarget, settingsTarget } from './lib/navigation'
+import { TargetsScopeHeader } from './components/TargetsScopeHeader'
 import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
@@ -395,7 +396,8 @@ export default function App(): JSX.Element {
         />
 
         <div className="flex-1 min-w-0 select-text flex flex-col" data-testid="view-root" data-view={view}>
-          {workspacePages.length>0 && <div role="tablist" aria-label={t(view==='targets'||view==='scope'?'sidebar.targetsScope':'sidebar.evidence')} className="shrink-0 flex flex-wrap gap-1 px-4 pt-2 border-b border-redlog-border">
+          {(view==='targets'||view==='scope') && <TargetsScopeHeader page={view} onNavigate={navigate} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
+          {workspacePages.length>0 && view!=='targets' && view!=='scope' && <div role="tablist" aria-label={t('sidebar.evidence')} className="shrink-0 flex flex-wrap gap-1 px-4 pt-2 border-b border-redlog-border">
             {workspacePages.map((page,index)=><button key={page} data-view-btn={page} role="tab" aria-selected={view===page} tabIndex={view===page?0:-1}
               onKeyDown={e=>{const next=e.key==='ArrowRight'?workspacePages[(index+1)%workspacePages.length]:e.key==='ArrowLeft'?workspacePages[(index+workspacePages.length-1)%workspacePages.length]:undefined;if(next){e.preventDefault();navigate(next);document.querySelector<HTMLButtonElement>(`button[role="tab"][data-view-btn="${next}"]`)?.focus()}}}
               onClick={()=>navigate(page)} className={`px-3 py-2 text-xs border-b-2 ${view===page?'border-redlog-accent text-redlog-text':'border-transparent text-redlog-text-dim'}`}>{t(`sidebar.${page==='screenshots'?'screens':page}`)}</button>)}
