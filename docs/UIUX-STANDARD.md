@@ -127,7 +127,7 @@
 4. 空狀態三件套：會出現什麼／為什麼現在沒有／一顆按鈕
 5. 危險操作分三級：可逆→直接執行 + Toast 附復原；不可逆→對話框 + 勾選框；影響證據鏈→輸入專案名確認 + 列出具體後果
 6. 全中文介面，技術詞白名單：`IP · CIDR · SHA-256 · JWT · DNS · HTTP · mitmproxy · MCP · OpenTimestamps · CDP · WSL · hook · token · shell`。固定譯名：Loot→戰利品、Scope→範圍、Marker→標記、**Bookmark→書籤**、Pivot→中繼跳板、Transcript→逐字稿、Anchor→錨定、Chain→證據鏈
-7. 符合 macOS 慣例：設定為左清單 + 右內容；⌘. 暫停、⌘K 命令面板、⌘F 頁內搜尋、Esc 逐層退出；破壞性動作在對話框右下（Windows 自動對調）；tooltip 不得是唯一的資訊來源
+7. 符合 macOS 慣例：設定為單欄(頁面清單,點進去有「← 返回設定」;#590 取代原本的左清單 + 右內容)；⌘. 暫停、⌘K 命令面板、⌘F 頁內搜尋、Esc 逐層退出；破壞性動作在對話框右下（Windows 自動對調）；tooltip 不得是唯一的資訊來源
 8. 可及性硬門檻：文字 ≥4.5:1、非文字狀態元素 ≥3:1、focus 環處處可見、`prefers-reduced-motion` 保留
 
 > ✓ **§5-6 的實作註記（2026-09-07，守門測試 2026-10-08 補上）**：`Bookmark→書籤`

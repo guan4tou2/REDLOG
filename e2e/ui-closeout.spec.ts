@@ -1,5 +1,5 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
-import { launchWithTempHome, openView, resizeMainWindow } from './helpers'
+import { launchWithTempHome, openSettingsPage, openView, resizeMainWindow } from './helpers'
 
 // #298, on the real app. The unit tests hold each state with a mocked bridge;
 // what they cannot show is that a rejection made in the MAIN process survives
@@ -97,7 +97,7 @@ test.describe.serial('read failures and a small window (#298)', () => {
   async function openScope(): Promise<void> {
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     await page.keyboard.press(`${mod}+9`)
-    await page.click('[data-settings-page="scope"]')
+    await openSettingsPage(page, 'scope')
   }
 
   test('the scope list fields have names, take the keyboard, and say when text is only a draft', async () => {

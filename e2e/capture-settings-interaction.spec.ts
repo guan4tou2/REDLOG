@@ -95,9 +95,7 @@ test.describe('settings interaction journey', () => {
       await win.evaluate(w => w.webContents.setZoomFactor(1))
       await openSettingsPage(page, 'general')
       await page.getByRole('button', { name: locale === 'en' ? 'Normal' : '正常', exact: true }).click()
-      // Normal scale restores the category list through ResizeObserver.
-      // Wait for that layout before choosing the next category.
-      await expect(page.locator('[data-settings-page="hooks"]')).toBeVisible()
+      await expect(page.getByTestId('settings-content')).toBeVisible()
       const proxy = await page.evaluate(async () => (await window.redlog.hooks.detect()).find(hook => hook.id === 'mitmproxy'))
       expect(proxy).toBeTruthy()
       await openSettingsPage(page, 'hooks')
@@ -292,7 +290,7 @@ test('optional AI recovers in its source entry and requires explicit project aut
     })
     await page.reload()
     await openView(page, 'settings')
-    const other = page.getByRole('button', { name: 'Other capture sources', exact: true })
+    const other = page.locator('[data-settings-page="captureControl"]')
     await expect(other).toBeVisible()
     await other.click()
     const before = await page.evaluate(() => window.redlog.config.get())
@@ -306,7 +304,7 @@ test('optional AI recovers in its source entry and requires explicit project aut
     await page.getByTestId('plugin-restore-official-ai-codex').click()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
     await page.getByTestId('plugin-open-capture-official-ai-codex').click()
-    await expect(page.locator('[data-settings-page="captureControl"]')).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'captureControl')
     expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
     const setPicker = async (path: string) => app.evaluate(({ ipcMain }, next) => {
       ipcMain.removeHandler('hookConfig:pickPath')

@@ -486,8 +486,10 @@ describe('renderer views render without throwing', () => {
 
   it('Settings exposes the artifact-rotation budgets under "Retention and cleanup"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('Retention and cleanup')
-    fireEvent.click(tab)
+    // The row is "Data & privacy" on the Stitch home; its page is still
+    // "Retention and cleanup", which is what this asserts it opens.
+    await screen.findByTestId('settings-home')
+    fireEvent.click(document.querySelector('[data-settings-page="retention"]') as HTMLElement)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
   })

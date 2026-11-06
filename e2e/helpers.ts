@@ -185,16 +185,12 @@ export async function openCaptureProof(page: Page): Promise<void> {
  * category by its stable id instead, the same way `openView` reaches a view.
  */
 export async function openSettingsPage(page: Page, id: string): Promise<void> {
-  const select = page.getByTestId('settings-page-select')
-  const item = page.locator(`[data-settings-page="${id}"]`)
-  await expect.poll(async () => await select.isVisible() || await item.isVisible()).toBe(true)
-  if (await select.isVisible()) {
-    await select.selectOption(id)
-    await expect(select).toHaveValue(id)
-    return
-  }
-  await item.click()
-  await expect(item).toHaveAttribute('aria-current', 'page')
+  // One column (#590): the list of pages, or a page with a way back to it.
+  const content = page.getByTestId('settings-content')
+  await expect(content).toBeVisible()
+  if ((await content.getAttribute('data-page')) !== 'home') await page.getByTestId('settings-back').click()
+  await page.locator(`[data-settings-page="${id}"]`).click()
+  await expect(content).toHaveAttribute('data-page', id)
 }
 
 /**

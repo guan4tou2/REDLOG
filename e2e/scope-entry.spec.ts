@@ -51,7 +51,7 @@ test.describe.serial('scope entry and project identity', () => {
     // own settings now live. By its stable id, not its visible text: that
     // label has been reworded once already.
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings')
-    await page.click('[data-settings-page="scope"]')
+    await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'scope')
     const id = page.getByLabel('ID', { exact: true }).first()
     await expect(id).toHaveValue(config.engagement.id)
     await expect(id).toHaveAttribute('readonly', '')

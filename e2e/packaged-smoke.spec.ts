@@ -363,9 +363,7 @@ test.describe('packaged app', () => {
         await page.locator('section').filter({ has: setup }).first().screenshot({ path: test.info().outputPath('capture-setup-entry.png') })
         await setup.click()
         // Daily capture repair opens terminal settings, not the first-run guide.
-        const select = page.getByTestId('settings-page-select')
-        if (await select.count()) await expect(select).toHaveValue('hooks')
-        else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
+        await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'hooks')
         expect(shellEnd(await events(page), 'echo redlog-ok-builtin')).toBeTruthy()
       })
     } catch (error) {
