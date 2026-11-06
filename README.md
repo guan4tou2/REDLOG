@@ -194,9 +194,9 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 
 ### HUD (heads-up overlay)
 
-- **IP Widget** — always-on-top floating display: external IP (primary), internal IP + Wi-Fi/wired name, live pivot chain, recording state, capture health
+- **IP Widget** — always-on-top floating display: external IP (primary), internal IP + Wi-Fi/wired name, detected relay nodes, recording state, capture health
 - **EXPOSED alarm** — when the external IP hits the blacklist, the whole frame flashes red (toggle in Settings ▸ Overlay); default on
-- **Live pivot chain** — active internal-network pivot nodes (tool · node · route); topology view shows internal → external → pivot hops
+- **Live pivot chain** — active internal-network pivot nodes (tool · node · route); listed as detected, without claiming which node forwards to which or that a channel is up
 - **macOS Dock icon** — configurable (Settings ▸ Overlay); opening the HUD otherwise flips the app to accessory activation and drops the Dock icon
 - **Click-through Mode** — passes mouse events through to windows below; hover to reactivate
 - **Draggable** — grab the overlay to reposition

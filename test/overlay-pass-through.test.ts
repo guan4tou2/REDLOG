@@ -11,29 +11,32 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut } from '../src/main/ipc/overlay'
+import { registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut, handleIpExposedChange, configureOverlayState, isOverlayPassThrough } from '../src/main/ipc/overlay'
 import { loadConfig, saveConfig } from '../src/core/config'
 import type { IpcContext } from '../src/main/ipc/types'
 
 describe('HUD pass-through', () => {
   let dir: string
+  let send: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-passthrough-'))
     saveConfig(dir, loadConfig(dir))
+    send = vi.fn()
     const ctx = {
       getActiveProject: () => ({ id: 'p1', name: 'p1', path: dir }),
       getMainWindow: () => null,
       getOverlayWindow: () => null,
       getCurrentEngagementId: () => null,
       getCurrentOperatorId: () => null,
-      send: vi.fn(),
+      send,
       triggerBookmark: vi.fn(),
       addHudMarker: () => ({ ok: true })
     } as unknown as IpcContext
     registerOverlayIpc({ on: vi.fn(), handle: vi.fn() } as never, ctx)
   })
   afterEach(() => {
+    handleIpExposedChange(false)
     setOverlayPassThrough(false)
     fs.rmSync(dir, { recursive: true, force: true })
   })
@@ -82,5 +85,40 @@ describe('HUD pass-through', () => {
     expect(loadConfig(dir).overlay?.passThrough).toBe(true)
     setOverlayPassThrough(false)
     expect(loadConfig(dir).overlay?.passThrough).toBe(false)
+  })
+
+  // §8: an exposed IP turns click-through off for good and keeps it off.
+  describe('while the external IP is exposed', () => {
+    it('turns it off in the setting, not only in the window', () => {
+      setOverlayPassThrough(true)
+      handleIpExposedChange(true)
+      expect(isOverlayPassThrough()).toBe(false)
+      expect(loadConfig(dir).overlay?.passThrough).toBe(false)
+    })
+
+    it('refuses to turn it on from any entry, and answers with the real state', () => {
+      handleIpExposedChange(true)
+      send.mockClear()
+      setOverlayPassThrough(true)
+      expect(isOverlayPassThrough()).toBe(false)
+      expect(loadConfig(dir).overlay?.passThrough).not.toBe(true)
+      expect(send).toHaveBeenCalledWith(null, 'overlay:passThroughChanged', false)
+    })
+
+    it('does not bring it back when a project opens or a config is saved', () => {
+      handleIpExposedChange(true)
+      configureOverlayState({ passThrough: true, opacity: 0.4 })
+      expect(isOverlayPassThrough()).toBe(false)
+    })
+
+    it('stays off when the address is safe again, until the operator turns it on', () => {
+      setOverlayPassThrough(true)
+      handleIpExposedChange(true)
+      handleIpExposedChange(false)
+      expect(isOverlayPassThrough()).toBe(false)
+      setOverlayPassThrough(true)
+      expect(isOverlayPassThrough()).toBe(true)
+      expect(loadConfig(dir).overlay?.passThrough).toBe(true)
+    })
   })
 })

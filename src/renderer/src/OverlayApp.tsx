@@ -171,7 +171,22 @@ export default function OverlayApp(): JSX.Element {
     setMarkOpen(false)
     window.redlog.overlay.releaseFocus?.()
   }
+  // A save in flight. The ref answers a second Enter in the same tick; the state
+  // disables the button for the eye.
+  const markSavingRef = useRef(false)
+  const [markSaving, setMarkSaving] = useState(false)
   const saveMark = async (): Promise<void> => {
+    if (markSavingRef.current) return
+    markSavingRef.current = true
+    setMarkSaving(true)
+    try {
+      await saveMarkOnce()
+    } finally {
+      markSavingRef.current = false
+      setMarkSaving(false)
+    }
+  }
+  const saveMarkOnce = async (): Promise<void> => {
     // A failed save keeps the form open with what was typed, and says so: it
     // must not look like a recorded marker.
     // The draft belongs to the project that was open when it was started.
@@ -446,7 +461,7 @@ export default function OverlayApp(): JSX.Element {
                     <p role="alert" data-testid="hud-marker-failed" style={{ margin: 0, fontSize: fs(10), color: HUD.red }}>{`✕ ${markFailed === 'project-changed' ? t('overlay.markProjectChanged') : t('overlay.markFailed')}`}</p>
                   )}
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button type="submit" className="hudBtn" data-testid="hud-marker-save" style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55` }}>
+                    <button type="submit" className="hudBtn" data-testid="hud-marker-save" disabled={markSaving} style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55` }}>
                       {t('overlay.markSave')}
                     </button>
                     {!markMore && (
