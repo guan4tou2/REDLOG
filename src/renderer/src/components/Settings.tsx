@@ -28,6 +28,55 @@ export type SettingsPage =
   | 'scope' | 'network' | 'loot' | 'retention' | 'integrity'
   | 'general' | 'hud' | 'plugins' | 'about'
 
+type HomeBadge = 'local' | 'project' | 'perProject'
+interface HomeRow { id: SettingsPage; badge?: HomeBadge; action?: 'manage' | 'view' | 'openScope' }
+
+/** The settings home, as the Stitch prototype lays it out (#590): three
+ *  blocks, each row a title, where it applies, one line on what it holds, and
+ *  one button. Pages the prototype has no row for (loot rules, integrity, the
+ *  HUD) stay reachable as plain rows in the block they belong to. */
+const HOME_SECTIONS: Array<{ key: 'capture' | 'project' | 'other'; rows: HomeRow[] }> = [
+  { key: 'capture', rows: [
+    { id: 'hooks', badge: 'local' }, { id: 'browser', badge: 'project' }, { id: 'captureControl', badge: 'perProject' }
+  ] },
+  { key: 'project', rows: [
+    { id: 'scope', badge: 'project', action: 'openScope' }, { id: 'network', badge: 'project' }, { id: 'loot', badge: 'project' }
+  ] },
+  { key: 'other', rows: [
+    { id: 'plugins' }, { id: 'retention' }, { id: 'integrity' }, { id: 'general' }, { id: 'hud' }, { id: 'about', action: 'view' }
+  ] }
+]
+/** One line on what each page holds. Literal keys, so the copy guard can see
+ *  they are rendered. A page missing here shows its plain page name. */
+const HOME_DESC: Partial<Record<SettingsPage, string>> = {
+  hooks: 'settings.home.hooks.desc', browser: 'settings.home.browser.desc', captureControl: 'settings.home.captureControl.desc',
+  network: 'settings.home.network.desc', plugins: 'settings.home.plugins.desc', retention: 'settings.home.retention.desc',
+  general: 'settings.home.general.desc', about: 'settings.home.about.desc'
+}
+const HOME_WITH_COPY = new Set<SettingsPage>(['hooks', 'browser', 'captureControl', 'scope', 'network', 'plugins', 'retention', 'general', 'about'])
+
+function SettingsHomeRow({ row, title, desc, status, onOpen, t }: {
+  row: HomeRow; title: string; desc: string | null; status: string | null; onOpen: () => void; t: (k: string, v?: Record<string, string | number>) => string
+}): JSX.Element {
+  return (
+    <button
+      data-settings-page={row.id}
+      onClick={onOpen}
+      className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.03] first:rounded-t-lg last:rounded-b-lg"
+    >
+      <span className="flex-1 min-w-0">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-redlog-text">{title}</span>
+          {row.badge && <span className="text-xs px-1.5 rounded border border-redlog-border-subtle text-redlog-text-dim">{t(`settings.home.badge.${row.badge}`)}</span>}
+          {status && <span className="text-xs text-redlog-text-dim">{status}</span>}
+        </span>
+        {desc && <span className="block text-xs text-redlog-text-faint mt-0.5">{desc}</span>}
+      </span>
+      <span className="shrink-0 text-xs text-redlog-text-dim">{t(`settings.home.${row.action ?? 'manage'}`)} ›</span>
+    </button>
+  )
+}
+
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
 export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string } | null } = {}): JSX.Element {
@@ -254,9 +303,6 @@ export default function Settings({ request = null }: { request?: { page: Setting
 
   const wideContent = tab !== null && ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
   const q = pageQuery.trim().toLowerCase()
-  const visible = groups
-    .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
-    .filter((g) => g.pages.length > 0)
   const pageLabel = new Map(groups.flatMap((g) => g.pages.map((pg) => [pg.id, pg.label] as const)))
   const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
 
@@ -266,6 +312,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
       <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className={`flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent || tab === null ? '' : 'max-w-[900px]'}`}>
         {tab === null ? (
           <div className="max-w-[720px] mx-auto space-y-4" data-testid="settings-home">
+            <header>
+              <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.settings')}</h1>
+              <p className="text-xs text-redlog-text-dim">{t('settings.home.subtitle')}</p>
+            </header>
             <input
               value={pageQuery}
               onChange={(e) => setPageQuery(e.target.value)}
@@ -273,32 +323,33 @@ export default function Settings({ request = null }: { request?: { page: Setting
               aria-label={t('settings.searchSettings')}
               className="w-full px-3 py-2 bg-redlog-elevated border border-redlog-border rounded text-sm text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
             />
-            {visible.length === 0 && hits.length === 0 && (
+            {q !== '' && hits.length === 0 && !HOME_SECTIONS.some((sec) => sec.rows.some((r) => pageLabel.get(r.id)?.toLowerCase().includes(q) || t(`settings.home.${r.id}.title`).toLowerCase().includes(q))) && (
               <p className="py-4 text-xs text-redlog-text-faint text-center">
                 {t('settings.noSettingMatches', { query: pageQuery })}
               </p>
             )}
-            {/* Headings sit at the margin in the muted grey and never light
-                up; a page is a row with a height that does. */}
-            <nav aria-label={t('settings.categories')} className="space-y-4">
-              {visible.map((g) => (
-                <section key={g.heading} aria-label={g.heading}>
-                  <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{g.heading}</p>
-                  <div className="divide-y divide-redlog-border-subtle rounded-lg border border-redlog-border-subtle bg-redlog-surface">
-                    {g.pages.map((pg) => (
-                      <button
-                        key={pg.id}
-                        data-settings-page={pg.id}
-                        onClick={() => setTab(pg.id)}
-                        className="w-full text-left px-3 h-[var(--row-h)] flex items-center justify-between text-sm text-redlog-text hover:bg-white/[0.03] first:rounded-t-lg last:rounded-b-lg"
-                      >
-                        <span>{pg.label}</span>
-                        <span aria-hidden className="text-redlog-text-faint">›</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
+            <nav aria-label={t('settings.categories')} className="space-y-5">
+              {HOME_SECTIONS.map((sec) => {
+                const rows = sec.rows.filter((r) => !q || pageLabel.get(r.id)?.toLowerCase().includes(q) || t(`settings.home.${r.id}.title`).toLowerCase().includes(q))
+                if (rows.length === 0) return null
+                return (
+                  <section key={sec.key} aria-label={t(`settings.home.group.${sec.key}`)}>
+                    <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{t(`settings.home.group.${sec.key}`)}</p>
+                    <div className="divide-y divide-redlog-border-subtle rounded-lg border border-redlog-border-subtle bg-redlog-surface">
+                      {rows.map((row) => {
+                        const own = HOME_WITH_COPY.has(row.id)
+                        const status = row.id === 'scope'
+                          ? t('settings.home.scope.status', { n: config.scope?.targets?.length ?? 0, m: config.scope?.excludeTargets?.length ?? 0 })
+                          : null
+                        return <SettingsHomeRow key={row.id} row={row} t={t}
+                          title={own ? t(`settings.home.${row.id}.title`) : (pageLabel.get(row.id) ?? row.id)}
+                          desc={own && HOME_DESC[row.id] ? t(HOME_DESC[row.id]!) : null}
+                          status={status} onOpen={() => setTab(row.id)} />
+                      })}
+                    </div>
+                  </section>
+                )
+              })}
             </nav>
             {hits.length > 0 && (
               <section data-testid="settings-search-results">

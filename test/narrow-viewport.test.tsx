@@ -7,7 +7,7 @@
 // become a select above the content.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import Sidebar from '../src/renderer/src/components/Sidebar'
 import Settings from '../src/renderer/src/components/Settings'
@@ -148,6 +148,23 @@ describe('Settings is one column', () => {
     expect(document.querySelectorAll('[data-settings-page]').length).toBeGreaterThan(5)
     expect(screen.queryByTestId('settings-page-select')).toBeNull()
     expect(screen.queryByTestId('settings-back')).toBeNull()
+  })
+
+  it('is laid out as the Stitch prototype: three blocks, each row a title, a button, and where it applies', async () => {
+    draw(null)
+    await ready()
+    const home = screen.getByTestId('settings-home')
+    for (const heading of ['擷取來源', '專案設定', '其他設定']) expect(within(home).getByText(heading)).toBeTruthy()
+    const row = home.querySelector('[data-settings-page="hooks"]') as HTMLElement
+    expect(row.textContent).toContain('指令與終端')
+    expect(row.textContent).toContain('本機')
+    expect(row.textContent).toContain('管理')
+    expect((home.querySelector('[data-settings-page="scope"]') as HTMLElement).textContent).toContain('前往範圍設定')
+    expect((home.querySelector('[data-settings-page="about"]') as HTMLElement).textContent).toContain('查看')
+    // Every page is still one click away, including the ones the prototype has no row for.
+    for (const id of ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'retention', 'integrity', 'general', 'hud', 'plugins', 'about']) {
+      expect(home.querySelector(`[data-settings-page="${id}"]`), id).not.toBeNull()
+    }
   })
 
   it('lands on the page a link asked for, with a way back to the list', async () => {

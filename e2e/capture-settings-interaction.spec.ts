@@ -290,7 +290,7 @@ test('optional AI recovers in its source entry and requires explicit project aut
     })
     await page.reload()
     await openView(page, 'settings')
-    const other = page.getByRole('button', { name: 'Other capture sources', exact: true })
+    const other = page.locator('[data-settings-page="captureControl"]')
     await expect(other).toBeVisible()
     await other.click()
     const before = await page.evaluate(() => window.redlog.config.get())
