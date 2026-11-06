@@ -202,6 +202,8 @@
   "scope.integrityCaption": "範圍觀測為記錄的一部分，原始事件與變更記錄保留在專案中。",
   "scope.rulesLiveInSettings": "範圍規則設定與「測試目標是否符合範圍」保留在",
   "scope.openSettingsLink": "設定 ▸ {{page}}",
+  "targets.scopeUnset": "未設定",
+  "targets.sortedByRecent": "依最近活動排序",
   "targets.title": "目標（{{count}}）",
   "targets.all": "全部",
   "targets.inScope": "範圍內",

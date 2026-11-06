@@ -91,7 +91,8 @@ describe('the Targets page as the proposal lays it out', () => {
     setup({ targets: [], excludeTargets: [] })
     mount()
     await screen.findByText('10.0.0.5')
-    expect(screen.getAllByText('Scope unknown')).toHaveLength(2)
+    expect(screen.getAllByText('Not set')).toHaveLength(2)
+    expect(screen.queryByText('Scope unknown')).toBeNull()
     expect(screen.queryByText('In scope')).toBeNull()
     expect((screen.getByRole('button', { name: 'In Scope' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'All' }) as HTMLButtonElement).disabled).toBe(false)
@@ -124,5 +125,19 @@ describe('the Targets page as the proposal lays it out', () => {
     expect(screen.queryByTestId('target-work-on')).toBeNull()
     fireEvent.click(screen.getByText('10.0.0.5'))
     expect(await screen.findByTestId('target-work-on')).toBeTruthy()
+  })
+
+  it('calls an unreadable rule set unknown, which is not the same as not set', async () => {
+    setup('fail')
+    mount()
+    await screen.findByText('10.0.0.5')
+    expect(screen.getAllByText('Scope unknown')).toHaveLength(2)
+    expect(screen.queryByText('Not set')).toBeNull()
+  })
+
+  it('says the list is ordered by recent activity', async () => {
+    setup({ targets: ['10.0.0.5'], excludeTargets: [] })
+    mount()
+    expect(await screen.findByText('Most recent activity first')).toBeTruthy()
   })
 })
