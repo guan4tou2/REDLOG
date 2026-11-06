@@ -2206,5 +2206,8 @@
   "dashboard.anchor.unknown": "unknown state · {{when}}",
   "dashboard.openActivity": "View activity ↗",
   "dashboard.scopeNotSet": "Not set",
-  "dashboard.viewScope": "View scope ↗"
+  "dashboard.viewScope": "View scope ↗",
+  "terminal.searchNone": "No matches",
+  "terminal.searchPosition": "{{index}} of {{total}}",
+  "terminal.searchTotal": "{{total}} matches"
 }

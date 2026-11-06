@@ -85,6 +85,15 @@ let tabCounter = 0
 
 const FONT_SIZE_KEY = 'redlog-terminal-fontsize'
 const SHELL_KEY = 'redlog-terminal-shell'
+// Decorations make the addon report match counts. Colours must be #RRGGBB.
+const SEARCH_OPTIONS = {
+  decorations: {
+    matchBackground: '#3f3f46', matchOverviewRuler: '#71717a',
+    activeMatchBackground: '#ef4444', activeMatchColorOverviewRuler: '#ef4444'
+  }
+}
+// The addon stops counting at its highlight limit (1000 by default).
+const SEARCH_COUNT_CAP = 1000
 
 interface ShellOption {
   id: string
@@ -115,8 +124,37 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   const [aboutOpen, setAboutOpen] = useState(false)
   const [preferredShell, setPreferredShell] = usePersistentState<string>(SHELL_KEY, '')
   const paneSearchRefs = useRef<Map<string, SearchAddon>>(new Map())
+  // Match count for the current query, as reported by the addon. It only
+  // reports while decorations are on, so every find passes SEARCH_OPTIONS.
+  const [searchResult, setSearchResult] = useState<{ index: number; count: number } | null>(null)
   const queued = useRef<string | null>(null)
   const { t } = useI18n()
+
+  const runSearch = useCallback((query: string, direction: 'next' | 'prev' | 'type'): void => {
+    const addon = activeTab ? paneSearchRefs.current.get(activeTab) : null
+    if (!addon) return
+    if (!query) { addon.clearDecorations(); setSearchResult(null); return }
+    const found = direction === 'prev'
+      ? addon.findPrevious(query, SEARCH_OPTIONS)
+      : addon.findNext(query, direction === 'type' ? { ...SEARCH_OPTIONS, incremental: true } : SEARCH_OPTIONS)
+    // A failed find may not fire a change event; say 0 rather than keep an old count.
+    if (!found) setSearchResult({ index: -1, count: 0 })
+  }, [activeTab])
+
+  const closeSearch = (): void => {
+    const addon = activeTab ? paneSearchRefs.current.get(activeTab) : null
+    addon?.clearDecorations()
+    setSearchOpen(false); setSearchQuery(''); setSearchResult(null)
+  }
+
+  // Follow the active pane's result count; a different pane starts with none.
+  useEffect(() => {
+    setSearchResult(null)
+    const addon = activeTab ? paneSearchRefs.current.get(activeTab) : null
+    if (!addon || !searchOpen) return
+    const sub = addon.onDidChangeResults((e) => setSearchResult({ index: e.resultIndex, count: e.resultCount }))
+    return () => sub.dispose()
+  }, [activeTab, searchOpen])
 
   // A setup command sent here from Settings. It is typed into the pane, not
   // executed: some of these start long-running processes and some kill them by
@@ -459,30 +497,39 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
           <input
             autoFocus
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); runSearch(e.target.value, 'type') }}
             onKeyDown={(e) => {
-              const addon = activeTab ? paneSearchRefs.current.get(activeTab) : null
-              if (!addon) return
-              if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? addon.findPrevious(searchQuery) : addon.findNext(searchQuery) }
-              if (e.key === 'Escape') { e.preventDefault(); setSearchOpen(false); setSearchQuery('') }
+              if (e.key === 'Enter') { e.preventDefault(); runSearch(searchQuery, e.shiftKey ? 'prev' : 'next') }
+              if (e.key === 'Escape') { e.preventDefault(); closeSearch() }
             }}
             placeholder={t('terminal.searchPlaceholder')}
             className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40"
           />
+          {searchQuery && searchResult && (
+            <span data-testid="terminal-search-count" role="status" className="shrink-0 text-xs font-mono tabular-nums text-redlog-text-dim">
+              {searchResult.count === 0
+                ? t('terminal.searchNone')
+                : searchResult.count >= SEARCH_COUNT_CAP
+                  ? t('terminal.searchTotal', { total: `${SEARCH_COUNT_CAP}+` })
+                  : searchResult.index >= 0
+                    ? t('terminal.searchPosition', { index: searchResult.index + 1, total: searchResult.count })
+                    : t('terminal.searchTotal', { total: searchResult.count })}
+            </span>
+          )}
           <button
-            onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findPrevious(searchQuery) }}
+            onClick={() => runSearch(searchQuery, 'prev')}
             className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchPrev')}
             aria-label={t('terminal.searchPrev')}
           >↑</button>
           <button
-            onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findNext(searchQuery) }}
+            onClick={() => runSearch(searchQuery, 'next')}
             className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchNext')}
             aria-label={t('terminal.searchNext')}
           >↓</button>
           <button
-            onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+            onClick={closeSearch}
             className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchClose')}
             aria-label={t('terminal.searchClose')}

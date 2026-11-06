@@ -2206,5 +2206,8 @@
   "dashboard.anchor.unknown": "狀態未知 · {{when}}",
   "dashboard.openActivity": "查看活動紀錄 ↗",
   "dashboard.scopeNotSet": "尚未設定",
-  "dashboard.viewScope": "查看範圍 ↗"
+  "dashboard.viewScope": "查看範圍 ↗",
+  "terminal.searchNone": "無符合",
+  "terminal.searchPosition": "第 {{index}} / {{total}} 筆",
+  "terminal.searchTotal": "{{total}} 筆符合"
 }
