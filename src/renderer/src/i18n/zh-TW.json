@@ -2207,5 +2207,8 @@
   "dashboard.openActivity": "查看活動紀錄 ↗",
   "dashboard.scopeNotSet": "尚未設定",
   "dashboard.viewScope": "查看範圍 ↗",
+  "terminal.searchNone": "無符合",
+  "terminal.searchPosition": "第 {{index}} / {{total}} 筆",
+  "terminal.searchTotal": "{{total}} 筆符合",
   "bookmarks.scopeNote": "本機工作筆記：可編輯，不上鏈，不隨證據包匯出"
 }

@@ -2207,5 +2207,8 @@
   "dashboard.openActivity": "View activity ↗",
   "dashboard.scopeNotSet": "Not set",
   "dashboard.viewScope": "View scope ↗",
+  "terminal.searchNone": "No matches",
+  "terminal.searchPosition": "{{index}} of {{total}}",
+  "terminal.searchTotal": "{{total}} matches",
   "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle"
 }
