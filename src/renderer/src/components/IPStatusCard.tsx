@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { usePivotRead, type ActivePivot } from '../lib/usePivots'
 import { formatFreshness } from '../lib/time'
@@ -40,16 +40,29 @@ export default function IPStatusCard(): JSX.Element {
   useTick()
   const { t } = useI18n()
 
+  // A failed read drops the previous status: an old address is not the current
+  // one, and "could not read" is not "no address". The retry reuses the same
+  // getStatus call as the first read.
+  const read = useCallback((): void => {
+    setFailed(false)
+    window.redlog.ip.getStatus()
+      .then((s) => { setStatus(s); setFailed(false) })
+      .catch(() => { setStatus(null); setFailed(true) })
+  }, [])
+
   useEffect(() => {
-    window.redlog.ip.getStatus().then(setStatus).catch(() => setFailed(true))
+    read()
     const unsub = window.redlog.ip.onStatus(setStatus)
     return () => unsub()
-  }, [])
+  }, [read])
 
   if (!status) {
     return (
       <div data-testid="ip-status-card" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
-        <p className={failed ? 'text-redlog-warn' : 'text-redlog-text-dim'}>{failed ? t('ip.readFailed') : t('ip.checking')}</p>
+        <div className="flex items-center gap-3">
+          <p className={failed ? 'text-redlog-warn' : 'text-redlog-text-dim'}>{failed ? t('ip.readFailed') : t('ip.checking')}</p>
+          {failed && <Button size="compact" onClick={read}>{t('common.retry')}</Button>}
+        </div>
         <PivotNodes read={pivotRead} />
       </div>
     )
@@ -102,7 +115,10 @@ export default function IPStatusCard(): JSX.Element {
       )}
 
       {status.error && (
-        <p className="text-xs text-red-400 mt-2">{status.error}</p>
+        <div className="mt-2 flex items-center gap-3">
+          <p className="text-xs text-red-400">{status.error}</p>
+          <Button size="compact" onClick={read}>{t('common.retry')}</Button>
+        </div>
       )}
     </div>
   )

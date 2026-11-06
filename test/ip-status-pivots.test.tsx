@@ -84,3 +84,33 @@ it('treats an answer that is not a list as a failed read, not as none', async ()
   mount()
   expect(await screen.findByTestId('pivot-error')).toBeTruthy()
 })
+
+it('offers a retry when the IP read failed, re-reads on click, and keeps the relay area independent', async () => {
+  install({ ip: 'fail', list: two }); mount()
+  expect(await screen.findByText('Could not read the IP status.')).toBeTruthy()
+  expect(await screen.findAllByTestId('pivot-node')).toHaveLength(2)
+  const getStatus = (window as unknown as { redlog: { ip: { getStatus: ReturnType<typeof vi.fn> } } }).redlog.ip.getStatus
+  const before = getStatus.mock.calls.length
+  // The next read succeeds: the card must show the fresh values, and the
+  // failure text must be gone.
+  getStatus.mockImplementation(async () => ip)
+  const buttons = screen.getAllByRole('button', { name: 'Retry' })
+  fireEvent.click(buttons[0])
+  expect(await screen.findByText('203.0.113.18')).toBeTruthy()
+  expect(getStatus.mock.calls.length).toBe(before + 1)
+  expect(screen.queryByText('Could not read the IP status.')).toBeNull()
+})
+
+it('a failed re-read does not keep the previous address as current', async () => {
+  install({ list: [] }); mount()
+  await screen.findByText('203.0.113.18')
+  // status.error shows a retry beside it; make the re-read fail.
+  const getStatus = (window as unknown as { redlog: { ip: { getStatus: ReturnType<typeof vi.fn> } } }).redlog.ip.getStatus
+  getStatus.mockImplementation(async () => ({ ...ip, error: 'lookup failed' }))
+  cleanup(); mount()
+  await screen.findByText('lookup failed')
+  getStatus.mockImplementation(async () => { throw new Error('x') })
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  expect(await screen.findByText('Could not read the IP status.')).toBeTruthy()
+  expect(screen.queryByText('203.0.113.18')).toBeNull()
+})

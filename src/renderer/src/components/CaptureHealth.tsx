@@ -100,6 +100,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
       : state === 'partial' ? { mark: '◐', cls: 'text-amber-500' }
         : state === 'failed' ? { mark: '!', cls: 'text-red-400' }
           : { mark: '!', cls: 'text-amber-500' }
+  const ownShell = cmdSources.find((x) => x.id === 'terminal')
   const cmdMark = mark(cmd === 'ready' ? 'done' : cmd === 'error' ? 'failed' : 'missing')
   const httpMark = mark(
     http === 'ready' ? (verification ? 'done' : 'partial')
@@ -112,7 +113,17 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
       <ul className="space-y-1 text-xs">
         <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
           <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
-          <button onClick={() => onNavigate(settingsTarget('hooks'))} className="flex-1 min-h-8 text-left text-redlog-text hover:underline">{t('capture.group.commands')}</button>
+          <span className="flex-1 min-w-0">
+            <button onClick={() => onNavigate(settingsTarget('hooks'))} className="min-h-8 text-left text-redlog-text hover:underline">{t('capture.group.commands')}</button>
+            {/* Installed is not recording (FR-015): the same three-way answer
+                as the terminal row, so the core line cannot read green-ish
+                while the operator's own shell has sent nothing. */}
+            {ownShell && (
+              <span data-testid="capture-core-commands-own-shell" className="block text-xs text-redlog-text-faint">
+                {t(ownShellKey(ownShell), ownShellVars(ownShell))}
+              </span>
+            )}
+          </span>
           {/* The word only when the light is not green. A green dot beside
               "記錄中" says one thing twice and asks the reader to check that
               the two agree; what the word is FOR is the cases a coloured dot

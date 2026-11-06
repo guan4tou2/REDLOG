@@ -2206,5 +2206,6 @@
   "dashboard.anchor.unknown": "unknown state · {{when}}",
   "dashboard.openActivity": "View activity ↗",
   "dashboard.scopeNotSet": "Not set",
-  "dashboard.viewScope": "View scope ↗"
+  "dashboard.viewScope": "View scope ↗",
+  "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle"
 }
