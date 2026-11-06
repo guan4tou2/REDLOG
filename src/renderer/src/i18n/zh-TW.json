@@ -197,7 +197,7 @@
   "targets.shownCount": "顯示 {{shown}} / {{total}} 個目標",
   "targets.hint": "目標狀態依目前範圍規則顯示。未設定規則或讀取失敗時，不會把未知狀態誤標為範圍內／外。選擇一個目標可查看其最近事件。",
   "scope.observationsTitle": "範圍外觀測",
-  "scope.observationsCaption": "這是依規則做出的觀測，不代表 RedLog 已阻擋操作或判定違規。",
+  "scope.observationsCaption": "這是依目前規則做出的觀測，不代表 RedLog 已阻擋任何操作。",
   "scope.integrityTitle": "記錄完整性",
   "scope.integrityCaption": "範圍觀測為記錄的一部分，原始事件與變更記錄保留在專案中。",
   "scope.rulesLiveInSettings": "範圍規則設定與「測試目標是否符合範圍」保留在",

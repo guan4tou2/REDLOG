@@ -197,7 +197,7 @@
   "targets.shownCount": "Showing {{shown}} of {{total}} targets",
   "targets.hint": "Target status follows the current scope rules. With no rules, or when they cannot be read, status is never shown as in or out of scope. Select a target to see its recent events.",
   "scope.observationsTitle": "Out-of-scope observations",
-  "scope.observationsCaption": "Observations made by the rules; they do not mean RedLog blocked anything or found a violation.",
+  "scope.observationsCaption": "Observations made by the current rules. They do not mean RedLog blocked anything.",
   "scope.integrityTitle": "Record integrity",
   "scope.integrityCaption": "Scope observations are part of the record; the original events and the change log stay in the project.",
   "scope.rulesLiveInSettings": "Scope rules, and testing whether a target matches, stay in",
