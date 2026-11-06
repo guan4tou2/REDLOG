@@ -118,6 +118,9 @@ test.describe('settings interaction journey', () => {
     await page.evaluate(() => window.redlog.httpCapture.stop())
     await openView(page, 'settings')
     await openSettingsPage(page, 'plugins')
+    // The sample tester sits in a collapsed "advanced" section of a plugin's detail.
+    await page.locator('[data-testid^="plugin-details-"]').first().click()
+    await page.getByTestId('plugin-advanced').locator('summary').click()
     for (const [width, height] of [[1600, 900], [800, 600]]) {
       await resizeMainWindow(app, width, height)
       const sample = page.getByTestId('plugin-sample-input')
