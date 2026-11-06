@@ -149,8 +149,8 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
       <SearchCoverage coverage={page.bodyCoverage} />
       <p className="text-xs text-redlog-text-dim mb-2">{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}</p>
       {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
-      <div className="divide-y divide-redlog-border">
-        {page.items.map(item => <div key={item.id} className="min-w-0">
+      <div className="divide-y divide-redlog-border-subtle">
+        {page.items.map(item => <div key={item.id} className={expanded === item.id ? "min-w-0 bg-white/[0.012]" : "min-w-0"}>
           <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className="w-full text-left py-3 px-2 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400"
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-redlog-text-dim">
