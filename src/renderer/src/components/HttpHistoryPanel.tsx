@@ -361,6 +361,13 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
         <span className="text-xs text-redlog-text-dim font-mono tabular-nums">
           {t('httpHistory.counts', { flows: filtered.length })}
         </span>
+        {/* The prototype keeps the way to the capture settings in the header.
+            An empty history already offers it as the one button of its empty
+            state, so it is not drawn twice. */}
+        {onOpenSettings && flows.length > 0 && (
+          <button type="button" data-testid="http-capture-settings" onClick={onOpenSettings}
+            className="min-h-8 text-xs text-redlog-text-dim underline hover:text-redlog-text">{t('httpHistory.captureSettings')}</button>
+        )}
 
         <div className="flex-1" />
         <input
