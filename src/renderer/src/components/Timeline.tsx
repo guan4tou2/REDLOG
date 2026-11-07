@@ -2104,7 +2104,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             className="absolute right-1 top-0.5 z-10 px-1 rounded-sm bg-redlog-bg/70 text-xs text-redlog-text-faint font-mono tabular-nums pointer-events-none"
           >
             {t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
-              from: formatTime(dense.start), to: formatTime(dense.end)
+              // HH:MM, as the prototype; a stretch inside one minute would
+              // read "15:46 ~ 15:46", so it gets seconds instead.
+              ...(formatTime(dense.start) === formatTime(dense.end)
+                ? { from: formatTime(dense.start, { seconds: true }), to: formatTime(dense.end, { seconds: true }) }
+                : { from: formatTime(dense.start), to: formatTime(dense.end) })
             })}
           </span>
         )}
