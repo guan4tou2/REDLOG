@@ -20,7 +20,7 @@ export type PivotRead =
   | { status: 'error'; pivots: ActivePivot[] }
 
 /**
- * Subscribe to the active pivots with the state of the read, so a failed read
+ * Subscribe to the active pivots (the HUD overlay and the dashboard IP card) with the state of the read, so a failed read
  * is not drawn as "no pivots". `pivots` is the last good list, which a failed
  * re-read leaves in place for the caller to date, not to present as current.
  */
@@ -37,9 +37,4 @@ export function usePivotRead(): PivotRead & { retry: () => void } {
     return pv.onChange?.(set)
   }, [attempt])
   return { ...state, retry: () => setAttempt((n) => n + 1) }
-}
-
-/** Every consumer that only needs the list (the HUD overlay). */
-export function usePivots(): ActivePivot[] {
-  return usePivotRead().pivots
 }
