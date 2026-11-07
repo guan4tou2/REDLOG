@@ -39,7 +39,7 @@ export default function OverlayApp(): JSX.Element {
   const [passThroughOpacity, setPassThroughOpacity] = useState(0.4)
   const pivotRead = usePivotRead()
   useTick()   // keeps "last seen" current
-  const pivots = pivotRead.pivots
+  const pivots = pivotRead.status === 'ready' ? pivotRead.pivots : []
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Inline confirmation for the instant mark. Without it the button gives no
   // sign anything happened — there is no dialog and no window change, which is
@@ -379,7 +379,7 @@ export default function OverlayApp(): JSX.Element {
                   that its channel is up, so no arrows and no health. A failed
                   read says so instead of looking like "none". */}
               {pivotRead.status === 'error' && (
-                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8 }}>⚠ {pivots.length ? t('pivot.readFailedStale', { count: pivots.length }) : t('pivot.readFailed')}</p>
+                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8 }}>⚠ {pivotRead.pivots.length ? t('pivot.readFailedStale', { count: pivotRead.pivots.length }) : t('pivot.readFailed')}</p>
               )}
               {pivots.length > 0 && (
                 <div data-testid="hud-pivot-nodes">

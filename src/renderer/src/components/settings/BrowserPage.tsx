@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RuntimePreparation } from '../CapturePreparation'
 import { HttpCaptureStep } from '../HttpCaptureStep'
-import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT } from '../../lib/defaults'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import BrowserPanel from './BrowserPanel'
@@ -25,6 +24,30 @@ export default function BrowserPage({
   const [preparing, setPreparing] = useState(false)
   const hook = useReadState(async () => (await window.redlog.hooks.detect()).find(item => item.id === 'mitmproxy') ?? null)
   const [verify, setVerify] = useState(false)
+  const [connection, setConnection] = useState<{ phase: 'idle' | 'loading' | 'success' | 'failed'; message?: string }>({ phase: 'idle' })
+  const request = useRef(0)
+  const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
+  useEffect(() => {
+    setConnection({ phase: 'idle' })
+    return () => { request.current++ }
+  }, [port])
+  const checkConnection = async () => {
+    const id = ++request.current
+    setConnection({ phase: 'loading' })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const tab = await Promise.race([
+        (async () => { await window.redlog.cdp.setPort(port); return window.redlog.cdp.getTab() })(),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(t('settings.cdpTimeout'))), 10_000) })
+      ])
+      if (id !== request.current) return
+      setConnection(tab.connected
+        ? { phase: 'success', message: t('settings.cdpConnected', { title: tab.title ?? '', url: tab.url ?? '' }) }
+        : { phase: 'failed', message: tab.timedOut ? t('settings.cdpTimeout') : t('settings.cdpNotConnected', { port: String(port) }) })
+    } catch (error) {
+      if (id === request.current) setConnection({ phase: 'failed', message: error instanceof Error ? error.message : String(error) })
+    } finally { clearTimeout(timer) }
+  }
   return (
     <>
       <div className="mb-4">
@@ -44,28 +67,10 @@ export default function BrowserPage({
         <p className="text-xs text-redlog-text-faint mb-2">
           {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
         </p>
-        <button
-          onClick={async () => {
-            // Uses the CDP port from BrowserPanel above (config.browser.
-            // cdpPort) — the previous separate field silently didn't
-            // auto-save so users often set two different ports without
-            // knowing (audit finding P0 #43).
-            const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
-            await window.redlog.cdp.setPort(port)
-            const cdpTab = await window.redlog.cdp.getTab()
-            if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title ?? '', url: cdpTab.url ?? '' }), 'success')
-            else {
-              toast(t('settings.cdpNotConnectedTitle'), {
-                type: 'error',
-                why: t('settings.cdpNotConnected', { port: String(port) }),
-                action: { label: t('common.retry'), onClick: () => { void window.redlog.cdp.getTab() } }
-              })
-            }
-          }}
-          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
-        >
-          {t('settings.testConnection')}
-        </button>
+        <Button level="secondary" disabled={connection.phase === 'loading'} onClick={() => void checkConnection()}>
+          {connection.phase === 'loading' ? t('common.loading') : connection.phase === 'failed' ? t('settings.cdpRetry') : t('settings.testConnection')}
+        </Button>
+        {connection.message && <p data-testid="cdp-connection-result" role={connection.phase === 'failed' ? 'alert' : 'status'} className={`mt-2 text-xs ${connection.phase === 'failed' ? 'text-redlog-danger' : 'text-redlog-text'}`}>{connection.message}</p>}
       </FieldGroup>
     </>
   )

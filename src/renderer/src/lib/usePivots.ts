@@ -32,9 +32,22 @@ export function usePivotRead(): PivotRead & { retry: () => void } {
     const fail = (): void => setState((prev) => ({ status: 'error', pivots: prev.pivots }))
     // An answer that is not a list is a failed read, not an empty one.
     const set = (pivots: ActivePivot[]): void => (Array.isArray(pivots) ? setState({ status: 'ready', pivots }) : fail())
-    if (!pv?.getActive) { set([]); return }
-    pv.getActive().then(set).catch(fail)
-    return pv.onChange?.(set)
+    setState(prev => ({ status: 'loading', pivots: prev.pivots }))
+    if (!pv?.getActive) { fail(); return }
+    let live = true
+    let receivedUpdate = false
+    const unsubscribe = pv.onChange?.(nodes => {
+      if (!live) return
+      receivedUpdate = true
+      set(nodes)
+    })
+    // A notification belongs to a later observation than the initial snapshot.
+    pv.getActive().then(nodes => {
+      if (live && !receivedUpdate) set(nodes)
+    }, () => {
+      if (live && !receivedUpdate) fail()
+    })
+    return () => { live = false; unsubscribe?.() }
   }, [attempt])
   return { ...state, retry: () => setAttempt((n) => n + 1) }
 }

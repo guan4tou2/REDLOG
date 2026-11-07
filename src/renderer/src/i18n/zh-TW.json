@@ -2326,5 +2326,8 @@
   "activity.status.perSource": "各來源狀態個別確認",
   "activity.status.sourceAlert": "{{count}} 個來源需要處理（{{names}}）",
   "activity.reader.integrityKind": "本機紀錄 SHA-256",
-  "activity.reader.recordState": "紀錄狀態"
+  "activity.reader.recordState": "紀錄狀態",
+  "pivot.loading": "正在讀取中繼節點…",
+  "settings.cdpRetry": "重試瀏覽器連線",
+  "settings.cdpTimeout": "瀏覽器連線測試逾時，請重試。"
 }

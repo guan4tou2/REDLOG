@@ -230,13 +230,14 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.retentionLoggedTier'
   ],
   browser: [
+    'settings.cdpTimeout',
+    'settings.cdpConnected',
+    'settings.cdpNotConnected',
     'firstRun.http.verifySettings',
     'settings.hookOptionalSteps',
     'settings.cdp',
     'settings.cdpHint',
-    'settings.cdpConnected',
-    'settings.cdpNotConnectedTitle',
-    'settings.cdpNotConnected',
+    'settings.cdpRetry',
     'settings.testConnection',
     'httpCapture.statusUnknown',
     'settings.httpCapturePortInvalid',

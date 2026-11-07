@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { usePivotRead, type ActivePivot } from '../lib/usePivots'
 import { formatFreshness, formatTime } from '../lib/time'
@@ -28,7 +28,7 @@ function PivotNodes({ read }: { read: ReturnType<typeof usePivotRead> }): JSX.El
   // time is when a command last mentioned it, which is a different fact.
   const [readAt, setReadAt] = useState<number | null>(null)
   useEffect(() => { if (read.status === 'ready') setReadAt(Date.now()) }, [read.status, read.pivots])
-  if (read.status === 'loading') return null
+  if (read.status === 'loading') return <p role="status" className="text-xs text-redlog-text-dim">{t('pivot.loading')}</p>
   if (read.status === 'error') {
     return <div data-testid="pivot-error" className="pt-3 border-t border-redlog-border-subtle flex items-center gap-3 text-xs text-redlog-warn">
       <span>{read.pivots.length ? t('pivot.readFailedStale', { count: read.pivots.length }) : t('pivot.readFailed')}</span>
@@ -83,17 +83,23 @@ export default function IPStatusCard(): JSX.Element {
   // A failed read drops the previous status: an old address is not the current
   // one, and "could not read" is not "no address". The retry reuses the same
   // getStatus call as the first read.
+  const sequence = useRef(0)
   const read = useCallback((): void => {
+    const id = ++sequence.current
     setFailed(false)
     window.redlog.ip.getStatus()
-      .then((s) => { setStatus(s); setFailed(false) })
-      .catch(() => { setStatus(null); setFailed(true) })
+      .then((s) => { if (id === sequence.current) { setStatus(s); setFailed(false) } })
+      .catch(() => { if (id === sequence.current) { setStatus(null); setFailed(true) } })
   }, [])
 
   useEffect(() => {
     read()
-    const unsub = window.redlog.ip.onStatus(setStatus)
-    return () => unsub()
+    const unsub = window.redlog.ip.onStatus(s => {
+      sequence.current++
+      setStatus(s)
+      setFailed(false)
+    })
+    return () => { sequence.current++; unsub() }
   }, [read])
 
   const shell = 'rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3 shadow-card'

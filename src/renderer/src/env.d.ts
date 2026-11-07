@@ -121,6 +121,7 @@ interface Bookmark {
 }
 
 interface BrowserTabInfo {
+  timedOut?: boolean
   url: string | null
   title: string | null
   connected: boolean
