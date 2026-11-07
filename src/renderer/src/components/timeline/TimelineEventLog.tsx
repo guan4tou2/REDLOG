@@ -25,7 +25,8 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
   titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef,
-  hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false
+  hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false,
+  stripsOnly = false
 }: {
   events: readonly RedLogEvent[]
   selectedId: string | null
@@ -52,7 +53,10 @@ export function TimelineEventLog({
   /** Traffic has been seen and the command join has resolved none of it —
    *  a capability this host does not have, not a fact about the engagement. */
   attributionBlind?: boolean
-}): JSX.Element {
+  /** Swim-lane mode hides the list (Stitch 05); what only this component can
+   *  say stays: the hidden-by-query toggle and the attribution-blind line. */
+  stripsOnly?: boolean
+}): JSX.Element | null {
   // Folds start closed and the operator opens the ones they want. Expansion
   // is per parent and not remembered across a filter change: the row they
   // opened may not even be in the next result.
@@ -64,8 +68,8 @@ export function TimelineEventLog({
     return next
   })
   const rows = useMemo(
-    () => foldByCause(events, { annotated: annotatedIds, selected: selectedId }),
-    [events, annotatedIds, selectedId]
+    () => stripsOnly ? [] : foldByCause(events, { annotated: annotatedIds, selected: selectedId }),
+    [events, annotatedIds, selectedId, stripsOnly]
   )
   // vh until the operator drags, so the DEFAULT scales with window height —
   // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
@@ -74,6 +78,32 @@ export function TimelineEventLog({
   // so whatever the window has left over arrives here — which is the point:
   // the surplus used to be spent padding lanes out around a 9px dot while
   // this list showed six rows.
+  if (stripsOnly) {
+    const hiddenToggle = (hiddenByQuery > 0 || showingAll) && onToggleHidden
+    if (!hiddenToggle && !attributionBlind) return null
+    return (
+      <div className="shrink-0 border-t border-redlog-border/60 bg-redlog-bg/50">
+        {hiddenToggle && (
+          <div className="px-4 py-1.5 flex justify-end">
+            <button
+              data-testid="log-hidden-toggle"
+              onClick={onToggleHidden}
+              className="text-xs text-redlog-text-faint hover:text-redlog-text underline decoration-dotted"
+            >
+              {showingAll
+                ? t('timeline.log.onlyMatches')
+                : t('timeline.log.hiddenByQuery', { count: hiddenByQuery })}
+            </button>
+          </div>
+        )}
+        {attributionBlind && (
+          <p data-testid="log-attribution-blind" className="px-4 py-1 text-xs text-redlog-warn">
+            {t('timeline.fold.blind')} {t(blindCauseKey)}
+          </p>
+        )}
+      </div>
+    )
+  }
   const minHeight = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
     <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>

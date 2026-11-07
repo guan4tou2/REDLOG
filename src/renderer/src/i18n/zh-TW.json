@@ -2336,5 +2336,12 @@
   "timeline.range.all": "全階段",
   "timeline.range.custom": "自訂區間",
   "timeline.anchor.label": "當前錨點",
-  "timeline.searchRange": "搜尋區間"
+  "timeline.searchRange": "搜尋區間",
+  "timeline.lanes.title": "多軌並行泳道",
+  "timeline.lanes.active": "{{count}} 軌有事件",
+  "timeline.lanes.range": "時間範圍 {{from}} ~ {{to}}",
+  "timeline.lanes.loadedRange": "已載入範圍 {{from}} ~ {{to}}",
+  "timeline.lanes.collapse": "折疊回標準流",
+  "timeline.lanes.rowCount": "({{count}} 筆)",
+  "timeline.lanes.rowCountPartial": "({{count}}+ 筆)"
 }
