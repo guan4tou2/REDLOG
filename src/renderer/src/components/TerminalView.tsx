@@ -12,6 +12,7 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 import { Modal } from './Modal'
 import { Button } from './Button'
+import { isMac } from '../lib/platform'
 
 interface Tab {
   id: string
@@ -297,6 +298,8 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         e.preventDefault()
         if (activeTab) closeTab(activeTab)
       }
+      // Find works from anywhere on the page, not only while xterm has focus.
+      else if (e.key === 'f' && !e.shiftKey && !e.altKey && activeTab) { e.preventDefault(); setSearchOpen(true) }
       else if (e.shiftKey && (e.key === ']' || e.key === '}')) {
         e.preventDefault()
         setTabs((prev) => { const i = prev.findIndex((t) => t.id === activeTab); if (i >= 0 && prev.length > 1) setActiveTab(prev[(i + 1) % prev.length].id); return prev })
@@ -399,7 +402,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             )}
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-              className="ml-0.5 w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-redlog-elevated-hover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-opacity"
+              className="ml-0.5 w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-redlog-elevated-hover opacity-60 hover:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-opacity"
               title={t('terminal.closeTitle')}
               aria-label={t('terminal.closeTitle')}
             >
@@ -411,7 +414,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
           onClick={() => addTab()}
           disabled={!allowNew}
           className="w-7 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm"
-          title={t('terminal.newTab')}
+          title={`${t('terminal.newTab')} (${isMac ? '⌘T' : 'Ctrl+T'})`}
           aria-label={t('terminal.newTab')}
         >
           +
@@ -485,7 +488,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
           <button
             onClick={() => setSearchOpen((s) => !s)}
             className={`w-6 h-6 rounded flex items-center justify-center hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${searchOpen ? 'text-redlog-text bg-white/[0.05]' : 'text-redlog-text-faint hover:text-redlog-text'}`}
-            title={t('terminal.searchToggle')}
+            title={`${t('terminal.searchToggle')} (${isMac ? '⌘F' : 'Ctrl+F'})`}
             aria-label={t('terminal.searchToggle')}
           >⌕</button>
         </div>
@@ -551,6 +554,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             <p className="mt-1">{t('terminal.aboutHookBody')}</p>
           </section>
           <p>{t('terminal.aboutIndependent')}</p>
+          <p data-testid="terminal-about-boundary">{t('terminal.aboutBoundary')}</p>
         </div>
         <div className="mt-4 flex justify-end"><Button onClick={() => setAboutOpen(false)}>{t('common.close')}</Button></div>
       </Modal>
@@ -578,13 +582,9 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
           </div>
         ))}
         {tabs.length === 0 && (
-          <div className="flex items-center justify-center h-full">
-            <button disabled={!allowNew}
-              onClick={() => addTab()}
-              className="px-4 py-2 rounded-lg bg-redlog-elevated text-redlog-text-dim text-sm hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
-            >
-              {t('terminal.newTab')}
-            </button>
+          <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3">
+            <p className="text-sm text-redlog-text-dim">{t('terminal.emptyTitle')}</p>
+            <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>{t('terminal.newTab')}</Button>
           </div>
         )}
       </div>

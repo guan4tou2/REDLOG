@@ -2213,5 +2213,7 @@
   "bookmarks.scopeNote": "本機工作筆記：可編輯，不上鏈，不隨證據包匯出",
   "bookmarks.goToTime": "前往這個時間點",
   "capture.healthyGap": "記錄中，部分項目尚待確認",
-  "dashboard.targetsExcluding": "{{count}} 個目標、{{excluded}} 個排除，{{mode}}"
+  "dashboard.targetsExcluding": "{{count}} 個目標、{{excluded}} 個排除，{{mode}}",
+  "terminal.aboutBoundary": "錄製狀態不代表所有 shell 指令輸出都已完整保存：暫停、停止或超過大小上限之後的輸出不會保存。",
+  "terminal.emptyTitle": "沒有使用中的終端機"
 }
