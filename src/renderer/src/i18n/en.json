@@ -2213,5 +2213,7 @@
   "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle",
   "bookmarks.goToTime": "Go to this time",
   "capture.healthyGap": "Recording; some items unconfirmed",
-  "dashboard.targetsExcluding": "{{count}} targets, {{excluded}} excluded, {{mode}}"
+  "dashboard.targetsExcluding": "{{count}} targets, {{excluded}} excluded, {{mode}}",
+  "terminal.aboutBoundary": "A recording state does not mean every shell command output is fully kept: output after a pause, a stop or the size cap is not saved.",
+  "terminal.emptyTitle": "No terminal is open"
 }
