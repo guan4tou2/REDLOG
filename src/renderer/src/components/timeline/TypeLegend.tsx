@@ -7,7 +7,7 @@ import { LANES, LANE_LABEL_KEYS, type LaneId } from '../../lib/timelineDomain'
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export const LANE_GLYPHS: Record<LaneId, string> = {
-  shell: '$', agent: '✦', http_navigation: '⇄', scanner: '⌖', browser: '◫', dns: '@',
+  shell: '$', agent: '✦', http_navigation: '↔', scanner: '⌖', browser: '◫', dns: '@',
   pivot: '⤳', screenshot: '▣', clipboard: '❐', file_transfer: '⇅', credential_use: '⚿',
   c2_checkin: '◎', marker: '⚑', loot: '◆', cleanup: '✕', scope: '⊘', process: '▸', system: '⚙'
 }
