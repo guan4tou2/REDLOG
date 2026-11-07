@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import RecordingWorkspace from '../src/renderer/src/components/RecordingWorkspace'
@@ -7,6 +7,11 @@ import RecordingWorkspace from '../src/renderer/src/components/RecordingWorkspac
 vi.mock('../src/renderer/src/components/SearchPanel', () => ({ SearchPanel: ({ controlledQuery, viewMode, active, browse }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse}>{controlledQuery}</div> }))
 vi.mock('../src/renderer/src/components/TranscriptView', () => ({ default: ({ reading, externalQuery, active }: any) => <div data-testid={`workspace-${reading}`} data-active={active}><input aria-label={`position-${reading}`} defaultValue="" />{externalQuery}</div> }))
 vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: () => null}))
+// Stitch 04: the title row reads the project total, capture health and the
+// recording state; this suite is about the reading modes, so those answer simply.
+vi.mock('../src/renderer/src/lib/useAppCounts', () => ({ useAppCounts: () => ({ eventCount: 3, loggedCount: 1 }) }))
+vi.mock('../src/renderer/src/lib/useCaptureHealth', () => ({ useCaptureHealthState: () => ({ health: null, status: 'ok', lastOkAt: null, refresh: () => {} }) }))
+beforeEach(() => { (window as any).redlog = { recording: { get: async () => true, onChange: () => () => {} } } })
 afterEach(cleanup)
 
 describe('recording workspace', () => {
@@ -39,5 +44,15 @@ describe('recording workspace', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Raw events' }))
     expect(screen.getByTestId('workspace-search').dataset.mode).toBe('events')
     expect(screen.getByTestId('workspace-io').dataset.active).toBe('false')
+  })
+})
+
+describe('recording workspace title row (Stitch 04)', () => {
+  it('says the recording state and the project total, and that each source answers for itself', async () => {
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    const pill = screen.getByTestId('activity-recording')
+    expect(pill.textContent).toContain('4 events')
+    expect(pill.textContent).toContain('each source confirmed on its own')
+    expect(await screen.findByText('Recording')).toBeTruthy()
   })
 })

@@ -200,3 +200,13 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
+
+/** `UTC` or `Local (UTC+8)`: the zone every time on this page is drawn in. */
+export function zoneLabel(zone: 'local' | 'utc', t: (k: string) => string): string {
+  if (zone === 'utc') return 'UTC'
+  const off = -new Date().getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const abs = Math.abs(off)
+  const hm = `${Math.trunc(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`
+  return `${t('filter.localTime')} (UTC${sign}${hm})`
+}
