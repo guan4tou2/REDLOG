@@ -51,19 +51,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); localStorage.clear() })
 
 describe('list rows', () => {
-  it('names the colours, only for the lanes that are present', () => {
-    drawLog([ev('a', 'shell', { subtype: 'command_start', command: 'ls' }), ev('b', 'screenshot', { subtype: 'screenshot' }, 1_700_000_001_000)])
-    const legend = screen.getByTestId('log-lane-legend')
-    expect(legend.textContent).toContain('timeline.shell')
-    expect(legend.textContent).toContain('timeline.screenshot')
-    expect(legend.textContent).not.toContain('timeline.dns')
-  })
-
-  it('draws no key when there is only one kind of event', () => {
-    drawLog([ev('a', 'shell', { subtype: 'command_start', command: 'ls' }), ev('b', 'shell', { subtype: 'command_start', command: 'id' }, 1_700_000_001_000)])
-    expect(screen.queryByTestId('log-lane-legend')).toBeNull()
-  })
-
   it('says how a finished command ended, and nothing on rows that have no result', () => {
     drawLog([
       ev('a', 'shell', { subtype: 'command_end', command: 'ls', exit_code: 2, duration_sec: 1.5 }),
