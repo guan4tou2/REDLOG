@@ -5,7 +5,7 @@
 // Each is shown only when the event carries it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { TimelineEventInspector } from '../src/renderer/src/components/timeline/TimelineEventInspector'
 import { TimelineEventLog } from '../src/renderer/src/components/timeline/TimelineEventLog'
@@ -28,7 +28,7 @@ function drawLog(events: RedLogEvent[]): void {
   )
 }
 
-function drawInspector(event: RedLogEvent): void {
+function drawInspector(event: RedLogEvent, onOpenInActivity?: (id: string) => void): void {
   render(
     <I18nProvider>
       <TimelineEventInspector
@@ -36,7 +36,7 @@ function drawInspector(event: RedLogEvent): void {
         onAround={vi.fn()} operatorLabel={(id) => id} titleOf={(e) => String(e.data?.command ?? e.id)}
         allLoaded focusChainOn={false} showJson={false} lookup={() => undefined} onJump={vi.fn()}
         onSelect={vi.fn()} onResolve={vi.fn()} onAmend={vi.fn()} t={(k: string) => k}
-        onStep={vi.fn()} canStepPrev canStepNext
+        onStep={vi.fn()} canStepPrev canStepNext onOpenInActivity={onOpenInActivity}
       />
     </I18nProvider>
   )
@@ -87,5 +87,25 @@ describe('detail pane', () => {
   it('shows none of them for an event without', () => {
     drawInspector(ev('a', 'shell', { subtype: 'command_start', command: 'ls' }))
     expect(screen.queryByTestId('detail-exit')).toBeNull()
+  })
+})
+
+describe('from the Timeline to the activity log (Stitch 05)', () => {
+  it('opens the event in the activity log, and offers it only when there is somewhere to go', () => {
+    const open = vi.fn()
+    drawInspector(ev('evt-1', 'shell', { subtype: 'command_start', command: 'ls' }), open)
+    fireEvent.click(screen.getByTestId('detail-open-activity'))
+    expect(open).toHaveBeenCalledWith('evt-1')
+    cleanup()
+    drawInspector(ev('evt-1', 'shell', { subtype: 'command_start', command: 'ls' }))
+    expect(screen.queryByTestId('detail-open-activity')).toBeNull()
+  })
+
+  it('copies a reference that pastes back into search', async () => {
+    const write = vi.fn(async () => true)
+    ;(window as unknown as { redlog: Record<string, unknown> }).redlog.clipboard = { writeText: write }
+    drawInspector(ev('evt-2', 'shell', { subtype: 'command_start', command: 'ls' }))
+    fireEvent.click(screen.getByTestId('detail-copy-ref'))
+    await waitFor(() => expect(write).toHaveBeenCalledWith('event:evt-2'))
   })
 })

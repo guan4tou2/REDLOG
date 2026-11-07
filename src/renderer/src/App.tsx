@@ -146,6 +146,16 @@ export default function App(): JSX.Element {
     setView('timeline')
   }, [view])
 
+  // Stitch 05: from an event on the Timeline to the activity that holds it.
+  // The Activity workspace already answers `event:<id>` (the condition
+  // resolves against the stored id), so this is that query, typed for the
+  // operator; the Reader there is the one Reader (06).
+  const [activityQuery, setActivityQuery] = useState<{ text: string; at: number } | null>(null)
+  const openInActivity = useCallback((id: string): void => {
+    setActivityQuery({ text: `event:${id}`, at: Date.now() })
+    setView('search')
+  }, [])
+
   // The Activity workspace and the Timeline are two readings of the same
   // material, but only the Timeline had no way in except the palette. This is
   // the "open it" half of `openInTimeline`: no event to focus, back arrow on.
@@ -418,7 +428,7 @@ export default function App(): JSX.Element {
                 <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
               </div>
             )}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the
@@ -437,7 +447,7 @@ export default function App(): JSX.Element {
               </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
+            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

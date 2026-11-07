@@ -2299,5 +2299,7 @@
   "firstRun.paths.external": "外部 Shell Hook",
   "firstRun.paths.externalTag": "需安裝腳本",
   "firstRun.paths.externalWhy": "在系統常用終端（如 iTerm2、Alacritty）載入 zsh 或 bash hook，記錄外部終端的指令與結束碼。",
-  "targetsScope.noCount": "沒有範圍規則可判定，因此沒有計數"
+  "targetsScope.noCount": "沒有範圍規則可判定，因此沒有計數",
+  "timeline.copyRef": "複製事件參照",
+  "timeline.openInActivity": "在活動紀錄開啟完整內容"
 }
