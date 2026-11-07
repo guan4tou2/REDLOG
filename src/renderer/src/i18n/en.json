@@ -2300,6 +2300,8 @@
   "firstRun.paths.externalTag": "Needs a script",
   "firstRun.paths.externalWhy": "Load the zsh or bash hook in the terminal you normally use (such as iTerm2 or Alacritty) to record its commands and exit codes.",
   "targetsScope.noCount": "No scope rules to judge against, so no count",
+  "timeline.copyRef": "Copy event reference",
+  "timeline.openInActivity": "Open in activity log",
   "screenshots.preview": "Preview",
   "screenshots.deleteFile": "Delete file",
   "screenshots.recorded": "Screenshot recorded",
