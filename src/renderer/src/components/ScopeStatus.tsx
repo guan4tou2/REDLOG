@@ -37,6 +37,7 @@ function RecomputeBanner({ summary, onOpenInTimeline }: {
       <p className="text-xs text-redlog-text-dim">
         {ts ? t('scope.recompute.banner', { time: formatDateTime(ts) }) : t('scope.recompute.bannerNoTime')}
       </p>
+      <p className="text-xs text-redlog-text-faint">{t('scope.recompute.explain')}</p>
       {flagged === 0 && clearedN === 0 ? (
         <p className="text-xs text-redlog-text-dim">{t('scope.recompute.nothingChanged', { count: recomputed })}</p>
       ) : (
@@ -238,7 +239,23 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
               </span>
             </button>
             {open && <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 py-1 space-y-2 text-xs" data-testid="scope-observation-detail">
-              <p className="text-redlog-text-dim">{t(`scope.distance.${['excluded', 'adjacent_domain', 'adjacent_subnet', 'unrelated'].includes(v.distance) ? v.distance : 'unknown'}`)}{detail.state.value?.id === v.id && detail.state.value.rule ? ` · ${detail.state.value.rule}` : ''}</p>
+              {/* Stitch 02: why, by which rule, and from which event — three facts, side by side. */}
+              <dl data-testid="scope-observation-facts" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="min-w-0 rounded bg-redlog-bg p-2">
+                  <dt className="text-redlog-text-faint">{t('scope.fact.reason')}</dt>
+                  <dd className="m-0 text-redlog-text">{t(`scope.distance.${['excluded', 'adjacent_domain', 'adjacent_subnet', 'unrelated'].includes(v.distance) ? v.distance : 'unknown'}`)}</dd>
+                </div>
+                <div className="min-w-0 rounded bg-redlog-bg p-2">
+                  <dt className="text-redlog-text-faint">{t('scope.fact.rule')}</dt>
+                  <dd className="m-0 truncate font-mono text-redlog-text" title={detail.state.value?.id === v.id ? detail.state.value.rule ?? undefined : undefined}>
+                    {detail.state.value?.id === v.id && detail.state.value.rule ? detail.state.value.rule : '—'}
+                  </dd>
+                </div>
+                <div className="min-w-0 rounded bg-redlog-bg p-2">
+                  <dt className="text-redlog-text-faint">{t('scope.fact.source')}</dt>
+                  <dd className="m-0 font-mono text-redlog-text">{formatDateTime(v.sourceTs ?? v.timestamp)}</dd>
+                </div>
+              </dl>
               {detail.state.phase === 'loading' && <LoadingSpinner />}
               {detail.state.phase === 'failed' && <div role="alert">{t('scope.detailFailed')} <Button level="quiet" size="compact" onClick={detail.retry}>{t('common.retry')}</Button></div>}
               {detail.state.phase === 'loaded' && detail.state.value?.id === v.id && !detail.state.value.command && <p className="text-amber-400">{t('scope.commandPreview')}</p>}
