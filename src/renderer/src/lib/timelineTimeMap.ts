@@ -242,3 +242,50 @@ export function densestRun(bins: MinimapBins, timeStart: number, timeEnd: number
   const w = ((timeEnd - timeStart) || 1) / N
   return { start: timeStart + best.i0 * w, end: timeStart + (best.i1 + 1) * w, count: best.count }
 }
+
+/** Width reserved for a ruler marker chip ("25:04:12 當前焦點"), in track px. */
+export const RULER_CHIP_W = 150
+
+export interface RulerMarkerPlacement {
+  /** Track x of the marker's tick. */
+  x: number
+  /** `start`: chip runs right of the tick; `end`: left of it. */
+  align: 'start' | 'end'
+  /** 0 = first marker row, 1 = the row under it, used to clear a collision. */
+  row: 0 | 1
+}
+
+export interface RulerMarkers {
+  focus: RulerMarkerPlacement | null
+  latest: RulerMarkerPlacement | null
+}
+
+/**
+ * Where the [focus] and [latest] chips sit on the ruler. A null x means that
+ * marker is not shown: nothing selected, no events, or a time outside the
+ * loaded domain. A chip that would run past the track's right edge flips to
+ * the left of its tick; if the two chips would then overlap, [latest] drops to
+ * the second row. [focus] never moves, so the selection's position is stable.
+ */
+export function placeRulerMarkers(p: {
+  focusX: number | null
+  latestX: number | null
+  trackW: number
+  chipW?: number
+}): RulerMarkers {
+  const w = p.chipW ?? RULER_CHIP_W
+  const align = (x: number): 'start' | 'end' => (x + w > p.trackW ? 'end' : 'start')
+  const span = (x: number, a: 'start' | 'end'): [number, number] => (a === 'start' ? [x, x + w] : [x - w, x])
+  const focus: RulerMarkerPlacement | null = p.focusX === null
+    ? null
+    : { x: p.focusX, align: align(p.focusX), row: 0 }
+  const latest: RulerMarkerPlacement | null = p.latestX === null
+    ? null
+    : { x: p.latestX, align: align(p.latestX), row: 0 }
+  if (focus && latest) {
+    const [f0, f1] = span(focus.x, focus.align)
+    const [l0, l1] = span(latest.x, latest.align)
+    if (f0 < l1 && l0 < f1) latest.row = 1
+  }
+  return { focus, latest }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTimeMap, computeDomainBounds, computeBins, densestRun } from '../src/renderer/src/lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, RULER_CHIP_W } from '../src/renderer/src/lib/timelineTimeMap'
 
 const GAP_MIN_MS = 10 * 60_000
 const GAP_PX = 48
@@ -222,5 +222,43 @@ describe('densestRun', () => {
       expect(r.start).toBeLessThan(r.end)
       expect(r.count).toBeLessThanOrEqual(c.reduce((a, b) => a + b, 0))
     }
+  })
+})
+
+describe('placeRulerMarkers', () => {
+  const W = RULER_CHIP_W
+  it('shows no marker for a missing time', () => {
+    expect(placeRulerMarkers({ focusX: null, latestX: null, trackW: 2000 })).toEqual({ focus: null, latest: null })
+    const r = placeRulerMarkers({ focusX: null, latestX: 1000, trackW: 2000 })
+    expect(r.focus).toBeNull()
+    expect(r.latest).toEqual({ x: 1000, align: 'start', row: 0 })
+  })
+
+  it('flips a chip left of its tick when it would pass the track edge', () => {
+    expect(placeRulerMarkers({ focusX: 2000 - W, latestX: null, trackW: 2000 }).focus?.align).toBe('start')
+    expect(placeRulerMarkers({ focusX: 2000 - W + 1, latestX: null, trackW: 2000 }).focus?.align).toBe('end')
+  })
+
+  it('keeps both chips on row 0 when they do not overlap', () => {
+    const r = placeRulerMarkers({ focusX: 100, latestX: 100 + W, trackW: 2000 })
+    expect(r.focus?.row).toBe(0)
+    expect(r.latest?.row).toBe(0)
+  })
+
+  it('drops [latest] to the second row on overlap and never moves [focus]', () => {
+    const r = placeRulerMarkers({ focusX: 100, latestX: 100 + W - 1, trackW: 2000 })
+    expect(r.focus).toEqual({ x: 100, align: 'start', row: 0 })
+    expect(r.latest?.row).toBe(1)
+    // The newest event selected: both on the same x, still two chips.
+    const same = placeRulerMarkers({ focusX: 1990, latestX: 1990, trackW: 2000 })
+    expect(same.focus?.row).toBe(0)
+    expect(same.latest?.row).toBe(1)
+  })
+
+  it('treats a flipped [latest] against a start-aligned [focus] by their real spans', () => {
+    // focus spans [1800,1950]; latest flips to [1850,2000]: overlap.
+    expect(placeRulerMarkers({ focusX: 1800, latestX: 2000, trackW: 2000 }).latest?.row).toBe(1)
+    // focus spans [1000,1150]; latest [1850,2000]: clear.
+    expect(placeRulerMarkers({ focusX: 1000, latestX: 2000, trackW: 2000 }).latest?.row).toBe(0)
   })
 })
