@@ -56,8 +56,11 @@ type Reading = 'activities' | 'io' | 'ai' | 'events'
 const READINGS: Reading[] = ['activities', 'io', 'ai', 'events']
 
 /** Reading modes share a query; visited readers retain their own position. */
-export default function RecordingWorkspace({ active = true, onOpenInTimeline, onOpenTimeline }: {
+export default function RecordingWorkspace({ active = true, onOpenInTimeline, onOpenTimeline, externalQuery }: {
   active?: boolean
+  /** A query handed in from elsewhere (the Timeline's "open in activity log");
+   *  each new `at` replaces the box's text once, and the operator edits on from there. */
+  externalQuery?: { text: string; at: number } | null
   onOpenInTimeline?: (id: string, ts: number) => void
   /** Open the visual Timeline for this project, with no event focused. */
   onOpenTimeline?: () => void
@@ -71,6 +74,11 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const effectiveQuery=[query,reading==='ai' && provider ? `provider:${provider}` : '',picked ? `source:${picked.token}` : ''].filter(Boolean).join(' ')
   const [visited, setVisited] = useState<Set<Reading>>(new Set(['activities']))
   const field = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!externalQuery) return
+    setQuery(externalQuery.text)
+    setReading('activities')
+  }, [externalQuery?.at]) // eslint-disable-line react-hooks/exhaustive-deps
   const choose = (next: Reading): void => {
     setReading(next)
     setVisited(prev => new Set([...prev, next]))

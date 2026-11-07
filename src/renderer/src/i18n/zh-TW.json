@@ -2314,5 +2314,7 @@
   "screenshots.sectionHint": "點選截圖可預覽；刪除檔案不代表刪除原始事件。",
   "screenshots.timeLocal": "時間：本地",
   "screenshots.timeUtc": "時間：UTC",
-  "loot.sectionTitle": "戰利品偵測紀錄"
+  "loot.sectionTitle": "戰利品偵測紀錄",
+  "timeline.copyRef": "複製事件參照",
+  "timeline.openInActivity": "在活動紀錄開啟完整內容"
 }
