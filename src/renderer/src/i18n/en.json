@@ -2047,7 +2047,6 @@
   "activity.col.content": "Content",
   "activity.col.view": "View",
   "activity.pageTitle": "Activity",
-  "activity.pageHint": "What this project has captured, by operation and event",
   "activity.sourceLabel": "Source",
   "activity.sourceAll": "All sources",
   "activity.zone": "Time zone: {{zone}}",
@@ -2215,5 +2214,10 @@
   "capture.healthyGap": "Recording; some items unconfirmed",
   "dashboard.targetsExcluding": "{{count}} targets, {{excluded}} excluded, {{mode}}",
   "terminal.aboutBoundary": "A recording state does not mean every shell command output is fully kept: output after a pause, a stop or the size cap is not saved.",
-  "terminal.emptyTitle": "No terminal is open"
+  "terminal.emptyTitle": "No terminal is open",
+  "activity.today": "today",
+  "activity.reader.field.exit": "Exit code",
+  "activity.reader.field.duration": "Duration",
+  "activity.reader.field.pid": "PID",
+  "activity.reader.field.cwd": "Directory"
 }

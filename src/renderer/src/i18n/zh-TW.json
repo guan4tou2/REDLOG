@@ -2047,7 +2047,6 @@
   "activity.col.content": "內容",
   "activity.col.view": "檢視",
   "activity.pageTitle": "活動紀錄",
-  "activity.pageHint": "查看目前專案擷取的操作與事件",
   "activity.sourceLabel": "來源",
   "activity.sourceAll": "所有來源",
   "activity.zone": "時區：{{zone}}",
@@ -2215,5 +2214,10 @@
   "capture.healthyGap": "記錄中，部分項目尚待確認",
   "dashboard.targetsExcluding": "{{count}} 個目標、{{excluded}} 個排除，{{mode}}",
   "terminal.aboutBoundary": "錄製狀態不代表所有 shell 指令輸出都已完整保存：暫停、停止或超過大小上限之後的輸出不會保存。",
-  "terminal.emptyTitle": "沒有使用中的終端機"
+  "terminal.emptyTitle": "沒有使用中的終端機",
+  "activity.today": "今日",
+  "activity.reader.field.exit": "結束碼",
+  "activity.reader.field.duration": "耗時",
+  "activity.reader.field.pid": "PID",
+  "activity.reader.field.cwd": "目錄"
 }

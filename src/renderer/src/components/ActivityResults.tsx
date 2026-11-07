@@ -9,7 +9,7 @@ import { eventTitle } from '../lib/eventTitle'
 import { formatDate, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
-import { ActivityReader } from './ActivityReader'
+import { ActivityReader, sourceName } from './ActivityReader'
 
 const ROW_GRID = 'grid grid-cols-[72px_96px_minmax(0,1fr)_24px] gap-x-3 items-start'
 
@@ -109,12 +109,12 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
       <div className="divide-y divide-redlog-border-subtle">
         {page.items.map((item, at) => <div key={item.id} className={expanded === item.id ? "min-w-0 bg-white/[0.012]" : "min-w-0"}>
           {(at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(item.firstAt)) && <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
-            <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(item.firstAt)}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
+            <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(item.firstAt)}{formatDate(item.firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
           </div>}
           <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} w-full text-left py-2.5 px-2 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
-            <span className="min-w-0 truncate text-xs text-redlog-text-dim" title={item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
+            <span className="min-w-0 truncate text-xs text-redlog-text-dim" title={sourceName(item, t)}>{sourceName(item, t)}</span>
             <span className="min-w-0">
               <span className="block font-mono text-sm break-words">{eventTitle(item.anchor, t)}</span>
               <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-redlog-text-dim">
@@ -130,6 +130,10 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           </button>
           {expanded === item.id && <div data-testid="activity-summary" className="px-2 pb-3 space-y-2">
             <p className="text-xs text-redlog-text-dim">{filtering ? t('activity.sources', { matches: item.matchedCount, context: item.contextCount }) : t('activity.summary.sources', { count: item.sourceCount })}</p>
+            <p data-testid="activity-summary-meta" className="flex flex-wrap gap-x-3 text-xs text-redlog-text-faint">
+              <span>{t('activity.reader.field.session')} <span className="font-mono">{item.anchor.sessionId}</span></span>
+              {typeof item.anchor.data.pid === 'number' && <span>{t('activity.reader.field.pid')} <span className="font-mono">{item.anchor.data.pid}</span></span>}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button level="primary" size="compact" data-testid="activity-read" onClick={() => setReaderId(item.id)}>{t('activity.reader.open')}</Button>
               {onOpen && <Button size="compact" data-testid="activity-locate" onClick={() => onOpen(item.anchor.id, item.anchor.timestamp)}>{t('activity.reader.locate')}</Button>}

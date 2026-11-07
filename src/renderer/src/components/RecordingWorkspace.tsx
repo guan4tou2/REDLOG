@@ -54,10 +54,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
     <div className="px-4 pt-3 space-y-3 shrink-0">
-      <div>
-        <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
-        <p className="text-xs text-redlog-text-dim">{t('activity.pageHint')}</p>
-      </div>
+      <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
       <input ref={field} type="search" data-testid="search-input" aria-label={t('search.placeholder')}
         value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search.placeholder')}
         className="w-full min-w-0 rounded border border-redlog-border bg-redlog-elevated px-3 py-2 text-sm focus:outline-none focus:border-redlog-accent" />

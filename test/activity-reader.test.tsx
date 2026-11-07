@@ -145,3 +145,38 @@ it('titles rows and the Reader through the interface language, not the English f
   expect(screen.getByTestId('reader-headline').textContent).toContain('eventTitle.')
   expect(screen.getAllByTestId('activity-row')[0].textContent).toContain('eventTitle.')
 })
+
+it('names the source the way the filter does, not by the stored event type', async () => {
+  mount([summary('a')])
+  const row = (await rows())[0]
+  // The mocked translator returns keys: the lane label key, not the raw event type.
+  expect(row.textContent).toContain('timeline.shell')
+  fireEvent.click(row)
+  fireEvent.click(await screen.findByTestId('activity-read'))
+  await screen.findByTestId('activity-reader')
+  expect(screen.getByTestId('reader-badge').textContent).toContain('timeline.shell')
+  expect(screen.getByTestId('reader-event-info').textContent).toContain('timeline.shell')
+})
+
+it('shows what a finished command carries, and nothing for an event without it', async () => {
+  const done = ev('d', { data: { command: 'ls', subtype: 'command_end', exit_code: 2, duration_sec: 1.5, pid: 4242, cwd: '/opt/tools' } })
+  mount([summary('d', done), summary('e')])
+  await open(0)
+  const info = screen.getByTestId('reader-event-info').textContent ?? ''
+  expect(info).toContain('/opt/tools')
+  expect(info).toContain('4242')
+  expect(info).toContain('1.5 s')
+  fireEvent.click(screen.getByTestId('reader-next'))
+  await waitFor(() => expect(screen.getByTestId('reader-headline').textContent).toContain('e'))
+  expect(screen.getByTestId('reader-event-info').textContent).not.toContain('activity.reader.field.exit')
+})
+
+it('puts the session and pid on the expanded summary, and marks today in the day separator', async () => {
+  const now = Date.now()
+  mount([summary('p', ev('p', { timestamp: now, data: { command: 'p', subtype: 'command_start', pid: 77 } }))].map((s) => ({ ...s, firstAt: now })))
+  fireEvent.click((await rows())[0])
+  const meta = await screen.findByTestId('activity-summary-meta')
+  expect(meta.textContent).toContain('sess-p')
+  expect(meta.textContent).toContain('77')
+  expect(screen.getByTestId('activity-day').textContent).toContain('activity.today')
+})
