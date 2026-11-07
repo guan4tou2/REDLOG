@@ -122,7 +122,8 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('search-input').fill(shellMarker)
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
-    await expect(page.getByTestId('activity-row')).toContainText('Command operation')
+    // Stitch 04: the kind of activity rides the source badge's tooltip.
+    await expect(page.getByTestId('activity-row').getByTestId('activity-source-badge')).toHaveAttribute('title', /Command operation/)
     await page.getByTestId('activity-row').click()
     // An operation is read in the Reader (Spec 069 T019).
     await page.getByTestId('activity-read').click()

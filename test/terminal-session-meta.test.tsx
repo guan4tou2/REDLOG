@@ -68,7 +68,9 @@ it('shows the heading, and the pane\'s recording, hook, directory and exit', asy
   expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('Screen')
   act(() => batch([{ agentType: 'shell', data: { source: 'builtin-terminal', subtype: 'command_end', terminalId: tid(), cwd: '/home/op/acme', exit_code: 2 } }]))
   const meta = screen.getByTestId('terminal-session-meta')
-  expect(meta.textContent).toContain('~/acme')
+  // The full path the shell reported — not its last segment dressed up as ~/.
+  expect(meta.textContent).toContain('/home/op/acme')
+  expect(meta.textContent).not.toContain('~/acme')
   expect(meta.textContent).toMatch(/Exit\s*2/)
 })
 

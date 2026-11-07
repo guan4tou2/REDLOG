@@ -71,7 +71,10 @@ it('shows the hash as recorded without claiming it was checked', async () => {
   install()
   mount()
   await screen.findByTestId('screenshot-list')
-  expect(screen.getAllByText(/not re-checked here/).length).toBe(3)
+  // Stitch 03: the short hash carries the note in its tooltip.
+  const hashes = screen.getAllByTestId('screenshot-hash')
+  expect(hashes.length).toBe(3)
+  for (const h of hashes) expect(h.getAttribute('title')).toMatch(/not re-checked here/)
 })
 
 it('keeps a deleted file as a row that says the event record is kept, with no actions', async () => {
@@ -94,4 +97,16 @@ it('shows a failed read as a failure with a retry, not as an empty project', asy
   expect(screen.queryByText('Screenshots will appear here when captured')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(await screen.findByTestId('screenshot-list')).toBeTruthy()
+})
+
+// Stitch 03: a section heading, actions named in words, and a state tag on each row.
+it('names the section, labels each row recorded, and names its actions in words', async () => {
+  install()
+  mount()
+  await screen.findByTestId('screenshot-list')
+  expect(screen.getByText('Screenshot records')).toBeTruthy()
+  expect(screen.getAllByTestId('screenshot-state')[0].textContent).toBe('Screenshot recorded')
+  expect(screen.getAllByTestId('screenshot-delete')[0].textContent).toBe('Delete file')
+  expect(screen.getAllByTestId('screenshot-copy-hash')[0].textContent).toBe('Copy hash')
+  expect(screen.getByTestId('screenshots-time-zone').textContent).toMatch(/^Time: (local|UTC)$/)
 })

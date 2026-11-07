@@ -51,7 +51,7 @@ describe('opening a target in the Timeline', () => {
     render(<I18nProvider><FilterProvider><TargetView /></FilterProvider></I18nProvider>)
     await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0))
     fireEvent.click(screen.getAllByRole('option')[0])
-    await screen.findByText('nmap old')
+    await screen.findByText(/^\$ nmap old/)
     expect(b.queryPage.mock.calls.at(-1)?.[0]).toMatchObject({ targetId: 'example.com', excludeHousekeeping: true })
     b.matchIds.mockImplementation(async (req: { ids: string[] }) => req.ids.filter((id) => id === 'live'))
     act(() => b.emitBatch([
@@ -60,9 +60,9 @@ describe('opening a target in the Timeline', () => {
         targetId: 'example.com', data: { subtype: 'command_start', command: 'source ~/.redlog/shell-bash-hook.sh' }
       })
     ]))
-    expect(await screen.findByText('curl live')).not.toBeNull()
+    expect(await screen.findByText(/^\$ curl live/)).not.toBeNull()
     expect(b.matchIds).toHaveBeenCalledWith(expect.objectContaining({ filter: { targetId: 'example.com' }, excludeHousekeeping: true }))
-    expect(screen.queryByText('source ~/.redlog/shell-bash-hook.sh')).toBeNull()
+    expect(screen.queryByText(/shell-bash-hook/)).toBeNull()
   })
 
   it('has one target control on the Timeline: the shared chip, no focus badge', async () => {

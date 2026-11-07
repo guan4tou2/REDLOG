@@ -47,3 +47,100 @@ test('returning from the timeline keeps the activity list where it was', async (
     await app.close()
   }
 })
+
+async function seedShell(base: string, token: string, prefix: string, n: number): Promise<void> {
+  for (let i = 0; i < n; i++) {
+    const r = await fetch(`${base}/api/events/seed`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_start', command: `echo ${prefix}-${i}` } })
+    })
+    expect(r.ok).toBe(true)
+  }
+}
+
+// The open Reader is part of "where the operator was": locating from it and
+// coming back must reopen it on the same query with the same row expanded, and
+// the timeline must have selected the event the Reader was showing.
+test('locating from the Reader and returning restores the Reader, query and open row', async () => {
+  test.setTimeout(120_000)
+  const { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'reader-return')
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+    await seedShell(base, token, 'marker', 12)
+
+    await openView(page, 'search')
+    await page.getByTestId('search-input').fill('marker')
+    await page.getByTestId('activity-row').nth(3).click()
+    await page.getByTestId('activity-read').first().click()
+    await expect(page.getByTestId('activity-reader')).toBeVisible()
+
+    await page.getByTestId('reader-locate').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(1)
+    const selected = await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))
+    expect(selected, 'the timeline selected a concrete event').toBeTruthy()
+
+    await page.getByRole('button', { name: /^← / }).click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
+    await expect(page.getByTestId('activity-reader')).toBeVisible()
+    await expect(page.getByTestId('search-input')).toHaveValue('marker')
+    await expect(page.locator('[data-testid="activity-row"][aria-expanded="true"]')).toHaveCount(1)
+    expect(await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))).toBe(selected)
+  } finally {
+    await app.close()
+  }
+})
+
+// The selected-event id is one global key, so what protects project B from
+// project A's selection is that the id simply matches nothing there. Pin that:
+// after switching, B's timeline opens no detail pane, the Activity page starts
+// with no query and no Reader.
+test('switching project does not carry the selected event or the reading context over', async () => {
+  test.setTimeout(120_000)
+  const { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'switch-a')
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+    await seedShell(base, token, 'marker', 8)
+
+    await openView(page, 'search')
+    await page.getByTestId('search-input').fill('marker')
+    await page.getByTestId('activity-row').first().click()
+    await page.getByTestId('activity-read').first().click()
+    await page.getByTestId('reader-locate').click()
+    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(1)
+
+    await page.evaluate(async () => {
+      const bridge = (window as unknown as { redlog: { project: { create: (n: string) => Promise<{ id: string }>; open: (id: string) => Promise<unknown> } } }).redlog
+      const created = await bridge.project.create('switch-b')
+      await bridge.project.open(created.id)
+    })
+    await page.reload()
+    await page.waitForSelector('[data-testid="view-root"]')
+    // The API's port and token belong to the open project; read them again.
+    const baseB = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+    const tokenB = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+    await seedShell(baseB, tokenB, 'other', 5)
+
+    await openView(page, 'timeline')
+    await expect(page.getByTestId('timeline-range-status')).toBeVisible()
+    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(0)
+    await openView(page, 'search')
+    await expect(page.getByTestId('activity-reader')).toHaveCount(0)
+    await expect(page.getByTestId('search-input')).toHaveValue('')
+    // B really has events (this is not an empty-project pass).
+    await page.getByTestId('search-input').fill('other')
+    await expect(page.getByTestId('activity-row').first()).toBeVisible()
+
+  } finally {
+    await app.close()
+  }
+})

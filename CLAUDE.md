@@ -2,6 +2,8 @@
 
 UI copy rules and the Electron sandbox note live in `AGENTS.md` and apply to
 every agent, including Claude Code.
+The single global UI/UX standard is `docs/UIUX-STANDARD.md`; `AGENTS.md`
+§"Which document is authoritative" says which documents may be relied on.
 
 ## Before you push
 
@@ -275,6 +277,18 @@ and the blame on a line tell you nothing about which session wrote it. Do not
 attribute a commit from the author field — check the branch it is on, its
 timestamp, and what it actually contains. Two misattributions in one afternoon
 came from reading the author and stopping there.
+
+## Token economy
+
+`rtk` (see [docs/TOKEN-SAVING-TOOLS.md](docs/TOKEN-SAVING-TOOLS.md)) may be used
+for read-only exploration: `rtk git status`, `rtk git log`, `rtk ls`. It
+compresses output, and compression drops detail.
+
+**Never put it in front of a gate, a test runner or a CI log** — `typecheck`,
+`verify:*`, `vitest`, `playwright`, `gh run view --log-failed`. A failure is
+diagnosed from the whole line, and a collapsed pass count shows none of it. If a
+result disagrees with what you expect, rerun without `rtk` (or `rtk bypass`)
+before concluding anything.
 
 ## Staging
 

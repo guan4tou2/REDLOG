@@ -8,8 +8,9 @@ import { ListFooter } from './ListFooter'
 import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
-import { Flag, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Flag, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './Button'
+import { toast } from './Toast'
 import { BOOKMARKS_CHANGED } from './EvidenceHeader'
 
 // A hash of the mark's title used to pick one of eight hues. It grouped
@@ -150,6 +151,11 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               {t('bookmarks.capture')}
             </Button>
           </div>
+          {marks.length > 0 && (
+            // Gives way when the window is short (small window at high zoom): a line here
+            // pushed the list under the status bar. The empty state carries the same fact.
+            <p className="mb-2 hidden rounded border border-redlog-border bg-redlog-surface px-3 py-2 text-xs text-redlog-text-dim [@media(min-height:640px)]:block"><span aria-hidden className="mr-1.5">ⓘ</span><span data-testid="bookmarks-scope-note">{t('bookmarks.scopeNote')}</span></p>
+          )}
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'
           }`}>
@@ -261,9 +267,6 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               onStep={(d) => { const n = visibleMarks[idx + d]; if (n) setSelected(n) }}
               canStepPrev={idx > 0}
               canStepNext={idx >= 0 && idx < visibleMarks.length - 1}
-              onClose={() => {
-                setDetailOpen(false)
-              }}
             />
           )
         })()}
@@ -290,13 +293,22 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   const [note, setNote] = useState(initial?.note ?? '')
   const { t } = useI18n()
 
+  const [saving, setSaving] = useState(false)
   const submit = async (): Promise<void> => {
-    if (initial) {
-      await window.redlog.bookmarks.update(initial.id, { title, url, note })
-    } else {
-      await window.redlog.bookmarks.create({ title: title || 'Untitled', url: url || undefined, note })
+    if (!title.trim() || saving) return
+    setSaving(true)
+    try {
+      if (initial) {
+        await window.redlog.bookmarks.update(initial.id, { title, url, note })
+      } else {
+        await window.redlog.bookmarks.create({ title, url: url || undefined, note })
+      }
+      onSave()
+    } catch (e) {
+      // The draft stays on screen: nothing was saved, and saying so is the point.
+      toast(t('bookmarks.saveFailed'), { type: 'error', why: t('bookmarks.saveFailedWhy'), detail: e instanceof Error ? e.message : String(e) })
+      setSaving(false)
     }
-    onSave()
   }
 
   return (
@@ -336,7 +348,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
       </div>
 
       <div className="flex gap-2 pt-1">
-        <Button level="primary" onClick={submit}>
+        <Button level="primary" disabled={!title.trim() || saving} onClick={submit}>
           {initial ? t('bookmarks.update') : t('bookmarks.save')}
         </Button>
         <Button level="secondary" onClick={onCancel}>{t('bookmarks.cancel')}</Button>
@@ -345,7 +357,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin, onStep, canStepPrev = false, canStepNext = false, onClose }: {
+function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin, onStep, canStepPrev = false, canStepNext = false }: {
   mark: Bookmark
   onUpdate: () => void
   onDelete: () => void
@@ -357,7 +369,6 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
   onStep?: (delta: -1 | 1) => void
   canStepPrev?: boolean
   canStepNext?: boolean
-  onClose?: () => void
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const { t } = useI18n()
@@ -417,20 +428,10 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
         </div>
         <div className="flex flex-wrap gap-1">
           {onOpenInTimeline && (
-            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('loot.openInTimeline')}</Button>
+            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('bookmarks.goToTime')}</Button>
           )}
           <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
           <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>
-          {onClose && (
-            <button
-              type="button"
-              data-testid="bookmark-detail-close"
-              onClick={onClose}
-              title={t('httpHistory.closeDetail')}
-              aria-label={t('httpHistory.closeDetail')}
-              className="w-6 flex items-center justify-center text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:text-redlog-text hover:bg-redlog-elevated-hover"
-            ><X size={14} aria-hidden /></button>
-          )}
         </div>
       </div>
 

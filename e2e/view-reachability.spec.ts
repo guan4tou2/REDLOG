@@ -1,5 +1,6 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // #558: every view has to be reachable by someone who is looking at the screen,
@@ -119,6 +120,36 @@ test('the terminal names itself, explains its two capture tracks, and shows the 
   await expect(about).toContainText('Command events (shell hook)')
   await page.keyboard.press('Escape')
   await expect(about).toHaveCount(0)
+})
+
+test('the dashboard names itself, keeps shortcuts folded, and shows relay nodes only as a read of its own', async () => {
+  // A project with nothing recorded opens the first-run page; one event takes
+  // it past that, which is the dashboard this checks.
+  const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+  const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+  const seeded = await fetch(`${base}/api/events/seed`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_start', command: 'id' } })
+  })
+  expect(seeded.ok).toBe(true)
+  await page.reload()
+  await page.waitForSelector('[data-testid="view-root"][data-view="dashboard"]')
+  const header = page.getByTestId('dashboard-header')
+  await expect(header.getByRole('heading', { level: 1 })).toHaveText('Dashboard')
+  const shortcuts = page.getByTestId('dashboard-shortcuts')
+  await expect(shortcuts).not.toHaveAttribute('open', '')
+  await shortcuts.locator('summary').click()
+  await expect(shortcuts).toHaveAttribute('open', '')
+  await expect(page.getByTestId('ip-status-card')).toBeVisible()
+  await expect(page.getByTestId('ip-status-card')).not.toContainText('→')
+  // Layout blocks from the Stitch draft: the record summary's breakdown and the project summary's scope row.
+  await expect(page.getByTestId('dashboard-freshness-note')).toBeVisible()
+  await expect(page.getByTestId('dashboard-record-total')).toBeVisible()
+  await expect(page.getByTestId('dashboard-record-summary')).toContainText('Local-only events (outside the hash chain)')
+  await expect(page.getByTestId('dashboard-scope-state')).toHaveText('Not set')
+  await page.getByTestId('dashboard-open-activity').click()
+  await expect(viewRoot()).toHaveAttribute('data-view', 'search')
 })
 
 test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {

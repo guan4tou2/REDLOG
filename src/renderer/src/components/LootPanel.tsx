@@ -21,6 +21,22 @@ interface LootEvent {
 
 const PAGE_SIZE = 200
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+/** A detected type by name; a type this build has no name for keeps its stored
+ *  one rather than a made-up word. */
+function lootTypeLabel(type: string, t: Translate): string {
+  const key = `loot.type.${type}`
+  const named = t(key)
+  return named === key ? type.replace(/_/g, ' ') : named
+}
+
+function lootConfidenceLabel(confidence: string, t: Translate): string {
+  const key = `loot.confidence.${confidence}`
+  const named = t(key)
+  return named === key ? confidence : named
+}
+
 function projectLootEvent(e: { id: string; timestamp: number; targetId?: string | null; data: Record<string, unknown> }): LootEvent {
   return {
     id: e.id,
@@ -189,11 +205,11 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         </div>
       </div>
 
-      <section data-testid="loot-disclaimer" className="flex items-start gap-2 rounded border border-redlog-border border-l-2 border-l-amber-400/70 bg-redlog-elevated px-3 py-2 text-xs">
-        <div className="min-w-0">
-          <p className="font-medium text-redlog-text">{t('loot.disclaimerTitle')}</p>
-          <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
-        </div>
+      {/* Stitch 03: a section heading, and what a hit is and is not, beneath it. */}
+      <section data-testid="loot-disclaimer" className="text-xs">
+        <h2 className="text-sm font-semibold text-redlog-text">{t('loot.sectionTitle')}</h2>
+        <p className="mt-0.5 font-medium text-amber-300">{t('loot.disclaimerTitle')}</p>
+        <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
       </section>
 
       {lootEvents.length > 0 && (() => {
@@ -205,7 +221,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
           <div data-testid="loot-toolbar" className="flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
             <div className="flex flex-wrap items-center gap-1">
               <span className="mr-1 text-xs text-redlog-text-faint">{t('loot.typeFilter')}</span>
-              {[{ id: null as string | null, label: t('loot.allTypes'), count: total }, ...types.map(([id, count]) => ({ id: id as string | null, label: id.replace(/_/g, ' '), count }))].map((chip) => (
+              {[{ id: null as string | null, label: t('loot.allTypes'), count: total }, ...types.map(([id, count]) => ({ id: id as string | null, label: lootTypeLabel(id, t), count }))].map((chip) => (
                 <button
                   key={chip.id ?? 'all'}
                   type="button"
@@ -299,12 +315,12 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                 <div key={j} className="border-t border-redlog-border pt-1 mt-1 first:border-0 first:pt-0 first:mt-0">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono ${typeColor[m.type] || 'text-redlog-text-dim'}`}>
-                      {m.type.replace(/_/g, ' ')}
+                      {lootTypeLabel(m.type, t)}
                     </span>
                     <span className={`text-xs px-1 rounded ${
                       m.confidence === 'high' ? 'bg-red-400/10 text-red-400' : 'bg-yellow-400/10 text-yellow-400'
                     }`}>
-                      {m.confidence}
+                      {lootConfidenceLabel(m.confidence, t)}
                     </span>
                   </div>
                   <div title={open.has(le.id) ? undefined : m.preview} className={`text-redlog-text-dim text-xs font-mono mt-0.5 ${open.has(le.id) ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'truncate'}`}>{m.preview}</div>

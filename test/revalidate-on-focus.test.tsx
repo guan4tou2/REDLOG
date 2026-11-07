@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Ten "Re-check" buttons existed because RedLog never noticed the machine had
-// changed (docs/UIUX-CONTROLS-AND-COPY.md §5). Coming back to the window IS
+// changed (docs/UIUX-STANDARD.md §25.6). Coming back to the window IS
 // the notification: the operator left, installed something, and returned.
 //
 // The distinction this file pins: re-asking a stale question is automatic, and

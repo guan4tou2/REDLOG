@@ -43,7 +43,7 @@ it('opens a row in place instead of leaving for the Timeline, and locates from i
 it('filters by type with an All chip that undoes it, and searches the loaded rows', async () => {
   mount()
   await screen.findByText('eyJ-first-token')
-  fireEvent.click(screen.getByRole('button', { name: /generic api key/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Generic API key/ }))
   expect(screen.queryByText('eyJ-first-token')).toBeNull()
   expect(screen.getByText('AKIA-second-key')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /^All/ }))

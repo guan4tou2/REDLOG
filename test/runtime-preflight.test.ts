@@ -127,6 +127,6 @@ describe('runPreflight', () => {
   })
 
   // Legacy-hook detection and migration are gone with the rest of the
-  // pre-1.0 compatibility path (docs/UIUX-CONTROLS-AND-COPY.md, 2026-09-29):
+  // pre-1.0 compatibility path (docs/UIUX-STANDARD.md §25, 2026-09-29):
   // RedLog no longer reads a profile it did not write.
 })

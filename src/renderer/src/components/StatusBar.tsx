@@ -179,6 +179,15 @@ export default function StatusBar(): JSX.Element {
     })
   }, [countsLoading, scopeConfigured, scopeUnknown, t])
 
+  // An external-IP lookup that errored is a condition too, and a different one
+  // from "the address is exposed": it says the answer is unknown, not bad. It
+  // stands on its own — relay nodes and the local address do not depend on it.
+  const ipError = ipStatus?.error
+  useEffect(() => {
+    if (!ipError) { clearIssue('ip'); return }
+    raiseIssue({ id: 'ip', tier: 'pending', title: t('ip.lookupFailed'), detail: t('issues.ipLookupDetail'), view: settingsTarget('network') })
+  }, [ipError, t])
+
   useEffect(() => {
     if (pausedAt == null) return
     const tick = setInterval(() => setPauseElapsed(Math.floor((Date.now() - pausedAt) / 1000)), 1000)

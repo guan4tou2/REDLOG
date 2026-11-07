@@ -7,11 +7,20 @@ import { useReadState } from '../lib/readState'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { eventTitle } from '../lib/eventTitle'
+import { agentTypeLabel } from '../lib/timelineDomain'
 import { formatDateTime, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
+
+/** What an operator calls the source of an operation: a named provider, else the
+ *  event type as the filter's own source list names it. */
+export function sourceName(item: ActivitySummary, t: T): string {
+  if (item.provider === 'claude-code') return 'Claude Code'
+  if (item.provider === 'codex') return 'Codex'
+  return item.provider ?? agentTypeLabel(item.anchor.agentType, t)
+}
 
 /** The label a source-event tab carries: what the event is, and when. */
 function sourceLabel(event: RedLogEvent, t: T): string {
@@ -23,11 +32,20 @@ function sourceLabel(event: RedLogEvent, t: T): string {
   return `${what} · ${formatTime(event.timestamp, { seconds: true })}`
 }
 
-function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }): JSX.Element {
+function Tile({ label, value, mono = false, testid }: { label: string; value: string; mono?: boolean; testid?: string }): JSX.Element {
   return (
-    <div className="flex flex-wrap justify-between gap-x-3 py-1 border-b border-redlog-border-subtle last:border-0">
-      <dt className="text-redlog-text-dim">{label}</dt>
-      <dd className={`${mono ? 'font-mono ' : ''}text-redlog-text break-all text-right`}>{value}</dd>
+    <div data-testid={testid} className="min-w-0 rounded bg-redlog-bg p-2">
+      <dt className="text-xs text-redlog-text-faint">{label}</dt>
+      <dd title={value} className={`${mono ? 'font-mono ' : ''}m-0 truncate text-xs text-redlog-text`}>{value}</dd>
+    </div>
+  )
+}
+
+function Row({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 py-0.5">
+      <dt className="text-redlog-text-faint">{label}</dt>
+      <dd className="m-0 break-all text-right font-mono text-redlog-text">{value}</dd>
     </div>
   )
 }
@@ -37,22 +55,36 @@ function Row({ label, value, mono = false }: { label: string; value: string; mon
 function EventFacts({ event, t }: { event: RedLogEvent; t: T }): JSX.Element {
   return (
     <>
-      <section data-testid="reader-event-info" className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
-        <h3 className="text-xs font-semibold text-redlog-text mb-1">{t('activity.reader.info')}</h3>
-        <dl className="text-xs">
-          <Row label={t('activity.reader.field.time')} value={formatDateTime(event.timestamp)} mono />
-          <Row label={t('activity.reader.field.source')} value={event.agentType} />
-          {event.targetId && <Row label={t('activity.reader.field.target')} value={event.targetId} mono />}
-          <Row label={t('activity.reader.field.session')} value={event.sessionId} mono />
-          <Row label={t('activity.reader.field.eventId')} value={event.id} mono />
+      <section data-testid="reader-event-info" className="space-y-2 border-t border-redlog-border-subtle pt-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xs font-medium uppercase text-redlog-text-faint">{t('activity.reader.info')}</h3>
+          <span className="font-mono text-xs text-redlog-text-faint">{t('activity.reader.field.session')} {event.sessionId}</span>
+        </div>
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+          <Tile label={t('activity.reader.field.time')} value={formatDateTime(event.timestamp)} mono />
+          <Tile label={t('activity.reader.field.source')} value={agentTypeLabel(event.agentType, t)} />
+          {event.targetId && <Tile label={t('activity.reader.field.target')} value={event.targetId} mono />}
+          {/* What a finished command carries, when this event is one. Shown as
+              stored: an event without them simply has no such tiles. */}
+          {typeof event.data.exit_code === 'number' && <Tile label={t('activity.reader.field.exit')} value={String(event.data.exit_code)} mono />}
+          {typeof event.data.duration_sec === 'number' && <Tile label={t('activity.reader.field.duration')} value={`${event.data.duration_sec} s`} mono />}
+          {typeof event.data.pid === 'number' && <Tile label={t('activity.reader.field.pid')} value={String(event.data.pid)} mono />}
+          {typeof event.data.cwd === 'string' && event.data.cwd && <Tile label={t('activity.reader.field.cwd')} value={event.data.cwd} mono />}
         </dl>
       </section>
-      <details data-testid="reader-integrity" className="rounded border border-redlog-border bg-redlog-surface/50 p-3 text-xs">
-        <summary className="cursor-pointer font-semibold text-redlog-text">{t('activity.reader.integrity')}</summary>
-        <p className="text-redlog-text-faint mt-1">{t('activity.reader.integrityNote')}</p>
-        <dl className="mt-1">
-          <Row label={t('activity.reader.field.hash')} value={event.hash ?? t('activity.reader.notChained')} mono />
-          {event.hash && <Row label={t('activity.reader.field.prevHash')} value={event.prevHash ?? t('activity.reader.firstInChain')} mono />}
+      <details data-testid="reader-integrity" className="rounded border border-redlog-border bg-redlog-bg text-xs">
+        <summary className="flex cursor-pointer items-center justify-between gap-2 p-2 text-redlog-text-faint hover:text-redlog-text">
+          <span>{t('activity.reader.integrity')}</span>
+          <span className="font-mono">{t('activity.reader.integrityKind')}</span>
+        </summary>
+        <dl className="space-y-0.5 border-t border-redlog-border-subtle px-3 pb-3 pt-2">
+          <Row label={t('activity.reader.field.eventId')} value={event.id} />
+          <Row label={t('activity.reader.field.hash')} value={event.hash ?? t('activity.reader.notChained')} />
+          {event.hash && <Row label={t('activity.reader.field.prevHash')} value={event.prevHash ?? t('activity.reader.firstInChain')} />}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 py-0.5">
+            <dt className="text-redlog-text-faint">{t('activity.reader.recordState')}</dt>
+            <dd className="m-0 text-right text-redlog-text-dim">{t('activity.reader.integrityNote')}</dd>
+          </div>
         </dl>
       </details>
     </>
@@ -166,10 +198,10 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
           <div className="flex items-center gap-2 min-w-0 text-xs">
             <span data-testid="reader-badge" className="px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim shrink-0">
-              {item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}
+              {sourceName(item, t)}
             </span>
             <time className="font-mono text-redlog-text-dim shrink-0">{formatTime(item.firstAt, { seconds: true })}</time>
-            <span data-testid="reader-headline" title={eventTitle(item.anchor)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor)}</span>
+            <span data-testid="reader-headline" title={eventTitle(item.anchor, t)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor, t)}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex items-center gap-1 rounded border border-redlog-border bg-redlog-bg p-0.5">

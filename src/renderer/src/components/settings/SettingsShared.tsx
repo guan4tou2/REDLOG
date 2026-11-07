@@ -147,7 +147,7 @@ export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text'
   )
 }
 
-export function ListField({ label, items, onChange, placeholder, parse, initialDraft = '' }: {
+export function ListField({ label, items, onChange, placeholder, parse, initialDraft = '', draft, onDraftChange }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
   /** Spec 037 FR: a field that takes pasted scope splits the text on newline,
    *  comma or space, validates each entry against the scope evaluator, and
@@ -156,10 +156,17 @@ export function ListField({ label, items, onChange, placeholder, parse, initialD
    *  silently never fires. Fields that are not scope leave this off and keep
    *  the one-entry-per-Enter behaviour. */
   initialDraft?: string
+  /** Optional control of what is still in the box. A form that submits the
+   *  list (the create-project card) reads the draft too, so text the operator
+   *  typed and never added is not dropped on the floor. */
+  draft?: string
+  onDraftChange?: (draft: string) => void
   parse?: (text: string) => { valid: string[]; invalid: string[] }
 }): JSX.Element {
   const { t } = useI18n()
-  const [input, setInput] = useState(initialDraft)
+  const [localInput, setLocalInput] = useState(initialDraft)
+  const input = draft ?? localInput
+  const setInput = (v: string): void => { if (onDraftChange) onDraftChange(v); else setLocalInput(v) }
   const [rejected, setRejected] = useState<string[]>([])
   const id = useId()
   const rejectedId = `${id}-rejected`

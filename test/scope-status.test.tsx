@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 
@@ -56,7 +56,11 @@ describe('Scope & Evidence page', () => {
     render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
     fireEvent.click(await screen.findByTestId('scope-judged-live'))
     expect(await screen.findByText(full)).toBeTruthy()
-    expect(screen.getByText(/Matched exclusion rule.*\*\.example/)).toBeTruthy()
+    // Stitch 02: reason, rule and source event sit in three separate cells.
+    const facts = screen.getByTestId('scope-observation-facts')
+    expect(within(facts).getByText('Matched exclusion rule')).toBeTruthy()
+    expect(within(facts).getByText('*.example')).toBeTruthy()
+    expect(within(facts).getByText('Source event time')).toBeTruthy()
     expect(onOpenSettings).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Edit related scope rules' }))
     expect(onOpenSettings).toHaveBeenCalledWith('v1.example')

@@ -97,7 +97,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains,
@@ -1796,7 +1796,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           three lines and the lane chips on the right were clipped at 1440px,
           which is a common laptop width. Title and count never shrink. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-redlog-border/80 shrink-0">
-        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('timeline.title')}</span>
+        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('sidebar.timeline')}</span>
         {/* FR-003: while older admitted rows exist, the line says how many
             are drawn of how many there are. N counts the rows held, M the
             rows the same filter admits; a total that failed says so. */}
@@ -2714,6 +2714,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         >
           <TimelineEventInspector
             event={selectedEvent}
+            onOpenInActivity={onOpenInActivity}
             pluginTypes={pluginTypes}
             tierChip={tierChip}
             doNotExport={dneFlag}

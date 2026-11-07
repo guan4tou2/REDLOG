@@ -67,7 +67,16 @@ export function applyOverlayPassThrough(): void {
 // checkbox and the HUD action-row button (on), the ⌘⇧P shortcut and the menu
 // bar (off). It is the setting: stored, because every config save and project
 // open re-applies what is stored, and the Settings page listens for the change.
+//
+// §8: while the external IP is exposed, pass-through is off and cannot be
+// turned on from any entry — the HUD, Settings, the tray and the shortcut all
+// come through here. The attempt is answered with the real state so a checkbox
+// that was just ticked unticks itself.
 export function setOverlayPassThrough(on: boolean): void {
+  if (on && overlayIpExposed) {
+    if (_ctx) _ctx.send(_ctx.getMainWindow(), 'overlay:passThroughChanged', false)
+    return
+  }
   if (overlayPassThrough === on) return
   overlayPassThrough = on
   applyOverlayPassThrough()
@@ -126,7 +135,9 @@ export function stopOverlayMouseTracking(): void {
  * Configure overlay pass-through state. Called by startProject and config:save.
  */
 export function configureOverlayState(opts: { passThrough: boolean; opacity: number }): void {
-  overlayPassThrough = opts.passThrough
+  // A stored "on" does not outlive an exposed IP: a project opened, or a config
+  // saved, while the address is out must not bring click-through back.
+  overlayPassThrough = opts.passThrough && !overlayIpExposed
   overlayPassThroughOpacity = opts.opacity
   applyOverlayPassThrough()
 }
@@ -139,8 +150,10 @@ export function handleIpExposedChange(exposed: boolean): void {
   if (exposed === overlayIpExposed) return
   overlayIpExposed = exposed
   if (exposed && overlayPassThrough) {
-    overlayPassThrough = false
-    applyOverlayPassThrough()
+    // The setting, not just the window: left stored as "on", the next project
+    // open would put click-through back over a HUD that is warning the operator.
+    // It stays off when the address is safe again; turning it on is their call.
+    setOverlayPassThrough(false)
   } else {
     applyOverlayOpacity()
   }
