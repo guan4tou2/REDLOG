@@ -2336,5 +2336,12 @@
   "timeline.range.all": "Whole session",
   "timeline.range.custom": "Custom range",
   "timeline.anchor.label": "Current anchor",
-  "timeline.searchRange": "Search range"
+  "timeline.searchRange": "Search range",
+  "timeline.lanes.title": "Parallel swim lanes",
+  "timeline.lanes.active": "Lanes with events: {{count}}",
+  "timeline.lanes.range": "Range {{from}} ~ {{to}}",
+  "timeline.lanes.loadedRange": "Loaded range {{from}} ~ {{to}}",
+  "timeline.lanes.collapse": "Back to standard view",
+  "timeline.lanes.rowCount": "({{count}})",
+  "timeline.lanes.rowCountPartial": "({{count}}+)"
 }

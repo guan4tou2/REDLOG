@@ -583,6 +583,23 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     expect(await page.getByTestId('timeline-zoom-level').textContent()).toBe(zoom)
   })
 
+  test('swim lanes show their own header and hide the bottom list; the header folds back', async () => {
+    // Lanes mode (user decision 2026-11-08): the list is hidden, as in the
+    // Stitch prototype. The selection still opens in the detail pane.
+    await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
+    const header = page.getByTestId('timeline-lanes-header')
+    await expect(header).toBeVisible()
+    await expect(page.getByTestId('timeline-lanes-active')).toContainText(/\d+/)
+    await expect(page.getByTestId('timeline-log-resize')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
+    await page.getByTestId('timeline-lanes-collapse').click()
+    await expect(page.getByTestId('timeline-mode-standard')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('timeline-lanes-header')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-log-resize')).toBeVisible()
+    // The next test reads the choice back, so leave lanes selected.
+    await page.getByTestId('timeline-mode-lanes').click()
+  })
+
   test('the choice is remembered for the project', async () => {
     await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
     await openView(page, 'dashboard')

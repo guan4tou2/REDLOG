@@ -15,6 +15,7 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStrips'
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
+import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/TimelineLanesHeader'
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -539,6 +540,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     // change re-ran the memo. Same fix applied to `laneEvents` and
     // `recentEvents` below.
   }, [events, pluginTypes])
+
+  // Rows per lane among what is loaded, for the lane headers and the panel
+  // title. Not a project total: `hasMore` says older pages are unfetched.
+  const laneCounts = useMemo(() => countByLane(events, pluginTypes), [events, pluginTypes])
 
   // The lane an event's row is keyed on: its band's id when that band is
   // collapsed, otherwise the lane itself.
@@ -2128,6 +2133,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             scrolled off the top under the track's horizontal scrollbar. The
             wrapper is never capped, so it reports the space that is actually
             available and the loop is cut. */}
+        {timelineMode === 'lanes' && (
+          <TimelineLanesHeader
+            activeLanes={laneCounts.size}
+            start={timeStart}
+            end={timeEnd}
+            partial={hasMore}
+            onCollapse={() => setTimelineMode('standard')}
+            t={t}
+          />
+        )}
         <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
         <div
           data-testid="timeline-lane-scroll"
@@ -2184,6 +2199,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
                   <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
+                  <span className="ml-auto shrink-0 pl-1 text-redlog-text-faint tabular-nums">{laneCountText(laneCounts.get(id) ?? 0, hasMore, t)}</span>
                 </button>
               )
             })}
@@ -2652,6 +2668,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             doing: reading a scan is all list, following a chain is all lanes.
             Same handle as the detail panel's, so there is one gesture in this
             view rather than one draggable edge and one frozen one. */}
+        {timelineMode === 'standard' && (
         <div
           data-testid="timeline-log-resize"
           className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
@@ -2661,6 +2678,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         >
           <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
         </div>
+        )}
+        {/* Swim lanes hide the list (Stitch 05; user decision 2026-11-08): the
+            selected event opens in the detail pane, and the two strips only
+            the log could say stay under the lanes. */}
         {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
             scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog
@@ -2671,6 +2692,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           attributionBlind={attributionBlind}
           showingAll={showAllDespiteQuery && filterMatches !== null}
           onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
+          stripsOnly={timelineMode === 'lanes'}
           events={recentEvents}
           selectedId={selectedEvent?.id ?? null}
           detailOpen={detailOpen}
