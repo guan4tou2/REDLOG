@@ -4,17 +4,51 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { SearchPanel } from './SearchPanel'
 import { useSharedFilter } from '../lib/FilterContext'
-import { useDisplayZone } from '../lib/time'
+import { useDisplayZone, zoneLabel } from '../lib/time'
 import { agentTypeLabel } from '../lib/timelineDomain'
+import { Search } from 'lucide-react'
+import { useAppCounts } from '../lib/useAppCounts'
+import { useCaptureHealthState } from '../lib/useCaptureHealth'
 
-/** `UTC` or `Local (UTC+8)`: the zone every time on this page is drawn in. */
-function zoneText(zone: 'local' | 'utc', t: (k: string) => string): string {
-  if (zone === 'utc') return 'UTC'
-  const off = -new Date().getTimezoneOffset()
-  const sign = off >= 0 ? '+' : '-'
-  const abs = Math.abs(off)
-  const hm = `${Math.trunc(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`
-  return `${t('filter.localTime')} (UTC${sign}${hm})`
+/** A capture source that failed, as the event type its rows carry — so the
+ *  alert can narrow the list to it. Sources without a single type of their own
+ *  are named but not filterable. */
+const SOURCE_AGENT_TYPE: Record<string, string> = { terminal: 'shell', mitmproxy: 'http', screenshot: 'screenshot', clipboard: 'clipboard' }
+
+/** Stitch 04: recording state and the project's total beside the title, and a
+ *  source that reports a failure as its own line. Each source answers for
+ *  itself, so the pill says so instead of implying the whole record is fine. */
+function RecordingStatus({ onFilter, knownAgentTypes }: { onFilter: (agentType: string) => void; knownAgentTypes: string[] }): JSX.Element {
+  const { t } = useI18n()
+  const { eventCount, loggedCount } = useAppCounts()
+  const { health, status } = useCaptureHealthState()
+  // Unknown until the bridge answers: never drawn as "recording" on a guess.
+  const [recording, setRecording] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    window.redlog.recording.get().then((r) => { if (live) setRecording(r) }).catch(() => { if (live) setRecording(undefined) })
+    const unsub = window.redlog.recording.onChange((r) => setRecording(r))
+    return () => { live = false; unsub() }
+  }, [])
+  const failing = status === 'ok' ? (health?.sources ?? []).filter((s) => s.state === 'error' && !s.informational) : []
+  const filterable = failing.map((s) => SOURCE_AGENT_TYPE[s.id]).find((at) => at && knownAgentTypes.includes(at))
+  return <div className="flex flex-wrap items-center gap-2 text-xs">
+    <span data-testid="activity-recording" className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-surface px-2 py-0.5">
+      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${recording === true ? 'bg-emerald-500' : recording === false ? 'bg-amber-500' : 'bg-redlog-text-faint'}`} />
+      <span className="font-medium text-redlog-text">{t(recording === true ? 'activity.status.recording' : recording === false ? 'activity.status.paused' : 'activity.status.unknown')}</span>
+      <span className="text-redlog-text-faint">·</span>
+      <span className="text-redlog-text-dim">{t('targets.events', { count: (eventCount + loggedCount).toLocaleString() })}</span>
+      <span className="text-redlog-text-faint">·</span>
+      <span className="text-redlog-text-dim">{t('activity.status.perSource')}</span>
+    </span>
+    {failing.length > 0 && <button type="button" data-testid="activity-source-alert" disabled={!filterable}
+      onClick={() => { if (filterable) onFilter(filterable) }}
+      className="flex items-center gap-1 rounded border border-redlog-danger/80 bg-redlog-danger/15 px-2 py-0.5 font-medium text-red-300 hover:bg-redlog-danger/25 disabled:cursor-default">
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-redlog-danger" />
+      {t('activity.status.sourceAlert', { count: failing.length, names: failing.map((s) => s.label ?? s.id).join('、') })}
+      {filterable && <span aria-hidden>→</span>}
+    </button>}
+  </div>
 }
 
 const TranscriptView = lazy(() => import('./TranscriptView'))
@@ -62,17 +96,25 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
     <div className="px-4 pt-3 space-y-3 shrink-0">
-      <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
-      <input ref={field} type="search" data-testid="search-input" aria-label={t('search.placeholder')}
-        value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search.placeholder')}
-        className="w-full min-w-0 rounded border border-redlog-border bg-redlog-elevated px-3 py-2 text-sm focus:outline-none focus:border-redlog-accent" />
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
+        <RecordingStatus knownAgentTypes={knownAgentTypes} onFilter={(at) => { setAgentType(at); choose('activities') }} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search size={16} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-redlog-text-faint" />
+          <input ref={field} type="search" data-testid="search-input" aria-label={t('search.placeholder')}
+            value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search.placeholder')}
+            className="h-8 w-full min-w-0 rounded-lg border border-redlog-border bg-redlog-surface pl-8 pr-3 text-sm focus:outline-none focus:border-redlog-accent" />
+        </div>
         {searching && <select data-testid="activity-source" aria-label={t('activity.sourceLabel')} value={filter.agentType ?? ''} onChange={e => setAgentType(e.target.value || null)}
-          className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">
+          className="h-8 rounded-lg border border-redlog-border bg-redlog-surface px-2.5 text-xs text-redlog-text-dim">
           <option value="">{t('activity.sourceAll')}</option>
           {knownAgentTypes.map(at => <option key={at} value={at}>{agentTypeLabel(at, t)}</option>)}
         </select>}
-        <span data-testid="activity-zone" className="ml-auto text-redlog-text-dim">{t('activity.zone', { zone: zoneText(zone, t) })}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span data-testid="activity-zone" className="ml-auto text-redlog-text-dim">{t('activity.zone', { zone: zoneLabel(zone, t) })}</span>
       </div>
       <div role="tablist" aria-label={t('activity.view')} className="flex flex-wrap gap-1 border-b border-redlog-border">
         {READINGS.map((mode, index) => <button key={mode} type="button" role="tab"
