@@ -70,11 +70,11 @@
   "capture.confirmed.partial": "partial",
   "capture.confirmed.dark": "dark",
   "dashboard.networkStatus": "Network Status",
-  "dashboard.sessionStats": "Session Stats",
+  "dashboard.sessionStats": "Record overview",
   "dashboard.chainDrift": "⚠ chain {{chain}} ≠ events {{events}}",
   "dashboard.anchorStale": "⚓ last anchored {{age}} ago",
   "dashboard.anchorFailed": "⚓ anchoring failed",
-  "dashboard.engagement": "Engagement",
+  "dashboard.engagement": "Project summary",
   "dashboard.id": "ID:",
   "dashboard.name": "Name:",
   "dashboard.operator": "Operator:",
@@ -2211,5 +2211,7 @@
   "terminal.searchPosition": "{{index}} of {{total}}",
   "terminal.searchTotal": "{{total}} matches",
   "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle",
-  "bookmarks.goToTime": "Go to this time"
+  "bookmarks.goToTime": "Go to this time",
+  "capture.healthyGap": "Recording; some items unconfirmed",
+  "dashboard.targetsExcluding": "{{count}} targets, {{excluded}} excluded, {{mode}}"
 }

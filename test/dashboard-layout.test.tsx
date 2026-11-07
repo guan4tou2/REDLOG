@@ -15,7 +15,7 @@ const noop = (): void => {}
 interface Opts {
   chained?: number; logged?: number; chainLen?: number
   anchors?: Array<{ createdAt: number; status: string }>
-  targets?: string[]; ip?: Record<string, unknown> | null
+  targets?: string[]; excludes?: string[]; opId?: string; ip?: Record<string, unknown> | null
 }
 
 function install(o: Opts = {}): void {
@@ -30,7 +30,7 @@ function install(o: Opts = {}): void {
     overlay: { isVisible: async () => false, onVisibilityChanged: () => noop },
     scope: { getObservationCount: async () => 0, isConfigured: async () => true, getLastRecompute: async () => null },
     loot: { getCount: async () => 0 },
-    config: { get: async () => ({ engagement: { id: 'ENG-042' }, operator: { name: 'op-01' }, scope: { targets: o.targets ?? [], warnOnViolation: true } }) },
+    config: { get: async () => ({ engagement: { id: 'ENG-042' }, operator: { name: 'op-01', id: o.opId }, scope: { targets: o.targets ?? [], excludeTargets: o.excludes ?? [], warnOnViolation: true } }) },
     pivots: { getActive: async () => [], onChange: () => noop }
   }
   const area = (name: string): unknown => new Proxy(named[name] ?? {}, {
@@ -58,9 +58,9 @@ describe('dashboard header', () => {
 describe('record summary', () => {
   it('splits the total into the chain and local-only rows', async () => {
     install({ chained: 1960, logged: 224 }); show()
-    await waitFor(() => expect(screen.getByTestId('dashboard-record-total').textContent).toBe('2184'))
+    await waitFor(() => expect(screen.getByTestId('dashboard-record-total').textContent).toBe('2,184'))
     const text = screen.getByTestId('dashboard-record-summary').textContent ?? ''
-    expect(text).toContain('Written to the hash chain 1960')
+    expect(text).toContain('Written to the hash chain 1,960')
     expect(text).toContain('Local only (not in the chain hash) 224')
     expect(text).not.toMatch(/buffer|waiting for chain/i)
   })
@@ -120,5 +120,26 @@ describe('project summary', () => {
     expect(text).toContain('Acme external')
     expect(text).toContain('ENG-042')
     expect(text).toContain('op-01')
+  })
+})
+
+describe('project summary (Stitch 08)', () => {
+  it('is titled as the project summary and the record overview, not by internal names', async () => {
+    install(); show()
+    await screen.findByTestId('dashboard-record-summary')
+    expect(screen.getByText('Project summary')).toBeTruthy()
+    expect(screen.getByText('Record overview')).toBeTruthy()
+  })
+
+  it('counts excluded targets next to the allowed ones, and names the operator id when there is one', async () => {
+    install({ targets: ['a.test', 'b.test'], excludes: ['c.test'], opId: 'op-01' }); show()
+    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('2 targets, 1 excluded, warnings on'))
+    expect(screen.getByText('(op-01)')).toBeTruthy()
+  })
+
+  it('says nothing extra when nothing is excluded', async () => {
+    install({ targets: ['a.test'] }); show()
+    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('1 targets, warnings on'))
+    expect(screen.queryByText(/\(op-/)).toBeNull()
   })
 })

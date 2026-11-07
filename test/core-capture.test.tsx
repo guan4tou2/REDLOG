@@ -52,6 +52,8 @@ describe('the Dashboard keeps both core captures in view', () => {
     } as any} onNavigate={nav} onRefresh={() => {}} /></I18nProvider>)
     expect(container.querySelector('[data-testid="capture-core-http"]')?.textContent).toMatch(/not verified/i)
     expect(container.textContent).not.toMatch(/All good/i)
+    // The headline does not say plain "Recording" over a line that says HTTPS is unverified.
+    expect(container.textContent).toContain('Recording; some items unconfirmed')
     fireEvent.click(within(container).getByRole('button', { name: 'HTTP(S) requests' }))
     expect(nav).toHaveBeenCalledWith('settings/browser')
     fireEvent.click(within(container).getByRole('button', { name: 'Commands' }))
@@ -70,6 +72,15 @@ describe('the Dashboard keeps both core captures in view', () => {
       httpsVerification: { scheme: 'https', nonce: 'rv-test-proof', userAgent: 'curl/8', receivedAt: Date.now() } })
     expect(el.querySelector('[data-testid="capture-https-verification"]')?.textContent).toContain('curl/8')
     expect(el.textContent).not.toMatch(/HTTPS not verified/i)
+  })
+
+  it('keeps the plain headline when HTTPS is verified, and when the proxy is simply not in use', () => {
+    const verified = draw([terminal, mitm()], { state: 'running', url: 'http://127.0.0.1:6661',
+      httpsVerification: { scheme: 'https', nonce: 'rv-test-proof', userAgent: 'curl/8', receivedAt: Date.now() } })
+    expect(verified.textContent).not.toContain('some items unconfirmed')
+    cleanup()
+    const noProxy = render(<I18nProvider><CaptureHealthCard capture={{ verdict: 'healthy', sources: [terminal], checkedAt: Date.now() } as any} onNavigate={() => {}} onRefresh={() => {}} /></I18nProvider>).container
+    expect(noProxy.textContent).not.toContain('some items unconfirmed')
   })
 
   it('flags HTTP(S) as not started while commands are recording', () => {
