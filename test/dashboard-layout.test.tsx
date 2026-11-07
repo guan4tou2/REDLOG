@@ -60,7 +60,7 @@ describe('record summary', () => {
     install({ chained: 1960, logged: 224 }); show()
     await waitFor(() => expect(screen.getByTestId('dashboard-record-total').textContent).toBe('2184'))
     const text = screen.getByTestId('dashboard-record-summary').textContent ?? ''
-    expect(text).toContain('In the chain (hashed) 1960')
+    expect(text).toContain('Written to the hash chain 1960')
     expect(text).toContain('Local only (not in the chain hash) 224')
     expect(text).not.toMatch(/buffer|waiting for chain/i)
   })

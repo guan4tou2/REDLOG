@@ -136,3 +136,12 @@ it('lays the list out as a column header, one separator per day, and a stats lin
   expect(screen.getAllByTestId('activity-day')).toHaveLength(2)
   expect(screen.queryByTestId('activity-clear-filter')).toBeNull()
 })
+
+it('titles rows and the Reader through the interface language, not the English fallback', async () => {
+  const shot = ev('s', { agentType: 'screenshot', data: { subtype: 'screenshot', trigger: 'manual' } })
+  mount([summary('s', shot)])
+  await open(0)
+  // The mocked translator returns keys; the English fallback would have printed "Screenshot".
+  expect(screen.getByTestId('reader-headline').textContent).toContain('eventTitle.')
+  expect(screen.getAllByTestId('activity-row')[0].textContent).toContain('eventTitle.')
+})

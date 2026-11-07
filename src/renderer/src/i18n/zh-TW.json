@@ -1406,7 +1406,7 @@
   "timeline.doNotExportActive": "已排除匯出",
   "timeline.doNotExportHint": "此事件將從所有匯出中丟棄",
   "sidebar.http_history": "HTTP",
-  "firstRun.title": "讓這場開始被完整記錄",
+  "firstRun.title": "開始記錄這場任務",
   "firstRun.hint": "兩項核心擷取，各自以實際收到的紀錄驗證，順序不拘。",
   "firstRun.recording": "最近紀錄",
   "firstRun.stuckTitle": "指令跑了，但沒有東西進來",
@@ -2195,7 +2195,7 @@
   "dashboard.freshnessNote": "各狀態以來源最後回報為準",
   "ip.cardTitle": "目前對外網路連線",
   "dashboard.recordedEvents": "筆專案已記錄事件",
-  "dashboard.chained": "已上鏈（雜湊固化）",
+  "dashboard.chained": "已寫入雜湊鏈",
   "dashboard.localOnly": "本機僅記錄（不參與鏈結雜湊）",
   "dashboard.anchorLabel": "OTS 錨定",
   "dashboard.anchor.none": "尚無",
@@ -2210,5 +2210,6 @@
   "terminal.searchNone": "無符合",
   "terminal.searchPosition": "第 {{index}} / {{total}} 筆",
   "terminal.searchTotal": "{{total}} 筆符合",
-  "bookmarks.scopeNote": "本機工作筆記：可編輯，不上鏈，不隨證據包匯出"
+  "bookmarks.scopeNote": "本機工作筆記：可編輯，不上鏈，不隨證據包匯出",
+  "bookmarks.goToTime": "前往這個時間點"
 }

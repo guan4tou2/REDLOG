@@ -362,7 +362,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               )
             })()}
             {tab.cwd && tab.alive && (
-              <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
+              <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwdFull ?? tab.cwd}>{tab.cwd}</span>
             )}
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
@@ -645,7 +645,7 @@ function SessionMeta({ tab }: { tab: Tab }): JSX.Element {
         {hook && <span data-testid="terminal-meta-hook" className={`${BADGE} ${TONE[hook.tone]}`} title={hook.title}><span className="text-redlog-text-faint">{t('terminal.meta.hookLabel')}</span>{hook.text}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 text-xs text-redlog-text-dim">
-        {tab.cwd && <span title={tab.cwdFull ?? tab.cwd}>{t('terminal.meta.cwd')} <span className="font-mono text-redlog-text">~/{tab.cwd}</span></span>}
+        {tab.cwd && <span title={tab.cwdFull ?? tab.cwd}>{t('terminal.meta.cwd')} <span className="font-mono text-redlog-text">{tab.cwdFull ?? tab.cwd}</span></span>}
         {tab.lastExit !== undefined && <span>{t('terminal.meta.exit')} <span className={`font-mono ${tab.lastExit === 0 ? 'text-emerald-400' : 'text-red-400'}`}>{tab.lastExit}</span></span>}
       </div>
     </div>
