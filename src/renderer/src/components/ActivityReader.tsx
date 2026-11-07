@@ -7,11 +7,20 @@ import { useReadState } from '../lib/readState'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { eventTitle } from '../lib/eventTitle'
+import { agentTypeLabel } from '../lib/timelineDomain'
 import { formatDateTime, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
+
+/** What an operator calls the source of an operation: a named provider, else the
+ *  event type as the filter's own source list names it. */
+export function sourceName(item: ActivitySummary, t: T): string {
+  if (item.provider === 'claude-code') return 'Claude Code'
+  if (item.provider === 'codex') return 'Codex'
+  return item.provider ?? agentTypeLabel(item.anchor.agentType, t)
+}
 
 /** The label a source-event tab carries: what the event is, and when. */
 function sourceLabel(event: RedLogEvent, t: T): string {
@@ -41,9 +50,15 @@ function EventFacts({ event, t }: { event: RedLogEvent; t: T }): JSX.Element {
         <h3 className="text-xs font-semibold text-redlog-text mb-1">{t('activity.reader.info')}</h3>
         <dl className="text-xs">
           <Row label={t('activity.reader.field.time')} value={formatDateTime(event.timestamp)} mono />
-          <Row label={t('activity.reader.field.source')} value={event.agentType} />
+          <Row label={t('activity.reader.field.source')} value={agentTypeLabel(event.agentType, t)} />
           {event.targetId && <Row label={t('activity.reader.field.target')} value={event.targetId} mono />}
           <Row label={t('activity.reader.field.session')} value={event.sessionId} mono />
+          {/* What a finished command carries, when this event is one. Shown as
+              stored: an event without them simply has no such rows. */}
+          {typeof event.data.exit_code === 'number' && <Row label={t('activity.reader.field.exit')} value={String(event.data.exit_code)} mono />}
+          {typeof event.data.duration_sec === 'number' && <Row label={t('activity.reader.field.duration')} value={`${event.data.duration_sec} s`} mono />}
+          {typeof event.data.pid === 'number' && <Row label={t('activity.reader.field.pid')} value={String(event.data.pid)} mono />}
+          {typeof event.data.cwd === 'string' && event.data.cwd && <Row label={t('activity.reader.field.cwd')} value={event.data.cwd} mono />}
           <Row label={t('activity.reader.field.eventId')} value={event.id} mono />
         </dl>
       </section>
@@ -166,7 +181,7 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
           <div className="flex items-center gap-2 min-w-0 text-xs">
             <span data-testid="reader-badge" className="px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim shrink-0">
-              {item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}
+              {sourceName(item, t)}
             </span>
             <time className="font-mono text-redlog-text-dim shrink-0">{formatTime(item.firstAt, { seconds: true })}</time>
             <span data-testid="reader-headline" title={eventTitle(item.anchor, t)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor, t)}</span>
