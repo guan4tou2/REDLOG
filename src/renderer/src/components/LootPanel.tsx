@@ -205,11 +205,11 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         </div>
       </div>
 
-      <section data-testid="loot-disclaimer" className="flex items-start gap-2 rounded border border-redlog-border border-l-2 border-l-amber-400/70 bg-redlog-elevated px-3 py-2 text-xs">
-        <div className="min-w-0">
-          <p className="font-medium text-redlog-text">{t('loot.disclaimerTitle')}</p>
-          <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
-        </div>
+      {/* Stitch 03: a section heading, and what a hit is and is not, beneath it. */}
+      <section data-testid="loot-disclaimer" className="text-xs">
+        <h2 className="text-sm font-semibold text-redlog-text">{t('loot.sectionTitle')}</h2>
+        <p className="mt-0.5 font-medium text-amber-300">{t('loot.disclaimerTitle')}</p>
+        <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
       </section>
 
       {lootEvents.length > 0 && (() => {
