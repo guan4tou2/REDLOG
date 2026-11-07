@@ -496,6 +496,16 @@ test.describe.serial('timeline-presentation: timeline presentation', () => {
 
 
 test.describe.serial('timeline-standard-mode: timeline standard / swim-lane modes', () => {
+  // A click on the selected event deselects it, and these tests run in order
+  // on one window: select whoami only when it is not already the open one.
+  const selectWhoami = async (): Promise<void> => {
+    const panel = page.getByTestId('timeline-detail-panel')
+    if (!(await panel.isVisible()) || !(await panel.textContent())?.includes('whoami')) {
+      await page.getByRole('button', { name: /whoami/ }).first().click()
+    }
+    await expect(panel).toContainText('whoami')
+  }
+
   test.beforeAll(async () => {
     await resetShared()
     await openTestProject(page, 'tl-mode')
@@ -529,7 +539,9 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     expect(firstIsTrack).toBe(true)
     await expect(page.getByTestId('timeline-marker-latest')).toBeVisible()
     await expect(page.getByTestId('timeline-marker-focus')).toHaveCount(0)
-    await page.locator('[data-timeline-event]').first().click()
+    // A named single event, not the first node: the first can be a cluster
+    // ("4 events") sitting under another dot.
+    await selectWhoami()
     await expect(page.getByTestId('timeline-marker-focus')).toBeVisible()
     // Same family of units as the dots: offsetLeft, never a bounding rect.
     const inTrack = await page.evaluate(() => {
@@ -545,8 +557,7 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
   })
 
   test('the toolbar Activity link opens the activity log and returns to the selected event', async () => {
-    await page.getByRole('button', { name: /whoami/ }).first().click()
-    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
+    await selectWhoami()
     await page.getByTestId('timeline-open-activity').click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
     await page.getByTestId('activity-return').getByRole('button').click()
