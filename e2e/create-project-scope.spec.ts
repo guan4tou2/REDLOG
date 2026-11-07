@@ -17,12 +17,13 @@ test.describe('create a project with a scope', () => {
   test.afterAll(async () => { if (app) await app.close() })
 
   test('the targets typed on the card are saved as the scope', async () => {
-    await page.getByRole('button', { name: 'New Project' }).click()
+    await page.getByRole('button', { name: 'Create new project' }).click()
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Scope On Create')
-    const targets = page.getByLabel('Targets (IPs, CIDRs, *.domain)')
+    await page.getByTestId('create-project-advanced').click()
+    const targets = page.getByLabel('Authorised targets (IP, CIDR, *.domain)')
     await targets.fill('203.0.113.0/24 *.lab.test')
     await targets.locator('..').getByRole('button', { name: 'Add' }).click()
-    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByRole('button', { name: 'Create project', exact: true }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'dashboard')
 
     const scope = await page.evaluate(async () =>

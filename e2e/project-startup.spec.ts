@@ -7,22 +7,23 @@ test('startup: keyboard create, draft focus, search, narrow layout and restart p
   try {
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
     await page.reload()
-    const trigger = page.getByRole('button', { name: 'New Project' })
+    const trigger = page.getByRole('button', { name: 'Create new project' })
     await trigger.focus()
     await page.keyboard.press('Enter')
-    const dialog = page.getByRole('dialog', { name: 'New Project' })
+    const dialog = page.getByRole('dialog', { name: 'Create new project' })
     const name = page.getByRole('textbox', { name: 'Project name' })
     await expect(name).toBeFocused()
     await name.fill('Startup Lab')
+    // Stitch 01: the title bar's close control comes before the name field.
     await page.keyboard.press('Shift+Tab')
-    await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeFocused()
+    await expect(dialog.getByTestId('create-project-close')).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(trigger).toBeFocused()
     await trigger.click()
     await expect(name).toHaveValue('Startup Lab')
     await name.press('Enter')
     await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
-    // The search box appears from six projects (Spec 068 D1), so make the list long enough.
+    // Six projects, so the filter has something to hide (the box is always shown, Spec 068 D1′).
     const saved = await page.evaluate(async () => {
       for (let i = 1; i <= 5; i++) await window.redlog.project.create(`Filler ${i}`)
       const list = await window.redlog.project.list()
@@ -36,11 +37,11 @@ test('startup: keyboard create, draft focus, search, narrow layout and restart p
     await expect(row).toBeVisible()
     const search = page.getByRole('searchbox', { name: 'Search projects' })
     await search.fill('no such project')
-    await expect(page.getByText('No matching projects', { exact: true })).toBeVisible()
+    await expect(page.getByText('No project matches “no such project”', { exact: true })).toBeVisible()
     await search.fill('startup')
     await expect(row).toBeVisible()
     await expect(page.getByRole('button', { name: 'Filler 1', exact: true })).toHaveCount(0)
-    // exactly one match: Enter opens it, in the box where the operator typed
+    // Enter opens the selected match (the only one here), in the box where the operator typed
     await search.press('Enter')
     await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
     await page.evaluate(() => window.redlog.project.close())

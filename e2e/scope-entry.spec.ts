@@ -19,9 +19,9 @@ test.describe.serial('scope entry and project identity', () => {
     // put the targets back (excludes folded under "Advanced scope"). This test
     // creates by name only and sets the exclude in Settings, which still owns
     // every scope setting; create-project-scope.spec.ts covers the card.
-    await page.getByRole('button', { name: 'New Project' }).click()
+    await page.getByRole('button', { name: 'Create new project' }).click()
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Scope Lab')
-    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByRole('button', { name: 'Create project', exact: true }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'dashboard')
 
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'

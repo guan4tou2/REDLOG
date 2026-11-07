@@ -73,7 +73,10 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   }
 
   async function importFile(body: string, ext: 'json' | 'yaml' = 'json'): Promise<void> {
-    if (!await page.getByRole('dialog').count()) await page.getByRole('button', { name: /New Project|新專案|新增專案/ }).click()
+    if (!await page.getByRole('dialog').count()) await page.getByRole('button', { name: /Create new project|建立新專案/ }).click()
+    // Stitch 01: the import sits under "Advanced settings".
+    const advanced = page.getByTestId('create-project-advanced')
+    if (await advanced.getAttribute('aria-expanded') !== 'true') await advanced.click()
     const filePath = join(home, `profile-${++n}.${ext}`)
     writeFileSync(filePath, body)
     await pickerReturns({ filePath })
