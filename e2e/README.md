@@ -47,11 +47,31 @@ project config is not changed by this fixture.
 
 ## What it covers
 
-One spec per journey, named for the journey: `first-run`, `project-flow`,
-`recording-pause`, `scope-recompute`, `export-preview`, `http-history-view`,
-`timeline-*`, and so on. `ls e2e/*.spec.ts` is the list; this file does not
-repeat it, because the last copy of that list said the suite was one smoke
-test long after it was thirty-seven files.
+A spec is a journey, and journeys that only need a seeded project share one
+Electron launch. Four files do that, each a set of `test.describe` blocks named
+for the spec that used to be its own file (so `-g timeline-encoding` still
+finds it):
+
+- `timeline-track.spec.ts` — the timeline's geometry, encoding, lane bands,
+  presentation, modes, toolbar, detail header and virtualisation;
+- `timeline-evidence.spec.ts` — what the timeline shows about causes, targets,
+  markers and connections;
+- `evidence-views.spec.ts` — HTTP history, Search/Activity, transcript,
+  filtered export and scope recompute;
+- `app-shell.spec.ts` — the picker, navigation, chrome, status bar, rename and
+  scope entry.
+
+Each describe resets what a neighbour could leave behind with `resetSharedApp`
+(zoom, window size, `localStorage`) and opens a project of its own; none may
+read another's state, because a describe retried on a fresh worker finds a
+fresh home. Order matters only where a file says so at the top
+(`project-flow` first in `app-shell`, `connection-capture` and
+`scope-recompute` last in theirs). Everything else is one spec per journey,
+named for the journey: `first-run`, `recording-pause`, `export-preview`, and so
+on. A journey that restarts the app, needs a pre-seeded home, or changes what
+the main process answers stays in its own file. `ls e2e/*.spec.ts` is the list;
+this file does not repeat it, because the last copy of that list said the suite
+was one smoke test long after it was thirty-seven files.
 
 `helpers.ts` holds the shared launch: a temp `HOME`, a project opened through
 the real UI, and view navigation. A spec that writes events posts them to the

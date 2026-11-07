@@ -135,7 +135,7 @@ describe('the table drives the handler, not just the cheatsheet', () => {
   it('never lets a focused text field swallow view navigation', () => {
     // xterm keeps a hidden textarea focused for as long as the Terminal view
     // is mounted, so a blanket typing guard disables every shortcut there.
-    // e2e/project-flow.spec.ts caught exactly this.
+    // e2e/app-shell.spec.ts caught exactly this.
     for (const r of rows.filter((x) => x.scope === 'nav')) {
       expect(r.guardTyping, r.id).toBeFalsy()
     }

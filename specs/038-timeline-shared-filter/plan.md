@@ -153,7 +153,7 @@ docs/domain/
 └── INVENTORY-query-completeness.md
 docs/UIUX-STANDARD.md, docs/DESIGN-core-and-capture.md
 test/                          # new and changed tests, per tasks.md
-e2e/target-focus.spec.ts, e2e/timeline-toolbar-overflow.spec.ts
+e2e/target-focus.spec.ts (now in e2e/timeline-evidence.spec.ts), e2e/timeline-toolbar-overflow.spec.ts (now in e2e/timeline-track.spec.ts)
 ```
 
 **Structure Decision**: the existing Electron layout. Core owns the query

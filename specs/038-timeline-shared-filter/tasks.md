@@ -145,7 +145,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - Delete `computeTargetMatches` from `src/renderer/src/lib/timelineFilters.ts` and from `test/timeline-filters.test.ts`.
   - Remove the `timeline.targetFocus.*` keys from both locale files.
   - T018 passes.
-- [X] T022 [US2] Rewrite `e2e/target-focus.spec.ts` for the shared target:
+- [X] T022 [US2] Rewrite `e2e/target-focus.spec.ts` (now in e2e/timeline-evidence.spec.ts) for the shared target:
   - arriving from a target shows the FilterBar target chip with `10.10.11.24`
   - clearing the chip restores the unfiltered Timeline
   - leaving and coming back keeps the chip, which is visible, per FR-005
@@ -213,7 +213,7 @@ Timeline paging that US1 introduces. US5 is independent.
 - [X] T032 [US3] In `src/renderer/src/components/CommandPalette.tsx`, the operator pick dispatches `redlog:filter-operator` with `op.id`. In `Timeline.tsx`, that event sets `operator:<id>`, and `redlog:filter-host` sets `"<host>"` (quoted).
 - [X] T033 [US3] Add i18n keys to `en.json` and `zh-TW.json`: `timeline.earlierMatches`, `timeline.loadingBack`, `timeline.loadBackCancelled`, `timeline.outsideFilter` (if not added in T015), `timeline.matching`, `timeline.matchCount`, `timeline.hiddenByCollapse` and `timeline.notMatching`. T025 passes, and `test/i18n-keys.test.ts` passes.
 
-**Checkpoint**: T023, T024 and T025 pass. `e2e/search-query-contract.spec.ts` still passes.
+**Checkpoint**: T023, T024 and T025 pass. `e2e/search-query-contract.spec.ts` (now in e2e/evidence-views.spec.ts) still passes.
 
 ---
 
@@ -253,7 +253,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `hiddenLoggedCount`
   - the ⋯-menu chip (`data-testid="timeline-auditor-view-chip"`)
   Remove the `timeline.auditorView.*` i18n keys. The status bar tooltip that names the auditor toggle points at the FilterBar chip instead (`src/renderer/src/components/StatusBar.tsx`). T035 passes.
-- [X] T041 [US4] Update `e2e/timeline-toolbar-overflow.spec.ts`: the ⋯ menu no longer holds the auditor chip. Grep `e2e/` for `timeline-auditor-view-chip` and update any other user.
+- [X] T041 [US4] Update `e2e/timeline-toolbar-overflow.spec.ts` (now in e2e/timeline-track.spec.ts): the ⋯ menu no longer holds the auditor chip. Grep `e2e/` for `timeline-auditor-view-chip` and update any other user.
 
 **Checkpoint**: T034 and T035 pass, and no view lists a logged row under "Chained only".
 
@@ -285,7 +285,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `src/renderer/src/components/MarkerDetail.tsx`: remove the `tz`/`projectTz` props
 - [X] T046 [US5] Add the Local/UTC choice to the personal viewing-preference block of `src/renderer/src/components/settings/GeneralPage.tsx`. Add i18n `settings.displayZone`, `settings.displayZoneLocal` and `settings.displayZoneUtc`. T043 passes.
 - [X] T047 [US5] Subscribe the surfaces that stay mounted while Settings is open, so they reprint on a change: `StatusBar.tsx` and `src/renderer/src/OverlayApp.tsx` (the HUD window, through `storage`). Each calls `useDisplayZone()`. (`ReplayDrawer.tsx` was listed here, but it prints only the elapsed playback position, `mm:ss`, which is not an event time, so it needs no subscription. FR-013 and the plan are corrected to match.)
-- [X] T048 [US5] Update `e2e/timeline-toolbar-overflow.spec.ts`: remove the `timeline-tz-select` steps and the `redlog-timeline-tz` assertion.
+- [X] T048 [US5] Update `e2e/timeline-toolbar-overflow.spec.ts` (now in e2e/timeline-track.spec.ts): remove the `timeline-tz-select` steps and the `redlog-timeline-tz` assertion.
 
 **Checkpoint**: T042 and T043 pass, and one event's time is printed identically on every surface under UTC.
 

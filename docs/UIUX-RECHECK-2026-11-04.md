@@ -21,7 +21,7 @@
 - 全套 unit 仍非綠：未修改 shell-token-not-in-argv/relay-contract 有失敗，不能對整體擷取宣稱完成。
 
 ## 本次實際執行
-在隔離 Electron 測試環境執行 e2e/view-reachability.spec.ts：六主要工作區、活動→時間軸、目標與證據分頁共3案例通過；獨立 transcript 1 skipped。
+在隔離 Electron 測試環境執行 e2e/view-reachability.spec.ts (now in e2e/app-shell.spec.ts)：六主要工作區、活動→時間軸、目標與證據分頁共3案例通過；獨立 transcript 1 skipped。
 其餘為程式檢查與既有驗證紀錄，不冒充本次跨平台或真實命令擷取驗證。
 
 ## 後續優先順序

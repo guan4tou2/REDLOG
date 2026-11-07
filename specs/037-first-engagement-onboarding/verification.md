@@ -18,7 +18,7 @@
 
 - Integrated branch, outside the sandbox: 222 files, 2333 tests pass
   (2 skipped); `e2e/first-run.spec.ts` 6/6 pass.
-- CI e2e caught `e2e/scope-entry.spec.ts` still driving the removed Advanced
+- CI e2e caught `e2e/scope-entry.spec.ts` (now in e2e/app-shell.spec.ts) still driving the removed Advanced
   exclude field (104/105); it now fills `#project-exclude` on the card — 7/7
   with first-run locally.
 - `npm run typecheck`, production build, `verify:architecture` (7

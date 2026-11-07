@@ -54,7 +54,7 @@ export interface ShortcutRow {
    * the Terminal: xterm keeps a hidden textarea focused at all times, so a
    * global "am I typing?" guard silently disables every shortcut for as long
    * as that view is open — which is how ⌘1..9 stopped working, caught by
-   * `e2e/project-flow.spec.ts`.
+   * `e2e/app-shell.spec.ts`.
    *
    * A ⌘ chord over a digit cannot be mistaken for typing, so navigation is
    * never guarded. ⌘K and ⌘/ are, because a text field may reasonably want
