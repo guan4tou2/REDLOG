@@ -533,8 +533,13 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
   })
 
   test('switching to swim lanes keeps the selection and the zoom', async () => {
-    await page.getByRole('button', { name: /whoami/ }).first().click()
-    await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
+    // The Activity-link test before this one comes back with whoami still
+    // selected, and a click on the selected event deselects it. Select only if
+    // nothing is open, so this test owns its precondition.
+    if (!(await page.getByTestId('timeline-detail-panel').isVisible())) {
+      await page.getByRole('button', { name: /whoami/ }).first().click()
+    }
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
     await page.getByRole('button', { name: /Zoom in/ }).click()
     const zoom = await page.getByTestId('timeline-zoom-level').textContent()
     await page.getByTestId('timeline-mode-lanes').click()
