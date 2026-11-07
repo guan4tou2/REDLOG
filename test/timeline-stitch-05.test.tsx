@@ -28,7 +28,7 @@ function drawLog(events: RedLogEvent[]): void {
   )
 }
 
-function drawInspector(event: RedLogEvent, onOpenInActivity?: (id: string) => void): void {
+function drawInspector(event: RedLogEvent, onOpenInActivity?: (id: string, ts: number) => void): void {
   render(
     <I18nProvider>
       <TimelineEventInspector
@@ -93,9 +93,11 @@ describe('detail pane', () => {
 describe('from the Timeline to the activity log (Stitch 05)', () => {
   it('opens the event in the activity log, and offers it only when there is somewhere to go', () => {
     const open = vi.fn()
-    drawInspector(ev('evt-1', 'shell', { subtype: 'command_start', command: 'ls' }), open)
+    const event = ev('evt-1', 'shell', { subtype: 'command_start', command: 'ls' })
+    drawInspector(event, open)
     fireEvent.click(screen.getByTestId('detail-open-activity'))
-    expect(open).toHaveBeenCalledWith('evt-1')
+    // Stitch 06: the time travels with the id, so the way back can re-focus it.
+    expect(open).toHaveBeenCalledWith('evt-1', event.timestamp)
     cleanup()
     drawInspector(ev('evt-1', 'shell', { subtype: 'command_start', command: 'ls' }))
     expect(screen.queryByTestId('detail-open-activity')).toBeNull()

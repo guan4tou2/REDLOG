@@ -97,7 +97,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string) => void; tierChip?: boolean } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string, ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains,

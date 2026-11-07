@@ -28,7 +28,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 export interface TimelineEventInspectorProps {
   event: RedLogEvent
   /** Open the activity that holds this event, in the activity log. */
-  onOpenInActivity?: (eventId: string) => void
+  onOpenInActivity?: (eventId: string, ts: number) => void
   pluginTypes: PluginEventType[]
   tierChip: boolean
   doNotExport: boolean
@@ -160,7 +160,7 @@ export function TimelineEventInspector({
             onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
           >{t('timeline.copyRef')}</Button>
           {onOpenInActivity && <Button size="compact" level="quiet" type="button" data-testid="detail-open-activity"
-            onClick={() => onOpenInActivity(event.id)}
+            onClick={() => onOpenInActivity(event.id, event.timestamp)}
           >{t('timeline.openInActivity')} ↗</Button>}
           <Button size="compact" level="quiet" aria-pressed={!!dneFlag}
             type="button"
