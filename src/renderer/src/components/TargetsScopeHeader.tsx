@@ -58,6 +58,9 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
     </div>
     <div role="tablist" aria-label={t('sidebar.targetsScope')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {
+        // Observations are judged against the rules: with none set, or none
+        // readable, "0" would say "judged and clear". Say there is no count.
+        const noCount = id === 'scope' && (failed || !configured)
         const count = id === 'targets' ? targetCount.state.value : scopeObservations
         const selected = page === id
         return <button key={id} type="button" role="tab" data-view-btn={id} aria-selected={selected} tabIndex={selected ? 0 : -1}
@@ -68,7 +71,9 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
           }}
           className={`px-1 py-2 text-sm border-b-2 ${selected ? 'border-redlog-accent text-redlog-text' : 'border-transparent text-redlog-text-dim hover:text-redlog-text'}`}>
           {t(id === 'targets' ? 'sidebar.targets' : 'targetsScope.scopeTab')}
-          {typeof count === 'number' && <span data-testid={`tab-count-${id}`} className={`ml-1.5 font-mono text-xs tabular-nums ${selected ? 'text-redlog-accent' : 'text-redlog-text-faint'}`}>{count}</span>}
+          {noCount
+            ? <span data-testid={`tab-count-${id}`} aria-label={t('targetsScope.noCount')} className="ml-1.5 font-mono text-xs text-redlog-text-faint">—</span>
+            : typeof count === 'number' && <span data-testid={`tab-count-${id}`} className={`ml-1.5 font-mono text-xs tabular-nums ${selected ? 'text-redlog-accent' : 'text-redlog-text-faint'}`}>{count}</span>}
         </button>
       })}
     </div>
