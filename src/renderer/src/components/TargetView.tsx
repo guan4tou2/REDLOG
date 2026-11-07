@@ -1,8 +1,9 @@
 import { Button } from './Button'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
 import { formatTime } from '../lib/time'
+import { eventTitle } from '../lib/eventTitle'
+import { agentTypeLabel } from '../lib/timelineDomain'
 import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
@@ -250,11 +251,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     onEscape: () => setSelected(null)
   })
 
-  const agentIcon: Record<string, string> = {
-    shell: 'T', screenshot: 'S', clipboard: 'C',
-    file_transfer: 'F', marker: 'M', loot: 'L', system: '!'
-  }
-
   const badge = (inScope: boolean | null): JSX.Element => inScope === true
     ? <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.inScopeBadge')}</span>
     : inScope === false
@@ -375,26 +371,14 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       </p>
                       {evidence.map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
-                          <span className="font-mono font-bold w-4 shrink-0 text-redlog-text-dim">
-                            {agentIcon[e.agentType] || '?'}
-                          </span>
+                          <span className="w-16 shrink-0 truncate text-redlog-text-faint" title={agentTypeLabel(e.agentType, t)}>{agentTypeLabel(e.agentType, t)}</span>
                           <span className="text-redlog-text-faint w-16 shrink-0">
                             {formatTime(e.timestamp, { seconds: true })}
                           </span>
-                          <span title={String(e.data.command ?? e.data.path ?? e.data.url ?? '')} className="text-redlog-text truncate">
-                            {e.agentType === 'shell' && (e.data.command as string)}
-                            {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
-                            {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
-                            {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
-                            {e.agentType === 'marker' && (isMarkerAmendment(e)
-                              ? t('marker.amendmentRow', {
-                                  title: String((e.data as Record<string, unknown>).markerId ?? ''),
-                                  fields: amendedFields(e).map((f) => t(`marker.field.${f}`)).join('、')
-                                })
-                              : `[${e.data.severity}] ${e.data.title}`)}
-                            {e.agentType === 'loot' && (() => { const m = (e.data.matches as Array<{ type: string; confidence: string }>)?.[0]; return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${e.data.count ?? 0} detected` })()}
-                            {!['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
-                          </span>
+                          {/* The same one-line title the Timeline and the Reader give this
+                              event, in the interface language: a type with no row of its
+                              own here (HTTP, DNS, a plugin's) is named, not dumped as JSON. */}
+                          <span title={eventTitle(e, t)} className="text-redlog-text truncate">{eventTitle(e, t)}</span>
                         </div>
                       ))}
                       {hasMore && (

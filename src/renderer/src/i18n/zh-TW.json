@@ -167,12 +167,12 @@
   "timeline.resizeLog": "拖曳調整清單高度，雙擊還原",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
   "targetsScope.hint": "從已記錄事件查看目標，以及依目前範圍規則產生的觀測紀錄。",
-  "targetsScope.openSettings": "範圍規則",
+  "targetsScope.openSettings": "設定範圍規則",
   "targetsScope.scopeTab": "範圍觀測",
   "targetsScope.configuredTitle": "已設定範圍規則",
   "targetsScope.configuredBody": "依目前專案範圍規則判斷；範圍外僅為觀測結果，不會阻擋連線。",
   "targetsScope.unsetTitle": "尚未設定範圍",
-  "targetsScope.unsetBody": "目前沒有宣告授權目標；所有已觀測目標的範圍狀態都顯示「尚未判定」。",
+  "targetsScope.unsetBody": "目前沒有宣告授權目標；所有已觀測目標的範圍狀態都顯示「未設定」。",
   "targetsScope.failedTitle": "無法讀取範圍規則",
   "targetsScope.failedBody": "目前無法確認目標是否在範圍內，請重試讀取；失敗不等於未設定。",
   "targetsScope.allow": "允許目標",
@@ -223,7 +223,7 @@
   "scope.entries": "{{count}} 筆紀錄",
   "scope.recentObservations": "近期範圍外觀測",
   "scope.truncated": "這裡只列出最新的範圍外觀測，完整紀錄請看時間軸。",
-  "scope.openInTimeline": "在時間軸開啟該事件",
+  "scope.openInTimeline": "在時間軸定位",
   "loot.title": "戰利品（{{count}}）",
   "loot.empty": "尚未偵測到憑證或機密。",
   "loot.items": "{{count}} 項",
@@ -2281,5 +2281,6 @@
   "firstRun.paths.builtinWhy": "RedLog 自己的 PTY 終端機，記錄輸入與輸出，不需在主機安裝任何 Hook 腳本。",
   "firstRun.paths.external": "外部 Shell Hook",
   "firstRun.paths.externalTag": "需安裝腳本",
-  "firstRun.paths.externalWhy": "在系統常用終端（如 iTerm2、Alacritty）載入 zsh 或 bash hook，記錄外部終端的指令與結束碼。"
+  "firstRun.paths.externalWhy": "在系統常用終端（如 iTerm2、Alacritty）載入 zsh 或 bash hook，記錄外部終端的指令與結束碼。",
+  "targetsScope.noCount": "沒有範圍規則可判定，因此沒有計數"
 }
