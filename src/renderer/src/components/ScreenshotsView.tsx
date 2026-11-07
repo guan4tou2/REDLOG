@@ -250,7 +250,8 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
     : screenshots, [screenshots, needle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const remove = useCallback(async (s: RedLogEvent): Promise<void> => {
-    const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm'), true)
+    const name = typeof s.data.filename === 'string' && s.data.filename ? s.data.filename : t('screenshots.thisFile')
+    const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm', { name }), true)
     if (!ok) return
     const fp = s.data.filePath as string | undefined
     if (!fp) return
@@ -342,6 +343,9 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         />
       ) : (
         <>
+          <p data-testid="screenshots-summary" className="mb-2 text-xs text-redlog-text-faint">
+            {hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}
+          </p>
           {needle && hasMore && <p data-testid="screenshots-search-scope" className="mb-2 text-xs text-redlog-text-faint">{t('screenshots.searchLoadedOnly', { count: screenshots.length })}</p>}
           {visible.length === 0 ? (
             <EmptyState
