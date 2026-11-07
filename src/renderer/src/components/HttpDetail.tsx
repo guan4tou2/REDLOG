@@ -151,7 +151,11 @@ function streamStatus(t: (key: string, vars?: Record<string, string | number>) =
   return { text: t(completion.closed ? 'http.streamCaptureUnknown' : 'http.streamNoEnd'), settled: false }
 }
 
-export function HttpDetail({ data, eventId, projectId }: { data: Record<string, unknown>; eventId: string; projectId: string }): JSX.Element {
+export function HttpDetail({ data, eventId, projectId, readerOpen, readerExpanded, onReaderOpenChange }: {
+  data: Record<string, unknown>; eventId: string; projectId: string
+  /** Controlled by the Timeline so its bar can open the same Reader. */
+  readerOpen?: boolean; readerExpanded?: boolean; onReaderOpenChange?: (open: boolean) => void
+}): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isRequest = subtype === 'http_request_start'
@@ -197,6 +201,9 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   const responseData = isResponse ? data : pairedData
   const requestId = isRequest ? eventId : partner?.partnerId ?? eventId
   const responseId = isResponse ? eventId : partner?.partnerId ?? eventId
+  // The lifted Reader belongs to the half that IS the selected event; the
+  // other half of a pair keeps its own, so one click never opens two.
+  const reader = { readerOpen, readerExpanded, onReaderOpenChange }
   const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, responseData ?? data)
   return (
     <div className="mt-2 space-y-1.5">
@@ -205,15 +212,15 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
         <>
           <section data-testid="http-section-request" aria-labelledby={`http-request-${eventId}`}>
             <h4 id={`http-request-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabRequest')}</h4>
-            <HttpHalf key={`${eventId}:request`} data={requestData} projectId={projectId} eventId={requestId} />
+            <HttpHalf key={`${eventId}:request`} data={requestData} projectId={projectId} eventId={requestId} {...(requestId === eventId ? reader : {})} />
           </section>
           <section data-testid="http-section-response" aria-labelledby={`http-response-${eventId}`}>
             <h4 id={`http-response-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabResponse')}</h4>
-            <HttpHalf key={`${eventId}:response`} data={responseData} projectId={projectId} eventId={responseId} />
+            <HttpHalf key={`${eventId}:response`} data={responseData} projectId={projectId} eventId={responseId} {...(responseId === eventId ? reader : {})} />
           </section>
         </>
       ) : (
-        <HttpHalf key={eventId} data={data} projectId={projectId} eventId={eventId} />
+        <HttpHalf key={eventId} data={data} projectId={projectId} eventId={eventId} {...reader} />
       )}
       {pairedLoading && <p role="status" className="text-xs text-redlog-text-dim">{t('http.loadingPaired')}</p>}
       {pairedError && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
@@ -224,7 +231,10 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   )
 }
 
-function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
+function HttpHalf({ data, projectId, eventId, readerOpen: readerOpenProp, readerExpanded, onReaderOpenChange }: {
+  data: Record<string, unknown>; projectId: string; eventId: string
+  readerOpen?: boolean; readerExpanded?: boolean; onReaderOpenChange?: (open: boolean) => void
+}): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
@@ -267,7 +277,9 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
       : t('timeline.detail.bodySavedOf', { saved: formatBytes(cut.saved), total: formatBytes(cut.total) })
   }
 
-  const [readerOpen, setReaderOpen] = useState(false)
+  const [ownReaderOpen, setOwnReaderOpen] = useState(false)
+  const readerOpen = readerOpenProp ?? ownReaderOpen
+  const setReaderOpen = onReaderOpenChange ?? setOwnReaderOpen
   // Inline previews are already on the Event. Sidecars always use the shared
   // versioned window reader, never the legacy whole-body IPC.
   const inlineText = (body: { data?: string; encoding?: string } | undefined): string | null =>
@@ -440,7 +452,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
   )
 
   return <div className="space-y-1.5">
-    {((hasFullReqBody && !loadedReqBody) || (hasFullRespBody && !loadedRespBody) || (hasFullWsBody && !loadedWsBody) || (hasFullTcpBody && !loadedTcpBody)) && <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>}
-    {readerOpen ? <EventContentReader projectId={projectId} eventId={eventId} /> : ownBlock}
+    {((hasFullReqBody && !loadedReqBody) || (hasFullRespBody && !loadedRespBody) || (hasFullWsBody && !loadedWsBody) || (hasFullTcpBody && !loadedTcpBody)) && <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>}
+    {readerOpen ? <EventContentReader projectId={projectId} eventId={eventId} defaultExpanded={readerExpanded} /> : ownBlock}
   </div>
 }

@@ -18,6 +18,7 @@ import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/TimelineLanesHeader'
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
+import { TimelineDetailBar } from './timeline/TimelineDetailBar'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
@@ -160,7 +161,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // without a panel covering a third of it — and closing the panel lost their
   // place entirely. Clicking a dot still opens both; arrows move the ring
   // alone, and Enter opens the panel on whatever the ring is on.
+  // Selecting shows the bar; the Inspector body is `detailOpen`, opened on
+  // purpose (double-click, Enter, the bar's Details) or by arriving from
+  // another page. It is only ever open while something is selected.
   const [detailOpen, setDetailOpen] = useState(false)
+  // The saved-content Reader, held here so the bar and the body reach the
+  // same one. It belongs to the selection and to an open body.
+  const [reader, setReader] = useState<'closed' | 'inline' | 'expanded'>('closed')
+  useEffect(() => { setReader('closed') }, [selectedEvent?.id])
+  useEffect(() => { if (!detailOpen) setReader('closed') }, [detailOpen])
   // The one contiguous range the panel draws: every admitted row from the
   // newest down to `pageCursor`, the keyset position the next page starts at.
   // A shared-filter change starts a new generation; a reply to an older one
@@ -1537,6 +1546,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           setSelectedEvent(null)
           break
         case 'toggle-detail':
+          // Enter on a focused control belongs to that control: the dots and
+          // cards open the body themselves, the bar's buttons just act.
+          if (el?.closest('button, a, select, summary, [role="button"]')) return
           e.preventDefault()
           setDetailOpen((v) => !v)
           break
@@ -1559,7 +1571,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             laneOf: (ev) => rowKeyOf(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)),
             tsOf: displayTs
           })
-          if (next) setSelectedEvent(next)
+          if (next) {
+            setSelectedEvent(next)
+            // Walking off the visible window follows the selection.
+            const scroller = scrollRef.current
+            if (scroller) {
+              const x = toX(displayTs(next))
+              if (x < scroller.scrollLeft + 8 || x > scroller.scrollLeft + scroller.clientWidth - 8) {
+                scroller.scrollLeft = Math.max(0, Math.min(x - scroller.clientWidth / 2, TRACK_W - scroller.clientWidth))
+              }
+            }
+          }
           break
         }
         case 'zoom-in':
@@ -1625,9 +1647,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     const next = recentEvents[stepIndex + delta]
     if (!next) return
     setSelectedEvent(next)
-    setDetailOpen(true)
     scrollToEvent(next)
   }, [recentEvents, stepIndex, scrollToEvent])
+
+  // A click selects and shows the bar; it never opens the body. A double-click
+  // is two clicks, so the second (`detail` 2+) only keeps the selection and
+  // leaves the toggle-off to a deliberate single click (`detail` 1). A click
+  // with no count is the keyboard's, and never toggles off.
+  const pickEvent = useCallback((evt: RedLogEvent, detail: number) => {
+    const isSelected = selectedRef.current?.id === evt.id
+    if (detail > 1 || !isSelected) { setSelectedEvent(evt); return }
+    if (detail === 1) { setSelectedEvent(null); setDetailOpen(false) }
+  }, [])
+  const openEventBody = useCallback((evt: RedLogEvent) => {
+    setSelectedEvent(evt)
+    setDetailOpen(true)
+  }, [])
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
@@ -2507,15 +2542,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                         : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
-                      onClick={() => {
+                      onClick={(e) => {
                         // The tail of a pan, not a click on this dot. A
                         // keyboard Enter/Space activation never pans, so it
                         // never hits this.
                         if (didPan.current) return
                         if (!single) { setCluster({ x: c.x, y: c.y, events: c.events }); return }
-                        if (sel) { setSelectedEvent(null); setDetailOpen(false); return }
-                        setSelectedEvent(evt)
-                        setDetailOpen(true)
+                        pickEvent(evt, e.detail)
+                      }}
+                      onDoubleClick={() => { if (single && !didPan.current) openEventBody(evt) }}
+                      onKeyDown={(e) => {
+                        // Enter opens (or closes) the body on this dot; the
+                        // native click it would also fire is not wanted.
+                        if (e.key !== 'Enter' || !single || e.metaKey || e.ctrlKey || e.altKey) return
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (sel && detailOpen) setDetailOpen(false)
+                        else openEventBody(evt)
                       }}
                     >
                       <div
@@ -2710,12 +2753,25 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           titleOf={titleOf}
           amendSuffix={amendSuffix}
           amendCountOf={(id) => foldById.get(id)?.amendCount}
-          onSelect={(evt) => {
-            if (selectedEvent?.id === evt.id) { setSelectedEvent(null); setDetailOpen(false) }
-            else { setSelectedEvent(evt); setDetailOpen(true) }
-          }}
+          onSelect={pickEvent}
+          onOpen={openEventBody}
           t={t}
         />
+        {selectedEvent && (
+          <TimelineDetailBar
+            event={selectedEvent}
+            pluginTypes={pluginTypes}
+            titleOf={titleOf}
+            onStep={stepIndex >= 0 ? stepTo : undefined}
+            canStepPrev={stepIndex > 0}
+            canStepNext={stepIndex >= 0 && stepIndex < recentEvents.length - 1}
+            onOpenInActivity={onOpenInActivity}
+            bodyOpen={detailOpen}
+            onToggleBody={() => setDetailOpen((v) => !v)}
+            onOpenReader={() => { setReader('expanded'); setDetailOpen(true) }}
+            t={t}
+          />
+        )}
       </div>
 
       {/* Enhanced detail panel — height is drag-resizable; the handle at the
@@ -2744,7 +2800,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           </div>
         <div
           ref={detailPanelRef}
-          data-testid="timeline-detail-panel"
+          data-testid="timeline-detail-body"
           className={`shrink-0 border-redlog-border/50 px-4 pb-3 bg-redlog-surface/80 overflow-y-auto ${
             layout === 'bottom'
               ? `border-t${detailPanel.px == null ? ' max-h-[45vh]' : ''}`
@@ -2756,7 +2812,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         >
           <TimelineEventInspector
             event={selectedEvent}
-            onOpenInActivity={onOpenInActivity}
             pluginTypes={pluginTypes}
             tierChip={tierChip}
             doNotExport={dneFlag}
@@ -2778,9 +2833,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             showJson={showJson}
             lookup={(id) => eventsMapRef.current.get(id)}
             onJump={(e) => { setSelectedEvent(e); setDetailOpen(true); scrollToEvent(e) }}
-            onStep={stepIndex >= 0 ? stepTo : undefined}
-            canStepPrev={stepIndex > 0}
-            canStepNext={stepIndex >= 0 && stepIndex < recentEvents.length - 1}
+            readerOpen={reader !== 'closed'}
+            readerExpanded={reader === 'expanded'}
+            onReaderOpenChange={(open) => setReader(open ? 'inline' : 'closed')}
             layout={layout}
             onToggleLayout={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
             onClose={() => { setSelectedEvent(null); setDetailOpen(false) }}

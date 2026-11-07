@@ -656,10 +656,11 @@ test.describe.serial('timeline-toolbar-overflow: timeline toolbar overflow', () 
   })
 })
 
-// The detail pane's top row carries the ways out of an event — step to the
-// previous or next one, ask what else was running around it, exclude it from
-// the export. The pane scrolls, and the row used to scroll with it: read past
-// the first screen and stepping meant scrolling back up to find the control.
+// The detail body's top row carries the ways out of an event — ask what else
+// was running around it, exclude it from the export — and stepping to the
+// previous or next one is on the bottom bar, which stays put. The body scrolls,
+// and the row used to scroll with it: read past the first screen and the
+// controls meant scrolling back up to find them.
 //
 // Every measurement here is a client rect. Mixing them with `offset*` under
 // `body { zoom }` compares device pixels against CSS ones (CLAUDE.md).
@@ -692,17 +693,22 @@ test.describe.serial('timeline-detail-header: timeline detail header', () => {
 
 
   test('keeps the step and export controls on screen while the pane scrolls', async () => {
+    // A click selects and shows the bottom bar, with the step controls; the
+    // body (and its pinned header) opens on a double-click.
     await page.locator('[data-timeline-event][aria-label*="header pin event"]').first().click()
-    const panel = page.getByTestId('timeline-detail-panel')
-    await expect(panel).toBeVisible()
+    await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
+    await expect(page.getByTestId('timeline-detail-body')).toHaveCount(0)
     await expect(page.getByTestId('detail-step-prev')).toBeVisible()
+    await page.locator('[data-timeline-event][aria-label*="header pin event"]').first().dblclick()
+    const panel = page.getByTestId('timeline-detail-body')
+    await expect(panel).toBeVisible()
 
     // Where the control ends up, not how it was pinned. `sticky`, or a header
     // lifted out of the scrolling body, or anything else — this asks only
     // whether the operator can still reach it from the bottom of the pane.
     const pinned = await page.evaluate(() => {
-      const pane = document.querySelector('[data-testid="timeline-detail-panel"]') as HTMLElement
-      const step = document.querySelector('[data-testid="detail-step-prev"]') as HTMLElement
+      const pane = document.querySelector('[data-testid="timeline-detail-body"]') as HTMLElement
+      const step = document.querySelector('[data-testid="detail-around-event"]') as HTMLElement
       // If there is nothing to scroll, the row cannot have gone anywhere and
       // this would pass for the wrong reason. Report it rather than assert.
       const room = pane.scrollHeight - pane.clientHeight

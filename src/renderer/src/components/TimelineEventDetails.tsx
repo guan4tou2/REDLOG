@@ -72,9 +72,15 @@ export function CommandUnfinishedNote(): JSX.Element {
 }
 
 /** Structured detail body for a shell command_end event. */
-export function CommandEndDetail({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
+export function CommandEndDetail({ data, projectId, eventId, readerOpen: readerOpenProp, readerExpanded, onReaderOpenChange }: {
+  data: Record<string, unknown>; projectId: string; eventId: string
+  /** Controlled by the Timeline so its bar can open the same Reader. */
+  readerOpen?: boolean; readerExpanded?: boolean; onReaderOpenChange?: (open: boolean) => void
+}): JSX.Element {
   const { t } = useI18n()
-  const [readerOpen, setReaderOpen] = useState(false)
+  const [ownReaderOpen, setOwnReaderOpen] = useState(false)
+  const readerOpen = readerOpenProp ?? ownReaderOpen
+  const setReaderOpen = onReaderOpenChange ?? setOwnReaderOpen
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
@@ -104,9 +110,9 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
         />
       )}
 
-      {(stdoutRef || stderrRef) && <>
-        <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>
-        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} />}
+      {(stdoutRef || stderrRef || readerOpen) && <>
+        <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} defaultExpanded={readerExpanded} />}
       </>}
       {hasStreamedOutput && (
         <LateOutput commandId={data.command_id as string} />

@@ -29,8 +29,6 @@ export function TypeLegend({ lanes, t }: { lanes: ReadonlySet<LaneId>; t: Transl
           </li>
         ))}
       </ul>
-      {/* Today a click on a node opens its detail; the double-click contract
-          arrives with the bar (PR 6) and this hint changes with it. */}
       <span data-testid="log-lane-legend-hint" className="ml-auto shrink-0">{t('timeline.legend.hint')}</span>
     </div>
   )

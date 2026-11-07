@@ -94,3 +94,9 @@ export function hasSpecificEventDetail(e: Pick<RedLogEvent, 'agentType' | 'data'
       return false
   }
 }
+
+/** Events whose saved content the Reader can show: a finished command's output
+ *  and an HTTP exchange's bodies. The detail body hosts the one Reader for both. */
+export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  return (e.agentType === 'shell' && e.data?.subtype === 'command_end') || e.agentType === 'scanner'
+}

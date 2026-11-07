@@ -183,6 +183,8 @@ describe('the Timeline on the shared filter', () => {
     mount()
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
     await selectOnlyDot()
+    // The amendment's chip lives in the body, which a double-click opens.
+    fireEvent.doubleClick(document.querySelector('[data-timeline-event]')!)
     fireEvent.click(await screen.findByTestId('marker-amend-resolve-original'))
     await screen.findByTestId('timeline-outside-filter')
     expect(status()).toMatch(/\b1 event/)

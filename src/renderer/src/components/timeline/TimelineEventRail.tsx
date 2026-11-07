@@ -25,7 +25,11 @@ interface CardShared {
   titleOf: (e: RedLogEvent) => string
   amendSuffix: (e: RedLogEvent) => string
   amendCountOf: (id: string) => number | undefined
-  onSelect: (e: RedLogEvent) => void
+  /** A click: `detail` is the click count (0 for the keyboard), so the second
+   *  click of a double-click is not read as a second selection toggle. */
+  onSelect: (e: RedLogEvent, detail: number) => void
+  /** Double-click or Enter: open the detail body. */
+  onOpen: (e: RedLogEvent) => void
   t: Translate
 }
 
@@ -43,7 +47,7 @@ function Spine({ lane, selected }: { lane: keyof typeof LANE_COLORS; selected: b
 }
 
 function RailCard({ evt, nested, shared }: { evt: RedLogEvent; nested: boolean; shared: CardShared }): JSX.Element {
-  const { selectedId, pluginTypes, showOperator, operatorLabel, titleOf, amendSuffix, amendCountOf, onSelect, t } = shared
+  const { selectedId, pluginTypes, showOperator, operatorLabel, titleOf, amendSuffix, amendCountOf, onSelect, onOpen, t } = shared
   const isSel = selectedId === evt.id
   const card = buildCard(evt, { t, titleOf, pluginTypes, withStdout: isSel })
   const amended = amendCountOf(evt.id)
@@ -58,12 +62,14 @@ function RailCard({ evt, nested, shared }: { evt: RedLogEvent; nested: boolean; 
         role="button"
         tabIndex={0}
         aria-pressed={isSel}
-        onClick={() => onSelect(evt)}
+        onClick={(e) => onSelect(evt, e.detail)}
+        onDoubleClick={() => onOpen(evt)}
         onKeyDown={(e) => {
           // The standard Timeline is read from this rail, so a card has to be
-          // reachable and selectable without a pointer.
+          // reachable and selectable without a pointer: Space selects, Enter opens.
           if (e.target !== e.currentTarget) return
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(evt) }
+          if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onOpen(evt) }
+          else if (e.key === ' ') { e.preventDefault(); onSelect(evt, 0) }
         }}
       >
         <div className="flex items-center gap-2 min-w-0">

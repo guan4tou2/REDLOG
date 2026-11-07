@@ -146,7 +146,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   </div>
 }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor }): JSX.Element {
+export function EventContentReader({ projectId, eventId, active = true, anchor, defaultExpanded = false }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor; defaultExpanded?: boolean }): JSX.Element {
   const { t } = useI18n()
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
@@ -154,7 +154,7 @@ export function EventContentReader({ projectId, eventId, active = true, anchor }
     return reply.value
   }, true, [projectId, eventId])
   const [selected, setSelected] = useState<string | null>(anchor?.ref.field ?? null)
-  const [expanded,setExpanded]=useState(false)
+  const [expanded,setExpanded]=useState(defaultExpanded)
   const root=useRef<HTMLDivElement>(null)
   useFocusTrap(root,expanded&&active)
   useEffect(()=>{if(!active)setExpanded(false)},[active])
