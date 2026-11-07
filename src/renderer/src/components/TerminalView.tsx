@@ -331,7 +331,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   const current = tabs.find((tb) => tb.id === activeTab) ?? null
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">
-      <TerminalHeader onAbout={() => setAboutOpen(true)} />
+      <TerminalHeader onAbout={() => setAboutOpen(true)} onSearch={() => setSearchOpen(true)} />
       {/* Tab bar */}
       <div className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-1 shrink-0 gap-0.5">
         {tabs.map((tab) => (
@@ -413,11 +413,11 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         <button
           onClick={() => addTab()}
           disabled={!allowNew}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm"
+          className="h-7 px-2 rounded-md flex items-center gap-1 justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
           title={`${t('terminal.newTab')} (${isMac ? '⌘T' : 'Ctrl+T'})`}
           aria-label={t('terminal.newTab')}
         >
-          +
+          <span aria-hidden className="text-sm">+</span>{t('terminal.tabWord')}
         </button>
 
         {/* Which shell the next pane opens with. Hidden when the machine only
@@ -458,9 +458,9 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                       <span className="flex-1 truncate" title={sh.label}>{sh.label}</span>
                       {/* The point of the picker: an unhookable shell is
                           labelled as such before it is chosen, not after. */}
-                      {sh.flavour === 'none' && (
-                        <span className="shrink-0 text-xs text-amber-400">{t('terminal.notRecorded')}</span>
-                      )}
+                      {sh.flavour === 'none'
+                        ? <span className="shrink-0 text-xs text-amber-400">{t('terminal.ptyOnly')} · {t('terminal.notRecorded')}</span>
+                        : <span data-testid="terminal-shell-hooked" className="shrink-0 text-xs text-redlog-text-faint">{t('terminal.hookSupported')}</span>}
                     </button>
                   ))}
                 </div>
@@ -519,6 +519,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                     : t('terminal.searchTotal', { total: searchResult.count })}
             </span>
           )}
+          <span className="shrink-0 text-xs text-redlog-text-faint">{t('terminal.escToClose')}</span>
           <button
             onClick={() => runSearch(searchQuery, 'prev')}
             className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
@@ -540,7 +541,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         </div>
       )}
 
-      {current && <SessionMeta tab={current} />}
+      {current && <SessionMeta tab={current} shellName={shells.find((s) => s.id === current.shellId)?.label} />}
       <Modal open={aboutOpen} onClose={() => setAboutOpen(false)} label={t('terminal.aboutTitle')} testId="terminal-about"
         panelClassName="w-[520px] max-w-[95vw] rounded-lg border border-redlog-border bg-redlog-surface p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-redlog-text">{t('terminal.aboutTitle')}</h2>
@@ -582,9 +583,13 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
           </div>
         ))}
         {tabs.length === 0 && (
-          <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3">
-            <p className="text-sm text-redlog-text-dim">{t('terminal.emptyTitle')}</p>
-            <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>{t('terminal.newTab')}</Button>
+          <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+            <p className="text-sm font-medium text-redlog-text">{t('terminal.emptyTitle')}</p>
+            <p className="max-w-md text-xs text-redlog-text-dim">{t('terminal.emptyBody')}</p>
+            <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>
+              {(() => { const sh = shells.find((s) => s.id === preferredShell) ?? shells[0]; return sh ? t('terminal.newSessionWith', { shell: sh.label }) : t('terminal.newTab') })()}
+            </Button>
+            <p className="max-w-md text-xs text-redlog-text-faint">{t('terminal.aboutBoundary')}</p>
           </div>
         )}
       </div>
@@ -594,7 +599,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
 /** Heading with the one thing the page cannot show by itself: how capture
  *  works here. The hint gives way on a short window — the terminal needs the room. */
-function TerminalHeader({ onAbout }: { onAbout: () => void }): JSX.Element {
+function TerminalHeader({ onAbout, onSearch }: { onAbout: () => void; onSearch: () => void }): JSX.Element {
   const { t } = useI18n()
   return (
     <div data-testid="terminal-header" className="flex shrink-0 items-center justify-between gap-3 border-b border-redlog-border px-3 py-1.5">
@@ -602,7 +607,10 @@ function TerminalHeader({ onAbout }: { onAbout: () => void }): JSX.Element {
         <h1 className="text-sm font-semibold text-redlog-text">{t('terminal.title')}</h1>
         <p className="hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('terminal.hint')}</p>
       </div>
-      <Button size="compact" data-testid="terminal-about-open" onClick={onAbout}>{t('terminal.about')}</Button>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button size="compact" level="quiet" data-testid="terminal-search-open" onClick={onSearch}>{t('terminal.searchToggle')} ({isMac ? '⌘F' : 'Ctrl+F'})</Button>
+        <Button size="compact" data-testid="terminal-about-open" onClick={onAbout}>{t('terminal.about')}</Button>
+      </div>
     </div>
   )
 }
@@ -618,7 +626,7 @@ const TONE = {
 /** What the active pane's recording and hook are doing, and where it is. Each
  *  line is that pane's own: a state is never carried over from another pane or
  *  from the session this one replaced. */
-function SessionMeta({ tab }: { tab: Tab }): JSX.Element {
+function SessionMeta({ tab, shellName }: { tab: Tab; shellName?: string }): JSX.Element {
   const { t } = useI18n()
   const ended = endedRecording(tab.castHistory ?? {})
   let screen: { tone: keyof typeof TONE; text: string; title?: string } | null = null
@@ -636,7 +644,7 @@ function SessionMeta({ tab }: { tab: Tab }): JSX.Element {
   const hook = tab.alive && tab.pid > 0 && tab.unhooked !== undefined
     ? tab.unhooked
       ? { tone: 'warn' as const, text: t('terminal.meta.hookOff'), title: t('terminal.noHook', { shell: tab.unhooked.split(/[\\/]/).pop() ?? tab.unhooked }) }
-      : { tone: 'good' as const, text: t('terminal.meta.hookOn') }
+      : { tone: 'good' as const, text: shellName ? `${t('terminal.meta.hookOn')} (${shellName})` : t('terminal.meta.hookOn') }
     : null
   return (
     <div data-testid="terminal-session-meta" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-redlog-border bg-redlog-bg px-3 py-1">
@@ -646,6 +654,7 @@ function SessionMeta({ tab }: { tab: Tab }): JSX.Element {
       </div>
       <div className="flex flex-wrap items-center gap-x-3 text-xs text-redlog-text-dim">
         {tab.cwd && <span title={tab.cwdFull ?? tab.cwd}>{t('terminal.meta.cwd')} <span className="font-mono text-redlog-text">{tab.cwdFull ?? tab.cwd}</span></span>}
+        {tab.alive && tab.pid > 0 && <span data-testid="terminal-meta-pid">PID <span className="font-mono text-redlog-text">{tab.pid}</span></span>}
         {tab.lastExit !== undefined && <span>{t('terminal.meta.exit')} <span className={`font-mono ${tab.lastExit === 0 ? 'text-emerald-400' : 'text-red-400'}`}>{tab.lastExit}</span></span>}
       </div>
     </div>
