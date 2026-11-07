@@ -359,6 +359,17 @@ const selectMarker = async (titleText: string): Promise<void> => {
   await page.waitForSelector('[data-testid="marker-amend"]', { timeout: 10_000 })
 }
 
+// The amend count is shown on the rail's rows, and lanes mode hides the rail
+// (Stitch 05, user decision); these tests are about amending, not lanes, so
+// they read the Timeline in standard mode.
+const openStandard = async (): Promise<void> => {
+  await openView(page, 'timeline')
+  const standard = page.getByTestId('timeline-mode-standard')
+  await standard.waitFor({ state: 'visible', timeout: 10_000 })
+  if ((await standard.getAttribute('aria-pressed')) !== 'true') await standard.click()
+  await page.getByTestId('timeline-standard-track').waitFor({ state: 'visible', timeout: 10_000 })
+}
+
 test.describe.serial('marker-amend: amending a marker', () => {
   test.beforeAll(async () => {
     await resetShared()
@@ -371,7 +382,7 @@ test.describe.serial('marker-amend: amending a marker', () => {
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '0.25'))
     await page.reload()
     await page.waitForTimeout(2500)
-    await openSwimLanes(page)
+    await openStandard()
     await page.waitForTimeout(1500)
   })
 
@@ -406,7 +417,7 @@ test.describe.serial('marker-amend: amending a marker', () => {
   test('survives a reload — the effective marker is derived, not remembered', async () => {
     await page.reload()
     await page.waitForTimeout(2500)
-    await openSwimLanes(page)
+    await openStandard()
     await page.waitForTimeout(1500)
     await selectMarker('amended title')
     await expect(page.locator('[data-testid="marker-amend-count"]').first()).toContainText('1')
@@ -444,7 +455,7 @@ test.describe.serial('marker-amend: amending a marker', () => {
     await page.waitForTimeout(3000)
     await page.reload()
     await page.waitForTimeout(3000)
-    await openSwimLanes(page)
+    await openStandard()
     await page.waitForTimeout(2000)
 
     const html = await page.content()
