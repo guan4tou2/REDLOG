@@ -622,6 +622,67 @@ const setScope = async (targets: string[], excludeTargets: string[]): Promise<vo
   await page.waitForTimeout(4000)   // 2 s debounce + the run itself
 }
 
+// The AI reading, walked as an operator would (Stitch 06 / spec 069 audit):
+// pick a source session, search inside it, open one turn on the Timeline and
+// come back to the same session, query and turn. Two sessions are seeded so
+// "picked one session" is visible as the other one's absence.
+test.describe('ai-transcript-journey', () => {
+  test.beforeEach(async () => { await resetShared() })
+
+  test('session pick, search, show on the Timeline and back keep the AI reading', async () => {
+    test.setTimeout(180_000)
+    try {
+      await openTestProject(page, 'ai-journey')
+      const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+      const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+      const post = async (data: Record<string, unknown>): Promise<void> => {
+        const r = await fetch(`${base}/api/events`, {
+          method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ agent_type: 'agent', data: { agent: 'claude-code', ...data } }) })
+        expect(r.ok).toBe(true)
+      }
+      await post({ subtype: 'user_message', session_id: 'alpha-session', full: 'kerberoast the alpha domain' })
+      await post({ subtype: 'tool_call', session_id: 'alpha-session', tool_name: 'Bash', tool_use_id: 'tu-alpha', tool_input: { command: 'id' } })
+      await post({ subtype: 'tool_result', session_id: 'alpha-session', tool_use_id: 'tu-alpha', output: 'uid=0(root) gid=0(root)' })
+      await post({ subtype: 'assistant_message', session_id: 'alpha-session', full: 'alpha reply about tickets' })
+      await post({ subtype: 'assistant_message', session_id: 'beta-session', full: 'beta unrelated reply' })
+
+      await openView(page, 'search')
+      await page.locator('#reading-tab-ai').click()
+      const panel = page.locator('#reading-panel-ai')
+      await page.getByRole('combobox', { name: 'AI source' }).selectOption('claude-code')
+      const session = page.getByRole('combobox', { name: 'Source session' })
+      await expect(session.locator('option', { hasText: 'alpha-session' })).toHaveCount(1)
+      const alpha = await session.locator('option', { hasText: 'alpha-session' }).getAttribute('value')
+      await session.selectOption(alpha!)
+
+      // One session: its turns are here, the other session's are not.
+      await expect(panel).toContainText('alpha reply about tickets')
+      await expect(panel).not.toContainText('beta unrelated reply')
+
+      // Search inside the picked session.
+      await page.getByTestId('search-input').fill('kerberoast')
+      await expect(panel).toContainText('kerberoast the alpha domain')
+      await expect(panel).not.toContainText('alpha reply about tickets')
+
+      // Show that turn on the Timeline, then come back.
+      await panel.getByTestId('transcript-open-timeline').first().click()
+      await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+      await expect(page.getByTestId('timeline-detail-panel')).toContainText('kerberoast')
+      await page.getByTestId('timeline-return').getByRole('button').click()
+
+      await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
+      await expect(page.locator('#reading-tab-ai')).toHaveAttribute('aria-selected', 'true')
+      await expect(session).toHaveValue(alpha!)
+      await expect(page.getByTestId('search-input')).toHaveValue('kerberoast')
+      await expect(panel).toContainText('kerberoast the alpha domain')
+    } catch (e) {
+      console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+      throw e
+    }
+  })
+})
+
 test.describe.serial('scope-recompute: recomputing scope after the boundary moves', () => {
   test.beforeAll(async () => {
     await resetShared()
