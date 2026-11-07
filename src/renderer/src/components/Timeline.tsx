@@ -15,6 +15,7 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStrips'
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
+import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/TimelineLanesHeader'
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -25,10 +26,10 @@ import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
-import { buildTimeMap, computeDomainBounds, computeBins, binHeight, densestRun, type TimeMap } from '../lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, binHeight, densestRun, placeRulerMarkers, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents, countWindowEvents, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
@@ -65,6 +66,10 @@ const MAX_LANE_H = 44
 // ellipsis ("Artifa…", "Scree…", "Clipb…") — a row of labels nobody can read
 // is a label column that is not doing its job.
 const LABEL_W = 132
+// Axis row height: the lanes' 28px, or the ruler's taller one that also holds
+// the two marker chip rows under the tick labels.
+const AXIS_H_LANES = 28
+const AXIS_H_RULER = 48
 // v0.11.6 (AUDIT V8): a floor, not a fixed width. The track used to be exactly
 // 2000px at zoom 1 regardless of the window, so on a 2560px or 4K display the
 // operator got a track narrower than the space available and a band of empty
@@ -536,6 +541,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     // `recentEvents` below.
   }, [events, pluginTypes])
 
+  // Rows per lane among what is loaded, for the lane headers and the panel
+  // title. Not a project total: `hasMore` says older pages are unfetched.
+  const laneCounts = useMemo(() => countByLane(events, pluginTypes), [events, pluginTypes])
+
   // The lane an event's row is keyed on: its band's id when that band is
   // collapsed, otherwise the lane itself.
   const rowKeyOf = useCallback(
@@ -786,7 +795,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const { timeStart, timeEnd, ticks } = useMemo(() => computeDomainBounds(events), [events])
 
 
-  const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - LABEL_W)
+  // The standard ruler runs the full width: it has no label column to leave
+  // room for. The swim lanes keep theirs.
+  const labelW = timelineMode === 'standard' ? 0 : LABEL_W
+  const axisH = timelineMode === 'standard' ? AXIS_H_RULER : AXIS_H_LANES
+  const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - labelW)
   const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
   // v0.11.6 (AUDIT V7): optional idle-gap compression.
@@ -948,6 +961,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     if (!fold) return unfinishedIds.has(e.id) ? `${eventTitle(e, t)} · ${t('timeline.command.unfinished')}` : eventTitle(e, t)
     return `${fold.effective.severity.toUpperCase()}: ${fold.effective.title}`
   }, [foldById, t, unfinishedIds])
+
+  // The ruler's two markers. [Focus] is the selected event's instant, [Latest]
+  // the newest loaded one; both are track x positions from the same `toX` the
+  // dots use, so zoom and pan move them with the dots. A selection outside the
+  // loaded domain gets no marker rather than one pinned to an edge.
+  const rulerLatestTs = useMemo(() => {
+    let max = -Infinity
+    for (const e of events) { const d = displayTs(e); if (d > max) max = d }
+    return Number.isFinite(max) ? max : null
+  }, [events])
+  const rulerFocusTs = selectedEvent ? displayTs(selectedEvent) : null
+  const rulerMarkers = useMemo(() => placeRulerMarkers({
+    focusX: rulerFocusTs !== null && rulerFocusTs >= timeStart && rulerFocusTs <= timeEnd ? toX(rulerFocusTs) : null,
+    latestX: rulerLatestTs !== null ? toX(rulerLatestTs) : null,
+    trackW: TRACK_W
+  }), [rulerFocusTs, rulerLatestTs, timeStart, timeEnd, toX, TRACK_W])
+
+  // The follow badge and the [Latest] marker do the same thing: scroll to the
+  // newest edge and take follow mode back.
+  const resumeFollow = useCallback(() => {
+    const el = scrollRef.current
+    if (el && TRACK_W > 0) el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
+    setFollowMode(true)
+  }, [TRACK_W, setFollowMode])
 
   // The hover suffix that says a finding has been corrected. Empty for
   // everything else, so it composes into an existing title without a branch.
@@ -1257,11 +1294,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
     [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches]
   )
-  const recentUnfiltered = useMemo(
-    () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp),
+  // In-window totals, memoised and uncapped: the rail shows the newest 50 and
+  // says "of N" with the same window rule, and the hidden-by-query count is
+  // the difference of two real totals rather than of two capped slices.
+  const windowTotalAll = useMemo(
+    () => countWindowEvents(events, hiddenLanes, pluginTypes, vp),
     [events, hiddenLanes, pluginTypes, vp]
   )
-  const hiddenByQuery = queryActive ? recentUnfiltered.length - recentEvents.length : 0
+  const windowTotal = useMemo(
+    () => (queryActive ? countWindowEvents(events, hiddenLanes, pluginTypes, vp, filterMatches) : windowTotalAll),
+    [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches, windowTotalAll]
+  )
+  const hiddenByQuery = queryActive ? windowTotalAll - windowTotal : 0
 
   const sliceExportRequest = useMemo<ExportRequest>(() => {
     const since = Math.round(fromX((view.left / 100) * TRACK_W))
@@ -1842,9 +1886,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                 if (isLive) {
                   setFollowMode(false)
                 } else {
-                  const el = scrollRef.current
-                  if (el && TRACK_W > 0) el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
-                  setFollowMode(true)
+                  resumeFollow()
                 }
               }}
               title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint', { time: formatBehind(behindMs) })}
@@ -2098,28 +2140,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             scrolled off the top under the track's horizontal scrollbar. The
             wrapper is never capped, so it reports the space that is actually
             available and the loop is cut. */}
+        {timelineMode === 'lanes' && (
+          <TimelineLanesHeader
+            activeLanes={laneCounts.size}
+            start={timeStart}
+            end={timeEnd}
+            partial={hasMore}
+            onCollapse={() => setTimelineMode('standard')}
+            t={t}
+          />
+        )}
         <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
         <div
           data-testid="timeline-lane-scroll"
           className="min-h-0 flex overflow-x-hidden overflow-y-auto"
-          style={{ maxHeight: visibleRows.length * laneH + 28 }}
+          style={{ maxHeight: visibleRows.length * laneH + axisH }}
         >
-          {/* Lane labels */}
+          {/* Lane labels. The standard ruler has none; the swim lanes keep
+              this as the scroller's first child (the geometry suite reads it). */}
+          {timelineMode !== 'standard' && (
           <div className="shrink-0 border-r border-redlog-border/60 bg-redlog-bg/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-redlog-border/60" />
             {visibleRows.map((rowKey) => {
-              if (rowKey === STANDARD_ROW) {
-                return (
-                  <div
-                    key={rowKey}
-                    data-testid="timeline-standard-track"
-                    className="w-full flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs text-redlog-text-dim"
-                    style={{ height: laneH }}
-                  >
-                    <span>{t('timeline.standard.track')}</span>
-                  </div>
-                )
-              }
               const band = BANDS.find((b) => b.id === rowKey)
               if (band) {
                 // The band row, rendered whether or not the band is expanded.
@@ -2164,10 +2206,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
                   <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
+                  <span className="ml-auto shrink-0 pl-1 text-redlog-text-faint tabular-nums">{laneCountText(laneCounts.get(id) ?? 0, hasMore, t)}</span>
                 </button>
               )
             })}
           </div>
+          )}
 
           {/* Scrollable track */}
           <div
@@ -2182,6 +2226,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               const target = e.target as HTMLElement | null
               if (target?.closest('[data-timeline-popup]')) return
               if (target?.closest('[data-timeline-event]')) return
+              if (target?.closest('[data-timeline-marker]')) return
               const el = scrollRef.current
               if (!el || timeSpan <= 0) return
               const rect = el.getBoundingClientRect()
@@ -2206,6 +2251,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               const target = e.target as HTMLElement | null
               if (target?.closest('[data-timeline-popup]')) return
               if (target?.closest('[data-timeline-event]')) return
+              if (target?.closest('[data-timeline-marker]')) return
               e.preventDefault()
               const el = scrollRef.current
               if (!el || timeSpan <= 0) return
@@ -2221,12 +2267,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           >
             <div style={{ width: TRACK_W, position: 'relative' }}>
               {/* Time axis */}
-              <div className="h-7 border-b border-redlog-border/60 relative bg-redlog-bg/30">
+              <div className="border-b border-redlog-border/60 relative bg-redlog-bg/30" style={{ height: axisH }}>
                 {ticks.map((ts, i) => (
                   <span
                     key={ts}
                     className="absolute text-xs text-redlog-text-faint font-mono tabular-nums -translate-x-1/2"
-                    style={{ left: toX(ts), top: 6 }}
+                    style={{ left: toX(ts), top: timelineMode === 'standard' ? 2 : 6 }}
                   >
                     {/* v0.11.4 (AUDIT V6): a multi-day engagement showed several
                         identical "09:11" ticks with nothing to separate them. Once
@@ -2235,10 +2281,46 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                     {axisLabel(ts, i, ticks, timeSpan)}
                   </span>
                 ))}
+                {/* The ruler's markers. The wrapper ignores the pointer so a
+                    pan or a double-click starting here reaches the track; only
+                    the [Latest] chip is a target. */}
+                {timelineMode === 'standard' && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    {rulerMarkers.focus && rulerFocusTs !== null && (
+                      <span
+                        data-testid="timeline-marker-focus"
+                        data-timeline-marker
+                        className={`absolute h-3.5 px-1 flex items-center whitespace-nowrap font-mono tabular-nums text-xs leading-none text-redlog-text border-redlog-accent ${
+                          rulerMarkers.focus.align === 'start' ? 'border-l-2' : 'border-r-2 -translate-x-full'
+                        }`}
+                        style={{ left: rulerMarkers.focus.x, top: 20 }}
+                      >
+                        {formatTime(rulerFocusTs, { seconds: true })} {t('timeline.marker.focus')}
+                      </span>
+                    )}
+                    {rulerMarkers.latest && rulerLatestTs !== null && (
+                      <button
+                        type="button"
+                        data-testid="timeline-marker-latest"
+                        data-timeline-marker
+                        onClick={() => { if (!didPan.current) resumeFollow() }}
+                        className={`absolute h-3.5 px-1 flex items-center whitespace-nowrap font-mono tabular-nums text-xs leading-none text-redlog-text-dim hover:text-redlog-text pointer-events-auto cursor-pointer border-redlog-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
+                          rulerMarkers.latest.align === 'start' ? 'border-l' : 'border-r -translate-x-full'
+                        }`}
+                        style={{ left: rulerMarkers.latest.x, top: 20 + rulerMarkers.latest.row * 14 }}
+                      >
+                        {formatTime(rulerLatestTs, { seconds: true })} {t('timeline.marker.latest')}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Lanes area */}
-              <div style={{ height: totalH, position: 'relative' }}>
+              <div
+                data-testid={timelineMode === 'standard' ? 'timeline-standard-track' : undefined}
+                style={{ height: totalH, position: 'relative' }}
+              >
                 {visibleRows.map((_, i) => (
                   <div
                     key={i}
@@ -2593,6 +2675,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             doing: reading a scan is all list, following a chain is all lanes.
             Same handle as the detail panel's, so there is one gesture in this
             view rather than one draggable edge and one frozen one. */}
+        {timelineMode === 'standard' && (
         <div
           data-testid="timeline-log-resize"
           className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
@@ -2602,6 +2685,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         >
           <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
         </div>
+        )}
+        {/* Swim lanes hide the list (Stitch 05; user decision 2026-11-08): the
+            selected event opens in the detail pane, and the two strips only
+            the log could say stay under the lanes. */}
         {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
             scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog
@@ -2612,7 +2699,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           attributionBlind={attributionBlind}
           showingAll={showAllDespiteQuery && filterMatches !== null}
           onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
+          stripsOnly={timelineMode === 'lanes'}
           events={recentEvents}
+          total={windowTotal}
           selectedId={selectedEvent?.id ?? null}
           detailOpen={detailOpen}
           pluginTypes={pluginTypes}

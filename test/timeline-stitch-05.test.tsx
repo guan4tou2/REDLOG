@@ -18,12 +18,13 @@ const ev = (id: string, agentType: string, data: Record<string, unknown>, timest
 
 const t = (k: string, v?: Record<string, unknown>): string => (v ? `${k} ${JSON.stringify(v)}` : k)
 
-function drawLog(events: RedLogEvent[]): void {
+function drawLog(events: RedLogEvent[], extra: Partial<Parameters<typeof TimelineEventLog>[0]> = {}): void {
   render(
     <TimelineEventLog
       events={events} selectedId={null} detailOpen={false} pluginTypes={[]} showOperator={false}
       operatorLabel={(id) => id} titleOf={(e) => String(e.data?.command ?? e.id)} amendSuffix={() => ''}
       amendCountOf={() => undefined} onSelect={vi.fn()} t={t}
+      {...extra}
     />
   )
 }
@@ -50,16 +51,71 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
-describe('list rows', () => {
-  it('says how a finished command ended, and nothing on rows that have no result', () => {
+describe('card rail', () => {
+  const shell = (id: string, ts: number, extra: Record<string, unknown> = {}): RedLogEvent =>
+    ev(id, 'shell', { subtype: 'command_end', command: id, exit_code: 0, ...extra }, ts)
+
+  it('says how a finished command ended, and nothing on cards that have no result', () => {
     drawLog([
       ev('a', 'shell', { subtype: 'command_end', command: 'ls', exit_code: 2, duration_sec: 1.5 }),
       ev('b', 'shell', { subtype: 'command_start', command: 'id' }, 1_700_000_001_000)
     ])
-    const results = screen.getAllByTestId('log-row-result')
+    const results = screen.getAllByTestId('rail-card-meta')
     expect(results).toHaveLength(1)
     expect(results[0].textContent).toContain('"code":2')
     expect(results[0].textContent).toContain('1.5s')
+  })
+
+  it('draws the events in the order given (oldest first) and carries no roving tab stop', () => {
+    drawLog([shell('first', 1_000), shell('second', 2_000)])
+    const cards = screen.getAllByTestId('rail-card')
+    expect(cards.map((c) => c.textContent)).toEqual([expect.stringContaining('first'), expect.stringContaining('second')])
+    expect(document.querySelector('[data-timeline-event]')).toBeNull()
+  })
+
+  it('header says "latest N of total" only when the window holds more than is shown', () => {
+    drawLog([shell('a', 1_000)], { total: 120 })
+    expect(screen.getByTestId('rail-count').textContent).toBe('timeline.rail.capped {"shown":1,"total":120}')
+    cleanup()
+    drawLog([shell('a', 1_000)], { total: 1 })
+    expect(screen.getByTestId('rail-count').textContent).toBe('1')
+  })
+
+  it('the selected card expands with inline stdout; others and stdout-less cards do not', () => {
+    const withOut = shell('a', 1_000, { stdout: '5432/tcp open' })
+    const other = shell('b', 2_000, { stdout: 'zzz' })
+    drawLog([withOut, other], { selectedId: 'a' })
+    const out = screen.getAllByTestId('rail-card-stdout')
+    expect(out).toHaveLength(1)
+    expect(out[0].textContent).toContain('timeline.card.stdout')
+    expect(out[0].textContent).toContain('5432/tcp open')
+    cleanup()
+    drawLog([shell('c', 1_000)], { selectedId: 'c' })
+    expect(screen.queryByTestId('rail-card-stdout')).toBeNull()
+  })
+
+  it('selecting a card calls onSelect exactly as a list row did', () => {
+    const onSelect = vi.fn()
+    const e = shell('a', 1_000)
+    drawLog([e], { onSelect })
+    fireEvent.click(screen.getByTestId('rail-card'))
+    expect(onSelect).toHaveBeenCalledWith(e)
+  })
+
+  it('folds keep their status summary and open on click', () => {
+    const parent = shell('p', 1_000)
+    const kids = [1, 2, 3, 4].map((i) => ev(`k${i}`, 'scanner', { subtype: 'http_response', status: 404, url: `http://x/${i}`, _causes: ['p'] }, 2_000 + i))
+    drawLog([parent, ...kids])
+    const fold = screen.getByTestId('log-fold-p')
+    expect(fold.textContent).toContain('404\u00d74')
+    expect(screen.queryAllByTestId('rail-card')).toHaveLength(0)
+    fireEvent.click(fold)
+    expect(screen.getAllByTestId('rail-card')).toHaveLength(4)
+  })
+
+  it('an amended marker keeps its count on the card', () => {
+    drawLog([shell('a', 1_000)], { amendCountOf: () => 2 })
+    expect(screen.getByTestId('marker-amend-count').textContent).toContain('"count":2')
   })
 })
 
