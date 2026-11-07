@@ -100,9 +100,9 @@ test.describe('packaged app', () => {
       })
 
       await test.step('create a project', async () => {
-        await page.getByRole('button', { name: 'New Project' }).click()
+        await page.getByRole('button', { name: 'Create new project' }).click()
         await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('pkg-smoke')
-        await page.getByRole('button', { name: 'Create' }).click()
+        await page.getByRole('button', { name: 'Create project', exact: true }).click()
         await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
         if (process.env.REDLOG_EXPECTED_BUILD) await openView(page,'dashboard')
@@ -350,7 +350,8 @@ test.describe('packaged app', () => {
         await page.waitForLoadState('domcontentloaded')
         await page.waitForSelector('[data-testid="project-picker"], [data-testid="view-root"]', { timeout: 30_000 })
         if (await page.getByTestId('project-picker').count()) {
-          await page.getByText('pkg-smoke').first().click()
+          // Stitch 01: a click selects a project, a double click opens it.
+          await page.getByText('pkg-smoke').first().dblclick()
           await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         }
         await expect.poll(async () => shellEnd(await events(page), 'echo redlog-ok-builtin'), { timeout: 20_000 }).toBeTruthy()
