@@ -44,7 +44,9 @@ function setup(...answers: ProfileImportResult[]) {
     ip: { getStatus: async () => ({ internalIP: null }) }
   }
   render(<I18nProvider><ProjectPicker onProjectOpen={vi.fn()} /></I18nProvider>)
-  fireEvent.click(screen.getByRole('button', { name: 'New Project' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create new project' }))
+  // Stitch 01: scope and the profile import sit under "Advanced settings".
+  fireEvent.click(screen.getByTestId('create-project-advanced'))
   fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
   return { create }
 }
@@ -67,7 +69,7 @@ describe('creating once', () => {
     const input = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
     fireEvent.keyDown(input, { key: 'Enter' })
     fireEvent.keyDown(input, { key: 'Enter' })
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
     expect(create).toHaveBeenCalledTimes(1)
     await act(async () => finish({ id: 'p1', name: 'Lab', createdAt: 1, lastOpened: 1, path: '/tmp/p1' }))
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -79,7 +81,7 @@ describe('creating once', () => {
     create.mockRejectedValueOnce(new Error('create denied'))
     const input = screen.getByPlaceholderText('e.g. Client-Pentest-Q3') as HTMLInputElement
     fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Create project' }) as HTMLButtonElement).disabled).toBe(false))
     expect(input.value).toBe('Lab')
     expect(screen.getByRole('alert').textContent).toBe('create denied')
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -100,7 +102,7 @@ describe('importing a profile', () => {
   }
 
   async function createdWith(create: ReturnType<typeof setup>['create']): Promise<any> {
-    fireEvent.click(screen.getByText('Create'))
+    fireEvent.click(screen.getByText('Create project'))
     await vi.waitFor(() => expect(create).toHaveBeenCalled())
     return create.mock.calls.at(-1)![1]
   }
@@ -249,7 +251,7 @@ describe('create card', () => {
   it('uses the create modal without duplicate settings', () => {
     setup()
     expect(screen.queryByText(/Advanced setup/i)).toBeNull()
-    expect(screen.getByRole('dialog', { name: 'New Project' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Create new project' })).toBeTruthy()
     // The three settings it held live on the Settings pages that own them.
     expect(screen.queryByText(/Safe IPs/i)).toBeNull()
     expect(screen.queryByText(/Exposed IPs/i)).toBeNull()
@@ -263,8 +265,8 @@ describe('create card', () => {
     // Exclusions are folded away; the violation warning and personal domains
     // stay in Settings, where asking is not asking the same question twice.
     expect(screen.getByPlaceholderText('e.g. Client-Pentest-Q3')).toBeTruthy()
-    expect(screen.getByLabelText('Targets (IPs, CIDRs, *.domain)')).toBeTruthy()
-    expect((screen.getByText('Advanced scope').closest('details') as HTMLDetailsElement).open).toBe(false)
+    expect(screen.getByLabelText('Authorised targets (IP, CIDR, *.domain)')).toBeTruthy()
+    expect(screen.getByLabelText('Excluded targets (never in scope)')).toBeTruthy()
     expect(screen.queryByLabelText(/warn/i)).toBeNull()
     expect(screen.queryByLabelText(/personal/i)).toBeNull()
   })
@@ -277,14 +279,14 @@ describe('create card', () => {
     expect(applied.textContent).toContain('Scope 2')
     expect(applied.textContent).toContain('Safe IPs 1')
     expect(applied.textContent).toContain('Exposed IPs 2')
-    expect(screen.getByRole('dialog', { name: 'New Project' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Create new project' })).toBeTruthy()
   })
 
   it('still creates with everything the profile carried', async () => {
     const { create } = setup(imp(PROFILE))
     fireEvent.click(screen.getByText(/Import Profile/i))
     await screen.findByTestId('profile-applied')
-    fireEvent.click(screen.getByText('Create'))
+    fireEvent.click(screen.getByText('Create project'))
     await vi.waitFor(() => expect(create).toHaveBeenCalledWith('Lab', expect.objectContaining({
       scope: expect.objectContaining({ targets: ['10.10.11.0/24', '10.10.12.0/24'], warnOnViolation: false }),
       network: expect.objectContaining({ whitelist: ['10.0.0.1'], blacklist: ['8.8.8.8', '1.1.1.1'] })

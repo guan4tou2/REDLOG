@@ -50,6 +50,12 @@ function dirSize(dir: string): number {
 }
 
 /** The projects that still exist on disk, newest first, without measuring them. */
+/** Where new projects are created. Each one gets its own folder in here, named
+ *  by RedLog — the picker shows this directory, not a guessed folder name. */
+export function projectsRoot(): string {
+  return PROJECTS_DIR
+}
+
 export function listProjectEntries(): ProjectMeta[] {
   return loadIndex().recent
     .filter((p) => fs.existsSync(p.path))
