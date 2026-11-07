@@ -144,3 +144,41 @@ test('switching project does not carry the selected event or the reading context
     await app.close()
   }
 })
+
+// Stitch 06: the route runs both ways. Opening a Timeline event in the activity
+// log must leave a way back, and that way back must land on the same event —
+// the Timeline is not kept mounted, so it is re-focused, not merely re-shown.
+test('opening a timeline event in the activity log returns to the same event', async () => {
+  test.setTimeout(120_000)
+  const { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'timeline-to-activity')
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+    await seedShell(base, token, 'roundtrip', 6)
+
+    await openView(page, 'timeline')
+    await page.getByRole('button', { name: /roundtrip-3/ }).first().click()
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('roundtrip-3')
+    const selected = await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))
+    expect(selected, 'the timeline selected a concrete event').toBeTruthy()
+
+    await page.getByTestId('detail-open-activity').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
+    await expect(page.getByTestId('search-input')).toHaveValue(`event:${selected}`)
+    await expect(page.getByTestId('activity-row').first()).toBeVisible()
+
+    await page.getByTestId('activity-return').getByRole('button').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('roundtrip-3')
+    expect(await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))).toBe(selected)
+    await expect(page.getByTestId('activity-return')).toHaveCount(0)
+  } catch (e) {
+    console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+    throw e
+  } finally {
+    await app.close()
+  }
+})
