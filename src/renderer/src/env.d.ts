@@ -178,6 +178,8 @@ interface RedLogAPI {
     list: () => Promise<ProjectMeta[]>
     /** Read-only scope answer per project id; a scope that could not be read is `unknown`, not `unset`. */
     scopeSummaries: () => Promise<Record<string, ProjectScopeSummary>>
+    /** The directory new projects are created in. */
+    root: () => Promise<string>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>

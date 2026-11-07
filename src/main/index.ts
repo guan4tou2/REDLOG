@@ -47,7 +47,7 @@ import type { ScopeSnapshot } from '../core/alert/policies'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { resetBodiesDirCache } from '../core/http-body-store'
 import {
-  listProjects, listProjectEntries, summarizeProjectScopes, createProject, openProject, deleteProject, renameProject,
+  listProjects, listProjectEntries, projectsRoot, summarizeProjectScopes, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, setPrimaryOperator, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
@@ -1452,6 +1452,7 @@ app.whenReady().then(() => {
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:scopeSummaries', () => summarizeProjectScopes(listProjectEntries()))
+  ipcMain.handle('project:root', () => projectsRoot())
   ipcMain.handle('project:create', (_e, name: string, initialConfig?: Partial<RedLogConfig>) => {
     const project = createProject(name)
     // The engagement is the project. Every new project used to inherit the

@@ -25,8 +25,10 @@ function mount() {
 }
 
 async function openCard(name: string) {
-  fireEvent.click(await screen.findByRole('button', { name: 'New Project' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Create new project' }))
   fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: name } })
+  // Stitch 01: scope sits under "Advanced settings".
+  fireEvent.click(screen.getByTestId('create-project-advanced'))
 }
 
 function addTo(label: string, text: string) {
@@ -39,8 +41,8 @@ describe('create project with a scope', () => {
   it('sends the targets it was given as the initial scope', async () => {
     const { create } = mount()
     await openCard('Acme')
-    addTo('Targets (IPs, CIDRs, *.domain)', '10.0.0.0/24 *.acme.test')
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    addTo('Authorised targets (IP, CIDR, *.domain)', '10.0.0.0/24 *.acme.test')
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
     await waitFor(() => expect(create).toHaveBeenCalled())
     expect(create.mock.calls[0][1]).toMatchObject({ scope: { targets: ['10.0.0.0/24', '*.acme.test'] } })
   })
@@ -48,21 +50,20 @@ describe('create project with a scope', () => {
   it('rejects an entry that could never match, instead of saving a dead rule', async () => {
     const { create } = mount()
     await openCard('Acme')
-    addTo('Targets (IPs, CIDRs, *.domain)', '10.0.0.0/33')
+    addTo('Authorised targets (IP, CIDR, *.domain)', '10.0.0.0/33')
     expect(await screen.findByTestId('list-field-rejected')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-    await waitFor(() => expect(create).toHaveBeenCalled())
-    expect(create.mock.calls[0][1]).toBeUndefined()
+    // Stitch 01: the reject is still in the box, so creating stops and names it
+    // rather than dropping it.
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
+    expect(await screen.findByTestId('create-project-residual')).toBeTruthy()
+    expect(create).not.toHaveBeenCalled()
   })
 
-  it('keeps exclusions in a folded advanced section', async () => {
+  it('keeps exclusions in the folded advanced section', async () => {
     const { create } = mount()
     await openCard('Acme')
-    const advanced = screen.getByText('Advanced scope').closest('details') as HTMLDetailsElement
-    expect(advanced.open).toBe(false)
-    advanced.open = true
-    addTo('Exclude from scope', '10.0.0.5')
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    addTo('Excluded targets (never in scope)', '10.0.0.5')
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
     await waitFor(() => expect(create).toHaveBeenCalled())
     expect(create.mock.calls[0][1]).toMatchObject({ scope: { excludeTargets: ['10.0.0.5'] } })
   })
@@ -70,7 +71,7 @@ describe('create project with a scope', () => {
   it('sends nothing when the scope is left empty (it stays "not decided yet")', async () => {
     const { create } = mount()
     await openCard('Acme')
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
     await waitFor(() => expect(create).toHaveBeenCalled())
     expect(create.mock.calls[0][1]).toBeUndefined()
   })
@@ -90,8 +91,8 @@ describe('create project with a scope', () => {
     await openCard('Acme')
     fireEvent.click(screen.getByRole('button', { name: /Import Profile/ }))
     await screen.findByTestId('profile-applied')
-    addTo('Targets (IPs, CIDRs, *.domain)', '*.acme.test')
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    addTo('Authorised targets (IP, CIDR, *.domain)', '*.acme.test')
+    fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
     await waitFor(() => expect(create).toHaveBeenCalled())
     expect((create.mock.calls[0] as unknown[])[1]).toMatchObject({ scope: { targets: ['10.1.0.0/16', '*.acme.test'] } })
   })
