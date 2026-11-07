@@ -145,7 +145,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   )
 }
 
-export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
+export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
   const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   // The store's snapshot, shared with the status bar. After a failed read
@@ -301,19 +301,14 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
           </SectionLabel>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border px-4 py-1 shadow-card">
             <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
-              <SummaryRow label={t('dashboard.name')}><span className="text-redlog-text">{projectName}</span></SummaryRow>
               <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
               <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span>
                 {(config.operator?.id as string | undefined) ? <span className="ml-1.5 font-mono text-xs text-redlog-text-dim">({config.operator?.id as string})</span> : null}</SummaryRow>
               <SummaryRow label={t('dashboard.scopeLabel')}>
-                <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-redlog-text'}>
+                <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-emerald-400'}>
                   {scopeCount === 0
                     ? t('dashboard.scopeNotSet')
-                    : t(excludeCount > 0 ? 'dashboard.targetsExcluding' : 'dashboard.targets', {
-                      count: scopeCount,
-                      excluded: excludeCount,
-                      mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
-                    })}
+                    : t(excludeCount > 0 ? 'dashboard.targetsExcluding' : 'dashboard.targets', { count: scopeCount, excluded: excludeCount })}
                 </span>
                 <Button size="compact" className="ml-3" data-testid="dashboard-view-scope" onClick={() => onNavigate('targets')}>{t('dashboard.viewScope')}</Button>
               </SummaryRow>

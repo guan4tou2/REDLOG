@@ -172,7 +172,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     draw()
     const commands = await screen.findByTestId('first-run-commands')
     const http = await screen.findByTestId('first-run-http')
-    expect(commands.textContent).toContain('指令與終端')
+    expect(commands.textContent).toContain('指令擷取（終端機與 Shell）')
     expect(http.textContent).toContain('HTTP(S)')
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
@@ -180,6 +180,10 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     expect(await screen.findByText('啟動 HTTP 擷取')).toBeTruthy()
     // The connect-your-terminal path is offered from the start too.
     expect(screen.getByTestId('first-run-record-terminal').textContent).toBe('記我的 Zsh 終端')
+    // Stitch 08: two independent paths, each saying what it needs.
+    expect(screen.getByTestId('first-run-path-builtin').textContent).toContain('開箱即用')
+    expect(screen.getByTestId('first-run-path-external').textContent).toContain('需安裝腳本')
+    expect(screen.getByTestId('first-run-path-external').contains(screen.getByTestId('first-run-record-terminal'))).toBe(true)
     // No engagement-type choice, and HTTP cannot be waved away as optional.
     expect(screen.queryByTestId('first-run-focus')).toBeNull()
     expect(screen.queryByText('略過')).toBeNull()

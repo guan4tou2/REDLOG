@@ -275,7 +275,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
   return (
     <section data-testid="first-run-http" data-nonce={attempt.nonce} className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
+        <p className="font-semibold text-redlog-text"><span className="mr-2 font-mono text-redlog-text-faint">02</span>{t('firstRun.http.title')}</p>
         <span
           data-testid="first-run-http-status"
           data-ca-trust={verified ? (trustVerified ? 'proven' : 'unproven') : 'none'}

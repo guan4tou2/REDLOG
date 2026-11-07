@@ -22,7 +22,7 @@ function mount(): ReturnType<typeof vi.fn> {
       <ToastContainer />
     </I18nProvider>
   )
-  fireEvent.click(screen.getByText(/all sources/i))
+  fireEvent.click(screen.getByText(/Other capture sources/i))
   return uninstall
 }
 

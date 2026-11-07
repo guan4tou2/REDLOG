@@ -60,8 +60,8 @@ describe('record summary', () => {
     install({ chained: 1960, logged: 224 }); show()
     await waitFor(() => expect(screen.getByTestId('dashboard-record-total').textContent).toBe('2,184'))
     const text = screen.getByTestId('dashboard-record-summary').textContent ?? ''
-    expect(text).toContain('Written to the hash chain 1,960')
-    expect(text).toContain('Local only (not in the chain hash) 224')
+    expect(text).toContain('Chained events (written to the hash chain) 1,960')
+    expect(text).toContain('Local-only events (outside the hash chain) 224')
     expect(text).not.toMatch(/buffer|waiting for chain/i)
   })
 
@@ -99,7 +99,7 @@ describe('network card', () => {
     const card = await screen.findByTestId('ip-status-card')
     await waitFor(() => expect(card.textContent).toContain('203.0.113.18'))
     expect(card.textContent).toContain('Current outbound connection')
-    expect(card.textContent).toContain('Unknown IP')
+    expect(card.textContent).toContain('IP status unconfirmed')
     expect(card.textContent).toContain('10.0.2.15')
   })
 })
@@ -113,11 +113,11 @@ describe('project summary', () => {
     expect(go).toHaveBeenCalledWith('targets')
   })
 
-  it('shows the rule count once a scope exists, and the project identity', async () => {
+  it('shows the rule count once a scope exists, and the project id and operator', async () => {
     install({ targets: ['10.10.0.0/16', 'acme.test'] }); show()
-    expect((await screen.findByTestId('dashboard-scope-state')).textContent).toMatch(/^2 targets/)
+    expect((await screen.findByTestId('dashboard-scope-state')).textContent).toMatch(/^2 allowed/)
     const text = document.body.textContent ?? ''
-    expect(text).toContain('Acme external')
+    // The project's name is in the title bar; the summary carries its id.
     expect(text).toContain('ENG-042')
     expect(text).toContain('op-01')
   })
@@ -133,13 +133,13 @@ describe('project summary (Stitch 08)', () => {
 
   it('counts excluded targets next to the allowed ones, and names the operator id when there is one', async () => {
     install({ targets: ['a.test', 'b.test'], excludes: ['c.test'], opId: 'op-01' }); show()
-    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('2 targets, 1 excluded, warnings on'))
+    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('2 allowed / 1 excluded'))
     expect(screen.getByText('(op-01)')).toBeTruthy()
   })
 
   it('says nothing extra when nothing is excluded', async () => {
     install({ targets: ['a.test'] }); show()
-    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('1 targets, warnings on'))
+    await waitFor(() => expect(screen.getByTestId('dashboard-scope-state').textContent).toBe('1 allowed'))
     expect(screen.queryByText(/\(op-/)).toBeNull()
   })
 })

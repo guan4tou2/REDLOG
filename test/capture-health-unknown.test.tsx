@@ -135,12 +135,12 @@ describe('Dashboard capture card', () => {
   it('after a failed read it replaces the old headline with the last confirmed time', async () => {
     health.mockResolvedValueOnce(snap('healthy')).mockRejectedValue(new Error('ipc'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
 
     await act(async () => { batch() })
     await waitFor(() => expect(card().textContent).toMatch(/Last confirmed healthy \d{1,2}:\d{2}.*; current state unknown/))
-    expect(screen.queryByText('Recording')).toBeNull()
+    expect(screen.queryByText('Capture is working')).toBeNull()
   })
 
   it('says so when the first read failed and nothing was ever confirmed', async () => {
@@ -152,11 +152,11 @@ describe('Dashboard capture card', () => {
   it('goes back to the verdict once a read succeeds', async () => {
     health.mockResolvedValueOnce(snap('healthy')).mockRejectedValueOnce(new Error('ipc')).mockResolvedValue(snap('healthy'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     await act(async () => { batch() })
     await waitFor(() => card())
     await act(async () => { batch() })
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
   })
 })
@@ -165,7 +165,7 @@ describe('Dashboard capture card (Stitch 08)', () => {
   it('offers a retry beside the unknown headline, and it reads again', async () => {
     health.mockResolvedValueOnce(snap('healthy')).mockRejectedValue(new Error('ipc'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     await act(async () => { batch() })
     await screen.findByTestId('capture-unknown')
     const calls = health.mock.calls.length
