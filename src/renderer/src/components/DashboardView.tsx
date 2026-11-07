@@ -303,7 +303,8 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
               <SummaryRow label={t('dashboard.name')}><span className="text-redlog-text">{projectName}</span></SummaryRow>
               <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
-              <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}{(config.operator?.id as string | undefined) ? <span className="ml-1.5 font-mono text-xs text-redlog-text-dim">({config.operator?.id as string})</span> : null}</span></SummaryRow>
+              <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span>
+                {(config.operator?.id as string | undefined) ? <span className="ml-1.5 font-mono text-xs text-redlog-text-dim">({config.operator?.id as string})</span> : null}</SummaryRow>
               <SummaryRow label={t('dashboard.scopeLabel')}>
                 <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-redlog-text'}>
                   {scopeCount === 0
