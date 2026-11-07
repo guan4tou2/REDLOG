@@ -522,17 +522,32 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
-  test('switching to swim lanes keeps the selection and the zoom', async () => {
+  test('the toolbar Activity link opens the activity log and returns to the selected event', async () => {
     await page.getByRole('button', { name: /whoami/ }).first().click()
-    await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
+    await page.getByTestId('timeline-open-activity').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
+    await page.getByTestId('activity-return').getByRole('button').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
+  })
+
+  test('switching to swim lanes keeps the selection and the zoom', async () => {
+    // The Activity-link test before this one comes back with whoami still
+    // selected, and a click on the selected event deselects it. Select only if
+    // nothing is open, so this test owns its precondition.
+    if (!(await page.getByTestId('timeline-detail-panel').isVisible())) {
+      await page.getByRole('button', { name: /whoami/ }).first().click()
+    }
+    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
     await page.getByRole('button', { name: /Zoom in/ }).click()
-    const zoom = await page.getByRole('button', { name: /Reset zoom/ }).textContent()
+    const zoom = await page.getByTestId('timeline-zoom-level').textContent()
     await page.getByTestId('timeline-mode-lanes').click()
     await expect(page.getByTestId('timeline-standard-track')).toHaveCount(0)
     await expect(page.locator('[data-testid^="timeline-band-"]').first()).toBeVisible()
     await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
     await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
-    expect(await page.getByRole('button', { name: /Reset zoom/ }).textContent()).toBe(zoom)
+    expect(await page.getByTestId('timeline-zoom-level').textContent()).toBe(zoom)
   })
 
   test('the choice is remembered for the project', async () => {
