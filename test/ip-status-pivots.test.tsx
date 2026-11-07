@@ -4,7 +4,7 @@
 // a route, and their read is independent of the IP read and of "none".
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import IPStatusCard from '../src/renderer/src/components/IPStatusCard'
 
@@ -38,10 +38,11 @@ it('lists detected nodes with tool, address, route and last seen, with no arrows
   expect(nodes).toHaveLength(2)
   expect(nodes[0].textContent).toContain('ligolo-ng')
   expect(nodes[0].textContent).toContain('192.0.2.24:11601')
-  expect(nodes[0].textContent).toContain('route 172.16.10.0/24')
+  expect(nodes[0].textContent).toContain('subnet route: 172.16.10.0/24')
   expect(nodes[1].textContent).not.toContain('route')
   const block = screen.getByTestId('pivot-nodes').textContent ?? ''
-  expect(block).toContain('2 relay node(s) detected')
+  expect(block).toContain('Active relay nodes (2)')
+  expect(block).toContain('Separate nodes (route not linked)')
   expect(block).toContain('not checked')
   expect(screen.getByTestId('ip-status-card').textContent).not.toMatch(/→|healthy|active tunnel/i)
 })
@@ -65,7 +66,7 @@ it('says a failed pivot read is a failed read, not "none", and retries', async (
   expect(err.textContent).toContain('Could not read relay nodes')
   expect(screen.queryByTestId('pivot-nodes')).toBeNull()
   install({ list: two })
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  fireEvent.click(within(err).getByRole('button', { name: 'Retry' }))
   expect(await screen.findAllByTestId('pivot-node')).toHaveLength(2)
   expect(screen.queryByTestId('pivot-error')).toBeNull()
 })
@@ -94,7 +95,7 @@ it('offers a retry when the IP read failed, re-reads on click, and keeps the rel
   // The next read succeeds: the card must show the fresh values, and the
   // failure text must be gone.
   getStatus.mockImplementation(async () => ip)
-  const buttons = screen.getAllByRole('button', { name: 'Retry' })
+  const buttons = screen.getAllByRole('button', { name: 'Check again' })
   fireEvent.click(buttons[0])
   expect(await screen.findByText('203.0.113.18')).toBeTruthy()
   expect(getStatus.mock.calls.length).toBe(before + 1)
@@ -110,7 +111,17 @@ it('a failed re-read does not keep the previous address as current', async () =>
   cleanup(); mount()
   await screen.findByText('lookup failed')
   getStatus.mockImplementation(async () => { throw new Error('x') })
-  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
   expect(await screen.findByText('Could not read the IP status.')).toBeTruthy()
   expect(screen.queryByText('203.0.113.18')).toBeNull()
+})
+
+it('says the list is capped only when it is full, so a full list does not read as complete', async () => {
+  const five = Array.from({ length: 5 }, (_, i) => ({ via: `10.0.0.${i + 1}:1080`, tool: 'ssh -D', ts: NOW - i * 1000 }))
+  install({ list: five }); mount()
+  expect((await screen.findByTestId('pivot-cap-note')).textContent).toContain('at most 5')
+  cleanup()
+  install({ list: two }); mount()
+  await screen.findAllByTestId('pivot-node')
+  expect(screen.queryByTestId('pivot-cap-note')).toBeNull()
 })

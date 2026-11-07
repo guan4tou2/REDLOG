@@ -55,7 +55,7 @@ describe('the mitmproxy row on the Capture Health card', () => {
     // — and the inventory says it plainly.
     const el = draw([mitm()], { state: 'running', url: 'http://127.0.0.1:6661' })
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
@@ -80,7 +80,7 @@ describe('the mitmproxy row on the Capture Health card', () => {
     const core = el.querySelector('[data-testid="capture-core-http"]')
     expect(core?.getAttribute('data-state')).toBe('ready')
     expect(core?.textContent).not.toMatch(/not installed/)
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
@@ -96,7 +96,7 @@ describe('the mitmproxy row on the Capture Health card', () => {
     // view entirely.
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
     // It is still listed, correctly, in the full inventory.
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
 
@@ -106,7 +106,7 @@ describe('the mitmproxy row on the Capture Health card', () => {
     // inventory still says so, in the one word the state axis now has for it.
     const absent = draw([mitm()], { state: 'unavailable', url: null, error: 'spawn mitmdump ENOENT' })
     expect(absent.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeNull()
-    fireEvent.click(within(absent).getByText(/all sources/))
+    fireEvent.click(within(absent).getByText(/Other capture sources/))
     expect(absent.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent)
       .toMatch(/not installed/)
     cleanup()

@@ -53,7 +53,7 @@ describe('the Dashboard keeps both core captures in view', () => {
     expect(container.querySelector('[data-testid="capture-core-http"]')?.textContent).toMatch(/not verified/i)
     expect(container.textContent).not.toMatch(/All good/i)
     // The headline does not say plain "Recording" over a line that says HTTPS is unverified.
-    expect(container.textContent).toContain('Recording; some items unconfirmed')
+    expect(container.textContent).toContain('Some sources unconfirmed')
     fireEvent.click(within(container).getByRole('button', { name: 'HTTP(S) requests' }))
     expect(nav).toHaveBeenCalledWith('settings/browser')
     fireEvent.click(within(container).getByRole('button', { name: 'Commands' }))
@@ -116,7 +116,7 @@ describe('the Dashboard keeps both core captures in view', () => {
 
   it('still lists mitmproxy in the full inventory, without repeating the detail', () => {
     const el = draw([terminal, mitm()], { state: 'running', url: null })
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-row-mitmproxy"]')).toBeTruthy()
     expect(el.querySelector('[data-testid="capture-state-mitmproxy"]')?.textContent).toMatch(/capturing/)
   })
@@ -135,12 +135,13 @@ describe('the Dashboard keeps both core captures in view', () => {
   // used to carry a word too — 記錄中 beside a green dot — which is one thing
   // said twice and leaves the reader checking that the two agree. The word is
   // kept for the cases a colour cannot carry: what is missing, and what to do.
-  it('says a working terminal with a light, not a word, and dates it', () => {
+  it('says a working terminal is running, and dates it', () => {
     const quiet = { id: 'terminal', state: 'ready', lastEventAt: Date.now() - 29 * 60_000 }
     const el = draw([quiet, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
     const cmd = el.querySelector('[data-testid="capture-core-commands"]')
     expect(cmd?.getAttribute('data-state')).toBe('ready')
-    expect(cmd?.textContent).not.toMatch(/recording|ready/i)
+    // Stitch 08: the row says it in a tag and beside its light, as the HTTP row does.
+    expect(cmd?.textContent).toMatch(/Running/)
     // A quiet half-hour is reported as a date, not as a state: the operator
     // has not typed, which is not a fact about capture.
     expect(cmd?.querySelector('[data-testid="capture-core-commands-age"]')?.textContent).toMatch(/29m/)
@@ -196,7 +197,7 @@ describe('the two terminals are one row', () => {
 
   it('names no RedLog terminal of its own, anywhere on the card', () => {
     const el = draw([terminal, mitm({ state: 'ready', lastEventAt: Date.now() })], { state: 'running', url: null })
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-row-builtin-terminal"]')).toBeNull()
     expect(el.textContent).not.toMatch(/RedLog terminal/)
     expect(el.querySelector('[data-testid="capture-row-terminal"]')).toBeTruthy()
@@ -213,14 +214,14 @@ describe('the two terminals are one row', () => {
     // that is not one of RedLog's panes, the card says setup is unfinished
     // rather than reporting on itself.
     const without = draw([{ ...terminal, hookId: 'shell-powershell', installed: false }], { state: 'stopped', url: null })
-    fireEvent.click(within(without).getByText(/all sources/))
+    fireEvent.click(within(without).getByText(/Other capture sources/))
     expect(without.textContent).toMatch(/Your own terminal is not in the record/)
     cleanup()
 
     const installedOnly = draw(
       [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: null }],
       { state: 'stopped', url: null })
-    fireEvent.click(within(installedOnly).getByText(/all sources/))
+    fireEvent.click(within(installedOnly).getByText(/Other capture sources/))
     expect(installedOnly.textContent).toMatch(/open a new terminal and run a command/)
     expect(installedOnly.textContent).not.toMatch(/last command/)
     cleanup()
@@ -229,7 +230,7 @@ describe('the two terminals are one row', () => {
     const commandOnly = draw(
       [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: null, ownShellName: 'powershell' }],
       { state: 'stopped', url: null })
-    fireEvent.click(within(commandOnly).getByText(/all sources/))
+    fireEvent.click(within(commandOnly).getByText(/Other capture sources/))
     expect(commandOnly.textContent).toMatch(/PowerShell · last command/)
     expect(commandOnly.textContent).toMatch(/no command output recorded yet/)
     expect(commandOnly.textContent).not.toMatch(/last output/)
@@ -239,7 +240,7 @@ describe('the two terminals are one row', () => {
     const proven = draw(
       [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), ownShellOutputAt: Date.now(), ownShellName: 'powershell' }],
       { state: 'stopped', url: null })
-    fireEvent.click(within(proven).getByText(/all sources/))
+    fireEvent.click(within(proven).getByText(/Other capture sources/))
     // Facts with times, not a promise about what happens next.
     expect(proven.textContent).toMatch(/PowerShell · last command .* · last output/)
     expect(proven.textContent).not.toMatch(/will be recorded|are recorded/)
@@ -271,7 +272,7 @@ describe('the two terminals are one row', () => {
     const el = draw(
       [{ ...terminal, hookId: 'shell-powershell', installed: true, ownShellLastEventAt: Date.now(), enrolled: { total: 3, recording: 2 } }],
       { state: 'stopped', url: null })
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.textContent).toMatch(/2 of 3 recording/)
   })
 
@@ -282,7 +283,7 @@ describe('the two terminals are one row', () => {
     const el = draw([{ ...terminal, hookId: 'shell-powershell', installed: false }], { state: 'stopped', url: null })
     expect(el.querySelector('[data-testid="capture-core-commands"]')?.getAttribute('data-state')).toBe('ready')
     expect(el.textContent).not.toMatch(/No capture source/i)
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     expect(el.querySelector('[data-testid="capture-state-terminal"]')?.textContent).toMatch(/ready/i)
   })
 })
