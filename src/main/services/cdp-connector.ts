@@ -42,6 +42,7 @@ interface BrowserTab {
 }
 
 interface BrowserContext {
+  timedOut?: boolean
   url: string | null
   title: string | null
   connected: boolean
@@ -422,7 +423,7 @@ function fetchJson<T>(url: string, timeout = 2000): Promise<T> {
     req.on('error', reject)
     req.on('timeout', () => {
       req.destroy()
-      reject(new Error('Timeout'))
+      reject(Object.assign(new Error('Timeout'), { code: 'ETIMEDOUT' }))
     })
   })
 }
@@ -436,8 +437,9 @@ export async function getActiveBrowserTab(): Promise<BrowserContext> {
     } else {
       lastContext = { url: null, title: null, connected: true, port: cdpPort }
     }
-  } catch {
-    lastContext = { url: null, title: null, connected: false, port: cdpPort }
+  } catch (error) {
+    const timedOut = (error as NodeJS.ErrnoException)?.code === 'ETIMEDOUT'
+    lastContext = { url: null, title: null, connected: false, port: cdpPort, ...(timedOut && { timedOut }) }
   }
   return lastContext
 }

@@ -2326,5 +2326,8 @@
   "activity.status.perSource": "each source confirmed on its own",
   "activity.status.sourceAlert": "{{count}} source(s) need attention ({{names}})",
   "activity.reader.integrityKind": "local record SHA-256",
-  "activity.reader.recordState": "Record state"
+  "activity.reader.recordState": "Record state",
+  "pivot.loading": "Reading relay nodes…",
+  "settings.cdpRetry": "Retry browser connection",
+  "settings.cdpTimeout": "Browser connection test timed out. Retry the test."
 }

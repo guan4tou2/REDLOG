@@ -125,3 +125,22 @@ it('says the list is capped only when it is full, so a full list does not read a
   await screen.findAllByTestId('pivot-node')
   expect(screen.queryByTestId('pivot-cap-note')).toBeNull()
 })
+
+it('shows both failed reads independently when the Pivot bridge is missing', async () => {
+  install({ ip: 'fail' })
+  Reflect.deleteProperty(window.redlog, 'pivots')
+  mount()
+  await screen.findByText('Could not read the IP status.')
+  expect((await screen.findByTestId('pivot-error')).textContent).toContain('Could not read relay nodes')
+})
+
+it('keeps the newer live nodes when an initial read finishes later', async () => {
+  install({})
+  let finish!: (value: Pivot[]) => void
+  vi.mocked(window.redlog.pivots.getActive).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  mount()
+  await screen.findByText('Reading relay nodes…')
+  act(() => change(two))
+  await act(async () => finish([]))
+  expect(screen.getAllByTestId('pivot-node')).toHaveLength(2)
+})
