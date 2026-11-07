@@ -160,3 +160,17 @@ describe('Dashboard capture card', () => {
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
   })
 })
+
+describe('Dashboard capture card (Stitch 08)', () => {
+  it('offers a retry beside the unknown headline, and it reads again', async () => {
+    health.mockResolvedValueOnce(snap('healthy')).mockRejectedValue(new Error('ipc'))
+    show(<DashboardView onNavigate={noop} projectName="p" />)
+    await screen.findByText('Recording')
+    await act(async () => { batch() })
+    await screen.findByTestId('capture-unknown')
+    const calls = health.mock.calls.length
+    health.mockResolvedValue(snap('healthy'))
+    await act(async () => { screen.getByTestId('capture-unknown-retry').click() })
+    await waitFor(() => expect(health.mock.calls.length).toBeGreaterThan(calls))
+  })
+})

@@ -405,10 +405,15 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
       : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
-  const barColor = unknown !== undefined ? 'bg-redlog-elevated-hover' : dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
+  // Healthy by verdict, but the HTTP proxy is listening and HTTPS has not been
+  // verified: the line above says so in amber, and the headline must not say
+  // plain "Recording" over it. Deliberately not every coreGap — an operator who
+  // does not use the proxy would otherwise see an amber headline for good.
+  const healthyGap = unknown === undefined && !dark && !partial && http === 'ready' && !capture.managedHttpProxy?.httpsVerification
+  const barColor = unknown !== undefined ? 'bg-redlog-elevated-hover' : dark ? 'bg-redlog-danger' : partial || healthyGap ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = unknown !== undefined ? unknown
     : rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
-    : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
+    : dark ? t('capture.dark') : partial ? t('capture.partial') : healthyGap ? t('capture.healthyGap') : t('capture.healthy')
 
   return (
     <section>
@@ -437,8 +442,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             </button>
             <span
               data-testid={unknown !== undefined ? 'capture-unknown' : undefined}
-              className={`text-xs font-medium ${unknown !== undefined ? 'text-redlog-text-dim' : dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}
+              className={`text-xs font-medium ${unknown !== undefined ? 'text-redlog-text-dim' : dark ? 'text-red-300' : partial || healthyGap ? 'text-amber-300' : 'text-emerald-400'}`}
             >{headline}</span>
+            {unknown !== undefined && <Button size="compact" level="quiet" data-testid="capture-unknown-retry" onClick={onRefresh}>{t('common.retry')}</Button>}
           </div>
         </div>
         {/* #217: both core captures, always named. The checklist that used to

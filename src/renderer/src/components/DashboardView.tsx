@@ -45,12 +45,12 @@ function RecordSummary({ chained, localOnly, lastAnchor, sub, tone, onOpenActivi
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-3">
-            <span data-testid="dashboard-record-total" className="text-xl font-mono font-semibold tabular-nums text-redlog-text">{chained + localOnly}</span>
+            <span data-testid="dashboard-record-total" className="text-xl font-mono font-semibold tabular-nums text-redlog-text">{(chained + localOnly).toLocaleString()}</span>
             <span className="text-sm text-redlog-text-dim">{t('dashboard.recordedEvents')}</span>
           </div>
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-redlog-text-dim">
-            <div><dt className="inline">{t('dashboard.chained')} </dt><dd className="inline font-mono text-redlog-text">{chained}</dd></div>
-            <div><dt className="inline">{t('dashboard.localOnly')} </dt><dd className="inline font-mono text-redlog-text">{localOnly}</dd></div>
+            <div><dt className="inline">{t('dashboard.chained')} </dt><dd className="inline font-mono text-redlog-text">{chained.toLocaleString()}</dd></div>
+            <div><dt className="inline">{t('dashboard.localOnly')} </dt><dd className="inline font-mono text-redlog-text">{localOnly.toLocaleString()}</dd></div>
             <div><dt className="inline">{t('dashboard.anchorLabel')} </dt><dd data-testid="dashboard-anchor" className="inline font-mono text-redlog-text">{anchor}</dd></div>
           </dl>
         </div>
@@ -161,6 +161,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
 
   const loading = countsLoading || localLoading
   const scopeCount = ((config?.scope?.targets as string[] | undefined) ?? []).length
+  const excludeCount = ((config?.scope?.excludeTargets as string[] | undefined) ?? []).length
 
   const { t } = useI18n()
   const unknown = captureStatus === 'unknown' ? captureUnknownLine(t, capture, lastOkAt) : undefined
@@ -302,13 +303,15 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
             <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
               <SummaryRow label={t('dashboard.name')}><span className="text-redlog-text">{projectName}</span></SummaryRow>
               <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
-              <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span></SummaryRow>
+              <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span>
+                {(config.operator?.id as string | undefined) ? <span className="ml-1.5 font-mono text-xs text-redlog-text-dim">({config.operator?.id as string})</span> : null}</SummaryRow>
               <SummaryRow label={t('dashboard.scopeLabel')}>
                 <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-redlog-text'}>
                   {scopeCount === 0
                     ? t('dashboard.scopeNotSet')
-                    : t('dashboard.targets', {
+                    : t(excludeCount > 0 ? 'dashboard.targetsExcluding' : 'dashboard.targets', {
                       count: scopeCount,
+                      excluded: excludeCount,
                       mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
                     })}
                 </span>

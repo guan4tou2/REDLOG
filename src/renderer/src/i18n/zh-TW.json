@@ -70,11 +70,11 @@
   "capture.confirmed.partial": "部分來源失敗",
   "capture.confirmed.dark": "沒有在記錄",
   "dashboard.networkStatus": "網路狀態",
-  "dashboard.sessionStats": "工作階段統計",
+  "dashboard.sessionStats": "記錄概況",
   "dashboard.chainDrift": "⚠ 證據鏈 {{chain}} ≠ 事件 {{events}}",
   "dashboard.anchorStale": "⚓ 上次錨定在 {{age}} 前",
   "dashboard.anchorFailed": "⚓ 錨定失敗",
-  "dashboard.engagement": "任務資訊",
+  "dashboard.engagement": "專案摘要",
   "dashboard.id": "ID：",
   "dashboard.name": "名稱：",
   "dashboard.operator": "操作員：",
@@ -2211,5 +2211,7 @@
   "terminal.searchPosition": "第 {{index}} / {{total}} 筆",
   "terminal.searchTotal": "{{total}} 筆符合",
   "bookmarks.scopeNote": "本機工作筆記：可編輯，不上鏈，不隨證據包匯出",
-  "bookmarks.goToTime": "前往這個時間點"
+  "bookmarks.goToTime": "前往這個時間點",
+  "capture.healthyGap": "記錄中，部分項目尚待確認",
+  "dashboard.targetsExcluding": "{{count}} 個目標、{{excluded}} 個排除，{{mode}}"
 }
