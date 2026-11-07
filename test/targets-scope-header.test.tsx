@@ -52,6 +52,8 @@ it('says scope is not set, and offers the settings', async () => {
   install(async () => ({ scope: { targets: [], excludeTargets: [] } }))
   mount()
   expect(await screen.findByText('Scope is not set')).toBeTruthy()
+  // Not set has no count to give: a dash, not a 0 that reads as a measurement.
+  expect(screen.getByTestId('tab-count-scope').textContent).toBe('—')
   fireEvent.click(screen.getByRole('button', { name: 'Go to settings' }))
   expect(onOpenSettings).toHaveBeenCalledOnce()
 })
@@ -62,6 +64,7 @@ it('a failed read is not "not set", and retrying recovers', async () => {
   mount()
   expect(await screen.findByText('Scope rules could not be read')).toBeTruthy()
   expect(screen.queryByText('Scope is not set')).toBeNull()
+  expect(screen.getByTestId('tab-count-scope').textContent).toBe('—')
   fail = false
   fireEvent.click(screen.getByTestId('scope-context-retry'))
   expect(await screen.findByText('Scope rules are set')).toBeTruthy()
