@@ -85,7 +85,7 @@ it('says no matches when the find fails, and drops the count when the query is c
   const input = await openSearch()
   addons[0].findResult = false
   fireEvent.change(input, { target: { value: 'zzz' } })
-  expect(screen.getByTestId('terminal-search-count').textContent).toBe('No matches')
+  expect(screen.getByTestId('terminal-search-count').textContent).toBe('0 matches')
   fireEvent.change(input, { target: { value: '' } })
   expect(screen.queryByTestId('terminal-search-count')).toBeNull()
 })

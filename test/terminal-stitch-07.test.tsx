@@ -73,3 +73,23 @@ it('says in the capture explanation that a recording state is not a promise of f
   fireEvent.click(screen.getByTestId('terminal-about-open'))
   expect((await screen.findByTestId('terminal-about-boundary')).textContent).toMatch(/does not mean every shell command output is fully kept/)
 })
+
+it('opens buffer search from the header, and the meta line names the pane PID', async () => {
+  await mount()
+  await waitFor(() => expect(screen.getByTestId('terminal-meta-pid').textContent).toContain('4242'))
+  fireEvent.click(screen.getByTestId('terminal-search-open'))
+  await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy())
+  expect(screen.getByText('Esc to close')).toBeTruthy()
+})
+
+it('says in the shell menu which shells have a hook and which are a PTY stream only', async () => {
+  ;(window as unknown as { redlog: { terminal: { shells: unknown } } }).redlog.terminal.shells = vi.fn(async () => [
+    { id: 'zsh', label: 'zsh', flavour: 'posix' }, { id: 'sh', label: '/bin/sh', flavour: 'none' }
+  ])
+  await mount()
+  fireEvent.click(await screen.findByTestId('terminal-shell-menu'))
+  const items = screen.getAllByRole('menuitem')
+  expect(items[0].textContent).toContain('hook supported')
+  expect(items[1].textContent).toContain('PTY stream only')
+  expect(items[1].textContent).toContain('not recorded')
+})
