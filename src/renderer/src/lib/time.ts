@@ -150,6 +150,22 @@ export function formatFreshness(
   return t('time.dAgo', { d: Math.floor(hours / 24) })
 }
 
+/** How long something has lasted, in its largest whole unit: "12 分鐘",
+ *  "2 小時". For a condition's age, where "since 12 minutes ago" reads as a
+ *  time and "lasting 12 minutes" reads as the length it is. */
+export function formatDuration(
+  ms: number,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
+  const secs = Math.max(0, Math.round((Number.isFinite(ms) ? ms : 0) / 1000))
+  if (secs < 60) return t('time.durS', { s: secs })
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return t('time.durM', { m: mins })
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return t('time.durH', { h: hours })
+  return t('time.durD', { d: Math.floor(hours / 24) })
+}
+
 /** Below this the two times are the same event as far as a reader is
  *  concerned; live capture lands well under it. */
 const LAG_FLOOR_MS = 1000

@@ -12,6 +12,7 @@ import { render, cleanup, screen, fireEvent, act, within, waitFor } from '@testi
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
+import { snapshotIssues, _resetIssues } from '../src/renderer/src/lib/issues'
 import OverlayApp from '../src/renderer/src/OverlayApp'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import Settings from '../src/renderer/src/components/Settings'
@@ -402,7 +403,7 @@ describe('renderer views render without throwing', () => {
   it('capture card shows an informational plugin producer in the manage inventory', async () => {
     renderView(<App />)
     // Open the full inventory ("all sources (N)").
-    const manageBtn = await screen.findByText(/all sources/i)
+    const manageBtn = await screen.findByText(/Other capture sources/i)
     fireEvent.click(manageBtn)
     // The plugin producer's own label and the plugin tag both render.
     expect(await screen.findByText('pcap-capture')).toBeTruthy()
@@ -417,6 +418,20 @@ describe('renderer views render without throwing', () => {
     renderView(<StatusBar />)
     const clock = await screen.findByTestId('statusbar-uptime')
     await waitFor(() => expect(clock.getAttribute('title')).toMatch(/since this project was created .*not this session/))
+  })
+
+  // An errored external-IP lookup is a condition of its own (unknown, not bad),
+  // and it clears when a later read comes back without the error.
+  it('StatusBar raises a pending issue while the external IP lookup is erroring, and clears it after', async () => {
+    _resetIssues()
+    const redlog = (window as unknown as { redlog: { ip: { getStatus: () => Promise<unknown>; onStatus: (cb: (s: unknown) => void) => () => void } } }).redlog
+    let push: (s: unknown) => void = () => {}
+    redlog.ip.getStatus = async () => ({ externalIP: null, internalIP: '10.0.0.2', ipSafety: 'unknown', lastCheck: Date.now(), error: 'timeout' })
+    redlog.ip.onStatus = (cb) => { push = cb; return () => {} }
+    renderView(<StatusBar />)
+    await waitFor(() => expect(snapshotIssues().find((i) => i.id === 'ip')?.tier).toBe('pending'))
+    act(() => push({ externalIP: '203.0.113.7', internalIP: '10.0.0.2', ipSafety: 'unknown', lastCheck: Date.now(), error: null }))
+    await waitFor(() => expect(snapshotIssues().some((i) => i.id === 'ip')).toBe(false))
   })
 
   // #323: below the narrow threshold the bar stays on one line by giving up its

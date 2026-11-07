@@ -70,8 +70,9 @@ const terminalRow = (): ReturnType<Page['locator']> =>
   page.locator('[data-testid="capture-row-terminal"]')
 
 const openAllSources = async (): Promise<void> => {
-  const toggle = page.getByRole('button', { name: /all sources/ })
-  if (await toggle.isVisible()) await toggle.click()
+  const toggle = page.getByRole('button', { name: /Other capture sources/ })
+  // The control keeps its name when open, so only open it when it is closed.
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
 }
 
 test.describe.serial('enrolling this machine’s terminals', () => {
