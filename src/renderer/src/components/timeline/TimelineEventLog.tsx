@@ -1,14 +1,12 @@
-// The Timeline's bottom list: the recent events, newest first, one row each.
-// Moved out of Timeline.tsx (UI/UX audit F13) with every value it shows passed
-// in; the panel still owns selection and the events themselves.
+// The Timeline's bottom region: the card rail (TimelineEventRail) under its
+// header, plus the two strips only this region can say. Moved out of
+// Timeline.tsx (UI/UX audit F13) with every value it shows passed in; the
+// panel still owns selection and the events themselves.
 
-import { useMemo, useState } from 'react'
-import { formatTime } from '../../lib/time'
-import { foldByCause, statusSummary } from '../../lib/timelineFold'
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { LANE_COLORS, toLane, type PluginEventType } from '../../lib/timelineDomain'
+import type { PluginEventType } from '../../lib/timelineDomain'
 import { isMac, isWindows } from '../../lib/platform'
-import { TierBadge } from '../TierBadge'
+import { TimelineEventRail } from './TimelineEventRail'
 
 /** Why this host answers nothing, in its own terms. The three platforms fail
  *  at different points and the remedy is not the same, so a line that lists
@@ -24,11 +22,14 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
-  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef,
+  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef, total,
   hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false,
   stripsOnly = false
 }: {
+  /** The rail's cards, oldest first. */
   events: readonly RedLogEvent[]
+  /** Events the window holds in all; the rail shows the newest of them. */
+  total?: number
   selectedId: string | null
   detailOpen: boolean
   pluginTypes: PluginEventType[]
@@ -57,20 +58,6 @@ export function TimelineEventLog({
    *  say stays: the hidden-by-query toggle and the attribution-blind line. */
   stripsOnly?: boolean
 }): JSX.Element | null {
-  // Folds start closed and the operator opens the ones they want. Expansion
-  // is per parent and not remembered across a filter change: the row they
-  // opened may not even be in the next result.
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  const toggle = (id: string): void => setExpanded((prev) => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    return next
-  })
-  const rows = useMemo(
-    () => stripsOnly ? [] : foldByCause(events, { annotated: annotatedIds, selected: selectedId }),
-    [events, annotatedIds, selectedId, stripsOnly]
-  )
   // vh until the operator drags, so the DEFAULT scales with window height —
   // ~5 rows at 900px tall, ~8 at 1200 — rather than freezing a pixel count
   // taken on somebody else's monitor. Once dragged, px wins.
@@ -127,7 +114,11 @@ export function TimelineEventLog({
                 : t('timeline.log.hiddenByQuery', { count: hiddenByQuery })}
             </button>
           )}
-          <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{events.length}</span>
+          <span data-testid="rail-count" className="text-xs text-redlog-text-faint font-mono tabular-nums">
+            {total !== undefined && total > events.length
+              ? t('timeline.rail.capped', { shown: events.length, total })
+              : events.length}
+          </span>
         </>
       </div>
       {/* The header above is a fixed row; this takes the rest. It used to
@@ -144,108 +135,12 @@ export function TimelineEventLog({
         </p>
       )}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {rows.map((row) => {
-          if (row.kind === 'fold') {
-            const { parent, children } = row.fold
-            const open = expanded.has(parent.id)
-            return (
-              <div key={parent.id}>
-                <div
-                  data-testid={`log-fold-${parent.id}`}
-                  className="flex items-center gap-2 px-4 py-1 cursor-pointer text-xs border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/20"
-                  onClick={() => toggle(parent.id)}
-                >
-                  <span className="text-redlog-text-faint shrink-0 w-1.5">{open ? '▾' : '▸'}</span>
-                  <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
-                    {formatTime(parent.timestamp, { seconds: true })}
-                  </span>
-                  <span title={titleOf(parent)} className="text-redlog-text truncate">{titleOf(parent)}</span>
-                  <span className="ml-auto flex items-center gap-2 shrink-0 font-mono text-redlog-text-faint">
-                    {/* The statuses, not just a total. 904 of the 920 are 404s
-                        nobody wants to read; what the operator came for is
-                        whether anything answered 200. */}
-                    {statusSummary(children).slice(0, 3).map(({ status, count }) => (
-                      <span key={status} className={status >= 200 && status < 300 ? 'text-redlog-safe' : ''}>
-                        {status}&times;{count}
-                      </span>
-                    ))}
-                    <span>{t('timeline.fold.count', { count: children.length })}</span>
-                  </span>
-                </div>
-                {/* The basis, named. A fold is the app asserting these
-                    requests came from that command, and a reader is entitled
-                    to know what it is asserting it from — here, the socket's
-                    owning process, which is recorded rather than inferred. */}
-                {open && (
-                  <p className="px-4 py-1 text-xs text-redlog-text-faint border-b border-redlog-border-subtle/30">
-                    {t('timeline.fold.basis')}
-                  </p>
-                )}
-                {open && children.map((c) => eventRow(c, true))}
-              </div>
-            )
-          }
-          return eventRow(row.event, false)
-        })}
+        <TimelineEventRail
+          events={events} annotatedIds={annotatedIds} selectedId={selectedId} pluginTypes={pluginTypes}
+          showOperator={showOperator} operatorLabel={operatorLabel} titleOf={titleOf} amendSuffix={amendSuffix}
+          amendCountOf={amendCountOf} onSelect={onSelect} t={t}
+        />
       </div>
     </div>
   )
-
-  function eventRow(evt: RedLogEvent, nested: boolean): JSX.Element {
-          const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
-          const isSel = selectedId === evt.id
-          const amended = amendCountOf(evt.id)
-          return (
-            <div
-              key={evt.id}
-              className={`flex items-center gap-2 ${nested ? 'pl-8 pr-4' : 'px-4'} py-1 cursor-pointer transition-colors text-xs focus-visible:outline focus-visible:outline-red-400 border-b border-redlog-border-subtle/30 ${
-                isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
-              }`}
-              role="button"
-              tabIndex={0}
-              aria-pressed={isSel}
-              onClick={() => onSelect(evt)}
-              onKeyDown={(e) => {
-                // The standard Timeline is read from this list, so a row has to
-                // be reachable and selectable without a pointer.
-                if (e.target !== e.currentTarget) return
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(evt) }
-              }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
-              <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
-                {formatTime(evt.timestamp, { seconds: true })}
-              </span>
-              {/* v0.14 §9.1: per-row tier badge, icon-only to keep the row
-                  light; the labelled version lives in the detail panel. */}
-              <TierBadge tier={evt.tier} variant="row" />
-              {showOperator && (
-                <span className="text-redlog-text-dim font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
-                  {operatorLabel(evt.operatorId)}
-                </span>
-              )}
-              <span title={`${titleOf(evt)}${amendSuffix(evt)}`} className="text-redlog-text-dim truncate">{titleOf(evt)}</span>
-              {/* How a finished command ended — the number the row's title does
-                  not carry. Only a command_end has one; every other row stays
-                  as it was. */}
-              {evt.agentType === 'shell' && evt.data?.subtype === 'command_end' && typeof evt.data.exit_code === 'number' && (
-                <span data-testid="log-row-result" className={`ml-auto shrink-0 font-mono tabular-nums ${evt.data.exit_code === 0 ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
-                  {t('transcript.metaExit', { code: evt.data.exit_code })}{typeof evt.data.duration_sec === 'number' ? ` · ${evt.data.duration_sec}s` : ''}
-                </span>
-              )}
-              {/* Only for a marker that HAS been corrected (§22). Never
-                  truncated, and never in danger red: an ordinary correction
-                  must not read as an alarm. */}
-              {amended !== undefined && (
-                <span
-                  data-testid="marker-amend-count"
-                  className="text-redlog-text-dim font-mono tabular-nums shrink-0"
-                  title={t('marker.amendedTimesHint')}
-                >
-                  {t('marker.amendedTimes', { count: amended })}
-                </span>
-              )}
-            </div>
-          )
-  }
 }

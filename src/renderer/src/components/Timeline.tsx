@@ -29,7 +29,7 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, binHeight, densestRun, placeRulerMarkers, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents, countWindowEvents, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
@@ -1294,11 +1294,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
     [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches]
   )
-  const recentUnfiltered = useMemo(
-    () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp),
+  // In-window totals, memoised and uncapped: the rail shows the newest 50 and
+  // says "of N" with the same window rule, and the hidden-by-query count is
+  // the difference of two real totals rather than of two capped slices.
+  const windowTotalAll = useMemo(
+    () => countWindowEvents(events, hiddenLanes, pluginTypes, vp),
     [events, hiddenLanes, pluginTypes, vp]
   )
-  const hiddenByQuery = queryActive ? recentUnfiltered.length - recentEvents.length : 0
+  const windowTotal = useMemo(
+    () => (queryActive ? countWindowEvents(events, hiddenLanes, pluginTypes, vp, filterMatches) : windowTotalAll),
+    [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches, windowTotalAll]
+  )
+  const hiddenByQuery = queryActive ? windowTotalAll - windowTotal : 0
 
   const sliceExportRequest = useMemo<ExportRequest>(() => {
     const since = Math.round(fromX((view.left / 100) * TRACK_W))
@@ -2694,6 +2701,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
           stripsOnly={timelineMode === 'lanes'}
           events={recentEvents}
+          total={windowTotal}
           selectedId={selectedEvent?.id ?? null}
           detailOpen={detailOpen}
           pluginTypes={pluginTypes}

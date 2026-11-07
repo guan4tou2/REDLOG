@@ -2343,5 +2343,9 @@
   "timeline.lanes.loadedRange": "Loaded range {{from}} ~ {{to}}",
   "timeline.lanes.collapse": "Back to standard view",
   "timeline.lanes.rowCount": "({{count}})",
-  "timeline.lanes.rowCountPartial": "({{count}}+)"
+  "timeline.lanes.rowCountPartial": "({{count}}+)",
+  "timeline.rail.capped": "Latest {{shown}} of {{total}}",
+  "timeline.card.scopeObservation": "Out-of-scope observation",
+  "timeline.card.lootHit": "Signature match",
+  "timeline.card.stdout": "stdout summary"
 }

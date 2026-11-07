@@ -2343,5 +2343,9 @@
   "timeline.lanes.loadedRange": "已載入範圍 {{from}} ~ {{to}}",
   "timeline.lanes.collapse": "折疊回標準流",
   "timeline.lanes.rowCount": "({{count}} 筆)",
-  "timeline.lanes.rowCountPartial": "({{count}}+ 筆)"
+  "timeline.lanes.rowCountPartial": "({{count}}+ 筆)",
+  "timeline.rail.capped": "最新 {{shown}}／{{total}}",
+  "timeline.card.scopeObservation": "範圍外觀測",
+  "timeline.card.lootHit": "特徵命中",
+  "timeline.card.stdout": "標準輸出摘要"
 }
