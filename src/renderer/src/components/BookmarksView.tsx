@@ -154,7 +154,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
           {marks.length > 0 && (
             // Gives way when the window is short (small window at high zoom): a line here
             // pushed the list under the status bar. The empty state carries the same fact.
-            <p data-testid="bookmarks-scope-note" className="mb-2 hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('bookmarks.scopeNote')}</p>
+            <p className="mb-2 hidden rounded border border-redlog-border bg-redlog-surface px-3 py-2 text-xs text-redlog-text-dim [@media(min-height:640px)]:block"><span aria-hidden className="mr-1.5">ⓘ</span><span data-testid="bookmarks-scope-note">{t('bookmarks.scopeNote')}</span></p>
           )}
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'

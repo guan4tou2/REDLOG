@@ -23,7 +23,7 @@ describe('the bookmarks scope note', () => {
     install([{ id: 'a', title: 'Admin panel', url: null, note: '', createdAt: 1, context: {} }])
     render(<I18nProvider><BookmarksView /></I18nProvider>)
     const note = await screen.findByTestId('bookmarks-scope-note')
-    expect(note.textContent).toBe('Local working notes: editable, not on the chain, not in the evidence bundle')
+    expect(note.textContent).toBe('Bookmarks are local, editable working notes: not chained events, and not exported with the evidence bundle. They hold a title, a URL and a note.')
   })
 
   it('leaves the empty state to its own explanation', async () => {
