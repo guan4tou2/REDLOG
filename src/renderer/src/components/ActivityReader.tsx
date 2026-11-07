@@ -169,7 +169,7 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
               {item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}
             </span>
             <time className="font-mono text-redlog-text-dim shrink-0">{formatTime(item.firstAt, { seconds: true })}</time>
-            <span data-testid="reader-headline" title={eventTitle(item.anchor)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor)}</span>
+            <span data-testid="reader-headline" title={eventTitle(item.anchor, t)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor, t)}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex items-center gap-1 rounded border border-redlog-border bg-redlog-bg p-0.5">

@@ -422,7 +422,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
         </div>
         <div className="flex flex-wrap gap-1">
           {onOpenInTimeline && (
-            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('loot.openInTimeline')}</Button>
+            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('bookmarks.goToTime')}</Button>
           )}
           <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
           <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>

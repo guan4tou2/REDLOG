@@ -116,7 +116,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
             <span className="min-w-0 truncate text-xs text-redlog-text-dim" title={item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
             <span className="min-w-0">
-              <span className="block font-mono text-sm break-words">{eventTitle(item.anchor)}</span>
+              <span className="block font-mono text-sm break-words">{eventTitle(item.anchor, t)}</span>
               <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-redlog-text-dim">
                 <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
                 {(() => {

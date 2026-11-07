@@ -1406,7 +1406,7 @@
   "timeline.doNotExportActive": "Excluded from export",
   "timeline.doNotExportHint": "This event will be dropped from all exports",
   "sidebar.http_history": "HTTP",
-  "firstRun.title": "Get this engagement fully recorded",
+  "firstRun.title": "Start recording this engagement",
   "firstRun.hint": "Two core captures, each verified by something that actually arrives. Do them in either order.",
   "firstRun.recording": "Recently recorded",
   "firstRun.stuckTitle": "A command ran, but nothing arrived",
@@ -2195,7 +2195,7 @@
   "dashboard.freshnessNote": "Each status is as its source last reported it",
   "ip.cardTitle": "Current outbound connection",
   "dashboard.recordedEvents": "events recorded in this project",
-  "dashboard.chained": "In the chain (hashed)",
+  "dashboard.chained": "Written to the hash chain",
   "dashboard.localOnly": "Local only (not in the chain hash)",
   "dashboard.anchorLabel": "OTS anchor",
   "dashboard.anchor.none": "none yet",
@@ -2210,5 +2210,6 @@
   "terminal.searchNone": "No matches",
   "terminal.searchPosition": "{{index}} of {{total}}",
   "terminal.searchTotal": "{{total}} matches",
-  "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle"
+  "bookmarks.scopeNote": "Local working notes: editable, not on the chain, not in the evidence bundle",
+  "bookmarks.goToTime": "Go to this time"
 }
