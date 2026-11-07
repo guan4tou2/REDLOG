@@ -29,7 +29,7 @@ interface Bridge {
 // The UI is English or Chinese depending on the machine; the specs match both
 // rather than depend on which.
 const IMPORT = /Import Profile|匯入設定檔/
-const CREATE = /^(Create|建立)$/
+const CREATE = /^(Create project|建立專案)$/
 const CLEAR = /Clear imported settings|清除已匯入的設定/
 const EXCLUDED = /Excluded|排除/
 const NO_WARN = /No warning on out-of-scope|不警告範圍外目標/

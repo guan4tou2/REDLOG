@@ -81,6 +81,15 @@ describe('create dialog (Stitch 01)', () => {
     expect(screen.getByTestId('create-project-advanced-summary').textContent).toBe('1 authorised target(s) set')
   })
 
+  it('keeps what was typed when the dialog is closed and opened again', async () => {
+    mount()
+    name('Startup Lab')
+    fireEvent.click(screen.getByTestId('create-project-close'))
+    await waitFor(() => expect(screen.queryByTestId('create-project-form')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Create new project' }))
+    expect((screen.getByPlaceholderText('e.g. Client-Pentest-Q3') as HTMLInputElement).value).toBe('Startup Lab')
+  })
+
   it('closes from the title bar', async () => {
     mount()
     fireEvent.click(screen.getByTestId('create-project-close'))

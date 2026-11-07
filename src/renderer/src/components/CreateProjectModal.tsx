@@ -63,13 +63,10 @@ export function CreateProjectModal({ open, onClose, onCreated, root }: {
   const [excludeDraft, setExcludeDraft] = useState('')
   const [residualInvalid, setResidualInvalid] = useState<string[]>([])
 
-  // Every opening starts from an empty form.
-  useEffect(() => {
-    if (!open) return
-    setName(''); setNameMissing(false); setCreateError(''); setAdvancedOpen(false)
-    setImported(null); setImportFailure(null)
-    setTargets([]); setExcludes([]); setTargetDraft(''); setExcludeDraft(''); setResidualInvalid([])
-  }, [open])
+  // A draft survives closing the dialog (Escape, Cancel, ×): what was typed is
+  // still there when it is opened again, as before the dialog had a title bar.
+  // Only the "name missing" prompt starts over.
+  useEffect(() => { if (open) setNameMissing(false) }, [open])
 
   const busy = creating || importing
   const close = (): void => { if (!busy) onClose() }
