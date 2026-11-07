@@ -95,8 +95,29 @@ export function hasSpecificEventDetail(e: Pick<RedLogEvent, 'agentType' | 'data'
   }
 }
 
-/** Events whose saved content the Reader can show: a finished command's output
- *  and an HTTP exchange's bodies. The detail body hosts the one Reader for both. */
+type InlineBody = { data?: string; encoding?: string } | undefined
+
+/** An inline preview short enough to be shown in the body itself. */
+const inlineText = (body: InlineBody): string | null =>
+  body?.encoding === 'text' && typeof body.data === 'string' && body.data.length <= 65536 ? body.data : null
+
+/** A body that is saved (a ref, or inline but too large to show) and so is read
+ *  in the Reader rather than inline. */
+export const hasSavedBody = (inline: InlineBody, ref: unknown): boolean =>
+  !!(inline?.data || ref) && !inlineText(inline)
+
+const hasFileRef = (value: unknown): boolean =>
+  !!value && typeof (value as { file?: unknown }).file === 'string'
+
+/** Events with saved content the Reader can show: the same condition the body
+ *  uses to offer its own "Saved content" button, so the bar never opens an
+ *  empty Reader. */
 export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
-  return (e.agentType === 'shell' && e.data?.subtype === 'command_end') || e.agentType === 'scanner'
+  const d = (e.data ?? {}) as Record<string, unknown>
+  if (e.agentType === 'shell' && d.subtype === 'command_end') return hasFileRef(d.stdout_ref) || hasFileRef(d.stderr_ref)
+  if (e.agentType !== 'scanner') return false
+  return hasSavedBody(d.request_body as InlineBody, d.request_body_ref)
+    || hasSavedBody(d.response_body as InlineBody, d.response_body_ref)
+    || hasSavedBody(d.ws_body as InlineBody, d.ws_body_ref)
+    || hasSavedBody(d.tcp_body as InlineBody, d.tcp_body_ref)
 }

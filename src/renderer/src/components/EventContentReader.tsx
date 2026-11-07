@@ -146,7 +146,11 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   </div>
 }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor, defaultExpanded = false }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor; defaultExpanded?: boolean }): JSX.Element {
+/** Reader state held by a parent that wants to open it from elsewhere. */
+export type ReaderMode = 'closed' | 'inline' | 'expanded'
+export interface ReaderControl { mode: ReaderMode; setMode: (mode: ReaderMode) => void }
+
+export function EventContentReader({ projectId, eventId, active = true, anchor, expanded: expandedProp, onExpandedChange }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor; expanded?: boolean; onExpandedChange?: (expanded: boolean) => void }): JSX.Element {
   const { t } = useI18n()
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
@@ -154,7 +158,9 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
     return reply.value
   }, true, [projectId, eventId])
   const [selected, setSelected] = useState<string | null>(anchor?.ref.field ?? null)
-  const [expanded,setExpanded]=useState(defaultExpanded)
+  const [ownExpanded,setOwnExpanded]=useState(false)
+  const expanded=expandedProp??ownExpanded
+  const setExpanded=(next:boolean):void=>{if(onExpandedChange)onExpandedChange(next);else setOwnExpanded(next)}
   const root=useRef<HTMLDivElement>(null)
   useFocusTrap(root,expanded&&active)
   useEffect(()=>{if(!active)setExpanded(false)},[active])
@@ -181,7 +187,7 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
     {fields.state.phase === 'failed' && <div role="alert" className="text-amber-300 text-xs">{fields.state.error} <Button onClick={fields.retry}>{t('common.retry')}</Button></div>}
     {fields.state.phase === 'loaded' && !current && <p className="text-xs text-redlog-text-dim">{t('content.noText')}</p>}
     {current && <>
-      <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(value=>!value)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
+      <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(!expanded)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
       <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
         {fields.state.value?.map(f => <option key={f.field} value={f.field}>{t(`content.field.${f.field}`)}</option>)}
       </select></div>

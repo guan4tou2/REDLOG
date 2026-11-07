@@ -20,6 +20,7 @@ import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsol
 import { hasSpecificEventDetail } from '../../lib/timelineEvents'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
+import type { ReaderControl } from '../EventContentReader'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -49,9 +50,7 @@ export interface TimelineEventInspectorProps {
   onJump: (e: RedLogEvent) => void
   /** The saved-content Reader, opened from the bar or from the body's own
    *  button; the state lives with the selection so both reach the same one. */
-  readerOpen?: boolean
-  readerExpanded?: boolean
-  onReaderOpenChange?: (open: boolean) => void
+  reader?: ReaderControl
   /** Dock position, and a toggle for it, so the control sits in the pane's own
    *  header (as on the HTTP log) rather than off on the toolbar. */
   layout?: DetailLayout
@@ -71,7 +70,7 @@ export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, unfinished = false, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
-  readerOpen, readerExpanded, onReaderOpenChange,
+  reader,
   layout, onToggleLayout, onClose
 }: TimelineEventInspectorProps): JSX.Element {
   // Local, and deliberately not persisted: it survives stepping and following
@@ -414,7 +413,7 @@ export function TimelineEventInspector({
       {event.agentType === 'shell'
         && event.data?.subtype === 'command_end'
         && (
-          <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} readerOpen={readerOpen} readerExpanded={readerExpanded} onReaderOpenChange={onReaderOpenChange} />
+          <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} reader={reader} />
         )}
       {unfinished && event.agentType === 'shell' && event.data?.subtype === 'command_start' && <CommandUnfinishedNote />}
       {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
@@ -436,7 +435,7 @@ export function TimelineEventInspector({
           the raw-JSON toggle: unformatted, redaction-masked, in a 120px
           box. Same treatment as shell and agent events now. */}
       {event.agentType === 'scanner' && (
-        <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} readerOpen={readerOpen} readerExpanded={readerExpanded} onReaderOpenChange={onReaderOpenChange} />
+        <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} reader={reader} />
       )}
       {event.agentType === 'browser' && (
         <BrowserConsoleDetail data={event.data as Record<string, unknown>} />

@@ -53,7 +53,8 @@ describe('panning the track is not a click on the dot underneath', () => {
     fireEvent.mouseDown(dot, { button: 0, clientX: 100 })
     fireEvent.mouseMove(window, { clientX: 160 })
     fireEvent.mouseUp(window, { clientX: 160 })
-    fireEvent.click(dot)
+    // A deliberate click's count: what a real click that ends a pan carries.
+    fireEvent.click(dot, { detail: 1 })
 
     expect(screen.queryByTestId(SELECTED)).not.toBeNull()
   })

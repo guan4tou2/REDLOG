@@ -1,6 +1,6 @@
 import { commandOutputState } from '../../../core/content-contract'
 import { useReadState } from '../lib/readState'
-import { EventContentReader } from './EventContentReader'
+import { EventContentReader, type ReaderControl } from './EventContentReader'
 import { Button } from './Button'
 // Structured detail-panel bodies for specific event types, pulled out of
 // Timeline.tsx. Each renders in the inspector when its event type is selected.
@@ -72,15 +72,15 @@ export function CommandUnfinishedNote(): JSX.Element {
 }
 
 /** Structured detail body for a shell command_end event. */
-export function CommandEndDetail({ data, projectId, eventId, readerOpen: readerOpenProp, readerExpanded, onReaderOpenChange }: {
+export function CommandEndDetail({ data, projectId, eventId, reader }: {
   data: Record<string, unknown>; projectId: string; eventId: string
-  /** Controlled by the Timeline so its bar can open the same Reader. */
-  readerOpen?: boolean; readerExpanded?: boolean; onReaderOpenChange?: (open: boolean) => void
+  /** Held by the Timeline so its bar can open the same Reader. */
+  reader?: ReaderControl
 }): JSX.Element {
   const { t } = useI18n()
   const [ownReaderOpen, setOwnReaderOpen] = useState(false)
-  const readerOpen = readerOpenProp ?? ownReaderOpen
-  const setReaderOpen = onReaderOpenChange ?? setOwnReaderOpen
+  const readerOpen = reader ? reader.mode !== 'closed' : ownReaderOpen
+  const setReaderOpen = (open: boolean): void => { if (reader) reader.setMode(open ? 'inline' : 'closed'); else setOwnReaderOpen(open) }
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
@@ -112,7 +112,7 @@ export function CommandEndDetail({ data, projectId, eventId, readerOpen: readerO
 
       {(stdoutRef || stderrRef || readerOpen) && <>
         <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>
-        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} defaultExpanded={readerExpanded} />}
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
       </>}
       {hasStreamedOutput && (
         <LateOutput commandId={data.command_id as string} />

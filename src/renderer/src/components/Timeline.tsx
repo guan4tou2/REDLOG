@@ -19,6 +19,7 @@ import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/Time
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
+import type { ReaderMode } from './EventContentReader'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
@@ -166,10 +167,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // another page. It is only ever open while something is selected.
   const [detailOpen, setDetailOpen] = useState(false)
   // The saved-content Reader, held here so the bar and the body reach the
-  // same one. It belongs to the selection and to an open body.
-  const [reader, setReader] = useState<'closed' | 'inline' | 'expanded'>('closed')
-  useEffect(() => { setReader('closed') }, [selectedEvent?.id])
-  useEffect(() => { if (!detailOpen) setReader('closed') }, [detailOpen])
+  // same one. It belongs to one event (another selection reads as closed in
+  // the same render, so no Reader mounts for the wrong event) and to an open body.
+  const [readerState, setReaderState] = useState<{ id: string | null; mode: ReaderMode }>({ id: null, mode: 'closed' })
+  const readerMode: ReaderMode = readerState.id === (selectedEvent?.id ?? null) ? readerState.mode : 'closed'
+  const selectedIdForReader = selectedEvent?.id ?? null
+  const setReader = useCallback((mode: ReaderMode) => setReaderState({ id: selectedIdForReader, mode }), [selectedIdForReader])
+  useEffect(() => { if (!detailOpen) setReaderState({ id: null, mode: 'closed' }) }, [detailOpen])
   // The one contiguous range the panel draws: every admitted row from the
   // newest down to `pageCursor`, the keyset position the next page starts at.
   // A shared-filter change starts a new generation; a reply to an older one
@@ -1654,15 +1658,29 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // is two clicks, so the second (`detail` 2+) only keeps the selection and
   // leaves the toggle-off to a deliberate single click (`detail` 1). A click
   // with no count is the keyboard's, and never toggles off.
+  //
+  // The first click can change the layout under the pointer (the selected card
+  // grows, a dot loses its raised z-index), so the second click and the
+  // double-click may land on a neighbour. A double-click therefore means the
+  // event the FIRST click landed on.
+  const firstClick = useRef<{ evt: RedLogEvent; at: number } | null>(null)
+  const firstClickTarget = (evt: RedLogEvent): RedLogEvent => {
+    const first = firstClick.current
+    return first && Date.now() - first.at < 700 ? first.evt : evt
+  }
   const pickEvent = useCallback((evt: RedLogEvent, detail: number) => {
-    const isSelected = selectedRef.current?.id === evt.id
-    if (detail > 1 || !isSelected) { setSelectedEvent(evt); return }
+    if (detail > 1) { setSelectedEvent(firstClickTarget(evt)); return }
+    if (detail === 1) firstClick.current = { evt, at: Date.now() }
+    if (selectedRef.current?.id !== evt.id) { setSelectedEvent(evt); return }
     if (detail === 1) { setSelectedEvent(null); setDetailOpen(false) }
   }, [])
-  const openEventBody = useCallback((evt: RedLogEvent) => {
-    setSelectedEvent(evt)
+  // Double-click opens; Enter toggles the body on the event it is pressed on.
+  const openEventBody = useCallback((evt: RedLogEvent, how: 'dblclick' | 'key') => {
+    const target = how === 'dblclick' ? firstClickTarget(evt) : evt
+    if (how === 'key' && detailOpen && selectedRef.current?.id === target.id) { setDetailOpen(false); return }
+    setSelectedEvent(target)
     setDetailOpen(true)
-  }, [])
+  }, [detailOpen])
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
@@ -2550,15 +2568,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                         if (!single) { setCluster({ x: c.x, y: c.y, events: c.events }); return }
                         pickEvent(evt, e.detail)
                       }}
-                      onDoubleClick={() => { if (single && !didPan.current) openEventBody(evt) }}
+                      onDoubleClick={() => { if (single && !didPan.current) openEventBody(evt, 'dblclick') }}
                       onKeyDown={(e) => {
                         // Enter opens (or closes) the body on this dot; the
                         // native click it would also fire is not wanted.
                         if (e.key !== 'Enter' || !single || e.metaKey || e.ctrlKey || e.altKey) return
                         e.preventDefault()
                         e.stopPropagation()
-                        if (sel && detailOpen) setDetailOpen(false)
-                        else openEventBody(evt)
+                        openEventBody(evt, 'key')
                       }}
                     >
                       <div
@@ -2670,7 +2687,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
-                            setDetailOpen(true)
                             setCluster(null)
                             // Zoom based on cluster time span rather than a hardcoded 8×
                             // so a 500-event burst in 1s and a 5-event burst in 30min
@@ -2833,12 +2849,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             showJson={showJson}
             lookup={(id) => eventsMapRef.current.get(id)}
             onJump={(e) => { setSelectedEvent(e); setDetailOpen(true); scrollToEvent(e) }}
-            readerOpen={reader !== 'closed'}
-            readerExpanded={reader === 'expanded'}
-            onReaderOpenChange={(open) => setReader(open ? 'inline' : 'closed')}
+            reader={{ mode: readerMode, setMode: setReader }}
             layout={layout}
             onToggleLayout={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
-            onClose={() => { setSelectedEvent(null); setDetailOpen(false) }}
+            onClose={() => setDetailOpen(false)}
             onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
             onResolve={(id) => void resolveReferencedEvent(id)}
             scrollToTs={scrollToTs}

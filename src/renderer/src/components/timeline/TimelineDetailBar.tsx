@@ -16,15 +16,27 @@ import { hasContentReader } from '../../lib/timelineEvents'
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 type ScopePolicy = { targets: string[]; excludeTargets: string[] }
 
-/** `undefined` while the policy is being read; `null` when it could not be. */
-function useScopePolicy(eventId: string): ScopePolicy | null | undefined {
+/** `undefined` while the policy is being read; `null` when it could not be.
+ *  Not read at all for an event with no target, and read again when the scope
+ *  changes (as the HTTP log does). */
+function useScopePolicy(wanted: boolean): ScopePolicy | null | undefined {
   const [policy, setPolicy] = useState<ScopePolicy | null | undefined>(undefined)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
+    if (!wanted) return
     let live = true
     new Promise<ScopePolicy | null>((resolve) => resolve(window.redlog.scope.policy()))
       .then((p) => { if (live) setPolicy(p ?? null) }, () => { if (live) setPolicy(null) })
     return () => { live = false }
-  }, [eventId])
+  }, [wanted, attempt])
+  useEffect(() => {
+    if (!wanted) return
+    try {
+      return window.redlog.events.onNewBatch((events) => {
+        if (events.some((e) => e.data?.subtype === 'config_changed' || e.data?.subtype === 'scope_recomputed')) setAttempt((n) => n + 1)
+      })
+    } catch { return undefined }
+  }, [wanted])
   return policy
 }
 
@@ -56,7 +68,7 @@ export function TimelineDetailBar({
   onOpenReader: () => void
   t: Translate
 }): JSX.Element {
-  const policy = useScopePolicy(event.id)
+  const policy = useScopePolicy(!!event.targetId)
   const lane = toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)
   const exit = event.data?.exit_code
   const duration = event.data?.duration_sec

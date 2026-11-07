@@ -92,9 +92,11 @@ describe('bar facts', () => {
 })
 
 describe('bar actions', () => {
-  it('wires Details, copy reference and the activity link; the Reader only where there is content', () => {
+  const refd = { subtype: 'command_end', command: 'x', stdout_ref: { sha256: 'a', size: 9, file: 'f', encoding: 'text' } }
+
+  it('wires Details, copy reference and the activity link; the Reader only where there is content to read', () => {
     setPolicy({ targets: [], excludeTargets: [] })
-    const { toggle, reader, open } = drawBar(ev('shell', { subtype: 'command_end', command: 'x' }))
+    const { toggle, reader, open } = drawBar(ev('shell', refd))
     fireEvent.click(screen.getByTestId('detail-toggle-body'))
     expect(toggle).toHaveBeenCalled()
     fireEvent.click(screen.getByTestId('detail-open-reader'))
@@ -102,9 +104,39 @@ describe('bar actions', () => {
     fireEvent.click(screen.getByTestId('detail-open-activity'))
     expect(open).toHaveBeenCalledWith('x1', 1_700_000_000_000)
     expect(screen.getByTestId('detail-copy-ref')).not.toBeNull()
-    cleanup()
-    drawBar(ev('marker', { title: 'n' }))
+  })
+
+  it.each([
+    ['a marker', ev('marker', { title: 'n' })],
+    ['a command with no saved output', ev('shell', { subtype: 'command_end', command: 'x', stdout: 'short' })],
+    ['a scanner gap', ev('scanner', { subtype: 'capture_gap' })],
+    ['an HTTP response whose body is shown inline', ev('scanner', { subtype: 'http_response', response_body: { data: 'hi', encoding: 'text' } })]
+  ])('offers no Reader for %s', (_n, event) => {
+    setPolicy({ targets: [], excludeTargets: [] })
+    drawBar(event)
     expect(screen.queryByTestId('detail-open-reader')).toBeNull()
+  })
+
+  it('offers the Reader for an HTTP body that is only saved', () => {
+    setPolicy({ targets: [], excludeTargets: [] })
+    drawBar(ev('scanner', { subtype: 'http_response', response_body_ref: { sha256: 'a', size: 1, file: 'f', encoding: 'text' } }))
+    expect(screen.getByTestId('detail-open-reader')).not.toBeNull()
+  })
+
+  it('reads the scope again when it changes, and not at all for an event with no target', async () => {
+    const batch: { cb: (e: unknown[]) => void } = { cb: () => {} }
+    const policy = vi.fn(async () => ({ targets: ['10.0.0.0/24'], excludeTargets: [] }))
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      scope: { policy }, events: { onNewBatch: (cb: (e: unknown[]) => void) => { batch.cb = cb; return () => {} } }
+    }
+    drawBar(ev('shell', { subtype: 'command_end', command: 'x' }, '10.0.0.5'))
+    await waitFor(() => expect(policy).toHaveBeenCalledTimes(1))
+    act(() => batch.cb([{ data: { subtype: 'scope_recomputed' } }]))
+    await waitFor(() => expect(policy).toHaveBeenCalledTimes(2))
+    cleanup()
+    drawBar(ev('shell', { subtype: 'command_end', command: 'x' }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(policy).toHaveBeenCalledTimes(2)
   })
 
   it('Details reports whether the body is open', () => {
@@ -144,21 +176,48 @@ describe('click contract on the track', () => {
     await ready()
     const dot = dots()[0]
     fireEvent.click(dot, { detail: 1 })
+    await waitFor(() => expect(bar()).not.toBeNull())
+    // Read between the clicks: a second click that ignored its count would
+    // clear the selection here, and the double-click would then paper over it.
     fireEvent.click(dot, { detail: 2 })
+    expect(bar()).not.toBeNull()
     fireEvent.doubleClick(dot)
     await waitFor(() => expect(body()).not.toBeNull())
     expect(bar()).not.toBeNull()
   })
 
-  it('a double-click on the already selected dot also ends selected with the body open', async () => {
+  it('a double-click on the already selected dot ends selected with the body open', async () => {
     await ready()
     const dot = dots()[0]
     fireEvent.click(dot, { detail: 1 })
     await waitFor(() => expect(bar()).not.toBeNull())
     fireEvent.click(dot, { detail: 1 })
+    expect(bar()).toBeNull()
     fireEvent.click(dot, { detail: 2 })
+    expect(bar()).not.toBeNull()
     fireEvent.doubleClick(dot)
     await waitFor(() => expect(body()).not.toBeNull())
+  })
+
+  it('a double-click opens the event the FIRST click landed on, even if the layout moved under the pointer', async () => {
+    await ready()
+    const [first, second] = dots()
+    fireEvent.click(first, { detail: 1 })
+    await waitFor(() => expect(bar()).not.toBeNull())
+    // The second click and the double-click are delivered to a neighbour.
+    fireEvent.click(second, { detail: 2 })
+    fireEvent.doubleClick(second)
+    await waitFor(() => expect(body()).not.toBeNull())
+    expect(screen.getByTestId('timeline-bar-title').textContent).toContain('cmd e1')
+  })
+
+  it('a plain click on another dot still selects that dot', async () => {
+    await ready()
+    const [first, second] = dots()
+    fireEvent.click(first, { detail: 1 })
+    await waitFor(() => expect(bar()).not.toBeNull())
+    fireEvent.click(second, { detail: 1 })
+    await waitFor(() => expect(screen.getByTestId('timeline-bar-title').textContent).toContain('cmd e2'))
   })
 
   it('only a deliberate single click on the selected dot clears it; the keyboard click and a second click do not', async () => {
@@ -230,15 +289,107 @@ describe('click contract on the track', () => {
     expect(body()).toBeNull()
   })
 
-  it('opens the Reader from the bar for a finished command, once, in the body', async () => {
-    ;(window as unknown as { redlog: { content: unknown } }).redlog.content = {
-      list: vi.fn(async () => ({ ok: true, value: [] }))
-    }
+  describe('the Reader', () => {
+    const withRef = (id: string, ts: number) => makeEvent(id, ts, 'shell', {
+      data: { subtype: 'command_end', command: `cmd ${id}`, stdout_ref: { sha256: 'a', size: 9, file: 'f', encoding: 'text' } }
+    })
+    let list: ReturnType<typeof vi.fn>
+    beforeEach(() => {
+      list = vi.fn(async ({ eventId }: { eventId: string }) => ({
+        ok: true,
+        value: [{ field: 'stdout', status: 'available', ref: { projectId: 'eng', eventId, field: 'stdout', version: 'v' }, bytes: 4, format: 'utf8', capture: 'unknown' }]
+      }))
+      b.queryPage.mockResolvedValue(page([withRef('e1', T0 - 2000), withRef('e2', T0 - 1000), makeEvent('e3', T0)]))
+      ;(window as unknown as { redlog: { content: unknown } }).redlog.content = {
+        list,
+        read: vi.fn(async () => ({ ok: true, value: { offset: 0, end: 4, total: 4, text: 'body', format: 'utf8', hasMore: false, nextCursor: null } }))
+      }
+    })
+    const dialog = (): HTMLElement | null => screen.queryByRole('dialog', { name: /./ })
+
+    it('opens from the bar for a command with saved output, once, in the body', async () => {
+      await ready()
+      fireEvent.click(dots()[0], { detail: 1 })
+      await waitFor(() => expect(bar()).not.toBeNull())
+      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      await waitFor(() => expect(body()).not.toBeNull())
+      await waitFor(() => expect(screen.getAllByRole('dialog', { name: /./ })).toHaveLength(1))
+    })
+
+    it('has no Reader button for an event with nothing saved', async () => {
+      await ready()
+      fireEvent.click(dots()[2], { detail: 1 })
+      await waitFor(() => expect(bar()).not.toBeNull())
+      expect(screen.queryByTestId('detail-open-reader')).toBeNull()
+    })
+
+    it('always ends expanded: from the inline Reader, and again after collapsing it', async () => {
+      await ready()
+      fireEvent.doubleClick(dots()[0])
+      await waitFor(() => expect(body()).not.toBeNull())
+      fireEvent.click(await screen.findByText('Saved content'))
+      await waitFor(() => expect(list).toHaveBeenCalled())
+      expect(dialog()).toBeNull()
+      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      await waitFor(() => expect(dialog()).not.toBeNull())
+      fireEvent.click(screen.getByText('Close expanded reader'))
+      await waitFor(() => expect(dialog()).toBeNull())
+      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      await waitFor(() => expect(dialog()).not.toBeNull())
+    })
+
+    it('mounts no Reader for the next event when the selection changes with one open', async () => {
+      await ready()
+      fireEvent.doubleClick(dots()[1])
+      await waitFor(() => expect(body()).not.toBeNull())
+      fireEvent.click(await screen.findByText('Saved content'))
+      await waitFor(() => expect(list).toHaveBeenCalledWith(expect.objectContaining({ eventId: 'e2' })))
+      fireEvent.click(screen.getByTestId('detail-step-prev'))
+      await waitFor(() => expect(screen.getByTestId('timeline-bar-title').textContent).toContain('cmd e1'))
+      await new Promise((r) => setTimeout(r, 30))
+      expect(list.mock.calls.some(([req]) => (req as { eventId: string }).eventId === 'e1')).toBe(false)
+    })
+  })
+
+  it('closing the body with its X keeps the selection and the bar', async () => {
     await ready()
-    fireEvent.click(dots()[2], { detail: 1 })
-    await waitFor(() => expect(bar()).not.toBeNull())
-    await act(async () => { fireEvent.click(screen.getByTestId('detail-open-reader')) })
+    fireEvent.doubleClick(dots()[0])
     await waitFor(() => expect(body()).not.toBeNull())
-    await waitFor(() => expect(screen.getAllByRole('dialog', { name: /./ })).toHaveLength(1))
+    fireEvent.click(screen.getByTestId('timeline-detail-close'))
+    await waitFor(() => expect(body()).toBeNull())
+    expect(bar()).not.toBeNull()
+  })
+})
+
+describe('click contract on the card rail', () => {
+  const T0 = 1_700_000_000_000
+  const cards = (): HTMLElement[] => screen.queryAllByTestId('rail-card')
+  const bar = (): HTMLElement | null => screen.queryByTestId('timeline-detail-panel')
+  const body = (): HTMLElement | null => screen.queryByTestId('timeline-detail-body')
+  beforeEach(() => {
+    const b = installTimelineBridge({ timelineMode: 'standard' })
+    b.queryPage.mockResolvedValue(page([makeEvent('e1', T0 - 2000), makeEvent('e2', T0 - 1000), makeEvent('e3', T0)]))
+    render(<I18nProvider><FilterProvider><TimelinePanel /></FilterProvider></I18nProvider>)
+  })
+  const ready = async (): Promise<void> => { await waitFor(() => expect(cards()).toHaveLength(3)) }
+
+  it('a click selects without the body; a double-click opens the card the first click landed on', async () => {
+    await ready()
+    fireEvent.click(cards()[0], { detail: 1 })
+    await waitFor(() => expect(bar()).not.toBeNull())
+    expect(body()).toBeNull()
+    fireEvent.click(cards()[1], { detail: 2 })
+    fireEvent.doubleClick(cards()[1])
+    await waitFor(() => expect(body()).not.toBeNull())
+    expect(screen.getByTestId('timeline-bar-title').textContent).toContain('cmd e1')
+  })
+
+  it('Enter on a card opens the body, and Enter again closes it', async () => {
+    await ready()
+    fireEvent.keyDown(cards()[1], { key: 'Enter' })
+    await waitFor(() => expect(body()).not.toBeNull())
+    fireEvent.keyDown(cards()[1], { key: 'Enter' })
+    await waitFor(() => expect(body()).toBeNull())
+    expect(bar()).not.toBeNull()
   })
 })

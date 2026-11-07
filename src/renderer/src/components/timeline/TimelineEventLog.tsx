@@ -41,8 +41,8 @@ export function TimelineEventLog({
   amendCountOf: (id: string) => number | undefined
   /** One click selects; the same card clicked again clears it. */
   onSelect: (e: RedLogEvent, detail: number) => void
-  /** Double-click or Enter on a card: open the detail body. */
-  onOpen: (e: RedLogEvent) => void
+  /** Double-click on a card opens the detail body; Enter toggles it. */
+  onOpen: (e: RedLogEvent, how: 'dblclick' | 'key') => void
   t: Translate
   /** Height the operator dragged to, or null for the vh default. */
   heightPx?: number | null

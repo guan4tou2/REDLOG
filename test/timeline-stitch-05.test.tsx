@@ -79,16 +79,20 @@ describe('card rail', () => {
     expect(screen.getByTestId('rail-count').textContent).toBe('1')
   })
 
-  it('the selected card expands with inline stdout; others and stdout-less cards do not', () => {
+  it('the selected card expands with inline stdout once the selection is still; others and stdout-less cards do not', async () => {
     const withOut = shell('a', 1_000, { stdout: '5432/tcp open' })
     const other = shell('b', 2_000, { stdout: 'zzz' })
     drawLog([withOut, other], { selectedId: 'a' })
+    // Not at once: growing the card would move the next one under a double-click.
+    expect(screen.queryByTestId('rail-card-stdout')).toBeNull()
+    await screen.findByTestId('rail-card-stdout')
     const out = screen.getAllByTestId('rail-card-stdout')
     expect(out).toHaveLength(1)
     expect(out[0].textContent).toContain('timeline.card.stdout')
     expect(out[0].textContent).toContain('5432/tcp open')
     cleanup()
     drawLog([shell('c', 1_000)], { selectedId: 'c' })
+    await new Promise((r) => setTimeout(r, 450))
     expect(screen.queryByTestId('rail-card-stdout')).toBeNull()
   })
 
@@ -102,10 +106,10 @@ describe('card rail', () => {
     expect(onSelect).toHaveBeenCalledWith(e, 1)
     expect(onOpen).not.toHaveBeenCalled()
     fireEvent.doubleClick(card)
-    expect(onOpen).toHaveBeenCalledWith(e)
+    expect(onOpen).toHaveBeenCalledWith(e, 'dblclick')
     onOpen.mockClear(); onSelect.mockClear()
     fireEvent.keyDown(card, { key: 'Enter' })
-    expect(onOpen).toHaveBeenCalledWith(e)
+    expect(onOpen).toHaveBeenCalledWith(e, 'key')
     fireEvent.keyDown(card, { key: ' ' })
     expect(onSelect).toHaveBeenCalledWith(e, 0)
     expect(onOpen).toHaveBeenCalledTimes(1)

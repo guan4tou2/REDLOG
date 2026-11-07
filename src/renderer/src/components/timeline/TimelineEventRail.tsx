@@ -7,7 +7,7 @@
 // Cards deliberately do NOT carry `data-timeline-event`: the ruler's dots own
 // the single roving tab stop, and a card is reached by its own tabIndex.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { foldByCause, statusSummary } from '../../lib/timelineFold'
 import { buildCard } from '../../lib/timelineCard'
 import type { RedLogEvent } from '../../../../core/db/event-types'
@@ -28,8 +28,8 @@ interface CardShared {
   /** A click: `detail` is the click count (0 for the keyboard), so the second
    *  click of a double-click is not read as a second selection toggle. */
   onSelect: (e: RedLogEvent, detail: number) => void
-  /** Double-click or Enter: open the detail body. */
-  onOpen: (e: RedLogEvent) => void
+  /** Double-click opens the detail body; Enter toggles it. */
+  onOpen: (e: RedLogEvent, how: 'dblclick' | 'key') => void
   t: Translate
 }
 
@@ -49,7 +49,16 @@ function Spine({ lane, selected }: { lane: keyof typeof LANE_COLORS; selected: b
 function RailCard({ evt, nested, shared }: { evt: RedLogEvent; nested: boolean; shared: CardShared }): JSX.Element {
   const { selectedId, pluginTypes, showOperator, operatorLabel, titleOf, amendSuffix, amendCountOf, onSelect, onOpen, t } = shared
   const isSel = selectedId === evt.id
-  const card = buildCard(evt, { t, titleOf, pluginTypes, withStdout: isSel })
+  // The summary grows the card, which moves every card below it. Held back
+  // until the selection has been still for a double-click's length, so the
+  // second click of a double-click lands where the first one did.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    if (!isSel) { setSettled(false); return }
+    const timer = setTimeout(() => setSettled(true), 400)
+    return () => clearTimeout(timer)
+  }, [isSel])
+  const card = buildCard(evt, { t, titleOf, pluginTypes, withStdout: isSel && settled })
   const amended = amendCountOf(evt.id)
   return (
     <div className={`flex ${nested ? 'pl-8 pr-4' : 'px-4'}`}>
@@ -63,12 +72,12 @@ function RailCard({ evt, nested, shared }: { evt: RedLogEvent; nested: boolean; 
         tabIndex={0}
         aria-pressed={isSel}
         onClick={(e) => onSelect(evt, e.detail)}
-        onDoubleClick={() => onOpen(evt)}
+        onDoubleClick={() => onOpen(evt, 'dblclick')}
         onKeyDown={(e) => {
           // The standard Timeline is read from this rail, so a card has to be
           // reachable and selectable without a pointer: Space selects, Enter opens.
           if (e.target !== e.currentTarget) return
-          if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onOpen(evt) }
+          if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onOpen(evt, 'key') }
           else if (e.key === ' ') { e.preventDefault(); onSelect(evt, 0) }
         }}
       >
