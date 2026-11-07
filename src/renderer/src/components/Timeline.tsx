@@ -12,7 +12,8 @@ import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib
 import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
-import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/TimelineStatusStrips'
+import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStrips'
+import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
@@ -98,7 +99,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string, ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, onOpenActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string, ts: number) => void; onOpenActivity?: (selected: { id: string; ts: number } | null) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains,
@@ -160,6 +161,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // A shared-filter change starts a new generation; a reply to an older one
   // is dropped, so rows for the old filter never land under the new one.
   const [hasMore, setHasMore] = useState(false)
+  // First to last loaded row, for the toolbar's "whole session" span. A loop,
+  // not Math.max(...rows): a spread of a large page overflows the call stack.
+  const loadedSpanMs = useMemo(() => {
+    if (rawEvents.length < 2) return null
+    let lo = Infinity
+    let hi = -Infinity
+    for (const e of rawEvents) { if (e.timestamp < lo) lo = e.timestamp; if (e.timestamp > hi) hi = e.timestamp }
+    return hi - lo
+  }, [rawEvents])
   const pageCursorRef = useRef<string | null>(null)
   // The same cursor as state, for what is computed from it (earlier matches).
   const [pageCursor, setPageCursorState] = useState<string | null>(null)
@@ -1793,101 +1803,32 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
       <FocusChainBadge size={focusChain?.size ?? 0} active={!!focusChain} meta={focusMeta} onExit={() => setFocusAnchorId(null)} t={t} />
-      {/* Header. `flex-wrap` so that on a narrow window the controls drop to
-          a second row instead of squeezing: without it the title broke into
-          three lines and the lane chips on the right were clipped at 1440px,
-          which is a common laptop width. Title and count never shrink. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-redlog-border/80 shrink-0">
-        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('sidebar.timeline')}</span>
-        {/* FR-003: while older admitted rows exist, the line says how many
-            are drawn of how many there are. N counts the rows held, M the
-            rows the same filter admits; a total that failed says so. */}
-        <span data-testid="timeline-range-status" className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 whitespace-nowrap">
-          {!hasMore
-            ? t('timeline.events', { count: rawEvents.length })
-            : total.state === 'ok'
-              ? t('timeline.rangeOfTotal', { shown: rawEvents.length, total: total.value })
-              : total.state === 'pending'
-                ? t('timeline.rangeTotalPending', { shown: rawEvents.length })
-                : (
-                  <>
-                    {t('timeline.totalUnavailable', { shown: rawEvents.length })}{' '}
-                    <button
-                      data-testid="timeline-total-retry"
-                      onClick={() => requestTotal(generationRef.current)}
-                      className="underline hover:text-redlog-text"
-                    >{t('common.retry')}</button>
-                  </>
-                )}
-        </span>
-        {hasMore && (
-          <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >
-            {t('timeline.loadMore')}
-          </Button>
-        )}
-
-        {/* v0.9.3 U2: keyboard-shortcut cheatsheet button. Every hotkey we
-            shipped (⌘K palette, `/` search, `f` focus chain, right-click
-            drop-marker, Alt-click solo, etc.) was invisible without prior
-            knowledge — Design-review agent graded discoverability F. This
-            makes the affordance visible; the modal itself lists everything. */}
-        <button
-          onClick={() => setShowHelp(true)}
-          className="ml-1 w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-          title={t('timeline.help.title')}
-          aria-label={t('timeline.help.title')}
-        >?</button>
-
-        {/* The detail pane's dock control moved into the pane's own header
-            (TimelineEventInspector), so it sits with close and step like the
-            HTTP log rather than off here on the toolbar. */}
-
-        {/* Standard / swim-lane switch (Spec 069 FR-008). */}
-        <div role="group" aria-label={t('timeline.mode.label')} className="flex items-center rounded border border-redlog-border overflow-hidden ml-1">
-          {(['standard', 'lanes'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              data-testid={`timeline-mode-${mode}`}
-              aria-pressed={timelineMode === mode}
-              onClick={() => setTimelineMode(mode)}
-              className={`px-2 h-6 text-xs transition-colors focus-visible:outline focus-visible:outline-red-400 ${timelineMode === mode ? 'bg-redlog-elevated text-redlog-text font-medium' : 'text-redlog-text-dim hover:text-redlog-text'}`}
-            >{t(`timeline.mode.${mode}`)}</button>
-          ))}
-        </div>
-
-        {/* Zoom controls */}
-        <div className="flex items-center gap-1 ml-2">
-          <button
-            onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            title={t('timeline.zoomOut')}
-            aria-label={t('timeline.zoomOut')}
-          >−</button>
-          <button
-            onClick={() => setZoom(1)}
-            disabled={Math.abs(zoom - 1) < 0.01}
-            className="px-1.5 h-6 flex items-center justify-center text-xs text-redlog-text-faint hover:text-redlog-text bg-redlog-elevated/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-redlog-text-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            title={t('timeline.resetZoom')}
-            aria-label={t('timeline.resetZoom')}
-          >{Math.round(zoom * 100)}% ↺</button>
-          <button
-            onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-            className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            title={t('timeline.zoomIn')}
-            aria-label={t('timeline.zoomIn')}
-          >+</button>
-        </div>
-
-        {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
-            operators can see there's a text filter (previously discoverable
-            only by shortcut). Icon prefix + clear button on the right. */}
-        <HighlightInput value={filterQuery} onChange={setFilterQuery} inputRef={searchInputRef} t={t} />
-
-        {/* §27.1: merged LIVE/behind toggle. One button: ● 即時 when live,
-            ⏸ 落後 N 分 when behind. Click toggles follow; when resuming from
-            behind, also snaps to now. */}
-        {(() => {
+      {/* The toolbar renders what it is given; the follow badge and the ⋯ menu
+          close over panel state, so they come in as slots. */}
+      <TimelineToolbar
+        t={t}
+        timeRange={sharedFilter.timeRange}
+        setTimeRange={setSharedTimeRange}
+        hasMore={hasMore}
+        loadedCount={rawEvents.length}
+        loadedSpanMs={loadedSpanMs}
+        total={total}
+        onRetryTotal={() => requestTotal(generationRef.current)}
+        onLoadMore={loadMore}
+        zoom={zoom}
+        onZoomOut={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+        onZoomIn={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
+        onResetZoom={() => setZoom(1)}
+        anchorTs={selectedEvent?.timestamp ?? null}
+        mode={timelineMode}
+        onModeChange={setTimelineMode}
+        onOpenActivity={onOpenActivity ? () => onOpenActivity(selectedEvent ? { id: selectedEvent.id, ts: selectedEvent.timestamp } : null) : undefined}
+        filterQuery={filterQuery}
+        onFilterQueryChange={setFilterQuery}
+        searchInputRef={searchInputRef}
+        onHelp={() => setShowHelp(true)}
+        followBadge={
+        (() => {
           const latestTs = events.length > 0 ? events[events.length - 1].timestamp : 0
           const behindMs = Math.max(0, now - latestTs)
           const isLive = atRightEdge && followMode
@@ -1914,15 +1855,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               }`}
             >{label}</button>
           )
-        })()}
-
-        {/* Lane visibility moved onto the lane labels themselves (left of the
-            track), where the control sits on the same row as the thing it
-            controls. The chip row that used to live here duplicated the band
-            carets and, with every band collapsed by default, appeared to do
-            nothing to the track at all. */}
-        <div className="ml-auto shrink-0">
-          {/* §27.1: More menu — 隱藏 AI 逐輪, 略過閒置, 工作階段邊界, 稽核檢視, 時區 */}
+        })()
+        }
+        moreMenu={
           <div className="relative shrink-0">
             <button
               data-testid="timeline-more-menu"
@@ -1978,8 +1913,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               </>
             )}
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Spec 038: what the panel could not do, said where the operator is
           looking. A failed read is never shown as fewer rows (FR-010), and a

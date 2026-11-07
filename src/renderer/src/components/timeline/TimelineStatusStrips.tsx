@@ -80,10 +80,12 @@ export function FocusChainBadge({ size, active, meta, onExit, t }: {
 
 /** The `/` box. It dims events that do not match — it does not remove them,
  *  which is what the filter bar above does — so it is named a highlight. */
-export function HighlightInput({ value, onChange, inputRef, t }: {
+export function HighlightInput({ value, onChange, inputRef, onFocus, onBlur, t }: {
   value: string
   onChange: (v: string) => void
   inputRef: RefObject<HTMLInputElement | null>
+  onFocus?: () => void
+  onBlur?: () => void
   t: Translate
 }): JSX.Element {
   return (
@@ -95,6 +97,8 @@ export function HighlightInput({ value, onChange, inputRef, t }: {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             if (value) { onChange(''); e.preventDefault() }

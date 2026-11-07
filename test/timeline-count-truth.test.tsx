@@ -25,7 +25,7 @@ describe.each(['standard', 'lanes'] as const)('Timeline header count (%s mode)',
   it('counts exactly what is loaded when nothing older exists', async () => {
     b.queryPage.mockResolvedValue(page([makeEvent('e1', T0 - 2000), makeEvent('e2', T0 - 1000), makeEvent('e3', T0)]))
     draw()
-    await waitFor(() => expect(screen.getByTestId('timeline-range-status').textContent).toBe('(3 events)'))
+    await waitFor(() => expect(screen.getByTestId('timeline-range-status').textContent).toBe('Total 3 events'))
   })
 
   it('states the real total when older events remain', async () => {

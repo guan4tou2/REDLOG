@@ -103,7 +103,7 @@
   "ip.safetyHint": "Set the Safe IP list (attack exits, green) and Exposed IP list (your own IPs, red) in Settings ▸ {{page}} to enable classification",
   "ip.exposedHint": "EXPOSED: your external IP is on the Exposed IP list (your own IP) — traffic is not going through your VPN/tunnel, so your real identity is showing. Check your VPN/proxy before continuing.",
   "timeline.title": "Attack Timeline",
-  "timeline.events": "({{count}} events)",
+  "timeline.events": "Total {{count}} events",
   "timeline.loadMore": "Load more",
   "timeline.rangeOfTotal": "{{shown}} of {{total}} events · scroll back for older",
   "timeline.rangeTotalPending": "{{shown}} of … events",
@@ -579,8 +579,8 @@
   "terminal.notRecorded": "not recorded",
   "timeline.standard.track": "All events",
   "timeline.mode.label": "Timeline view",
-  "timeline.mode.standard": "Standard",
-  "timeline.mode.lanes": "Swim lanes",
+  "timeline.mode.standard": "Standard timeline",
+  "timeline.mode.lanes": "Multi-lane mode",
   "timeline.zoomIn": "Zoom in (Ctrl+scroll)",
   "timeline.minimapPartialHint": "Covers the loaded range only — the emptiness at the left is an unfetched page, not a gap in the record. Scroll to the end or load more for the full span.",
   "timeline.minimapHint": "Drag to zoom to a time window · click to jump",
@@ -2329,5 +2329,11 @@
   "activity.reader.recordState": "Record state",
   "timeline.legend.hint": "Click a node to open its details",
   "timeline.densest": "Densest stretch ({{from}} ~ {{to}})",
-  "timeline.densestLoaded": "Densest stretch in the loaded range ({{from}} ~ {{to}})"
+  "timeline.densestLoaded": "Densest stretch in the loaded range ({{from}} ~ {{to}})",
+  "timeline.range.label": "Range",
+  "timeline.range.last1h": "Last 1 hour",
+  "timeline.range.all": "Whole session",
+  "timeline.range.custom": "Custom range",
+  "timeline.anchor.label": "Current anchor",
+  "timeline.searchRange": "Search range"
 }

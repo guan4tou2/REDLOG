@@ -161,6 +161,14 @@ export default function App(): JSX.Element {
     setView('search')
   }, [])
 
+  // The toolbar's 活動紀錄 link: the whole Activity workspace, not one event.
+  // The way back re-focuses whatever was selected, when something was.
+  const openActivity = useCallback((selected: { id: string; ts: number } | null): void => {
+    setTimelineReturn(selected)
+    setReturnTo('timeline')
+    setView('search')
+  }, [])
+
   // The Activity workspace and the Timeline are two readings of the same
   // material, but only the Timeline had no way in except the palette. This is
   // the "open it" half of `openInTimeline`: no event to focus, back arrow on.
@@ -444,7 +452,7 @@ export default function App(): JSX.Element {
                 <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
               </div>
             )}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the
