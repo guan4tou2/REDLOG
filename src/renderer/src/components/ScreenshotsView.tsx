@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Image, Maximize2, Hash, Trash2, FolderOpen, LayoutList, LayoutGrid, Search } from 'lucide-react'
+import { Image, LayoutList, LayoutGrid, Search } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
-import { formatTime } from '../lib/time'
+import { formatTime, useDisplayZone } from '../lib/time'
 import { useI18n } from '../i18n'
 import { settingsTarget } from '../lib/navigation'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
@@ -46,35 +46,39 @@ function Thumb({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element 
   </>
 }
 
-/** The four things that can be done to one screenshot, always visible. */
+const LINK = 'rounded px-1.5 py-0.5 text-xs text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40'
+
+/** The four things that can be done to one screenshot, always visible, named
+ *  in words (Stitch 03). A deleted file keeps its event, so its hash can still
+ *  be copied. */
 function ShotButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element | null {
-  if (a.deleted(shot.id)) return null
+  const gone = a.deleted(shot.id)
   const sha = typeof shot.data.sha256 === 'string' ? shot.data.sha256 : null
   const filePath = typeof shot.data.filePath === 'string' ? shot.data.filePath : null
-  return <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-    {a.thumb(shot.id) && (
-      <button type="button" data-testid="screenshot-enlarge" className={ICON_BUTTON} title={a.t('screenshots.enlarge')} aria-label={a.t('screenshots.enlarge')} onClick={() => a.open(shot.id)}>
-        <Maximize2 size={14} aria-hidden />
+  return <div className="flex flex-wrap items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+    {!gone && a.thumb(shot.id) && (
+      <button type="button" data-testid="screenshot-enlarge" className={LINK} aria-label={a.t('screenshots.enlarge')} onClick={() => a.open(shot.id)}>
+        {a.t('screenshots.preview')}
       </button>
     )}
-    {sha && (
-      <button type="button" data-testid="screenshot-copy-hash" className={ICON_BUTTON} title={a.t('screenshots.copyHash')} aria-label={a.t('screenshots.copyHash')}
-        onClick={() => { void writeClipboard(sha).then((ok) => ok ? toast(a.t('common.copied'), 'success') : toast(a.t('common.copyFailed'), 'error')) }}>
-        <Hash size={14} aria-hidden />
-      </button>
-    )}
-    {filePath && (
-      <button type="button" data-testid="screenshot-reveal" className={ICON_BUTTON} title={a.t('artifacts.reveal')} aria-label={a.t('artifacts.reveal')}
+    {!gone && filePath && (
+      <button type="button" data-testid="screenshot-reveal" className={LINK} aria-label={a.t('artifacts.reveal')}
         onClick={async () => {
           const ok = await window.redlog.artifacts.reveal('screenshot', filePath).catch(() => false)
           if (!ok) toast(a.t('artifacts.revealFailed'), { type: 'warning', why: a.t('artifacts.revealFailedWhy') })
         }}>
-        <FolderOpen size={14} aria-hidden />
+        {a.t('artifacts.reveal')}
       </button>
     )}
-    <button type="button" data-testid="screenshot-delete" className={`${ICON_BUTTON} hover:text-red-400`} title={a.t('screenshots.deleteTitle')} aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
-      <Trash2 size={14} aria-hidden />
-    </button>
+    {sha && (
+      <button type="button" data-testid="screenshot-copy-hash" className={LINK} aria-label={a.t('screenshots.copyHash')}
+        onClick={() => { void writeClipboard(sha).then((ok) => ok ? toast(a.t('common.copied'), 'success') : toast(a.t('common.copyFailed'), 'error')) }}>
+        {a.t('screenshots.copyHash')}
+      </button>
+    )}
+    {!gone && <button type="button" data-testid="screenshot-delete" className={`${LINK} hover:text-red-400`} aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
+      {a.t('screenshots.deleteFile')}
+    </button>}
   </div>
 }
 
@@ -89,11 +93,13 @@ function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
       {typeof diff === 'number' && <span className="rounded border border-redlog-border px-1.5 text-xs text-redlog-text-faint">{a.t('screenshots.diff', { pct: diff.toFixed(1) })}</span>}
       <span className="font-mono text-xs text-redlog-text-faint tabular-nums">{formatTime(shot.timestamp, { seconds: true })}</span>
     </div>
-    {a.deleted(shot.id)
-      ? <div className="text-xs text-redlog-text-faint">{a.t('screenshots.deletedKept')}</div>
-      : sha && <div className="text-xs text-redlog-text-faint truncate" title={`SHA-256: ${sha}`}>
-          <span className="font-mono text-redlog-text-dim">{sha}</span> · {a.t('screenshots.hashNote')}
-        </div>}
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span data-testid="screenshot-state" className={`rounded border px-1.5 ${a.deleted(shot.id) ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'}`}>
+        {a.t(a.deleted(shot.id) ? 'screenshots.deletedKept' : 'screenshots.recorded')}
+      </span>
+      {/* The recorded hash, as recorded; the note says it is not a check. */}
+      {sha && <span data-testid="screenshot-hash" className="font-mono text-redlog-text-faint" title={`${a.t('screenshots.hashNote')} SHA-256: ${sha}`}>SHA-256 · {sha.slice(0, 12)}…</span>}
+    </div>
   </div>
 }
 
@@ -133,6 +139,7 @@ function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
 
 export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
+  const zone = useDisplayZone()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -282,6 +289,10 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
 
   return (
     <div className="p-pad overflow-auto h-full">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-redlog-text">{t('screenshots.sectionTitle')}</h2>
+        <p className="mt-0.5 text-xs text-redlog-text-dim">{t('screenshots.sectionHint')}</p>
+      </div>
       {loadError && (
         <div data-testid="screenshots-load-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           <div>{t('screenshots.loadFailed')}</div>
@@ -343,9 +354,10 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         />
       ) : (
         <>
-          <p data-testid="screenshots-summary" className="mb-2 text-xs text-redlog-text-faint">
-            {hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}
-          </p>
+          <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-redlog-text-faint">
+            <p data-testid="screenshots-summary">{hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}</p>
+            <span data-testid="screenshots-time-zone">{t(zone === 'utc' ? 'screenshots.timeUtc' : 'screenshots.timeLocal')}</span>
+          </div>
           {needle && hasMore && <p data-testid="screenshots-search-scope" className="mb-2 text-xs text-redlog-text-faint">{t('screenshots.searchLoadedOnly', { count: screenshots.length })}</p>}
           {visible.length === 0 ? (
             <EmptyState
