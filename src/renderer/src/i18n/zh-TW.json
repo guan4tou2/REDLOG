@@ -220,7 +220,7 @@
   "scope.evidenceLog": "證據日誌",
   "scope.entries": "{{count}} 筆紀錄",
   "scope.recentObservations": "近期範圍外觀測",
-  "scope.truncated": "這裡只列出最新的範圍外觀測，完整紀錄請看時間軸。",
+  "scope.truncated": "僅顯示目前載入的最新觀測；完整紀錄請由時間軸查找。",
   "scope.openInTimeline": "在時間軸定位",
   "loot.title": "戰利品（{{count}}）",
   "loot.empty": "尚未偵測到憑證或機密。",
@@ -1379,7 +1379,7 @@
   "scope.judged.retroactiveHint": "由範圍重算事後判定，非執行當下",
   "scope.cleared": "已解除",
   "scope.clearedHint": "之後的範圍變更已解除此範圍外觀測；原紀錄保留",
-  "scope.recompute.banner": "範圍已於 {{time}} 重算",
+  "scope.recompute.banner": "最近一次範圍重算 · {{time}}",
   "scope.recompute.bannerNoTime": "範圍已重算",
   "scope.recompute.recomputed": "重算",
   "scope.recompute.newlyFlagged": "新標",
@@ -2307,5 +2307,9 @@
   "screenshots.sectionHint": "點選截圖可預覽；刪除檔案不代表刪除原始事件。",
   "screenshots.timeLocal": "時間：本地",
   "screenshots.timeUtc": "時間：UTC",
-  "loot.sectionTitle": "戰利品偵測紀錄"
+  "loot.sectionTitle": "戰利品偵測紀錄",
+  "scope.fact.reason": "原因",
+  "scope.fact.rule": "命中規則",
+  "scope.fact.source": "來源事件時間",
+  "scope.recompute.explain": "對既有事件重新套用規則；產生的差異會保留為事件紀錄，不修改原始事件。"
 }
