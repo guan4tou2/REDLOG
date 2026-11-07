@@ -1,6 +1,6 @@
 # RedLog：最新 main 設計差異與使用流程稽核
 
-> **版本與用途（2026-11-07）**　以下保留 `ebd9f4b` 的實測紀錄。主線 `492ba542` 已有儀表板與 HUD 的中繼節點列表、獨立 IP／Pivot 區塊及錯誤重試。後續實作只補較舊查詢覆蓋新通知、缺少讀取介面、舊節點呈現及 CDP 重試回饋。全域決策見 [UI/UX 規範](UIUX-STANDARD.md)，各頁進度見 [設計與實作矩陣](UIUX-DESIGN-IMPLEMENTATION-MATRIX.md)。
+> 此文件保留當時的版本與證據。P0 合併狀態及 P1 驗收順序見 [現行實作計畫](UIUX-REMAINING-IMPLEMENTATION-PLAN.md)。
 
 日期：2026-11-07（Asia/Taipei）  
 遠端基準：`ebd9f4b105c912506121c4aa7acdbf6f117c7576`（PR #609 合併後；本次 fetch 確認）。  

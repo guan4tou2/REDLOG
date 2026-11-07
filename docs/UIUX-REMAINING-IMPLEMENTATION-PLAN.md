@@ -1,25 +1,25 @@
-# REDLOG 剩餘 UI/UX 與擷取流程實作計畫
+# RedLog UI/UX 實作與驗收計畫
 
-> **版本與用途（2026-11-07）**　以下保留 `ebd9f4b` 的實測紀錄。主線 `492ba542` 已有儀表板與 HUD 的中繼節點列表、獨立 IP／Pivot 區塊及錯誤重試。後續實作只補較舊查詢覆蓋新通知、缺少讀取介面、舊節點呈現及 CDP 重試回饋。全域決策見 [UI/UX 規範](UIUX-STANDARD.md)，各頁進度見 [設計與實作矩陣](UIUX-DESIGN-IMPLEMENTATION-MATRIX.md)。
+## P0 交接
 
-> 2026-11-07：最新 main 的剩餘工作與已通過流程以 [使用流程稽核](UIUX-JOURNEY-AUDIT-2026-11-07.md) 為準；本文件舊待辦不代表目前仍未實作。
-日期：2026-11-04
-狀態：Draft／規劃，非完成或發布紀錄。
-基準：implementation 的 main f51037e0 加目前未提交變更。本輪只更新計畫。
-關聯：#568 插件、#569 跨頁流程；既有細項繼續沿用，不重開重複 issue。
+2026-11-07 核對主線 `5110cb29`。[PR #636](https://github.com/guan4tou2/REDLOG/pull/636) 已提交 IP／Pivot 讀取及 CDP 重試修正，狀態為 **待合併**。儀表板與 HUD 的節點列表已在主線。審查時應聚焦缺少讀取介面、晚到的舊查詢、HUD 過期資料及 CDP 逾時後的恢復。
 
-2026-11-05 架構補充：[來源擴充契約與共用活動介面計畫](SOURCE-EXTENSION-CONTRACT-PLAN.md)。新增同類來源以 Adapter／宣告接入共用列表、時間軸與 Reader；此項為後續 Draft，不表示既有缺陷已修復，也不取代下列各批驗收。
+修正分支在 macOS 有 35 項針對性測試通過，Electron 35 項通過、1 項既有逐字稿入口測試略過。GitHub 的三個平台 unit、三組 Electron 與兩組安裝 smoke 均通過。[PR 檢查紀錄](https://github.com/guan4tou2/REDLOG/pull/636/checks)
 
-2026-11-06 文件整理：本文件保留歷史工作拆分；最新跨頁決策、版本衝突及逐頁狀態以 [Stitch 整合契約](UIUX-STITCH-DESIGN.md) 為入口，實際完成證據見 [本機驗證紀錄](UIUX-CONSISTENCY-VERIFICATION-2026-11-06.md)。下列舊基準與「本輪」描述僅代表原撰寫日期，不覆蓋後續成果。
+**結案條件**：記錄合併提交。若合併期間變更相同流程，在合併版本重跑對應案例。原始故障與重現條件見 [11 月 7 日稽核](UIUX-JOURNEY-AUDIT-2026-11-07.md)。
 
-## 現行執行索引（2026-11-07）
+## P1 驗收順序
 
-1. 修正 Pivot 讀取失敗、IP／Pivot 狀態耦合與無依據路徑（稽核 F01–03）。
-2. 修正 CDP 重試回饋，補真實 HTTPS 保存驗證（F04）。
-3. 補 Shell stdout／stderr、Windows 與啟動效能測量。
-4. 在主線上逐頁視覺驗收後重建 HTML 復刻；不搬回舊本機導覽。
+| 任務 | 操作與通過條件 | 可沿用的入口或證據 |
+|---|---|---|
+| HTTPS 擷取 | 真實客戶端經代理送出 HTTPS 請求，修正一次信任失敗後重試，從 HTTP 歷程找到同筆 Request／Response 並核對保存本文。 | `http-verification-entry` 覆蓋鍵盤入口，`http-body-search` 覆蓋已保存內容搜尋。另記客戶端、憑證狀態與事件 ID。 |
+| Shell 輸出 | 在固定目錄執行 ls、ls -al、長輸出與混合 stdout／stderr；對照保存位元數、截斷狀態及 Reader。確認零長度 stderr 隱藏，合併 PTY 可回放。 | 下方 A1、A2 有測試資料與分流方式。 |
+| Windows 接入 | 依環境逐一記錄 Windows PowerShell、PowerShell 7、WSL 的偵測、安裝、第一筆指令與移除結果。 | `packaged-powershell-matrix`；缺少的 shell 記為未測。 |
+| 啟動效能 | 分別量冷啟到清單可操作、開專案到可操作、來源檢測完成的時間；記錄平台、資料量與重複測量結果。 | `project-startup` 涵蓋操作。效能另記秒數及資料規模。 |
+| 逐字稿與跨頁 | 由可見入口進入 Session、搜尋收合工具輸出、切換 Session、定位時間軸再返回；核對選取的 Session、事件 ID、查詢與捲動位置。 | `transcript-view` 及 `activity-return-state`。[#635](https://github.com/guan4tou2/REDLOG/pull/635) 已合併時間軸→活動→原事件回程；獨立逐字稿入口仍須核對。 |
+| 視覺一致性 | 固定語系、縮放、資料與視窗大小，檢查焦點、按鈕層級、狀態文案、窄窗及大字級。主線整合後再更新對應 HTML 與指紋。 | [全域規範](UIUX-STANDARD.md)、[工程對照](UIUX-STITCH-DESIGN.md)、[資產索引](UIUX-STITCH-ASSETS.md)。 |
 
-以下為 2026-11-04 起的歷史需求與案例庫，保留可重用的驗收條件，**不按舊「未完成」標籤重新開發**。插件目錄、證據分頁與設定導航已存在；HTML 亦已有本機資產，見資產索引。
+每次驗收記下提交、平台、實際來源、操作、觀察結果與證據位置。以下保留 2026-11-04 起的原始案例；目前排程以上表為準。
 
 ## 1. 歷史成果與當時尚欠驗證
 - 專案啟動：單欄、搜尋、建立 Modal、草稿、鍵盤、IME；相關 Electron 14 cases 已驗證，尚未提交或安裝到使用者使用版本。
