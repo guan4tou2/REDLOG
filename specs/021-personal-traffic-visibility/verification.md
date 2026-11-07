@@ -6,7 +6,7 @@
 - Focused Vitest coverage for persistence, shared-filter wiring, renderer,
   Search, Transcript, HTTP flows, Loot, and i18n
 - `npm run build`
-- `npx playwright test e2e/personal-traffic-visibility.spec.ts`
+- `npx playwright test e2e/personal-traffic-visibility.spec.ts` (now in e2e/evidence-views.spec.ts)
 - `npm test`
 - `npm run verify:specs`
 

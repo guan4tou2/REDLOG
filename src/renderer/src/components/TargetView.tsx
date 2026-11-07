@@ -225,7 +225,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // `targets.filter` callback and read `filtered.length` mid-filter — which is
   // a temporal-dead-zone crash that only fires once there is a target to
   // filter, and a Rules-of-Hooks violation besides. The static keyboard
-  // contract test is a grep, so it never saw it; e2e/target-focus.spec.ts did.
+  // contract test is a grep, so it never saw it; e2e/timeline-evidence.spec.ts did.
   const needle = query.trim().toLowerCase()
   const filtered = targets.filter((tgt) => {
     if (needle && !tgt.target.toLowerCase().includes(needle)) return false

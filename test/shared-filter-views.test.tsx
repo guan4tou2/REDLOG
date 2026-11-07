@@ -125,7 +125,7 @@ describe('every event view honours every shared-filter chip', () => {
   // The keystroke's search is debounced and closed over the filter it was
   // typed under. A chip flipped inside that window searched at once, then the
   // stale one landed after it and put the old filter back on screen
-  // (e2e/personal-traffic-visibility.spec.ts, intermittently).
+  // (e2e/evidence-views.spec.ts, intermittently).
   it('search: a chip flipped while a keystroke is pending is the read that lands last', async () => {
     const { SearchPanel } = await import('../src/renderer/src/components/SearchPanel')
     const r = await mountView('search')

@@ -61,7 +61,12 @@ export function makeTempHome(prefix = 'redlog-e2e-'): string {
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
  * artifact exists so the failure message is actionable.
  */
-export async function launchWithTempHome(executablePath?: string, { showHud = false, home }: { showHud?: boolean; home?: string } = {}): Promise<{
+export async function launchWithTempHome(executablePath?: string, { showHud = false, home, onLaunch }: {
+  showHud?: boolean
+  home?: string
+  /** Called right after the process exists, before the first window — the place to attach stdout/stderr listeners that must see startup output. */
+  onLaunch?: (app: ElectronApplication) => void
+} = {}): Promise<{
   app: ElectronApplication
   page: Page
   tmpHome: string
@@ -90,6 +95,7 @@ export async function launchWithTempHome(executablePath?: string, { showHud = fa
       REDLOG_E2E_HIDE_HUD: showHud ? '0' : '1'
     }
   })
+  onLaunch?.(app)
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
   return { app, page, tmpHome }
@@ -257,4 +263,32 @@ export async function expectAppBuild(app: ElectronApplication, page: Page, expec
   await openView(page,'settings')
   await openSettingsPage(page,'about')
   await expect(page.getByText(`RedLog v${version} · ${expected}`,{exact:true})).toBeVisible()
+}
+
+/** The main window's size right after launch, for `resetSharedApp` to return to. */
+export async function mainWindowSize(app: ElectronApplication): Promise<[number, number]> {
+  return app.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows()
+      .find((w) => !w.isDestroyed() && !w.webContents.getURL().includes('overlay'))
+    if (!main) throw new Error('main window not found (only the overlay was open)')
+    return main.getSize() as [number, number]
+  })
+}
+
+/**
+ * Put a shared Electron instance back to a known state between the describes of
+ * a file that launches once: zoom, window size and localStorage (zoom level,
+ * selection, dividers, locale…). Project state is not touched — each describe
+ * opens its own project with `openTestProject`.
+ */
+export async function resetSharedApp(
+  app: ElectronApplication,
+  page: Page,
+  size: [number, number],
+  locale = 'en'
+): Promise<void> {
+  const win = await app.browserWindow(page)
+  await win.evaluate((w) => w.webContents.setZoomFactor(1))
+  await resizeMainWindow(app, size[0], size[1])
+  await page.evaluate((l) => { localStorage.clear(); localStorage.setItem('redlog-locale', l) }, locale)
 }
