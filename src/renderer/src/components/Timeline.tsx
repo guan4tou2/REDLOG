@@ -14,6 +14,7 @@ import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { BrokenChainBanner, FocusChainBadge, HighlightInput } from './timeline/TimelineStatusStrips'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
+import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
@@ -23,7 +24,7 @@ import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
-import { buildTimeMap, computeDomainBounds, computeBins, binHeight, type TimeMap } from '../lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, binHeight, densestRun, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents,  type ViewportWindow } from '../lib/timelineFilters'
@@ -1109,6 +1110,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
 
   // Density minimap: event counts over the full range, binned into fixed cells.
   const bins = useMemo(() => computeBins(events.map(displayTs), timeStart, timeEnd), [events, timeStart, timeEnd])
+  const dense = useMemo(() => densestRun(bins, timeStart, timeEnd), [bins, timeStart, timeEnd])
 
   // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
   // v0.11.1: render only the clusters near the viewport.
@@ -2096,6 +2098,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             title={t('timeline.minimapPartialHint')}
           >&#8942;</span>
         )}
+        {dense && (
+          <span
+            data-testid="minimap-densest"
+            className="absolute right-1 top-0.5 z-10 px-1 rounded-sm bg-redlog-bg/70 text-xs text-redlog-text-faint font-mono tabular-nums pointer-events-none"
+          >
+            {t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
+              from: formatTime(dense.start), to: formatTime(dense.end)
+            })}
+          </span>
+        )}
         <div className="absolute inset-0 flex items-end gap-px px-1 pb-0.5">
           {bins.counts.map((c, i) => (
             // 18% floor on anything non-empty so one event is visible, and
@@ -2115,6 +2127,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           />
         )}
       </div>
+
+      <TypeLegend lanes={populatedLanes} t={t} />
 
       {/* Timeline + event list split */}
       {/* The layout switch is this one flex direction. Column puts the pane

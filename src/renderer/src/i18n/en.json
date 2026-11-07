@@ -2208,7 +2208,7 @@
   "activity.reader.field.duration": "Duration",
   "activity.reader.field.pid": "PID",
   "activity.reader.field.cwd": "Directory",
-  "timeline.log.legend": "Colour key",
+  "timeline.log.legend": "Event types",
   "timeline.detail.exit": "Exit code",
   "timeline.detail.duration": "Duration",
   "bookmarks.saveFailed": "The bookmark was not saved",
@@ -2326,5 +2326,8 @@
   "activity.status.perSource": "each source confirmed on its own",
   "activity.status.sourceAlert": "{{count}} source(s) need attention ({{names}})",
   "activity.reader.integrityKind": "local record SHA-256",
-  "activity.reader.recordState": "Record state"
+  "activity.reader.recordState": "Record state",
+  "timeline.legend.hint": "Click a node to open its details",
+  "timeline.densest": "Densest stretch ({{from}} ~ {{to}})",
+  "timeline.densestLoaded": "Densest stretch in the loaded range ({{from}} ~ {{to}})"
 }

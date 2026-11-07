@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTimeMap, computeDomainBounds, computeBins } from '../src/renderer/src/lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun } from '../src/renderer/src/lib/timelineTimeMap'
 
 const GAP_MIN_MS = 10 * 60_000
 const GAP_PX = 48
@@ -176,5 +176,51 @@ describe('computeBins', () => {
     const b = computeBins([-50, 1050], 0, 1000, 10)
     expect(b.counts[0]).toBe(1)
     expect(b.counts[9]).toBe(1)
+  })
+})
+
+describe('densestRun', () => {
+  const bins = (counts: number[]) => ({ counts, max: Math.max(1, ...counts), N: counts.length })
+  const zeros = (n: number) => new Array(n).fill(0)
+
+  it('is null with no data and with too few events', () => {
+    expect(densestRun(computeBins([], 0, 1000, 10), 0, 1000)).toBeNull()
+    const few = zeros(10); few[4] = 9
+    expect(densestRun(bins(few), 0, 1000)).toBeNull()
+  })
+
+  it('is null for uniform data and for thin spread', () => {
+    expect(densestRun(bins(new Array(10).fill(5)), 0, 1000)).toBeNull()
+    expect(densestRun(bins([2, 2, 2, 2, 2, 2, 0, 0, 0, 0]), 0, 1000)).toBeNull()
+  })
+
+  it('names a single spike by its bin edges and count', () => {
+    const c = zeros(10); c[3] = 20; c[7] = 1
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 300, end: 400, count: 20 })
+  })
+
+  it('joins adjacent hot bins and ignores cooler neighbours', () => {
+    const c = zeros(10); c[2] = 4; c[3] = 10; c[4] = 6; c[5] = 4
+    // hot = 5: bins 3 and 4 only
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 300, end: 500, count: 16 })
+  })
+
+  it('breaks a tie towards the earlier run', () => {
+    const c = zeros(10); c[1] = 8; c[8] = 8
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 100, end: 200, count: 8 })
+  })
+
+  it('property: the run lies inside the range and its count never exceeds the total', () => {
+    let seed = 7
+    const rnd = (): number => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+    for (let k = 0; k < 200; k++) {
+      const c = Array.from({ length: 24 }, () => Math.floor(rnd() * rnd() * 12))
+      const r = densestRun(bins(c), 1000, 25000)
+      if (!r) continue
+      expect(r.start).toBeGreaterThanOrEqual(1000)
+      expect(r.end).toBeLessThanOrEqual(25000)
+      expect(r.start).toBeLessThan(r.end)
+      expect(r.count).toBeLessThanOrEqual(c.reduce((a, b) => a + b, 0))
+    }
   })
 })

@@ -2208,7 +2208,7 @@
   "activity.reader.field.duration": "耗時",
   "activity.reader.field.pid": "PID",
   "activity.reader.field.cwd": "目錄",
-  "timeline.log.legend": "顏色對照",
+  "timeline.log.legend": "事件類型標記",
   "timeline.detail.exit": "結束碼",
   "timeline.detail.duration": "耗時",
   "bookmarks.saveFailed": "書籤沒有儲存",
@@ -2326,5 +2326,8 @@
   "activity.status.perSource": "各來源狀態個別確認",
   "activity.status.sourceAlert": "{{count}} 個來源需要處理（{{names}}）",
   "activity.reader.integrityKind": "本機紀錄 SHA-256",
-  "activity.reader.recordState": "紀錄狀態"
+  "activity.reader.recordState": "紀錄狀態",
+  "timeline.legend.hint": "點擊節點開啟詳情",
+  "timeline.densest": "高密度事件區段 ({{from}} ~ {{to}})",
+  "timeline.densestLoaded": "已載入範圍內的高密度區段 ({{from}} ~ {{to}})"
 }
