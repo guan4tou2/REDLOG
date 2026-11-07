@@ -16,7 +16,7 @@
 
 ## 0. 設計稿導覽
 
-> 工程整合見 [Stitch 設計契約](UIUX-STITCH-DESIGN.md)；主線實況與驗收邊界見 [使用流程稽核](UIUX-JOURNEY-AUDIT-2026-11-07.md)。這些文件不取代本規範的共用視覺規則。
+> 工程整合見 [Stitch 設計契約](UIUX-STITCH-DESIGN.md)；各頁進度見 [實作矩陣](UIUX-DESIGN-IMPLEMENTATION-MATRIX.md)，歷史案例見 [使用流程稽核](UIUX-JOURNEY-AUDIT-2026-11-07.md)。這些文件不取代本規範的共用視覺規則。
 
 一份檔案，由新到舊：
 

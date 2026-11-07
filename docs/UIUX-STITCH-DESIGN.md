@@ -1,6 +1,6 @@
 # RedLog — Stitch UI/UX 整合設計契約
 
-狀態：設計決策已整理；逐頁實作與驗收見 §10，非全產品完成證明。  
+用途：Stitch 原型到 React 的工程對照。全域設計決策以 [UI/UX 規範](UIUX-STANDARD.md) 為準，功能需求與驗收以各自的 Spec 為準。§10 保留舊工作區的驗收紀錄。
 整理日期：2026-11-06（Asia/Taipei）。  
 本機核對基準：`e176777ad9289b174e4237f26c7fd124801a692d` 加目前未提交工作區變更。  
 輸入：使用者提供的 `UIUX-STITCH-DESIGN.md` 草稿、已確認的對話決策及具名 Stitch HTML。桌面原稿保持不變。

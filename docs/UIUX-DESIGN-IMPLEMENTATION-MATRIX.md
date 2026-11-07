@@ -4,7 +4,7 @@
 
 ## 依據與限制
 
-- `docs/UIUX-STITCH-DESIGN.md` 與 `design.md` 在 repo 中不存在(git 歷史也沒有)。整合設計契約目前只在作者的本機,未進 repo,**本矩陣不以它為基準**。
+- 原始盤點當時尚未納入本機 Stitch 工程文件。本次已附 [工程對照](UIUX-STITCH-DESIGN.md) 與 [歷史流程稽核](UIUX-JOURNEY-AUDIT-2026-11-07.md)。以下各列保留原盤點基準。
 - 實際依據:`specs/069-activity-timeline-alignment/tasks.md`、`docs/UIUX-REMAINING-IMPLEMENTATION-PLAN.md`、`docs/UIUX-SYNC-STATUS.md`、open issue、`main` 的程式與 e2e。
 - 標 † 的列只依文件或 PR 記載,**沒有重新驗證**。沒有逐頁用瀏覽器重走一遍。
 
