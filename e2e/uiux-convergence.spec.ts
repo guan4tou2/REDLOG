@@ -111,7 +111,10 @@ test('violation details resolve the full command and carry an uncommitted candid
     await page.getByTestId('scope-judged-live').first().click()
     const detail = page.getByTestId('scope-observation-detail')
     await expect(detail.locator('pre')).toHaveText(command)
-    await expect(detail).toContainText('Matched exclusion rule · outside.test')
+    // Stitch 02: reason and rule are separate cells.
+    const facts = detail.getByTestId('scope-observation-facts')
+    await expect(facts).toContainText('Matched exclusion rule')
+    await expect(facts).toContainText('outside.test')
     await detail.getByRole('button', { name: 'Edit related scope rules' }).click()
     await expect(page.getByRole('textbox', { name: 'Targets (IPs, CIDRs, *.domain)', exact: true })).toHaveValue('outside.test')
     const saved = await page.evaluate(() => window.redlog.config.get())
