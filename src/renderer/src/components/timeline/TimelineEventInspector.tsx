@@ -5,6 +5,8 @@ import { Button } from '../Button'
 // Timeline value before it is declared.
 
 import { useState } from 'react'
+import { writeClipboard } from '../../lib/clipboard'
+import { toast } from '../Toast'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { ChevronDown, ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
 import type { DetailLayout } from '../../lib/detailLayout'
@@ -25,6 +27,8 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export interface TimelineEventInspectorProps {
   event: RedLogEvent
+  /** Open the activity that holds this event, in the activity log. */
+  onOpenInActivity?: (eventId: string) => void
   pluginTypes: PluginEventType[]
   tierChip: boolean
   doNotExport: boolean
@@ -68,7 +72,7 @@ export interface TimelineEventInspectorProps {
 }
 
 export function TimelineEventInspector({
-  event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
+  event, onOpenInActivity, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, unfinished = false, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
   onStep, canStepPrev = false, canStepNext = false,
@@ -150,6 +154,14 @@ export function TimelineEventInspector({
             data-testid="detail-around-event"
             onClick={onAround}
           >{t('filter.around')}</Button>
+          {/* Stitch 05: a reference that pastes back into any search here
+              (`event:<id>`), and the way from this event to its activity. */}
+          <Button size="compact" level="quiet" type="button" data-testid="detail-copy-ref"
+            onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
+          >{t('timeline.copyRef')}</Button>
+          {onOpenInActivity && <Button size="compact" level="quiet" type="button" data-testid="detail-open-activity"
+            onClick={() => onOpenInActivity(event.id)}
+          >{t('timeline.openInActivity')} ↗</Button>}
           <Button size="compact" level="quiet" aria-pressed={!!dneFlag}
             type="button"
             title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}

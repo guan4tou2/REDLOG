@@ -2313,5 +2313,7 @@
   "screenshots.sectionHint": "Click a screenshot to preview it; deleting the file does not delete its event.",
   "screenshots.timeLocal": "Time: local",
   "screenshots.timeUtc": "Time: UTC",
-  "loot.sectionTitle": "Loot detections"
+  "loot.sectionTitle": "Loot detections",
+  "timeline.copyRef": "Copy event reference",
+  "timeline.openInActivity": "Open in activity log"
 }
