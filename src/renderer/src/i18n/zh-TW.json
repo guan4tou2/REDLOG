@@ -2219,5 +2219,8 @@
   "activity.reader.field.exit": "結束碼",
   "activity.reader.field.duration": "耗時",
   "activity.reader.field.pid": "PID",
-  "activity.reader.field.cwd": "目錄"
+  "activity.reader.field.cwd": "目錄",
+  "timeline.log.legend": "顏色對照",
+  "timeline.detail.exit": "結束碼",
+  "timeline.detail.duration": "耗時"
 }

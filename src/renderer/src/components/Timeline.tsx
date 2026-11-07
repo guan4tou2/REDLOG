@@ -1796,7 +1796,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
           three lines and the lane chips on the right were clipped at 1440px,
           which is a common laptop width. Title and count never shrink. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-redlog-border/80 shrink-0">
-        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('timeline.title')}</span>
+        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('sidebar.timeline')}</span>
         {/* FR-003: while older admitted rows exist, the line says how many
             are drawn of how many there are. N counts the rows held, M the
             rows the same filter admits; a total that failed says so. */}

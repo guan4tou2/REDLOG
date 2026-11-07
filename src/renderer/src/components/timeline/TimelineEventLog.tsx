@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react'
 import { formatTime } from '../../lib/time'
 import { foldByCause, statusSummary } from '../../lib/timelineFold'
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { LANE_COLORS, toLane, type PluginEventType } from '../../lib/timelineDomain'
+import { LANE_COLORS, LANE_LABEL_KEYS, toLane, type PluginEventType } from '../../lib/timelineDomain'
 import { isMac, isWindows } from '../../lib/platform'
 import { TierBadge } from '../TierBadge'
 
@@ -57,6 +57,13 @@ export function TimelineEventLog({
   // is per parent and not remembered across a filter change: the row they
   // opened may not even be in the next result.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  // The colours the dots below use, named: only the lanes present among the
+  // loaded events, so the key is never longer than what it explains.
+  const legend = useMemo(() => {
+    const seen = new Set<string>()
+    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
+    return [...seen] as Array<keyof typeof LANE_COLORS>
+  }, [events, pluginTypes])
   const toggle = (id: string): void => setExpanded((prev) => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
@@ -112,6 +119,16 @@ export function TimelineEventLog({
         <p data-testid="log-attribution-blind" className="shrink-0 px-4 py-1 text-xs text-redlog-warn border-b border-redlog-border-subtle/30">
           {t('timeline.fold.blind')} {t(blindCauseKey)}
         </p>
+      )}
+      {legend.length > 1 && (
+        <ul data-testid="log-lane-legend" aria-label={t('timeline.log.legend')} className="shrink-0 flex flex-wrap gap-x-3 gap-y-0.5 px-4 py-1 text-xs text-redlog-text-faint border-b border-redlog-border-subtle/30">
+          {legend.map((lane) => (
+            <li key={lane} className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
+              <span>{t(LANE_LABEL_KEYS[lane])}</span>
+            </li>
+          ))}
+        </ul>
       )}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {rows.map((row) => {
@@ -195,6 +212,14 @@ export function TimelineEventLog({
                 </span>
               )}
               <span title={`${titleOf(evt)}${amendSuffix(evt)}`} className="text-redlog-text-dim truncate">{titleOf(evt)}</span>
+              {/* How a finished command ended — the number the row's title does
+                  not carry. Only a command_end has one; every other row stays
+                  as it was. */}
+              {evt.agentType === 'shell' && evt.data?.subtype === 'command_end' && typeof evt.data.exit_code === 'number' && (
+                <span data-testid="log-row-result" className={`ml-auto shrink-0 font-mono tabular-nums ${evt.data.exit_code === 0 ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+                  {t('transcript.metaExit', { code: evt.data.exit_code })}{typeof evt.data.duration_sec === 'number' ? ` · ${evt.data.duration_sec}s` : ''}
+                </span>
+              )}
               {/* Only for a marker that HAS been corrected (§22). Never
                   truncated, and never in danger red: an ordinary correction
                   must not read as an alarm. */}
