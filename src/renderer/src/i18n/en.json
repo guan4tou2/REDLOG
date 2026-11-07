@@ -1379,7 +1379,7 @@
   "scope.judged.retroactiveHint": "judged by a scope recompute, not at the time it ran",
   "scope.cleared": "withdrawn",
   "scope.clearedHint": "a later scope change withdrew this observation; the record is kept",
-  "scope.recompute.banner": "Scope recomputed at {{time}}",
+  "scope.recompute.banner": "Last scope recompute · {{time}}",
   "scope.recompute.bannerNoTime": "Scope recomputed",
   "scope.recompute.recomputed": "re-judged",
   "scope.recompute.newlyFlagged": "newly flagged",
@@ -2316,5 +2316,9 @@
   "screenshots.timeUtc": "Time: UTC",
   "loot.sectionTitle": "Loot detections",
   "timeline.copyRef": "Copy event reference",
-  "timeline.openInActivity": "Open in activity log"
+  "timeline.openInActivity": "Open in activity log",
+  "scope.fact.reason": "Reason",
+  "scope.fact.rule": "Matched rule",
+  "scope.fact.source": "Source event time",
+  "scope.recompute.explain": "The rules were applied again to recorded events; the differences are kept as events, and the original events are not changed."
 }
