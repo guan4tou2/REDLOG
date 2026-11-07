@@ -48,7 +48,7 @@ describe('turning a pack member on from the Capture Health card', () => {
     // A member is only on when its pack is too. Writing the member alone left
     // the operator flipping a switch and watching the row stay `off`.
     const el = draw([clipboard()])
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn on'))
     await waitFor(() => expect(saved).not.toBeNull())
     expect(saved).toMatchObject({
@@ -62,7 +62,7 @@ describe('turning a pack member on from the Capture Health card', () => {
     ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
       async () => ({ packs: { hostMonitors: true } })
     const el = draw([clipboard({ enabled: true, state: 'ready', lastEventAt: 1 })])
-    fireEvent.click(within(el).getByText(/all sources/))
+    fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn off'))
     await waitFor(() => expect(saved).not.toBeNull())
     expect(saved).toMatchObject({

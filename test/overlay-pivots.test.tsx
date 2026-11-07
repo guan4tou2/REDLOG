@@ -43,7 +43,7 @@ it('lists each node with tool, address, route and last seen — no arrows, no he
   expect(text).toContain('2 relay node(s) detected'.toUpperCase())
   expect(text).toContain('ligolo-ng')
   expect(text).toContain('192.0.2.24:11601')
-  expect(text).toContain('route 172.16.10.0/24')
+  expect(text).toContain('subnet route: 172.16.10.0/24')
   expect(text).toContain('not checked')
   expect(text).not.toMatch(/[→▸]/)
 })
