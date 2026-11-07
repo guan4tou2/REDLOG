@@ -522,6 +522,28 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
+  test('the ruler has no lane label column and marks the newest event; the focus marker follows the selection', async () => {
+    // The track is the scroller's first child: nothing sits left of it.
+    const firstIsTrack = await page.evaluate(() =>
+      (document.querySelector('[data-testid="timeline-lane-scroll"]')?.firstElementChild as HTMLElement | null)?.classList.contains('cursor-grab'))
+    expect(firstIsTrack).toBe(true)
+    await expect(page.getByTestId('timeline-marker-latest')).toBeVisible()
+    await expect(page.getByTestId('timeline-marker-focus')).toHaveCount(0)
+    await page.locator('[data-timeline-event]').first().click()
+    await expect(page.getByTestId('timeline-marker-focus')).toBeVisible()
+    // Same family of units as the dots: offsetLeft, never a bounding rect.
+    const inTrack = await page.evaluate(() => {
+      const track = (document.querySelector('div.cursor-grab') as HTMLElement).firstElementChild as HTMLElement
+      return ['timeline-marker-focus', 'timeline-marker-latest'].map((id) => {
+        const m = document.querySelector(`[data-testid="${id}"]`) as HTMLElement
+        return m.offsetLeft >= 0 && m.offsetLeft <= track.offsetWidth
+      })
+    })
+    expect(inTrack).toEqual([true, true])
+    await page.getByTestId('timeline-marker-latest').click()
+    await expect(page.getByTestId('timeline-follow-badge')).toContainText(/Live|即時/)
+  })
+
   test('the toolbar Activity link opens the activity log and returns to the selected event', async () => {
     await page.getByRole('button', { name: /whoami/ }).first().click()
     await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')

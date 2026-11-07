@@ -15,7 +15,9 @@ describe('track width (V8)', () => {
     // display got a 2000px track and a band of empty panel beside it.
     expect(SRC).toMatch(/MIN_BASE_TRACK_W\s*=\s*2000/)
     expect(SRC, 'baseTrackW must take the larger of the floor and the container')
-      .toMatch(/const baseTrackW = Math\.max\(MIN_BASE_TRACK_W, containerW[^)]*\)/)
+      .toMatch(/const baseTrackW = Math\.max\(MIN_BASE_TRACK_W, containerW - labelW\)/)
+    expect(SRC, 'the label column is subtracted only where it renders: the swim lanes')
+      .toMatch(/const labelW = timelineMode === 'standard' \? 0 : LABEL_W/)
     // Word-boundary anchored: `baseTrackW * zoom` is the new, correct form and
     // would otherwise match a naive search for the old constant.
     expect(SRC, 'no call site should still multiply the old constant')
@@ -34,3 +36,21 @@ describe('track width (V8)', () => {
   })
 })
 
+describe('standard ruler wiring', () => {
+  it('draws the lane label column only outside the standard mode', () => {
+    expect(SRC).toMatch(/\{timelineMode !== 'standard' && \(\s*<div className="shrink-0 border-r[^>]*style=\{\{ width: LABEL_W \}\}/)
+  })
+
+  it('keeps the standard track testid on the track, not on a label', () => {
+    expect(SRC).toMatch(/data-testid=\{timelineMode === 'standard' \? 'timeline-standard-track' : undefined\}/)
+  })
+
+  it('keeps the markers out of pan, double-click and right-click handling', () => {
+    expect(SRC).toMatch(/pointer-events-none">\s*\{rulerMarkers\.focus/)
+    expect(SRC.match(/closest\('\[data-timeline-marker\]'\)/g)?.length).toBe(2)
+  })
+
+  it('shares one resume-follow action between the badge and the [Latest] marker', () => {
+    expect(SRC.match(/resumeFollow\(\)/g)?.length).toBe(2)
+  })
+})
