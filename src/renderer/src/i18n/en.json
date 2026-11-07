@@ -2219,5 +2219,8 @@
   "activity.reader.field.exit": "Exit code",
   "activity.reader.field.duration": "Duration",
   "activity.reader.field.pid": "PID",
-  "activity.reader.field.cwd": "Directory"
+  "activity.reader.field.cwd": "Directory",
+  "timeline.log.legend": "Colour key",
+  "timeline.detail.exit": "Exit code",
+  "timeline.detail.duration": "Duration"
 }

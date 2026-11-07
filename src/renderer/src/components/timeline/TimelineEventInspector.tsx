@@ -226,6 +226,26 @@ export function TimelineEventInspector({
         <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.hostname}>
           {event.hostname}
         </dd>
+        {/* A finished command's own numbers, up here rather than after its
+            output, where they used to sit under their raw key names. */}
+        {typeof event.data?.exit_code === 'number' && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.exit')}</dt>
+            <dd data-testid="detail-exit" className={`font-mono text-right tabular-nums ${event.data.exit_code === 0 ? 'text-redlog-text-dim' : 'text-amber-400'}`}>{event.data.exit_code}</dd>
+          </>
+        )}
+        {typeof event.data?.duration_sec === 'number' && (
+          <>
+            <dt className="text-redlog-text-faint">{t('timeline.detail.duration')}</dt>
+            <dd className="font-mono text-redlog-text-dim text-right tabular-nums">{event.data.duration_sec} s</dd>
+          </>
+        )}
+        {typeof event.data?.pid === 'number' && (
+          <>
+            <dt className="text-redlog-text-faint">PID</dt>
+            <dd className="font-mono text-redlog-text-dim text-right tabular-nums">{event.data.pid}</dd>
+          </>
+        )}
         {event.targetId && (
           <>
             <dt className="text-redlog-text-faint">{t('timeline.detail.target')}</dt>
