@@ -10,7 +10,7 @@ type Props = Parameters<typeof TimelineToolbar>[0]
 function Harness(over: Partial<Props>): JSX.Element {
   const { t } = useI18n()
   const props: Props = {
-    t, timeRange: null, setTimeRange: vi.fn(), hasMore: false, loadedCount: 3, loadedSpanMs: 90 * 60_000,
+    t, timeRange: null, setTimeRange: vi.fn(), hasMore: false, loadedCount: 3, loadedSpanMs: 90 * 60_000, projectSpanMs: null,
     total: { state: 'ok', value: 3 }, onRetryTotal: vi.fn(), onLoadMore: vi.fn(),
     zoom: 1, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(), anchorTs: null,
     mode: 'standard', onModeChange: vi.fn(), onOpenActivity: vi.fn(),
@@ -47,7 +47,16 @@ describe('TimelineToolbar', () => {
     expect(typeof (setTimeRange.mock.calls[0][0] as { since: number }).since).toBe('number')
   })
 
-  it('shows the whole-session span only with no range and nothing left to load', () => {
+  it('shows the project span from events:span even with older rows unloaded', () => {
+    draw({ hasMore: true, projectSpanMs: 25 * 3600_000 + 7 * 60_000 })
+    expect(screen.getByTestId('timeline-range-all').textContent).toBe('Whole session (25h 07m)')
+    cleanup()
+    // A range is not the whole session, whatever the project spans.
+    draw({ projectSpanMs: 25 * 3600_000, timeRange: { since: Date.now() - 86_400_000 } })
+    expect(screen.getByTestId('timeline-range-all').textContent).toBe('Whole session')
+  })
+
+  it('without a project span, uses the loaded span only with nothing left to load', () => {
     draw()
     expect(screen.getByTestId('timeline-range-all').textContent).toBe('Whole session (1h 30m)')
     cleanup()

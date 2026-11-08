@@ -182,13 +182,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const [hasMore, setHasMore] = useState(false)
   // First to last loaded row, for the toolbar's "whole session" span. A loop,
   // not Math.max(...rows): a spread of a large page overflows the call stack.
-  const loadedSpanMs = useMemo(() => {
+  const loadedBounds = useMemo(() => {
     if (rawEvents.length < 2) return null
     let lo = Infinity
     let hi = -Infinity
     for (const e of rawEvents) { if (e.timestamp < lo) lo = e.timestamp; if (e.timestamp > hi) hi = e.timestamp }
-    return hi - lo
+    return { lo, hi }
   }, [rawEvents])
+  const loadedSpanMs = loadedBounds ? loadedBounds.hi - loadedBounds.lo : null
+  // First and last row the filter admits across the whole project (069 B,
+  // `events:span`), asked with the total. Rows that arrive live after the
+  // answer widen it from the loaded bounds rather than re-asking. Null while
+  // pending or after a failure, and the toolbar then falls back to the loaded
+  // span once nothing older is left to load.
+  const [projectBounds, setProjectBounds] = useState<{ first: number; last: number } | null>(null)
+  const projectSpanMs = useMemo(() => {
+    if (!projectBounds) return null
+    const first = loadedBounds ? Math.min(projectBounds.first, loadedBounds.lo) : projectBounds.first
+    const last = loadedBounds ? Math.max(projectBounds.last, loadedBounds.hi) : projectBounds.last
+    return last - first
+  }, [projectBounds, loadedBounds])
   const pageCursorRef = useRef<string | null>(null)
   // The same cursor as state, for what is computed from it (earlier matches).
   const [pageCursor, setPageCursorState] = useState<string | null>(null)
@@ -648,6 +661,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const requestTotal = (gen: number): void => {
     recountRef.current = false
     setTotal({ state: 'pending' })
+    setProjectBounds(null)
+    // A bridge without `span` (an older preload) throws synchronously; inside
+    // the promise it is a failure like any other, and the loaded span stands.
+    Promise.resolve()
+      .then(() => window.redlog.events.span({ filter: eventFilterRef.current, excludeHousekeeping: true }))
+      .then((b) => { if (gen === generationRef.current) setProjectBounds(b) })
+      .catch(() => { /* the toolbar falls back to the loaded span */ })
     window.redlog.events.count({ filter: eventFilterRef.current, excludeHousekeeping: true })
       .then((n) => {
         if (gen !== generationRef.current) return
@@ -1969,6 +1989,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         hasMore={hasMore}
         loadedCount={rawEvents.length}
         loadedSpanMs={loadedSpanMs}
+        projectSpanMs={projectSpanMs}
         total={total}
         onRetryTotal={() => requestTotal(generationRef.current)}
         onLoadMore={loadMore}

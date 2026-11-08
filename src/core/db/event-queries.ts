@@ -606,6 +606,19 @@ export interface EventCountRequest {
 export function countEvents(req: EventCountRequest): number {
   if (req.parsed && isEmptyQuery(req.parsed)) return 0
   const db = getReadonlyDB()
+  const { chained, logged } = countWhere(db, req)
+  const row = db.prepare(`
+    SELECT (SELECT COUNT(*) FROM events e ${chained.where})
+         + (SELECT COUNT(*) FROM events_logged e ${logged.where}) AS n
+  `).get(...chained.params, ...logged.params) as { n: number }
+  return row.n
+}
+
+/** The two tiers' WHERE for a count request, cursor and search checks
+ *  included, so the count and the span read exactly the same rows. */
+function countWhere(db: ReturnType<typeof getReadonlyDB>, req: EventCountRequest): {
+  chained: ReturnType<typeof buildTierWhere>; logged: ReturnType<typeof buildTierWhere>
+} {
   let cursor: CursorKey | null = null
   if (req.cursor) {
     cursor = decodeCursor(req.cursor)
@@ -625,13 +638,24 @@ export function countEvents(req: EventCountRequest): number {
       ||bodySearchCoverage(cursor.search.snapshot,undefined,{parsed:cursor.search.parsed,filter:req.filter}).revision!==cursor.search.revision)
       throw new Error('Search index coverage or query changed; refresh the query')
   }
-  const chained = buildTierWhere('chained', input)
-  const logged = buildTierWhere('logged', input)
+  return { chained: buildTierWhere('chained', input), logged: buildTierWhere('logged', input) }
+}
+
+/** First and last `timestamp` of the rows `countEvents` counts, or null when
+ *  there are none. The Timeline's 全階段 span reads this rather than the loaded
+ *  page, which only covers the project once every older page is fetched. */
+export function spanEvents(req: EventCountRequest): { first: number; last: number } | null {
+  if (req.parsed && isEmptyQuery(req.parsed)) return null
+  const db = getReadonlyDB()
+  const { chained, logged } = countWhere(db, req)
   const row = db.prepare(`
-    SELECT (SELECT COUNT(*) FROM events e ${chained.where})
-         + (SELECT COUNT(*) FROM events_logged e ${logged.where}) AS n
-  `).get(...chained.params, ...logged.params) as { n: number }
-  return row.n
+    SELECT MIN(lo) AS first, MAX(hi) AS last FROM (
+      SELECT MIN(e.timestamp) AS lo, MAX(e.timestamp) AS hi FROM events e ${chained.where}
+      UNION ALL
+      SELECT MIN(e.timestamp) AS lo, MAX(e.timestamp) AS hi FROM events_logged e ${logged.where}
+    )
+  `).get(...chained.params, ...logged.params) as { first: number | null; last: number | null }
+  return row.first == null || row.last == null ? null : { first: row.first, last: row.last }
 }
 
 export const MATCH_EVENT_IDS_MAX = 1000

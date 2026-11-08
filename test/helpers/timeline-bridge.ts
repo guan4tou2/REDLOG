@@ -22,6 +22,7 @@ export interface Page { items: Ev[]; hasMore: boolean; nextCursor: string | null
 export interface TimelineBridge {
   queryPage: Mock
   count: Mock
+  span: Mock
   matchIds: Mock
   runQuery: Mock
   query: Mock
@@ -38,12 +39,13 @@ export function installTimelineBridge(opts: { timelineMode?: 'lanes' | 'standard
   const batchListeners = new Set<(events: Ev[]) => void>()
   const queryPage = vi.fn(async () => page([]))
   const count = vi.fn(async () => 0)
+  const span = vi.fn(async (): Promise<{ first: number; last: number } | null> => null)
   const matchIds = vi.fn(async (req: { ids: string[] }) => req.ids)
   const runQuery = vi.fn(async () => ({ items: [], hasMore: false, nextCursor: null }))
   const query = vi.fn(async () => [])
   const getById = vi.fn(async () => [])
   const events = {
-    queryPage, count, matchIds, runQuery, query, getById,
+    queryPage, count, span, matchIds, runQuery, query, getById,
     onNewBatch: (cb: (events: Ev[]) => void) => { batchListeners.add(cb); return () => batchListeners.delete(cb) },
     aggregateTargets: async () => [],
     distinctAgentTypes: async () => [],
@@ -84,7 +86,7 @@ export function installTimelineBridge(opts: { timelineMode?: 'lanes' | 'standard
     disconnect(): void {}
   }
   return {
-    queryPage, count, matchIds, runQuery, query, getById,
+    queryPage, count, span, matchIds, runQuery, query, getById,
     emitBatch: (evts) => { for (const cb of batchListeners) cb(evts) }
   }
 }
