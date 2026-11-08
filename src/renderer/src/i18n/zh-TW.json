@@ -2357,5 +2357,6 @@
   "timeline.minimap.titleLoaded": "事件密度分佈波形（已載入範圍）",
   "timeline.minimap.window": "重點視窗",
   "timeline.minimap.windowHint": "拖曳平移 · 拖曳兩側把手調整範圍",
-  "timeline.help.focusWindow": "拖曳重點視窗平移，拖曳兩側調整範圍"
+  "timeline.help.focusWindow": "拖曳重點視窗平移，拖曳兩側調整範圍",
+  "screenshots.imageUnavailable": "無法載入圖片"
 }
