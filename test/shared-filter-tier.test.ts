@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { initDB, closeDB } from '../src/core/db/index'
-import { queryEventsPage, executeEventQuery, countEvents, matchEventIds, queryHttpFlowPage } from '../src/core/db/events'
+import { queryEventsPage, executeEventQuery, countEvents, spanEvents, matchEventIds, queryHttpFlowPage } from '../src/core/db/events'
 import { parseQuery } from '../src/core/query/contract'
 import { insertFixtureRow, type FixtureRow } from './helpers/timeline-query-fixture'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
@@ -52,5 +52,17 @@ describe('the tier as a shared-filter condition', () => {
 
   it('reads both tiers when no tier is asked for', () => {
     expect(countEvents({})).toBe(5)
+  })
+
+  // 069 B: the Timeline's whole-project span reads the rows the count counts.
+  it('spans the rows the count counts, across both tiers or one', () => {
+    expect(spanEvents({})).toEqual({ first: 1, last: 5 })
+    expect(spanEvents({ filter: chained })).toEqual({ first: 3, last: 5 })
+    expect(spanEvents({ filter: { agentType: 'scanner' } })).toEqual({ first: 1, last: 1 })
+    expect(spanEvents({ filter: { since: 2, before: 4 } })).toEqual({ first: 2, last: 4 })
+  })
+
+  it('has no span when nothing matches', () => {
+    expect(spanEvents({ filter: { agentType: 'nothing-like-this' } })).toBeNull()
   })
 })

@@ -253,6 +253,7 @@ interface RedLogAPI {
     activityMembers: (req: import('../../core/activity-contract').ActivityMembersRequest) => Promise<import('../../core/activity-contract').ActivityMembersPage>
     /** Spec 038: how many rows a page or a query walks past `cursor`. */
     count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
+    span: (req: import('../../core/db/events').EventCountRequest) => Promise<{ first: number; last: number } | null>
     /** Spec 038: which of up to 1000 held ids the filter (and query) admit. */
     matchIds: (req: import('../../core/db/events').EventMatchRequest) => Promise<string[]>
     toolCounterparts: (

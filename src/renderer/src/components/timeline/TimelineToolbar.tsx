@@ -30,7 +30,7 @@ const ghost = 'px-2 h-6 text-xs whitespace-nowrap rounded border border-redlog-b
  *  It renders what it is given: the panel owns every value, and the follow
  *  badge and the ⋯ menu come in as slots because they close over panel state. */
 export function TimelineToolbar({
-  t, timeRange, setTimeRange, hasMore, loadedCount, loadedSpanMs, total, onRetryTotal, onLoadMore,
+  t, timeRange, setTimeRange, hasMore, loadedCount, loadedSpanMs, projectSpanMs, total, onRetryTotal, onLoadMore,
   zoom, onZoomOut, onZoomIn, onResetZoom, anchorTs,
   mode, onModeChange, onOpenActivity,
   filterQuery, onFilterQueryChange, searchInputRef,
@@ -43,6 +43,8 @@ export function TimelineToolbar({
   loadedCount: number
   /** Last minus first loaded timestamp, or null with fewer than two rows. */
   loadedSpanMs: number | null
+  /** First to last row across the project, from `events:span`; null when unknown. */
+  projectSpanMs: number | null
   total: TimelineTotal
   onRetryTotal: () => void
   onLoadMore: () => void
@@ -68,9 +70,10 @@ export function TimelineToolbar({
     && Date.now() - since < HOUR * 1.1 && Date.now() - since > HOUR * 0.5
   const isAll = !timeRange
   const isCustom = !!timeRange && !isLastHour
-  // The project's real span is not known until older rows are loaded (no
-  // span API yet), so it is only claimed once nothing is left to load.
-  const showSpan = isAll && !hasMore && loadedSpanMs != null && loadedSpanMs >= 60_000
+  // The project's span comes from `events:span`. Without it (pending or
+  // failed) the loaded rows are the project only once nothing older is left.
+  const spanMs = projectSpanMs ?? (!hasMore ? loadedSpanMs : null)
+  const showSpan = isAll && spanMs != null && spanMs >= 60_000
   const showSearch = searchOpen || filterQuery !== ''
 
   return (
@@ -93,7 +96,7 @@ export function TimelineToolbar({
               aria-pressed={isAll}
               onClick={() => { setCustomOpen(false); setTimeRange(null) }}
               className={chip(isAll)}
-            >{t('timeline.range.all')}{showSpan ? ` (${formatSpan(loadedSpanMs as number)})` : ''}</button>
+            >{t('timeline.range.all')}{showSpan ? ` (${formatSpan(spanMs as number)})` : ''}</button>
             <button
               type="button"
               data-testid="timeline-range-custom"
