@@ -641,7 +641,7 @@
   "timeline.help.focusChain": "Toggle focus-chain mode on selected event",
   "timeline.help.selectDot": "Select event (summary bar) / double-click to open details",
   "timeline.help.dropMarker": "Right-click → drop a marker here",
-  "timeline.help.zoom": "Zoom a time range (drag on the minimap)",
+  "timeline.help.zoom": "Zoom a time range (drag on the density strip)",
   "timeline.help.expandCluster": "Expand a cluster of overlapping events",
   "timeline.help.expandBody": "Expand/collapse a body section",
   "timeline.help.jumpCause": "Jump to the event that caused this one",
@@ -2351,5 +2351,10 @@
   "timeline.bar.details": "Details",
   "timeline.bar.reader": "Open Reader",
   "timeline.bar.scope": "by current Scope: {{state}}",
-  "timeline.bar.scopeUnjudged": "Not judged yet"
+  "timeline.bar.scopeUnjudged": "Not judged yet",
+  "timeline.minimap.title": "Event density",
+  "timeline.minimap.titleLoaded": "Event density (loaded range)",
+  "timeline.minimap.window": "Focus window",
+  "timeline.minimap.windowHint": "Drag to pan · drag either edge to change the range",
+  "timeline.help.focusWindow": "Pan the focus window, or drag its edges to resize"
 }

@@ -792,3 +792,71 @@ test.describe.serial('timeline-virtualisation', () => {
     expect(m.domDots, `${m.domDots} dots in the DOM for a ${m.trackW}px track`).toBeLessThan(maxExpected)
   })
 })
+
+// Stitch 05 重點視窗: the viewport frame on the density strip is a handle. Its
+// body pans the track; a grip resizes it and the zoom follows on release.
+// Positions come from boundingBox(), which is in the same space page.mouse
+// moves in; the scroll offset is read as `scrollLeft` (CSS px) and only ever
+// compared with itself.
+test.describe.serial('timeline-focus-window: minimap focus window', () => {
+  const scrollLeft = (): Promise<number> =>
+    page.evaluate(() => (document.querySelector('div.cursor-grab') as HTMLElement).scrollLeft)
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000)
+    await resetShared()
+    await openTestProject(page, 'focus-window')
+    await page.waitForTimeout(1000)
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+    const now = Date.now()
+    for (let i = 0; i < 30; i++) {
+      await fetch(`${base}/api/events`, { method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ agent_type: 'marker',
+          data: { title: `fw${i}`, severity: 'info', atTimestamp: now - (30 - i) * 60_000 } }) })
+    }
+    // Zoomed in, so the window is a fraction of the strip with room to move.
+    await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '4'))
+    await page.reload()
+    await page.waitForTimeout(2000)
+    await openView(page, 'timeline')
+    await expect(page.getByTestId('minimap-window')).toBeVisible()
+  })
+
+  test('the strip is titled and says what span it covers', async () => {
+    await expect(page.getByText(/^Event density/)).toBeVisible()
+    await expect(page.getByTestId('minimap-span')).toHaveText(/\d{2}:\d{2}:\d{2} - \d{2}:\d{2}:\d{2}/)
+  })
+
+  test('dragging the window body pans the track', async () => {
+    const before = await scrollLeft()
+    const box = (await page.getByTestId('minimap-window').boundingBox())!
+    expect(box.width, 'window should be narrower than the strip at zoom 4').toBeGreaterThan(10)
+    const y = box.y + box.height / 2
+    const x = box.x + box.width / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x - 80, y, { steps: 6 })
+    await page.mouse.up()
+    await expect.poll(scrollLeft).toBeLessThan(before - 20)
+  })
+
+  test('dragging a grip resizes the window and re-zooms on release', async () => {
+    const zoomBefore = await page.getByTestId('timeline-zoom-level').textContent()
+    const grip = (await page.getByTestId('minimap-window-start').boundingBox())!
+    const y = grip.y + grip.height / 2
+    const x = grip.x + grip.width / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x - 60, y, { steps: 6 })
+    // The outline shows the new range while the grip is held.
+    await expect(page.getByTestId('minimap-window-preview')).toBeVisible()
+    await page.mouse.up()
+    await expect(page.getByTestId('minimap-window-preview')).toHaveCount(0)
+    // A wider window is a lower zoom.
+    await expect.poll(() => page.getByTestId('timeline-zoom-level').textContent()).not.toBe(zoomBefore)
+    const pct = (s: string | null): number => Number((s ?? '').replace(/[^\d.]/g, ''))
+    expect(pct(await page.getByTestId('timeline-zoom-level').textContent())).toBeLessThan(pct(zoomBefore))
+  })
+})
