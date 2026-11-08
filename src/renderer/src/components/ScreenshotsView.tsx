@@ -27,6 +27,9 @@ interface ShotActions {
   triggerLabel: (trigger: string) => string
   thumb: (id: string) => string | undefined
   deleted: (id: string) => boolean
+  /** The file could not be read when the thumbnail loaded: found at render, not known from data. */
+  unreadable: (id: string) => boolean
+  markUnreadable: (id: string) => void
   open: (id: string) => void
   remove: (shot: RedLogEvent) => void
 }
@@ -38,10 +41,13 @@ function Thumb({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element 
   return <>
     {a.deleted(shot.id) ? (
       <span className="px-1 text-center text-redlog-text-faint text-xs">{a.t('screenshots.deletedKept')}</span>
-    ) : src ? (
-      <img src={src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+    ) : src && !a.unreadable(shot.id) ? (
+      <img src={src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => a.markUnreadable(shot.id)} />
     ) : (
-      <span className="text-redlog-text-faint text-xs">{(shot.data.filename as string) ?? '...'}</span>
+      // No file to show: the read failed, or the event never carried a path
+      // (a screenshot recorded through the API without its file). The box
+      // used to print the filename, which read as a broken image.
+      <span data-testid="screenshot-unreadable" className="px-1 text-center text-redlog-text-faint text-xs">{a.t('screenshots.imageUnavailable')}</span>
     )}
   </>
 }
@@ -53,15 +59,16 @@ const LINK = 'rounded px-1.5 py-0.5 text-xs text-redlog-text-dim hover:bg-redlog
  *  be copied. */
 function ShotButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element | null {
   const gone = a.deleted(shot.id)
+  const unreadable = a.unreadable(shot.id)
   const sha = typeof shot.data.sha256 === 'string' ? shot.data.sha256 : null
   const filePath = typeof shot.data.filePath === 'string' ? shot.data.filePath : null
   return <div className="flex flex-wrap items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-    {!gone && a.thumb(shot.id) && (
+    {!gone && !unreadable && a.thumb(shot.id) && (
       <button type="button" data-testid="screenshot-enlarge" className={LINK} aria-label={a.t('screenshots.enlarge')} onClick={() => a.open(shot.id)}>
         {a.t('screenshots.preview')}
       </button>
     )}
-    {!gone && filePath && (
+    {!gone && !unreadable && filePath && (
       <button type="button" data-testid="screenshot-reveal" className={LINK} aria-label={a.t('artifacts.reveal')}
         onClick={async () => {
           const ok = await window.redlog.artifacts.reveal('screenshot', filePath).catch(() => false)
@@ -104,7 +111,7 @@ function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
 }
 
 function ShotRow({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
-  const gone = a.deleted(shot.id)
+  const gone = a.deleted(shot.id) || a.unreadable(shot.id)
   return <div
     role="button" tabIndex={0}
     aria-label={a.t('screenshots.itemLabel', { time: formatTime(shot.timestamp, { seconds: true }) })}
@@ -121,7 +128,7 @@ function ShotRow({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Elemen
 }
 
 function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
-  const gone = a.deleted(shot.id)
+  const gone = a.deleted(shot.id) || a.unreadable(shot.id)
   return <div
     role="button" tabIndex={0}
     aria-label={a.t('screenshots.itemLabel', { time: formatTime(shot.timestamp, { seconds: true }) })}
@@ -144,6 +151,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
+  const [unreadableIds, setUnreadableIds] = useState<Set<string>>(new Set())
   const [triggerFilter, setTriggerFilter] = useState<string | null>(null)
   // What triggers exist, counted over the unfiltered load. A filtered load holds
   // only one trigger, so counting from it would leave no way to leave the filter.
@@ -281,6 +289,8 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
     t, triggerLabel,
     thumb: (id) => thumbs[id],
     deleted: (id) => deletedIds.has(id),
+    unreadable: (id) => unreadableIds.has(id),
+    markUnreadable: (id) => setUnreadableIds((prev) => prev.has(id) ? prev : new Set(prev).add(id)),
     open: (id) => setExpanded(id),
     remove: (s) => { void remove(s) }
   }
@@ -390,7 +400,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         // The lightbox (UI/UX audit F20): what the frame is, not just the
         // pixels — when, why it was taken, its hash — and the neighbours
         // without closing it. A shared Modal, so focus stays in it.
-        const viewable = visible.filter((x) => !deletedIds.has(x.id) && thumbs[x.id])
+        const viewable = visible.filter((x) => !deletedIds.has(x.id) && !unreadableIds.has(x.id) && thumbs[x.id])
         const at = expanded ? viewable.findIndex((x) => x.id === expanded) : -1
         const shot = at >= 0 ? viewable[at] : null
         const step = (d: number): void => {

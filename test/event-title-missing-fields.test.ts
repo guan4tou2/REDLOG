@@ -46,3 +46,33 @@ describe('a terminal recording the app never closed', () => {
     expect(eventTitle(shell({ subtype: 'session_end', source: 'builtin-terminal', reason: 'shell-exited', exitCode: 0 }))).toBe('▪ terminal closed (exit 0)')
   })
 })
+
+// Stitch audit 2026-11-08: RedLog's own state changes headed the activity log
+// as raw `system: ip_verdict`, `system: opsec_airgap`, `system: http_proxy_started`.
+describe('system event titles', () => {
+  const sys = (data: Record<string, unknown>): RedLogEvent => ({
+    id: 's1', timestamp: 1, engagementId: 'eng', sessionId: 's', operatorId: 'op-1', agentType: 'system',
+    hostname: 'h', sourceIP: null, targetId: null, data, createdAt: 1
+  } as RedLogEvent)
+
+  it('names the state changes instead of printing the subtype', () => {
+    const titles = [
+      eventTitle(sys({ subtype: 'http_proxy_started', proxy: 'http://127.0.0.1:6661' })),
+      eventTitle(sys({ subtype: 'http_proxy_stopped' })),
+      eventTitle(sys({ subtype: 'opsec_airgap', enabled: true })),
+      eventTitle(sys({ subtype: 'opsec_airgap', enabled: false })),
+      eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'exposed' })),
+      eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'off_profile' })),
+      eventTitle(sys({ subtype: 'session_start' }))
+    ]
+    for (const title of titles) expect(title).not.toMatch(/^system:/)
+    expect(titles[0]).toContain('127.0.0.1:6661')
+    expect(titles[2]).not.toBe(titles[3])
+    expect(titles[4]).not.toBe(titles[5])
+  })
+
+  it('still says it is a system event when the subtype has no title', () => {
+    expect(eventTitle(sys({ subtype: 'something_new' }))).toMatch(/something_new/)
+    expect(eventTitle(sys({ subtype: 'something_new' }))).not.toMatch(/^system:/)
+  })
+})

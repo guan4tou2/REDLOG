@@ -1,3 +1,4 @@
+import { PAGE_COLUMN } from '../lib/pageColumn'
 import { useState, useEffect, useCallback } from 'react'
 import { Globe } from 'lucide-react'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './Button'
@@ -191,14 +192,14 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
 
   if (loading) {
     return (
-      <div role="status" aria-label={t('common.loading')} data-testid="dashboard-loading" className="p-pad space-y-section overflow-auto h-full">
+      <div role="status" aria-label={t('common.loading')} data-testid="dashboard-loading" className="p-pad overflow-auto h-full"><div className={`${PAGE_COLUMN} space-y-section`}>
         {[40, 32, 20].map((height) => (
           <div key={height} aria-hidden="true" className="rounded-lg bg-redlog-surface border border-redlog-border p-pad animate-pulse" style={{ minHeight: `${height / 4}rem` }}>
             <div className="h-3 w-32 max-w-full bg-redlog-elevated rounded mb-3" />
             <div className="h-5 w-1/2 bg-redlog-elevated rounded" />
           </div>
         ))}
-      </div>
+      </div></div>
     )
   }
 
@@ -224,7 +225,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
   }
 
   return (
-    <div className="p-pad space-y-section overflow-auto h-full">
+    <div className="p-pad overflow-auto h-full"><div className={`${PAGE_COLUMN} space-y-section`}>
       <div data-testid="dashboard-header" className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
           {/* The small label and the hint give way when the window is short, as on the evidence page. */}
@@ -332,6 +333,6 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
           </div>
         </div>
       </details>
-    </div>
+    </div></div>
   )
 }
