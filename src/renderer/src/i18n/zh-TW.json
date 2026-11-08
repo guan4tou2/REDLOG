@@ -2352,6 +2352,7 @@
   "timeline.bar.reader": "開啟專屬 Reader",
   "timeline.bar.scope": "依目前範圍：{{state}}",
   "timeline.bar.scopeUnjudged": "尚未判定",
+  "eventTitle.scopeUnjudged": "範圍未判定：{{target}}",
   "timeline.minimap.title": "事件密度分佈波形",
   "timeline.minimap.titleLoaded": "事件密度分佈波形（已載入範圍）",
   "timeline.minimap.window": "重點視窗",

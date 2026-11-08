@@ -218,7 +218,13 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
         // A hit that landed inside the scope is stored under the same subtype
         // so adherence can be counted; it is a tally, not a violation, and
         // must not read as one.
-        const key = d.distance === 'in_scope' ? 'eventTitle.scopeInScope' : 'eventTitle.scopeObservation'
+        // With no scope configured the evaluator still files the hit under
+        // `in_scope` (nothing is outside an undrawn boundary), but marks the
+        // verdict `authority: 'unknown'`. Saying 範圍內 then contradicts the
+        // status bar's 範圍未設定 on the same screen; it was never judged.
+        const key = d.distance !== 'in_scope'
+          ? 'eventTitle.scopeObservation'
+          : d.authority === 'unknown' ? 'eventTitle.scopeUnjudged' : 'eventTitle.scopeInScope'
         return t(key, { target: String(d.target || d.command || '') })
       }
       if (d.subtype === 'ip_transition') return `⇋ ${d.description || t('eventTitle.ipTransition')}`

@@ -2352,6 +2352,7 @@
   "timeline.bar.reader": "Open Reader",
   "timeline.bar.scope": "by current Scope: {{state}}",
   "timeline.bar.scopeUnjudged": "Not judged yet",
+  "eventTitle.scopeUnjudged": "Scope not judged: {{target}}",
   "timeline.minimap.title": "Event density",
   "timeline.minimap.titleLoaded": "Event density (loaded range)",
   "timeline.minimap.window": "Focus window",
