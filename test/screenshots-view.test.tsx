@@ -110,3 +110,27 @@ it('names the section, labels each row recorded, and names its actions in words'
   expect(screen.getAllByTestId('screenshot-copy-hash')[0].textContent).toBe('Copy hash')
   expect(screen.getByTestId('screenshots-time-zone').textContent).toMatch(/^Time: (local|UTC)$/)
 })
+
+it('replaces an image that fails to load with a placeholder, in list and grid, and drops the actions that need the file', async () => {
+  install()
+  mount()
+  await screen.findByTestId('screenshot-list')
+  for (const view of ['list', 'grid']) {
+    if (view === 'grid') fireEvent.click(screen.getByTestId('screenshots-view-grid'))
+    await waitFor(() => expect(document.querySelectorAll('img').length).toBe(3))
+    expect(screen.getAllByTestId('screenshot-enlarge')).toHaveLength(3)
+    fireEvent.error(document.querySelectorAll('img')[0])
+    expect(screen.getAllByTestId('screenshot-unreadable')).toHaveLength(1)
+    expect(screen.getByText('Image unavailable')).toBeTruthy()
+    expect(document.querySelectorAll('img').length).toBe(2)
+    expect(screen.getAllByTestId('screenshot-enlarge')).toHaveLength(2)
+    expect(screen.getAllByTestId('screenshot-reveal')).toHaveLength(2)
+    // Copy hash and delete stay; the load failure is not the "deleted" state.
+    expect(screen.getAllByTestId('screenshot-copy-hash')).toHaveLength(3)
+    expect(screen.getAllByTestId('screenshot-delete')).toHaveLength(3)
+    expect(screen.queryByText('File deleted · event record kept')).toBeNull()
+    // Reset for the next view: a fresh mount forgets the failure.
+    cleanup(); install(); mount()
+    await screen.findByTestId(view === 'list' ? 'screenshot-list' : 'screenshot-grid')
+  }
+})

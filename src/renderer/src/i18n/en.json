@@ -2357,5 +2357,6 @@
   "timeline.minimap.titleLoaded": "Event density (loaded range)",
   "timeline.minimap.window": "Focus window",
   "timeline.minimap.windowHint": "Drag to pan · drag either edge to change the range",
-  "timeline.help.focusWindow": "Pan the focus window, or drag its edges to resize"
+  "timeline.help.focusWindow": "Pan the focus window, or drag its edges to resize",
+  "screenshots.imageUnavailable": "Image unavailable"
 }
