@@ -2253,7 +2253,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               onMouseDown={(e) => onWindowDown('start', e)}
             ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
             {view.width >= 12 && (
-              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none truncate" title={t('timeline.minimap.window')}>
+              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none whitespace-nowrap overflow-hidden">
                 {t('timeline.minimap.window')}
               </span>
             )}
