@@ -533,6 +533,24 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
+  // 2026-11-08 Stitch audit: 100% is the whole span, so there is nothing to
+  // scroll to. Centred end labels hung past the track and made it scroll a few
+  // pixels, clipped as ":12" and "03:". Widths are CSS px on both sides.
+  test('at 100% the track does not scroll, and the end labels sit inside it', async () => {
+    const reset = page.getByTestId('timeline-zoom-reset')
+    if (await reset.isEnabled()) await reset.click()
+    await expect(page.getByTestId('timeline-zoom-level')).toHaveText('100%')
+    await expect.poll(() => page.evaluate(() => {
+      const s = document.querySelector('div.cursor-grab') as HTMLElement
+      return s.scrollWidth - s.clientWidth
+    })).toBeLessThanOrEqual(1)
+    const labels = page.getByTestId('timeline-axis-label')
+    if (await labels.count() > 1) {
+      await expect(labels.first()).not.toHaveAttribute('data-align', 'end')
+      await expect(labels.last()).not.toHaveAttribute('data-align', 'start')
+    }
+  })
+
   test('the ruler has no lane label column and marks the newest event; the focus marker follows the selection', async () => {
     // The track is the scroller's first child: nothing sits left of it.
     const firstIsTrack = await page.evaluate(() =>

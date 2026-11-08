@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, RULER_CHIP_W } from '../src/renderer/src/lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, RULER_CHIP_W, tickLabelAlign, AXIS_LABEL_HALF_W } from '../src/renderer/src/lib/timelineTimeMap'
 
 const GAP_MIN_MS = 10 * 60_000
 const GAP_PX = 48
@@ -260,5 +260,16 @@ describe('placeRulerMarkers', () => {
     expect(placeRulerMarkers({ focusX: 1800, latestX: 2000, trackW: 2000 }).latest?.row).toBe(1)
     // focus spans [1000,1150]; latest [1850,2000]: clear.
     expect(placeRulerMarkers({ focusX: 1000, latestX: 2000, trackW: 2000 }).latest?.row).toBe(0)
+  })
+})
+
+describe('tickLabelAlign', () => {
+  it('centres a label, and aligns one near either edge inward so it stays on the track', () => {
+    expect(tickLabelAlign(500, 1000)).toBe('center')
+    expect(tickLabelAlign(0, 1000)).toBe('start')
+    expect(tickLabelAlign(AXIS_LABEL_HALF_W - 1, 1000)).toBe('start')
+    expect(tickLabelAlign(1000, 1000)).toBe('end')
+    expect(tickLabelAlign(1000 - AXIS_LABEL_HALF_W + 1, 1000)).toBe('end')
+    expect(tickLabelAlign(AXIS_LABEL_HALF_W, 1000)).toBe('center')
   })
 })
