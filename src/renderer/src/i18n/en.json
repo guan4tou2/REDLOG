@@ -2351,5 +2351,6 @@
   "timeline.bar.details": "Details",
   "timeline.bar.reader": "Open Reader",
   "timeline.bar.scope": "by current Scope: {{state}}",
-  "timeline.bar.scopeUnjudged": "Not judged yet"
+  "timeline.bar.scopeUnjudged": "Not judged yet",
+  "eventTitle.scopeUnjudged": "Scope not judged: {{target}}"
 }
