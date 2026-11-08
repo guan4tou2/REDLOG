@@ -2369,5 +2369,6 @@
   "eventTitle.sessionStart": "開啟專案，開始記錄",
   "eventTitle.chainSampleBroken": "證據鏈抽樣驗證未通過",
   "eventTitle.systemOther": "系統事件：{{name}}",
-  "activity.systemFold": "{{count}} 筆系統事件"
+  "activity.systemFold": "{{count}} 筆系統事件",
+  "screenshots.imageUnavailable": "無法載入圖片"
 }

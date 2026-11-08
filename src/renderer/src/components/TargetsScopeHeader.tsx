@@ -1,3 +1,4 @@
+import { PAGE_COLUMN } from '../lib/pageColumn'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -48,7 +49,7 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
   const failed = rules.state.phase === 'failed' && !value
   const configured = !!value && (value.allow > 0 || value.exclude > 0)
 
-  return <div data-testid="targets-scope-header" className="shrink-0 space-y-3 px-4 pt-4">
+  return <div data-testid="targets-scope-header" className="shrink-0 px-4 pt-4"><div className={`${PAGE_COLUMN} space-y-3`}>
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
@@ -94,5 +95,5 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
       {failed && <Button size="compact" data-testid="scope-context-retry" onClick={retryRules}>{t('common.retry')}</Button>}
       {!failed && !configured && value && <Button size="compact" onClick={onOpenSettings}>{t('targetsScope.goSettings')}</Button>}
     </section>
-  </div>
+  </div></div>
 }
