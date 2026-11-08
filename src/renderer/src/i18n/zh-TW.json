@@ -2350,6 +2350,6 @@
   "timeline.card.stdout": "標準輸出摘要",
   "timeline.bar.details": "詳情",
   "timeline.bar.reader": "開啟專屬 Reader",
-  "timeline.bar.scope": "依目前 Scope：{{state}}",
+  "timeline.bar.scope": "依目前範圍：{{state}}",
   "timeline.bar.scopeUnjudged": "尚未判定"
 }
