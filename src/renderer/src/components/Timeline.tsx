@@ -28,7 +28,8 @@ import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
-import { buildTimeMap, computeDomainBounds, computeBins, binHeight, densestRun, placeRulerMarkers, type TimeMap } from '../lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, type TimeMap } from '../lib/timelineTimeMap'
+import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents, countWindowEvents, type ViewportWindow } from '../lib/timelineFilters'
@@ -220,7 +221,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
   const [view, setView] = useState({ left: 0, width: 100 })
   const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
-  const pendingView = useRef<{ t0: number } | null>(null)
+  // Where to put the view once a zoom from the minimap has re-rendered: a time
+  // for a drag-to-zoom across the strip, a track fraction for a resized 重點視窗.
+  const pendingView = useRef<{ t0: number } | { frac: number } | null>(null)
+  // A 重點視窗 resize in progress. The zoom lands on release; until then this is
+  // the outline the operator is dragging.
+  const [winDrag, setWinDrag] = useState<MinimapWindow | null>(null)
   // Cluster-item click needs a two-frame handshake: bump zoom so the events
   // split into distinct dots, then center on the picked one after re-render.
   // We can't scroll synchronously because TRACK_W hasn't grown yet.
@@ -1171,6 +1177,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // Density minimap: event counts over the full range, binned into fixed cells.
   const bins = useMemo(() => computeBins(events.map(displayTs), timeStart, timeEnd), [events, timeStart, timeEnd])
   const dense = useMemo(() => densestRun(bins, timeStart, timeEnd), [bins, timeStart, timeEnd])
+  const denseBins = useMemo(
+    () => (dense ? binRange(dense.start, dense.end, timeStart, timeEnd, bins.N) : null),
+    [dense, timeStart, timeEnd, bins.N]
+  )
 
   // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
   // v0.11.1: render only the clusters near the viewport.
@@ -1249,6 +1259,55 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     window.addEventListener('mouseup', onUp)
     setDrag({ x0: startX, x1: startX, w })
   }, [timeStart, timeEnd, TRACK_W, updateView])
+
+  // 重點視窗: the viewport frame on the minimap is a handle, not just a readout.
+  // Dragging its body pans the track live; dragging a grip resizes it, and the
+  // zoom that fits the new width lands on release (re-zooming on every mouse
+  // move would re-layout the whole track per frame). It works in track
+  // fractions, the same units the frame is drawn in.
+  const onWindowDown = useCallback((grip: WindowGrip, e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    // The strip under the window drags-to-zoom; this gesture is the window's.
+    e.stopPropagation()
+    e.preventDefault()
+    const strip = (e.currentTarget as HTMLElement).closest('[data-testid="timeline-minimap"]') as HTMLElement | null
+    const el = scrollRef.current
+    if (!strip || !el || TRACK_W <= 0) return
+    const w = strip.getBoundingClientRect().width || 1
+    const startX = e.clientX
+    const start: MinimapWindow = { left: view.left / 100, width: Math.min(1, view.width / 100) }
+    // The narrowest window the zoom limit can show.
+    const minWidth = Math.min(1, el.clientWidth / (baseTrackW * maxZoomRef.current))
+    setCluster(null)
+    let last = start
+    const onMove = (me: MouseEvent): void => {
+      last = dragMinimapWindow(start, grip, (me.clientX - startX) / w, minWidth)
+      if (grip === 'move') {
+        el.scrollLeft = last.left * TRACK_W
+        updateView()
+      } else {
+        setWinDrag(last)
+      }
+    }
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      if (grip === 'move') return
+      setWinDrag(null)
+      if (Math.abs(last.width - start.width) < 1e-4 && Math.abs(last.left - start.left) < 1e-4) return
+      const next = Math.max(0.25, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * Math.max(last.width, 1e-4))))
+      if (Math.abs(next - zoom) < 1e-6) {
+        // Same zoom (already at a limit): nothing re-renders to place the view.
+        el.scrollLeft = last.left * TRACK_W
+        updateView()
+        return
+      }
+      pendingView.current = { frac: last.left }
+      setZoom(next)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [TRACK_W, view.left, view.width, baseTrackW, zoom, updateView])
 
   // v0.11.4 (AUDIT V5): the list follows the viewport.
   //
@@ -1453,10 +1512,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (el && pendingView.current) {
-      const { t0 } = pendingView.current
+      const pv = pendingView.current
       pendingView.current = null
       const span = (timeEnd - timeStart) || 1
-      el.scrollLeft = Math.max(0, Math.min(((t0 - timeStart) / span) * TRACK_W, TRACK_W - el.clientWidth))
+      const x = 'frac' in pv ? pv.frac * TRACK_W : ((pv.t0 - timeStart) / span) * TRACK_W
+      el.scrollLeft = Math.max(0, Math.min(x, TRACK_W - el.clientWidth))
     }
     // Cluster-item click scheduled a center-scroll for after zoom re-render.
     if (el && pendingCenterTs.current !== null) {
@@ -2116,50 +2176,107 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           was really an unread page: the operator could not tell "nothing
           happened here" from "not fetched yet", on the one surface that
           exists to answer exactly that. It now says which it is. */}
-      <div
-        className="relative h-9 border-b border-redlog-border/80 bg-redlog-bg/40 cursor-crosshair select-none shrink-0"
-        onMouseDown={onMinimapDown}
-        title={hasMore ? t('timeline.minimapPartialHint') : t('timeline.minimapHint')}
-      >
-        {hasMore && (
-          <span
-            data-testid="minimap-partial"
-            className="absolute left-1 top-0 bottom-0 flex items-center text-xs text-redlog-warn pointer-events-none z-10"
-            title={t('timeline.minimapPartialHint')}
-          >&#8942;</span>
-        )}
-        {dense && (
-          <span
-            data-testid="minimap-densest"
-            className="absolute right-1 top-0.5 z-10 px-1 rounded-sm bg-redlog-bg/70 text-xs text-redlog-text-faint font-mono tabular-nums pointer-events-none"
-          >
-            {t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
-              // HH:MM, as the prototype; a stretch inside one minute would
-              // read "15:46 ~ 15:46", so it gets seconds instead.
-              ...(formatTime(dense.start) === formatTime(dense.end)
-                ? { from: formatTime(dense.start, { seconds: true }), to: formatTime(dense.end, { seconds: true }) }
-                : { from: formatTime(dense.start), to: formatTime(dense.end) })
-            })}
-          </span>
-        )}
-        <div className="absolute inset-0 flex items-end gap-px px-1 pb-0.5">
-          {bins.counts.map((c, i) => (
-            // 18% floor on anything non-empty so one event is visible, and
-            // zero stays at zero — "quiet" and "nothing at all" are the whole
-            // point of the strip and must not look alike.
-            <div key={i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: c ? `${18 + binHeight(c, bins.max) * 72}%` : '0%' }} />
-          ))}
+      <div className="shrink-0 border-b border-redlog-border/80 bg-redlog-bg/40 px-1 pt-0.5">
+        <div className="flex items-center justify-between gap-2 text-xs leading-4 text-redlog-text-faint">
+          <div className="flex items-center gap-2 min-w-0">
+            {hasMore && (
+              <span
+                data-testid="minimap-partial"
+                className="text-redlog-warn"
+                title={t('timeline.minimapPartialHint')}
+              >&#8942;</span>
+            )}
+            <span className="truncate">{t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}</span>
+            {events.length > 0 && (
+              <span data-testid="minimap-span" className="font-mono tabular-nums text-redlog-text-dim whitespace-nowrap">
+                {formatTime(timeStart, { seconds: true })} - {formatTime(timeEnd, { seconds: true })}
+              </span>
+            )}
+          </div>
+          {dense && (
+            <span
+              data-testid="minimap-densest"
+              className="flex items-center gap-1 font-mono tabular-nums whitespace-nowrap text-redlog-safe"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-redlog-safe" aria-hidden />
+              {t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
+                // HH:MM, as the prototype; a stretch inside one minute would
+                // read "15:46 ~ 15:46", so it gets seconds instead.
+                ...(formatTime(dense.start) === formatTime(dense.end)
+                  ? { from: formatTime(dense.start, { seconds: true }), to: formatTime(dense.end, { seconds: true }) }
+                  : { from: formatTime(dense.start), to: formatTime(dense.end) })
+              })}
+            </span>
+          )}
         </div>
         <div
-          className="absolute inset-y-0 border-x-2 border-cyan-300/70 bg-cyan-300/10 pointer-events-none"
-          style={{ left: `${view.left}%`, width: `${Math.max(1, view.width)}%` }}
-        />
-        {drag && (
+          data-testid="timeline-minimap"
+          className="relative h-8 cursor-crosshair select-none overflow-hidden"
+          onMouseDown={onMinimapDown}
+          title={hasMore ? t('timeline.minimapPartialHint') : t('timeline.minimapHint')}
+        >
+          <svg
+            className="absolute inset-x-0 bottom-0 h-7 w-full pointer-events-none"
+            viewBox="0 0 800 28"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <path data-testid="minimap-area" className="text-redlog-cyan/30" fill="currentColor" d={densityAreaPath(bins.counts, bins.max, 800, 28)} />
+            {denseBins && (
+              <>
+                <path data-testid="minimap-dense-area" className="text-redlog-cyan/70" fill="currentColor" d={densityAreaPath(bins.counts, bins.max, 800, 28, denseBins)} />
+                <line
+                  className="text-redlog-danger"
+                  stroke="currentColor"
+                  strokeDasharray="2,2"
+                  strokeWidth="1.5"
+                  vectorEffect="non-scaling-stroke"
+                  x1={((peakBin(bins.counts, denseBins) + 0.5) / bins.N) * 800}
+                  x2={((peakBin(bins.counts, denseBins) + 0.5) / bins.N) * 800}
+                  y1="0"
+                  y2="28"
+                />
+              </>
+            )}
+          </svg>
+          {/* 重點視窗 — the viewport. Body pans, grips resize (onWindowDown). */}
           <div
-            className="absolute inset-y-0 bg-white/15 border border-white/50 pointer-events-none"
-            style={{ left: `${(Math.min(drag.x0, drag.x1) / drag.w) * 100}%`, width: `${(Math.abs(drag.x1 - drag.x0) / drag.w) * 100}%` }}
-          />
-        )}
+            data-testid="minimap-window"
+            className="absolute inset-y-0 flex items-center justify-between rounded-sm border border-redlog-cyan/60 bg-redlog-elevated/50 cursor-move"
+            style={{ left: `${view.left}%`, width: `${Math.max(1, view.width)}%` }}
+            onMouseDown={(e) => onWindowDown('move', e)}
+            title={t('timeline.minimap.windowHint')}
+          >
+            <span
+              data-testid="minimap-window-start"
+              className="h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize"
+              onMouseDown={(e) => onWindowDown('start', e)}
+            ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
+            {view.width >= 12 && (
+              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none truncate">
+                {t('timeline.minimap.window')}
+              </span>
+            )}
+            <span
+              data-testid="minimap-window-end"
+              className="h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize"
+              onMouseDown={(e) => onWindowDown('end', e)}
+            ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
+          </div>
+          {winDrag && (
+            <div
+              data-testid="minimap-window-preview"
+              className="absolute inset-y-0 border border-dashed border-redlog-text/60 bg-white/10 pointer-events-none"
+              style={{ left: `${winDrag.left * 100}%`, width: `${winDrag.width * 100}%` }}
+            />
+          )}
+          {drag && (
+            <div
+              className="absolute inset-y-0 bg-white/15 border border-white/50 pointer-events-none"
+              style={{ left: `${(Math.min(drag.x0, drag.x1) / drag.w) * 100}%`, width: `${(Math.abs(drag.x1 - drag.x0) / drag.w) * 100}%` }}
+            />
+          )}
+        </div>
       </div>
 
       <TypeLegend lanes={populatedLanes} t={t} />

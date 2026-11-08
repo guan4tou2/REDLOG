@@ -210,6 +210,7 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
       rows: [
         { keys: 'Right-click', label: 'timeline.help.dropMarker' },
         { keys: 'drag minimap', label: 'timeline.help.zoom' },
+        { keys: 'drag window', label: 'timeline.help.focusWindow' },
         { keys: 'click cluster', label: 'timeline.help.expandCluster' },
         { keys: 'double-click', label: 'timeline.help.zoomHere' },
         { keys: '+ − 0', label: 'timeline.help.zoomKeys' }
