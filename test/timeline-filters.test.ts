@@ -191,6 +191,21 @@ describe('computeRecentEvents', () => {
     expect(result.map((e) => e.id)).toEqual(['b'])
   })
 
+  // `events` is in timestamp order, but a marker shows at its atTimestamp. A
+  // backdated marker before the window used to end the scan, dropping every
+  // in-window row stored before it.
+  it('a backdated marker before the window does not hide the rows in it', () => {
+    const events = [
+      evt('a', 'shell', {}, { timestamp: 500 }),
+      evt('b', 'shell', {}, { timestamp: 600 }),
+      evt('m', 'marker', { atTimestamp: 100 }, { timestamp: 650 })
+    ]
+    const vp = makeVp({ left: 40, width: 30, fromX: (px) => px,
+      displayTs: (e) => (e.agentType === 'marker' ? Number(e.data.atTimestamp) : e.timestamp) })
+    expect(computeRecentEvents(events, new Set<LaneId>(), undefined, vp).map((e) => e.id)).toEqual(['a', 'b'])
+    expect(countWindowEvents(events, new Set<LaneId>(), undefined, vp)).toBe(2)
+  })
+
   it('falls back to nearest when viewport is empty', () => {
     const events = [
       evt('a', 'shell', {}, { timestamp: 100 }),

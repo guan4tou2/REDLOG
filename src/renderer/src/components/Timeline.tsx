@@ -225,6 +225,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // v0.11.6 (V8): the track's base width follows the container, so the
   // observer has to report width as well as height.
   const [containerW, setContainerW] = useState(0)
+  // The track scroller's visible width, the width zoom 1 fits (see below).
+  const [scrollerW, setScrollerW] = useState(0)
   // v0.6.91 S4: persisted zoom. Clamped to [MIN_ZOOM, 6] so a garbage value in
   // storage — or one saved when zoom could go below the fit — can't produce a
   // broken layout.
@@ -559,7 +561,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       setContainerW(entry.contentRect.width)
     })
     ro.observe(containerRef.current)
-    return () => ro.disconnect()
+    // The width zoom 1 fits is what the scroller shows, not the wrapper: the
+    // lane column's vertical scrollbar sits between them. Fitting the wrapper
+    // left the track a scrollbar wider than the view, so at 100% the view was
+    // never "whole", follow mode read as scrolled away and the rail fell back
+    // to a viewport slice (#650's e2e: a marker missing from the rail).
+    const scroller = scrollRef.current
+    const so = scroller ? new ResizeObserver(() => setScrollerW(scroller.clientWidth)) : null
+    if (scroller && so) so.observe(scroller)
+    return () => { ro.disconnect(); so?.disconnect() }
   }, [])
 
   // A lane with no events is dead vertical space — most engagements only ever
@@ -844,7 +854,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // room for. The swim lanes keep theirs.
   const labelW = timelineMode === 'standard' ? 0 : LABEL_W
   const axisH = timelineMode === 'standard' ? AXIS_H_RULER : AXIS_H_LANES
-  const baseTrackW = containerW > 0 ? Math.max(1, containerW - labelW) : UNMEASURED_TRACK_W
+  const baseTrackW = scrollerW > 0 ? scrollerW : containerW > 0 ? Math.max(1, containerW - labelW) : UNMEASURED_TRACK_W
   const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
   // v0.11.6 (AUDIT V7): optional idle-gap compression.

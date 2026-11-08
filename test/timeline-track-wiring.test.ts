@@ -16,8 +16,8 @@ describe('track width (V8)', () => {
     // window narrower than it, 100% was already zoomed in and 重設全貌 did not
     // show the whole span. 100% is now the fit, and the zoom floor.
     expect(SRC).not.toMatch(/MIN_BASE_TRACK_W/)
-    expect(SRC, 'baseTrackW is the container minus the label column once measured')
-      .toMatch(/const baseTrackW = containerW > 0 \? Math\.max\(1, containerW - labelW\) : UNMEASURED_TRACK_W/)
+    expect(SRC, 'baseTrackW is what the scroller shows, else the container minus the label column')
+      .toMatch(/const baseTrackW = scrollerW > 0 \? scrollerW : containerW > 0 \? Math\.max\(1, containerW - labelW\) : UNMEASURED_TRACK_W/)
     expect(SRC, 'zoom never goes below the fit').toMatch(/const MIN_ZOOM = 1\b/)
     expect(SRC, 'no hard-coded quarter zoom floor is left').not.toMatch(/Math\.max\(0\.25,/)
     expect(SRC, 'the label column is subtracted only where it renders: the swim lanes')
