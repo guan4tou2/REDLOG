@@ -41,12 +41,13 @@ function Thumb({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element 
   return <>
     {a.deleted(shot.id) ? (
       <span className="px-1 text-center text-redlog-text-faint text-xs">{a.t('screenshots.deletedKept')}</span>
-    ) : src && a.unreadable(shot.id) ? (
-      <span data-testid="screenshot-unreadable" className="px-1 text-center text-redlog-text-faint text-xs">{a.t('screenshots.imageUnavailable')}</span>
-    ) : src ? (
+    ) : src && !a.unreadable(shot.id) ? (
       <img src={src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" onError={() => a.markUnreadable(shot.id)} />
     ) : (
-      <span className="text-redlog-text-faint text-xs">{(shot.data.filename as string) ?? '...'}</span>
+      // No file to show: the read failed, or the event never carried a path
+      // (a screenshot recorded through the API without its file). The box
+      // used to print the filename, which read as a broken image.
+      <span data-testid="screenshot-unreadable" className="px-1 text-center text-redlog-text-faint text-xs">{a.t('screenshots.imageUnavailable')}</span>
     )}
   </>
 }

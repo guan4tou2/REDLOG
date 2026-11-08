@@ -134,3 +134,20 @@ it('replaces an image that fails to load with a placeholder, in list and grid, a
     await screen.findByTestId(view === 'list' ? 'screenshot-list' : 'screenshot-grid')
   }
 })
+
+// The Stitch audit's CI screenshot: an event recorded without its file showed
+// its filename in the thumbnail box, which read as a broken image.
+it('shows the placeholder, not the filename, for a screenshot with no file path', async () => {
+  const bare = { ...shot('s9', 'manual'), data: { filename: 's9.png', trigger: 'manual', sha256: 'sha-s9'.padEnd(64, '0') } }
+  ;(window as unknown as { redlog: unknown }).redlog = {
+    events: { queryScreenshotPage: vi.fn(async () => ({ items: [bare], hasMore: false, nextCursor: null })), onNewBatch: () => () => {} },
+    screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) },
+    artifacts: { reveal: vi.fn(async () => true) }
+  }
+  mount()
+  expect(await screen.findByTestId('screenshot-unreadable')).toBeTruthy()
+  expect(document.querySelectorAll('img').length).toBe(0)
+  expect(screen.queryByTestId('screenshot-enlarge')).toBeNull()
+  expect(screen.queryByTestId('screenshot-reveal')).toBeNull()
+  expect(screen.getByTestId('screenshot-copy-hash')).toBeTruthy()
+})
