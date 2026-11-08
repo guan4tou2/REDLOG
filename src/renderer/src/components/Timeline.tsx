@@ -2186,7 +2186,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                 title={t('timeline.minimapPartialHint')}
               >&#8942;</span>
             )}
-            <span className="truncate">{t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}</span>
+            <span className="truncate" title={t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}>{t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}</span>
             {events.length > 0 && (
               <span data-testid="minimap-span" className="font-mono tabular-nums text-redlog-text-dim whitespace-nowrap">
                 {formatTime(timeStart, { seconds: true })} - {formatTime(timeEnd, { seconds: true })}
@@ -2253,7 +2253,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               onMouseDown={(e) => onWindowDown('start', e)}
             ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
             {view.width >= 12 && (
-              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none truncate">
+              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none truncate" title={t('timeline.minimap.window')}>
                 {t('timeline.minimap.window')}
               </span>
             )}
