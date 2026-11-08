@@ -2358,5 +2358,17 @@
   "timeline.minimap.window": "重點視窗",
   "timeline.minimap.windowHint": "拖曳平移 · 拖曳兩側把手調整範圍",
   "timeline.help.focusWindow": "拖曳重點視窗平移，拖曳兩側調整範圍",
+  "eventTitle.proxyStarted": "HTTP 代理已啟動 {{proxy}}",
+  "eventTitle.proxyStopped": "HTTP 代理已停止",
+  "eventTitle.proxyOrphan": "已停止殘留的 HTTP 代理（PID {{pid}}）",
+  "eventTitle.airgapOn": "air-gap 模式已開啟",
+  "eventTitle.airgapOff": "air-gap 模式已關閉",
+  "eventTitle.ipVerdict": "出口 IP：{{verdict}}",
+  "eventTitle.ipOffProfile": "不在任何 IP 清單",
+  "eventTitle.ipPresumedSafe": "推定安全",
+  "eventTitle.sessionStart": "開啟專案，開始記錄",
+  "eventTitle.chainSampleBroken": "證據鏈抽樣驗證未通過",
+  "eventTitle.systemOther": "系統事件：{{name}}",
+  "activity.systemFold": "{{count}} 筆系統事件",
   "screenshots.imageUnavailable": "無法載入圖片"
 }

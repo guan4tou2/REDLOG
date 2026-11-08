@@ -2358,5 +2358,17 @@
   "timeline.minimap.window": "Focus window",
   "timeline.minimap.windowHint": "Drag to pan · drag either edge to change the range",
   "timeline.help.focusWindow": "Pan the focus window, or drag its edges to resize",
+  "eventTitle.proxyStarted": "HTTP proxy started {{proxy}}",
+  "eventTitle.proxyStopped": "HTTP proxy stopped",
+  "eventTitle.proxyOrphan": "Stopped a leftover HTTP proxy (PID {{pid}})",
+  "eventTitle.airgapOn": "Air-gap mode on",
+  "eventTitle.airgapOff": "Air-gap mode off",
+  "eventTitle.ipVerdict": "Egress IP: {{verdict}}",
+  "eventTitle.ipOffProfile": "not on any IP list",
+  "eventTitle.ipPresumedSafe": "presumed safe",
+  "eventTitle.sessionStart": "Project opened, recording started",
+  "eventTitle.chainSampleBroken": "Chain spot-check failed",
+  "eventTitle.systemOther": "System event: {{name}}",
+  "activity.systemFold": "{{count}} system events",
   "screenshots.imageUnavailable": "Image unavailable"
 }
