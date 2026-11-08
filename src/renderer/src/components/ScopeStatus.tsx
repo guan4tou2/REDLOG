@@ -1,3 +1,4 @@
+import { PAGE_COLUMN } from '../lib/pageColumn'
 import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
@@ -160,7 +161,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   if (!read.state.value) return <LoadingSpinner />
 
   return (
-    <div className="p-pad space-y-4 overflow-auto h-full">
+    <div className="p-pad overflow-auto h-full"><div className={`${PAGE_COLUMN} space-y-4`}>
       {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline} />}
 
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
@@ -294,6 +295,6 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
           </div>
         )}
       </div>
-    </div>
+    </div></div>
   )
 }
