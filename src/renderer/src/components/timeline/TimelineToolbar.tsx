@@ -110,7 +110,9 @@ export function TimelineToolbar({
             <button
               type="button"
               onClick={onZoomOut}
-              className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              // 100% is the whole span; there is nothing further out to show.
+              disabled={zoom <= 1.001}
+              className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
               title={t('timeline.zoomOut')}
               aria-label={t('timeline.zoomOut')}
             >−</button>
@@ -125,6 +127,7 @@ export function TimelineToolbar({
             <button
               type="button"
               onClick={onResetZoom}
+              data-testid="timeline-zoom-reset"
               disabled={Math.abs(zoom - 1) < 0.01}
               className="px-1.5 h-6 text-xs text-redlog-text-dim hover:text-redlog-text disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim rounded"
             >{t('timeline.resetZoom')}</button>

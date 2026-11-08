@@ -131,7 +131,7 @@ describe('the list in swim-lane mode', () => {
       fireEvent.click(await screen.findByTestId('timeline-lanes-collapse'))
       await waitFor(() => expect(screen.getByTestId('timeline-mode-standard').getAttribute('aria-pressed')).toBe('true'))
       expect(screen.queryByTestId('timeline-lanes-header')).toBeNull()
-      expect(screen.queryByTestId('timeline-log-resize')).not.toBeNull()
+      expect(screen.queryByTestId('rail-count')).not.toBeNull()
     })
   })
 
@@ -141,8 +141,11 @@ describe('the list in swim-lane mode', () => {
       b.queryPage.mockResolvedValue(page([makeEvent('e1', T0)]))
       mount()
       await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
-      expect(screen.queryByTestId('timeline-log-resize')).not.toBeNull()
+      expect(screen.queryByTestId('rail-count')).not.toBeNull()
       expect(screen.queryByTestId('timeline-lanes-header')).toBeNull()
+      // 2026-11-08: the track is one row sized to its content and the rail
+      // takes the rest, so there is no split between them to drag.
+      expect(screen.queryByTestId('timeline-log-resize')).toBeNull()
     })
   })
 })

@@ -73,12 +73,15 @@ const LABEL_W = 132
 // the two marker chip rows under the tick labels.
 const AXIS_H_LANES = 28
 const AXIS_H_RULER = 48
-// v0.11.6 (AUDIT V8): a floor, not a fixed width. The track used to be exactly
-// 2000px at zoom 1 regardless of the window, so on a 2560px or 4K display the
-// operator got a track narrower than the space available and a band of empty
-// panel to its right. It is now max(2000, container) — a wide window shows
-// more time instead of more nothing.
-const MIN_BASE_TRACK_W = 2000
+// Zoom 1 (100%) is the whole loaded span fitted to the window (Stitch 05;
+// user decision 2026-11-08). It used to be max(2000px, container): on any
+// window narrower than 2000px, 100% was already zoomed in, the 重點視窗 covered
+// half the density strip and 重設全貌 did not show the whole. Zooming out past
+// the fit only added blank track, so 1 is also the floor.
+const MIN_ZOOM = 1
+// Track width before the container has been measured: the first frame, and
+// any host without ResizeObserver layout (jsdom). The old fixed width.
+const UNMEASURED_TRACK_W = 2000
 // v0.11.6 (V7): a stretch with no events longer than this collapses to GAP_PX.
 // Ten minutes is long enough that nothing routine trips it and short enough to
 // catch a coffee break; the fixed width has to stay wide enough to draw a
@@ -222,13 +225,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // v0.11.6 (V8): the track's base width follows the container, so the
   // observer has to report width as well as height.
   const [containerW, setContainerW] = useState(0)
-  // v0.6.91 S4: persisted zoom. Clamped to the same [0.25, 6] range the ± buttons
-  // enforce so a garbage value in storage can't produce a broken layout.
+  // The track scroller's visible width, the width zoom 1 fits (see below).
+  const [scrollerW, setScrollerW] = useState(0)
+  // v0.6.91 S4: persisted zoom. Clamped to [MIN_ZOOM, 6] so a garbage value in
+  // storage — or one saved when zoom could go below the fit — can't produce a
+  // broken layout.
   const [zoom, setZoom] = useState<number>(() => {
     try {
       const raw = localStorage.getItem('redlog-timeline-zoom')
       const n = raw ? parseFloat(raw) : NaN
-      return Number.isFinite(n) && n >= 0.25 && n <= 6 ? n : 1
+      return Number.isFinite(n) && n >= MIN_ZOOM && n <= 6 ? n : 1
     } catch { return 1 }
   })
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
@@ -279,13 +285,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     layout === 'right' ? 'redlog-timeline-detail-w' : 'redlog-timeline-detail-h',
     layout === 'right' ? { axis: 'x', min: 280, maxRatio: 0.6 } : {}
   )
-  const logPanel = usePanelHeight('redlog-timeline-log-h', { min: 64, maxRatio: 0.7 })
   // Detail panel container. Reset scroll to top on every selectedEvent change
   // so a cluster-popover click always lands you on the new item's title —
   // otherwise the panel keeps whatever scroll offset the prior event left
   // (with JSON expanded the title easily scrolls off screen).
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
-  const logPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
   // v0.6.89.5: focus chain / broken-chain state.
   //
@@ -550,15 +554,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     [t]
   )
 
+  // The track exists only once there are events: every early return below
+  // (loading, failed, empty, all filtered) is `events.length === 0`. Observing
+  // on mount alone ran while the spinner was up, found no elements, and never
+  // measured anything — so the track sat at UNMEASURED_TRACK_W for good.
+  const trackMounted = events.length > 0
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!trackMounted || !containerRef.current) return
     const ro = new ResizeObserver(([entry]) => {
       setContainerH(entry.contentRect.height)
       setContainerW(entry.contentRect.width)
     })
     ro.observe(containerRef.current)
-    return () => ro.disconnect()
-  }, [])
+    // The width zoom 1 fits is what the scroller shows, not the wrapper: the
+    // lane column's vertical scrollbar sits between them. Fitting the wrapper
+    // left the track a scrollbar wider than the view, so at 100% the view was
+    // never "whole", follow mode read as scrolled away and the rail fell back
+    // to a viewport slice (#650's e2e: a marker missing from the rail).
+    const scroller = scrollRef.current
+    const so = scroller ? new ResizeObserver(() => setScrollerW(scroller.clientWidth)) : null
+    if (scroller && so) so.observe(scroller)
+    return () => { ro.disconnect(); so?.disconnect() }
+  }, [trackMounted])
 
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
@@ -630,12 +647,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // The floor still wins over the ceiling when rows are expanded past what
   // fits: the container scrolls, which is what it did before.
   const laneH = useMemo(() => {
+    // Standard mode is one row: it takes the tallest lane and the rest of the
+    // panel goes to the card rail. Not derived from `containerH`, because in
+    // this mode the measured wrapper is sized to its content (below).
+    if (timelineMode === 'standard') return MAX_LANE_H
     if (visibleRows.length === 0) return MIN_LANE_H
     const axisH = 28
     const available = containerH - axisH
     const shareOut = Math.floor(available / visibleRows.length)
     return Math.min(MAX_LANE_H, Math.max(MIN_LANE_H, shareOut))
-  }, [containerH, visibleRows.length])
+  }, [containerH, visibleRows.length, timelineMode])
 
   // Spec 038 (research R1): pages come from the shared-filter page query, on
   // its keyset cursor (timestamp, rowid, tier). The old pager walked
@@ -838,7 +859,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // room for. The swim lanes keep theirs.
   const labelW = timelineMode === 'standard' ? 0 : LABEL_W
   const axisH = timelineMode === 'standard' ? AXIS_H_RULER : AXIS_H_LANES
-  const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - labelW)
+  const baseTrackW = scrollerW > 0 ? scrollerW : containerW > 0 ? Math.max(1, containerW - labelW) : UNMEASURED_TRACK_W
   const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
   // v0.11.6 (AUDIT V7): optional idle-gap compression.
@@ -1175,8 +1196,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     timeSpan,
     clusterPx: CLUSTER_PX,
     maxTrackW: MAX_TRACK_W,
-    minBaseTrackW: MIN_BASE_TRACK_W
-  }), [laneEvents, events, timeSpan, timelineMode])
+    baseTrackW
+  }), [laneEvents, events, timeSpan, timelineMode, baseTrackW])
   // The wheel handler is bound once and reads this through a ref rather than
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
@@ -1268,7 +1289,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         const f0 = Math.min(startX, endX) / w
         const frac = Math.max(0.01, Math.abs(endX - startX) / w)
         pendingView.current = { t0: timeStart + f0 * span }
-        setZoom(Math.max(0.25, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * frac))))
+        setZoom(Math.max(MIN_ZOOM, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * frac))))
       } else {
         const t = fromX((startX / w) * TRACK_W)
         el.scrollLeft = Math.max(0, Math.min(((t - timeStart) / span) * TRACK_W - el.clientWidth / 2, TRACK_W - el.clientWidth))
@@ -1315,7 +1336,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       if (grip === 'move') return
       setWinDrag(null)
       if (Math.abs(last.width - start.width) < 1e-4 && Math.abs(last.left - start.left) < 1e-4) return
-      const next = Math.max(0.25, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * Math.max(last.width, 1e-4))))
+      const next = Math.max(MIN_ZOOM, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * Math.max(last.width, 1e-4))))
       if (Math.abs(next - zoom) < 1e-6) {
         // Same zoom (already at a limit): nothing re-renders to place the view.
         el.scrollLeft = last.left * TRACK_W
@@ -1420,7 +1441,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         // many small events — a fixed step per event slammed straight to the limit
         // and felt like nothing happened. Scaling by deltaY makes pinch smooth and
         // still gives a mouse wheel a reasonable step.
-        setZoom((prev) => Math.min(maxZoomRef.current, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
+        setZoom((prev) => Math.min(maxZoomRef.current, Math.max(MIN_ZOOM, prev * Math.exp(-e.deltaY * 0.002))))
       } else if (e.deltaY !== 0) {
         // v0.9.4 P0-2: while the lane stack overflows its container, deltaY
         // has to drive the vertical axis or the newly-scrollable lanes are
@@ -1687,7 +1708,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           }
           setZoom((prev) => action === 'zoom-reset'
             ? 1
-            : Math.min(maxZoomRef.current, Math.max(0.25, prev * (action === 'zoom-in' ? 1.4 : 1 / 1.4))))
+            : Math.min(maxZoomRef.current, Math.max(MIN_ZOOM, prev * (action === 'zoom-in' ? 1.4 : 1 / 1.4))))
           break
         }
         case 'toggle-focus': {
@@ -1994,7 +2015,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         onRetryTotal={() => requestTotal(generationRef.current)}
         onLoadMore={loadMore}
         zoom={zoom}
-        onZoomOut={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+        onZoomOut={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.25))}
         onZoomIn={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
         onResetZoom={() => setZoom(1)}
         anchorTs={selectedEvent?.timestamp ?? null}
@@ -2341,7 +2362,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             t={t}
           />
         )}
-        <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
+        {/* Standard mode: sized to the ruler and its one row, so the card rail
+            sits right under it (Stitch 05) instead of a block of empty track. */}
+        <div ref={containerRef} className={`${timelineMode === 'standard' ? 'flex-none' : 'flex-1'} min-h-0 flex flex-col`}>
         <div
           data-testid="timeline-lane-scroll"
           className="min-h-0 flex overflow-x-hidden overflow-y-auto"
@@ -2424,7 +2447,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
               const cursorX = e.clientX - rect.left
               const ts = fromX(el.scrollLeft + cursorX)
               const targetSpan = 10 * 60_000
-              const next = Math.min(maxZoomRef.current, Math.max(0.25, (timeSpan / targetSpan)))
+              const next = Math.min(maxZoomRef.current, Math.max(MIN_ZOOM, (timeSpan / targetSpan)))
               pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
               setZoom(next)
               void ts
@@ -2867,30 +2890,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         </div>
         </div>
 
-        {/* The lanes above and the log below are the split an operator looks
-            at all day, and which half they want depends on what they are
-            doing: reading a scan is all list, following a chain is all lanes.
-            Same handle as the detail panel's, so there is one gesture in this
-            view rather than one draggable edge and one frozen one. */}
-        {timelineMode === 'standard' && (
-        <div
-          data-testid="timeline-log-resize"
-          className="shrink-0 h-1 cursor-row-resize bg-redlog-elevated/50 hover:bg-red-500/40 transition-colors relative"
-          title={t('timeline.resizeLog')}
-          onMouseDown={(e) => logPanel.beginResize(e, logPanelRef.current?.getBoundingClientRect().height ?? 200)}
-          onDoubleClick={logPanel.reset}
-        >
-          <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-redlog-elevated-hover/50 pointer-events-none" />
-        </div>
-        )}
+        {/* No split handle between the track and the rail any more: the
+            standard track is one row sized to its content and the rail takes
+            the rest, and swim lanes hide the rail (2026-11-08). */}
         {/* Swim lanes hide the list (Stitch 05; user decision 2026-11-08): the
             selected event opens in the detail pane, and the two strips only
             the log could say stay under the lanes. */}
-        {/* Sized in vh until dragged (was hardcoded 160/180 px) so the default
-            scales with window height: ~5 rows at 900 px tall and ~8 at 1200. */}
         <TimelineEventLog
-          rootRef={logPanelRef}
-          heightPx={logPanel.px}
           hiddenByQuery={hiddenByQuery}
           annotatedIds={annotatedIds}
           attributionBlind={attributionBlind}

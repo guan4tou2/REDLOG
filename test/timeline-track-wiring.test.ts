@@ -10,12 +10,16 @@ const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
 describe('track width (V8)', () => {
-  it('treats 2000px as a floor, not a fixed width', () => {
-    // The track used to be exactly BASE_TRACK_W * zoom, so a 2560px or 4K
-    // display got a 2000px track and a band of empty panel beside it.
-    expect(SRC).toMatch(/MIN_BASE_TRACK_W\s*=\s*2000/)
-    expect(SRC, 'baseTrackW must take the larger of the floor and the container')
-      .toMatch(/const baseTrackW = Math\.max\(MIN_BASE_TRACK_W, containerW - labelW\)/)
+  it('fits zoom 1 to the window, with no 2000px floor', () => {
+    // V8 made the track max(2000, container) so a 4K display was not left with
+    // empty panel. 2026-11-08 (Stitch 05): the 2000px floor went too — on any
+    // window narrower than it, 100% was already zoomed in and 重設全貌 did not
+    // show the whole span. 100% is now the fit, and the zoom floor.
+    expect(SRC).not.toMatch(/MIN_BASE_TRACK_W/)
+    expect(SRC, 'baseTrackW is what the scroller shows, else the container minus the label column')
+      .toMatch(/const baseTrackW = scrollerW > 0 \? scrollerW : containerW > 0 \? Math\.max\(1, containerW - labelW\) : UNMEASURED_TRACK_W/)
+    expect(SRC, 'zoom never goes below the fit').toMatch(/const MIN_ZOOM = 1\b/)
+    expect(SRC, 'no hard-coded quarter zoom floor is left').not.toMatch(/Math\.max\(0\.25,/)
     expect(SRC, 'the label column is subtracted only where it renders: the swim lanes')
       .toMatch(/const labelW = timelineMode === 'standard' \? 0 : LABEL_W/)
     // Word-boundary anchored: `baseTrackW * zoom` is the new, correct form and

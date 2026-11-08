@@ -195,10 +195,11 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
     expect(res!.count, 'no dots rendered').toBeGreaterThan(0)
     expect(res!.min, 'a dot rendered left of the track').toBeGreaterThanOrEqual(0)
     expect(res!.max, 'a dot rendered past the track width').toBeLessThanOrEqual(res!.trackW)
-    // Visual evidence: zoom all the way out and reset both scroll axes so the
-    // whole domain — the real events at the left edge and the far-future
-    // marker at the right — is on screen at once.
-    for (let i = 0; i < 6; i++) await page.click('button:has-text("\u2212")').catch(() => {})
+    // Visual evidence: reset the zoom (100% is the whole domain since
+    // 2026-11-08) and both scroll axes so the real events at the left edge and
+    // the far-future marker at the right are on screen at once.
+    const reset = page.getByTestId('timeline-zoom-reset')
+    if (await reset.isEnabled()) await reset.click()
     await page.evaluate(() => {
       const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement
       const scroll = document.querySelector('div.cursor-grab') as HTMLElement
@@ -595,7 +596,7 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await page.getByTestId('timeline-lanes-collapse').click()
     await expect(page.getByTestId('timeline-mode-standard')).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('timeline-lanes-header')).toHaveCount(0)
-    await expect(page.getByTestId('timeline-log-resize')).toBeVisible()
+    await expect(page.getByTestId('rail-count')).toBeVisible()
     // The next test reads the choice back, so leave lanes selected.
     await page.getByTestId('timeline-mode-lanes').click()
   })

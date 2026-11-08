@@ -108,7 +108,10 @@ function scanWindow(
     if (!isVisible(e)) continue
     const d = vp.displayTs(e)
     if (d > to) continue
-    if (d < from) break
+    // `events` is in `timestamp` order, but a marker shows at its own
+    // `atTimestamp`. A backdated marker before the window says nothing about
+    // the rows after it, so only a row shown at its own time may end the scan.
+    if (d < from) { if (d === e.timestamp) break; continue }
     take(e)
   }
   if (total > 0) return { items, total }

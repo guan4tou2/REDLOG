@@ -68,6 +68,14 @@ describe('TimelineToolbar', () => {
     expect(formatSpan(25 * 3600_000 + 7 * 60_000)).toBe('25h 07m')
   })
 
+  it('cannot zoom out past 100%, which is the whole span', () => {
+    draw({ zoom: 1 })
+    expect((screen.getByText('−').closest('button') as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    draw({ zoom: 1.25 })
+    expect((screen.getByText('−').closest('button') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('zoom percentage is a read-only display; the controls call back', () => {
     const onZoomOut = vi.fn(); const onZoomIn = vi.fn(); const onResetZoom = vi.fn()
     draw({ zoom: 1.5, onZoomOut, onZoomIn, onResetZoom })
