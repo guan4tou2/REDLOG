@@ -57,7 +57,9 @@ test.describe.serial('command-artifact-correlation: command artifact correlation
   test('labels cwd overlap as a possible relationship rather than causation', async () => {
     const file = page.locator('[data-timeline-event][aria-label*="scan.xml"]')
     await expect(file).toBeVisible()
-    await file.click()
+    // The related-commands note lives in the detail body, which a double-click
+    // opens (a single click only selects and shows the bottom bar).
+    await file.dblclick()
     await expect(page.getByText('Possible related commands')).toBeVisible()
     await expect(page.getByText(/does not prove which process wrote the file/)).toBeVisible()
     await expect(page.getByText('Caused by:')).toHaveCount(0)
@@ -355,7 +357,8 @@ const post = async (agent_type: string, data: Record<string, unknown>): Promise<
  *  naming a different marker would need to check which one the panel shows. */
 const selectMarker = async (titleText: string): Promise<void> => {
   if (await page.locator('[data-testid="marker-amend"]').count() > 0) return
-  await page.click(`[data-timeline-event][title*="${titleText}"]`)
+  // The amend controls are in the detail body: double-click, not click.
+  await page.dblclick(`[data-timeline-event][title*="${titleText}"]`)
   await page.waitForSelector('[data-testid="marker-amend"]', { timeout: 10_000 })
 }
 

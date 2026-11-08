@@ -110,10 +110,13 @@ describe('the list in swim-lane mode', () => {
       expect(screen.queryAllByTestId('log-row-result')).toHaveLength(0)
     })
 
-    it('still opens the detail pane when a dot is selected', async () => {
+    it('still shows the bar for a selected dot, and opens the body on a double-click', async () => {
       mount()
       await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
       fireEvent.click(document.querySelector('[data-timeline-event]')!)
+      await screen.findByTestId('timeline-detail-panel')
+      expect(screen.queryByTitle(DETAIL_HANDLE)).toBeNull()
+      fireEvent.doubleClick(document.querySelector('[data-timeline-event]')!)
       await waitFor(() => expect(screen.queryByTitle(DETAIL_HANDLE)).not.toBeNull())
     })
 

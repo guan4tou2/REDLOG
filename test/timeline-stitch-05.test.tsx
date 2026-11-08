@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 //
 // Stitch 05: the standard Timeline's list names its colours and says how a
-// finished command ended, and the detail pane puts those numbers at the top.
+// finished command ended, and the bottom bar puts those numbers up front.
 // Each is shown only when the event carries it.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
-import { TimelineEventInspector } from '../src/renderer/src/components/timeline/TimelineEventInspector'
+import { TimelineDetailBar } from '../src/renderer/src/components/timeline/TimelineDetailBar'
 import { TimelineEventLog } from '../src/renderer/src/components/timeline/TimelineEventLog'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
@@ -23,7 +23,7 @@ function drawLog(events: RedLogEvent[], extra: Partial<Parameters<typeof Timelin
     <TimelineEventLog
       events={events} selectedId={null} detailOpen={false} pluginTypes={[]} showOperator={false}
       operatorLabel={(id) => id} titleOf={(e) => String(e.data?.command ?? e.id)} amendSuffix={() => ''}
-      amendCountOf={() => undefined} onSelect={vi.fn()} t={t}
+      amendCountOf={() => undefined} onSelect={vi.fn()} onOpen={vi.fn()} t={t}
       {...extra}
     />
   )
@@ -32,12 +32,10 @@ function drawLog(events: RedLogEvent[], extra: Partial<Parameters<typeof Timelin
 function drawInspector(event: RedLogEvent, onOpenInActivity?: (id: string, ts: number) => void): void {
   render(
     <I18nProvider>
-      <TimelineEventInspector
-        event={event} pluginTypes={[]} tierChip={false} doNotExport={false} onToggleDoNotExport={vi.fn()}
-        onAround={vi.fn()} operatorLabel={(id) => id} titleOf={(e) => String(e.data?.command ?? e.id)}
-        allLoaded focusChainOn={false} showJson={false} lookup={() => undefined} onJump={vi.fn()}
-        onSelect={vi.fn()} onResolve={vi.fn()} onAmend={vi.fn()} t={(k: string) => k}
+      <TimelineDetailBar
+        event={event} pluginTypes={[]} titleOf={(e) => String(e.data?.command ?? e.id)} t={(k: string) => k}
         onStep={vi.fn()} canStepPrev canStepNext onOpenInActivity={onOpenInActivity}
+        bodyOpen={false} onToggleBody={vi.fn()} onOpenReader={vi.fn()}
       />
     </I18nProvider>
   )
@@ -81,25 +79,40 @@ describe('card rail', () => {
     expect(screen.getByTestId('rail-count').textContent).toBe('1')
   })
 
-  it('the selected card expands with inline stdout; others and stdout-less cards do not', () => {
+  it('the selected card expands with inline stdout once the selection is still; others and stdout-less cards do not', async () => {
     const withOut = shell('a', 1_000, { stdout: '5432/tcp open' })
     const other = shell('b', 2_000, { stdout: 'zzz' })
     drawLog([withOut, other], { selectedId: 'a' })
+    // Not at once: growing the card would move the next one under a double-click.
+    expect(screen.queryByTestId('rail-card-stdout')).toBeNull()
+    await screen.findByTestId('rail-card-stdout')
     const out = screen.getAllByTestId('rail-card-stdout')
     expect(out).toHaveLength(1)
     expect(out[0].textContent).toContain('timeline.card.stdout')
     expect(out[0].textContent).toContain('5432/tcp open')
     cleanup()
     drawLog([shell('c', 1_000)], { selectedId: 'c' })
+    await new Promise((r) => setTimeout(r, 450))
     expect(screen.queryByTestId('rail-card-stdout')).toBeNull()
   })
 
-  it('selecting a card calls onSelect exactly as a list row did', () => {
+  it('a click selects (with its click count), a double-click or Enter opens, Space only selects', () => {
     const onSelect = vi.fn()
+    const onOpen = vi.fn()
     const e = shell('a', 1_000)
-    drawLog([e], { onSelect })
-    fireEvent.click(screen.getByTestId('rail-card'))
-    expect(onSelect).toHaveBeenCalledWith(e)
+    drawLog([e], { onSelect, onOpen })
+    const card = screen.getByTestId('rail-card')
+    fireEvent.click(card, { detail: 1 })
+    expect(onSelect).toHaveBeenCalledWith(e, 1)
+    expect(onOpen).not.toHaveBeenCalled()
+    fireEvent.doubleClick(card)
+    expect(onOpen).toHaveBeenCalledWith(e, 'dblclick')
+    onOpen.mockClear(); onSelect.mockClear()
+    fireEvent.keyDown(card, { key: 'Enter' })
+    expect(onOpen).toHaveBeenCalledWith(e, 'key')
+    fireEvent.keyDown(card, { key: ' ' })
+    expect(onSelect).toHaveBeenCalledWith(e, 0)
+    expect(onOpen).toHaveBeenCalledTimes(1)
   })
 
   it('folds keep their status summary and open on click', () => {
@@ -119,8 +132,8 @@ describe('card rail', () => {
   })
 })
 
-describe('detail pane', () => {
-  it('shows exit code, duration and pid at the top when the event has them', () => {
+describe('bottom bar facts', () => {
+  it('shows exit code, duration and pid when the event has them', () => {
     drawInspector(ev('a', 'shell', { subtype: 'command_end', command: 'ls', exit_code: 3, duration_sec: 2, pid: 99 }))
     expect(screen.getByTestId('detail-exit').textContent).toBe('3')
     expect(document.body.textContent).toContain('2 s')

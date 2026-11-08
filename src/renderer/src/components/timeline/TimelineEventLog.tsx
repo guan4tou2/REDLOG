@@ -22,7 +22,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
-  titleOf, amendSuffix, amendCountOf, onSelect, t, heightPx, rootRef, total,
+  titleOf, amendSuffix, amendCountOf, onSelect, onOpen, t, heightPx, rootRef, total,
   hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false,
   stripsOnly = false
 }: {
@@ -39,8 +39,10 @@ export function TimelineEventLog({
   amendSuffix: (e: RedLogEvent) => string
   /** How many times a marker was amended; undefined for one never corrected. */
   amendCountOf: (id: string) => number | undefined
-  /** Toggle: the same row again clears the selection. */
-  onSelect: (e: RedLogEvent) => void
+  /** One click selects; the same card clicked again clears it. */
+  onSelect: (e: RedLogEvent, detail: number) => void
+  /** Double-click on a card opens the detail body; Enter toggles it. */
+  onOpen: (e: RedLogEvent, how: 'dblclick' | 'key') => void
   t: Translate
   /** Height the operator dragged to, or null for the vh default. */
   heightPx?: number | null
@@ -138,7 +140,7 @@ export function TimelineEventLog({
         <TimelineEventRail
           events={events} annotatedIds={annotatedIds} selectedId={selectedId} pluginTypes={pluginTypes}
           showOperator={showOperator} operatorLabel={operatorLabel} titleOf={titleOf} amendSuffix={amendSuffix}
-          amendCountOf={amendCountOf} onSelect={onSelect} t={t}
+          amendCountOf={amendCountOf} onSelect={onSelect} onOpen={onOpen} t={t}
         />
       </div>
     </div>
