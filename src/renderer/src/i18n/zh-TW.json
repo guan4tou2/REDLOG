@@ -641,7 +641,7 @@
   "timeline.help.focusChain": "對所選事件切換 focus-chain 模式",
   "timeline.help.selectDot": "選取事件（摘要列）/ 雙擊開啟詳情",
   "timeline.help.dropMarker": "右鍵 →〈在此落標記〉",
-  "timeline.help.zoom": "拖曳 minimap 縮放時間範圍",
+  "timeline.help.zoom": "拖曳密度波形縮放時間範圍",
   "timeline.help.expandCluster": "展開重疊事件的 cluster",
   "timeline.help.expandBody": "展開 / 收合內文區塊",
   "timeline.help.jumpCause": "跳到造成此事件的來源事件",
@@ -2352,5 +2352,10 @@
   "timeline.bar.reader": "開啟專屬 Reader",
   "timeline.bar.scope": "依目前範圍：{{state}}",
   "timeline.bar.scopeUnjudged": "尚未判定",
-  "eventTitle.scopeUnjudged": "範圍未判定：{{target}}"
+  "eventTitle.scopeUnjudged": "範圍未判定：{{target}}",
+  "timeline.minimap.title": "事件密度分佈波形",
+  "timeline.minimap.titleLoaded": "事件密度分佈波形（已載入範圍）",
+  "timeline.minimap.window": "重點視窗",
+  "timeline.minimap.windowHint": "拖曳平移 · 拖曳兩側把手調整範圍",
+  "timeline.help.focusWindow": "拖曳重點視窗平移，拖曳兩側調整範圍"
 }
