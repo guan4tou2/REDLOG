@@ -28,7 +28,7 @@ import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
-import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, type TimeMap } from '../lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, tickLabelAlign, type TimeMap } from '../lib/timelineTimeMap'
 import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
@@ -2481,11 +2481,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           >
             <div style={{ width: TRACK_W, position: 'relative' }}>
               {/* Time axis */}
-              <div className="border-b border-redlog-border/60 relative bg-redlog-bg/30" style={{ height: axisH }}>
-                {ticks.map((ts, i) => (
+              {/* Clipped: nothing on the axis may widen the track past TRACK_W,
+                  or 100% scrolls. The end labels align inward (tickLabelAlign). */}
+              <div className="border-b border-redlog-border/60 relative bg-redlog-bg/30 overflow-hidden" style={{ height: axisH }}>
+                {ticks.map((ts, i) => {
+                  const align = tickLabelAlign(toX(ts), TRACK_W)
+                  return (
                   <span
                     key={ts}
-                    className="absolute text-xs text-redlog-text-faint font-mono tabular-nums -translate-x-1/2"
+                    data-testid="timeline-axis-label"
+                    data-align={align}
+                    className={`absolute whitespace-nowrap text-xs text-redlog-text-faint font-mono tabular-nums ${
+                      align === 'center' ? '-translate-x-1/2' : align === 'end' ? '-translate-x-full' : ''
+                    }`}
                     style={{ left: toX(ts), top: timelineMode === 'standard' ? 2 : 6 }}
                   >
                     {/* v0.11.4 (AUDIT V6): a multi-day engagement showed several
@@ -2494,7 +2502,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                         lands on a new date carry the date too. */}
                     {axisLabel(ts, i, ticks, timeSpan)}
                   </span>
-                ))}
+                  )
+                })}
                 {/* The ruler's markers. The wrapper ignores the pointer so a
                     pan or a double-click starting here reaches the track; only
                     the [Latest] chip is a target. */}

@@ -289,3 +289,18 @@ export function placeRulerMarkers(p: {
   }
   return { focus, latest }
 }
+
+/** Half the widest axis label (a dated "11-08 09:11"), in track px. */
+export const AXIS_LABEL_HALF_W = 48
+
+/**
+ * How a tick's label sits on its tick. Centred, except near either end of the
+ * track, where a centred label would hang past the edge: clipped there, and
+ * wider than the track, so the track scrolled at 100% (2026-11-08 Stitch
+ * audit). Those labels align inward instead, as the prototype's do.
+ */
+export function tickLabelAlign(x: number, trackW: number, halfW = AXIS_LABEL_HALF_W): 'start' | 'center' | 'end' {
+  if (x < halfW) return 'start'
+  if (x > trackW - halfW) return 'end'
+  return 'center'
+}
