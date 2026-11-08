@@ -554,8 +554,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     [t]
   )
 
+  // The track exists only once there are events: every early return below
+  // (loading, failed, empty, all filtered) is `events.length === 0`. Observing
+  // on mount alone ran while the spinner was up, found no elements, and never
+  // measured anything — so the track sat at UNMEASURED_TRACK_W for good.
+  const trackMounted = events.length > 0
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!trackMounted || !containerRef.current) return
     const ro = new ResizeObserver(([entry]) => {
       setContainerH(entry.contentRect.height)
       setContainerW(entry.contentRect.width)
@@ -570,7 +575,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     const so = scroller ? new ResizeObserver(() => setScrollerW(scroller.clientWidth)) : null
     if (scroller && so) so.observe(scroller)
     return () => { ro.disconnect(); so?.disconnect() }
-  }, [])
+  }, [trackMounted])
 
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
