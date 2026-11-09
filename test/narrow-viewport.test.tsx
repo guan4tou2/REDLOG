@@ -184,15 +184,15 @@ describe('Settings is one column', () => {
     expect(screen.getByTestId('settings-back')).toBeTruthy()
   })
 
-  it('narrows the rows to a query', async () => {
+  it('shows one search result list without the category rows', async () => {
     draw(null)
     await ready()
-    const before = document.querySelectorAll('[data-settings-page]').length
     fireEvent.change(screen.getByLabelText('搜尋設定…'), { target: { value: '範圍' } })
     await waitFor(() => {
-      const now = document.querySelectorAll('[data-settings-page]').length
-      expect(now).toBeGreaterThan(0)
-      expect(now).toBeLessThan(before)
+      expect(document.querySelectorAll('[data-settings-page]')).toHaveLength(0)
+      const results = screen.getByTestId('settings-search-results')
+      expect(results.textContent).toContain('範圍')
+      expect(results.querySelectorAll('button').length).toBeGreaterThan(0)
     })
   })
 })

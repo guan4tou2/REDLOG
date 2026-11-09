@@ -29,7 +29,7 @@ export type SettingsPage =
   | 'general' | 'hud' | 'plugins' | 'about'
 
 type HomeBadge = 'local' | 'project' | 'perProject'
-interface HomeRow { id: SettingsPage; badge?: HomeBadge; action?: 'manage' | 'view' | 'openScope' }
+interface HomeRow { id: SettingsPage; label: string; badge?: HomeBadge; action?: 'manage' | 'view' | 'openScope' }
 
 /** The settings home, as the Stitch prototype lays it out (#590): three
  *  blocks, each row a title, where it applies, one line on what it holds, and
@@ -37,13 +37,13 @@ interface HomeRow { id: SettingsPage; badge?: HomeBadge; action?: 'manage' | 'vi
  *  HUD) stay reachable as plain rows in the block they belong to. */
 const HOME_SECTIONS: Array<{ key: 'capture' | 'project' | 'other'; rows: HomeRow[] }> = [
   { key: 'capture', rows: [
-    { id: 'hooks', badge: 'local' }, { id: 'browser', badge: 'project' }, { id: 'captureControl', badge: 'perProject' }
+    { id: 'hooks', label: 'settings.pageHooks', badge: 'local' }, { id: 'browser', label: 'settings.pageBrowser', badge: 'project' }, { id: 'captureControl', label: 'settings.pageCaptureControl', badge: 'perProject' }
   ] },
   { key: 'project', rows: [
-    { id: 'scope', badge: 'project', action: 'openScope' }, { id: 'network', badge: 'project' }, { id: 'loot', badge: 'project' }
+    { id: 'scope', label: 'settings.pageScope', badge: 'project', action: 'openScope' }, { id: 'network', label: 'settings.pageNetwork', badge: 'project' }, { id: 'loot', label: 'settings.pageLoot', badge: 'project' }
   ] },
   { key: 'other', rows: [
-    { id: 'plugins' }, { id: 'retention' }, { id: 'integrity' }, { id: 'general' }, { id: 'hud' }, { id: 'about', action: 'view' }
+    { id: 'plugins', label: 'settings.pagePlugins' }, { id: 'retention', label: 'settings.pageRetention' }, { id: 'integrity', label: 'settings.pageIntegrity' }, { id: 'general', label: 'settings.pageGeneral' }, { id: 'hud', label: 'settings.pageHud' }, { id: 'about', label: 'settings.pageAbout', action: 'view' }
   ] }
 ]
 /** One line on what each page holds. Literal keys, so the copy guard can see
@@ -241,70 +241,17 @@ export default function Settings({ request = null }: { request?: { page: Setting
     ) : <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
   }
 
-  // v0.9.10: left sidebar with grouped pages, ordered by the question the
-  // operator is actually asking rather than by when each feature was added.
-  const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
-    {
-      // One heading. #228 split these into "Core capture" and "Other capture
-      // sources" to say that commands and HTTP(S) are what the product is
-      // for — but a heading is a weak way to say it, and the order already
-      // says it: the two that matter are the two at the top. What the split
-      // did reliably was ask the operator to decide which of two capture
-      // headings their question belonged under, every time they came here.
-      heading: t('settings.groupCapture'),
-      pages: [
-        { id: 'hooks', label: t('settings.pageHooks') },
-        // The browser and its HTTP capture proxy decide what ends up in the
-        // record. They used to sit on Network, beside the VPN and
-        // IP-exposure settings, which answer a different question entirely.
-        { id: 'browser', label: t('settings.pageBrowser') },
-        { id: 'captureControl', label: t('settings.pageCaptureControl') }
-      ]
-    },
-    {
-      heading: t('settings.groupScope'),
-      pages: [
-        { id: 'scope', label: t('settings.pageScope') },
-        { id: 'network', label: t('settings.pageNetwork') }
-      ]
-    },
-    {
-      heading: t('settings.groupData'),
-      pages: [
-        // Spec 049: neither answers "what is being recorded". Loot detection
-        // classifies what already was; retention decides what stops being
-        // kept. Both sat under Capture sources, and retention — a deletion
-        // policy — sat there as the last block of the page that held every
-        // capture switch.
-        { id: 'loot', label: t('settings.pageLoot') },
-        { id: 'retention', label: t('settings.pageRetention') },
-        // Chain verification is the other half of "can this record be handed
-        // over": what was in bounds, and whether the record is intact. It used
-        // to be the only page under its own heading, as Plugins was — a heading
-        // over one entry groups nothing and costs a row of scanning.
-        { id: 'integrity', label: t('settings.pageIntegrity') }
-      ]
-    },
-    {
-      heading: t('settings.groupApp'),
-      pages: [
-        { id: 'general', label: t('settings.pageGeneral') },
-        { id: 'hud', label: t('settings.pageHud') }
-      ]
-    },
-    {
-      heading: t('settings.groupSystem'),
-      pages: [
-        { id: 'plugins', label: t('settings.pagePlugins') },
-        { id: 'about', label: t('settings.pageAbout') }
-      ]
-    }
-  ]
-
   const wideContent = tab !== null && ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
   const q = pageQuery.trim().toLowerCase()
-  const pageLabel = new Map(groups.flatMap((g) => g.pages.map((pg) => [pg.id, pg.label] as const)))
+  const pageLabel = new Map(HOME_SECTIONS.flatMap(section => section.rows.map(row => [row.id, t(row.label)] as const)))
   const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
+  // Page-name matches and field matches share one result list.
+  const matchedPages = HOME_SECTIONS.flatMap(section => section.rows)
+    .filter(row => q && (pageLabel.get(row.id)?.toLowerCase().includes(q) ||
+      (HOME_WITH_COPY.has(row.id) && t(`settings.home.${row.id}.title`).toLowerCase().includes(q))))
+  for (const row of matchedPages) {
+    if (!hits.some(hit => hit.page === row.id)) hits.push({ page: row.id, key: row.label, text: pageLabel.get(row.id)! })
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -328,9 +275,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
                 {t('settings.noSettingMatches', { query: pageQuery })}
               </p>
             )}
-            <nav aria-label={t('settings.categories')} className="space-y-5">
+            {!q && <nav aria-label={t('settings.categories')} className="space-y-5">
               {HOME_SECTIONS.map((sec) => {
-                const rows = sec.rows.filter((r) => !q || pageLabel.get(r.id)?.toLowerCase().includes(q) || t(`settings.home.${r.id}.title`).toLowerCase().includes(q))
+                const rows = sec.rows
                 if (rows.length === 0) return null
                 return (
                   <section key={sec.key} aria-label={t(`settings.home.group.${sec.key}`)}>
@@ -350,7 +297,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
                   </section>
                 )
               })}
-            </nav>
+            </nav>}
             {hits.length > 0 && (
               <section data-testid="settings-search-results">
                 <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{t('settings.searchResults')}</p>
