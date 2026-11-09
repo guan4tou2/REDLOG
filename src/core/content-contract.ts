@@ -7,6 +7,7 @@ export interface ContentRef {
   version: string
 }
 export interface ContentDescriptor {
+  storage?: 'terminal-cast'
   field: ContentField
   status: 'available' | ContentUnavailable
   ref: ContentRef | null

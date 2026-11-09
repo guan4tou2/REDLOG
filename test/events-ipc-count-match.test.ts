@@ -43,15 +43,15 @@ describe('events:count and events:matchIds', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('does not read saved content after the active project changes', () => {
+  it('does not read saved content after the active project changes', async () => {
     const eventId = fx.rows.find(r => r.agentType === 'shell')!.id
-    const reply = handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
+    const reply = await handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
     expect(reply.ok).toBe(true)
     active = {...active!,id:'other-project'}
-    expect(handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
-    expect(handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
     active = null
-    expect(handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
   })
 
   it('returns its empty shape without an active project', () => {
