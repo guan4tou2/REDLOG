@@ -22,16 +22,16 @@ describe('resolveExportDestination', () => {
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-dest-')) })
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
-  it('defaults to the project exports folder', () => {
+  it('defaults to the project exports folder', async () => {
     expect(resolveExportDestination(tmp, undefined, new Set())).toEqual({ ok: true, dir: defaultExportDir(tmp), custom: false })
   })
-  it('accepts a folder only if main approved it', () => {
+  it('accepts a folder only if main approved it', async () => {
     const picked = path.join(tmp, 'picked')
     fs.mkdirSync(picked)
     expect(resolveExportDestination(tmp, picked, new Set())).toEqual({ ok: false, error: 'invalid-destination' })
     expect(resolveExportDestination(tmp, picked, new Set([path.resolve(picked)]))).toEqual({ ok: true, dir: path.resolve(picked), custom: true })
   })
-  it('refuses a non-string, a missing folder and a file', () => {
+  it('refuses a non-string, a missing folder and a file', async () => {
     const file = path.join(tmp, 'f')
     fs.writeFileSync(file, '')
     const approved = new Set([path.resolve(file), path.join(tmp, 'gone')])

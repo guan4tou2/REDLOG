@@ -8,7 +8,8 @@ import fs from 'fs'
 import type { IpcContext } from './types'
 import { loadConfig, snapshotScope } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
-import { getProjectDir } from '../../core/db/index'
+import { getProjectDir, getReadonlyDB } from '../../core/db/index'
+import { createHash } from 'node:crypto'
 import { queryEvents, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
 import { resolveExportSelection } from '../../core/export-selection'
@@ -33,7 +34,7 @@ import {
 } from '../../core/export-plan'
 import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
-import { eventsToNdjson } from '../../core/ndjson-export'
+import { writeApprovedEventExport } from '../../core/export-stream'
 import { exportBundle } from '../../core/bundle-export'
 import { listExportAttachments, exportAttachmentDigest, withFrozenSizes } from '../../core/export-attachments'
 import { exportHar } from '../../core/har-export'
@@ -249,7 +250,14 @@ export function registerDataExportIpc(
     } catch { return false }
   })
 
-  ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string; destDir?: string }) => {
+  const sanitizationRevision = () => {
+    const hash = createHash('sha256')
+    for (const row of getReadonlyDB().prepare('SELECT source_event_id,field,replacement_sha256 FROM sanitized_events ORDER BY source_event_id,field').iterate()) {
+      hash.update(JSON.stringify(row))
+    }
+    return hash.digest('hex')
+  }
+  ipcMain.handle('data:executeExportPlan', async (_e, input?: { planId?: string; destDir?: string }) => {
     const project = ctx.getActiveProject()
     if (!project) return { ok: false as const, error: 'no-active-project' }
     if (!input?.planId) return { ok: false as const, error: 'invalid-request' }
@@ -300,20 +308,27 @@ export function registerDataExportIpc(
         }
       }
       let artifactPath: string | null = null
+      const redactionRevision = sanitizationRevision()
+      const deliveryAllowed = (completed = false) => {
+        if (ctx.getActiveProject()?.id !== project.id) return false
+        if (!completed) return true
+        if ([...getDoNotExportIds()].some(id => selectedIds.has(id))) throw new Error('policy-changed')
+        if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) throw new Error('policy-changed')
+        if (sanitizationRevision() !== redactionRevision) throw new Error('source-unavailable')
+        return true
+      }
       if (plan.request.format === 'json') {
         const projectDir = getProjectPath(project)
         const config = loadConfig(projectDir)
         // The rows just verified against the plan's digest, not a second read.
         const events = approvedNow
         const outDir = destination.dir
-        let content = JSON.stringify({ config: exportableConfig(config), events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
-        if (plan.request.scrubPii) content = scrubOperatorPii(content)
-        artifactPath = writeExportFile(outDir, 'redlog', 'json', content)
+        artifactPath = await writeApprovedEventExport(outDir, 'json', events, {
+          config: exportableConfig(config), exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint }
+        }, plan.request.scrubPii, deliveryAllowed)
       } else if (plan.request.format === 'ndjson') {
-        const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
-        const content = eventsToNdjson(approvedNow, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set(), alreadyRedacted: true })
-        const outDir = destination.dir
-        artifactPath = writeExportFile(outDir, 'redlog', 'ndjson', content)
+        artifactPath = await writeApprovedEventExport(destination.dir, 'ndjson', approvedNow, null,
+          plan.request.scrubPii, deliveryAllowed)
       } else if (plan.request.format === 'bundle') {
         const cfg = loadConfig(getProjectPath(project))
         const result = exportBundle(cfg.engagement.id, {

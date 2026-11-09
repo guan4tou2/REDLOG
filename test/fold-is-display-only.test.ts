@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 const ROOT = join(__dirname, '..', 'src')
 
@@ -41,7 +41,7 @@ describe('folding cannot reach the record', () => {
   it('is not imported by the export paths in the renderer either', () => {
     // ExportMenu builds the request; nothing it sends may carry a grouping.
     const exportFiles = sourcesUnder(join(ROOT, 'renderer'))
-      .filter((f) => /Export/i.test(f))
+      .filter((f) => /Export/i.test(basename(f)))
       .filter((f) => /from ['"][^'"]*timelineFold['"]/.test(readFileSync(f, 'utf-8')))
     expect(exportFiles).toEqual([])
   })

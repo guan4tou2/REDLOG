@@ -2,6 +2,8 @@ import { Button } from './Button'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useI18n } from '../i18n'
+import { useTimelinePan } from '../hooks/useTimelinePan'
+import { useTimelineSummary } from '../hooks/useTimelineSummary'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
@@ -53,10 +55,6 @@ import {
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
 
-// How far the pointer may travel before a press on the track counts as a pan
-// rather than a click. Same slop the minimap uses to tell a drag-to-zoom from
-// a click-to-jump.
-const PAN_SLOP_PX = 4
 const MIN_LANE_H = 36
 // A dot is 9px. A lane taller than this is empty space either side of it, and
 // on a half-screen window the old `available / rows` division handed every
@@ -198,7 +196,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // answer widen it from the loaded bounds rather than re-asking. Null while
   // pending or after a failure, and the toolbar then falls back to the loaded
   // span once nothing older is left to load.
-  const [projectBounds, setProjectBounds] = useState<{ first: number; last: number } | null>(null)
+  const generationRef = useRef(0)
+  const { total, projectBounds, requestTotal, admitCount } = useTimelineSummary(eventFilterRef, generationRef)
   const projectSpanMs = useMemo(() => {
     if (!projectBounds) return null
     const first = loadedBounds ? Math.min(projectBounds.first, loadedBounds.lo) : projectBounds.first
@@ -209,13 +208,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // The same cursor as state, for what is computed from it (earlier matches).
   const [pageCursor, setPageCursorState] = useState<string | null>(null)
   const setPageCursor = (c: string | null): void => { pageCursorRef.current = c; setPageCursorState(c) }
-  const generationRef = useRef(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   // "N of M": M counted over the same predicates as the pages. Pending until
   // it arrives, failed (with retry) rather than guessed.
-  const [total, setTotal] = useState<{ state: 'pending' } | { state: 'ok'; value: number } | { state: 'failed' }>({ state: 'pending' })
-  const recountRef = useRef(false)
   const [liveError, setLiveError] = useState<{ ids: RedLogEvent[] } | null>(null)
   const [outsideFilter, setOutsideFilter] = useState(false)
   // v0.11.6 (V7). Off by default: a compressed axis is not proportional, and
@@ -536,15 +532,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // memoized `events` still comes from setEvents — sortedRef is just the
   // storage backing that setEvents call.
   const sortedRef = useRef<RedLogEvent[]>([])
-  const isDragging = useRef(false)
-  const dragStart = useRef({ x: 0, scroll: 0 })
-  // Did the gesture that is ending now PAN the track? A dot's hit box is 20px
-  // in a 36px lane, so grabbing the track to pan very often grabs a dot —
-  // most often the selected one, which is both what the operator is looking
-  // at and drawn on top. mouseup over the same button is still a `click`, so
-  // panning a few pixels fired the dot's toggle and cleared the selection out
-  // from under the detail pane. A pan is not a click; this says which it was.
-  const didPan = useRef(false)
+  const { didPan, handleMouseDown } = useTimelinePan(scrollRef, () => setCluster(null))
   const didScrollToNow = useRef(false)
   const pendingZoomAnchor = useRef<{ frac: number; cursorX: number } | null>(null)
   const { t } = useI18n()
@@ -665,8 +653,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // the drawn range arrives on the live channel below.
   const PAGE_ROWS = 200
   const MATCH_CHUNK = 1000
-  const totalRef = useRef(total)
-  totalRef.current = total
   const selectedRef = useRef<RedLogEvent | null>(null)
   selectedRef.current = selectedEvent
 
@@ -675,27 +661,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       if (!eventsMapRef.current.has(e.id)) binarySearchInsert(sortedRef.current, e)
       eventsMapRef.current.set(e.id, e)
     }
-  }
-
-  // M for "N of M". A live row admitted while this count is in flight may or
-  // may not be in it, so it counts once more instead of guessing.
-  const requestTotal = (gen: number): void => {
-    recountRef.current = false
-    setTotal({ state: 'pending' })
-    setProjectBounds(null)
-    // A bridge without `span` (an older preload) throws synchronously; inside
-    // the promise it is a failure like any other, and the loaded span stands.
-    Promise.resolve()
-      .then(() => window.redlog.events.span({ filter: eventFilterRef.current, excludeHousekeeping: true }))
-      .then((b) => { if (gen === generationRef.current) setProjectBounds(b) })
-      .catch(() => { /* the toolbar falls back to the loaded span */ })
-    window.redlog.events.count({ filter: eventFilterRef.current, excludeHousekeeping: true })
-      .then((n) => {
-        if (gen !== generationRef.current) return
-        if (recountRef.current) { requestTotal(gen); return }
-        setTotal({ state: 'ok', value: n })
-      })
-      .catch(() => { if (gen === generationRef.current) setTotal({ state: 'failed' }) })
   }
 
   // A selection the new filter excludes is cleared and said to be excluded,
@@ -835,11 +800,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       setLiveError(null)
       if (added === 0) return
       // Each admitted row is one more of M, so N never passes M.
-      if (totalRef.current.state === 'ok') {
-        setTotal({ state: 'ok', value: totalRef.current.value + added })
-      } else if (totalRef.current.state === 'pending') {
-        recountRef.current = true
-      }
+      admitCount(added)
       scheduleFlush()
     }
     admitLiveRef.current = admit
@@ -1458,43 +1419,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [TRACK_W])
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    // Bug: this ran on every mousedown INSIDE the scroll track, including a
-    // mousedown that started a click on the cluster popup. It would close
-    // the popup + start drag before the popup <button>'s onClick had a
-    // chance to fire — the operator saw "click a row in the popup, popup
-    // closes, nothing happens" instead of the intended jump.
-    // Fix: bail if the mousedown target is inside the cluster popup.
-    const target = e.target as HTMLElement | null
-    if (target?.closest('[data-timeline-popup]')) return
-    setCluster(null)
-    isDragging.current = true
-    // Cleared here rather than on mouseup: the `click` this gesture may
-    // produce is dispatched AFTER mouseup, so it has to still be able to read
-    // what the gesture was. The next mousedown is the first moment nothing
-    // needs the answer any more.
-    didPan.current = false
-    dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 }
-    document.body.classList.add('timeline-grabbing')
-  }, [])
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent): void => {
-      if (!isDragging.current || !scrollRef.current) return
-      const dx = e.clientX - dragStart.current.x
-      if (Math.abs(dx) > PAN_SLOP_PX) didPan.current = true
-      scrollRef.current.scrollLeft = dragStart.current.scroll - dx
-    }
-    const onUp = (): void => {
-      isDragging.current = false
-      document.body.classList.remove('timeline-grabbing')
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [])
 
   // On open, jump the viewport to the present so the newest activity is in view
   // rather than the oldest. Runs once, after the first events have loaded and the

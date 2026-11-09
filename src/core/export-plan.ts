@@ -457,7 +457,16 @@ export function createExportPlan(
 }
 
 export function fingerprintValue(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+  const hash = createHash('sha256')
+  if (Array.isArray(value)) {
+    hash.update('[')
+    for (let index = 0; index < value.length; index++) {
+      if (index) hash.update(',')
+      hash.update(JSON.stringify(value[index]) ?? 'null')
+    }
+    hash.update(']')
+  } else hash.update(JSON.stringify(value))
+  return hash.digest('hex')
 }
 
 export type ExportPlanClaim =
