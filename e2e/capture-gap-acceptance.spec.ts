@@ -67,6 +67,9 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
     res.writeHead(200, { 'content-type': 'text/plain', 'set-cookie': `session=${MARKER}; Path=/` })
     res.end(`${MARKER} body`)
   }
+  const reservation = createServer()
+  const managedPort = await listen(reservation)
+  await new Promise<void>(resolve => reservation.close(() => resolve()))
   const { app, page, tmpHome } = await launchWithTempHome()
   // Two producers. The app's own, which a switch stops. And one the app does
   // not own — an operator's mitmdump loading the same addon — which outlives
@@ -89,7 +92,11 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
     const urls = async (owner: string) => (await scanner()).filter(e => String(e.data.url ?? '').includes(`owner=${owner}`)).map(e => e.data.subtype)
     await expect.poll(() => probeManagedProxy(externalUrl, 'external-ready'), { timeout: 60_000 }).toBe(true)
     const a = await page.evaluate(() => window.redlog.project.create('gap-a', { network: { offline: true } }))
-    await page.evaluate(() => window.redlog.httpCapture.start())
+    await page.evaluate(async port => {
+      const config = await window.redlog.config.get()
+      await window.redlog.config.save({ ...config, httpCapture: { ...config.httpCapture, port } })
+      return window.redlog.httpCapture.start()
+    }, managedPort)
     await expect.poll(async () => (await statusOf()).state, { timeout: 40_000 }).toBe('running')
     const proxyA = await statusOf()
 
@@ -109,6 +116,7 @@ test('#459 flows begun in project A and answered after the switch to B leave B n
 
     // Switching closes A, which stops A's proxy, and opens B.
     const b = await page.evaluate(() => window.redlog.project.create('gap-b', { network: { offline: true } }))
+    await page.evaluate(async port => { const config = await window.redlog.config.get(); await window.redlog.config.save({ ...config, httpCapture: { ...config.httpCapture, port } }) }, managedPort)
     expect(b.id).not.toBe(a.id)
     const managedAliveAfterSwitch = proxyA.pid ? alive(proxyA.pid) : null
     expect(external.exitCode).toBeNull()

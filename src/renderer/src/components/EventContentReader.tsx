@@ -189,7 +189,7 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
     {current && <>
       <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(!expanded)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
       <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
-        {fields.state.value?.map(f => <option key={f.field} value={f.field}>{t(`content.field.${f.field}`)}</option>)}
+        {fields.state.value?.map(f => <option key={f.field} value={f.field}>{f.storage === 'terminal-cast' ? t('content.terminalOutput') : t(`content.field.${f.field}`)}</option>)}
       </select></div>
       {fields.state.value?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
         <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>

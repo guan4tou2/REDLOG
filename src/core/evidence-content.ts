@@ -1,3 +1,5 @@
+import { getProjectDir } from './db/index'
+import { prepareCastProjection, withCastProjection } from './cast-content-source'
 import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './db/index'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource } from './body-source'
@@ -62,6 +64,8 @@ function withSource<T>(o: Owner, field: typeof FIELDS[number], use: (source: Byt
     return withVerifiedSavedFile(ref, source=>use(source,false))
   }
   const p = probe(o, field)
+  const range = castRange(o, field.field)
+  if (!p.kind && !p.ref && range) return withCastProjection(getProjectDir(), range, source => use(source, range.truncated))
   if (p.ref) {
     const ref = JSON.parse(p.ref) as BodyRef
     return withVerifiedBody(ref, source => use(source, ref.truncated === true || p.truncated === 1))
@@ -103,6 +107,7 @@ export function describeEventContent(projectId: string, eventId: string): Conten
     const o = owner(projectId, eventId), descriptors: ContentDescriptor[] = []
     for (const field of FIELDS) {
       const p = probe(o, field)
+      if (field.field === 'stderr' && !p.kind && !p.ref && castRange(o, 'stdout')) continue
       // #550: a command that produced more than the inline threshold has its
       // bytes in the terminal recording, not in `$.stdout`. Reporting that as
       // "not captured" told the operator the output was lost when it was the
@@ -111,6 +116,9 @@ export function describeEventContent(projectId: string, eventId: string): Conten
       // name it and point at the replay the timeline already offers.
       const castBytes = castRangeBytes(o, field.field)
       if (!p.kind && !p.ref && castBytes !== null) {
+        const projected = result(() => withSource(o, field, (source, partial) => ({ field: field.field, status: 'available' as const, ref: refOf(projectId, eventId, field.field, source), bytes: source.bytes, format: source.format, capture: partial ? 'partial' as const : 'unknown' as const, storage: 'terminal-cast' as const })))
+        if (projected.ok) { descriptors.push(projected.value); continue }
+        if (projected.status !== 'cast-recording') { descriptors.push({ field: field.field, status: projected.status, ref: null, bytes: castBytes, format: 'utf8', capture: 'unknown', storage: 'terminal-cast' }); continue }
         descriptors.push({ field: field.field, status: 'cast-recording', ref: null, bytes: castBytes, format: 'utf8', capture: 'unknown' })
         continue
       }
@@ -126,15 +134,28 @@ export function describeEventContent(projectId: string, eventId: string): Conten
 /** Bytes this row recorded into the terminal cast for `field`, or null when
  *  there is no cast slice. The built-in terminal writes `io: {stream:'cast',
  *  ref, off, len}` instead of inlining stdout. */
-function castRangeBytes(o: Owner, field: string): number | null {
-  // A cast is one merged PTY stream: stdout and stderr interleave in the same
-  // range, so it cannot stand in for either one on its own. Report it once,
-  // on stdout, and let the status say it is the merged output.
+function castRange(o: Owner, field: string): { ref: string; off: number; len: number; truncated: boolean } | null {
   if (field !== 'stdout') return null
-  const row = o.db.prepare(`SELECT json_extract(data,'$.io.stream') AS stream, json_extract(data,'$.io.len') AS len FROM ${o.tab} WHERE rowid=?`).get(o.rowid) as { stream: string | null; len: number | null }
-  if (row?.stream !== 'cast') return null
-  const len = Number(row.len ?? 0)
-  return len > 0 ? len : null
+  const row = o.db.prepare(`SELECT json_extract(data,'$.io') AS io, json_extract(data,'$.completeness') AS completeness FROM ${o.tab} WHERE rowid=?`).get(o.rowid) as { io: string | null; completeness: string | null }
+  const io = row.io ? JSON.parse(row.io) : null
+  if (io?.stream !== 'cast' || typeof io.ref !== 'string') return null
+  return { ref: io.ref, off: io.off, len: io.len, truncated: io.truncated === true || ['partial', 'truncated', 'interrupted'].includes(row.completeness ?? '') }
+}
+function castRangeBytes(o: Owner, field: string): number | null {
+  const range = castRange(o, field)
+  return range && Number.isSafeInteger(range.len) && range.len >= 0 ? range.len : null
+}
+/** Prepare once through the async IPC path, then reuse the common byte-window API. */
+export async function prepareEventContent(projectId: string, eventId: string): Promise<ContentResult<void>> {
+  try {
+    const o = owner(projectId, eventId)
+    const range = castRange(o, 'stdout')
+    const inline = probe(o, FIELDS.find(field => field.field === 'stdout')!)
+    if (range && Number.isSafeInteger(range.off) && Number.isSafeInteger(range.len) && !inline.kind && !inline.ref) await prepareCastProjection(getProjectDir(), range)
+    return { ok: true, value: undefined }
+  } catch (error) {
+    return { ok: false, status: error instanceof ContentAccessError ? error.status : 'failed', message: error instanceof Error ? error.message : String(error) }
+  }
 }
 function access<T>(ref: ContentRef, use: (source: ByteSource) => T): ContentResult<T> {
   return result(() => {

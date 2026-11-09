@@ -239,7 +239,7 @@ describe('complete saved-content delivery',()=>{
       let replacementChecks=0
       const replaced=path.join(output,'replaced.txt')
       expect(await saveEventContent(ref,replaced,()=>{
-        if(++replacementChecks===3){fs.unlinkSync(replaced);fs.writeFileSync(replaced,'other program content')}
+        if(fs.existsSync(replaced) && ++replacementChecks===1){fs.unlinkSync(replaced);fs.writeFileSync(replaced,'other program content')}
         return true
       })).toMatchObject({ok:false,status:'changed'})
       expect(fs.readFileSync(replaced,'utf8')).toBe('other program content')
@@ -279,7 +279,8 @@ describe('output held in the terminal recording (#550)', () => {
     expect(d.bytes).toBe(2604806)
     expect(d.ref).toBeNull()
     // A cast is one merged stream: it must not be offered as stderr too.
-    expect(descriptor('cast-out', 'stderr').status).toBe('not-captured')
+    const listed = describeEventContent('project', 'cast-out')
+    expect(listed.ok && listed.value.some(field => field.field === 'stderr')).toBe(false)
   })
 
   it('still prefers inline bytes when they exist', () => {

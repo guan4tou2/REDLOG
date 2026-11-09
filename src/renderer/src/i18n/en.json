@@ -2370,5 +2370,6 @@
   "eventTitle.chainSampleBroken": "Chain spot-check failed",
   "eventTitle.systemOther": "System event: {{name}}",
   "activity.systemFold": "{{count}} system events",
-  "screenshots.imageUnavailable": "Image unavailable"
+  "screenshots.imageUnavailable": "Image unavailable",
+  "content.terminalOutput": "Terminal output (stdout and stderr combined)"
 }
