@@ -249,14 +249,14 @@ test.describe.serial('view-reachability', () => {
     }
   })
 
-  // Not fixed here: `transcript` renders the same rows as the Activity
-  // workspace's 輸入／輸出 and AI 對話 tabs, so the answer may be an entrance or
-  // it may be deleting the view. That decision is #563; until it is made, this
-  // records the state instead of pretending the view is reachable.
-  test.fixme('the transcript is reachable from a screen', async () => {
+  test('the transcript is reached through the Activity input/output tab', async () => {
     await page.locator('nav [data-view-btn="search"]').first().click()
-    await expect(page.getByTestId('workspace-open-transcript')).toBeVisible()
+    await page.locator('#reading-tab-io').click()
+    await expect(viewRoot()).toHaveAttribute('data-view', 'search')
+    await expect(page.locator('#reading-tab-io')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('#reading-panel-io')).toBeVisible()
   })
+
 })
 
 // The "native desktop feel" work (PR #17) made the app's chrome behave like a

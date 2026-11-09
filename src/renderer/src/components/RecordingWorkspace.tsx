@@ -56,8 +56,9 @@ type Reading = 'activities' | 'io' | 'ai' | 'events'
 const READINGS: Reading[] = ['activities', 'io', 'ai', 'events']
 
 /** Reading modes share a query; visited readers retain their own position. */
-export default function RecordingWorkspace({ active = true, onOpenInTimeline, onOpenTimeline, externalQuery }: {
+export default function RecordingWorkspace({ active = true, onOpenInTimeline, onOpenTimeline, externalQuery, requestedReading }: {
   active?: boolean
+  requestedReading?: { mode: 'io' | 'ai'; at: number } | null
   /** A query handed in from elsewhere (the Timeline's "open in activity log");
    *  each new `at` replaces the box's text once, and the operator edits on from there. */
   externalQuery?: { text: string; at: number } | null
@@ -79,6 +80,11 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     setQuery(externalQuery.text)
     setReading('activities')
   }, [externalQuery?.at]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!requestedReading) return
+    setReading(requestedReading.mode)
+    setVisited(previous => new Set([...previous, requestedReading.mode]))
+  }, [requestedReading])
   const choose = (next: Reading): void => {
     setReading(next)
     setVisited(prev => new Set([...prev, next]))

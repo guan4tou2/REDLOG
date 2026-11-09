@@ -31,7 +31,6 @@ import { toast } from './components/Toast'
 // black screen with no explanation.
 const TerminalView = lazy(() => import('./components/TerminalView'))
 const Settings = lazy(() => import('./components/Settings'))
-const TranscriptView = lazy(() => import('./components/TranscriptView'))
 const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then(m => ({ default: m.HttpHistoryPanel })))
 
 import { useI18n } from './i18n'
@@ -133,11 +132,13 @@ export default function App(): JSX.Element {
 
   // Every link, the palette, the sidebar and the status bar go through here,
   // so a target that names a Settings page opens that page.
+  const [readingRequest, setReadingRequest] = useState<{ mode: 'io' | 'ai'; at: number } | null>(null)
   const navigate = useCallback((target: string): void => {
     const { view: next, settingsPage, scopeCandidate } = parseTarget(target)
     setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate } : null)
     setReturnTo(null)
-    setView(next as View)
+    setReadingRequest(next === 'transcript' ? { mode: 'io', at: Date.now() } : null)
+    setView((next === 'transcript' ? 'search' : next) as View)
   }, [])
 
   const openInTimeline = useCallback((id: string, ts: number): void => {
@@ -284,7 +285,7 @@ export default function App(): JSX.Element {
     )
   }
 
-  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline', 'loot'].includes(view)
+  const showFilterBar = ['search', 'http_history', 'timeline', 'loot'].includes(view)
 
   return (
     <FilterProvider>
@@ -453,25 +454,8 @@ export default function App(): JSX.Element {
               </div>
             )}
             {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
-            {/* v0.11.2 (design note T5): the same events read vertically. The
-                Timeline answers "when did this happen and what did it cause";
-                this answers "what did I type and what came back", which is the
-                question an operator asks when writing an engagement up. */}
-            {view === 'transcript' && (
-              <Suspense fallback={<PaneLoading />}>
-                <TranscriptView
-                  key={project?.id ?? 'no-project'}
-                  // `onNavigate` is not in scope here — App switches views with
-                  // `setView`. This threw a ReferenceError on every use of the
-                  // transcript's arrow button, which is §7's transcript <-> timeline
-                  // link and one of the five cross-view routes phase 3 is meant
-                  // to be completing.
-                  onOpenInTimeline={openInTimeline}
-                />
-              </Suspense>
-            )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
+            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

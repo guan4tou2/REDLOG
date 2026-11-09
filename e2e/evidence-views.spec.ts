@@ -194,35 +194,18 @@ test.describe('transcript-view', () => {
     await page.waitForTimeout(1500)
     await expect(page.getByTestId('transcript-completeness')).toContainText('Loaded set complete')
 
-    // Six events in, four exchanges out: the two pairs each collapse to one.
-    const blocks = await page.evaluate(() =>
-      document.querySelectorAll('div.rounded.border.border-redlog-border\\/70').length)
-    expect(blocks, 'a call and its result must render as one exchange').toBe(4)
+    // The shared input/output reader contains Shell and HTTP; AI has its own tab.
+    const io = page.locator('#reading-panel-io')
+    await expect(io.locator('[data-block-id]')).toHaveCount(2)
+    await expect(io).toContainText('nmap -sV 10.0.0.5')
+    await expect(io).toContainText('GET https://t.example')
+    await expect(io).toContainText('"name":"admin"')
+    await expect(io).toContainText('output not captured')
+    await page.locator('#reading-tab-ai').click()
+    const ai = page.locator('#reading-panel-ai')
+    await expect(ai.locator('[data-block-id]')).toHaveCount(1)
+    await expect(ai).toContainText('uid=0(root)')
 
-    // Collapsed is the default as of fc30071 — a transcript of a real engagement
-    // is unreadable if every command dumps its full output inline. The inputs
-    // are what you scan; the outputs are what you open.
-    const collapsed = await page.evaluate(() => document.body.innerText)
-    expect(collapsed, 'the command itself').toMatch(/nmap -sV 10\.0\.0\.5/)
-    expect(collapsed, 'the request line').toMatch(/GET https:\/\/t\.example/)
-    expect(collapsed, 'output stays folded until asked for').not.toMatch(/"name":"admin"/)
-
-    // Expand every exchange that has something to show. This assertion used to
-    // pass without the click, because output rendered unconditionally; fc30071
-    // changed that deliberately and this spec was not updated with it, so it has
-    // been failing on main ever since.
-    const collapsedToggles = page.locator('[data-testid="transcript-toggle"][data-expanded="false"]')
-    const n = await collapsedToggles.count()
-    expect(n, 'three of the four exchanges carry output').toBe(3)
-    for (let i = 0; i < n; i++) await collapsedToggles.first().click()
-    await expect(page.locator('[data-testid="transcript-toggle"][data-expanded="false"]')).toHaveCount(0)
-
-    const txt = await page.evaluate(() => document.body.innerText)
-    expect(txt, 'the response body, which had no UI at all before this').toMatch(/"name":"admin"/)
-    expect(txt, 'a tool result shown under the call that produced it').toMatch(/uid=0\(root\)/)
-    // Absence stated, not implied — an external shell records the command only,
-    // and that has to look different from a command that printed nothing.
-    expect(txt, 'uncaptured output must say so').toMatch(/output not captured/)
   })
 
   // A batch arriving while the transcript is open used to clear it and reload
@@ -241,7 +224,8 @@ test.describe('transcript-view', () => {
 
       for (let i = 0; i < 40; i++) await say(`seed message ${i}`)
       await resizeMainWindow(app, 1500, 1000)
-      await openView(page, 'transcript')
+      await openView(page, 'search')
+      await page.locator('#reading-tab-ai').click()
       const rows = page.locator('[data-block-id]')
       await expect(rows).toHaveCount(40)
 

@@ -151,7 +151,7 @@ export async function openView(page: Page, view: string): Promise<void> {
     await page.keyboard.press(process.platform==='darwin'?'Meta+k':'Control+k')
     await page.locator(`[data-command-id="nav:${view}"]`).click()
   }
-  await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
+  await page.waitForSelector(`[data-testid="view-root"][data-view="${view === 'transcript' ? 'search' : view}"]`, { timeout: 10_000 })
 }
 
 /** Enter proof through the actual skip action if this host lacks tools.
