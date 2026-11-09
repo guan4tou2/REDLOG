@@ -81,7 +81,7 @@ describe('one case-insensitive target predicate', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('the Targets count, the detail query and every filter agree across casings', () => {
+  it('the Targets count, the detail query and every filter agree across casings', async () => {
     const agg = aggregateTargets().find((t) => t.target.toLowerCase() === 'example.com')
     expect(agg?.eventCount).toBe(7)
     expect(queryEvents({ targetId: 'example.com', limit: -1 })).toHaveLength(7)
@@ -94,7 +94,7 @@ describe('one case-insensitive target predicate', () => {
   // current target, a terminal opening and the hook sourcing itself included.
   // Those are housekeeping, which the Timeline never draws or counts, so the
   // Targets page promised rows that "Open in Timeline" then did not show.
-  it('counts on the Targets page what the Timeline totals, housekeeping aside', () => {
+  it('counts on the Targets page what the Timeline totals, housekeeping aside', async () => {
     insertFixtureRow(row('events', 'example.com', { subtype: 'session_start', data: { shell: 'bash' } }))
     insertFixtureRow(row('events', 'Example.COM', { subtype: 'command_start', data: { command: 'source ~/.redlog/shell-bash-hook.sh' } }))
     const timelineTotal = countEvents({ filter: { targetId: 'example.com' }, excludeHousekeeping: true })
@@ -102,7 +102,7 @@ describe('one case-insensitive target predicate', () => {
     expect(aggregateTargets().find((t) => t.target.toLowerCase() === 'example.com')?.eventCount).toBe(timelineTotal)
   })
 
-  it('selects neither a longer address nor an observation that names it', () => {
+  it('selects neither a longer address nor an observation that names it', async () => {
     expect(walkPage({ targetId: '10.0.0.5' })).toBe(2)
     expect(countEvents({ filter: { targetId: '10.0.0.5' } })).toBe(2)
   })
@@ -110,7 +110,7 @@ describe('one case-insensitive target predicate', () => {
   // Export reads the target through the same predicate (research R3): an
   // export limited to a target selects every casing, and executes what it
   // previewed.
-  it('an export limited to a target selects every casing, as previewed', () => {
+  it('an export limited to a target selects every casing, as previewed', async () => {
     // `timeline` is a format that takes a bounded subset, as the Timeline's own export does.
     const request = { format: 'timeline', subset: { kind: 'time-range', since: T0 - 100_000, before: T0, targetId: 'EXAMPLE.com' } }
     const resolved = handlers.get('data:resolveExportPlan')?.({}, request as never) as {
@@ -118,7 +118,7 @@ describe('one case-insensitive target predicate', () => {
     }
     expect(resolved, JSON.stringify(resolved)).toMatchObject({ ok: true })
     expect(resolved.plan.counts.included).toBe(7)
-    const executed = handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as {
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as {
       ok: true; counts: { included: number }
     }
     expect(executed).toMatchObject({ ok: true, counts: { included: 7 } })
