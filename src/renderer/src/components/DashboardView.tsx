@@ -42,7 +42,7 @@ function RecordSummary({ chained, localOnly, lastAnchor, sub, tone, onOpenActivi
     : t('dashboard.anchor.none')
   const note = tone === 'red' ? 'text-red-400' : 'text-amber-400'
   return (
-    <div data-testid="dashboard-record-summary" className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+    <div data-testid="dashboard-record-summary" className="rounded-lg bg-redlog-surface border border-redlog-border p-pad shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-3">
@@ -300,7 +300,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
           <SectionLabel className="tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </SectionLabel>
-          <div className="rounded-lg bg-redlog-surface border border-redlog-border px-4 py-1 shadow-card">
+          <div className="rounded-lg bg-redlog-surface border border-redlog-border px-pad py-1 shadow-card">
             <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
               <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
               <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span>
@@ -322,7 +322,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
         <summary className="cursor-pointer select-none text-xs text-redlog-text-dim hover:text-redlog-text">
           {t('dashboard.shortcuts')}
         </summary>
-        <div className="mt-3 rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+        <div className="mt-3 rounded-lg bg-redlog-surface border border-redlog-border p-pad shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {appShortcuts(shortcutOrder, isMac).map((row) => (
               <div key={row.keys} className="flex items-center gap-2.5">

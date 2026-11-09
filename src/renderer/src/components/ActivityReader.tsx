@@ -194,7 +194,7 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
           e.preventDefault()
           if (e.key === 'ArrowUp' ? !atStart : !atEnd) onStep(e.key === 'ArrowUp' ? -1 : 1)
         }}
-        className="outline-none w-full max-w-5xl flex flex-col rounded border border-redlog-border bg-redlog-bg shadow-xl min-h-0">
+        className="outline-none w-full max-w-5xl flex flex-col rounded-xl border border-redlog-border bg-redlog-bg shadow-xl min-h-0">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
           <div className="flex items-center gap-2 min-w-0 text-xs">
             <span data-testid="reader-badge" className="px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim shrink-0">

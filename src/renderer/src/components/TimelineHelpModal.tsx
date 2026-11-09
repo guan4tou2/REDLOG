@@ -18,7 +18,7 @@ export function TimelineHelpModal({ open, onClose, isMac, t }: TimelineHelpModal
       testId="timeline-help"
       backdropClassName="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
     >
-      <div className="w-[560px] max-w-[92vw] rounded-lg border border-redlog-border bg-redlog-bg shadow-2xl overflow-hidden">
+      <div className="w-[560px] max-w-[92vw] rounded-xl border border-redlog-border bg-redlog-surface shadow-2xl overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border">
           <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim">{t('timeline.help.title')}</span>
           <button
