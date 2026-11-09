@@ -8,6 +8,6 @@
 
 Kali arm64 使用系統 Bash／Python 比對 ls、ls -al、2 MB 輸出及非零結束碼／stderr，結果見 kali-output-results.jsonl。2 MB 的 terminal 輸出逐位元組相符，預設 relay cap 下的證據完整性如實標為 truncated。此案例未啟動 Linux Electron。
 
-Windows 安裝 smoke 工作新增既有 PowerShell 5.1／7 原生 profile 矩陣，要求兩個 edition 都存在。執行結果以該 PR 的 CI 為準。WSL 發行版與 Linux 桌面仍需提供實際環境。
+Windows 安裝 smoke 工作新增既有 PowerShell 5.1／7 原生 profile 矩陣，要求兩個 edition 都存在。[Windows 安裝驗收工作](https://github.com/guan4tou2/REDLOG/actions/runs/42570348305/job/129006053574) 已成功：安裝包 smoke 1 passed、兩個 edition 的原生 profile／指令配對／結束碼／Redlog-Run stdout 與 stderr 矩陣 1 passed，並完成解除安裝與 profile 清理。這是 Windows CI runner 上的原生驗證，不包含 WSL 或人工 DPI 操作。
 
-完整本機 unit 的首次執行有 5916 passed／4 failed／41 skipped，其中一項同步 IPC 測試已改為等待非同步結果並通過複驗，其餘三項 Shell 失敗與原主線一致。未宣稱完整 suite 全綠。
+完整本機 unit 的首次執行有 5916 passed／4 failed／41 skipped，其中一項同步 IPC 測試已改為等待非同步結果並通過複驗。其餘三項已定位為測試環境問題：relay 測試未隔離個人 home，背景 sender 測試在請求開始前以 0 ≥ 0 提早結束。修正測試隔離及等待條件後，相關 12 項測試全部通過；依序重跑 typecheck、spec、architecture、i18n 與完整 unit 後，結果為 **5920 passed／41 skipped，0 failed**。
