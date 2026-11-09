@@ -4,7 +4,7 @@
 // detected, not drawn as a route, and a failed read is not "none".
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import OverlayApp from '../src/renderer/src/OverlayApp'
 
@@ -59,4 +59,16 @@ it('shows nothing about relays when there are none', async () => {
   await screen.findAllByText('203.0.113.18')
   expect(screen.queryByTestId('hud-pivot-nodes')).toBeNull()
   expect(screen.queryByTestId('hud-pivot-error')).toBeNull()
+})
+
+it('shows the last known count but removes current node badges after an invalid update', async () => {
+  install(async () => two)
+  let notify!: (nodes: Pivot[]) => void
+  window.redlog.pivots.onChange = callback => { notify = callback; return unsub }
+  await expanded()
+  await screen.findByTestId('hud-pivot-nodes')
+  act(() => notify(null as unknown as Pivot[]))
+  expect(await screen.findByTestId('hud-pivot-error')).toBeTruthy()
+  expect(screen.queryByTestId('hud-pivot-nodes')).toBeNull()
+  expect(screen.queryByText(two[0].via, { exact: true })).toBeNull()
 })
