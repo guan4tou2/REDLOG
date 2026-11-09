@@ -15,6 +15,17 @@ beforeEach(() => { (window as any).redlog = { recording: { get: async () => true
 afterEach(cleanup)
 
 describe('recording workspace', () => {
+  it('opens a requested reader without losing its query or mounted reading position', async () => {
+    const { rerender } = render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} requestedReading={{ mode: 'io', at: 1 }} /></I18nProvider>)
+    expect((await screen.findByRole('tab', { name: 'Input / output' })).getAttribute('aria-selected')).toBe('true')
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'saved query' } })
+    fireEvent.change(await screen.findByLabelText('position-io'), { target: { value: 'saved position' } })
+    rerender(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} requestedReading={{ mode: 'ai', at: 2 }} /></I18nProvider>)
+    expect((await screen.findByTestId('workspace-ai')).textContent).toContain('saved query')
+    rerender(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} requestedReading={{ mode: 'io', at: 3 }} /></I18nProvider>)
+    expect(screen.getByLabelText('position-io')).toHaveProperty('value', 'saved position')
+  })
+
   // The Timeline is the other reading of the same material and had no way in
   // except the command palette. The entry lives beside the reading tabs, so it
   // is on screen whichever reading is open.
