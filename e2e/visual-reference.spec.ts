@@ -135,7 +135,11 @@ test.describe.serial('visual-reference', () => {
         for (const [i, view] of PAGES.entries()) {
           await openView(page, view)
           await expect(page.locator(`[data-testid="view-root"][data-view="${view}"]`)).toBeVisible()
-          if (view === 'dashboard') await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
+          if (view === 'dashboard') {
+            await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
+            const width = await page.getByTestId('dashboard-header').evaluate(el => (el.parentElement as HTMLElement).offsetWidth)
+            expect(width).toBeLessThanOrEqual(980)
+          }
           // Lazy panes show a quiet loading line first; let them settle.
           await page.waitForTimeout(900)
           await capture(join(dir, `${String(i + 1).padStart(2, '0')}-${view}.png`))
