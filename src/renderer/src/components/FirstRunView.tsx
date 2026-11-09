@@ -1,3 +1,4 @@
+import { DASHBOARD_COLUMN } from '../lib/pageColumn'
 // The first screen of a new engagement (docs/UIUX-STANDARD.md §22, design turn
 // 9a).
 //
@@ -183,7 +184,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     : null
 
   if (preparing) return (
-    <div className="h-full overflow-auto p-pad space-y-4">
+    <div className="h-full overflow-auto p-pad"><div className={`${DASHBOARD_COLUMN} space-y-4`}>
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
@@ -192,11 +193,11 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         if (pending) activeDependencyInstalls.current.add(id); else activeDependencyInstalls.current.delete(id)
       }} source={preparationSource} preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
         onSkip={() => setPreparing(false)} onLeave={() => onNavigate('timeline')} />
-    </div>
+    </div></div>
   )
 
   return (
-    <div className="h-full flex flex-col p-pad gap-gap overflow-auto">
+    <div className="h-full p-pad overflow-auto"><div className={`${DASHBOARD_COLUMN} flex flex-col gap-gap`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-[0.15em] text-redlog-accent">{t('firstRun.eyebrow')}</p>
@@ -236,7 +237,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
         >
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-3 [&>*]:min-w-0">
+          <div className="grid grid-cols-1 items-start gap-3 [&>*]:min-w-0">
             <div className="min-w-0 space-y-4">
               <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
                 <div className="flex items-baseline justify-between gap-2">
@@ -392,7 +393,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         </button>
         {showSources && <div className="mt-2">{renderCaptureCard()}</div>}
       </div>
-    </div>
+    </div></div>
   )
 }
 
