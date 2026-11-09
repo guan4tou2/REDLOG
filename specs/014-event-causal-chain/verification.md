@@ -17,7 +17,7 @@ cycle, real/exact-boundary limit and missing-anchor scenarios.
 - Full Vitest suite: 180 files passed; 2,074 tests passed and 2 skipped.
 - TypeScript typecheck: passed.
 - Production build: passed.
-- Electron journey: `e2e/event-causal-chain.spec.ts` passed. It creates a cause
+- Electron journey: `e2e/event-causal-chain.spec.ts` (now in e2e/timeline-evidence.spec.ts) passed. It creates a cause
   outside the initial 200-row Timeline page, focuses the effect with `f`, and
   verifies that the cause is loaded and the two-event chain is shown.
 - `git diff --check`: passed.

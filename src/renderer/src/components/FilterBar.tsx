@@ -1,10 +1,9 @@
 import { Button } from './Button'
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
-import { toLocalInputValue, fromLocalInputValue, timeRangeError } from '../lib/timeRangeInput'
+import { TimeRangeFields } from './TimeRangeFields'
 import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
-import { useDisplayZone } from '../lib/time'
 import { agentTypeLabel } from '../lib/timelineDomain'
 
 export function FilterBar(): JSX.Element | null {
@@ -13,9 +12,6 @@ export function FilterBar(): JSX.Element | null {
     listsStatus, scopeStatus, retryLists } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
-  // Named beside the inputs, because a wall-clock field with no zone is
-  // ambiguous exactly where it matters.
-  const zoneLabel = useDisplayZone() === 'utc' ? 'UTC' : t('filter.localTime')
   const labels = conditionLabels(filter, t)
   const barRef = useRef<HTMLDivElement>(null)
 
@@ -187,51 +183,7 @@ export function FilterBar(): JSX.Element | null {
                 >{t('filter.allTime')}</button>
               )}
             </div>
-            {/* "Events on the 14th between 09:00 and 11:00" could not be asked
-                for at all. The inputs are wall-clock in whichever zone the
-                rest of the UI is displaying, so they agree with the
-                timestamps beside them. */}
-            <div className="flex flex-wrap min-w-0 items-end gap-2 pt-1">
-              <label className="flex min-w-0 max-w-full flex-col gap-0.5">
-                <span className="text-xs text-redlog-text-faint">{t('filter.from')}</span>
-                <input
-                  type="datetime-local"
-                  data-testid="filter-time-since"
-                  aria-label={t('filter.from')}
-                  value={toLocalInputValue(filter.timeRange?.since)}
-                  onChange={(e) => {
-                    const since = fromLocalInputValue(e.target.value)
-                    const next = { ...(filter.timeRange ?? {}), since }
-                    setTimeRange(next.since === undefined && next.before === undefined ? null : next)
-                  }}
-                  className="min-w-0 max-w-full bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
-                />
-              </label>
-              <label className="flex min-w-0 max-w-full flex-col gap-0.5">
-                <span className="text-xs text-redlog-text-faint">{t('filter.to')}</span>
-                <input
-                  type="datetime-local"
-                  data-testid="filter-time-before"
-                  aria-label={t('filter.to')}
-                  value={toLocalInputValue(filter.timeRange?.before)}
-                  onChange={(e) => {
-                    const before = fromLocalInputValue(e.target.value)
-                    const next = { ...(filter.timeRange ?? {}), before }
-                    setTimeRange(next.since === undefined && next.before === undefined ? null : next)
-                  }}
-                  className="min-w-0 max-w-full bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
-                />
-              </label>
-              <span className="text-xs text-redlog-text-faint pb-1">{zoneLabel}</span>
-            </div>
-            {/* An end before its start is the one way to ask for nothing at
-                all. Saying so beats an empty view that reads as an empty
-                project. */}
-            {filter.timeRange && timeRangeError(filter.timeRange) && (
-              <p data-testid="filter-time-invalid" role="status" className="text-xs text-amber-400">
-                {t('filter.timeRangeInvalid')}
-              </p>
-            )}
+            <TimeRangeFields timeRange={filter.timeRange} setTimeRange={setTimeRange} />
           </div>
         </div>
       )}

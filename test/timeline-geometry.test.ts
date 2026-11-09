@@ -66,7 +66,7 @@ describe('tightestLaneGap', () => {
 })
 
 describe('computeMaxZoom', () => {
-  const base = { clusterPx: 14, maxTrackW: 400_000, minBaseTrackW: 2000 }
+  const base = { clusterPx: 14, maxTrackW: 400_000, baseTrackW: 2000 }
 
   it('floors at 6 for a sparse or empty timeline', () => {
     expect(computeMaxZoom({ ...base, laneTimestamps: [[1]], timeSpan: 60_000 })).toBe(6)
@@ -75,17 +75,17 @@ describe('computeMaxZoom', () => {
 
   it('raises the ceiling so the tightest gap can open to clusterPx', () => {
     // Two events 100ms apart inside a 10-minute span: zoom must widen the track
-    // enough that 100ms maps to >= 14px, i.e. neededTrackW / minBaseTrackW.
+    // enough that 100ms maps to >= 14px, i.e. neededTrackW / baseTrackW.
     const span = 600_000
     const z = computeMaxZoom({ ...base, laneTimestamps: [[0, 100]], timeSpan: span })
-    const expected = Math.max(6, Math.min(base.maxTrackW / base.minBaseTrackW, ((span / 100) * base.clusterPx) / base.minBaseTrackW))
+    const expected = Math.max(6, Math.min(base.maxTrackW / base.baseTrackW, ((span / 100) * base.clusterPx) / base.baseTrackW))
     expect(z).toBeCloseTo(expected, 6)
     expect(z).toBeGreaterThan(6)
   })
 
   it('never exceeds the maxTrackW-derived ceiling even for a sub-ms burst', () => {
     const z = computeMaxZoom({ ...base, laneTimestamps: [[0, 1]], timeSpan: 3_600_000 })
-    expect(z).toBeLessThanOrEqual(base.maxTrackW / base.minBaseTrackW)
+    expect(z).toBeLessThanOrEqual(base.maxTrackW / base.baseTrackW)
   })
 })
 

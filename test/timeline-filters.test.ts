@@ -4,6 +4,7 @@ import {
   distributeLaneEvents,
   distributeRowEvents,
   computeRecentEvents,
+  countWindowEvents,
   type ViewportWindow
 } from '../src/renderer/src/lib/timelineFilters'
 import { toLane, type LaneId } from '../src/renderer/src/lib/timelineDomain'
@@ -150,14 +151,23 @@ function makeVp(overrides: Partial<ViewportWindow> = {}): ViewportWindow {
 }
 
 describe('computeRecentEvents', () => {
-  it('returns up to cap events newest-first when whole track visible', () => {
+  it('returns the newest cap events, oldest first, when whole track visible', () => {
     const events = Array.from({ length: 10 }, (_, i) =>
       evt(`e${i}`, 'shell', {}, { timestamp: 100 + i })
     )
     const result = computeRecentEvents(events, new Set<LaneId>(), undefined, makeVp(), 5)
     expect(result.length).toBe(5)
-    expect(result[0].id).toBe('e9')
-    expect(result[4].id).toBe('e5')
+    expect(result.map((e) => e.id)).toEqual(['e5', 'e6', 'e7', 'e8', 'e9'])
+  })
+
+  it('counts the whole window, not just the capped slice', () => {
+    const events = Array.from({ length: 10 }, (_, i) => evt(`e${i}`, 'shell', {}, { timestamp: 100 + i }))
+    expect(countWindowEvents(events, new Set<LaneId>(), undefined, makeVp())).toBe(10)
+    const vp = makeVp({ left: 10, width: 50, fromX: (px) => px })
+    // window is 100..600 ms; events sit at 100..109 -> a scrolled window holds those at or after `from`
+    expect(countWindowEvents(events, new Set<LaneId>(), undefined, vp))
+      .toBe(computeRecentEvents(events, new Set<LaneId>(), undefined, vp, 1000).length)
+    expect(countWindowEvents(events, new Set<LaneId>(), undefined, makeVp(), new Set(['e1', 'e2']))).toBe(2)
   })
 
   it('excludes hidden lanes', () => {
@@ -181,6 +191,21 @@ describe('computeRecentEvents', () => {
     expect(result.map((e) => e.id)).toEqual(['b'])
   })
 
+  // `events` is in timestamp order, but a marker shows at its atTimestamp. A
+  // backdated marker before the window used to end the scan, dropping every
+  // in-window row stored before it.
+  it('a backdated marker before the window does not hide the rows in it', () => {
+    const events = [
+      evt('a', 'shell', {}, { timestamp: 500 }),
+      evt('b', 'shell', {}, { timestamp: 600 }),
+      evt('m', 'marker', { atTimestamp: 100 }, { timestamp: 650 })
+    ]
+    const vp = makeVp({ left: 40, width: 30, fromX: (px) => px,
+      displayTs: (e) => (e.agentType === 'marker' ? Number(e.data.atTimestamp) : e.timestamp) })
+    expect(computeRecentEvents(events, new Set<LaneId>(), undefined, vp).map((e) => e.id)).toEqual(['a', 'b'])
+    expect(countWindowEvents(events, new Set<LaneId>(), undefined, vp)).toBe(2)
+  })
+
   it('falls back to nearest when viewport is empty', () => {
     const events = [
       evt('a', 'shell', {}, { timestamp: 100 }),
@@ -189,7 +214,7 @@ describe('computeRecentEvents', () => {
     const vp = makeVp({ left: 80, width: 10, fromX: (px) => px })
     const result = computeRecentEvents(events, new Set<LaneId>(), undefined, vp)
     expect(result.length).toBeGreaterThan(0)
-    expect(result[0].id).toBe('b')
+    expect(result[result.length - 1].id).toBe('b')
   })
 })
 

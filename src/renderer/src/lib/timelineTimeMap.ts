@@ -192,3 +192,115 @@ export function binHeight(count: number, max: number): number {
   if (count <= 0) return 0
   return Math.log1p(count) / Math.log1p(Math.max(1, max))
 }
+
+/** Fewest events before any stretch of the strip may be called "dense". */
+export const DENSEST_MIN_EVENTS = 10
+/** A bin must hold at least this many events to count as a peak. */
+export const DENSEST_MIN_PEAK = 3
+
+export interface DensestRun {
+  start: number
+  end: number
+  count: number
+}
+
+/**
+ * The densest contiguous stretch of the minimap, or null when nothing stands
+ * out.
+ *
+ * A bin is "hot" when it holds at least half of the busiest bin's count; a run
+ * is a maximal stretch of adjacent hot bins; the winner is the run with the
+ * most events, the earlier one on a tie. Half-of-max rather than a fixed count
+ * because capture is bursty (see `binHeight`) and the question is "where is
+ * the burst", not "where are there more than N rows".
+ *
+ * Null, because there is nothing to point at, when:
+ *  - fewer than DENSEST_MIN_EVENTS events are binned;
+ *  - the busiest bin holds fewer than DENSEST_MIN_PEAK (a handful of events
+ *    spread thin is not density);
+ *  - the winning run is every bin (uniform data has no dense part).
+ *
+ * `start`/`end` are the run's bin edges on the same axis `computeBins` used.
+ */
+export function densestRun(bins: MinimapBins, timeStart: number, timeEnd: number): DensestRun | null {
+  const { counts, N } = bins
+  const total = counts.reduce((a, c) => a + c, 0)
+  const peak = Math.max(0, ...counts)
+  if (total < DENSEST_MIN_EVENTS || peak < DENSEST_MIN_PEAK) return null
+  const hot = peak / 2
+  let best: { i0: number; i1: number; count: number } | null = null
+  let i = 0
+  while (i < N) {
+    if (counts[i] < hot) { i++; continue }
+    let j = i
+    let sum = 0
+    while (j < N && counts[j] >= hot) { sum += counts[j]; j++ }
+    if (!best || sum > best.count) best = { i0: i, i1: j - 1, count: sum }
+    i = j
+  }
+  if (!best || (best.i0 === 0 && best.i1 === N - 1)) return null
+  const w = ((timeEnd - timeStart) || 1) / N
+  return { start: timeStart + best.i0 * w, end: timeStart + (best.i1 + 1) * w, count: best.count }
+}
+
+/** Width reserved for a ruler marker chip ("25:04:12 當前焦點"), in track px. */
+export const RULER_CHIP_W = 150
+
+export interface RulerMarkerPlacement {
+  /** Track x of the marker's tick. */
+  x: number
+  /** `start`: chip runs right of the tick; `end`: left of it. */
+  align: 'start' | 'end'
+  /** 0 = first marker row, 1 = the row under it, used to clear a collision. */
+  row: 0 | 1
+}
+
+export interface RulerMarkers {
+  focus: RulerMarkerPlacement | null
+  latest: RulerMarkerPlacement | null
+}
+
+/**
+ * Where the [focus] and [latest] chips sit on the ruler. A null x means that
+ * marker is not shown: nothing selected, no events, or a time outside the
+ * loaded domain. A chip that would run past the track's right edge flips to
+ * the left of its tick; if the two chips would then overlap, [latest] drops to
+ * the second row. [focus] never moves, so the selection's position is stable.
+ */
+export function placeRulerMarkers(p: {
+  focusX: number | null
+  latestX: number | null
+  trackW: number
+  chipW?: number
+}): RulerMarkers {
+  const w = p.chipW ?? RULER_CHIP_W
+  const align = (x: number): 'start' | 'end' => (x + w > p.trackW ? 'end' : 'start')
+  const span = (x: number, a: 'start' | 'end'): [number, number] => (a === 'start' ? [x, x + w] : [x - w, x])
+  const focus: RulerMarkerPlacement | null = p.focusX === null
+    ? null
+    : { x: p.focusX, align: align(p.focusX), row: 0 }
+  const latest: RulerMarkerPlacement | null = p.latestX === null
+    ? null
+    : { x: p.latestX, align: align(p.latestX), row: 0 }
+  if (focus && latest) {
+    const [f0, f1] = span(focus.x, focus.align)
+    const [l0, l1] = span(latest.x, latest.align)
+    if (f0 < l1 && l0 < f1) latest.row = 1
+  }
+  return { focus, latest }
+}
+
+/** Half the widest axis label (a dated "11-08 09:11"), in track px. */
+export const AXIS_LABEL_HALF_W = 48
+
+/**
+ * How a tick's label sits on its tick. Centred, except near either end of the
+ * track, where a centred label would hang past the edge: clipped there, and
+ * wider than the track, so the track scrolled at 100% (2026-11-08 Stitch
+ * audit). Those labels align inward instead, as the prototype's do.
+ */
+export function tickLabelAlign(x: number, trackW: number, halfW = AXIS_LABEL_HALF_W): 'start' | 'center' | 'end' {
+  if (x < halfW) return 'start'
+  if (x > trackW - halfW) return 'end'
+  return 'center'
+}

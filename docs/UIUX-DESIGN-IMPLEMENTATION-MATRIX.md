@@ -31,7 +31,7 @@
 
 - `RecordingWorkspace.tsx` 內嵌 `TranscriptView`(輸入／輸出、AI 對話兩種閱讀模式)。
 - `App.tsx` 仍保留獨立的 `view === 'transcript'`,命令面板(`CommandPalette.tsx`)也直接導向它。同一個功能有兩個入口與兩種上下文。
-- `e2e/view-reachability.spec.ts` 的「逐字稿可從畫面到達」仍是 `test.fixme`(#563、#589)。
+- `e2e/view-reachability.spec.ts` (now in e2e/app-shell.spec.ts) 的「逐字稿可從畫面到達」仍是 `test.fixme`(#563、#589)。
 - 方向(使用者 2026-11-07 貼出的結論):不新增側邊欄入口,收進活動紀錄;命令面板導向同一套閱讀介面。尚未實作;動手前先核對 Session 選擇器(原生 `<select>`)、跨頁返回是否保留 Session／搜尋條件／捲動錨點。
 
 ## 文件與程式不一致
@@ -102,7 +102,7 @@ CaptureHealth 不得因版面改版移除的操作:開關、安裝／移除與�
 | 時間軸詳情上一個／下一個按鈕 | **已實作**(`TimelineEventInspector.tsx` 的 `detail-step-prev`／`detail-step-next`),不重做 |
 | 活動紀錄日期分隔列 | **已實作**(`ActivityResults.tsx` 的 `activity-day`),不重做 |
 | Pivot 讀取失敗與重試 | **已實作**(`usePivotRead`);IP 本身的重試是缺的,已補 |
-| 返回保留位置 e2e | **已有**(`e2e/activity-return-state.spec.ts`:查詢、展開列、捲動);補了「Reader 定位後返回」與「換專案不沿用」兩個情境 |
+| 返回保留位置 e2e | **已有**(`e2e/activity-return-state.spec.ts` (now in e2e/evidence-views.spec.ts):查詢、展開列、捲動);補了「Reader 定位後返回」與「換專案不沿用」兩個情境 |
 | 換專案是否沿用選取事件 | 選取 id 是全域 `localStorage` 單一 key,換專案後該 id 仍在但在新專案不匹配任何事件;e2e 確認新專案的時間軸不開詳情、活動紀錄無 Reader、查詢為空。不需重構 |
 | Reader 定位到時間軸後返回 | Reader、查詢、展開列都恢復(e2e 已鎖) |
 | 時間軸 → Reader 額外入口 | 暫緩,先驗證是否需要:Inspector 已有完整內容 Reader,避免重複入口 |

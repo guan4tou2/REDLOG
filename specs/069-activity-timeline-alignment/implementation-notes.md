@@ -22,7 +22,7 @@
 
 ## 順手發現
 
-- `verify:i18n` 只比對「被刪除的字串字面值」,抓不到用 **regex** 斷言標題的測試:`test/scope-tally-display.test.ts` 的 `/violation/i` 與 `e2e/timeline-encoding.spec.ts` 的 `/scope violation/i` 都是在字串改掉之後才被單元測試／e2e 抓到。後者要靠 e2e 才會發現。
+- `verify:i18n` 只比對「被刪除的字串字面值」,抓不到用 **regex** 斷言標題的測試:`test/scope-tally-display.test.ts` 的 `/violation/i` 與 `e2e/timeline-encoding.spec.ts` (now in e2e/timeline-track.spec.ts) 的 `/scope violation/i` 都是在字串改掉之後才被單元測試／e2e 抓到。後者要靠 e2e 才會發現。
 - `e2e/uiux-convergence.spec.ts` 的「real HTTPS evidence」在本機等不到 `certReady`(mitmdump 憑證);與本批字串無關,但本機沒有對照 `main` 的結果,以 CI 為準。
 
 ## 範圍變更:要求「照著 Stitch 重做畫面」

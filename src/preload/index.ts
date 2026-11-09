@@ -136,6 +136,8 @@ const api: RedLogAPI = {
     // Spec 038: the Timeline's total, earlier matches and held-row checks.
     count: (req: import('../core/db/events').EventCountRequest) =>
       ipcRenderer.invoke('events:count', req) as Promise<number>,
+    span: (req: import('../core/db/events').EventCountRequest) =>
+      ipcRenderer.invoke('events:span', req) as Promise<{ first: number; last: number } | null>,
     matchIds: (req: import('../core/db/events').EventMatchRequest) =>
       ipcRenderer.invoke('events:matchIds', req) as Promise<string[]>,
     toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>

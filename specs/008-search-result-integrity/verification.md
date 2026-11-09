@@ -26,7 +26,7 @@
 - TypeScript: `npm run typecheck` passed.
 - Full Vitest suite: 2,046 passed and 2 skipped across 171 files.
 - Production build: `npm run build` passed.
-- Electron Search journey: all 7 tests in `e2e/marker-amend.spec.ts` passed.
+- Electron Search journey: all 7 tests in `e2e/marker-amend.spec.ts` (now in e2e/timeline-evidence.spec.ts) passed.
 - UI design rule regression was caught (`11px` text) and corrected to the
   project `text-xs` floor before final verification.
 

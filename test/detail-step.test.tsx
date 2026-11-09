@@ -2,8 +2,8 @@
 //
 // Reading a capture is reading a sequence: what ran before this, what came
 // back after. The keyboard could already walk it — lane by lane — and nothing
-// on screen said so, so an operator who opened the pane from the list had to
-// close it, move down a row, and open the next one.
+// on screen said so. The steps live on the bottom bar, which is there for any
+// selection, whether or not the detail body is open.
 //
 // These step the LIST's order, not the lane's. That is the order they were
 // reading when they opened the pane, and it is deliberately different from
@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
-import { TimelineEventInspector } from '../src/renderer/src/components/timeline/TimelineEventInspector'
+import { TimelineDetailBar } from '../src/renderer/src/components/timeline/TimelineDetailBar'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 const ev = (id: string): RedLogEvent => ({
@@ -22,31 +22,21 @@ const ev = (id: string): RedLogEvent => ({
   data: { subtype: 'command_start', command: `cmd-${id}` }, createdAt: 1
 } as RedLogEvent)
 
-function draw(over: Partial<Parameters<typeof TimelineEventInspector>[0]> = {}): ReturnType<typeof vi.fn> {
+function draw(over: Partial<Parameters<typeof TimelineDetailBar>[0]> = {}): ReturnType<typeof vi.fn> {
   const onStep = vi.fn()
   render(
     <I18nProvider>
-      <TimelineEventInspector
+      <TimelineDetailBar
         event={ev('a')}
         pluginTypes={[]}
-        tierChip={false}
-        doNotExport={false}
-        onToggleDoNotExport={vi.fn()}
-        onAround={vi.fn()}
-        operatorLabel={(id) => id}
         titleOf={(e) => String(e.data?.command ?? e.id)}
-        allLoaded
-        focusChainOn={false}
-        showJson={false}
-        lookup={() => undefined}
-        onJump={vi.fn()}
-        onSelect={vi.fn()}
-        onResolve={vi.fn()}
-        onAmend={vi.fn()}
         t={(k: string) => k}
         onStep={onStep}
         canStepPrev
         canStepNext
+        bodyOpen={false}
+        onToggleBody={vi.fn()}
+        onOpenReader={vi.fn()}
         {...over}
       />
     </I18nProvider>
@@ -62,7 +52,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
-describe('stepping through the list from the detail pane', () => {
+describe('stepping through the list from the bottom bar', () => {
   it('moves back and forward', () => {
     const onStep = draw()
     fireEvent.click(screen.getByTestId('detail-step-prev'))
@@ -90,9 +80,9 @@ describe('stepping through the list from the detail pane', () => {
     expect(screen.queryByTestId('detail-step-prev')).toBeNull()
   })
 
-  it('names both directions for a screen reader', () => {
+  it('names both directions in words', () => {
     draw()
-    expect(screen.getByTestId('detail-step-prev').getAttribute('aria-label')).toBeTruthy()
-    expect(screen.getByTestId('detail-step-next').getAttribute('aria-label')).toBeTruthy()
+    expect(screen.getByTestId('detail-step-prev').textContent).toBe('timeline.stepPrev')
+    expect(screen.getByTestId('detail-step-next').textContent).toBe('timeline.stepNext')
   })
 })

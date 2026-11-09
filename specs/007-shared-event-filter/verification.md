@@ -27,7 +27,7 @@
 - TypeScript: `npm run typecheck` passed.
 - Full Vitest suite: 2,040 passed and 2 skipped across 170 files.
 - Production build: `npm run build` passed.
-- Electron Search journey: all 7 tests in `e2e/marker-amend.spec.ts` passed.
+- Electron Search journey: all 7 tests in `e2e/marker-amend.spec.ts` (now in e2e/timeline-evidence.spec.ts) passed.
 - `git diff --check` passed.
 
 ## Convergence

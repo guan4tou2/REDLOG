@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTimeMap, computeDomainBounds, computeBins } from '../src/renderer/src/lib/timelineTimeMap'
+import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, RULER_CHIP_W, tickLabelAlign, AXIS_LABEL_HALF_W } from '../src/renderer/src/lib/timelineTimeMap'
 
 const GAP_MIN_MS = 10 * 60_000
 const GAP_PX = 48
@@ -176,5 +176,100 @@ describe('computeBins', () => {
     const b = computeBins([-50, 1050], 0, 1000, 10)
     expect(b.counts[0]).toBe(1)
     expect(b.counts[9]).toBe(1)
+  })
+})
+
+describe('densestRun', () => {
+  const bins = (counts: number[]) => ({ counts, max: Math.max(1, ...counts), N: counts.length })
+  const zeros = (n: number) => new Array(n).fill(0)
+
+  it('is null with no data and with too few events', () => {
+    expect(densestRun(computeBins([], 0, 1000, 10), 0, 1000)).toBeNull()
+    const few = zeros(10); few[4] = 9
+    expect(densestRun(bins(few), 0, 1000)).toBeNull()
+  })
+
+  it('is null for uniform data and for thin spread', () => {
+    expect(densestRun(bins(new Array(10).fill(5)), 0, 1000)).toBeNull()
+    expect(densestRun(bins([2, 2, 2, 2, 2, 2, 0, 0, 0, 0]), 0, 1000)).toBeNull()
+  })
+
+  it('names a single spike by its bin edges and count', () => {
+    const c = zeros(10); c[3] = 20; c[7] = 1
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 300, end: 400, count: 20 })
+  })
+
+  it('joins adjacent hot bins and ignores cooler neighbours', () => {
+    const c = zeros(10); c[2] = 4; c[3] = 10; c[4] = 6; c[5] = 4
+    // hot = 5: bins 3 and 4 only
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 300, end: 500, count: 16 })
+  })
+
+  it('breaks a tie towards the earlier run', () => {
+    const c = zeros(10); c[1] = 8; c[8] = 8
+    expect(densestRun(bins(c), 0, 1000)).toEqual({ start: 100, end: 200, count: 8 })
+  })
+
+  it('property: the run lies inside the range and its count never exceeds the total', () => {
+    let seed = 7
+    const rnd = (): number => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff }
+    for (let k = 0; k < 200; k++) {
+      const c = Array.from({ length: 24 }, () => Math.floor(rnd() * rnd() * 12))
+      const r = densestRun(bins(c), 1000, 25000)
+      if (!r) continue
+      expect(r.start).toBeGreaterThanOrEqual(1000)
+      expect(r.end).toBeLessThanOrEqual(25000)
+      expect(r.start).toBeLessThan(r.end)
+      expect(r.count).toBeLessThanOrEqual(c.reduce((a, b) => a + b, 0))
+    }
+  })
+})
+
+describe('placeRulerMarkers', () => {
+  const W = RULER_CHIP_W
+  it('shows no marker for a missing time', () => {
+    expect(placeRulerMarkers({ focusX: null, latestX: null, trackW: 2000 })).toEqual({ focus: null, latest: null })
+    const r = placeRulerMarkers({ focusX: null, latestX: 1000, trackW: 2000 })
+    expect(r.focus).toBeNull()
+    expect(r.latest).toEqual({ x: 1000, align: 'start', row: 0 })
+  })
+
+  it('flips a chip left of its tick when it would pass the track edge', () => {
+    expect(placeRulerMarkers({ focusX: 2000 - W, latestX: null, trackW: 2000 }).focus?.align).toBe('start')
+    expect(placeRulerMarkers({ focusX: 2000 - W + 1, latestX: null, trackW: 2000 }).focus?.align).toBe('end')
+  })
+
+  it('keeps both chips on row 0 when they do not overlap', () => {
+    const r = placeRulerMarkers({ focusX: 100, latestX: 100 + W, trackW: 2000 })
+    expect(r.focus?.row).toBe(0)
+    expect(r.latest?.row).toBe(0)
+  })
+
+  it('drops [latest] to the second row on overlap and never moves [focus]', () => {
+    const r = placeRulerMarkers({ focusX: 100, latestX: 100 + W - 1, trackW: 2000 })
+    expect(r.focus).toEqual({ x: 100, align: 'start', row: 0 })
+    expect(r.latest?.row).toBe(1)
+    // The newest event selected: both on the same x, still two chips.
+    const same = placeRulerMarkers({ focusX: 1990, latestX: 1990, trackW: 2000 })
+    expect(same.focus?.row).toBe(0)
+    expect(same.latest?.row).toBe(1)
+  })
+
+  it('treats a flipped [latest] against a start-aligned [focus] by their real spans', () => {
+    // focus spans [1800,1950]; latest flips to [1850,2000]: overlap.
+    expect(placeRulerMarkers({ focusX: 1800, latestX: 2000, trackW: 2000 }).latest?.row).toBe(1)
+    // focus spans [1000,1150]; latest [1850,2000]: clear.
+    expect(placeRulerMarkers({ focusX: 1000, latestX: 2000, trackW: 2000 }).latest?.row).toBe(0)
+  })
+})
+
+describe('tickLabelAlign', () => {
+  it('centres a label, and aligns one near either edge inward so it stays on the track', () => {
+    expect(tickLabelAlign(500, 1000)).toBe('center')
+    expect(tickLabelAlign(0, 1000)).toBe('start')
+    expect(tickLabelAlign(AXIS_LABEL_HALF_W - 1, 1000)).toBe('start')
+    expect(tickLabelAlign(1000, 1000)).toBe('end')
+    expect(tickLabelAlign(1000 - AXIS_LABEL_HALF_W + 1, 1000)).toBe('end')
+    expect(tickLabelAlign(AXIS_LABEL_HALF_W, 1000)).toBe('center')
   })
 })

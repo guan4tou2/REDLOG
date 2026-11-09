@@ -11,7 +11,7 @@ import type { IpcContext } from './types'
 import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryStreamSegments, queryCommandOutput, queryCommandEnds, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
-  countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
+  countEvents, spanEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
@@ -118,6 +118,13 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject()
       ? countEvents({ ...req, filter: withActiveScope(req?.filter ?? {}) })
       : 0)
+
+  // First and last row over the same predicates as `events:count`, for the
+  // Timeline's whole-project span.
+  ipcMain.handle('events:span', (_e, req: EventCountRequest) =>
+    ctx.getActiveProject()
+      ? spanEvents({ ...req, filter: withActiveScope(req?.filter ?? {}) })
+      : null)
 
   ipcMain.handle('events:matchIds', (_e, req: EventMatchRequest) =>
     ctx.getActiveProject()

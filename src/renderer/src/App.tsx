@@ -151,8 +151,21 @@ export default function App(): JSX.Element {
   // resolves against the stored id), so this is that query, typed for the
   // operator; the Reader there is the one Reader (06).
   const [activityQuery, setActivityQuery] = useState<{ text: string; at: number } | null>(null)
-  const openInActivity = useCallback((id: string): void => {
+  // Stitch 06: the way back is part of the route. The Timeline is not kept
+  // mounted, so "back" re-focuses the event the operator left from.
+  const [timelineReturn, setTimelineReturn] = useState<{ id: string; ts: number } | null>(null)
+  const openInActivity = useCallback((id: string, ts: number): void => {
     setActivityQuery({ text: `event:${id}`, at: Date.now() })
+    setTimelineReturn({ id, ts })
+    setReturnTo('timeline')
+    setView('search')
+  }, [])
+
+  // The toolbar's 活動紀錄 link: the whole Activity workspace, not one event.
+  // The way back re-focuses whatever was selected, when something was.
+  const openActivity = useCallback((selected: { id: string; ts: number } | null): void => {
+    setTimelineReturn(selected)
+    setReturnTo('timeline')
     setView('search')
   }, [])
 
@@ -167,15 +180,18 @@ export default function App(): JSX.Element {
 
   const goBack = useCallback((): void => {
     if (!returnTo) return
-    setFocusEvent(null)
+    setFocusEvent(returnTo === 'timeline' ? timelineReturn : null)
+    setTimelineReturn(null)
     setView(returnTo)
     setReturnTo(null)
-  }, [returnTo])
+  }, [returnTo, timelineReturn])
 
   // Cmd+[ / Alt+Left goes back, as in a browser: only while there is somewhere
   // to go back to, and never while the operator is typing.
   useEffect(() => {
-    if (!returnTo || view !== 'timeline') return
+    // From the Timeline to its Activity and back is the one route that lands on
+    // the Activity page; every other back lands on the Timeline.
+    if (!returnTo || (view !== 'timeline' && !(view === 'search' && returnTo === 'timeline'))) return
     const onKey = (e: KeyboardEvent): void => {
       const el = e.target as HTMLElement | null
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
@@ -417,6 +433,14 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
+            {view === 'search' && returnTo === 'timeline' && (
+              <div data-testid="activity-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
+                <Button size="compact" level="quiet" type="button" onClick={goBack}>
+                  ← {t('nav.backTo', { view: t('sidebar.timeline') })}
+                </Button>
+                <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
+              </div>
+            )}
             {view === 'timeline' && returnTo && (
               <div data-testid="timeline-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
                 <Button size="compact" level="quiet"
@@ -428,7 +452,7 @@ export default function App(): JSX.Element {
                 <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
               </div>
             )}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the

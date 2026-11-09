@@ -999,6 +999,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                 </button>
                 {onOpenInTimeline && (
                   <button
+                    data-testid="transcript-open-timeline"
                     onClick={() => onOpenInTimeline(b.id, b.ts)}
                     className="text-xs text-redlog-text-faint hover:text-cyan-400 font-mono shrink-0"
                     title={t('transcript.openInTimeline')}

@@ -6,6 +6,7 @@ import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { eventTitle } from '../lib/eventTitle'
+import { foldSystemRuns } from '../lib/activityFolds'
 import { formatDate, formatTime, useDisplayZone, zoneLabel } from '../lib/time'
 import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
@@ -47,6 +48,8 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
   const zone = useDisplayZone()
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
+  // System-event folds the operator opened, by the first row's id.
+  const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set())
   // The operation being read in the Reader, by id so a refresh does not move it.
   const [readerId, setReaderId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -105,14 +108,20 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
         {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
       </div>
       {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
-        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span><span className="text-right">{t('activity.col.view')}</span>
+        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span>{/* The column is the 24px chevron's; the label may be wider, so it stays on
+            one line and reaches left into the gap instead of stacking 檢/視. */}
+        <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
       </div>}
       {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
       <div className="flex flex-col gap-1">
-        {page.items.map((item, at) => <div key={item.id} className="min-w-0">
-          {(at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(item.firstAt)) && <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
-            <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(item.firstAt)}{formatDate(item.firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" /><span className="font-mono text-redlog-text-faint">{zoneLabel(zone, t)}</span>
-          </div>}
+        {(() => {
+          const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
+            ? <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
+              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" /><span className="font-mono text-redlog-text-faint">{zoneLabel(zone, t)}</span>
+            </div>
+            : null
+          const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">
+          {withDay && day(at)}
           <div className={`rounded-lg transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'bg-redlog-surface hover:bg-redlog-elevated'}`}>
           <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} w-full text-left py-2.5 px-3 rounded-lg focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
@@ -149,7 +158,32 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             </div>
           </div>}
           </div>
-        </div>)}
+        </div>
+          // A query asked for these rows; never fold what was searched for.
+          return foldSystemRuns(page.items, !filtering).map((seg) => {
+            if (seg.kind === 'item') return row(seg.item, seg.at, true)
+            // A run holding the open row or the Reader's row stays open.
+            const open = openFolds.has(seg.key) || seg.items.some((it) => it.id === expanded || it.id === readerId)
+            const toggle = (): void => setOpenFolds((prev) => {
+              const next = new Set(prev)
+              if (next.has(seg.key)) next.delete(seg.key); else next.add(seg.key)
+              return next
+            })
+            return <div key={`fold:${seg.key}`} className="min-w-0">
+              {day(seg.at)}
+              <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
+                className={`${ROW_GRID} w-full text-left py-2 px-3 rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
+                <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
+                <span className="min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
+                <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
+                <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+              </button>
+              {open && <div className="mt-1 flex flex-col gap-1 pl-3 border-l border-redlog-border-subtle">
+                {seg.items.map((it, k) => row(it, seg.at + k, false))}
+              </div>}
+            </div>
+          })
+        })()}
       </div>
       {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}
       {readerIndex >= 0 && <ActivityReader items={page.items} index={readerIndex} request={request} snapshot={page.snapshot} active={active} filtering={filtering}

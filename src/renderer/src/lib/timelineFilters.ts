@@ -74,11 +74,75 @@ export interface ViewportWindow {
   timeSpan: number
 }
 
+/** Walk the viewport window newest-first. Returns the newest `cap` visible
+ *  events (newest first) and how many the window holds in all, so the card
+ *  rail can say "latest 50 of N" without a second pass over a different
+ *  definition of "in the window". `collect:false` only counts. */
+function scanWindow(
+  events: readonly RedLogEvent[],
+  isVisible: (e: RedLogEvent) => boolean,
+  vp: ViewportWindow,
+  cap: number,
+  collect: boolean
+): { items: RedLogEvent[]; total: number } {
+  const widthPx = (vp.width / 100) * vp.trackW
+  const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)
+  const items: RedLogEvent[] = []
+  let total = 0
+  const take = (e: RedLogEvent): void => {
+    total++
+    if (collect && items.length < cap) items.push(e)
+  }
+
+  if (wholeTrackVisible || vp.timeSpan <= 0) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (isVisible(events[i])) take(events[i])
+    }
+    return { items, total }
+  }
+
+  const from = vp.fromX((vp.left / 100) * vp.trackW)
+  const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (!isVisible(e)) continue
+    const d = vp.displayTs(e)
+    if (d > to) continue
+    // `events` is in `timestamp` order, but a marker shows at its own
+    // `atTimestamp`. A backdated marker before the window says nothing about
+    // the rows after it, so only a row shown at its own time may end the scan.
+    if (d < from) { if (d === e.timestamp) break; continue }
+    take(e)
+  }
+  if (total > 0) return { items, total }
+  // Nothing inside the window: the nearest events before its trailing edge.
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (isVisible(e) && vp.displayTs(e) <= to) take(e)
+  }
+  return { items, total }
+}
+
+function visibilityOf(
+  hiddenLanes: ReadonlySet<LaneId>,
+  pluginTypes: PluginEventType[] | undefined,
+  matched: ReadonlySet<string> | null
+): (e: RedLogEvent) => boolean {
+  // The `/` search used to DIM non-matches and leave them in place. On a half
+  // screen beside a terminal that is not a filter: a dirb run puts 920 rows
+  // in the list and all 920 still take their space, so searching `backup`
+  // left the operator scrolling the same distance looking for a shade of
+  // grey. Non-matches are removed; the panel says how many and opens them.
+  return (e) =>
+    !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
+    && (matched === null || matched.has(e.id))
+}
+
 /**
- * Recent events visible in the current viewport, walking newest-first,
- * capped at `cap`. When the whole track is visible or the windowed
- * search yields nothing, falls back to the nearest events before the
- * viewport's trailing edge.
+ * The newest `cap` events in the current viewport, OLDEST FIRST — the card
+ * rail reads top to bottom like the time axis. When the whole track is
+ * visible or the windowed search yields nothing, falls back to the nearest
+ * events before the viewport's trailing edge.
  */
 export function computeRecentEvents(
   events: readonly RedLogEvent[],
@@ -89,44 +153,18 @@ export function computeRecentEvents(
   /** `/` search results. Non-null means the list shows only these. */
   matched: ReadonlySet<string> | null = null
 ): RedLogEvent[] {
-  // The `/` search used to DIM non-matches and leave them in place. On a half
-  // screen beside a terminal that is not a filter: a dirb run puts 920 rows
-  // in the list and all 920 still take their space, so searching `backup`
-  // left the operator scrolling the same distance looking for a shade of
-  // grey. Non-matches are removed; the panel says how many and opens them.
-  const isVisible = (e: RedLogEvent): boolean =>
-    !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
-    && (matched === null || matched.has(e.id))
+  return scanWindow(events, visibilityOf(hiddenLanes, pluginTypes, matched), vp, cap, true).items.reverse()
+}
 
-  const widthPx = (vp.width / 100) * vp.trackW
-  const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)
-
-  if (wholeTrackVisible || vp.timeSpan <= 0) {
-    const out: RedLogEvent[] = []
-    for (let i = events.length - 1; i >= 0 && out.length < cap; i--) {
-      if (isVisible(events[i])) out.push(events[i])
-    }
-    return out
-  }
-
-  const from = vp.fromX((vp.left / 100) * vp.trackW)
-  const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
-  const inView: RedLogEvent[] = []
-  for (let i = events.length - 1; i >= 0 && inView.length < cap; i--) {
-    const e = events[i]
-    if (!isVisible(e)) continue
-    const d = vp.displayTs(e)
-    if (d > to) continue
-    if (d < from) break
-    inView.push(e)
-  }
-  if (inView.length > 0) return inView
-  const nearest: RedLogEvent[] = []
-  for (let i = events.length - 1; i >= 0 && nearest.length < cap; i--) {
-    const e = events[i]
-    if (isVisible(e) && vp.displayTs(e) <= to) nearest.push(e)
-  }
-  return nearest
+/** How many events the same window holds, uncapped — the N in "latest 50 of N". */
+export function countWindowEvents(
+  events: readonly RedLogEvent[],
+  hiddenLanes: ReadonlySet<LaneId>,
+  pluginTypes: PluginEventType[] | undefined,
+  vp: ViewportWindow,
+  matched: ReadonlySet<string> | null = null
+): number {
+  return scanWindow(events, visibilityOf(hiddenLanes, pluginTypes, matched), vp, 0, false).total
 }
 
 // ── Lane distribution ───────────────────────────────────────────────

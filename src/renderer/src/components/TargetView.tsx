@@ -1,3 +1,4 @@
+import { PAGE_COLUMN } from '../lib/pageColumn'
 import { Button } from './Button'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
@@ -225,7 +226,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // `targets.filter` callback and read `filtered.length` mid-filter — which is
   // a temporal-dead-zone crash that only fires once there is a target to
   // filter, and a Rules-of-Hooks violation besides. The static keyboard
-  // contract test is a grep, so it never saw it; e2e/target-focus.spec.ts did.
+  // contract test is a grep, so it never saw it; e2e/timeline-evidence.spec.ts did.
   const needle = query.trim().toLowerCase()
   const filtered = targets.filter((tgt) => {
     if (needle && !tgt.target.toLowerCase().includes(needle)) return false
@@ -259,7 +260,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
 
   return (
-    <div className="p-pad space-y-4 h-full overflow-auto">
+    <div className="p-pad h-full overflow-auto"><div className={`${PAGE_COLUMN} space-y-4`}>
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <div>
@@ -414,6 +415,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         {filtered.length > 0 && <div className="border-t border-redlog-border px-4 py-2.5 text-xs text-redlog-text-faint">{t('targets.shownCount', { shown: filtered.length, total: targets.length })}</div>}
       </div>
       <p className="text-xs text-redlog-text-dim">{t('targets.hint')}</p>
-    </div>
+    </div></div>
   )
 }

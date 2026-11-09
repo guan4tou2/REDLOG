@@ -15,7 +15,7 @@ and tested the precedence `explicit > enriched > active fallback > null`.
 - Full Vitest suite: 180 files passed; 2,076 tests passed and 2 skipped.
 - TypeScript typecheck: passed.
 - Production build: passed.
-- Electron journey: `e2e/active-target-context.spec.ts` passed. It verifies
+- Electron journey: `e2e/active-target-context.spec.ts` (now in e2e/timeline-evidence.spec.ts) passed. It verifies
   title-bar entry, marker and shell fallback, explicit-target precedence,
   appended change evidence, project isolation, reopen restoration, clearing,
   and the Target-row “Work on this” action.
