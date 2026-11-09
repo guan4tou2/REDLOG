@@ -43,6 +43,9 @@ describe('httpCaptureState', () => {
     // Even over traffic it recorded earlier: the failure is live now, and the
     // operator needs the reason, not the history.
     expect(httpCaptureState(src({ state: 'error', lastEventAt: 1 }), proxy('running'))).toBe('failed')
+    expect(httpCaptureState(src({ lastEventAt: 1 }), proxy('failed'))).toBe('failed')
+    expect(httpCaptureState(src({ installed: false, state: 'error' }), proxy('stopped'))).toBe('failed')
+    expect(httpCaptureState(undefined, proxy('failed'))).toBe('failed')
   })
 
   it('counts recorded requests over process state, for an externally run proxy', () => {
@@ -79,6 +82,7 @@ describe('httpCaptureState', () => {
 
   it('shows the proxy coming up', () => {
     expect(httpCaptureState(src(), proxy('starting'))).toBe('starting')
+    expect(httpCaptureState(src({ lastEventAt: 1 }), proxy('starting'))).toBe('starting')
   })
 
   it('survives a health payload with no mitmproxy row', () => {

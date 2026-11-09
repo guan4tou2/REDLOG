@@ -1,6 +1,38 @@
 import { test, expect } from '@playwright/test'
 import { launchWithTempHome, openTestProject, openSettingsPage, openView } from './helpers'
 
+test('a current HTTP start failure and retry outrank saved traffic on the dashboard', async () => {
+  const { app, page } = await launchWithTempHome()
+  try {
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    const setProxy = async (state: 'failed' | 'starting' | 'running'): Promise<void> => {
+      await app.evaluate(({ ipcMain }, state) => {
+        ipcMain.removeHandler('visibility:signals')
+        ipcMain.handle('visibility:signals', () => ({ evidenceSeen: true, loggedEver: true }))
+        ipcMain.removeHandler('capture:health')
+        ipcMain.handle('capture:health', () => ({
+          verdict: 'partial', hasRecorded: true, checkedAt: Date.now(), lastEventAt: 1,
+          dbErrorTotal: 0, dbErrorFirstAt: null,
+          sources: [{ id: 'mitmproxy', installed: true, state: 'ready', lastEventAt: 1 }],
+          managedHttpProxy: { state, url: state === 'running' ? 'http://127.0.0.1:6661' : null,
+            ...(state === 'failed' ? { error: 'Current proxy start failed' } : {}) }
+        }))
+      }, state)
+      await page.reload()
+    }
+    await setProxy('failed')
+    await openTestProject(page, 'http-state-recovery')
+    const row = page.getByTestId('capture-core-http')
+    await expect(row).toHaveAttribute('data-state', 'failed')
+    await expect(row).toContainText('Current proxy start failed')
+    await setProxy('starting')
+    await expect(row).toHaveAttribute('data-state', 'starting')
+    await setProxy('running')
+    await expect(row).toHaveAttribute('data-state', 'ready')
+    await expect(row).not.toContainText('Current proxy start failed')
+  } finally { await app.close() }
+})
+
 // Hold automated IP updates so the retry is the observation that restores the card.
 test('an IP read can recover with the Pivot list still visible, and a CDP retry reports the new tab', async () => {
   const { app, page } = await launchWithTempHome()
