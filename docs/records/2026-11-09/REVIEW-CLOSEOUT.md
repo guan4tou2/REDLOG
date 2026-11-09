@@ -37,3 +37,7 @@
 #589 的時間軸入口與返回已有實作，獨立 Transcript 仍屬該單未結部分。#590 的雙欄導航已移除，剩餘為深層來源修復全程。#507 已處理 stat 前檔案消失，但其他 spool 競態須依原案例確認。#550 的文案誤判已部分修正，通用讀取仍未完成。這些議題需依剩餘驗收縮小追蹤，避免整單被錯標為完成。
 
 本輪尚未完成 cast 文字投影、匯出背景串流、Timeline 資料控制拆分、Burp／DNS Adapter 或跨作業系統正式包驗收。這些列在上述完成條件，供後續批次執行。
+
+## 完整檢查紀錄
+
+typecheck、verify:specs、verify:architecture、verify:i18n 通過。設定修正分支原生完整單元結果為 5908 passed／4 failed／41 skipped，其中一項 narrow-viewport 仍要求搜尋顯示分類列，已按新契約改為單一結果列表並複驗；包含該測試的 39 項設定／窄窗測試通過。其餘三項為 relay-contract 兩項及 shell-token-not-in-argv 一項，在相同主線產品碼的 #636 分支亦重現（該分支 5915 passed／3 failed／41 skipped）。這些結果與 CI 分開記錄，未將完整本機單元標為全綠。
