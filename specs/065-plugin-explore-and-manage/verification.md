@@ -1,5 +1,17 @@
 # Verification: 統一探索與管理入口 — 插件列表與詳情(A 批次)
 
+## 目前整合狀態（2026-11-09）
+
+基準 main `c614cbf3`，macOS arm64 來源碼正式建置。`plugin-explore` 與 `capture-settings-interaction` 本輪補驗 **8 passed**：搜尋、需處理、診斷、空結果、所有寬度的列表／詳情切換與返回，外部來源 IPC 失敗、寫入拒絕後重試、雙語、最小視窗／放大字體及官方 AI 的顯式專案授權。
+
+主要 **110 passed** 內的 `official-agent-capture` 已涵蓋經插件頁安裝、返回來源、工作目錄授權、正式 watcher 讀取合成 JSONL、排除／停用／移除及已保存歷史讀回。這證明 B 的主要入口及邊界，不代表更新／中途失敗全矩陣或真實 AI 客戶端已驗收。A 舊的寬窗並排已由單欄 Stitch 定稿取代；非擷取插件不顯示不適用的 project／health 維度。
+
+本版本完整 unit **5932 passed／41 skipped**，四個前置 gates 與 build 通過；[main CI](https://github.com/guan4tou2/REDLOG/actions/runs/42573715951) 三平台 unit 與三組 Linux Electron 全綠。
+
+剩餘：更新／解除安裝中斷、非受管檔案保護的完整故障矩陣、真實 AI 客戶端及新安裝包／其他平台 GUI。本機匯入屬 C，需先有安全 API；不因本輪補驗而新增安裝能力。**整份 Spec 065 仍為 Draft**。
+
+以下為 2026-11-04 A 批次歷史紀錄；其中「B 待實作」、並排版式與當時測試失敗不得覆蓋上方目前狀態。
+
 **Date**: 2026-11-04。Feature 保持 **Draft**;這是 A 批次(renderer 探索與詳情)的局部實作與驗證 checkpoint,不是整份 Spec 065 完成。B/C 批次依裁決明確排除,完成前不逐項轉 Verified。
 
 ## RED

@@ -4,6 +4,10 @@ Use the smallest test layer that proves the behavior. The current suites are
 `test/` (Vitest) and `e2e/` (Playwright/Electron); installed-package journeys
 reuse `e2e/` against an actual executable. Historical results are not new runs.
 
+目前覆蓋、證據等級與 macOS 優先的剩餘驗收集中在
+[Spec 064 測試覆蓋矩陣](../specs/064-recording-first-workspace/test-coverage-matrix.md)。
+各次執行的結果留在 dated record；不把一次完整回歸變成本機每次修改的必跑清單。
+
 ## Commands
 
 Run the repository gates in this order before pushing:
@@ -43,10 +47,12 @@ npm run e2e:smoke -- --list
 
 # 正式執行需明確指定候選與 commit。正常 2 次啟動：初次 + 重啟讀回。
 REDLOG_PACKAGED_APP='/absolute/path/to/RedLog' \
-REDLOG_EXPECTED_BUILD=d2917021 npm run e2e:smoke
+REDLOG_EXPECTED_BUILD="$(git rev-parse --short=8 HEAD)" npm run e2e:smoke
 ```
 
 入口會先檢查 executable、commit 及 mitmdump，再啟動單一 packaged-smoke；不自動 retry、不加其他 suite。JSON report 每次存入獨立暫存資料夾，離開前沿用 `verify-smoke-report.mjs` 拒絕 skipped／flaky／not-exercised。About 在同一 App 開始時檢查，不為版本查核另啟動一個 App。直接執行原有 Playwright 命令仍可用於 CI 或刻意指定的驗收。
+
+以上 commit 必須是產生該安裝包的乾淨 checkout；測另一個已知候選時明確指定它的 Build，不能把目前來源版本套到舊安裝包。
 
 ## Local iteration and process reuse
 
@@ -68,7 +74,7 @@ would trade desktop interruptions for contaminated results.
 | 候選安裝包／資源／recording 交付基線 | `npm run e2e:smoke` | 2，包含刻意重啟 |
 | 外部 Shell 接入或匯出 UI／失敗恢復 | `e2e/export-preview.spec.ts` | 1，8 cases 共用 |
 | Activity／搜尋／saved-content Reader | `e2e/http-body-search.spec.ts` | 1 |
-| 首次設定操作流程 | `e2e/first-run.spec.ts --grep 'the first run'` | 1，11 cases 共用 |
+| 首次設定操作流程 | `e2e/first-run.spec.ts --grep 'the first run'` | 1，14 cases 共用 |
 | AI provider parser／privacy | 選對應 provider 或 privacy case | 每個被選的隔離案例 1 次 |
 | 改設定元件與 source workflow | 先 Vitest；必要時才選 capture-settings-interaction | 完整檔案 3 次，包含 2 個隔離故障案例 |
 
@@ -178,7 +184,7 @@ REDLOG_BUILD_ID=$(git rev-parse --short=8 HEAD) npx electron-builder --mac dmg -
 
 ```sh
 REDLOG_PACKAGED_APP='/absolute/path/to/RedLog.app/Contents/MacOS/RedLog' \
-REDLOG_EXPECTED_BUILD=d2917021 \
+REDLOG_EXPECTED_BUILD="$(git rev-parse --short=8 HEAD)" \
 npx playwright test e2e/http-body-search.spec.ts --reporter=line
 ```
 
