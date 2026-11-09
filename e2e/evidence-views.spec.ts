@@ -40,16 +40,17 @@ test.describe.serial('http-history-view: HTTP history is a flat per-request log'
   test.beforeAll(async () => {
     await resetShared()
     await openTestProject(page, 'http-history')
-    await page.waitForTimeout(1500)
     base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
 
-    const post = (data: Record<string, unknown>): Promise<Response> =>
-      fetch(`${base}/api/events/seed`, {
+    const post = async (data: Record<string, unknown>): Promise<void> => {
+      const response = await fetch(`${base}/api/events/seed`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent_type: 'scanner', data })
       })
+      expect(response.ok).toBe(true)
+    }
     // A handful of flows against one host, then one lone request to another —
     // seeded last, so it is the newest row and lands at the top of the log.
     for (let i = 0; i < 8; i++) {
@@ -63,9 +64,7 @@ test.describe.serial('http-history-view: HTTP history is a flat per-request log'
       url: 'http://other.example/login', host: 'other.example' })
     await post({ subtype: 'http_response', flow_id: 'lone', status: 302,
       url: 'http://other.example/login', host: 'other.example', duration_ms: 30 })
-    await page.waitForTimeout(800)
     await openView(page, 'http_history')
-    await page.waitForTimeout(800)
   })
 
 

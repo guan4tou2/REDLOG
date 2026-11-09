@@ -44,5 +44,6 @@ real timers.
 A scripted edit removing the `events:search` handler also removed the adjacent
 `events:runQuery` handler: its lookahead skipped the comment block above
 `runQuery`. The diff was checked before committing and the handler restored;
-`shared-event-filter.test.ts`, which asserts the scope wiring of that handler,
-would also have failed.
+The source-string guard used then would also have failed. Its current behavior
+owners are `shared-filter-views.test.tsx` (renderer predicates and pagination)
+and `events-ipc-count-match.test.ts` (main overrides renderer-supplied scope).
