@@ -30,6 +30,22 @@ function keysDir(): string {
   return process.env.REDLOG_KEYS_DIR || path.join(homedir(), '.redlog', 'keys')
 }
 
+// Directories whose ACL this process has already restricted, keyed by path and
+// holding the directory's identity when it was done. restrictToOwner is an
+// icacls child process (a 5 s timeout) and every new operator went through it,
+// so a test that makes a project per case paid it per case. The identity is
+// what makes the memo safe: a directory that was removed and made again is a
+// different directory with the default ACL, and has none of dev/ino/birthtime
+// in common with the one that was restricted.
+const restrictedKeysDirs = new Map<string, string>()
+
+function dirIdentity(dir: string): string | null {
+  try {
+    const s = fs.statSync(dir, { bigint: true })
+    return `${s.dev}:${s.ino}:${s.birthtimeNs}`
+  } catch { return null }
+}
+
 function ensureKeysDir(): string {
   const dir = keysDir()
   // v0.6.96 Sec-2: create with mode 0700 so other local UIDs can't LIST the
@@ -39,7 +55,14 @@ function ensureKeysDir(): string {
   // dir already exists we chmod to be sure. Windows: no-op (POSIX perms).
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
   if (process.platform === 'win32') {
-    try { restrictToOwner(dir) } catch { /* best-effort */ }
+    const identity = dirIdentity(dir)
+    if (identity !== null && restrictedKeysDirs.get(dir) === identity) return dir
+    // Only a restriction that took effect is remembered; a failure is retried
+    // on the next call, as before.
+    try {
+      restrictToOwner(dir)
+      if (identity !== null) restrictedKeysDirs.set(dir, identity)
+    } catch { /* best-effort */ }
   } else {
     try { fs.chmodSync(dir, 0o700) } catch { /* pre-existing, permission denied */ }
   }

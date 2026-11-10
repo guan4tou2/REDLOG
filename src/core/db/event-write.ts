@@ -197,24 +197,21 @@ export function _setCachedEventCount(v: number | null): void { cachedEventCount 
 // db handle and could inadvertently issue a DELETE — throws instead of
 // silently corrupting the chain. Tests call it before writing to verify
 // no code path issues DELETE FROM events between init and the check.
-export function assertEventsAppendOnly(): void {
-  const db = getDB()
-  // v0.6.93 P0-F: DROP + CREATE every time so DBs installed before v0.6.93
-  // (which had a shorter column list — hash/prev_hash/data/id/timestamp/
-  // operator_id only) get upgraded to cover every hash-contributing field.
-  // Missing columns from the old trigger allowed silent tampering with
-  // agent_type / hostname / session_id / engagement_id / source_ip / target_id
-  // / monotonic_ns / ntp_offset_ms / signature; chain hash still catches
-  // them, but the append-only contract now matches the doc. Idempotent.
-  db.exec(`
-    DROP TRIGGER IF EXISTS no_delete_events;
-    DROP TRIGGER IF EXISTS no_update_events_hash;
-    CREATE TRIGGER no_delete_events
+// The two triggers, written once. SQLite keeps a trigger's CREATE text verbatim
+// in sqlite_master, so comparing what is stored with this text is how a reopen
+// tells "installed and current" from "missing, or an older definition".
+const APPEND_ONLY_TRIGGERS: ReadonlyArray<{ name: string; sql: string }> = [
+  {
+    name: 'no_delete_events',
+    sql: `CREATE TRIGGER no_delete_events
       BEFORE DELETE ON events
     BEGIN
       SELECT RAISE(ABORT, 'events table is append-only (chain integrity)');
-    END;
-    CREATE TRIGGER no_update_events_hash
+    END`
+  },
+  {
+    name: 'no_update_events_hash',
+    sql: `CREATE TRIGGER no_update_events_hash
       BEFORE UPDATE OF hash, prev_hash, data, id, timestamp, operator_id,
                        agent_type, subtype, hostname, session_id, engagement_id,
                        source_ip, target_id, monotonic_ns, ntp_offset_ms,
@@ -222,8 +219,34 @@ export function assertEventsAppendOnly(): void {
                        ON events
     BEGIN
       SELECT RAISE(ABORT, 'events row fields are immutable (chain integrity)');
-    END;
-  `)
+    END`
+  }
+]
+
+export function assertEventsAppendOnly(): void {
+  const db = getDB()
+  // v0.6.93 P0-F: a trigger that is missing, or whose stored SQL differs, is
+  // dropped and recreated, so DBs installed before v0.6.93 (which had a shorter
+  // column list — hash/prev_hash/data/id/timestamp/operator_id only) get
+  // upgraded to cover every hash-contributing field. Missing columns from the
+  // old trigger allowed silent tampering with agent_type / hostname /
+  // session_id / engagement_id / source_ip / target_id / monotonic_ns /
+  // ntp_offset_ms / signature; chain hash still catches them, but the
+  // append-only contract now matches the doc.
+  //
+  // A current trigger is left alone: dropping and recreating both on every open
+  // cost two WAL commits per project open with nothing changed. The
+  // comparison is exact text, not "a trigger of that name exists".
+  const stored = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`)
+  const stale = APPEND_ONLY_TRIGGERS.filter(
+    (t) => (stored.get(t.name) as { sql: string } | undefined)?.sql !== t.sql
+  )
+  if (stale.length === 0) return
+  // One transaction, so a failure part-way cannot leave the table without it.
+  db.transaction(() => {
+    for (const t of stale) db.exec(`DROP TRIGGER IF EXISTS ${t.name}`)
+    for (const t of stale) db.exec(t.sql)
+  })()
 }
 
 // v0.6.88 P0-A: canonical JSON serialiser for hash input. `JSON.stringify`
