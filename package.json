@@ -16,13 +16,13 @@
   },
   "scripts": {
     "dev": "npm run build:ai-plugins && electron-vite dev",
-    "build": "npm run build:ai-plugins && electron-vite build",
+    "build": "npm run build:ai-plugins && electron-vite build && npm run build:export-worker",
     "verify:package-resources": "node scripts/verify-packaged-resources.mjs",
     "verify:specs": "node scripts/verify-specs.mjs",
     "typecheck": "tsc -p tsconfig.check.json",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f",
-    "pretest": "npm rebuild better-sqlite3 && npm run build:ai-plugins",
+    "pretest": "npm rebuild better-sqlite3 && npm run build:ai-plugins && npm run build:export-worker",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:changed": "npm test -- --changed=origin/main",
@@ -35,6 +35,7 @@
     "gen:settings-search": "node scripts/gen-settings-search.mjs",
     "verify:architecture": "node scripts/verify-architecture.mjs",
     "verify:i18n": "node scripts/verify-i18n-assertions.mjs",
+    "build:export-worker": "node scripts/build-export-worker.mjs",
     "build:ai-plugins": "node scripts/build-ai-plugins.mjs"
   },
   "dependencies": {

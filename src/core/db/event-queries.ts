@@ -1043,7 +1043,7 @@ export function queryStreamSegments(flowId: string): StreamSegments {
  *  sent. These rows are hidden from the Timeline (HOUSEKEEPING_SQL) because they
  *  belong to the command, not beside it; the command's detail reads them here.
  *  Both tiers, because a chunk lands wherever its command did. */
-export function queryCommandOutput(commandId: string, limit = 2000, snapshot?: ExportSnapshot): RedLogEvent[] {
+export function* iterateCommandOutput(commandId: string, limit = 2000, snapshot?: ExportSnapshot): IterableIterator<RedLogEvent> {
   const db = getReadonlyDB()
   const where = `agent_type = 'shell' AND subtype = 'command_output'
      AND json_extract(data, '$.command_id') = ? AND (json_extract(data, '$.late') = 1 OR json_extract(data, '$.streamed') = 1)`
@@ -1060,9 +1060,13 @@ export function queryCommandOutput(commandId: string, limit = 2000, snapshot?: E
     ) AS chunk_rank FROM chunks
   ) SELECT * FROM ranked WHERE chunk_rank = 1
     ORDER BY COALESCE(json_extract(data, '$.seq'), 0), timestamp, id LIMIT ?`)
-    .all(commandId, snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, commandId, snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER, limit < 0 ? -1 : limit) as Array<Record<string, unknown>>
-  return rows.map(rowToEvent)
+    .iterate(commandId, snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, commandId, snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER, limit < 0 ? -1 : limit) as IterableIterator<Record<string, unknown>>
+  for (const row of rows) yield rowToEvent(row)
 
+}
+
+export function queryCommandOutput(commandId: string, limit = 2000, snapshot?: ExportSnapshot): RedLogEvent[] {
+  return [...iterateCommandOutput(commandId, limit, snapshot)]
 }
 
 /** The `command_end` rows of the given commands, either tier. A search hit on a

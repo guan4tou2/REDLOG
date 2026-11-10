@@ -440,7 +440,7 @@ describeDB('ingest', () => {
         const request = { format: 'jsonl', subset: { kind: 'selection', filter: { agentType: 'shell' },
           query: '', excludeHousekeeping: true } } as never
         const scope = { personalDomains: [] } as never
-        const picked = sel.resolveExportSelection(request, plan.takeExportSnapshot(), scope).map((e) => e.id)
+        const picked = [...sel.iterateExportSelection(request, plan.takeExportSnapshot(), scope)].map((e) => e.id)
         expect(picked).toContain(end.id)
         expect(picked).toContain(a.id)
         expect(picked).toContain(done.id)

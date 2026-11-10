@@ -47,7 +47,7 @@ describe('export plan IPC contract', () => {
 
   it('returns an explicit failure when no project is active', async () => {
     active = null
-    expect(handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never)).toEqual({
+    expect(await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never)).toEqual({
       ok: false,
       error: 'no-active-project'
     })
@@ -55,12 +55,12 @@ describe('export plan IPC contract', () => {
 
   it.each([[], new Map(), new Date(0)])('rejects a malformed selection filter instead of widening it to all events: %s', async filter => {
     addEvent('events', 'must-not-widen', 1000)
-    const result = handlers.get('data:resolveExportPlan')?.({}, { format: 'json', subset: { kind: 'selection', projection: 'events', filter } } as never)
+    const result = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json', subset: { kind: 'selection', projection: 'events', filter } } as never)
     expect(result).toMatchObject({ ok: false })
   })
 
   it.each([[], null, new Map()])('rejects malformed HTTP predicates: %s', async http => {
-    const result = handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http } } as never)
+    const result = await handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http } } as never)
     expect(result).toMatchObject({ ok: false })
   })
 
@@ -71,12 +71,12 @@ describe('export plan IPC contract', () => {
   // so it is what gets tested — not whether scrubbing "works" on a format that
   // has no scrubbing.
   it.each(['bundle', 'har'])('refuses operator-PII scrubbing on %s rather than exporting unscubbed', async format => {
-    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    const result = await handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
     expect(result).toEqual({ ok: false, error: `unsupported-policy: ${format} cannot scrub operator PII` })
   })
 
   it.each(['json', 'ndjson', 'timeline'])('accepts operator-PII scrubbing on %s', async format => {
-    const result = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
+    const result = await handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii: true } as never)
     expect(result).toMatchObject({ ok: true })
   })
 
@@ -88,7 +88,7 @@ describe('export plan IPC contract', () => {
         addEvent('events', `other-${n}`, 1000 + n, { targetId: 'other.test', data: { command: 'other' } })
       }
     })()
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format, subset: { kind: 'selection', projection: 'events', filter: { targetId: 'EXAMPLE.TEST', agentType: 'shell', since: 1000, before: 2004 } } } as never) as { ok: true; plan: { id: string; counts: { included: number } } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format, subset: { kind: 'selection', projection: 'events', filter: { targetId: 'EXAMPLE.TEST', agentType: 'shell', since: 1000, before: 2004 } } } as never) as { ok: true; plan: { id: string; counts: { included: number } } }
     expect(resolved.ok).toBe(true)
     expect(resolved.plan.counts.included).toBe(1005)
     addEvent('events', 'backdated-after-preview', 1500)
@@ -104,7 +104,7 @@ describe('export plan IPC contract', () => {
     const sensitive = `${os.homedir()}/evidence ${os.hostname()} Authorization: ${secret} Cookie: session=private query=private`
     addEvent('events', 'sensitive-event', 1000, { data: { command: sensitive, stdout: sensitive } })
     for (const scrubPii of [false, true]) {
-      const resolved = handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii } as never) as { ok: boolean; plan: { id: string } }
+      const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format, scrubPii } as never) as { ok: boolean; plan: { id: string } }
       expect(resolved.ok).toBe(true)
       const result = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: boolean; artifactPath: string }
       expect(result.ok).toBe(true)
@@ -128,7 +128,7 @@ describe('export plan IPC contract', () => {
     addFlow('other-method', 'POST', 201, 1001)
     addFlow('other-status', 'GET', 404, 1002)
     addEvent('events_logged', 'response-only', 1003, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'response-only', method: 'GET', status: 202, host: 'example.test', url: 'http://example.test/needle/orphan' } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 1000, before: 1010 }, http: { method: 'GET', statusPrefix: '2', host: 'EXAMPLE.TEST', text: 'needle' } } } as never) as { ok: true; plan: { id: string; counts: { included: number; exchanges: number } } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 1000, before: 1010 }, http: { method: 'GET', statusPrefix: '2', host: 'EXAMPLE.TEST', text: 'needle' } } } as never) as { ok: true; plan: { id: string; counts: { included: number; exchanges: number } } }
     expect(resolved.ok).toBe(true)
     expect(resolved.plan.counts).toMatchObject({ included: 4, exchanges: 2 })
     addEvent('events_logged', 'future-update', 1700, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'selected-flow', status: 503 } })
@@ -143,7 +143,7 @@ describe('export plan IPC contract', () => {
   it('executes JSON from the approved snapshot and reports matching identity/counts', async () => {
     addEvent('events', 'before-a', 1000)
     addEvent('events_logged', 'before-b', 1001)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
       ok: true
       plan: { id: string; fingerprint: string; counts: { included: number } }
     }
@@ -182,7 +182,7 @@ describe('export plan IPC contract', () => {
 
   it('keeps selected IDs and integrity digests in the main process', async () => {
     addEvent('events', 'private-plan-id', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
       ok: true; plan: Record<string, unknown>
     }
     expect(resolved.ok).toBe(true)
@@ -194,7 +194,7 @@ describe('export plan IPC contract', () => {
 
   it('executes NDJSON from the approved snapshot', async () => {
     addEvent('events', 'ndjson-before', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'ndjson' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'ndjson' } as never) as { ok: true; plan: { id: string } }
     addEvent('events_logged', 'ndjson-after', 2000)
     const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
     const content = fs.readFileSync(executed.artifactPath, 'utf8')
@@ -204,7 +204,7 @@ describe('export plan IPC contract', () => {
 
   it('does not execute an approved plan after the active project changes', async () => {
     addEvent('events', 'before-a', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'ndjson' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'ndjson' } as never) as { ok: true; plan: { id: string } }
     active = { ...active!, id: 'eng-2' }
     expect(await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({
       ok: false,
@@ -215,14 +215,14 @@ describe('export plan IPC contract', () => {
   it('refuses a bundle when an included attachment changes without changing its byte count', async () => {
     addEvent('events', 'attachment-owner', 1000)
     const file = addExportAttachment(dir, 'casts/frozen.cast', 'before')
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
     fs.writeFileSync(file, 'change')
     expect(await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable', check: 'attachment-content' })
   })
 
   it('returns plan-expired and writes no artifact after the approval lifetime', async () => {
     addEvent('events', 'expiring', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
       ok: true; plan: { id: string; expiresAt: number }
     }
     now = resolved.plan.expiresAt + 1
@@ -235,7 +235,7 @@ describe('export plan IPC contract', () => {
 
   it('rejects execution when approved evidence disappears', async () => {
     addEvent('events', 'will-disappear', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as { ok: true; plan: { id: string } }
     // Simulate retention/corruption below the normal append-only guard; the
     // exporter must still refuse to claim the previewed artifact was written.
     getDB().exec('DROP TRIGGER no_delete_events')
@@ -249,7 +249,7 @@ describe('export plan IPC contract', () => {
   })
 
   it('rejects a requested protection that the selected format cannot apply', async () => {
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, {
       format: 'bundle',
       scrubPii: true
     } as never)
@@ -258,7 +258,7 @@ describe('export plan IPC contract', () => {
 
   it('writes bundle rows and manifest from the approved plan selection', async () => {
     addEvent('events', 'bundle-before', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as {
       ok: true; plan: { id: string; fingerprint: string }
     }
     addEvent('events_logged', 'bundle-after', 2000)
@@ -287,11 +287,11 @@ describe('export plan IPC contract', () => {
     addEvent('events', 'only-a', 1002, { targetId: 'a.test', data: { terminalId: 't2', io: { stream: 'cast', ref: path.join(dir, 'casts', 'term-2.cast'), off: 0, len: 3 } } })
 
     type Plan = { id: string; fingerprint: string; request: { excludeAttachments: string[] }; counts: { attachmentsIncluded: number; attachmentsExcludedByOperator: number }; attachments: Array<{ id: string; targets: string[]; attribution: string; status: string }> }
-    const first = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    const first = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
     const cast = first.plan.attachments.find((a) => a.id === 'casts/term-1.cast')
     expect(cast).toMatchObject({ targets: ['a.test', 'b.test'], attribution: 'cross-target', status: 'included' })
 
-    const second = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['casts/term-1.cast'] } as never) as { ok: true; plan: Plan }
+    const second = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['casts/term-1.cast'] } as never) as { ok: true; plan: Plan }
     expect(second.plan.fingerprint).not.toBe(first.plan.fingerprint)
     expect(second.plan.counts.attachmentsExcludedByOperator).toBe(1)
     expect(second.plan.counts.attachmentsIncluded).toBe(first.plan.counts.attachmentsIncluded - 1)
@@ -323,7 +323,7 @@ describe('export plan IPC contract', () => {
     addEvent('events', 'identity-command', 1000, {
       data: { terminalId: 'identity', io: { stream: 'cast', ref: source, off: 0, len: Buffer.byteLength(cast) } }
     })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', scrubPii: false } as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', scrubPii: false } as never) as {
       ok: true; plan: { id: string; capabilities: { piiScrubbing: boolean } }
     }
     expect(resolved.ok).toBe(true)
@@ -342,7 +342,7 @@ describe('export plan IPC contract', () => {
     addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n[0.2,"o","tw')
     addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
     type Plan = { id: string; attachments: Array<{ id: string; bytes: number; frozenBytes?: number }> }
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
     // Frozen at the last complete line, not at the half-written one.
     const row = resolved.plan.attachments.find((a) => a.id === 'casts/live.cast')
     expect(row).toMatchObject({ bytes: 30, frozenBytes: 30 })
@@ -359,7 +359,7 @@ describe('export plan IPC contract', () => {
     const castFile = path.join(dir, 'casts', 'live.cast')
     addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n')
     addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
     fs.writeFileSync(castFile, '{"version":2}\n[0.1,"o","ONE"]\n[0.2,"o","more"]\n')
     expect(await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable' })
   })
@@ -368,7 +368,7 @@ describe('export plan IPC contract', () => {
     const castFile = path.join(dir, 'casts', 'live.cast')
     addExportAttachment(dir, 'casts/live.cast', '{"version":2}\n[0.1,"o","one"]\n')
     addEvent('events', 'live', 1000, { targetId: 'a.test', data: { terminalId: 't9', io: { stream: 'cast', ref: castFile, off: 0, len: 3 } } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: { id: string } }
     fs.writeFileSync(castFile, '{"version":2}\n')
     expect(await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never)).toMatchObject({ ok: false, error: 'source-unavailable', check: 'attachment-content' })
   })
@@ -379,7 +379,7 @@ describe('export plan IPC contract', () => {
     addEvent('events', 'art', 1000, { agentType: 'file_transfer', subtype: 'artifact_added', data: { stored: 'artifacts/abc-report.xml', sha256: 'x' } })
 
     type Plan = { id: string; attachments: Array<{ id: string; kind: string; status: string }> }
-    const first = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
+    const first = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle' } as never) as { ok: true; plan: Plan }
     expect(first.plan.attachments.filter((a) => a.kind === 'artifact')).toEqual([
       expect.objectContaining({ id: 'artifacts/abc-report.xml', status: 'included' })
     ])
@@ -390,7 +390,7 @@ describe('export plan IPC contract', () => {
     expect(manifest.attachments.artifacts).toBe(1)
     expect(manifest.files.map((f) => f.path)).toContain('artifacts/abc-report.xml')
 
-    const second = handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['artifacts/abc-report.xml'] } as never) as { ok: true; plan: Plan }
+    const second = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', excludeAttachments: ['artifacts/abc-report.xml'] } as never) as { ok: true; plan: Plan }
     const dropped = await handlers.get('data:executeExportPlan')?.({}, { planId: second.plan.id } as never) as { ok: true; artifactPath: string }
     expect(dropped.ok).toBe(true)
     expect(fs.existsSync(path.join(dropped.artifactPath, 'artifacts', 'abc-report.xml'))).toBe(false)
@@ -411,7 +411,7 @@ describe('export plan IPC contract', () => {
       data: { command: 'curl https://outside.test/private' }
     })
 
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, {
       format: 'bundle', maskOutOfScope: false
     } as never) as { ok: true; plan: { id: string; counts: { maskedOutOfScope: number } } }
     expect(resolved.plan.counts.maskedOutOfScope).toBe(0)
@@ -426,7 +426,7 @@ describe('export plan IPC contract', () => {
   it('keeps HAR inside the approved target, time and snapshot bounds', async () => {
     addEvent('events_logged', 'req-before', 1000, { agentType: 'scanner', subtype: 'http_request_start', data: { flow_id: 'f1', method: 'GET', url: 'https://example.test/a' } })
     addEvent('events_logged', 'res-before', 1100, { agentType: 'scanner', subtype: 'http_response', data: { flow_id: 'f1', status: 200 } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, {
       format: 'har', subset: { kind: 'time-range', since: 900, before: 1500, targetId: 'example.test' }
     } as never) as { ok: true; plan: { id: string } }
     addEvent('events_logged', 'req-after', 1200, { agentType: 'scanner', subtype: 'http_request_start', data: { flow_id: 'f2', method: 'GET', url: 'https://example.test/b' } })
@@ -437,9 +437,23 @@ describe('export plan IPC contract', () => {
     expect(har.log.entries.map((entry) => entry.request.url)).toEqual(['https://example.test/a'])
   })
 
+  it('streams approved markers and corrections once and does not add unapproved later corrections', async () => {
+    addEvent('events', 'marker', 1000, { agentType: 'marker', data: { title: 'original' } })
+    addEvent('events', 'inside-correction', 1100, { agentType: 'marker', subtype: 'amended', data: { markerId: 'marker', title: 'corrected' } })
+    addEvent('events', 'outside-correction', 2000, { agentType: 'marker', subtype: 'amended', data: { markerId: 'marker', title: 'outside approval' } })
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'timeline', subset: { kind: 'time-range', since: 900, before: 1500 } } as never) as { ok: boolean; plan: { id: string } }
+    expect(resolved.ok).toBe(true)
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: boolean; artifactPath: string }
+    expect(executed.ok).toBe(true)
+    const document = JSON.parse(fs.readFileSync(executed.artifactPath, 'utf8'))
+    expect(document.events.map((e: { id: string }) => e.id).sort()).toEqual(['inside-correction', 'marker'])
+    expect(document.amendments).toEqual([])
+    expect(fs.readFileSync(executed.artifactPath, 'utf8')).not.toContain('outside approval')
+  })
+
   it('keeps Timeline slice inside the approved time and snapshot bounds', async () => {
     addEvent('events', 'timeline-before', 1000)
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, {
       format: 'timeline', subset: { kind: 'time-range', since: 900, before: 1500 }
     } as never) as { ok: true; plan: { id: string } }
     addEvent('events', 'timeline-after', 1200)
@@ -454,7 +468,7 @@ describe('export plan IPC contract', () => {
   it.each([[true, false], [false, true]])('Timeline slice with scrubPii=%s keeps the operator home path: %s', async (scrubPii, kept) => {
     const home = os.homedir()
     addEvent('events', 'timeline-pii', 1000, { data: { command: `cat ${home}/notes.txt` } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, {
       format: 'timeline', scrubPii, subset: { kind: 'time-range', since: 900, before: 1500 }
     } as never) as { ok: true; plan: { id: string } }
     const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
@@ -488,7 +502,7 @@ describe('export plan IPC contract', () => {
       '    - my-private-blog.test'
     ].join('\n'))
     addEvent('events', 'e1', 1000, { targetId: 'client.test', data: { command: 'id' } })
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as { ok: true; plan: { id: string } }
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as { ok: true; plan: { id: string } }
     const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as { ok: true; artifactPath: string }
     const text = fs.readFileSync(executed.artifactPath, 'utf8')
     for (const secret of ['203.0.113.7', '198.51.100.9', 'my-private-blog.test', 'Ada Operator']) expect(text).not.toContain(secret)

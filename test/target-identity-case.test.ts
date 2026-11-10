@@ -113,7 +113,7 @@ describe('one case-insensitive target predicate', () => {
   it('an export limited to a target selects every casing, as previewed', async () => {
     // `timeline` is a format that takes a bounded subset, as the Timeline's own export does.
     const request = { format: 'timeline', subset: { kind: 'time-range', since: T0 - 100_000, before: T0, targetId: 'EXAMPLE.com' } }
-    const resolved = handlers.get('data:resolveExportPlan')?.({}, request as never) as {
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, request as never) as {
       ok: true; plan: { id: string; counts: { included: number } }
     }
     expect(resolved, JSON.stringify(resolved)).toMatchObject({ ok: true })

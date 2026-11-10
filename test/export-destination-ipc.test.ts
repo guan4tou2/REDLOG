@@ -70,15 +70,15 @@ describe('export destination IPC', () => {
   })
 
   let seq = 0
-  const resolvePlan = (format: string): string => {
+  const resolvePlan = async (format: string): Promise<string> => {
     addEvent('events', `e${++seq}`, 1000 + seq)
-    const r = handlers.get('data:resolveExportPlan')?.({}, { format } as never) as { ok: true; plan: { id: string } }
+    const r = await handlers.get('data:resolveExportPlan')?.({}, { format } as never) as { ok: true; plan: { id: string } }
     expect(r.ok).toBe(true)
     return r.plan.id
   }
 
   it('remembers only a real successful delivery for the active project', async () => {
-    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { ok: true; artifactPath: string }
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan('json') } as never) as { ok: true; artifactPath: string }
     expect(executed.ok).toBe(true)
     const recent = () => handlers.get('data:recentExport')?.({})
     expect(await recent()).toMatchObject({ ok: true, delivery: { artifactPath: executed.artifactPath, format: 'json', availability: 'available' } })
@@ -94,7 +94,7 @@ describe('export destination IPC', () => {
   it('can reveal the exact completed custom artifact after restart, never its siblings', async () => {
     showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [out] })
     await handlers.get('data:pickExportDir')?.({})
-    const done = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json'), destDir: out } as never) as { ok: true; artifactPath: string }
+    const done = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan('json'), destDir: out } as never) as { ok: true; artifactPath: string }
     expect(done.ok).toBe(true)
     const elsewhere = path.join(out, 'unrelated.txt'); fs.writeFileSync(elsewhere, 'not an export')
     registerDataExportIpc({ handle: (name: string, fn: Handler) => handlers.set(name, fn) } as never, ctx, { recentExports: new RecentExportStore(path.join(dir, 'machine-data')) })
@@ -105,13 +105,13 @@ describe('export destination IPC', () => {
   })
 
   it('reports metadata failure without losing a successful artifact or replacing the prior receipt', async () => {
-    const prior = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { artifactPath: string }
+    const prior = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan('json') } as never) as { artifactPath: string }
     const rename = fs.renameSync
     vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
       if (String(to).includes('machine-data')) throw new Error('injected receipt refusal')
       rename(from, to)
     })
-    const next = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json') } as never) as { ok: boolean; artifactPath: string; warnings: string[] }
+    const next = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan('json') } as never) as { ok: boolean; artifactPath: string; warnings: string[] }
     expect(next.ok).toBe(true)
     expect(next.warnings).toContain('recent-export-not-saved')
     expect(fs.existsSync(next.artifactPath)).toBe(true)
@@ -127,7 +127,7 @@ describe('export destination IPC', () => {
     showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [out] })
     expect(await handlers.get('data:pickExportDir')?.({})).toBe(path.resolve(out))
     for (const [format, ext] of [['json', '.json'], ['ndjson', '.ndjson'], ['har', '.har']]) {
-      const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan(format), destDir: out } as never) as { ok: true; artifactPath: string }
+      const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan(format), destDir: out } as never) as { ok: true; artifactPath: string }
       expect(executed.ok).toBe(true)
       expect(path.dirname(executed.artifactPath)).toBe(path.resolve(out))
       expect(executed.artifactPath.endsWith(ext)).toBe(true)
@@ -140,7 +140,7 @@ describe('export destination IPC', () => {
     showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [out] })
     await handlers.get('data:pickExportDir')?.({})
     for (const format of ['bundle', 'timeline']) {
-      const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan(format), destDir: out } as never) as { ok: boolean; artifactPath: string; error?: string }
+      const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan(format), destDir: out } as never) as { ok: boolean; artifactPath: string; error?: string }
       expect(executed.ok, executed.error).toBe(true)
       expect(path.dirname(executed.artifactPath)).toBe(path.resolve(out))
     }
@@ -149,7 +149,7 @@ describe('export destination IPC', () => {
   it.each(['json', 'ndjson', 'har', 'timeline'])('preserves both %s exports made in the same second', async (format) => {
     vi.spyOn(Date.prototype, 'toISOString').mockReturnValue('2026-10-24T00:00:00.000Z')
     const execute = async () => {
-      const result = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan(format) } as never) as { ok: boolean; artifactPath: string }
+      const result = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan(format) } as never) as { ok: boolean; artifactPath: string }
       expect(result.ok).toBe(true)
       return result.artifactPath
     }
@@ -165,7 +165,7 @@ describe('export destination IPC', () => {
   })
 
   it('refuses a folder the dialog never returned, and does not spend the plan', async () => {
-    const planId = resolvePlan('json')
+    const planId = await resolvePlan('json')
     expect(await handlers.get('data:executeExportPlan')?.({}, { planId, destDir: out } as never)).toEqual({ ok: false, error: 'invalid-destination' })
     expect(fs.readdirSync(out)).toEqual([])
     const retry = await handlers.get('data:executeExportPlan')?.({}, { planId } as never) as { ok: boolean; artifactPath?: string }
@@ -176,7 +176,7 @@ describe('export destination IPC', () => {
   it('a cancelled picker approves nothing', async () => {
     showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
     expect(await handlers.get('data:pickExportDir')?.({})).toBeNull()
-    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolvePlan('json'), destDir: out } as never)
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: await resolvePlan('json'), destDir: out } as never)
     expect(executed).toEqual({ ok: false, error: 'invalid-destination' })
   })
 

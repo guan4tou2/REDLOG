@@ -206,6 +206,10 @@ export function exportHar(opts?: {
     ...(opts?.targetId ? { targetId: opts.targetId } : {})
   }).filter((event) => !selected || selected.has(event.id)), rOpts)
 
+  return JSON.stringify(createHarDocument(events), null, 2)
+}
+
+export function createHarDocument(events: readonly RedLogEvent[]) {
   const requests = new Map<string, RedLogEvent>()
   const responses = new Map<string, RedLogEvent>()
   const streamChunks = new Map<string, RedLogEvent[]>()
@@ -304,7 +308,7 @@ export function exportHar(opts?: {
     const url = segments.map(event => event.data.url).find((u): u is string => typeof u === 'string')
     partialFlows.push({
       flowId, requestEventId: null, responseEventId: null, incomplete: true, url: url ?? null,
-      firstObservedAt: new Date(Math.min(...segments.map(event => event.timestamp))).toISOString(),
+      firstObservedAt: new Date(segments.reduce((min, event) => Math.min(min, event.timestamp), Infinity)).toISOString(),
       ...flowSegments(streamChunks.get(flowId), webSocketMessages.get(flowId))
     })
   }
@@ -319,7 +323,7 @@ export function exportHar(opts?: {
     }
   }
 
-  return JSON.stringify(har, null, 2)
+  return har
 }
 
 /** Whether the HAR export would deliver this body-store file under `scope`:
