@@ -5,7 +5,7 @@ test('a current HTTP start failure and retry outrank saved traffic on the dashbo
   const { app, page } = await launchWithTempHome()
   try {
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
-    const setProxy = async (state: 'failed' | 'starting' | 'running'): Promise<void> => {
+    const setProxy = async (state: 'failed' | 'starting' | 'running' | 'stopped'): Promise<void> => {
       await app.evaluate(({ ipcMain }, state) => {
         ipcMain.removeHandler('visibility:signals')
         ipcMain.handle('visibility:signals', () => ({ evidenceSeen: true, loggedEver: true }))
@@ -20,9 +20,13 @@ test('a current HTTP start failure and retry outrank saved traffic on the dashbo
       }, state)
       await page.reload()
     }
-    await setProxy('failed')
+    await setProxy('stopped')
     await openTestProject(page, 'http-state-recovery')
     const row = page.getByTestId('capture-core-http')
+    await expect(row).toHaveAttribute('data-state', 'recorded')
+    await expect(row).toContainText('current proxy state is unconfirmed')
+    await expect(row).not.toContainText('6661')
+    await setProxy('failed')
     await expect(row).toHaveAttribute('data-state', 'failed')
     await expect(row).toContainText('Current proxy start failed')
     await setProxy('starting')

@@ -119,7 +119,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   const verified = http === 'ready' && !!verification
   const httpWord = http === 'ready' ? t(verified ? 'capture.httpVerified' : 'capture.httpAwaitingTraffic') : t(`capture.http.${http}`)
   const cmdTone: Tone = cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
-  const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' ? 'warn' : http === 'failed' ? 'err' : 'off'
+  const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' || http === 'recorded' || http === 'unknown' ? 'warn' : http === 'failed' ? 'err' : 'off'
   return (
     <ul data-testid="capture-core" className="text-xs">
       <li data-testid="capture-core-commands" data-state={cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
@@ -199,7 +199,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // Same three colours as every other row: running, failed, or neither.
   const httpDot = (s: HttpCaptureState): string =>
     s === 'ready' ? 'bg-emerald-500'
-      : s === 'failed' ? 'bg-red-500' : 'bg-redlog-elevated-hover'
+      : s === 'failed' ? 'bg-red-500' : s === 'recorded' || s === 'unknown' || s === 'starting' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -253,7 +253,8 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // its explanation, and the separate line is gone.
   const http = httpCaptureState(
     sources.find((s) => s.id === 'mitmproxy'),
-    capture.managedHttpProxy
+    capture.managedHttpProxy,
+    unknown === undefined ? 'ok' : 'unknown'
   )
 
   // "Something is wrong", and nothing else. A source that is switched off is a

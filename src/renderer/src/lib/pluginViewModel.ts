@@ -1,3 +1,4 @@
+import { captureFacts } from '../../../core/capture-contract'
 import type { PluginStatus } from '../../../core/plugins/types'
 import type { OfficialAgentPlugin } from '../../../core/plugins/official-agents'
 
@@ -290,6 +291,7 @@ export function officialHealth(
   const s = snapshot.source
   if (!s) return inactive ? { kind: 'inactive' } : { kind: 'unknown' }
   if (s.lastError) return { kind: 'error', message: s.lastError.message }
-  if (s.lastEventAt !== null) return { kind: 'received', at: s.lastEventAt }
+  const lastStoredAt = captureFacts({ state: 'ready', lastEventAt: s.lastEventAt }).lastStoredAt
+  if (lastStoredAt !== null) return { kind: 'received', at: lastStoredAt }
   return inactive || !p.official ? { kind: 'inactive' } : { kind: 'waiting' }
 }
