@@ -68,7 +68,7 @@ setInterval(() => {}, 1000);
     await expect.poll(() => JSON.parse(readFileSync(ids, 'utf8'))[0] !== owned[0]).toBe(true)
     owned.push(...JSON.parse(readFileSync(ids, 'utf8')) as number[])
     await page.getByTestId('capture-prepare-skip').click()
-    await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    await expect(page.getByTestId('first-run-http')).toContainText('○ Not verified')
     await expect.poll(() => owned.some(running)).toBe(false)
     await page.getByTestId('first-run-http-prepare').click()
     await page.getByTestId('prepare-install-mitmdump').click()

@@ -203,7 +203,7 @@
   "targets.empty": "No targets detected yet. Commands from the shell hook auto-catalog targets.",
   "targets.events": "{{count}} events",
   "targets.out": "OUT",
-  "targets.addToScope": "Add to scope (config.scope.targets)",
+  "targets.addToScope": "Add to scope",
   "targets.first": "First: {{time}}",
   "targets.last": "Last: {{time}}",
   "targets.noEvidence": "No evidence linked to this target.",

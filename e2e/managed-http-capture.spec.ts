@@ -138,7 +138,9 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[sys.argv.index('--listen-port'
     await expect(httpsRow).toHaveAttribute('data-verified', 'false')
     expect(await verifyReport({ scheme: 'http', nonce, user_agent: 'curl/8.5.0' })).toBe(200)
     await expect(httpsRow).toHaveAttribute('data-verified', 'false')
-    await expect(page.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
+    // The proxy is running: the one client row says it, and the header badge does not repeat it.
+    await expect(httpsRow).toContainText('○ Not verified')
+    await expect(page.getByTestId('first-run-http-status')).toHaveCount(0)
     expect(await verifyReport({ scheme: 'https', nonce, user_agent: 'curl/8.5.0' })).toBe(200)
     await expect(httpsRow).toHaveAttribute('data-verified', 'true')
     await expect(httpsRow).toContainText('curl/8.5.0')

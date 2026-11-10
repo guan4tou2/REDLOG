@@ -293,7 +293,12 @@ test.describe('packaged app', () => {
             ], { ...process.env, HOME: home, USERPROFILE: home })
             expect(result.code, result.out).toBe(0)
             expect(result.out).toBe('200')
-            await expect(page.getByTestId('first-run-http-status')).toHaveText(scheme === 'https' ? '✓ Verified' : '○ Not verified', { timeout: 20_000 })
+            // Until HTTPS is seen the one client row says "not verified" and the header badge is not drawn.
+            if (scheme === 'https') await expect(page.getByTestId('first-run-http-status')).toHaveText('✓ Verified', { timeout: 20_000 })
+            else {
+              await expect(page.getByTestId('first-run-http-check-https')).toContainText('○ Not verified', { timeout: 20_000 })
+              await expect(page.getByTestId('first-run-http-status')).toHaveCount(0)
+            }
           }
         })
       }
