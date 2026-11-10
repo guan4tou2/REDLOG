@@ -14,7 +14,13 @@ const FIELDS: Array<{
   { field: 'event_data', path: '$' },
   { field: 'command', path: '$.command' }, { field: 'stdout', path: '$.stdout', ref: '$.stdout_ref' },
   { field: 'stderr', path: '$.stderr', ref: '$.stderr_ref' }, { field: 'full', path: '$.full' },
-  { field: 'preview', path: '$.preview' }, { field: 'tool_input', path: '$.tool_input' }, { field: 'output', path: '$.output' },
+  { field: 'preview', path: '$.preview' },
+  // The producer-side name for a capped tool/command output (codex hook,
+  // OpenCode plugin, PowerShell transcript). Its own field, not an alias of
+  // `preview`: the two are different things in one row and must not be
+  // listed twice under one label.
+  { field: 'output_preview', path: '$.output_preview' },
+  { field: 'tool_input', path: '$.tool_input' }, { field: 'output', path: '$.output' },
   { field: 'artifact', path: '$.stored' }, { field: 'ai_raw', path: '$.snapshot_path' },
   ...(['request_body', 'response_body', 'ws_body', 'tcp_body', 'output_body'] as const).map(field => ({ field, path: `$.${field}.data`, ref: `$.${field}_ref`, encoding: `$.${field}.encoding` }))
 ]
@@ -97,7 +103,7 @@ function withSource<T>(o: Owner, field: typeof FIELDS[number], use: (source: Byt
     if (buf.includes(0))
       text = false
   }
-  return use({ bytes: size, digest: hash.digest('hex'), format: !text ? 'binary' : ['object', 'array', 'true', 'false', 'integer', 'real'].includes(p.kind) ? 'json' : 'utf8', read }, p.truncated === 1 || field.field === 'preview')
+  return use({ bytes: size, digest: hash.digest('hex'), format: !text ? 'binary' : ['object', 'array', 'true', 'false', 'integer', 'real'].includes(p.kind) ? 'json' : 'utf8', read }, p.truncated === 1 || field.field === 'preview' || field.field === 'output_preview')
 }
 function refOf(projectId: string, eventId: string, field: ContentField, source: ByteSource): ContentRef {
   const version = 'content1:' + createHash('sha256').update(JSON.stringify([projectId, eventId, field, source.digest, source.bytes, source.format])).digest('hex')
@@ -106,6 +112,11 @@ function refOf(projectId: string, eventId: string, field: ContentField, source: 
 export function describeEventContent(projectId: string, eventId: string): ContentResult<ContentDescriptor[]> {
   return result(() => {
     const o = owner(projectId, eventId), descriptors: ContentDescriptor[] = []
+    // A shell row that carries only `output_preview` (PowerShell transcript)
+    // has its output in that field; a second "stdout: not captured" entry
+    // beside it would say the opposite of the row.
+    const outputPreviewField = FIELDS.find(field => field.field === 'output_preview')!
+    const hasOutputPreview = probe(o, outputPreviewField).kind !== null
     for (const field of FIELDS.filter(field => field.field !== 'event_data')) {
       const p = probe(o, field)
       if (field.field === 'stderr' && !p.kind && !p.ref && castRange(o, 'stdout')) continue
@@ -124,6 +135,8 @@ export function describeEventContent(projectId: string, eventId: string): Conten
         continue
       }
       if (!p.kind && !p.ref && !(o.agent_type === 'shell' && o.subtype === 'command_end' && ['stdout', 'stderr'].includes(field.field)))
+        continue
+      if (!p.kind && !p.ref && field.field === 'stdout' && hasOutputPreview)
         continue
       const found = result(() => withSource(o, field, (source, partial) => ({ field: field.field, status: 'available' as const, ref: refOf(projectId, eventId, field.field, source), bytes: source.bytes, format: source.format, capture: partial ? 'partial' as const : 'unknown' as const })))
       descriptors.push(found.ok ? found.value : { field: field.field, status: found.status, ref: null, bytes: 0, format: 'utf8', capture: 'unknown' })

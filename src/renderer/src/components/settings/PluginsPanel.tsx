@@ -9,7 +9,7 @@ import type { OfficialAgentPlugin, OfficialAgentMutation } from '../../../../cor
 import { Modal } from '../Modal'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
 import { matchesQuery } from '../../lib/textQuery'
-import { pluginViewModel, needsAttention, matchesPluginFilter, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginFilter, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import { pluginViewModel, needsAttention, matchesPluginFilter, mergeOfficialCatalog, withCaptureSeen, officialProjectLevel, officialHealth, type PluginFilter, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 import PluginDetailPanel from './PluginDetailPanel'
 import { PluginRow } from './PluginRow'
 
@@ -107,7 +107,12 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   const [catalogError, setCatalogError] = useState<string | null>(null)
   // Loaded plugins and the official catalog meet by pluginId: a not-installed
   // integration has no loaded plugin and would otherwise have no row.
-  const plugins = useMemo(() => mergeOfficialCatalog(loaded, catalog), [loaded, catalog])
+  // Declared before `plugins`, which reads it: a `const` below its first use
+  // is a TDZ error, not a late binding.
+  const agentSignature = JSON.stringify(config?.agentTailer?.sources ?? {})
+  const { health: snapshot, status: healthStatus, refresh: refreshHealth } = useCaptureHealthState(5_000, agentSignature)
+  const healthSources = healthStatus === 'ok' && snapshot ? snapshot.sources : null
+  const plugins = useMemo(() => withCaptureSeen(mergeOfficialCatalog(loaded, catalog), healthSources), [loaded, catalog, healthSources])
   const [busy, setBusy] = useState<string | null>(null)
   const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -328,8 +333,6 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
 
   // Project axis and health axis, kept apart (FR-033). Health is the shared
   // snapshot every other reader draws from; a failed read is "unknown".
-  const agentSignature = JSON.stringify(config?.agentTailer?.sources ?? {})
-  const { health: snapshot, status: healthStatus, refresh: refreshHealth } = useCaptureHealthState(5_000, agentSignature)
   const officialAxes = selected?.official ? (() => {
     const kind = selected.official.agentKind
     const level = officialProjectLevel(selected, config ? (config.agentTailer?.sources?.[kind as AgentKind] ?? {}) : undefined)

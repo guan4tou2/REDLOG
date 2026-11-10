@@ -2,7 +2,7 @@ import { matchesQuery } from '../src/renderer/src/lib/textQuery'
 import { describe, it, expect } from 'vitest'
 import {
   effectGroups, attentionIssues, needsAttention, cannotBeTrusted,
-  pluginSearchText, pluginViewModel
+  pluginSearchText, pluginViewModel, withCaptureSeen
 } from '../src/renderer/src/lib/pluginViewModel'
 import type { PluginView } from '../src/renderer/src/lib/pluginViewModel'
 
@@ -114,5 +114,33 @@ describe('pluginViewModel', () => {
       expect(vm.trust.canRevoke).toBe(false)
     }
     expect(pluginViewModel(view({ status: 'active' }), () => '').trust.needsConsent).toBe(false)
+  })
+})
+
+describe('withCaptureSeen / capture-not-seen (#546)', () => {
+  const declaring = (over: Partial<PluginView> = {}): PluginView =>
+    view({ id: 'opencode-hook', report: { capture: { accepted: 1, rejected: [] } }, ...over })
+
+  it('raises capture-not-seen for a loaded plugin whose declared source has no heartbeat or event', () => {
+    const [p] = withCaptureSeen([declaring()], [{ id: 'opencode-hook.plugin-api', lastEventAt: null, running: false }])
+    expect(p.captureSeen).toBe(false)
+    expect(attentionIssues(p).map((i) => i.kind)).toEqual(['capture-not-seen'])
+    expect(needsAttention(p)).toBe(true)
+  })
+  it('stays quiet once the source has a heartbeat or a stored event', () => {
+    const [beat] = withCaptureSeen([declaring()], [{ id: 'opencode-hook.plugin-api', lastEventAt: null, running: true }])
+    const [stored] = withCaptureSeen([declaring()], [{ id: 'opencode-hook.plugin-api', lastEventAt: 5 }])
+    expect(attentionIssues(beat)).toEqual([])
+    expect(attentionIssues(stored)).toEqual([])
+  })
+  it('says nothing when the health read failed, or the plugin declares no capture source', () => {
+    expect(withCaptureSeen([declaring()], null)[0].captureSeen).toBeUndefined()
+    expect(withCaptureSeen([view({})], [])[0].captureSeen).toBeUndefined()
+    expect(withCaptureSeen([declaring({ status: 'disabled' })], [])[0].captureSeen).toBeUndefined()
+    expect(withCaptureSeen([declaring({ official: { agentKind: 'opencode', state: 'installed' } })], [])[0].captureSeen).toBeUndefined()
+  })
+  it('does not count another plugin\'s source whose id merely starts the same', () => {
+    const [p] = withCaptureSeen([declaring()], [{ id: 'opencode-hook-2.x', lastEventAt: 9, running: true }])
+    expect(p.captureSeen).toBe(false)
   })
 })

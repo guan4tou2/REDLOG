@@ -57,6 +57,10 @@ export interface PluginView {
   error?: string
   /** manifest targets a newer plugin API than this RedLog implements */
   apiAhead?: boolean
+  /** Set by `withCaptureSeen`, never by main: whether the capture-health
+   *  snapshot has shown this plugin's declared capture sources alive.
+   *  `undefined` = nothing to say (no declared sources, or health unread). */
+  captureSeen?: boolean
   report?: {
     lootPatterns?: { accepted: number; rejected: Array<{ name: string; reason: string }> }
     redaction?: { accepted: number; rejected: Array<{ list: string; entry: string; reason: string }> }
@@ -128,7 +132,32 @@ export function attentionIssues(p: PluginView): PluginIssue[] {
   if (p.apiAhead === true) out.push({ kind: 'api-ahead', labelKey: 'plugins.issue.apiAhead' })
   if (effectGroups(p).some((g) => g.waiting === true || g.rejected.length > 0)) out.push({ kind: 'partially-effective', labelKey: 'plugins.issue.partiallyEffective' })
   if (p.profilesError) out.push({ kind: 'profiles-stale', labelKey: 'plugins.issue.profilesStale' })
+  // Last: «loaded» is the status, and this is the part of it that is not yet
+  // proven. It never outranks a fault in the plugin itself.
+  if (p.captureSeen === false) out.push({ kind: 'capture-not-seen', labelKey: 'plugins.issue.captureNotSeen' })
   return out
+}
+
+/** The slice of a capture-health source this page reads. */
+export interface PluginCaptureSource { id: string; lastEventAt: number | null; running?: boolean }
+
+/** Mark each loaded plugin that declares capture sources with whether any of
+ *  them has shown signs of life: a running heartbeat, or a stored event. «Loaded»
+ *  only means the manifest was read; the capture-sources page decides «running»
+ *  from the heartbeat, and the two must not contradict each other unremarked.
+ *
+ *  `sources` is `null` when the health read has not succeeded — then nothing is
+ *  claimed either way. Official integrations are left alone: they have their
+ *  own health axis (`officialHealth`). Plugin sources are namespaced
+ *  `<pluginId>.<entryId>`. */
+export function withCaptureSeen(plugins: PluginView[], sources: readonly PluginCaptureSource[] | null | undefined): PluginView[] {
+  if (!sources) return plugins
+  return plugins.map((p) => {
+    const declares = (p.report?.capture?.accepted ?? 0) > 0
+    if (!declares || p.status !== 'active' || p.notLoaded === true || p.official) return p
+    const seen = sources.some((s) => s.id.startsWith(`${p.id}.`) && (s.running === true || s.lastEventAt !== null))
+    return { ...p, captureSeen: seen }
+  })
 }
 
 export const needsAttention = (p: PluginView): boolean => attentionIssues(p).length > 0

@@ -296,6 +296,20 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
         }
         continue
       }
+      // A producer that reports a tool run as ONE event (`codex_tool`,
+      // `opencode_tool`: input and `output_preview` together, no tool_use_id)
+      // has nothing to pair — the row is already the whole call and result.
+      if (sub.endsWith('_tool') && d.tool_input !== undefined) {
+        const preview = typeof d.output_preview === 'string' ? d.output_preview : undefined
+        out.push({
+          id: e.id, ts: e.timestamp, kind: 'agent-tool',
+          actor: `${d.agent ?? 'agent'} · ${d.tool ?? d.tool_name ?? 'tool'}`,
+          input: safeJson(d.tool_input),
+          output: preview, outputBytes: preview?.length,
+          outputNote: preview === undefined ? 'uncaptured' : undefined,
+          events: [e]
+        })
+      }
       continue
     }
 
