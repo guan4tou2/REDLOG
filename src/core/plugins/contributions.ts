@@ -122,7 +122,6 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
         installMethod: cap.installMethod,
         installTarget: cap.installTarget,
         shellRcFile: cap.shellRcFile,
-        claudeSettingsMatcher: cap.claudeSettingsMatcher,
         manualSteps: fillHookPath(cap.manualSteps, join(p.dir, cap.hookFile))
       }))
     )

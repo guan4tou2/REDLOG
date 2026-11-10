@@ -28,7 +28,6 @@ export interface PluginManifest {
   installMethod: InstallMethod
   installTarget?: string
   shellRcFile?: string
-  claudeSettingsMatcher?: string
   /** for installMethod 'manual', plugin-supplied setup steps (absolute paths filled at register time) */
   manualSteps?: ManualStep[]
   /** absolute plugin dir — set for capture entries contributed by a plugin. */
@@ -218,8 +217,7 @@ function loadStarterPack(): PluginManifest[] | null {
         supportFiles: Array.isArray(e.supportFiles) ? (e.supportFiles as string[]) : undefined,
         installMethod: e.installMethod as PluginManifest['installMethod'],
         installTarget,
-        shellRcFile: typeof e.shellRcFile === 'string' ? e.shellRcFile : undefined,
-        claudeSettingsMatcher: typeof e.claudeSettingsMatcher === 'string' ? e.claudeSettingsMatcher : undefined
+        shellRcFile: typeof e.shellRcFile === 'string' ? e.shellRcFile : undefined
       })
     }
     return out
@@ -440,15 +438,27 @@ function commandExistsAsync(cmd: string): Promise<boolean> {
   return Promise.resolve(commandExists(cmd))
 }
 
-function isClaudeSettingsInstalled(matcher: string): boolean {
+/** The command strings a `claude-settings` install writes for this plugin: the
+ *  hook's path, or the relative stand-in used when the file is not on disk.
+ *  Detection and removal match a settings entry by exactly one of these, and by
+ *  nothing the plugin supplies. They used to match any command that merely
+ *  contained a plugin-chosen string, so a matcher such as `/` made uninstall
+ *  strip every hook the operator had of their own (#499). */
+function claudeHookCommands(plugin: PluginManifest): string[] {
+  return [srcPathFor(plugin), `redlog-hooks/${plugin.hookFile.replace('hooks/', '')}`]
+}
+
+type ClaudeHookGroup = { matcher?: unknown; hooks?: Array<{ command?: string }> }
+
+function isClaudeSettingsInstalled(commands: string[]): boolean {
   const settingsPath = join(homedir(), '.claude', 'settings.json')
   if (!existsSync(settingsPath)) return false
   try {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
     const hooks = settings?.hooks?.PostToolUse
     if (!Array.isArray(hooks)) return false
-    return hooks.some((h: { hooks?: Array<{ command?: string }> }) =>
-      h.hooks?.some((hk) => hk.command?.includes(matcher))
+    return hooks.some((h: ClaudeHookGroup) =>
+      h.hooks?.some((hk) => typeof hk.command === 'string' && commands.includes(hk.command))
     )
   } catch {
     return false
@@ -464,12 +474,6 @@ function isShellSourceInstalled(rcFile: string, hookPath: string, requireCopy = 
   const content = readFileSync(rcPath, 'utf-8')
   const hookName = hookPath.split(/[\\/]/).pop() ?? ''
   return content.includes(hookName)
-}
-
-// Default claude-settings matcher for a plugin capture: the hook's basename, so
-// install/uninstall/detect all key off the same string.
-function matcherFor(plugin: PluginManifest): string {
-  return plugin.claudeSettingsMatcher ?? (plugin._dir ? (plugin.hookFile.split(/[\\/]/).pop() ?? plugin.id) : plugin.id)
 }
 
 // PowerShell loads a different profile per edition: Windows PowerShell 5.1
@@ -502,7 +506,7 @@ function isPowershellProfileInstalled(hookPath: string, requireCopy = true): boo
 function checkInstalled(plugin: PluginManifest): boolean {
   switch (plugin.installMethod) {
     case 'claude-settings':
-      return isClaudeSettingsInstalled(matcherFor(plugin))
+      return isClaudeSettingsInstalled(claudeHookCommands(plugin))
     case 'shell-source':
       return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin))
     case 'powershell-profile':
@@ -772,9 +776,9 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         const hooks = settings.hooks as Record<string, unknown>
         if (!hooks.PostToolUse) hooks.PostToolUse = []
         const postTool = hooks.PostToolUse as Array<Record<string, unknown>>
-        const matcher = matcherFor(plugin)
+        const commands = claudeHookCommands(plugin)
         const exists = postTool.some((h) =>
-          (h.hooks as Array<{ command?: string }>)?.some((hk) => hk.command?.includes(matcher))
+          (h.hooks as Array<{ command?: string }>)?.some((hk) => typeof hk.command === 'string' && commands.includes(hk.command))
         )
         if (!exists) {
           postTool.push({
@@ -867,11 +871,17 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         if (!existsSync(settingsPath)) return { success: true, message: 'Already removed' }
         const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
         const postTool = settings?.hooks?.PostToolUse as Array<Record<string, unknown>> | undefined
-        const matcher = matcherFor(plugin)
+        const commands = claudeHookCommands(plugin)
         if (postTool) {
-          settings.hooks.PostToolUse = postTool.filter((h) =>
-            !(h.hooks as Array<{ command?: string }>)?.some((hk) => hk.command?.includes(matcher))
-          )
+          // Take out the hook RedLog wrote and nothing beside it: a group the
+          // operator shares with it keeps their own hooks.
+          settings.hooks.PostToolUse = postTool.flatMap((h) => {
+            const own = h.hooks as Array<{ command?: string }> | undefined
+            if (!Array.isArray(own)) return [h]
+            const kept = own.filter((hk) => !(typeof hk.command === 'string' && commands.includes(hk.command)))
+            if (kept.length === own.length) return [h]
+            return kept.length > 0 ? [{ ...h, hooks: kept }] : []
+          })
         }
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
         return { success: true, message: `${plugin.name} hook removed` }

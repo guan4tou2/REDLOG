@@ -150,7 +150,6 @@ export interface CaptureContribution {
   /** `shell-source` only: one of .zshrc, .bashrc, .bash_profile, .profile.
    *  Anything else makes the plugin an error. */
   shellRcFile?: string
-  claudeSettingsMatcher?: string
   /** for installMethod 'manual': ordered copy-paste setup steps */
   manualSteps?: Array<{ label: string; command?: string }>
 }

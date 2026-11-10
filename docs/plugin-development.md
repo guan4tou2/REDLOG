@@ -315,7 +315,8 @@ environment:
 - **`claude-settings`** — writes into `~/.claude/settings.json`'s `hooks` block.
   Only usable when the target agent reads that file. Currently Claude Code is
   the only one; if a new agent adopts the same convention, this will Just Work
-  for it too. RedLog picks the matcher name from `claudeSettingsMatcher`.
+  for it too. Uninstall removes only the hook command RedLog wrote, never an
+  entry the operator added.
 - **`shell-source`** — copies the hook to `~/.redlog/<name>` and appends a
   `source …` line to `shellRcFile` (default `.zshrc`). Fires on every shell
   command; use it for wrappers whose entry point IS the shell. `installTarget` is
