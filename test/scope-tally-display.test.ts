@@ -22,6 +22,18 @@ describe('scope_violation rows that are really an in-scope tally', () => {
     expect(title).not.toMatch(/violation|out of scope|⚠/i)
   })
 
+  // With no scope drawn, the evaluator files the hit as in_scope with
+  // authority 'unknown'. It was not judged, and calling it in scope contradicted
+  // the status bar's "scope not set" on the same screen.
+  it('says not judged, not in scope, when no scope was configured', () => {
+    const unjudged = eventTitle(row({ distance: 'in_scope', severity: 'clean', authority: 'unknown' }))
+    expect(unjudged).toContain('10.0.0.5')
+    expect(unjudged).toMatch(/not judged/i)
+    expect(unjudged).not.toMatch(/in scope|out of scope|⚠/i)
+    // A rule that matched is a fact and still says so.
+    expect(eventTitle(row({ distance: 'in_scope', severity: 'clean', authority: 'fact' }))).toMatch(/^In scope:/)
+  })
+
   it('does not get the violation diamond or the "out of scope" label', () => {
     const tally = row({ distance: 'in_scope', severity: 'clean' })
     expect(dotShape(tally)).toEqual({ shape: 'circle', scale: 1 })
@@ -33,7 +45,7 @@ describe('scope_violation rows that are really an in-scope tally', () => {
       const violation = row({ distance, severity: 'warning' })
       expect(eventTitle(violation)).toMatch(/out of scope/i)
       expect(dotShape(violation).shape).toBe('diamond')
-      expect(shapeTitle(violation, t)).toContain('timeline.shape.scopeViolation')
+      expect(shapeTitle(violation, t)).toContain('timeline.shape.scopeObservation')
     }
   })
 

@@ -121,6 +121,7 @@ interface Bookmark {
 }
 
 interface BrowserTabInfo {
+  timedOut?: boolean
   url: string | null
   title: string | null
   connected: boolean
@@ -178,6 +179,8 @@ interface RedLogAPI {
     list: () => Promise<ProjectMeta[]>
     /** Read-only scope answer per project id; a scope that could not be read is `unknown`, not `unset`. */
     scopeSummaries: () => Promise<Record<string, ProjectScopeSummary>>
+    /** The directory new projects are created in. */
+    root: () => Promise<string>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>
@@ -251,6 +254,7 @@ interface RedLogAPI {
     activityMembers: (req: import('../../core/activity-contract').ActivityMembersRequest) => Promise<import('../../core/activity-contract').ActivityMembersPage>
     /** Spec 038: how many rows a page or a query walks past `cursor`. */
     count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
+    span: (req: import('../../core/db/events').EventCountRequest) => Promise<{ first: number; last: number } | null>
     /** Spec 038: which of up to 1000 held ids the filter (and query) admit. */
     matchIds: (req: import('../../core/db/events').EventMatchRequest) => Promise<string[]>
     toolCounterparts: (
@@ -313,7 +317,7 @@ interface RedLogAPI {
   }
   scope: {
     policy: () => Promise<{ targets: string[]; excludeTargets: string[] } | null>
-    getViolations: () => Promise<{
+    getObservations: () => Promise<{
       rows: Array<{
         id: string; target: string; command: string; timestamp: number
         sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
@@ -321,7 +325,7 @@ interface RedLogAPI {
       /** More violation records exist than the page read (Constitution IV). */
       truncated: boolean
     }>
-    getViolationCount: () => Promise<number>
+    getObservationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
     /** Add one target to the scope of the project the caller meant. False: that
      *  project is no longer open, or the write failed. */
@@ -394,7 +398,7 @@ interface RedLogAPI {
       bookmarkSeen: boolean
       httpFlowSeen: boolean
       loggedEver: boolean
-      scopeViolationSeen: boolean
+      scopeObservationSeen: boolean
     } | null>
   }
   recording: {

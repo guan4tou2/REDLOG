@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+
+<html lang="zh-Hant"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>RedLog — 儀表板 (Dashboard) 視覺精修定案版</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#121214;
+  --bg-dark:#0a0a0b;
+  --surface:#18181c;
+  --raised:#212126;
+  --border:#33333a;
+  --border-subtle:#26262b;
+  --text-primary:#ececf0;
+  --text-secondary:#bebec8;
+  --text-muted:#8e8e98;
+  --accent:#d75f63;
+  --accent-soft:#4f272c;
+  --accent-border:#a75359;
+  --ok:#68d4a5;
+  --ok-bg:#173127;
+  --ok-border:#295b46;
+  --warn:#e0b66a;
+  --warn-bg:#34291b;
+  --warn-border:#654529;
+  --danger:#f1787e;
+  --danger-bg:#351e21;
+  --danger-border:#653b40;
+  --info:#86cbd6;
+  --mono:'JetBrains Mono','SFMono-Regular',Consolas,monospace;
+  --sans:'Noto Sans TC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text-primary);font:13px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input{font:inherit}
+button{cursor:pointer;color:inherit}
+button:disabled{cursor:not-allowed;opacity:.45}
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:inherit;text-decoration:none}
+p,h1,h2,h3{margin:0}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--text-secondary)}
+.faint{color:var(--text-muted)}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+
+/* 全域頂部列 */
+.topbar{height:40px;position:fixed;inset:0 0 auto;z-index:30;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.brand{font:700 13px var(--mono);letter-spacing:.11em;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.brand-dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.top-divider{width:1px;height:15px;background:var(--border)}
+.top-project{background:var(--raised);border:1px solid var(--border);border-radius:5px;padding:3px 9px;color:var(--text-secondary);font:11px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;display:flex;align-items:center;gap:6px}
+.top-project .p-name{color:var(--text-primary);font-weight:600}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px;white-space:nowrap}
+.rec-chip{display:flex;align-items:center;gap:7px;font:11px var(--mono);color:var(--text-muted)}
+.rec-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px rgba(215,95,99,.5)}
+.top-btn{border:1px solid var(--border);border-radius:5px;background:var(--raised);padding:3px 9px;font-size:12px;color:var(--text-secondary);min-height:26px}
+.top-btn:hover{background:#2c2c32;color:var(--text-primary);border-color:#585861}
+
+/* 主版面與側邊欄 */
+.shell{display:flex;min-height:100vh;padding-top:40px}
+.sidebar{width:150px;flex:0 0 150px;border-right:1px solid var(--border);height:calc(100vh - 40px);position:sticky;top:40px;display:flex;flex-direction:column;justify-content:space-between;padding:14px 8px;background:var(--surface)}
+.side-label{padding:0 8px 9px;color:var(--text-muted);font:10px var(--mono);letter-spacing:.09em}
+.nav{display:flex;flex-direction:column;gap:3px}
+.nav a{padding:8px 9px;border:1px solid transparent;border-radius:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;color:var(--text-secondary);font-size:12px}
+.nav a:hover{background:var(--raised);color:var(--text-primary)}
+.nav a.active{background:var(--raised);border-left:2px solid var(--accent);border-radius:3px;color:var(--text-primary);font-weight:600}
+.nav a.active .glyph{color:var(--accent)}
+.nav kbd{font:10px var(--mono);color:var(--text-muted)}
+.nav .label{display:inline-flex;align-items:center;gap:8px}
+.nav .glyph{font:14px var(--mono);color:var(--text-muted);width:16px;text-align:center}
+.side-foot{border-top:1px solid var(--border);padding-top:8px}
+
+/* 單欄工作區 */
+.main{min-width:0;flex:1;background:var(--bg);padding:24px 28px 48px;overflow-y:auto}
+.canvas{max-width:980px;margin:0 auto}
+
+/* 標題與原型情境控制 */
+.title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.eyebrow{color:var(--accent);font-size:11px;font-weight:700;letter-spacing:1.5px;margin-bottom:4px}
+.title-row h1{font-size:20px;letter-spacing:-.4px;font-weight:700;line-height:1.25}
+.subtitle{color:var(--text-secondary);margin-top:4px;font-size:12px}
+.view-note{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);padding:4px 9px;border-radius:5px;background:var(--surface);font-size:11px;color:var(--text-muted);white-space:nowrap}
+.view-note .dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+
+/* 原型情境切換條（明確標註僅供展示） */
+.prototype-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 12px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;margin-bottom:20px}
+.prototype-bar strong{font:11px var(--mono);color:var(--warn);margin-right:4px}
+.scenario-btn{border:1px solid var(--border);background:var(--raised);border-radius:4px;padding:3px 9px;font-size:11px;color:var(--text-secondary);min-height:24px}
+.scenario-btn:hover{background:#2c2c32;color:var(--text-primary)}
+.scenario-btn[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:#fff;font-weight:600}
+.prototype-bar .note{margin-left:auto;font-size:11px;color:#d0b991}
+
+/* 區塊與卡片樣式（嚴格無漸層、單欄排版） */
+.section{margin-top:22px}
+.section:first-of-type{margin-top:0}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
+.section-title h2{font-size:13px;font-weight:650;letter-spacing:.1px;display:flex;align-items:center;gap:8px}
+.section-title .count{color:var(--text-muted);font:11px var(--mono);background:var(--raised);border:1px solid var(--border);padding:0 6px;border-radius:4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:7px;overflow:hidden}
+
+/* 1. 需要處理（可完全隱藏） */
+.issue-row{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-top:1px solid var(--border-subtle);position:relative}
+.issue-row:first-child{border-top:0}
+.issue-row.attention:before,.issue-row.pending:before{content:"";position:absolute;top:10px;bottom:10px;left:0;width:3px;border-radius:2px}
+.issue-row.attention:before{background:var(--danger)}
+.issue-row.pending:before{background:var(--warn)}
+.issue-main{flex:1;min-width:0}
+.issue-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650}
+.issue-row.attention .issue-head{color:#f3a2a7}
+.issue-row.pending .issue-head{color:var(--text-primary)}
+.issue-desc{color:var(--text-secondary);font-size:12px;margin-top:3px;line-height:1.5}
+.issue-time{color:var(--text-muted);font:11px var(--mono);margin-top:5px}
+.issue-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+
+/* 按鈕與標籤 */
+.btn{border:1px solid var(--border);background:var(--raised);border-radius:5px;padding:4px 10px;font-size:12px;color:var(--text-primary);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;min-height:28px}
+.btn:hover{background:#2c2c32;border-color:#585861}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--text-secondary)}
+.btn.ghost:hover{background:var(--raised);color:var(--text-primary)}
+.btn.accent{border-color:var(--accent-border);background:var(--accent-soft);color:#f5d0d2}
+.btn.accent:hover{background:#632c32;border-color:var(--accent)}
+.btn.small{padding:2px 7px;min-height:24px;font-size:11px}
+.tag{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font:11px var(--mono);white-space:nowrap}
+.tag.ok{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-border)}
+.tag.warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-border)}
+.tag.err{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-border)}
+.tag.neutral{color:var(--text-secondary);background:var(--raised)}
+
+/* 2. 擷取狀態 */
+.capture-header{padding:14px 16px;display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-bottom:1px solid var(--border-subtle)}
+.capture-title-wrap{display:flex;align-items:flex-start;gap:10px}
+.health-bar{width:3px;height:32px;border-radius:2px;background:var(--ok);flex:none;margin-top:2px}
+.health-bar.warn{background:var(--warn)}
+.health-bar.err{background:var(--danger)}
+.health-bar.neutral{background:var(--text-muted)}
+.capture-title-wrap strong{font-size:14px;font-weight:650;display:block}
+.capture-title-wrap p{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.source-list{display:flex;flex-direction:column}
+.source-item{display:flex;align-items:center;gap:14px;min-height:44px;padding:9px 16px;border-top:1px solid var(--border-subtle)}
+.source-item:first-child{border-top:0}
+.source-name{font-size:13px;font-weight:600;min-width:110px}
+.source-details{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);flex:1;min-width:0}
+.source-status{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;color:var(--text-secondary);text-align:right}
+.source-status .light{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0}
+.source-status .light.warn{background:var(--warn)}
+.source-status .light.off{background:var(--text-muted)}
+.source-age{color:var(--text-muted);font:11px var(--mono);min-width:65px;text-align:right}
+.capture-footer{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border-subtle);padding:9px 16px;align-items:center;justify-content:space-between;background:var(--bg-dark);font-size:11px;color:var(--text-muted)}
+.more-sources{border-top:1px solid var(--border-subtle);padding:0 16px}
+.more-sources summary{color:var(--text-secondary);padding:10px 0;cursor:pointer;font-size:12px;font-weight:550;user-select:none}
+.more-sources summary:hover{color:var(--text-primary)}
+.extra-source{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border-subtle);gap:12px;font-size:12px}
+.extra-meta{display:flex;align-items:center;gap:8px}
+
+/* 3. 網路狀態 & Pivot 區域 */
+.network-card{padding:14px 16px}
+.network-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.network-heading{display:flex;align-items:center;gap:8px}
+.network-heading strong{font-size:13px;font-weight:650}
+.kv-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.kv-line{display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:12px}
+.kv-line dt{color:var(--text-secondary)}
+.kv-line dd{margin:0;text-align:right;font-family:var(--mono)}
+.network-sep{margin:12px 0;border-top:1px solid var(--border-subtle)}
+
+/* Pivot 節點拓撲與列表 */
+.pivot-section{margin-top:2px}
+.pivot-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.pivot-title{font-size:11px;color:var(--text-muted);font-weight:500;display:flex;align-items:center;gap:6px}
+.pivot-badge{font:10px var(--mono);padding:1px 5px;border-radius:3px;border:1px solid var(--border)}
+.route{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.hop{padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--text-secondary);background:var(--raised);display:inline-flex;align-items:center;gap:5px}
+.hop strong{font:11px var(--mono);color:var(--text-primary);font-weight:550}
+.hop .tool-tag{font:10px var(--mono);color:var(--info);background:#18282b;border:1px solid #234c52;padding:0 4px;border-radius:3px}
+.arrow{color:var(--text-muted);font-family:var(--mono);font-size:11px}
+
+/* Pivot 節點列表（非拓撲或拓撲未確認時展示） */
+.pivot-list{display:flex;flex-direction:column;gap:6px}
+.pivot-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 10px;background:var(--raised);border:1px solid var(--border);border-radius:4px;font-size:11px}
+.pivot-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pivot-routes{font-family:var(--mono);color:var(--text-secondary);font-size:11px}
+.pivot-meta{color:var(--text-muted);font:10px var(--mono);white-space:nowrap}
+
+/* 4. 記錄概況 */
+.stats-card{padding:14px 16px;display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap}
+.stat-main{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+.stat-figure{font:650 24px var(--mono);letter-spacing:-.8px;color:var(--text-primary)}
+.stat-context{font-size:12px;color:var(--text-secondary)}
+.stat-breakdown{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary)}
+.stat-breakdown b{color:var(--text-primary);font-weight:600;font-family:var(--mono)}
+
+/* 5. 專案摘要 */
+.detail-card{padding:10px 16px}
+.detail-card .kv-line{padding:7px 0;border-bottom:1px solid var(--border-subtle)}
+.detail-card .kv-line:last-child{border-bottom:0}
+
+/* 6. 快捷鍵輔助資訊（預設收合） */
+.shortcuts{margin-top:20px;border-top:1px solid var(--border);padding-top:10px}
+.shortcuts summary{color:var(--text-secondary);cursor:pointer;font-size:12px;padding:6px 0;user-select:none}
+.shortcuts summary:hover{color:var(--text-primary)}
+.shortcut-list{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:8px;color:var(--text-secondary);font-size:12px}
+.keycap{display:inline-block;border:1px solid var(--border);background:var(--raised);padding:1px 6px;border-radius:4px;font:11px var(--mono);margin-right:6px;color:var(--text-primary)}
+
+/* 首次使用 (FirstRunView) */
+.first-setup{padding:18px}
+.first-setup h2{font-size:15px;margin-bottom:4px;font-weight:650}
+.first-setup p{color:var(--text-secondary);font-size:12px}
+.setup-step{padding:14px 0;border-top:1px solid var(--border-subtle);display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.setup-step:first-of-type{margin-top:14px}
+.setup-step .step-number{font:12px var(--mono);color:var(--text-muted);margin-right:8px}
+.setup-step strong{font-size:13px;font-weight:600}
+.setup-step p{font-size:12px;margin-top:2px;color:var(--text-secondary)}
+.setup-dual-paths{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.setup-path-item{background:var(--bg-dark);border:1px solid var(--border-subtle);border-radius:4px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.alert-box{background:#221d1f;border:1px solid #53363c;color:#e6b3b7;padding:10px 12px;border-radius:5px;font-size:12px;margin-top:12px}
+
+/* 狀態面板與通知 Toast */
+.panel-notice{padding:16px;color:var(--text-secondary);font-size:12px}
+.panel-notice strong{color:var(--text-primary);font-size:13px;display:block;margin-bottom:4px}
+.toast{position:fixed;bottom:26px;right:20px;max-width:360px;z-index:100;border:1px solid var(--border);background:#25252b;box-shadow:0 12px 35px #0009;border-radius:6px;color:var(--text-primary);padding:11px 15px;font-size:12px;display:none}
+.toast.show{display:block}
+.app-status{position:fixed;bottom:0;left:0;right:0;z-index:32;height:22px;border-top:1px solid var(--border);background:var(--bg-dark);display:flex;align-items:center;gap:14px;padding:0 12px;color:var(--text-muted);font:10px var(--mono)}
+.app-status .right{margin-left:auto}
+
+/* 響應式優化 */
+@media(max-width:850px){
+  .sidebar{width:48px;flex-basis:48px;padding-inline:4px}
+  .side-label,.nav .label-text,.nav kbd{display:none}
+  .nav a{justify-content:center;padding:8px 4px}
+  .nav .glyph{width:auto}
+  .main{padding:18px 16px 40px}
+  .issue-row{flex-direction:column;gap:8px}
+  .issue-actions{width:100%}
+  .prototype-bar .note{width:100%;margin-left:0}
+  .setup-path-item{flex-direction:column;align-items:flex-start}
+}
+@media(max-width:550px){
+  .topbar{gap:8px;padding:0 10px}
+  .top-divider{display:none}
+  .top-project{max-width:150px}
+  .top-right{gap:6px}
+  .top-right .top-btn:nth-of-type(2){display:none}
+  .rec-chip span:nth-child(3){display:none}
+  .title-row{flex-direction:column;gap:8px}
+  .stats-card{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<!-- 全域頂部列 -->
+<header class="topbar">
+<div class="brand"><span aria-hidden="true" class="brand-dot"></span>REDLOG</div>
+<span class="top-divider"></span>
+<div class="top-project" title="目前專案：ACME-EXTERNAL-2026">
+<span class="faint">專案</span>
+<span class="p-name">ACME-EXTERNAL-2026</span>
+<span class="faint">▾</span>
+</div>
+<div class="top-right">
+<div class="rec-chip">
+<span aria-hidden="true" class="rec-dot"></span>
+<span>錄製中</span>
+<span class="mono faint">02:44:19</span>
+</div>
+<button class="top-btn" data-action="mock" data-label="匯出功能由全域工具列負責">匯出</button>
+<button class="top-btn" data-action="mock" data-label="截圖功能由全域工具列負責">截圖</button>
+</div>
+</header>
+<div class="shell">
+<!-- 側邊欄（嚴格沿用 7 項標準工作區與設定） -->
+<aside aria-label="RedLog 主要導覽" class="sidebar">
+<div>
+<div class="side-label">工作區</div>
+<nav class="nav">
+<a aria-current="page" class="active" href="#">
+<span class="label"><span class="glyph">◫</span><span class="label-text">儀表板</span></span>
+<kbd>⌘1</kbd>
+</a>
+<a data-action="nav" data-label="活動紀錄" href="#">
+<span class="label"><span class="glyph">≡</span><span class="label-text">活動紀錄</span></span>
+<kbd>⌘2</kbd>
+</a>
+<a data-action="nav" data-label="時間軸" href="#">
+<span class="label"><span class="glyph">≋</span><span class="label-text">時間軸</span></span>
+<kbd>⌘3</kbd>
+</a>
+<a data-action="nav" data-label="HTTP 歷程" href="#">
+<span class="label"><span class="glyph">⇄</span><span class="label-text">HTTP 歷程</span></span>
+<kbd>⌘4</kbd>
+</a>
+<a data-action="nav" data-label="目標與範圍" href="#">
+<span class="label"><span class="glyph">◎</span><span class="label-text">目標與範圍</span></span>
+<kbd>⌘5</kbd>
+</a>
+<a data-action="nav" data-label="證據" href="#">
+<span class="label"><span class="glyph">▤</span><span class="label-text">證據</span></span>
+<kbd>⌘6</kbd>
+</a>
+<a data-action="nav" data-label="終端機" href="#">
+<span class="label"><span class="glyph">❯</span><span class="label-text">終端機</span></span>
+<kbd>⌘7</kbd>
+</a>
+</nav>
+</div>
+<div class="side-foot nav">
+<a data-action="nav" data-label="設定" href="#">
+<span class="label"><span class="glyph">⚙</span><span class="label-text">設定</span></span>
+<kbd>⌘9</kbd>
+</a>
+</div>
+</aside>
+<!-- 單欄主要工作區 -->
+<main class="main">
+<div class="canvas">
+<!-- 標題區域 -->
+<div class="title-row">
+<div>
+<div class="eyebrow">OVERVIEW</div>
+<h1>儀表板</h1>
+<p class="subtitle">專案記錄、擷取狀態與目前需要處理的事項</p>
+</div>
+<div class="view-note">
+<span class="dot"></span>
+<span>狀態以各來源最後回報為準</span>
+</div>
+</div>
+<!-- 原型情境切換條（含 Pivot 多種客觀狀態預覽） -->
+<div aria-label="原型驗收情境控制" class="prototype-bar">
+<strong>原型情境</strong>
+<button aria-pressed="true" class="scenario-btn" data-mode="attention">需要處理 (有 Pivot 拓撲)</button>
+<button aria-pressed="false" class="scenario-btn" data-mode="healthy">正常 (無 Pivot)</button>
+<button aria-pressed="false" class="scenario-btn" data-mode="ip_fail_with_pivot">IP 失敗但 Pivot 仍存</button>
+<button aria-pressed="false" class="scenario-btn" data-mode="pivot_list">獨立 Pivot (節點列表無拓撲)</button>
+<button aria-pressed="false" class="scenario-btn" data-mode="unknown">全域讀取未知</button>
+<button aria-pressed="false" class="scenario-btn" data-mode="first">首次使用</button>
+<span class="note">示範資料切換 · 不呼叫外部 API</span>
+</div>
+<!-- 動態單欄內容容器 -->
+<div aria-live="polite" id="dashboardRoot"></div>
+<!-- 快捷鍵輔助資訊（預設收合） -->
+<details class="shortcuts" id="shortcutSection">
+<summary>鍵盤快捷鍵（展開查看）</summary>
+<div class="shortcut-list">
+<span><span class="keycap">⌘K</span>命令面板</span>
+<span><span class="keycap">⌘1–7</span>切換工作區</span>
+<span><span class="keycap">⌘9</span>設定</span>
+<span><span class="keycap">⌘F</span>目前畫面搜尋（依工作區）</span>
+</div>
+</details>
+</div>
+</main>
+</div>
+<!-- 底部狀態列 -->
+<footer class="app-status">
+<span>RedLog · UI Prototype</span>
+<span>專案狀態為示範</span>
+<span class="right">單欄工作區 · 被動側錄不阻斷操作</span>
+</footer>
+<!-- Toast 提示組件 -->
+<div aria-live="polite" class="toast" id="toast" role="status"></div>
+<script>
+(()=>{
+'use strict';
+// 支援原型模式：attention (預設, 有確認拓撲), healthy (無中繼), ip_fail_with_pivot (IP 失敗但 Pivot 仍存), pivot_list (獨立節點未確認拓撲), unknown (全域未知), first (首次使用)
+let currentMode = 'attention';
+let toastTimer = null;
+const root = document.getElementById('dashboardRoot');
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 3800);
+}
+
+// 區塊包裝函式
+const sectionWrap = (title, body, aside='') => `
+  <section class="section">
+    <div class="section-title">
+      <h2>${title}</h2>
+      ${aside}
+    </div>
+    ${body}
+  </section>
+`;
+
+/* 1. 需要處理事項（原則：沒有需要處理時，整個問題區域直接隱藏，絕不產生「一切正常」佔位卡片） */
+function renderIssueSection(){
+  if(currentMode !== 'attention' && currentMode !== 'ip_fail_with_pivot') return '';
+
+  const issues = [];
+  if(currentMode === 'attention'){
+    issues.push(`
+      <div class="issue-row attention">
+        <div class="issue-main">
+          <div class="issue-head">證據鏈驗證未通過</div>
+          <div class="issue-desc">最近一次檢查偵測到資料鏈雜湊不一致，需查看完整完整性驗證結果。</div>
+          <div class="issue-time">持續 12 分鐘</div>
+        </div>
+        <div class="issue-actions">
+          <button class="btn accent" data-action="nav" data-label="設定 ▸ 完整性">查看驗證 ↗</button>
+        </div>
+      </div>
+    `);
+    issues.push(`
+      <div class="issue-row pending">
+        <div class="issue-main">
+          <div class="issue-head">尚未設定測試範圍</div>
+          <div class="issue-desc">此專案尚未宣告目標範圍規則；已記錄的活動仍可正常查看，不阻斷側錄。</div>
+          <div class="issue-time">持續 2 小時</div>
+        </div>
+        <div class="issue-actions">
+          <button class="btn" data-action="nav" data-label="設定 ▸ 範圍">設定範圍 ↗</button>
+        </div>
+      </div>
+    `);
+  } else if(currentMode === 'ip_fail_with_pivot'){
+    issues.push(`
+      <div class="issue-row pending">
+        <div class="issue-main">
+          <div class="issue-head">對外出口 IP 查詢逾時</div>
+          <div class="issue-desc">無法取得外部 IP 狀態；目前 Pivot 節點仍正常運行中，不影響本機指令及代理記錄。</div>
+          <div class="issue-time">持續 4 分鐘</div>
+        </div>
+        <div class="issue-actions">
+          <button class="btn" data-action="retry">重新檢查 ↗</button>
+        </div>
+      </div>
+    `);
+  }
+
+  return sectionWrap(`需要處理 <span class="count">${issues.length}</span>`, `
+    <div class="card">
+      ${issues.join('')}
+    </div>
+  `);
+}
+
+/* 2. 擷取狀態（突出指令與 HTTP(S)，區分「已安裝、已啟用、正在運作、已驗證」，其他來源漸進展開） */
+function renderCaptureSection(){
+  if(currentMode === 'unknown'){
+    return sectionWrap('擷取狀態', `
+      <div class="card">
+        <div class="panel-notice">
+          <strong>目前無法取得擷取狀態</strong>
+          <p style="margin-top:4px;color:var(--text-secondary)">不能根據上一次結果推定目前仍在錄製。上次成功讀取：14:18。</p>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn" data-action="retry">重新讀取</button>
+            <button class="btn ghost" data-action="nav" data-label="設定 ▸ 擷取來源">查看擷取設定</button>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  const isHealthy = currentMode === 'healthy';
+  const badge = isHealthy
+    ? '<span class="tag ok">● 擷取狀態正常</span>'
+    : '<span class="tag warn">▲ 部分來源待確認</span>';
+
+  const statusHeadline = isHealthy ? '主要來源運作中' : '指令已接入，HTTP 尚待工具驗證';
+  const statusSub = isHealthy
+    ? '終端指令與 HTTP(S) 擷取均已通過連線與工具驗證'
+    : '依實際來源回報判斷，不以全域錄製開關推定擷取成功';
+
+  return sectionWrap('擷取狀態', `
+    <div class="card">
+      <div class="capture-header">
+        <div class="capture-title-wrap">
+          <span class="health-bar ${isHealthy ? '' : 'warn'}" aria-hidden="true"></span>
+          <div>
+            <strong>${statusHeadline}</strong>
+            <p>${statusSub}</p>
+          </div>
+        </div>
+        ${badge}
+      </div>
+
+      <!-- 核心突出來源：指令 與 HTTP(S) -->
+      <div class="source-list">
+        <div class="source-item">
+          <span class="source-name">指令 (Shell)</span>
+          <div class="source-details">
+            <span class="tag neutral">已安裝 (zsh)</span>
+            <span class="tag ok">正在運作</span>
+          </div>
+          <span class="source-status"><span class="light"></span>已接入 (終端 / Shell)</span>
+          <span class="source-age">剛剛</span>
+        </div>
+
+        <div class="source-item">
+          <span class="source-name">HTTP(S) 代理</span>
+          <div class="source-details">
+            <span class="tag neutral">已啟用 (127.0.0.1:8080)</span>
+            <span class="tag ${isHealthy ? 'ok' : 'warn'}">${isHealthy ? '已驗證 (Nonce 匹配)' : '正在運作 · HTTPS 未驗證'}</span>
+          </div>
+          <span class="source-status">
+            <span class="light ${isHealthy ? '' : 'warn'}"></span>
+            ${isHealthy ? '已驗證' : '待測試流量驗證'}
+          </span>
+          <span class="source-age">${isHealthy ? '20 秒前' : '—'}</span>
+        </div>
+      </div>
+
+      <div class="capture-footer">
+        <span>${isHealthy ? '最近一次完整擷取檢查：14:22' : '注意：HTTP 代理監聽中不代表 HTTPS 憑證信任已完成'}</span>
+        <button class="btn small" data-action="nav" data-label="設定 ▸ 擷取來源">查看擷取設定 ↗</button>
+      </div>
+
+      <!-- 其他來源漸進展開（不建立第二套管理介面） -->
+      <details class="more-sources">
+        <summary>其他擷取來源與狀態 (3) ▾</summary>
+        <div class="extra-source">
+          <div class="extra-meta">
+            <strong>AI 代理</strong>
+            <span class="tag neutral">已安裝</span>
+            <span class="tag ok">已啟用 · Claude Code</span>
+          </div>
+          <span class="mono faint">監聽 project 工作目錄</span>
+        </div>
+        <div class="extra-source">
+          <div class="extra-meta">
+            <strong>桌面截圖</strong>
+            <span class="tag neutral">定時模式</span>
+            <span class="tag neutral">待命中</span>
+          </div>
+          <span class="mono faint">每 60 秒 / 手動</span>
+        </div>
+        <div class="extra-source">
+          <div class="extra-meta">
+            <strong>剪貼簿</strong>
+            <span class="tag neutral">未啟用</span>
+          </div>
+          <span class="faint">需手動於設定中開啟</span>
+        </div>
+        <div class="extra-source" style="background:var(--bg-dark);margin:0 -16px;padding:8px 16px">
+          <span class="faint" style="font-size:11px">來源啟用、安裝與信任憑證請由正式 RedLog 設定管理</span>
+          <button class="btn ghost small" data-action="nav" data-label="設定 ▸ 擷取來源">管理來源 ↗</button>
+        </div>
+      </details>
+    </div>
+  `);
+}
+
+/* 3. 網路狀態 & Pivot（跳板／中繼）
+   - 沿用 RedLog 現有 usePivots() / IPStatusCard 模型，不新增第二套來源
+   - 顯示工具（ligolo-ng / chisel / ssh -D）、節點（IP/Port）、路由資訊（子網 CIDR）、最近更新時間
+   - 拓撲箭頭規則：只有確認路由跳轉拓撲時才繪製箭頭；獨立節點以列表展示
+   - IP 查詢失敗與 Pivot 完全解耦：即使 IP 未知，Pivot 有效時正常顯示
+   - 無 Pivot 時乾淨隱藏中繼區塊，不顯示多餘卡片或「一切正常」佔位
+*/
+function renderNetworkSection(){
+  // 全域讀取未知情境
+  if(currentMode === 'unknown'){
+    return sectionWrap('網路狀態', `
+      <div class="card network-card">
+        <div class="network-top">
+          <div class="network-heading">
+            <strong>目前對外網路連線</strong>
+            <span class="tag neutral">讀取失敗</span>
+          </div>
+          <span class="faint mono" style="font-size:11px">最近一次檢查失敗</span>
+        </div>
+        <div class="panel-notice" style="padding:0">
+          目前無法取得網路與 Pivot 狀態。請勿將上一次快取資料視為當前安全狀態。
+          <div style="margin-top:10px">
+            <button class="btn small" data-action="retry">重新檢查網路</button>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  const isIpFailed = currentMode === 'ip_fail_with_pivot';
+  const hasTopologyPivot = currentMode === 'attention';
+  const hasListPivot = currentMode === 'pivot_list' || currentMode === 'ip_fail_with_pivot';
+  const hasPivots = hasTopologyPivot || hasListPivot;
+
+  // IP 區塊內容（解耦處理）
+  let ipContentHtml = '';
+  if(isIpFailed){
+    ipContentHtml = `
+      <div class="kv-line">
+        <dt>外部 IP (出口)</dt>
+        <dd><span class="tag warn" style="font-size:10px">查詢逾時 · 外部狀態未知</span></dd>
+      </div>
+      <div class="kv-line">
+        <dt>內部 IP (本機)</dt>
+        <dd><span class="mono">10.0.2.15</span></dd>
+      </div>
+    `;
+  } else {
+    ipContentHtml = `
+      <div class="kv-line">
+        <dt>外部 IP (出口)</dt>
+        <dd><span class="mono">203.0.113.18</span> <span class="faint">(未標記為已知安全 IP)</span></dd>
+      </div>
+      <div class="kv-line">
+        <dt>內部 IP (本機)</dt>
+        <dd><span class="mono">10.0.2.15</span></dd>
+      </div>
+    `;
+  }
+
+  // Pivot 區塊內容：嚴格落實拓撲箭頭規則與乾淨隱藏
+  let pivotHtml = '';
+  if(hasTopologyPivot){
+    // 確認拓撲關係：本機 -> 出口 -> 跳板
+    pivotHtml = `
+      <div class="network-sep"></div>
+      <div class="pivot-section">
+        <div class="pivot-header">
+          <div class="pivot-title">
+            <span>作用中中繼拓撲</span>
+            <span class="pivot-badge mono">已確認路由鏈</span>
+          </div>
+          <span class="faint mono" style="font-size:10px">14:20:50 更新</span>
+        </div>
+        <div class="route">
+          <span class="hop">本機 <strong>10.0.2.15</strong></span>
+          <span class="arrow">→</span>
+          <span class="hop">出口 <strong>203.0.113.18</strong></span>
+          <span class="arrow">→</span>
+          <span class="hop">
+            <span class="tool-tag">ligolo-ng</span>
+            <strong>192.0.2.24:11601</strong>
+            <span class="mono faint">(172.16.10.0/24)</span>
+          </span>
+        </div>
+      </div>
+    `;
+  } else if(hasListPivot){
+    // 獨立節點或路由未確定：採用節點列表展示，不繪製箭頭
+    pivotHtml = `
+      <div class="network-sep"></div>
+      <div class="pivot-section">
+        <div class="pivot-header">
+          <div class="pivot-title">
+            <span>活動中繼節點</span>
+            <span class="pivot-badge mono">獨立節點列表 (路由未串接)</span>
+          </div>
+          <span class="faint mono" style="font-size:10px">14:19:30 更新</span>
+        </div>
+        <div class="pivot-list">
+          <div class="pivot-item">
+            <div class="pivot-main">
+              <span class="hop" style="padding:2px 6px;background:transparent;border-color:transparent">
+                <span class="tool-tag">chisel</span>
+                <strong>198.51.100.88:8000</strong>
+              </span>
+              <span class="pivot-routes">子網路由: 10.100.0.0/16</span>
+            </div>
+            <span class="pivot-meta">通道活躍 · 35 秒前</span>
+          </div>
+          <div class="pivot-item">
+            <div class="pivot-main">
+              <span class="hop" style="padding:2px 6px;background:transparent;border-color:transparent">
+                <span class="tool-tag">ssh -D</span>
+                <strong>127.0.0.1:1080</strong>
+              </span>
+              <span class="pivot-routes">動態 SOCKS5 代理</span>
+            </div>
+            <span class="pivot-meta">本機監聽中 · 剛剛</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // 若 hasPivots 為 false (如 healthy 模式)，pivotHtml 為空字串，乾淨隱藏中繼拓撲區塊
+
+  return sectionWrap('網路狀態', `
+    <div class="card network-card">
+      <div class="network-top">
+        <div class="network-heading">
+          <strong>目前對外網路連線</strong>
+          <span class="tag ${isIpFailed ? 'err' : 'warn'}">
+            ${isIpFailed ? '外部 IP 查詢失敗' : 'IP 狀態待確認'}
+          </span>
+        </div>
+        <span class="faint mono" style="font-size:11px">
+          ${isIpFailed ? '本機連線正常 · 出口未回應' : '14:21:05 更新'}
+        </span>
+      </div>
+
+      <dl class="kv-grid">
+        ${ipContentHtml}
+      </dl>
+
+      ${pivotHtml}
+    </div>
+  `);
+}
+
+/* 4. 記錄概況（修訂：客觀描述為「已上鏈事件」與「本機僅記錄事件（不參與鏈結雜湊）」，符合雙軌儲存真實語義） */
+function renderStatSection(){
+  return sectionWrap('記錄概況', `
+    <div class="card stats-card">
+      <div>
+        <div class="stat-main">
+          <span class="stat-figure">2,184</span>
+          <span class="stat-context">筆專案已記錄事件</span>
+        </div>
+        <div class="stat-breakdown">
+          <span>已上鏈事件 (雜湊固化) <b>1,960</b></span>
+          <span>本機僅記錄事件 (不參與鏈結雜湊) <b>224</b></span>
+          <span>OTS 錨定狀態 <b>已錨定 (2h 前)</b></span>
+        </div>
+      </div>
+      <button class="btn" data-action="nav" data-label="活動紀錄">查看活動紀錄 ↗</button>
+    </div>
+  `);
+}
+
+/* 5. 專案摘要（維持精簡，細部編輯導向設定頁） */
+function renderProjectSection(){
+  return sectionWrap('專案摘要', `
+    <div class="card detail-card">
+      <dl class="kv-grid">
+        <div class="kv-line">
+          <dt>專案識別碼</dt>
+          <dd class="mono">ENG-2026-ACME-042</dd>
+        </div>
+        <div class="kv-line">
+          <dt>操作員</dt>
+          <dd>Red Team Operator (op-01)</dd>
+        </div>
+        <div class="kv-line">
+          <dt>範圍規則狀態</dt>
+          <dd>
+            ${currentMode === 'attention' ? '<span style="color:var(--warn)">尚未設定</span>' : '<span style="color:var(--ok)">3 條允許 / 1 條排除</span>'}
+            <button class="btn ghost small" style="margin-left:8px" data-action="nav" data-label="目標與範圍">查看範圍 ↗</button>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  `);
+}
+
+/* 6. 首次使用畫面 (FirstRunView)
+   - 修正：第一步指令擷取中，明確區分「內建終端機」與「外部 Shell Hook」，兩者路徑清楚獨立
+*/
+function renderFirstRunView(){
+  return `
+    <div class="card first-setup">
+      <div class="eyebrow">FIRST RUN ONBOARDING</div>
+      <h2>第一次使用：確認所需擷取來源能正常記錄</h2>
+      <p>指令與 HTTP(S) 互不依賴，您不需要先完成其中一項才能使用另一項；請依任務需要分別驗證。</p>
+
+      <div class="setup-step">
+        <div style="flex:1;min-width:260px">
+          <strong><span class="step-number">01</span>指令擷取 (Terminal & Shell)</strong>
+          <p>RedLog 支援兩種獨立的終端記錄模式，請依您的作業習慣選用其一或同時使用：</p>
+          <div class="setup-dual-paths">
+            <div class="setup-path-item">
+              <div>
+                <strong style="font-size:12px;display:flex;align-items:center;gap:6px">
+                  <span>內建終端機</span>
+                  <span class="tag ok" style="font-size:10px">開箱即用</span>
+                </strong>
+                <p style="margin:2px 0 0;font-size:11px;color:var(--text-secondary)">直接具備基礎 PTY 錄影與指令即時捕捉能力，無需在主機安裝任何 Hook 腳本。</p>
+              </div>
+              <button class="btn small accent" data-action="nav" data-label="終端機">開啟內建終端機 ↗</button>
+            </div>
+
+            <div class="setup-path-item">
+              <div>
+                <strong style="font-size:12px;display:flex;align-items:center;gap:6px">
+                  <span>外部 Shell Hook</span>
+                  <span class="tag neutral" style="font-size:10px">需安裝腳本</span>
+                </strong>
+                <p style="margin:2px 0 0;font-size:11px;color:var(--text-secondary)">於系統常用終端（如 iTerm2 / Alacritty）載入 zsh 或 bash hook 腳本，捕捉外部輸入與退出碼。</p>
+              </div>
+              <button class="btn small" data-action="nav" data-label="設定 ▸ Shell Hook 安裝">查看安裝指令 ↗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-step">
+        <div style="flex:1">
+          <strong><span class="step-number">02</span>HTTP(S) 擷取 (Proxy & 憑證)</strong>
+          <p>啟動本地代理並發送測試請求，分別確認 HTTP 明文與 HTTPS 憑證解密擷取狀態。</p>
+        </div>
+        <button class="btn" data-action="nav" data-label="設定 ▸ 瀏覽器與 HTTP 擷取">設定 HTTP 代理 ↗</button>
+      </div>
+
+      <details class="more-sources" style="padding:0;margin-top:10px">
+        <summary>準備其他擷取來源 (AI 代理、截圖) ▾</summary>
+        <div class="extra-source">
+          <span>AI 對話 (Claude Code / Codex)、截圖與主機行程監控</span>
+          <button class="btn ghost small" data-action="nav" data-label="設定 ▸ 擷取來源">查看設定 ↗</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="alert-box">
+      <strong>提示：</strong>本畫面為既有 <span class="mono">FirstRunView</span> 原型。此處展示資訊引導層級，實際安裝與授權請以正式 RedLog Client 為準。
+    </div>
+  `;
+}
+
+// 主渲染流程
+function render(){
+  // 更新情境切換按鈕狀態
+  document.querySelectorAll('.scenario-btn').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.mode === currentMode));
+  });
+
+  const isFirstRun = currentMode === 'first';
+  const shortcutEl = document.getElementById('shortcutSection');
+  if(shortcutEl) shortcutEl.hidden = isFirstRun;
+
+  if(isFirstRun){
+    root.innerHTML = renderFirstRunView();
+  } else {
+    // 嚴格維持順序：需要處理 → 擷取狀態 → 網路狀態 → 記錄概況 → 專案摘要
+    root.innerHTML =
+      renderIssueSection() +
+      renderCaptureSection() +
+      renderNetworkSection() +
+      renderStatSection() +
+      renderProjectSection();
+  }
+}
+
+// 事件代理
+document.addEventListener('click', e => {
+  const btn = e.target.closest('button, a');
+  if(!btn) return;
+
+  if(btn.matches('a[href="#"]')) e.preventDefault();
+
+  // 切換情境
+  if(btn.dataset.mode){
+    currentMode = btn.dataset.mode;
+    render();
+    toast(`已切換至「${btn.textContent}」示範情境`);
+    return;
+  }
+
+  // 重新讀取
+  if(btn.dataset.action === 'retry'){
+    toast('原型模式：重新讀取需由正式 RedLog 後端執行');
+    return;
+  }
+
+  // 頁面導航通知
+  if(btn.dataset.action === 'nav'){
+    toast(`原型導航：正式版將前往「${btn.dataset.label}」`);
+    return;
+  }
+
+  // 全域工具列功能
+  if(btn.dataset.action === 'mock'){
+    toast(`原型模式：${btn.dataset.label}`);
+    return;
+  }
+});
+
+// 初始化渲染
+render();
+
+})();
+</script>
+</body></html>

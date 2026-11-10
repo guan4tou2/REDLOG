@@ -1,3 +1,4 @@
+import { captureFacts } from '../../../core/capture-contract'
 // One vocabulary for "is HTTP being recorded right now".
 //
 // The Dashboard used to carry two, side by side. The mitmproxy row spoke the
@@ -18,6 +19,8 @@
 // will see it.
 
 export type HttpCaptureState =
+  | 'recorded' // saved traffic exists; the current external service is unconfirmed
+  | 'unknown' // the health read failed; cached process/data facts are history
   /** mitmproxy is not on this machine, or its addon was never installed */
   | 'unset'
   /** installed, and the operator switched it off */
@@ -52,38 +55,34 @@ export interface HttpProxyStatus {
  *  managed proxy, most specific condition first. */
 export function httpCaptureState(
   source: HttpCaptureSource | undefined,
-  proxy?: HttpProxyStatus
+  proxy?: HttpProxyStatus,
+  read: 'ok' | 'unknown' = 'ok'
 ): HttpCaptureState {
+  const facts = captureFacts(source, proxy, read)
+  if (facts.read === 'unknown') return 'unknown'
+  // The operator's choice outranks diagnosis. A current failure or restart
+  // then outranks historical requests: saved traffic is not proof that this
+  // failed managed process is still capturing.
+  if (source?.state === 'off' || source?.enabled === false) return 'off'
+  if (proxy?.state === 'failed' || source?.state === 'error') return 'failed'
+  if (proxy?.state === 'starting') return 'starting'
   // A health payload without the row at all (version drift) reads as "nothing
   // is set up" rather than throwing. Readiness must never be the thing that
   // crashes the card.
-  if (!source) return proxy?.state === 'unavailable' ? 'unset' : 'stopped'
+  if (!source) return facts.service === 'running' ? 'ready' : facts.service === 'unavailable' ? 'unset' : 'stopped'
 
-  // The operator's own choice outranks every diagnosis below it.
-  if (source.state === 'off' || source.enabled === false) return 'off'
-  // Evidence beats detection, and beats process state — the same rule
-  // capture-health's stateFrom applies to the source row, which this function
-  // used to contradict. A request that has come through proves HTTP capture
-  // works, whatever the install probe believes; an operator running their own
-  // mitmproxy outside RedLog has no managed process and gets exactly that
-  // combination, `installed: false` over real traffic. "Not installed" is the
-  // one reading this line must never give over recorded requests.
-  if (source.lastEventAt !== null && source.state !== 'error') return 'ready'
+  // A current managed service can be ready. Saved requests alone prove only
+  // historical capture, including traffic from an externally managed proxy.
+  if (facts.service === 'running') return 'ready'
+  if (facts.lastStoredAt !== null) return 'recorded'
   // A running managed proxy beats the install probe (#254). The probe looks
   // mitmdump up on PATH and can be wrong — cached from before an in-app
   // install, or blind to a Store execution alias — while the proxy spawns it
   // by name. A live process is proof the binary exists; "not installed" over
   // it reads as capture not running.
-  if (proxy?.state === 'running' && source.state !== 'error') return 'ready'
   // `unavailable` is mitmdump's ENOENT, not a crash: the binary is missing.
   // Reporting that as a failure sends the operator reading an error message
   // when the answer is an install command.
   if (proxy?.state === 'unavailable' || source.installed === false) return 'unset'
-  if (proxy?.state === 'failed' || source.state === 'error') return 'failed'
-  if (proxy?.state === 'starting') return 'starting'
-  // Up. Not "up but nothing has come through" — that distinction used to be
-  // its own amber state, and it reported the operator's traffic rather than
-  // RedLog's capture. The proxy either runs or it does not.
-  if (proxy?.state === 'running') return 'ready'
   return 'stopped'
 }

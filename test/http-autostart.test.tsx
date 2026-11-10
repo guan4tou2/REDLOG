@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // HTTP capture starts itself when a project opens
-// (docs/UIUX-CONTROLS-AND-COPY.md §5). Command capture never asked permission
+// (docs/UIUX-STANDARD.md §25.6). Command capture never asked permission
 // to record; HTTP capture asked because starting it spawns a process and binds
 // a port, which is a cost to RedLog and to nothing else on the machine — the
 // system proxy settings are never touched, so no traffic moves until the

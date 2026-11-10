@@ -1,8 +1,10 @@
+import { PAGE_COLUMN } from '../lib/pageColumn'
 import { Button } from './Button'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
 import { formatTime } from '../lib/time'
+import { eventTitle } from '../lib/eventTitle'
+import { agentTypeLabel } from '../lib/timelineDomain'
 import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
@@ -37,6 +39,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const [scopeFailed, setScopeFailed] = useState(false)
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -130,12 +133,54 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       firstSeen: r.firstSeen,
       lastSeen: r.lastSeen,
       eventCount: r.eventCount,
-      // Unknown, not in scope, when the rules could not be read.
-      inScope: scopeFailed ? null : hostInScope(r.target, scopeTargets, excludeTargets)
+      // Unknown, not in scope, when the rules could not be read, and also when
+      // none were ever declared: with no rule there is nothing to be inside of.
+      inScope: scopeFailed || (scopeTargets.length === 0 && excludeTargets.length === 0) ? null : hostInScope(r.target, scopeTargets, excludeTargets)
     }))
     setTargets(list)
     setLoading(false)
   }
+
+  async function addToScope(tgt: TargetEntry): Promise<void> {
+    // One-click round-trip to Settings ▸ Scope: append
+    // this target to config.scope.targets and reload
+    // scope config (audit #36).
+    const cfg = await window.redlog.config.get() as
+      { scope?: { targets?: string[] }; engagement?: { id?: string } } | null
+    if ((cfg?.scope?.targets ?? []).includes(tgt.target)) return
+    // Which project this button was pressed in. The write
+    // happens seconds from now; the main process merges the
+    // one target into the config as it is THEN, and refuses
+    // if another project is open by that time.
+    const projectId = cfg?.engagement?.id
+    // Widening scope is the one direction that can turn
+    // an out-of-scope finding into an in-scope one after
+    // the fact, so §10 defers the write: the chip shows
+    // the target as in-scope at once, but nothing is
+    // saved — and no `system.config_changed` is written
+    // — until the undo window closes.
+    setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
+    toastDeferred(
+      t('targets.addedToScope', { target: tgt.target }),
+      () => {
+        const failed = (detail?: string): void => {
+          setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
+          toast(t('targets.addToScopeFailed', { target: tgt.target }), { type: 'error', detail })
+        }
+        window.redlog.scope.addTarget(tgt.target, { expectProjectId: projectId })
+          .then((ok) => {
+            if (ok) window.dispatchEvent(new CustomEvent('redlog:config-saved'))
+            else failed(t('targets.addToScopeFailedWhy'))
+          })
+          .catch((err) => failed(err instanceof Error ? err.message : String(err)))
+      },
+      {
+        why: t('targets.addedToScopeWhy'),
+        revert: () => setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
+      }
+    )
+  }
+
 
   const PAGE_SIZE = 200
 
@@ -181,12 +226,16 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // `targets.filter` callback and read `filtered.length` mid-filter — which is
   // a temporal-dead-zone crash that only fires once there is a target to
   // filter, and a Rules-of-Hooks violation besides. The static keyboard
-  // contract test is a grep, so it never saw it; e2e/target-focus.spec.ts did.
+  // contract test is a grep, so it never saw it; e2e/timeline-evidence.spec.ts did.
+  const needle = query.trim().toLowerCase()
   const filtered = targets.filter((tgt) => {
+    if (needle && !tgt.target.toLowerCase().includes(needle)) return false
     if (filter === 'in_scope') return tgt.inScope === true
     if (filter === 'out_scope') return tgt.inScope === false
     return true
   })
+  // With no readable rule there is no in/out to filter by.
+  const scopeKnown = !scopeFailed && (scopeTargets.length > 0 || excludeTargets.length > 0)
 
   // §7's main path: target → expand its commands → ⌘↩ to the Timeline.
   const listNav = useListKeyboard({
@@ -203,42 +252,53 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     onEscape: () => setSelected(null)
   })
 
-  const agentIcon: Record<string, string> = {
-    shell: 'T', screenshot: 'S', clipboard: 'C',
-    file_transfer: 'F', marker: 'M', loot: 'L', system: '!'
-  }
+  const badge = (inScope: boolean | null): JSX.Element => inScope === true
+    ? <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.inScopeBadge')}</span>
+    : inScope === false
+      ? <span className="text-xs text-amber-300 bg-amber-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
+      // Two different facts: no rule was ever declared, or the rules could not be read.
+      : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
 
   return (
-    <div className="p-pad space-y-4 h-full overflow-auto">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-redlog-text">{t('targets.title', { count: targets.length })}</h2>
+    <div className="p-pad h-full overflow-auto"><div className={`${PAGE_COLUMN} space-y-4`}>
+      <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
+          <div>
+          <h2 className="text-sm font-semibold text-redlog-text">{t('targets.panelTitle')}</h2>
+          <p className="text-xs text-redlog-text-faint mt-0.5">{t('targets.panelCaption')}</p>
+          </div>
+          <span className="text-xs text-redlog-text-dim">{t('targets.sortedByRecent')}</span>
         </div>
-        <div className="flex gap-1">
-          {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-2 py-0.5 text-xs rounded ${
-                filter === f
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >
-              {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-redlog-border">
+          <input type="search" data-testid="targets-search" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('targets.searchPlaceholder')} aria-label={t('targets.searchLabel')}
+            className="min-w-[12rem] flex-1 max-w-md rounded border border-redlog-border bg-redlog-bg px-3 py-1.5 text-sm text-redlog-text focus:outline-none focus:border-redlog-accent" />
+          <div className="flex gap-1 rounded border border-redlog-border p-0.5" role="group" aria-label={t('targets.scopeFilter')}>
+            {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                disabled={f !== 'all' && !scopeKnown}
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+                className={`px-2.5 py-1 text-xs rounded disabled:opacity-50 disabled:cursor-default ${
+                  filter === f ? 'bg-redlog-elevated text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'
+                }`}
+              >
+                {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
       {scopeFailed && (
-        <div data-testid="targets-scope-failed" role="status" className="mx-4 mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        <div data-testid="targets-scope-failed" role="status" className="mx-4 my-2 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           {t('targets.scopeFailed')}{' '}
           <button type="button" onClick={loadScope} className="underline hover:text-amber-100">{t('common.retry')}</button>
         </div>
       )}
       {loadError && (
-        <div data-testid="targets-load-error" role="alert" className="mx-4 mb-2 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <div data-testid="targets-load-error" role="alert" className="mx-4 my-2 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           <div>{t('targets.loadFailed')}</div>
           <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
           <button type="button" onClick={() => { setLoading(true); void loadTargets() }} className="mt-2 text-red-300 underline hover:text-red-200">
@@ -249,7 +309,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       {filtered.length === 0 ? (
         // Hold the empty state until the first aggregation resolves — otherwise
         // a project that has targets flashes "no targets" for a frame (m9).
-        loading || loadError ? null : (
+        loading || loadError ? null : targets.length > 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-redlog-text-dim">{t('targets.noneMatch')}</p>
+        ) : (
           <EmptyState
             icon={Crosshair}
             title={t('targets.empty')}
@@ -257,104 +319,43 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
           />
         )
       ) : (
-        <div className="space-y-2" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
+        <div className="divide-y divide-redlog-border" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
           {filtered.map((tgt, i) => {
             const rowProps = listNav.itemProps(i)
+            const open = selected === tgt.target
             return (
             <div key={tgt.target}>
               <div
                 {...rowProps}
                 ref={(el) => rowProps.ref(el)}
                 onClick={() => { rowProps.onClick(); loadEvidence(tgt.target) }}
-                className={`bg-redlog-surface border rounded-lg p-3 cursor-pointer transition-colors ${
-                  selected === tgt.target ? 'border-red-600' : 'border-redlog-border hover:border-redlog-border'
-                }`}
+                className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-redlog-elevated/60 ${open ? 'bg-redlog-elevated/40' : ''}`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-redlog-text font-mono text-sm">{tgt.target}</span>
-                  <div className="flex items-center gap-2">
-                    {activeTarget === tgt.target ? (
-                      <span className="text-xs text-redlog-accent bg-redlog-accent/10 px-1.5 py-0.5 rounded">
-                        {t('activeTarget.current')}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          void window.redlog.targetContext.set(tgt.target)
-                        }}
-                        className="text-xs text-redlog-text-dim hover:text-redlog-accent bg-redlog-elevated px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/40"
-                      >{t('activeTarget.workOn')}</button>
+                {open
+                  ? <ChevronDown size={14} className="mt-1 shrink-0 text-redlog-text-faint" aria-hidden />
+                  : <ChevronRight size={14} className="mt-1 shrink-0 text-redlog-text-faint" aria-hidden />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-redlog-text font-mono text-sm break-all">{tgt.target}</span>
+                    {badge(tgt.inScope)}
+                    {activeTarget === tgt.target && (
+                      <span className="text-xs text-redlog-accent bg-redlog-accent/10 px-1.5 py-0.5 rounded">{t('activeTarget.current')}</span>
                     )}
-                    <span className="text-redlog-text-dim text-xs">{t('targets.events', { count: tgt.eventCount })}</span>
-                    {tgt.inScope === false && (
-                      <>
-                        <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
-                        <button
-                          onClick={async (e) => {
-                            // One-click round-trip to Settings ▸ Scope: append
-                            // this target to config.scope.targets and reload
-                            // scope config (audit #36).
-                            e.stopPropagation()
-                            const cfg = await window.redlog.config.get() as
-                              { scope?: { targets?: string[] }; engagement?: { id?: string } } | null
-                            if ((cfg?.scope?.targets ?? []).includes(tgt.target)) return
-                            // Which project this button was pressed in. The write
-                            // happens seconds from now; the main process merges the
-                            // one target into the config as it is THEN, and refuses
-                            // if another project is open by that time.
-                            const projectId = cfg?.engagement?.id
-                            // Widening scope is the one direction that can turn
-                            // an out-of-scope finding into an in-scope one after
-                            // the fact, so §10 defers the write: the chip shows
-                            // the target as in-scope at once, but nothing is
-                            // saved — and no `system.config_changed` is written
-                            // — until the undo window closes.
-                            setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
-                            toastDeferred(
-                              t('targets.addedToScope', { target: tgt.target }),
-                              () => {
-                                const failed = (detail?: string): void => {
-                                  setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
-                                  toast(t('targets.addToScopeFailed', { target: tgt.target }), { type: 'error', detail })
-                                }
-                                window.redlog.scope.addTarget(tgt.target, { expectProjectId: projectId })
-                                  .then((ok) => {
-                                    if (ok) window.dispatchEvent(new CustomEvent('redlog:config-saved'))
-                                    else failed(t('targets.addToScopeFailedWhy'))
-                                  })
-                                  .catch((err) => failed(err instanceof Error ? err.message : String(err)))
-                              },
-                              {
-                                why: t('targets.addedToScopeWhy'),
-                                revert: () => setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
-                              }
-                            )
-                          }}
-                          className="text-xs text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
-                          title={t('targets.addToScope')}
-                          aria-label={t('targets.addToScope')}
-                        >{t('targets.addToScope')}</button>
-                      </>
-                    )}
-                    {selected === tgt.target
-                      ? <ChevronDown size={14} className="text-redlog-text-faint" aria-hidden />
-                      : <ChevronRight size={14} className="text-redlog-text-faint" aria-hidden />}
+                  </div>
+                  <div className="mt-1 text-redlog-text-dim text-xs">
+                    {t('targets.first', { time: formatTime(tgt.firstSeen, { seconds: true }) })} · {t('targets.last', { time: formatTime(tgt.lastSeen, { seconds: true }) })}
                   </div>
                 </div>
-                <div className="mt-1 text-redlog-text-dim text-xs">
-                  {t('targets.first', { time: formatTime(tgt.firstSeen, { seconds: true }) })} · {t('targets.last', { time: formatTime(tgt.lastSeen, { seconds: true }) })}
-                </div>
+                <span className="shrink-0 text-redlog-text-dim text-xs">{t('targets.events', { count: tgt.eventCount })}</span>
               </div>
 
-              {selected === tgt.target && (
-                <div className="ml-4 mt-1 border-l-2 border-redlog-border pl-3 space-y-1 py-2">
+              {open && (
+                <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 space-y-1 py-1">
                   {evidence.length === 0 ? (
                     <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>
-                      <div className="flex gap-2 mb-2">
+                      <div className="flex flex-wrap gap-2 mb-2">
                         {Object.entries(
                           evidence.reduce<Record<string, number>>((acc, e) => {
                             acc[e.agentType] = (acc[e.agentType] || 0) + 1
@@ -371,26 +372,14 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       </p>
                       {evidence.map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
-                          <span className="font-mono font-bold w-4 shrink-0 text-redlog-text-dim">
-                            {agentIcon[e.agentType] || '?'}
-                          </span>
+                          <span className="w-16 shrink-0 truncate text-redlog-text-faint" title={agentTypeLabel(e.agentType, t)}>{agentTypeLabel(e.agentType, t)}</span>
                           <span className="text-redlog-text-faint w-16 shrink-0">
                             {formatTime(e.timestamp, { seconds: true })}
                           </span>
-                          <span title={String(e.data.command ?? e.data.path ?? e.data.url ?? '')} className="text-redlog-text truncate">
-                            {e.agentType === 'shell' && (e.data.command as string)}
-                            {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
-                            {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
-                            {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
-                            {e.agentType === 'marker' && (isMarkerAmendment(e)
-                              ? t('marker.amendmentRow', {
-                                  title: String((e.data as Record<string, unknown>).markerId ?? ''),
-                                  fields: amendedFields(e).map((f) => t(`marker.field.${f}`)).join('、')
-                                })
-                              : `[${e.data.severity}] ${e.data.title}`)}
-                            {e.agentType === 'loot' && (() => { const m = (e.data.matches as Array<{ type: string; confidence: string }>)?.[0]; return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${e.data.count ?? 0} detected` })()}
-                            {!['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
-                          </span>
+                          {/* The same one-line title the Timeline and the Reader give this
+                              event, in the interface language: a type with no row of its
+                              own here (HTTP, DNS, a plugin's) is named, not dumped as JSON. */}
+                          <span title={eventTitle(e, t)} className="text-redlog-text truncate">{eventTitle(e, t)}</span>
                         </div>
                       ))}
                       {hasMore && (
@@ -403,6 +392,19 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       )}
                     </>
                   )}
+                  <div className="flex flex-wrap items-center gap-2 pt-2">
+                    {activeTarget === tgt.target ? (
+                      <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.viewingThis')}</span>
+                    ) : (
+                      <Button size="compact" data-testid="target-work-on" onClick={() => { void window.redlog.targetContext.set(tgt.target) }}>{t('activeTarget.workOn')}</Button>
+                    )}
+                    {onOpenInTimeline && (
+                      <Button size="compact" data-testid="target-locate" onClick={() => { setTargetId(tgt.target); onOpenInTimeline(tgt.lastSeen) }}>{t('targets.openInTimeline')}</Button>
+                    )}
+                    {tgt.inScope === false && (
+                      <Button size="compact" data-testid="target-add-to-scope" onClick={() => { void addToScope(tgt) }}>{t('targets.addToScope')}</Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -410,6 +412,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
           })}
         </div>
       )}
-    </div>
+        {filtered.length > 0 && <div className="border-t border-redlog-border px-4 py-2.5 text-xs text-redlog-text-faint">{t('targets.shownCount', { shown: filtered.length, total: targets.length })}</div>}
+      </div>
+      <p className="text-xs text-redlog-text-dim">{t('targets.hint')}</p>
+    </div></div>
   )
 }

@@ -14,8 +14,8 @@ const readJsonl = (file: string): Array<Record<string, unknown> & { data: Record
 // amendment is written after the moment its marker belongs to, so every export
 // path that slices by time can ship a finding with wording the operator has
 // since retracted — an export that misstates the operator's own conclusion. The
-// bundle carries both rows and still verifies; the timeline slice pulls
-// corrections in regardless of its window.
+// bundle carries both rows and still verifies. Approved Timeline selection
+// boundaries are exercised through the real IPC export in export-plan-ipc.
 
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
@@ -105,41 +105,5 @@ describe.skipIf(!available)('an amended marker on the way out', () => {
     const before = events!.getEventCount()
     retention!.sweepLoggedTier({ keepDays: 0 }, OPTS)
     expect(events!.getEventCount()).toBe(before)
-  })
-})
-
-describe('a timeline slice cut from a window', () => {
-  // Pure, so it runs without a database: the rule is about which rows travel,
-  // not about how they are fetched.
-  const ev = (id: string, agentType: string, data: Record<string, unknown>): import('../src/core/db/events').RedLogEvent =>
-    ({
-      id, timestamp: 0, engagementId: 'e', sessionId: 's', operatorId: 'o',
-      agentType, hostname: 'h', sourceIP: null, targetId: null, data, createdAt: 0
-    })
-
-  it('names the markers whose corrections must travel with it', async () => {
-    const { markerIdsIn } = await import('../src/core/marker-amend')
-    const rows = [
-      ev('m1', 'marker', { title: 'a' }),
-      ev('a1', 'marker', { subtype: 'amended', markerId: 'm1', title: 'b' }),
-      ev('s1', 'shell', { command: 'id' })
-    ]
-    expect(markerIdsIn(rows)).toEqual(['m1'])
-  })
-
-  it('carries a correction written long after the window closed', async () => {
-    const { sliceWithAmendments } = await import('../src/core/marker-amend')
-    const slice = [ev('m1', 'marker', { title: 'a' })]
-    const later = ev('a1', 'marker', { subtype: 'amended', markerId: 'm1', title: 'b' })
-    const out = sliceWithAmendments(slice, [later])
-    expect(out.events.map((e) => e.id)).toEqual(['m1'])
-    expect(out.amendments.map((e) => e.id)).toEqual(['a1'])
-  })
-
-  it('does not duplicate a correction that already fell inside the window', async () => {
-    const { sliceWithAmendments } = await import('../src/core/marker-amend')
-    const inside = ev('a1', 'marker', { subtype: 'amended', markerId: 'm1', title: 'b' })
-    const out = sliceWithAmendments([ev('m1', 'marker', { title: 'a' }), inside], [inside])
-    expect(out.amendments).toEqual([])
   })
 })

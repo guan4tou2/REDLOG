@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import { Button } from '../Button'
 import { toast, toastUndo } from '../Toast'
 import { FieldGroup, type ConfigState } from './SettingsShared'
@@ -7,12 +7,11 @@ import { useCaptureHealthState } from '../../lib/useCaptureHealth'
 import type { AgentKind } from '../../../../core/agent-capture-policy'
 import type { OfficialAgentPlugin, OfficialAgentMutation } from '../../../../core/plugins/official-agents'
 import { Modal } from '../Modal'
-import { PluginSampleTester } from './PluginSampleTester'
 import { CAPTURE_PACKS } from '../../../../core/capture-packs'
-import { useContainerWidth } from '../../hooks/useContainerWidth'
 import { matchesQuery } from '../../lib/textQuery'
-import { pluginViewModel, needsAttention, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
+import { pluginViewModel, needsAttention, matchesPluginFilter, mergeOfficialCatalog, officialProjectLevel, officialHealth, type PluginFilter, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 import PluginDetailPanel from './PluginDetailPanel'
+import { PluginRow } from './PluginRow'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 
@@ -81,66 +80,6 @@ const isHidden = (p: { id: string; status: string }): boolean =>
 // Bundled packs get a translated line each; a user's plugin still speaks for
 // itself through its own manifest.
 
-function PluginRow({ p, vm, t, busy, selected, onToggle, onReview, onRevoke, onSelect }: {
-  p: PluginView; vm: PluginViewModel; t: T; busy: boolean; selected: boolean
-  onToggle: (nextEnabled: boolean) => void; onReview: () => void; onRevoke: () => void; onSelect: () => void
-}): JSX.Element {
-  const privileged = p.tier === 'privileged'
-  const needsConsent = vm.trust.needsConsent
-  const cannotRevoke = vm.trust.cannotBeTrusted
-  const issue = vm.issues[0]
-  const official = vm.install.official
-  return (
-    <div
-      onClick={onSelect}
-      className={`rounded border ${selected ? 'border-redlog-accent/60' : 'border-redlog-border'} bg-redlog-surface/50 cursor-pointer`}
-    >
-      <div className="flex items-start justify-between p-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-medium text-redlog-text">{p.name}</span>
-            {p.version && <span className="text-xs text-redlog-text-dim">v{p.version}</span>}
-            <span data-testid={`plugin-state-${p.id}`} className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">
-              {vm.trust.applicable ? t(`plugins.status.${p.status}`) : t(`plugins.installState.${official?.state ?? 'not-installed'}`)}
-            </span>
-            {privileged && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-red-950/60 text-red-300">
-                {t('plugins.tier.privileged')}
-              </span>
-            )}
-          </div>
-          {issue && <p data-testid={`plugin-issue-${p.id}`} className="text-xs text-amber-400 mt-0.5">{t(issue.labelKey)}</p>}
-          <p className="text-xs text-redlog-text-dim mt-0.5 flex gap-2 items-center">
-            <span className="break-words">{descriptionOf(p, t)}</span>
-            <Button level="quiet" type="button" data-testid={`plugin-details-${p.id}`} onClick={(e) => { e.stopPropagation(); onSelect() }} className="shrink-0 underline">{t('plugins.details')}</Button>
-          </p>
-        </div>
-        <div className="ml-3 shrink-0 flex flex-col gap-1 items-end" onClick={(e) => e.stopPropagation()}>
-          {selected && <span className="text-xs text-redlog-text-faint">{t('plugins.managingHere')}</span>}
-          {!selected && vm.trust.canToggle && p.status !== 'error' && !needsConsent && (
-            <button disabled={busy} onClick={() => onToggle(p.status === 'disabled')}
-              className={`px-3 py-1 text-xs rounded ${p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'}`}>
-              {busy ? '...' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
-            </button>
-          )}
-          {!selected && vm.trust.applicable && needsConsent && !cannotRevoke && (
-            <button disabled={busy} onClick={onReview}
-              className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600">
-              {t('plugins.review')}
-            </button>
-          )}
-          {!selected && vm.trust.applicable && (privileged || p.needsApproval) && p.status === 'active' && (
-            <button onClick={onRevoke} disabled={busy}
-              className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
-              {t('plugins.revoke')}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function descriptionOf(p: PluginView, t: T): string {
   if (p.source !== 'bundled') return p.description
   const key = `plugins.builtin.${p.id}`
@@ -174,7 +113,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [filter, setFilter] = useState<PluginFilter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Every answer from main carries the whole list. Only the newest request may
   // replace what is on screen, so a slow reload cannot undo a later disable.
@@ -231,12 +170,18 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   useEffect(() => { if (selectedId !== null && !vms.has(selectedId)) setSelectedId(null) }, [vms, selectedId])
 
   const attentionCount = useMemo(() => shown.filter((p) => needsAttention(p)).length, [shown])
+  const filterCounts = useMemo<Record<PluginFilter, number>>(() => ({
+    all: shown.length,
+    installed: shown.filter((p) => matchesPluginFilter(p, 'installed')).length,
+    official: shown.filter((p) => matchesPluginFilter(p, 'official')).length,
+    attention: attentionCount
+  }), [shown, attentionCount])
   const filtered = useMemo(() => shown.filter((p) => {
     const vm = vms.get(p.id)
     if (!vm) return false
-    if (attentionOnly && !needsAttention(p)) return false
+    if (!matchesPluginFilter(p, filter)) return false
     return matchesQuery(vm.searchText, query)
-  }), [shown, vms, attentionOnly, query])
+  }), [shown, vms, filter, query])
 
   /** A change that went through but left the shell's profiles as they were is
    *  not a plain success: a revoke or a disable would still be in effect there. */
@@ -313,8 +258,23 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
     await run(p.id, () => api.revoke(p.id), t('plugins.revokeFailed', { name: p.name }))
   }
 
-  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
-  const narrow = containerWidth !== null && containerWidth < 720
+  // One column at every width: the list, or one plugin's detail with a way back.
+  // Going into a detail replaces the list, and the list comes back from the top
+  // unless its place was kept. The place is taken once, on the way in from the
+  // list; refreshing the detail (an enable, an install) must not overwrite it.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const anchor = useRef<number | null>(null)
+  const scroller = (): HTMLElement | null => rootRef.current?.closest<HTMLElement>('[data-testid="settings-content"]') ?? null
+  const openDetail = (id: string): void => {
+    if (selectedId === null) anchor.current = scroller()?.scrollTop ?? 0
+    setSelectedId(id)
+  }
+  useLayoutEffect(() => {
+    const el = scroller()
+    if (!el) return
+    if (selectedId !== null) { el.scrollTop = 0; return }
+    if (anchor.current !== null) { el.scrollTop = anchor.current; anchor.current = null }
+  }, [selectedId])
   const selected = vms.get(selectedId ?? '') ? plugins.find((p) => p.id === selectedId) : undefined
   const selectedVm = selected ? vms.get(selected.id) : undefined
 
@@ -324,7 +284,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   useEffect(() => {
     if (!focus || loading) return
     if (!vms.has(focus.pluginId)) { onFocusHandled?.(); return }
-    setQuery(''); setAttentionOnly(false); setSelectedId(focus.pluginId)
+    setQuery(''); setFilter('all'); openDetail(focus.pluginId)
     onFocusHandled?.()
   }, [focus, loading, vms])
 
@@ -403,15 +363,22 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
       p={selected} vm={selectedVm} t={t} busy={busy === selected.id}
       onEnable={() => void enable(selected)} onDisable={() => void toggle(selected, false)}
       onReview={() => setConfirmGrant(selected)} onRevoke={() => void revoke(selected)}
-      onBack={() => setSelectedId(null)} showBack={narrow}
+      onBack={() => setSelectedId(null)}
       officialAxes={officialAxes}
       onInstall={() => void mutateOfficial(selected, 'install')} onRemove={() => void removeOfficial(selected)}
       onOpenCaptureSources={onOpenCaptureSources && selected.official ? () => onOpenCaptureSources(selected.official!.agentKind) : undefined}
     />
   ) : null
 
-  return (
-    <FieldGroup title={t('settings.plugins')}>
+  const FILTERS: Array<{ id: PluginFilter; label: string }> = [
+    { id: 'all', label: t('plugins.filter.all') },
+    { id: 'installed', label: t('plugins.filter.installed') },
+    { id: 'official', label: t('plugins.filter.official') },
+    { id: 'attention', label: t('plugins.filterAttention') }
+  ]
+
+  const list = (
+    <>
       <div className="flex items-center justify-end mb-2 gap-2">
         <button onClick={() => api.openFolder()}
           className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0"
@@ -422,8 +389,6 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
           {busy === '*' ? '...' : t('plugins.reload')}
         </Button>
       </div>
-
-      <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
 
       {loaded[0]?.profilesError && (
         <div role="alert" data-testid="plugins-profiles-stale" className="text-xs mb-2 space-y-0.5">
@@ -451,7 +416,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
         </div>
       )}
       {!loading && loadError === null && (
-        <div ref={containerRef} className="min-w-0">
+        <div className="min-w-0">
           {shown.length === 0 && <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>}
           {shown.length > 0 && (
             <div className="mb-2 space-y-2">
@@ -459,43 +424,48 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
                 <input
                   type="search" data-testid="plugin-search" value={query} onChange={(e) => setQuery(e.target.value)}
                   placeholder={t('plugins.searchPlaceholder')} aria-label={t('plugins.search')}
-                  className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+                  className="flex-1 min-w-[12rem] bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
                 />
-                <label className="flex items-center gap-1.5 text-xs text-redlog-text-dim shrink-0">
-                  <input type="checkbox" data-testid="plugin-attention-toggle" checked={attentionOnly}
-                    onChange={(e) => setAttentionOnly(e.target.checked)} />
-                  <span>{t('plugins.filterAttention')} ({attentionCount})</span>
-                </label>
+                <div role="group" aria-label={t('plugins.filter.label')} className="flex items-center gap-1 rounded border border-redlog-border bg-redlog-bg p-0.5">
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.id} type="button" data-testid={`plugin-filter-${f.id}`} aria-pressed={filter === f.id}
+                      onClick={() => setFilter(f.id)}
+                      className={`px-2 py-1 rounded text-xs whitespace-nowrap transition-colors ${filter === f.id ? 'bg-redlog-elevated text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+                    >{f.label} ({filterCounts[f.id]})</button>
+                  ))}
+                </div>
               </div>
 
-              {attentionOnly && attentionCount === 0 ? (
+              <p data-testid="plugin-shown-count" className="text-xs text-redlog-text-faint">
+                {t('plugins.shownCount', { count: filtered.length })} · {t('plugins.listHint')}
+              </p>
+
+              {filter === 'attention' && attentionCount === 0 ? (
                 <p className="text-xs text-redlog-text-faint py-3">{t('plugins.allHandled')}</p>
               ) : filtered.length === 0 ? (
                 <p className="text-xs text-redlog-text-faint py-3">{t('plugins.noSearchResults')}</p>
-              ) : narrow && selected !== undefined ? (
-                detail
               ) : (
-                <div className={narrow ? 'space-y-0' : 'flex gap-4'}>
-                  <div className="min-w-0 flex-1 space-y-2">
-                    {filtered.map((p) => {
-                      const vm = vms.get(p.id)!
-                      return (
-                        <PluginRow key={p.id} p={p} vm={vm} t={t} busy={busy === p.id} selected={selectedId === p.id}
-                          onToggle={(enabled) => void toggle(p, enabled)} onReview={() => setConfirmGrant(p)}
-                          onRevoke={() => void revoke(p)} onSelect={() => setSelectedId(p.id)} />
-                      )
-                    })}
-                  </div>
-                  {!narrow && detail && <div className="w-1/2 max-w-md min-w-0 border-l border-redlog-border pl-4">{detail}</div>}
-                  {!narrow && !detail && <p className="w-1/2 max-w-md min-w-0 border-l border-redlog-border pl-4 text-xs text-redlog-text-faint self-start">{t('plugins.selectHint')}</p>}
+                <div className="space-y-2">
+                  {filtered.map((p) => (
+                    <PluginRow key={p.id} p={p} vm={vms.get(p.id)!} t={t} description={descriptionOf(p, t)} onSelect={() => openDetail(p.id)} />
+                  ))}
                 </div>
               )}
             </div>
           )}
         </div>
       )}
+    </>
+  )
 
-      <PluginSampleTester t={t} />
+  return (
+    <FieldGroup title={t('settings.plugins')}>
+      <div ref={rootRef}>
+        {/* Enabling and disabling are global whichever view they are pressed in. */}
+        <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
+        {detail ?? list}
+      </div>
 
       {/* trust consent dialog for red-tier code plugins */}
       {confirmGrant && (
@@ -504,7 +474,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
           onClose={() => setConfirmGrant(null)}
           label={consentTitle}
           testId="plugin-consent-dialog"
-          panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
+          panelClassName="bg-redlog-surface border border-red-900/50 rounded-xl p-pad max-w-md mx-4"
         >
           <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
           <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>

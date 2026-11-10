@@ -457,7 +457,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             aria-modal="true"
             aria-label={t('export.title')}
             data-testid="export-dialog"
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-xl shadow-2xl"
           >
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-redlog-border">
               <h2 className="text-sm text-redlog-text">{t(completion ? 'export.completedTitle' : 'export.title')}</h2>

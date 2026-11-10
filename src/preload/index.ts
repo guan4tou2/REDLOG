@@ -55,6 +55,7 @@ const api: RedLogAPI = {
   project: {
     list: () => ipcRenderer.invoke('project:list'),
     scopeSummaries: () => ipcRenderer.invoke('project:scopeSummaries'),
+    root: () => ipcRenderer.invoke('project:root'),
     create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),
     open: (id: string) => ipcRenderer.invoke('project:open', id),
     delete: (id: string) => ipcRenderer.invoke('project:delete', id),
@@ -135,6 +136,8 @@ const api: RedLogAPI = {
     // Spec 038: the Timeline's total, earlier matches and held-row checks.
     count: (req: import('../core/db/events').EventCountRequest) =>
       ipcRenderer.invoke('events:count', req) as Promise<number>,
+    span: (req: import('../core/db/events').EventCountRequest) =>
+      ipcRenderer.invoke('events:span', req) as Promise<{ first: number; last: number } | null>,
     matchIds: (req: import('../core/db/events').EventMatchRequest) =>
       ipcRenderer.invoke('events:matchIds', req) as Promise<string[]>,
     toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>
@@ -214,8 +217,8 @@ const api: RedLogAPI = {
   },
   scope: {
     policy: () => ipcRenderer.invoke('scope:policy'),
-    getViolations: () => ipcRenderer.invoke('scope:getViolations'),
-    getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
+    getObservations: () => ipcRenderer.invoke('scope:getObservations'),
+    getObservationCount: () => ipcRenderer.invoke('scope:getObservationCount'),
     isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
     addTarget: (target: string, opts?: { expectProjectId?: string }) => ipcRenderer.invoke('scope:addTarget', target, opts) as Promise<boolean>,
     fileInForce: () => ipcRenderer.invoke('scope:fileInForce'),

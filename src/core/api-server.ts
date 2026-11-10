@@ -73,8 +73,8 @@ let sessionRegistryRef: {
  *  configureApi; from here it's just an object with these three methods. */
 interface AlertRuntimeSlice {
   ipStatus(): unknown
-  scopeViolations(): unknown[]
-  scopeViolationCount(): number
+  scopeObservations(): unknown[]
+  scopeObservationCount(): number
   dispatchTargetHit(input: {
     target: string
     source: 'shell' | 'dns' | 'http' | 'scanner' | 'agent_tool'
@@ -545,7 +545,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       json(res, 200, {
         ip: alertRuntimeRef?.ipStatus() || null,
         eventCount: getEventCount(),
-        scopeViolations: alertRuntimeRef?.scopeViolationCount() || 0,
+        // Public response field: keeps its spelling (see scope-vocabulary.ts).
+        scopeViolations: alertRuntimeRef?.scopeObservationCount() || 0,
         capture: getCaptureHealth()
       })
       return
@@ -565,8 +566,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       json(res, 200, {
         configured: !!alertRuntimeRef,
         targets: configLoaderRef?.getTargets() || [],
-        violations: alertRuntimeRef?.scopeViolations() || [],
-        violationCount: alertRuntimeRef?.scopeViolationCount() || 0
+        // Public response fields: keep their spelling (see scope-vocabulary.ts).
+        violations: alertRuntimeRef?.scopeObservations() || [],
+        violationCount: alertRuntimeRef?.scopeObservationCount() || 0
       })
       return
     }

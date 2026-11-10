@@ -1,5 +1,5 @@
 import type { RedLogEvent } from '../../../core/db/event-types'
-import { violationStanding } from '../../../core/scope-violation-standing'
+import { observationStanding } from '../../../core/scope-observation-standing'
 import { groupAmendments, foldMarker, isMarkerOriginal, type MarkerFold } from './markerFold'
 import { computeBadges, type EventBadge } from './timelineDomain'
 
@@ -22,7 +22,7 @@ export function buildEffectsIndex(events: readonly RedLogEvent[]): Map<string, s
   return m
 }
 
-export interface ViolationStanding {
+export interface ObservationStanding {
   cleared: Set<string>
   superseded: Set<string>
 }
@@ -62,8 +62,8 @@ export function buildBadgeIndex(
 }
 
 /** Which loaded violations no longer stand, by the recompute's own rule. */
-export function computeViolationStanding(events: readonly RedLogEvent[]): ViolationStanding {
-  const { cleared, supersededBy } = violationStanding(
+export function computeObservationStanding(events: readonly RedLogEvent[]): ObservationStanding {
+  const { cleared, supersededBy } = observationStanding(
     events
       .filter((e) => e.agentType === 'system')
       .map((e) => ({ id: e.id, createdAt: e.createdAt, data: (e.data ?? {}) as Record<string, unknown> }))

@@ -51,7 +51,8 @@ test('a live shell survives picker and project switches with separate verifiable
     await expect.poll(() => page.locator('.xterm-screen').innerText()).toContain('picker-only')
     // Open B through the real picker card; the shared main lifecycle performs
     // the rotation. The injected enrollment must not stop this owned shell.
-    await page.getByText('rotation-B', { exact: true }).click()
+    // Stitch 01: a click selects a project, a double click opens it.
+    await page.getByText('rotation-B', { exact: true }).dblclick()
     await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
     await openView(page, 'terminal')
     expect(await page.evaluate(async () => (await window.redlog.terminal.list())[0].pid)).toBe(pane.pid)
@@ -65,7 +66,7 @@ test('a live shell survives picker and project switches with separate verifiable
     expect(bVerify, JSON.stringify(bVerify)).toMatchObject({ ok: true })
     await page.getByTestId('titlebar-leave-project').click()
     await page.getByRole('button', { name: 'Stop recording and leave', exact: true }).click()
-    await page.getByText('rotation-A', { exact: true }).click()
+    await page.getByText('rotation-A', { exact: true }).dblclick()
     await openView(page, 'terminal')
     const aRows = await page.evaluate(async () => window.redlog.events.query({ agentType: 'shell', limit: -1 }))
     const aEnd = aRows.find(e => e.data.subtype === 'session_end' && e.data.reason === 'project-switched')!

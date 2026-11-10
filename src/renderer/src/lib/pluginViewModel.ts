@@ -1,3 +1,4 @@
+import { captureFacts } from '../../../core/capture-contract'
 import type { PluginStatus } from '../../../core/plugins/types'
 import type { OfficialAgentPlugin } from '../../../core/plugins/official-agents'
 
@@ -132,6 +133,35 @@ export function attentionIssues(p: PluginView): PluginIssue[] {
 
 export const needsAttention = (p: PluginView): boolean => attentionIssues(p).length > 0
 
+/** Where a plugin comes from, as the list names it. An official integration is
+ *  one RedLog installs and updates (Spec 066); a bundled pack ships inside the
+ *  app; everything else was placed in the plugins folder by the operator. */
+export type PluginKind = 'official' | 'builtin' | 'user'
+export const pluginKind = (p: PluginView): PluginKind => p.official ? 'official' : p.source === 'bundled' ? 'builtin' : 'user'
+
+/** The list's filter tabs. «Installed» means there is a plugin behind the row:
+ *  a not-installed official integration is listed but is not installed. */
+export type PluginFilter = 'all' | 'installed' | 'official' | 'attention'
+export function matchesPluginFilter(p: PluginView, filter: PluginFilter): boolean {
+  switch (filter) {
+    case 'installed': return p.notLoaded !== true
+    case 'official': return pluginKind(p) !== 'user'
+    case 'attention': return needsAttention(p)
+    default: return true
+  }
+}
+
+/** One colour for the row's dot. It says «is something wrong», not «is it
+ *  recording»: a plugin the operator switched off, or an integration not
+ *  installed yet, is idle rather than faulty. */
+export type PluginTone = 'ok' | 'warn' | 'bad' | 'idle'
+export function pluginTone(p: PluginView): PluginTone {
+  if (p.status === 'error' || p.official?.state === 'error' || p.official?.state === 'conflict') return 'bad'
+  if (needsAttention(p)) return 'warn'
+  if (p.notLoaded === true || p.status === 'disabled') return 'idle'
+  return 'ok'
+}
+
 /** A user plugin whose only code is a tailer is refused whatever the operator
  *  agrees to; so is a plugin with nothing left to approve. */
 export function cannotBeTrusted(p: PluginView): boolean {
@@ -261,6 +291,7 @@ export function officialHealth(
   const s = snapshot.source
   if (!s) return inactive ? { kind: 'inactive' } : { kind: 'unknown' }
   if (s.lastError) return { kind: 'error', message: s.lastError.message }
-  if (s.lastEventAt !== null) return { kind: 'received', at: s.lastEventAt }
+  const lastStoredAt = captureFacts({ state: 'ready', lastEventAt: s.lastEventAt }).lastStoredAt
+  if (lastStoredAt !== null) return { kind: 'received', at: lastStoredAt }
   return inactive || !p.official ? { kind: 'inactive' } : { kind: 'waiting' }
 }

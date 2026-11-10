@@ -21,12 +21,13 @@
 // hydration of only the targets whose verdict actually moved. The phases yield
 // between them.
 
+import { SCOPE_VIOLATION_SUBTYPE } from './scope-vocabulary'
 import { getDB } from './db/index'
 import {
   insertEvent, invalidateChainHeadCache, resetEventCountCache, type RedLogEvent
 } from './db/events'
 import { getSanitizedFields } from './sanitize'
-import { countsAsStandingVerdict, violationStanding } from './scope-violation-standing'
+import { countsAsStandingVerdict, observationStanding } from './scope-observation-standing'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from './alert/scope-signal'
@@ -34,7 +35,7 @@ import { classifyScopeTarget, isReportable, type ScopeSnapshot } from './alert/p
 import { buildScopeIndexes, type ScopeDistance } from './scope-evaluator'
 import {
   planScopeRecompute, scopeHash, MAX_RETRO_ROWS,
-  type CorpusEvent, type ExistingViolation, type RecomputePlan
+  type CorpusEvent, type ExistingObservation, type RecomputePlan
 } from './scope-recompute'
 
 const TABLES = ['events', 'events_logged'] as const
@@ -94,12 +95,12 @@ export function scanCandidates(): { candidates: Map<string, CandidateTarget>; sc
 
 /** Every violation record and its standing. Read from the chained tier only —
  *  that is where all three subtypes live, by construction. */
-export function readExistingViolations(): ExistingViolation[] {
+export function readExistingObservations(): ExistingObservation[] {
   const db = getDB()
   const rows = db.prepare(
     `SELECT id, timestamp, created_at, data FROM events
      WHERE agent_type = 'system'
-       AND subtype IN ('scope_violation','scope_cleared')
+       AND subtype IN ('${SCOPE_VIOLATION_SUBTYPE}','scope_cleared')
      ORDER BY created_at ASC, rowid ASC`
   ).all() as Array<{ id: string; timestamp: number; created_at: number; data: string }>
 
@@ -107,18 +108,18 @@ export function readExistingViolations(): ExistingViolation[] {
   for (const r of rows) {
     try { parsed.push({ id: r.id, timestamp: r.timestamp, createdAt: r.created_at, data: JSON.parse(r.data) }) } catch { /* unreadable row */ }
   }
-  const { cleared, supersededBy } = violationStanding(parsed)
+  const { cleared, supersededBy } = observationStanding(parsed)
 
-  const violations: ExistingViolation[] = []
+  const observations: ExistingObservation[] = []
   for (const { id, timestamp, data: d } of parsed) {
     // `in_scope` verdicts are written to this subtype too — the adherence
-    // counter needs the positive proof — but they are not violations, and
+    // counter needs the positive proof — but they are not observations, and
     // treating one as a standing record would turn a newly-excluded host into a
     // "regrade" of something that was never flagged. Floor-independent: no
     // floor ever makes in_scope reportable.
     if (!countsAsStandingVerdict(d)) continue
     const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
-    violations.push({
+    observations.push({
       id,
       target: String(d.target ?? ''),
       sourceEventId: typeof causes[0] === 'string' ? (causes[0] as string) : null,
@@ -129,7 +130,7 @@ export function readExistingViolations(): ExistingViolation[] {
       supersededBy: supersededBy.get(id) ?? null
     })
   }
-  return violations
+  return observations
 }
 
 /** Phase B — hydrate only the targets whose verdict moved, and rebuild each
@@ -228,7 +229,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
     if (d0 !== d1 || isReportable(d0, before.alertFloor) !== isReportable(d1, after.alertFloor)) moved.add(key)
   }
 
-  const existing = readExistingViolations()
+  const existing = readExistingObservations()
   // A standing violation's target must be re-judged even when it is absent from
   // the corpus — that is how a withdrawal survives the logged tier being swept.
   for (const v of existing) if (!v.cleared || v.supersededBy === null) moved.add(v.target)
@@ -288,7 +289,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
       for (const row of [...plan.flag, ...plan.regrade]) {
         const verdict = classifyScopeTarget(row.target, after, afterIdx)
         const ev = insertEvent('system', {
-          subtype: 'scope_violation',
+          subtype: SCOPE_VIOLATION_SUBTYPE,
           authority: verdict.authority,
           severity: verdict.severity,
           target: row.target,
@@ -317,12 +318,12 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
           distance_before: row.distanceBefore,
           distance_after: row.distanceAfter,
           judged_before: row.judgedBefore,
-          violation_id: row.violationId,
+          violation_id: row.observationId,
           source_event_id: row.sourceEventId,
           source_ts: row.sourceTs,
           recompute_id: summary.id,
           description: `Scope cleared: ${row.target} (${row.distanceBefore} → ${row.distanceAfter})`,
-          _causes: [row.violationId, summary.id]
+          _causes: [row.observationId, summary.id]
         }, { ...ids, targetId: row.target })
         if (ev) written.push(ev)
       }
@@ -358,7 +359,7 @@ export function queryLastScopeRecompute(): Record<string, unknown> | null {
   } catch { return null }
 }
 
-export interface ScopeViolationRow {
+export interface ScopeObservationRow {
   id: string
   target: string
   command: string
@@ -374,18 +375,18 @@ export interface ScopeViolationRow {
  *  The page used to read an in-process log that held 500 rows and reset on
  *  every project switch, so it could not show a retroactive row at all and
  *  would keep counting one that had been withdrawn. */
-export interface ScopeViolationPage {
-  rows: ScopeViolationRow[]
+export interface ScopeObservationPage {
+  rows: ScopeObservationRow[]
   /** More violation records exist than `limit` read (Constitution IV). */
   truncated: boolean
 }
 
-export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
-  const existing = readExistingViolations()
+export function queryScopeObservationRows(limit = 500): ScopeObservationPage {
+  const existing = readExistingObservations()
   const db = getDB()
   const byId = new Map(existing.map((v) => [v.id, v]))
   // Only what the page lists may take a place in the window, so the cut and
-  // `truncated` both count violations. In-scope verdicts are written under
+  // `truncated` both count observations. In-scope verdicts are written under
   // this subtype too (they are adherence records), and a record a newer one
   // replaced is not listed. Cutting before dropping them let busy in-scope
   // traffic push every standing violation off the page while the status bar
@@ -393,13 +394,13 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
   const replaced = existing.filter((v) => v.supersededBy !== null).map((v) => v.id)
   const rows = db.prepare(
     `SELECT id, timestamp, data FROM events
-     WHERE agent_type = 'system' AND subtype = 'scope_violation'
+     WHERE agent_type = 'system' AND subtype = '${SCOPE_VIOLATION_SUBTYPE}'
        AND COALESCE(json_extract(data, '$.distance'), '') <> 'in_scope'
        AND id NOT IN (SELECT value FROM json_each(?))
      ORDER BY created_at DESC, rowid DESC LIMIT ?`
   ).all(JSON.stringify(replaced), limit + 1) as Array<{ id: string; timestamp: number; data: string }>
   const truncated = rows.length > limit
-  const out: ScopeViolationRow[] = []
+  const out: ScopeObservationRow[] = []
   for (const r of rows.slice(0, limit)) {
     let d: Record<string, unknown>
     try { d = JSON.parse(r.data) } catch { continue }
@@ -418,8 +419,8 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
   return { rows: out, truncated }
 }
 
-/** How many violations currently stand. Counted from the chain, not from a
+/** How many observations currently stand. Counted from the chain, not from a
  *  session-local log, so it survives a restart and reflects withdrawals. */
-export function countActiveScopeViolations(): number {
-  return readExistingViolations().filter((v) => !v.cleared && v.supersededBy === null).length
+export function countActiveScopeObservations(): number {
+  return readExistingObservations().filter((v) => !v.cleared && v.supersededBy === null).length
 }

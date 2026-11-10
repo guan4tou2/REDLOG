@@ -32,11 +32,23 @@ test('an ended pane keeps saying its recording was paused for part of the sessio
     await page.keyboard.type('redlog start'); await page.keyboard.press('Enter')
     await expect.poll(() => page.evaluate(async () => (await window.redlog.terminal.list())[0].recording)).toBe(true)
     await expect(page.getByTestId('terminal-ended-recording')).toHaveCount(0)
+    // Spec 069 T019: the page names itself, and the live pane shows its own state line.
+    await expect(page.getByTestId('terminal-header').getByRole('heading', { level: 1 })).toHaveText('Terminal')
+    await expect(page.getByTestId('terminal-meta-screen')).toContainText('rec')
+    await expect(page.getByTestId('terminal-meta-hook')).toBeVisible()
 
     await page.keyboard.type('exit'); await page.keyboard.press('Enter')
     const badge = page.getByTestId('terminal-ended-recording')
     await expect(badge).toHaveAttribute('data-state', 'partly-paused', { timeout: 20_000 })
     await expect(badge).toHaveText('part paused')
+    await expect(page.getByTestId('terminal-meta-screen')).toContainText('Session ended')
+    await expect(page.getByTestId('terminal-meta-hook')).toHaveCount(0)
+
+    // A restarted pane is a new session: nothing of the old one's history carries over.
+    await page.getByRole('button', { name: /Restart/i }).first().click()
+    await expect(page.getByTestId('terminal-ended-recording')).toHaveCount(0)
+    await expect(page.getByTestId('terminal-meta-screen')).not.toContainText('Session ended')
+    await expect(page.getByTestId('terminal-meta-screen')).not.toContainText('paused')
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
     throw e

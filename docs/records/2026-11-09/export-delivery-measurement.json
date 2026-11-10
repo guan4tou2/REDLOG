@@ -1,0 +1,24 @@
+[
+  {
+    "mode": "baseline",
+    "rows": 198000,
+    "elapsedMs": 607.398542,
+    "timerTicks": 0,
+    "bytes": 221537780,
+    "sha256": "bc5a9f0c2bb61456579d92b091b5ea6bcb5be4cd4efd02160546154e10461739",
+    "maxRssKiB": 1004688,
+    "platform": "darwin",
+    "node": "v26.13.0"
+  },
+  {
+    "mode": "worker",
+    "rows": 198000,
+    "elapsedMs": 1341.906125,
+    "timerTicks": 134,
+    "bytes": 221537780,
+    "sha256": "bc5a9f0c2bb61456579d92b091b5ea6bcb5be4cd4efd02160546154e10461739",
+    "maxRssKiB": 208224,
+    "platform": "darwin",
+    "node": "v26.13.0"
+  }
+]

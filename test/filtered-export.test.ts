@@ -1,3 +1,6 @@
+import { executeExportTask } from '../src/core/export-task'
+import { ExportPlanRegistry } from '../src/core/export-plan'
+import type { ExportTaskRunner } from '../src/main/services/export-runner'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -17,34 +20,39 @@ function addExportEvent(table: 'events' | 'events_logged', id: string, ts: numbe
 }
 let dir: string
 let handlers: Map<string, (...args: any[]) => any>
+let registry: ExportPlanRegistry
+function registerBridge(runTask?: ExportTaskRunner): void {
+ registerDataExportIpc({ handle: (name: string, fn: any) => handlers.set(name, fn) } as never,
+ { getActiveProject: () => ({ id: 'eng-1', path: dir }) } as never, { planRegistry: registry, runTask })
+}
 beforeEach(() => {
  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filtered-export-')); initDB(dir)
  handlers = new Map()
- registerDataExportIpc({ handle: (name: string, fn: any) => handlers.set(name, fn) } as never,
- { getActiveProject: () => ({ id: 'eng-1', path: dir }) } as never)
+ registry = new ExportPlanRegistry()
+ registerBridge()
 })
 // closeDB() does not close the body index — it holds its own handle, and on
 // Windows that keeps http-body-index.db locked, so the rmSync below throws
 // EBUSY and fails a test whose assertions all passed.
 afterEach(() => { closeDB(); closeHttpBodyIndex(); fs.rmSync(dir, { recursive: true, force: true }) })
-const resolve = (request: unknown) => handlers.get('data:resolveExportPlan')!({}, request)
+const resolve = async (request: unknown) => await handlers.get('data:resolveExportPlan')!({}, request)
 const execute = (id: string) => handlers.get('data:executeExportPlan')!({}, { planId: id })
-it('exports all matching rows beyond the screen page and freezes preview membership', () => {
+it('exports all matching rows beyond the screen page and freezes preview membership', async () => {
  getDB().transaction(() => {
   for (let i = 0; i < 520; i++) addExportEvent('events_logged', `match-${i}`, 1000+i, 'EXAMPLE.COM', { subtype: 'command', command: 'canary' })
  })()
  addExportEvent('events', 'wrong', 1300, 'other.test')
- const r=resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{targetId:'example.com'},query:'canary'}})
+ const r=await resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{targetId:'example.com'},query:'canary'}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(520)
  addExportEvent('events_logged','late',1200,'example.com',{command:'canary'})
- const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
  expect(JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).events).toHaveLength(520)
 })
-it('invalid typed query and unknown selection kind fail rather than export everything', () => {
- expect(resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'session:'}}).ok).toBe(false)
- expect(resolve({format:'json',subset:{kind:'typo'}}).ok).toBe(false)
+it('invalid typed query and unknown selection kind fail rather than export everything', async () => {
+ expect((await resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'session:'}})).ok).toBe(false)
+ expect((await resolve({format:'json',subset:{kind:'typo'}})).ok).toBe(false)
 })
-it('HTTP predicates select complete exchanges before pagination and response-time bounds', () => {
+it('HTTP predicates select complete exchanges before pagination and response-time bounds', async () => {
  getDB().transaction(() => {
  for(let i=0;i<505;i++) {
   addExportEvent('events_logged',`req-${i}`,1000+i,'example.com',{subtype:'http_request_start',flow_id:`f-${i}`,method:'GET',url:'https://example.com/needle',host:'example.com'})
@@ -52,48 +60,48 @@ it('HTTP predicates select complete exchanges before pagination and response-tim
  }
  })()
  addExportEvent('events_logged','unrelated',1200,'example.com',{subtype:'http_request_start',flow_id:'no',method:'POST',url:'https://example.com/needle'})
- const r=resolve({format:'har',maskOutOfScope:false,subset:{kind:'selection',projection:'http',filter:{since:1000,before:1600},http:{method:'GET',statusPrefix:'4',host:'example.com',text:'needle'}}})
+ const r=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'selection',projection:'http',filter:{since:1000,before:1600},http:{method:'GET',statusPrefix:'4',host:'example.com',text:'needle'}}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(1010)
- const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
  const entries=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).log.entries
  expect(entries).toHaveLength(505); expect(entries.every((e:any)=>e.response.status===404)).toBe(true)
 })
-it('retains response-only provenance and rejects incompatible HTTP tier/type without widening', () => {
+it('retains response-only provenance and rejects incompatible HTTP tier/type without widening', async () => {
  addExportEvent('events_logged','response',1000,'example.com',{subtype:'http_response',flow_id:'orphan',status:503,method:'GET',host:'example.com',url:'https://example.com/orphan'})
  const subset={kind:'selection',projection:'http',filter:{},http:{statusPrefix:'5'}}
- const r=resolve({format:'har',subset}); expect(r.plan.counts.exchanges).toBe(1)
- const file=execute(r.plan.id).artifactPath
+ const r=await resolve({format:'har',subset}); expect(r.plan.counts.exchanges).toBe(1)
+ const file=(await execute(r.plan.id)).artifactPath
  const entry=JSON.parse(fs.readFileSync(file,'utf8')).log.entries[0]
  expect(entry._redlog).toMatchObject({requestEventId:null,responseEventId:'response',incomplete:true})
  for (const filter of [{tier:'chained'},{agentType:'shell'}]) {
-  const empty=resolve({format:'har',subset:{...subset,filter}})
+  const empty=await resolve({format:'har',subset:{...subset,filter}})
   expect(empty.ok).toBe(true); expect(empty.plan.counts.included).toBe(0)
  }
 })
-it('chooses latest response for HTTP status and freezes late response updates', () => {
+it('chooses latest response for HTTP status and freezes late response updates', async () => {
  addExportEvent('events_logged','request',1000,'example.com',{subtype:'http_request_start',flow_id:'repeat',method:'GET',host:'example.com',url:'https://example.com/'})
  addExportEvent('events_logged','old-response',2000,'example.com',{subtype:'http_response',flow_id:'repeat',status:302})
  addExportEvent('events_logged','new-response',3000,'example.com',{subtype:'http_response',flow_id:'repeat',status:200})
- const r=resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{statusPrefix:'2'}}})
+ const r=await resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{statusPrefix:'2'}}})
  expect(r.ok).toBe(true)
  addExportEvent('events_logged','after-preview',4000,'example.com',{subtype:'http_response',flow_id:'repeat',status:500})
- const entry=JSON.parse(fs.readFileSync(execute(r.plan.id).artifactPath,'utf8')).log.entries[0]
+ const entry=JSON.parse(fs.readFileSync((await execute(r.plan.id)).artifactPath,'utf8')).log.entries[0]
  expect(entry.response.status).toBe(200)
  expect(entry._redlog.responseEventId).toBe('new-response')
 })
 
-it('exports every long-command companion beyond the preview limit, at the approved snapshot', () => {
+it('exports every long-command companion beyond the preview limit, at the approved snapshot', async () => {
  addExportEvent('events','long-end',100,'example.com',{subtype:'command_end',command:'long-canary',command_id:'long-command',late_output:true})
  // Seed one immutable dataset; independent fsyncs are not the export contract.
  getDB().transaction(() => {
   for(let seq=1;seq<=2005;seq++) addExportEvent(seq%2?'events':'events_logged',`chunk-${seq}`,100+seq,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq,stdout:`line-${seq}\n`})
  })()
- const r=resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'long-canary',excludeHousekeeping:true}})
+ const r=await resolve({format:'json',subset:{kind:'selection',projection:'events',filter:{},query:'long-canary',excludeHousekeeping:true}})
  expect(r.ok).toBe(true)
  expect(r.plan.counts.included).toBe(2006)
  addExportEvent('events','after-preview-duplicate',1,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq:1,stdout:'must not replace the approved chunk'})
  addExportEvent('events','after-preview',9999,'example.com',{subtype:'command_output',command_id:'long-command',late:true,seq:2006,stdout:'not approved'})
- const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
  const exported=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).events
  expect(exported).toHaveLength(2006)
  expect(exported.some((e:any)=>e.id==='chunk-2005')).toBe(true)
@@ -111,105 +119,107 @@ function activityFixture() {
  const page=queryActivityPage({projectId:'eng-1',parsed:parsed.parsed})
  return {snapshot:page.snapshot,anchorEventId:'begin',projectId:'eng-1'}
 }
-it('exports an Activity with all companions, freezing late arrivals before preview',()=>{
+it('exports an Activity with all companions, freezing late arrivals before preview', async () =>{
  const selected=activityFixture()
  addExportEvent('events','after-list',5,'a.test',{shell:'zsh',terminalId:'term-one',command_id:'command-one',subtype:'command_output',stdout:'not reviewed'})
- const r=resolve({format:'json',maskOutOfScope:false,subset:{kind:'activity',...selected}})
+ const r=await resolve({format:'json',maskOutOfScope:false,subset:{kind:'activity',...selected}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(3)
- const out=execute(r.plan.id); expect(out.ok).toBe(true)
+ const out=(await execute(r.plan.id)); expect(out.ok).toBe(true)
  expect(JSON.parse(fs.readFileSync(out.artifactPath,'utf8')).events.map((e:any)=>e.id).sort()).toEqual(['begin','chunk','end'])
 })
-it('exports only the anchored source Session within the capture namespace',()=>{
+it('exports only the anchored source Session within the capture namespace', async () =>{
  const selected=activityFixture()
- const r=resolve({format:'json',maskOutOfScope:false,subset:{kind:'session',...selected}})
+ const r=await resolve({format:'json',maskOutOfScope:false,subset:{kind:'session',...selected}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(4)
- const out=execute(r.plan.id);expect(out.ok).toBe(true)
+ const out=(await execute(r.plan.id));expect(out.ok).toBe(true)
  expect(JSON.parse(fs.readFileSync(out.artifactPath,'utf8')).events.some((e:any)=>e.id==='other-session')).toBe(false)
- const nd=resolve({format:'ndjson',maskOutOfScope:false,subset:{kind:'session',...selected}})
- const ndOut=execute(nd.plan.id); expect(ndOut.ok).toBe(true)
+ const nd=await resolve({format:'ndjson',maskOutOfScope:false,subset:{kind:'session',...selected}})
+ const ndOut=(await execute(nd.plan.id)); expect(ndOut.ok).toBe(true)
  const lines=fs.readFileSync(ndOut.artifactPath,'utf8').trim().split('\n').map(line=>JSON.parse(line))
  expect(lines.map(e=>e.id).sort()).toEqual(['begin','chunk','end','same-session'])
- expect(resolve({format:'json',subset:{kind:'session',...selected,projectId:'different'}}).ok).toBe(false)
+ expect((await resolve({format:'json',subset:{kind:'session',...selected,projectId:'different'}})).ok).toBe(false)
 })
-it('does not silently add cross-target casts or unrelated screenshots to a bounded bundle',()=>{
+it('does not silently add cross-target casts or unrelated screenshots to a bounded bundle', async () =>{
  const selected=activityFixture()
  fs.mkdirSync(path.join(dir,'casts'));fs.mkdirSync(path.join(dir,'screenshots'),{recursive:true})
  fs.writeFileSync(path.join(dir,'casts','session.cast'),'{}\n[0,"o","content"]\n')
  fs.writeFileSync(path.join(dir,'screenshots','private.jpg'),'unrelated')
  // The capture reference was present when the operator opened the operation.
  const subset={kind:'activity',...selected}
- const r=resolve({format:'bundle',maskOutOfScope:false,subset})
+ const r=await resolve({format:'bundle',maskOutOfScope:false,subset})
  expect(r.ok).toBe(true)
  expect(r.plan.attachments.some((a:any)=>a.id==='screenshots/private.jpg')).toBe(false)
  expect(r.plan.attachments.find((a:any)=>a.kind==='cast')).toMatchObject({status:'excluded-by-policy',attribution:'cross-target',targets:['a.test','b.test']})
- const explicit=resolve({format:'bundle',maskOutOfScope:false,subset,includeAttachments:['casts/session.cast']})
+ const explicit=await resolve({format:'bundle',maskOutOfScope:false,subset,includeAttachments:['casts/session.cast']})
  expect(explicit.ok).toBe(true)
  expect(explicit.plan.attachments.find((a:any)=>a.kind==='cast').status).toBe('included')
- const out=execute(r.plan.id); expect(out.ok).toBe(true)
+ const out=(await execute(r.plan.id)); expect(out.ok).toBe(true)
  expect(fs.existsSync(path.join(out.artifactPath,'casts','session.cast'))).toBe(false)
 })
 
-it('invalidates a reviewed operation when an event is marked private before execution',()=>{
+it('invalidates a reviewed operation when an event is marked private before execution', async () =>{
  const selected=activityFixture()
- const r=resolve({format:'json',subset:{kind:'activity',...selected}})
+ const r=await resolve({format:'json',subset:{kind:'activity',...selected}})
  expect(r.ok).toBe(true)
  getDB().prepare('INSERT INTO do_not_export(event_id,created_at) VALUES(?,?)').run('end',Date.now())
- expect(execute(r.plan.id)).toMatchObject({ok:false,error:'policy-changed'})
+ expect((await execute(r.plan.id))).toMatchObject({ok:false,error:'policy-changed'})
 })
-it('freezes selected cast prefixes and parts while a source session keeps recording',()=>{
+it('freezes selected cast prefixes and parts while a source session keeps recording', async () =>{
  const selected=activityFixture()
  fs.mkdirSync(path.join(dir,'casts'))
  const first=path.join(dir,'casts','session.cast')
  fs.writeFileSync(first,'{}\n[0,"o","reviewed"]\n')
  const reviewed=fs.readFileSync(first,'utf8')
- const r=resolve({format:'bundle',maskOutOfScope:false,subset:{kind:'session',...selected},includeAttachments:['casts/session.cast']})
+ const r=await resolve({format:'bundle',maskOutOfScope:false,subset:{kind:'session',...selected},includeAttachments:['casts/session.cast']})
  expect(r.ok).toBe(true)
  fs.appendFileSync(first,'[1,"o","not reviewed"]\n')
  fs.writeFileSync(path.join(dir,'casts','session.part000001.cast'),'{}\n[2,"o","new part"]\n')
- const out=execute(r.plan.id);expect(out.ok).toBe(true)
+ const out=(await execute(r.plan.id));expect(out.ok).toBe(true)
  expect(fs.readFileSync(path.join(out.artifactPath,'casts','session.cast'),'utf8')).toBe(reviewed)
  expect(fs.existsSync(path.join(out.artifactPath,'casts','session.part000001.cast'))).toBe(false)
 })
 
-it('rejects bytes changed during bundle copying rather than declaring a successful delivery',()=>{
+it('rejects bytes changed during bundle copying rather than declaring a successful delivery', async () =>{
  const selected=activityFixture()
  fs.mkdirSync(path.join(dir,'casts'))
  fs.writeFileSync(path.join(dir,'casts','session.cast'),'{}\n[0,"o","reviewed"]\n')
- const r=resolve({format:'bundle',maskOutOfScope:false,subset:{kind:'activity',...selected},includeAttachments:['casts/session.cast']})
+ const r=await resolve({format:'bundle',maskOutOfScope:false,subset:{kind:'activity',...selected},includeAttachments:['casts/session.cast']})
  expect(r.ok).toBe(true)
+ // Corrupt the copy at the core kernel seam; mocks cannot cross a Worker.
+ registerBridge(async task => executeExportTask(task))
  const original=fs.copyFileSync
  const copy=vi.spyOn(fs,'copyFileSync').mockImplementation((source,destination,mode)=>{
    original(source,destination,mode)
    if(String(source).endsWith('session.cast')) fs.writeFileSync(destination,fs.readFileSync(destination,'utf8').replace('reviewed','MODIFIED'))
  })
- try { expect(execute(r.plan.id)).toMatchObject({ok:false,error:'source-unavailable'}) }
+ try { expect((await execute(r.plan.id))).toMatchObject({ok:false,error:'source-unavailable'}) }
  finally { copy.mockRestore() }
 })
 
-it('keeps Claude Code and Codex sessions separate even when their session names collide',()=>{
+it('keeps Claude Code and Codex sessions separate even when their session names collide', async () =>{
  for(const [id,provider,subtype] of [
   ['claude-prompt','claude-code','user_message'],['claude-answer','claude-code','assistant_message'],['codex-prompt','codex','user_message']
  ]) insertFixture('events',id,10,{agentType:'agent',subtype,data:{agent:provider,session_id:'shared-name',message:'synthetic'}})
  const parsed=parseQuery('');if(!parsed.ok) throw new Error('query')
  const snapshot=queryActivityPage({projectId:'eng-1',parsed:parsed.parsed}).snapshot
- const r=resolve({format:'json',subset:{kind:'session',projectId:'eng-1',anchorEventId:'claude-prompt',snapshot}})
+ const r=await resolve({format:'json',subset:{kind:'session',projectId:'eng-1',anchorEventId:'claude-prompt',snapshot}})
  expect(r.ok).toBe(true);expect(r.plan.counts.included).toBe(2)
- const out=execute(r.plan.id);expect(out.ok).toBe(true)
+ const out=(await execute(r.plan.id));expect(out.ok).toBe(true)
  expect(JSON.parse(fs.readFileSync(out.artifactPath,'utf8')).events.map((e:any)=>e.id).sort()).toEqual(['claude-answer','claude-prompt'])
 })
-it('freezes SSE companions with their approved HTTP exchange', () => {
+it('freezes SSE companions with their approved HTTP exchange', async () => {
  addExportEvent('events_logged','sse-request',1000,'example.com',{subtype:'http_request_start',flow_id:'sse',method:'GET',url:'https://example.com/events'})
  addExportEvent('events_logged','sse-part-1',1001,'example.com',{subtype:'http_response_chunk',flow_id:'sse',seq:1,response_body:{data:'first',encoding:'text',size:5}})
- const r=resolve({format:'json',subset:{kind:'selection',projection:'http',filter:{}}})
+ const r=await resolve({format:'json',subset:{kind:'selection',projection:'http',filter:{}}})
  expect(r.ok).toBe(true);expect(r.plan.counts.included).toBe(2)
  addExportEvent('events_logged','sse-part-2',1002,'example.com',{subtype:'http_response_chunk',flow_id:'sse',seq:2})
- const result=execute(r.plan.id)
+ const result=(await execute(r.plan.id))
  expect(result.ok).toBe(true)
  const text=fs.readFileSync(result.artifactPath,'utf8')
  expect(text).toContain('sse-part-1');expect(text).not.toContain('sse-part-2')
 })
 
-it('keeps the response pair reachable after more than ten SSE segments', () => {
+it('keeps the response pair reachable after more than ten SSE segments', async () => {
  addExportEvent('events_logged','pair-request',1000,'example.com',{subtype:'http_request_start',flow_id:'long-sse'})
  for(let n=0;n<20;n++) addExportEvent('events_logged',`pair-part-${n}`,1001+n,'example.com',{subtype:'http_response_chunk',flow_id:'long-sse',seq:n+1})
  addExportEvent('events_logged','pair-response',1030,'example.com',{subtype:'http_response',flow_id:'long-sse'})
@@ -219,13 +229,13 @@ it('keeps the response pair reachable after more than ten SSE segments', () => {
 // row in the range, so segments whose request and response were never saved
 // reach the exporter. They used to be dropped there; the file now holds them,
 // and a segment saved after the preview stays out.
-it('delivers a stream-only flow in the HAR it previewed, and nothing saved after', () => {
+it('delivers a stream-only flow in the HAR it previewed, and nothing saved after', async () => {
  addExportEvent('events_logged','lone-1',1000,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:1,offset:0,url:'https://example.com/events',response_body:{data:'ZGF0YQ==',encoding:'base64',size:4}})
  insertFixture('events_logged','lone-ws',1001,{targetId:'example.com',agentType:'scanner',subtype:'ws_message',data:{flow_id:'lone-socket',message_count:1,direction:'server',message_type:'binary',size:2,ws_body:{data:'AP8=',encoding:'base64',size:2}}})
- const r=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const r=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(2)
  addExportEvent('events_logged','lone-2',1002,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:2,offset:4,response_body:{data:'eA==',encoding:'base64',size:1}})
- const result=execute(r.plan.id); expect(result.ok).toBe(true)
+ const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
  const log=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).log
  expect(log.entries).toEqual([])
  const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
@@ -235,7 +245,7 @@ it('delivers a stream-only flow in the HAR it previewed, and nothing saved after
 // #461: the preview of such a HAR names the stream-only flows, and the same
 // exclusions hold for them as for any exchange — do-not-export removes a
 // segment, scope masking replaces an out-of-scope segment's bytes.
-it('previews stream-only flows and applies do-not-export and scope masking to them', () => {
+it('previews stream-only flows and applies do-not-export and scope masking to them', async () => {
  fs.writeFileSync(path.join(dir,'config.yaml'),'scope:\n  targets: [in.test]\n')
  const chunk=(id:string,ts:number,flow:string,host:string,seq:number,data:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
   data:{flow_id:flow,seq,offset:0,url:`https://${host}/events`,response_body:{data,encoding:'base64',size:3}}})
@@ -244,10 +254,10 @@ it('previews stream-only flows and applies do-not-export and scope masking to th
  chunk('out-1',1002,'out-flow','out.test',1,'T1VU')
  addExportEvent('events_logged','req',1003,'in.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://in.test/'})
  getDB().prepare('INSERT INTO do_not_export(event_id,created_at) VALUES(?,?)').run('in-2',Date.now())
- const r=resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
+ const r=await resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
  expect(r.ok).toBe(true)
  expect(r.plan.counts).toMatchObject({included:3,excludedDoNotExport:1,partialHttpFlows:2})
- const log=JSON.parse(fs.readFileSync(execute(r.plan.id).artifactPath,'utf8')).log
+ const log=JSON.parse(fs.readFileSync((await execute(r.plan.id)).artifactPath,'utf8')).log
  const flows=Object.fromEntries(log._redlog.partialFlows.map((f:any)=>[f.flowId,f]))
  expect(flows['in-flow'].streamChunks.map((c:any)=>c.eventId)).toEqual(['in-1'])
  expect(flows['in-flow'].streamChunks[0].body.text).toBe('aW4x')
@@ -257,55 +267,55 @@ it('previews stream-only flows and applies do-not-export and scope masking to th
 // #461: the HAR the HTTP view offers is built from requests and responses, so
 // a stream-only flow is not in it. The preview counts the ones its filter
 // would have reached instead of leaving them out silently.
-it('counts the stream-only flows an HTTP-view HAR leaves out, by the filter they can answer', () => {
+it('counts the stream-only flows an HTTP-view HAR leaves out, by the filter they can answer', async () => {
  const chunk=(id:string,ts:number,flow:string,host:string)=>insertFixture('events_logged',id,ts,{targetId:host,agentType:'scanner',subtype:'http_response_chunk',
   data:{flow_id:flow,seq:1,offset:0,url:`https://${host}/events`,response_body:{data:'eA==',encoding:'base64',size:1}}})
  chunk('a-1',1000,'a-flow','a.test'); chunk('a-2',1001,'a-flow','a.test'); chunk('b-1',1002,'b-flow','b.test')
  addExportEvent('events_logged','req',1003,'a.test',{subtype:'http_request_start',flow_id:'whole',method:'GET',url:'https://a.test/'})
  addExportEvent('events_logged','res',1004,'a.test',{subtype:'http_response',flow_id:'whole',method:'GET',url:'https://a.test/',status:200})
- const view=(http:Record<string,string>)=>resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{text:'',...http}}})
- expect(view({}).plan.counts).toMatchObject({exchanges:1,partialHttpFlows:0,partialHttpFlowsOutside:2})
- expect(view({host:'b.test'}).plan.counts.partialHttpFlowsOutside).toBe(1)
- expect(view({text:'a.test/ev'}).plan.counts.partialHttpFlowsOutside).toBe(1)
- expect(view({method:'GET'}).plan.counts.partialHttpFlowsOutside).toBe(0)
+ const view=async (http:Record<string,string>)=>await resolve({format:'har',subset:{kind:'selection',projection:'http',filter:{},http:{text:'',...http}}})
+ expect((await view({})).plan.counts).toMatchObject({exchanges:1,partialHttpFlows:0,partialHttpFlowsOutside:2})
+ expect((await view({host:'b.test'})).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect((await view({text:'a.test/ev'})).plan.counts.partialHttpFlowsOutside).toBe(1)
+ expect((await view({method:'GET'})).plan.counts.partialHttpFlowsOutside).toBe(0)
 })
 // #461: a segment whose bytes live in a sidecar is delivered as the bytes the
 // event recorded — checked by their hash — and a sidecar changed on disk after
 // the preview fails the export rather than shipping other bytes under the
 // original event's name.
-it('delivers sidecar stream segments by their recorded hash, and refuses changed bytes', () => {
+it('delivers sidecar stream segments by their recorded hash, and refuses changed bytes', async () => {
  const bytes=crypto.randomBytes(6000)
  const ref=storeBody({data:bytes.toString('base64'),encoding:'base64',size:bytes.length,sha256:''})!
  insertFixture('events_logged','big-1',1000,{targetId:'example.com',agentType:'scanner',subtype:'http_response_chunk',
   data:{flow_id:'big',seq:1,offset:0,url:'https://example.com/stream',response_body_ref:ref}})
- const intact=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
- const delivered=JSON.parse(fs.readFileSync(execute(intact.plan.id).artifactPath,'utf8')).log._redlog.partialFlows[0].streamChunks[0]
+ const intact=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const delivered=JSON.parse(fs.readFileSync((await execute(intact.plan.id)).artifactPath,'utf8')).log._redlog.partialFlows[0].streamChunks[0]
  expect(delivered.eventId).toBe('big-1')
  expect(crypto.createHash('sha256').update(Buffer.from(delivered.body.text,'base64')).digest('hex')).toBe(ref.sha256)
- const changed=resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const changed=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
  const sidecar=path.join(dir,'http-bodies',ref.file)
  fs.chmodSync(sidecar,0o644); fs.writeFileSync(sidecar,Buffer.alloc(bytes.length))
- const result=execute(changed.plan.id)
+ const result=(await execute(changed.plan.id))
  expect(result.ok).toBe(false)
  expect(result.error).toBe('source-unavailable')
 })
 
 // #291 R14: the capture gaps inside the exported selection are in the plan's
 // counts and so in the manifest beside the artifact; one outside it is not.
-it('counts the capture gaps inside the selection, and carries them into the manifest', () => {
+it('counts the capture gaps inside the selection, and carries them into the manifest', async () => {
  const gap=(id:string,ts:number,agentType:string,data:Record<string,unknown>)=>insertFixture('events_logged',id,ts,{agentType,subtype:'capture_gap',data})
  gap('in-full',1000,'scanner',{reason:'queue-full',skipped_units:12})
  gap('in-unconfirmed',1001,'scanner',{reason:'delivery-unconfirmed',capture_delivery:'unknown'})
  gap('in-nocount',1002,'scanner',{reason:'project-switched'})
  gap('out-full',5000,'scanner',{reason:'queue-full',skipped_units:99})
- const r=resolve({format:'json',subset:{kind:'time-range',since:900,before:2000}})
+ const r=await resolve({format:'json',subset:{kind:'time-range',since:900,before:2000}})
  expect(r.ok).toBe(true)
  expect(r.plan.counts.captureGaps).toEqual([
   {reason:'delivery-unconfirmed',gaps:1,skippedUnits:0,unknownAmount:1},
   {reason:'project-switched',gaps:1,skippedUnits:0,unknownAmount:1},
   {reason:'queue-full',gaps:1,skippedUnits:12,unknownAmount:0}
  ])
- const manifest=JSON.parse(fs.readFileSync(`${execute(r.plan.id).artifactPath}.manifest.json`,'utf8'))
+ const manifest=JSON.parse(fs.readFileSync(`${(await execute(r.plan.id)).artifactPath}.manifest.json`,'utf8'))
  expect(manifest.actualCounts.captureGaps).toEqual(r.plan.counts.captureGaps)
- expect(resolve({format:'json',subset:{kind:'time-range',since:3000,before:6000}}).plan.counts.captureGaps).toEqual([{reason:'queue-full',gaps:1,skippedUnits:99,unknownAmount:0}])
+ expect((await resolve({format:'json',subset:{kind:'time-range',since:3000,before:6000}})).plan.counts.captureGaps).toEqual([{reason:'queue-full',gaps:1,skippedUnits:99,unknownAmount:0}])
 })

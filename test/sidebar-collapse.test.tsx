@@ -31,7 +31,7 @@ beforeEach(() => {
     events: { getCount: vi.fn(async () => 0), onNewBatch: () => () => {} },
     loot: { getCount: vi.fn(async () => 0) },
     chain: { length: vi.fn(async () => 0) },
-    scope: { getViolationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
+    scope: { getObservationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
     config: { get: vi.fn(async () => ({})) },
     targetContext: { get: vi.fn(async () => null), onChange: () => () => {}, set: vi.fn() }
   }

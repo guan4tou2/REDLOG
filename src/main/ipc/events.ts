@@ -1,5 +1,5 @@
 import { querySourceSessions, type SourceSessionRequest } from '../../core/source-sessions'
-import { describeEventContent, readEventContent, findEventContent, createContentAnchor, resolveContentAnchor, readContentForClipboard } from '../../core/evidence-content'
+import { prepareEventContent, describeEventContent, readEventContent, findEventContent, createContentAnchor, resolveContentAnchor, readContentForClipboard } from '../../core/evidence-content'
 import { saveEventContent } from '../../core/saved-content-delivery'
 import { streamCompletion } from '../../core/stream-completion'
 import { clipboard, dialog } from 'electron'
@@ -11,7 +11,7 @@ import type { IpcContext } from './types'
 import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryStreamSegments, queryCommandOutput, queryCommandEnds, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
-  countEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
+  countEvents, spanEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
   getEventCount, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
@@ -82,25 +82,33 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:activityMembers', (_e, req: ActivityMembersRequest) => queryActivityMembers(activityRequest(req)))
 
   const deniedContent = () => ({ ok: false as const, status: 'denied' as const, message: 'Content project changed; reopen the source' })
+  const prepared = async <T>(projectId: string, eventId: string, read: () => T) => {
+    if (!contentAllowed(projectId)) return deniedContent()
+    const ready = await prepareEventContent(projectId, eventId)
+    if (!contentAllowed(projectId)) return deniedContent()
+    return ready.ok ? read() : ready
+  }
   ipcMain.handle('content:list', (_e, req: { projectId: string; eventId: string }) =>
-    contentAllowed(req?.projectId) ? describeEventContent(req.projectId, req.eventId) : deniedContent())
+    prepared(req?.projectId, req?.eventId, () => describeEventContent(req.projectId, req.eventId)))
   ipcMain.handle('content:read', (_e, req: ContentReadRequest) =>
-    contentAllowed(req?.ref?.projectId) ? readEventContent(req) : deniedContent())
+    prepared(req?.ref?.projectId, req?.ref?.eventId, () => readEventContent(req)))
   ipcMain.handle('content:find', (_e, req: ContentFindRequest) =>
-    contentAllowed(req?.ref?.projectId) ? findEventContent(req) : deniedContent())
+    prepared(req?.ref?.projectId, req?.ref?.eventId, () => findEventContent(req)))
   ipcMain.handle('content:anchor', (_e, req: import('../../core/content-contract').ContentAnchorRequest) =>
-    contentAllowed(req?.ref?.projectId) ? createContentAnchor(req) : deniedContent())
+    prepared(req?.ref?.projectId, req?.ref?.eventId, () => createContentAnchor(req)))
   ipcMain.handle('content:resolveAnchor', (_e, req: import('../../core/content-contract').ContentAnchor) =>
-    contentAllowed(req?.ref?.projectId) ? resolveContentAnchor(req) : deniedContent())
-  ipcMain.handle('content:copySaved', (_e, ref: import('../../core/content-contract').ContentRef) => {
-    if(!contentAllowed(ref?.projectId))return deniedContent()
-    const result=readContentForClipboard(ref)
-    if(!result.ok)return result
-    try{clipboard.writeText(result.value.text);return {ok:true,value:{bytes:result.value.bytes}}}
-    catch(error){return {ok:false,status:'failed',message:String(error)}}
-  })
+    prepared(req?.ref?.projectId, req?.ref?.eventId, () => resolveContentAnchor(req)))
+  ipcMain.handle('content:copySaved', (_e, ref: import('../../core/content-contract').ContentRef) => prepared(ref?.projectId, ref?.eventId, () => {
+    const result = readContentForClipboard(ref)
+    if (!result.ok) return result
+    try { clipboard.writeText(result.value.text); return { ok: true, value: { bytes: result.value.bytes } } }
+    catch (error) { return { ok: false, status: 'failed', message: String(error) } }
+  }))
   ipcMain.handle('content:save', async (_e, ref: import('../../core/content-contract').ContentRef) => {
     if(!contentAllowed(ref?.projectId))return deniedContent()
+    const ready = await prepareEventContent(ref.projectId, ref.eventId)
+    if (!contentAllowed(ref.projectId)) return deniedContent()
+    if (!ready.ok) return ready
     const checked=readEventContent({ref,limit:4})
     if(!checked.ok)return checked
     const options={defaultPath:`${ref.eventId.replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,80)}-${ref.field}.${checked.value.format==='binary'?'bin':'txt'}`}
@@ -118,6 +126,13 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject()
       ? countEvents({ ...req, filter: withActiveScope(req?.filter ?? {}) })
       : 0)
+
+  // First and last row over the same predicates as `events:count`, for the
+  // Timeline's whole-project span.
+  ipcMain.handle('events:span', (_e, req: EventCountRequest) =>
+    ctx.getActiveProject()
+      ? spanEvents({ ...req, filter: withActiveScope(req?.filter ?? {}) })
+      : null)
 
   ipcMain.handle('events:matchIds', (_e, req: EventMatchRequest) =>
     ctx.getActiveProject()

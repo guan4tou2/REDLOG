@@ -61,10 +61,10 @@ test.describe('plugin explore & manage — batch A journey', () => {
       await openView(page, 'settings')
       await openSettingsPage(page, 'plugins')
 
-      // Wide layout starts with the list and a "select a plugin" hint.
+      // One column at every width: it starts with the list and how to open a plugin.
       await expect(page.getByTestId('plugin-details-e2e-loot')).toBeVisible()
       await expect(page.getByTestId('plugin-details-e2e-clean')).toBeVisible()
-      await expect(page.getByText(enT('plugins.selectHint'))).toBeVisible()
+      await expect(page.getByTestId('plugin-shown-count')).toContainText(enT('plugins.listHint'))
 
       // Search narrows to matching rows; a miss becomes the empty-result line.
       const search = page.getByTestId('plugin-search')
@@ -76,10 +76,10 @@ test.describe('plugin explore & manage — batch A journey', () => {
       await search.fill('')
 
       // Needs-attention keeps only the row with a rejected contribution.
-      await page.getByTestId('plugin-attention-toggle').check()
+      await page.getByTestId('plugin-filter-attention').click()
       await expect(page.getByTestId('plugin-details-e2e-loot')).toBeVisible()
       await expect(page.getByTestId('plugin-details-e2e-clean')).toHaveCount(0)
-      await page.getByTestId('plugin-attention-toggle').uncheck()
+      await page.getByTestId('plugin-filter-all').click()
 
       // The report lives in the detail panel: the row only carries the first
       // issue, the detail names the rejected rule and counts the rest.
@@ -90,25 +90,29 @@ test.describe('plugin explore & manage — batch A journey', () => {
       const loot = page.getByTestId('plugin-results-loot-e2e-loot')
       await expect(loot).toContainText('1 accepted, 1 rejected')
       await expect(loot).toContainText('ticket-broken')
-      // Five axes are read aloud; trust never becomes the only word.
-      for (const axis of ['plugins.axis.trust', 'plugins.axis.install', 'plugins.axis.project', 'plugins.axis.health', 'plugins.axis.effect']) {
+      // Trust, install and effect are read aloud; trust never becomes the only
+      // word. Project and capture health belong to official integrations.
+      for (const axis of ['plugins.axis.trust', 'plugins.axis.install', 'plugins.axis.effect']) {
         await expect(page.getByTestId('plugin-detail-e2e-loot')).toContainText(enT(axis))
       }
+      await expect(page.getByTestId('plugin-card-capture-e2e-loot')).toHaveCount(0)
 
-      // Selecting a second row swaps the detail in the wide layout.
+      // The detail replaces the list; Back returns to it, and a second row opens in turn.
+      await expect(page.getByTestId('plugin-details-e2e-clean')).toHaveCount(0)
+      await page.getByTestId('plugin-back-e2e-loot').click()
       await page.getByTestId('plugin-details-e2e-clean').click()
       await expect(page.getByTestId('plugin-detail-e2e-clean')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-loot')).toHaveCount(0)
       // A plugin that declared nothing produced no report: the page says
       // "no diagnosis yet" rather than drawing a box of accepted counts.
+      await page.getByTestId('plugin-back-e2e-clean').click()
       await page.getByTestId('plugin-details-e2e-empty').click()
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-clean')).toHaveCount(0)
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toContainText(enT('plugins.unknownDiagnosis'))
 
-      // Narrow layout (the window floor is 800px wide, which lands the plugin
-      // container under the 720px threshold): a selection left open when the
-      // window shrinks stays on screen, and Back returns to the list.
+      // A selection left open when the window shrinks stays on screen, and Back
+      // returns to the list.
       await resizeMainWindow(app, 800, 700)
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-details-e2e-empty')).toHaveCount(0)
@@ -116,7 +120,7 @@ test.describe('plugin explore & manage — batch A journey', () => {
       await page.getByTestId('plugin-back-e2e-empty').click()
       await expect(page.getByTestId('plugin-details-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toHaveCount(0)
-      // Selecting again in narrow replaces the list with the detail.
+      // Selecting again replaces the list with the detail.
       await page.getByTestId('plugin-details-e2e-empty').click()
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-details-e2e-empty')).toHaveCount(0)

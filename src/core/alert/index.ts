@@ -22,10 +22,10 @@ export type {
   Surface,
   EmitContext,
   AdherenceRow,
-  ViolationRow
+  ObservationLogRow
 } from './surface'
 
-export { ChainEmitter, BadgeSurface, AdherenceCounter, ViolationLog } from './surface'
+export { ChainEmitter, BadgeSurface, AdherenceCounter, ObservationLog } from './surface'
 export { AlertBus } from './bus'
 
 export {

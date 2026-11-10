@@ -60,7 +60,8 @@ describe('CaptureHealthCard, before anything has been recorded', () => {
     // One list, not two: the checklist that used to repeat these is gone, and
     // with it the third vocabulary and the ordered-sequence implication.
     expect(el.querySelectorAll('ol').length, 'a numbered list implies a sequence').toBe(0)
-    expect(el.querySelectorAll('[data-testid="capture-core"] ul')).toHaveLength(1)
+    expect(el.querySelectorAll('ul[data-testid="capture-core"]')).toHaveLength(1)
+    expect(el.querySelectorAll('[data-testid="capture-core"] ul')).toHaveLength(0)
     // The other sources are one click away under All sources, not advertised.
     expect(el.textContent).not.toMatch(/more capture sources are available/)
   })

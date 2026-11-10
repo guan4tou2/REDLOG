@@ -1,4 +1,4 @@
-export type ContentField = 'command' | 'stdout' | 'stderr' | 'full' | 'preview' | 'tool_input' | 'output' | 'request_body' | 'response_body' | 'ws_body' | 'tcp_body' | 'output_body' | 'artifact' | 'ai_raw'
+export type ContentField = 'command' | 'stdout' | 'stderr' | 'full' | 'preview' | 'tool_input' | 'output' | 'request_body' | 'response_body' | 'ws_body' | 'tcp_body' | 'output_body' | 'artifact' | 'ai_raw' | 'event_data'
 export type ContentUnavailable = 'not-captured' | 'missing' | 'changed' | 'denied' | 'unsupported' | 'failed' | 'cast-recording'
 export interface ContentRef {
   projectId: string
@@ -7,6 +7,7 @@ export interface ContentRef {
   version: string
 }
 export interface ContentDescriptor {
+  storage?: 'terminal-cast'
   field: ContentField
   status: 'available' | ContentUnavailable
   ref: ContentRef | null
@@ -14,6 +15,17 @@ export interface ContentDescriptor {
   format: 'utf8' | 'json' | 'binary'
   capture: 'partial' | 'unknown'
 }
+/** Reader presentation is independent of event kind and pagination. */
+export type ContentState = 'available' | 'empty' | 'not-captured' | 'unreadable' | 'truncated'
+
+export function contentState(descriptor: Pick<ContentDescriptor, 'status' | 'bytes' | 'capture'>): ContentState {
+  if (descriptor.status === 'not-captured') return 'not-captured'
+  if (descriptor.status !== 'available') return 'unreadable'
+  // Zero saved bytes can still mean capture loss, never a confirmed empty result.
+  if (descriptor.capture === 'partial') return 'truncated'
+  return descriptor.bytes === 0 ? 'empty' : 'available'
+}
+
 export interface ContentCursor {
   version: string
   offset: number
@@ -107,3 +119,41 @@ export const BODY_SOURCE_PREDICATE = `CASE WHEN json_valid(data) THEN (${[
   "(agent_type='file_transfer' AND subtype='artifact_added')",
   "(agent_type='agent' AND subtype IN ('transcript_snapshot','transcript_capture_started'))"
 ].join(' OR ')}) ELSE 0 END`
+
+/** What became of a finished shell command's output. Every reader names these
+ *  five (plus the inline text itself) the same way, because every reader asks
+ *  this function instead of working it out from `stdout`/`io`/`*_ref` itself
+ *  (#591): the Timeline said "nothing recorded" for a command that printed
+ *  nothing while the transcript called it "not captured".
+ *
+ *  - `inline`       text is on the event (even if cut at the cap)
+ *  - `saved`        stored beside the event by reference; the content reader opens it
+ *  - `recorded`     a bracketed span of the session recording holds it
+ *  - `empty`        a bracketed span says the command printed nothing
+ *  - `unbracketed`  built-in terminal, but no span could be matched to it
+ *  - `not-captured` an external shell: the command only, no output */
+export type CommandOutputState = 'inline' | 'saved' | 'recorded' | 'empty' | 'unbracketed' | 'not-captured'
+
+export function commandOutputState(data: Record<string, unknown>, hasInlineText = false): CommandOutputState {
+  const inline = (text: unknown, bytes: unknown, truncated: unknown): boolean =>
+    typeof text === 'string' && (text.length > 0 || Number(bytes) > 0 || truncated === true)
+  if (hasInlineText || inline(data.stdout, data.stdout_bytes, data.stdout_truncated)
+    || inline(data.stderr, data.stderr_bytes, data.stderr_truncated)) return 'inline'
+  if (data.stdout_ref || data.stderr_ref) return 'saved'
+  const io = data.io as { len?: unknown; unbracketed?: unknown } | undefined
+  if (typeof io?.len === 'number' && !io.unbracketed) return io.len > 0 ? 'recorded' : 'empty'
+  if (typeof data.stdout === 'string') return 'empty'
+  return data.source === 'builtin-terminal' ? 'unbracketed' : 'not-captured'
+}
+
+/** The same question for an HTTP response body, as the transcript asks it:
+ *  a preview on the event is `inline`, a stored body (inline object or ref) is
+ *  `saved` and opens in the HTTP detail, a declared length of 0 is `empty`, and
+ *  only the rest is `not-captured`. */
+export type ResponseBodyState = 'inline' | 'saved' | 'empty' | 'not-captured'
+
+export function responseBodyState(data: Record<string, unknown>): ResponseBodyState {
+  if (typeof data.response_preview === 'string' && data.response_preview.length > 0) return 'inline'
+  if (data.response_body_ref || data.response_body) return 'saved'
+  return data.content_length === 0 ? 'empty' : 'not-captured'
+}

@@ -53,13 +53,55 @@ function proxyListenAddress(proxy: { state: string; url?: string | null } | unde
   try { return new URL(proxy.url).host } catch { return proxy.url }
 }
 
+type Tone = 'ok' | 'warn' | 'err' | 'neutral' | 'off'
+const TAG_TONE: Record<Tone, string> = {
+  ok: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+  warn: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+  err: 'border-redlog-danger/50 bg-redlog-danger/10 text-red-300',
+  neutral: 'border-redlog-border bg-redlog-elevated text-redlog-text-dim',
+  off: 'border-redlog-border bg-redlog-elevated text-redlog-text-faint'
+}
+const LIGHT_TONE: Record<Tone, string> = {
+  ok: 'bg-emerald-500', warn: 'bg-amber-500', err: 'bg-red-500', neutral: 'bg-redlog-text-faint', off: 'bg-redlog-elevated-hover'
+}
+function Tag({ tone, testid, children }: { tone: Tone; testid?: string; children: React.ReactNode }): JSX.Element {
+  return <span data-testid={testid} className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs [overflow-wrap:anywhere] ${TAG_TONE[tone]}`}>{children}</span>
+}
+function StatusLight({ tone, children }: { tone: Tone; children: React.ReactNode }): JSX.Element {
+  return <span className="ml-auto flex items-center gap-1.5 text-xs text-redlog-text-dim">
+    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${LIGHT_TONE[tone]}`} />{children}
+  </span>
+}
+
+/** Whether commands can be recorded, and when one last arrived — the same four
+ *  states as every inventory row. Separate from each other on purpose: an
+ *  operator who has not typed for an hour has nothing wrong with capture. */
+function coreCommandState(readiness: ReturnType<typeof computeCaptureReadiness>, sources: CaptureSourceInfo[]): {
+  cmd: CaptureSourceInfo['state']; cmdLast: number | null; ownShell: CaptureSourceInfo | undefined
+} {
+  const commands = readiness.groups.find((g) => g.id === 'commands')
+  const cmdSources = (commands?.steps ?? [])
+    .map((s) => sources.find((x) => x.id === s.id))
+    .filter((s): s is CaptureSourceInfo => s !== undefined)
+  const cmd: CaptureSourceInfo['state'] =
+    cmdSources.some((s) => s.state === 'ready') ? 'ready'
+      : cmdSources.some((s) => s.state === 'error') ? 'error'
+        : cmdSources.some((s) => s.state === 'off') ? 'off' : 'unset'
+  const cmdLast = commands?.steps.reduce<number | null>((acc, s) => {
+    const at = sources.find((x) => x.id === s.id)?.lastEventAt ?? null
+    return at !== null && (acc === null || at > acc) ? at : acc
+  }, null) ?? null
+  return { cmd, cmdLast, ownShell: cmdSources.find((x) => x.id === 'terminal') }
+}
+
 /** Both core captures, always named, each with its own state. Commands is
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
+function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
+  readUnknown: boolean
   /** host:port the managed proxy is listening on, or null when it is not up (#254). */
   listenAddress: string | null
   source: CaptureSourceInfo | undefined
@@ -74,93 +116,51 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   age: (ts: number | null) => string
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
-  const commands = readiness.groups.find((g) => g.id === 'commands')
-  // Can commands be recorded — the same question, and the same four words, as
-  // every row in the inventory below. The core line used to speak its own
-  // vocabulary (記錄中 / 已設定，還沒有指令), which made an operator compare two
-  // descriptions of one thing and work out whether they agreed.
-  const cmdSources = (commands?.steps ?? [])
-    .map((s) => sources.find((x) => x.id === s.id))
-    .filter((s): s is CaptureSourceInfo => s !== undefined)
-  const cmd: CaptureSourceInfo['state'] =
-    cmdSources.some((s) => s.state === 'ready') ? 'ready'
-      : cmdSources.some((s) => s.state === 'error') ? 'error'
-        : cmdSources.some((s) => s.state === 'off') ? 'off' : 'unset'
-  // The age of the last command, beside the state. The state says whether the
-  // terminal CAN record; this says when it last did — and the two are
-  // deliberately separate, because an operator who has not typed for an hour
-  // has nothing wrong with their capture and should not be coloured as if
-  // they did.
-  const cmdLast = commands?.steps.reduce<number | null>((acc, s) => {
-    const at = sources.find((x) => x.id === s.id)?.lastEventAt ?? null
-    return at !== null && (acc === null || at > acc) ? at : acc
-  }, null) ?? null
-  const mark = (state: 'done' | 'partial' | 'missing' | 'failed'): { mark: string; cls: string } =>
-    state === 'done' ? { mark: '●', cls: 'text-emerald-500' }
-      : state === 'partial' ? { mark: '◐', cls: 'text-amber-500' }
-        : state === 'failed' ? { mark: '!', cls: 'text-red-400' }
-          : { mark: '!', cls: 'text-amber-500' }
-  const cmdMark = mark(cmd === 'ready' ? 'done' : cmd === 'error' ? 'failed' : 'missing')
-  const httpMark = mark(
-    http === 'ready' ? (verification ? 'done' : 'partial')
-      : http === 'starting' ? 'partial'
-        : http === 'failed' ? 'failed' : 'missing'
-  )
+  const { cmd, cmdLast, ownShell } = coreCommandState(readiness, sources)
+  const verified = http === 'ready' && !!verification
+  const httpWord = http === 'ready' ? t(verified ? 'capture.httpVerified' : 'capture.httpAwaitingTraffic') : t(`capture.http.${http}`)
+  const cmdTone: Tone = readUnknown ? 'warn' : cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
+  const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' || http === 'recorded' || http === 'unknown' ? 'warn' : http === 'failed' ? 'err' : 'off'
   return (
-    <div data-testid="capture-core" className="mb-3">
-      <SectionLabel className="mb-1">{t('capture.core.heading')}</SectionLabel>
-      <ul className="space-y-1 text-xs">
-        <li data-testid="capture-core-commands" data-state={cmd} className="flex items-center gap-2">
-          <span aria-hidden className={`w-3 text-center shrink-0 ${cmdMark.cls}`}>{cmdMark.mark}</span>
-          <button onClick={() => onNavigate(settingsTarget('hooks'))} className="flex-1 min-h-8 text-left text-redlog-text hover:underline">{t('capture.group.commands')}</button>
-          {/* The word only when the light is not green. A green dot beside
-              "記錄中" says one thing twice and asks the reader to check that
-              the two agree; what the word is FOR is the cases a coloured dot
-              cannot carry — what is missing, and what to do about it. */}
-          {cmd !== 'ready' && (
-            <span className="text-redlog-text-faint">{t(`capture.state.${cmd}`)}</span>
+    <ul data-testid="capture-core" className="text-xs">
+      <li data-testid="capture-core-commands" data-state={readUnknown ? 'unknown' : cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
+        <button onClick={() => onNavigate(settingsTarget('hooks'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.commands')}</button>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {ownShell && <Tag tone="neutral">{ownShell.installed === true
+            ? t('capture.tag.hookInstalled', { shell: ownShellVars(ownShell).shell || t('capture.tag.shell') })
+            : t('capture.tag.hookMissing')}</Tag>}
+          {!readUnknown && cmd === 'ready' && <Tag tone="ok">{t('capture.tag.running')}</Tag>}
+          {/* Installed is not recording (FR-015): what the operator's own shell
+              has actually sent, beside the tags that say what is set up. */}
+          {ownShell && (
+            <span data-testid="capture-core-commands-own-shell" className="basis-full text-xs text-redlog-text-faint">
+              {t(ownShellKey(ownShell), ownShellVars(ownShell))}
+            </span>
           )}
-          <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">
-            {age(cmdLast)}
-          </span>
-        </li>
-        <li data-testid="capture-core-http" data-state={http} className="flex items-start gap-2">
-          <span aria-hidden className={`w-3 text-center shrink-0 ${httpMark.cls}`}>{httpMark.mark}</span>
-          <span className="flex-1 min-w-0 text-redlog-text">
-            <button onClick={() => onNavigate(settingsTarget('browser'))} className="min-h-8 text-left hover:underline">{t('capture.group.http')}</button>
-            {/* What it buys, because "mitmproxy" alone does not say — and only
-                while HTTP capture is not running. Once it is, the line above is
-                the whole story. */}
-            {(http === 'unset' || http === 'stopped') && (
-              <span className="block text-xs text-redlog-text-faint">{t('capture.mitmproxyCapability')}</span>
-            )}
-            {/* Where to point a tool. Settings ▸ Browser had it; the card an
-                operator watches mid-engagement did not (#254). */}
-            {http === 'ready' && listenAddress && (
-              <span data-testid="capture-core-http-address" className="block font-mono text-xs text-redlog-text-faint">
-                {t('capture.http.listening', { address: listenAddress })}
-              </span>
-            )}
-            {http === 'ready' && <span data-testid="capture-https-verification" className={`block text-xs ${verification ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
-              {verification ? t('firstRun.http.verifiedVia', { client: clientLabel(verification.userAgent) }) : t('capture.httpsUnverified')}
-            </span>}
-            {proxyError &&<span className="block text-red-400">{proxyError}</span>}
-            {(unsavedGapEvents ?? 0) > 0 && (
-              <span data-testid="capture-http-gap-unsaved" className="block text-red-400">
-                {t('capture.http.gapUnsaved', { count: unsavedGapEvents ?? 0 })}
-              </span>
-            )}
-            {source?.lastError && (
-              <span className="block text-red-400" title={source.lastError.message}>{source.lastError.message}</span>
-            )}
-          </span>
-          {http !== 'ready' && <span className="text-redlog-text-faint">{t(`capture.http.${http}`)}</span>}
-          <span data-testid="capture-core-http-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">
-            {age(source?.lastEventAt ?? null)}
-          </span>
-        </li>
-      </ul>
-    </div>
+        </span>
+        <StatusLight tone={cmdTone}>{t(readUnknown ? 'capture.http.unknown' : `capture.state.${cmd}`)}</StatusLight>
+        <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(cmdLast)}</span>
+      </li>
+      <li data-testid="capture-core-http" data-state={http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-pad py-2 min-h-11">
+        <button onClick={() => onNavigate(settingsTarget('browser'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.http')}</button>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {/* Where to point a tool (#254). */}
+          {http === 'ready' && listenAddress && <Tag tone="neutral" testid="capture-core-http-address">{t('capture.http.listening', { address: listenAddress })}</Tag>}
+          {http === 'ready' && <Tag tone={verified ? 'ok' : 'warn'} testid="capture-https-verification">
+            {verified ? t('firstRun.http.verifiedVia', { client: clientLabel(verification!.userAgent) }) : t('capture.httpsUnverified')}
+          </Tag>}
+          {/* What it buys, while HTTP capture is not running. */}
+          {(http === 'unset' || http === 'stopped') && <span className="basis-full text-xs text-redlog-text-faint">{t('capture.mitmproxyCapability')}</span>}
+          {proxyError && <span className="basis-full text-red-400">{proxyError}</span>}
+          {(unsavedGapEvents ?? 0) > 0 && (
+            <span data-testid="capture-http-gap-unsaved" className="basis-full text-red-400">{t('capture.http.gapUnsaved', { count: unsavedGapEvents ?? 0 })}</span>
+          )}
+          {source?.lastError && <span className="basis-full text-red-400" title={source.lastError.message}>{source.lastError.message}</span>}
+        </span>
+        <StatusLight tone={httpTone}>{httpWord}</StatusLight>
+        <span data-testid="capture-core-http-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(source?.lastEventAt ?? null)}</span>
+      </li>
+    </ul>
   )
 }
 
@@ -200,7 +200,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // Same three colours as every other row: running, failed, or neither.
   const httpDot = (s: HttpCaptureState): string =>
     s === 'ready' ? 'bg-emerald-500'
-      : s === 'failed' ? 'bg-red-500' : 'bg-redlog-elevated-hover'
+      : s === 'failed' ? 'bg-red-500' : s === 'recorded' || s === 'unknown' || s === 'starting' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -254,7 +254,8 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // its explanation, and the separate line is gone.
   const http = httpCaptureState(
     sources.find((s) => s.id === 'mitmproxy'),
-    capture.managedHttpProxy
+    capture.managedHttpProxy,
+    unknown === undefined ? 'ok' : 'unknown'
   )
 
   // "Something is wrong", and nothing else. A source that is switched off is a
@@ -394,47 +395,175 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
       : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
-  const barColor = unknown !== undefined ? 'bg-redlog-elevated-hover' : dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
-  const headline = unknown !== undefined ? unknown
+  // Healthy by verdict, but the HTTP proxy is listening and HTTPS has not been
+  // verified: the line above says so in amber, and the headline must not say
+  // plain "Recording" over it. Deliberately not every coreGap — an operator who
+  // does not use the proxy would otherwise see an amber headline for good.
+  const healthyGap = unknown === undefined && !dark && !partial && http === 'ready' && !capture.managedHttpProxy?.httpsVerification
+  const barColor = unknown !== undefined ? 'bg-redlog-elevated-hover' : dark ? 'bg-redlog-danger' : partial || healthyGap ? 'bg-amber-500' : 'bg-emerald-500'
+  // The badge: the verdict, in the worse of working and authorised.
+  const headline = unknown !== undefined ? t('capture.readFailed')
     : rogue.length > 0 ? t('capture.rogueHeadline', { count: rogue.length })
-    : dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
+    : dark ? t('capture.dark') : partial ? t('capture.partial') : healthyGap ? t('capture.healthyGap') : t('capture.healthy')
+  const badgeTone: Tone = unknown !== undefined ? 'neutral' : dark ? 'err' : partial || healthyGap ? 'warn' : 'ok'
+  const badgeGlyph = badgeTone === 'ok' ? '●' : badgeTone === 'neutral' ? '?' : '▲'
+  // The title: what the two core captures can do right now, in one line. It
+  // names each half, so "commands yes, HTTPS not yet" is never folded into a
+  // single word that reads as either.
+  const { cmd } = coreCommandState(readiness, sources)
+  const httpsVerified = http === 'ready' && !!capture.managedHttpProxy?.httpsVerification
+  const bothCore = cmd === 'ready' && httpsVerified
+  const summary = unknown !== undefined ? t('capture.unknownTitle')
+    : bothCore ? t('capture.summary.core')
+    : t('capture.summary.compose', {
+      cmd: t(`capture.summary.cmd.${cmd}`),
+      http: t(http === 'ready' ? 'capture.summary.http.unverified' : `capture.summary.http.${http}`)
+    })
+  const subline = unknown !== undefined ? unknown : bothCore ? t('capture.sub.verified') : t('capture.sub.byReport')
+  const footNote = unknown !== undefined ? ''
+    : bothCore ? t('capture.lastChecked', { time: formatTime(capture.checkedAt) })
+    : http === 'ready' && !httpsVerified ? t('capture.listeningIsNotTrust') : ''
+
+  const inventory = (
+    <div data-testid={manage ? 'capture-inventory' : 'capture-problems'} className={manage ? 'grid grid-cols-1 gap-y-1 px-pad py-2' : 'grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-redlog-border-subtle px-pad py-2'}>
+      {shown.map((s) => {
+        // The core line already says this about mitmproxy; the inventory
+        // row keeps its state word and controls, not a second copy.
+        const detail = s.id !== 'mitmproxy'
+        return (
+        <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
+          <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+            <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
+              {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+            </span>
+            {/* The row says the capability; this says how far it reaches.
+                RedLog's panes always record, so the only open question on
+                this row is whether the operator's OWN terminal is in the
+                record too — which is what the hook does, and the one thing
+                here they can act on. */}
+            {s.id === 'terminal' && (
+              <span className="block text-xs text-redlog-text-faint">
+                <span data-testid="own-shell-last">{t(ownShellKey(s), ownShellVars(s))}</span>
+                {s.enrolled && s.enrolled.total > 0 && (
+                  <span>{' · '}{t('capture.terminalEnrolled', {
+                    recording: s.enrolled.recording, total: s.enrolled.total
+                  })}</span>
+                )}
+              </span>
+            )}
+            {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
+              <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
+            )}
+            {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
+            {/* The operator believes they stopped this. They stopped
+                RedLog talking about it; the producer is theirs, running
+                under their own sudo, and only they can end it. Say where
+                the teardown lives rather than leaving a red dot. */}
+            {isRogue(s) && (
+              <span data-testid={`capture-rogue-${s.id}`} className="block text-redlog-danger">
+                {t('capture.rogueWhy')}
+              </span>
+            )}
+            {/* Why it failed, not just that it did — the operator cannot
+                act on a red dot alone. */}
+            {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+
+          </span>
+          <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
+            {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
+          </span>
+          {/* No colour on the age. It is a fact about the operator's last
+              command, not a grade on the capture: a green "4s ago" that
+              turns amber at five minutes is the quiet-is-a-fault idea
+              coming back in through the stylesheet. */}
+          {!manage && s.state !== 'unset' && s.state !== 'off' && (
+            <span className="text-xs font-mono tabular-nums shrink-0 text-redlog-text-faint">
+              {fmtAge(s.lastEventAt, nowTick)}
+            </span>
+          )}
+          {manage && (
+            <span className="flex items-center gap-1.5 shrink-0">
+              {/* Two independent axes, so two controls. A hook can be
+                  installed but switched off, or switched on but not yet
+                  installed — collapsing them into one button would hide
+                  which half is missing. */}
+              {(() => {
+                // §17: both axes stay visible, but exactly one control is
+                // drawn as the primary — the operator should not have to
+                // work out which button moves them forward when the state
+                // already determines it.
+                const primary = primaryCaptureAction(s)
+                const emphasis = (mine: CaptureAction): string =>
+                  primary === mine
+                    ? 'border-redlog-accent/60 text-redlog-accent hover:bg-redlog-accent/10'
+                    : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+                return (
+                  <>
+                    {s.configPath && (
+                      <button
+                        disabled={busy === s.id}
+                        onClick={() => void setEnabled(s, s.enabled === false)}
+                        className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('enable')}`}
+                      >
+                        {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
+                      </button>
+                    )}
+                    {s.hookId && (
+                      <button
+                        disabled={busy === s.id}
+                        onClick={() => void setInstalled(s, s.installed !== true)}
+                        className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('install')}`}
+                      >
+                        {s.installed === true ? t('capture.uninstall') : t('capture.install')}
+                      </button>
+                    )}
+                  </>
+                )
+              })()}
+              {/* No switch and nothing to install: these turn on when
+                  their upstream does (mitmproxy in DNS mode, the launched
+                  browser, a terminal pane). Claiming "always on" would
+                  overstate it, so the state column speaks for itself. */}
+              {!s.configPath && !s.hookId && s.id.startsWith('agent-') && (
+                <button onClick={() => onNavigate(settingsTarget('captureControl'))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
+              )}
+              {!s.configPath && !s.hookId && !s.id.startsWith('agent-') && (
+                <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
+              )}
+            </span>
+          )}
+        </div>
+        )
+      })}
+    </div>
+  )
 
   return (
     <section>
-      {/* §4: card ground is always surface — state is carried by the left
-          colour block, the headline, and (for the danger 'dark' verdict only,
-          which §1 lets fill/accent with danger) a red-tinted border. The old
-          amber/red background washes broke §4 and, for amber, §1. */}
-      <div className={`rounded-lg border p-4 pl-5 shadow-card relative overflow-hidden bg-redlog-surface ${
+      <SectionLabel className="tracking-[0.15em] mb-3">{t('capture.title')}</SectionLabel>
+      {/* §4: card ground is always surface — state is carried by the colour
+          block beside the title and the badge, and (for the danger 'dark'
+          verdict only) a red-tinted border. */}
+      <div data-testid="capture-card" className={`rounded-lg border shadow-card overflow-hidden bg-redlog-surface ${
         dark ? 'border-red-900/60' : 'border-redlog-border'
       }`}>
-        <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${barColor}`} />
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <SectionLabel className="tracking-[0.15em]">{t('capture.title')}</SectionLabel>
-          <div className="flex flex-wrap items-center gap-3">
-            {onSetup && (
-              <Button level="secondary" data-testid="capture-open-setup" onClick={onSetup}>
-                {t('capture.openSetup')}
-              </Button>
-            )}
-            <button
-              onClick={() => setManage((m) => !m)}
-              className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
-              title={t('capture.auditHint')}
-            >
-              {manage ? t('capture.done') : t('capture.manageWithHidden', { count: sources.length })}
-            </button>
-            <span
-              data-testid={unknown !== undefined ? 'capture-unknown' : undefined}
-              className={`text-xs font-medium ${unknown !== undefined ? 'text-redlog-text-dim' : dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}
-            >{headline}</span>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-redlog-border-subtle px-pad py-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span aria-hidden className={`mt-0.5 h-8 w-[3px] shrink-0 rounded-full ${barColor}`} />
+            <div className="min-w-0">
+              <strong data-testid="capture-summary" className="block text-sm font-semibold text-redlog-text">{summary}</strong>
+              <p data-testid={unknown !== undefined ? 'capture-unknown' : 'capture-subline'} className="mt-0.5 text-xs text-redlog-text-dim">{subline}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag tone={badgeTone} testid="capture-verdict"><span aria-hidden>{badgeGlyph}</span><span>{headline}</span></Tag>
+            {unknown !== undefined && <Button size="compact" data-testid="capture-unknown-retry" onClick={onRefresh}>{t('capture.reread')}</Button>}
           </div>
         </div>
-        {/* #217: both core captures, always named. The checklist that used to
-            appear instead, while nothing had been recorded, said the same two
-            things in different words — and an operator who left first run with
-            Commands working and HTTP(S) not set up has to keep seeing that. */}
+        {/* #217: both core captures, always named. */}
         <CoreCaptureLine
+          readUnknown={unknown !== undefined}
           readiness={readiness}
           http={http}
           verification={capture.managedHttpProxy?.httpsVerification}
@@ -448,141 +577,16 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
           t={t}
         />
         {cta && (
-          <div className="flex items-center gap-3 mb-3">
-            {cta && (
-              <Button size="compact" level="quiet"
-                disabled={busy !== null}
-                onClick={cta.run}
-              >
-                {cta.label}
-              </Button>
-            )}
+          <div className="flex items-center gap-3 border-t border-redlog-border-subtle px-pad py-2">
+            <Button size="compact" level="quiet" disabled={busy !== null} onClick={cta.run}>{cta.label}</Button>
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}
             </button>
           </div>
         )}
-        <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
-          {shown.map((s) => {
-            // The core line already says this about mitmproxy; the inventory
-            // row keeps its state word and controls, not a second copy.
-            const detail = s.id !== 'mitmproxy'
-            return (
-            <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
-              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
-                <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
-                  {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
-                </span>
-                {/* The row says the capability; this says how far it reaches.
-                    RedLog's panes always record, so the only open question on
-                    this row is whether the operator's OWN terminal is in the
-                    record too — which is what the hook does, and the one thing
-                    here they can act on. */}
-                {s.id === 'terminal' && (
-                  <span className="block text-xs text-redlog-text-faint">
-                    <span data-testid="own-shell-last">{t(ownShellKey(s), ownShellVars(s))}</span>
-                    {s.enrolled && s.enrolled.total > 0 && (
-                      <span>{' · '}{t('capture.terminalEnrolled', {
-                        recording: s.enrolled.recording, total: s.enrolled.total
-                      })}</span>
-                    )}
-                  </span>
-                )}
-                {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
-                  <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
-                )}
-                {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
-                {/* The operator believes they stopped this. They stopped
-                    RedLog talking about it; the producer is theirs, running
-                    under their own sudo, and only they can end it. Say where
-                    the teardown lives rather than leaving a red dot. */}
-                {isRogue(s) && (
-                  <span data-testid={`capture-rogue-${s.id}`} className="block text-redlog-danger">
-                    {t('capture.rogueWhy')}
-                  </span>
-                )}
-                {/* Why it failed, not just that it did — the operator cannot
-                    act on a red dot alone. */}
-                {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
-
-              </span>
-              <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
-                {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
-              </span>
-              {/* No colour on the age. It is a fact about the operator's last
-                  command, not a grade on the capture: a green "4s ago" that
-                  turns amber at five minutes is the quiet-is-a-fault idea
-                  coming back in through the stylesheet. */}
-              {!manage && s.state !== 'unset' && s.state !== 'off' && (
-                <span className="text-xs font-mono tabular-nums shrink-0 text-redlog-text-faint">
-                  {fmtAge(s.lastEventAt, nowTick)}
-                </span>
-              )}
-              {manage && (
-                <span className="flex items-center gap-1.5 shrink-0">
-                  {/* Two independent axes, so two controls. A hook can be
-                      installed but switched off, or switched on but not yet
-                      installed — collapsing them into one button would hide
-                      which half is missing. */}
-                  {(() => {
-                    // §17: both axes stay visible, but exactly one control is
-                    // drawn as the primary — the operator should not have to
-                    // work out which button moves them forward when the state
-                    // already determines it.
-                    const primary = primaryCaptureAction(s)
-                    const emphasis = (mine: CaptureAction): string =>
-                      primary === mine
-                        ? 'border-redlog-accent/60 text-redlog-accent hover:bg-redlog-accent/10'
-                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
-                    return (
-                      <>
-                        {s.configPath && (
-                          <button
-                            disabled={busy === s.id}
-                            onClick={() => void setEnabled(s, s.enabled === false)}
-                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('enable')}`}
-                          >
-                            {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
-                          </button>
-                        )}
-                        {s.hookId && (
-                          <button
-                            disabled={busy === s.id}
-                            onClick={() => void setInstalled(s, s.installed !== true)}
-                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('install')}`}
-                          >
-                            {s.installed === true ? t('capture.uninstall') : t('capture.install')}
-                          </button>
-                        )}
-                      </>
-                    )
-                  })()}
-                  {/* No switch and nothing to install: these turn on when
-                      their upstream does (mitmproxy in DNS mode, the launched
-                      browser, a terminal pane). Claiming "always on" would
-                      overstate it, so the state column speaks for itself. */}
-                  {!s.configPath && !s.hookId && s.id.startsWith('agent-') && (
-                    <button onClick={() => onNavigate(settingsTarget('captureControl'))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
-                  )}
-                  {!s.configPath && !s.hookId && !s.id.startsWith('agent-') && (
-                    <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
-                  )}
-                </span>
-              )}
-            </div>
-            )
-          })}
-          {/* Never under a core line that says otherwise: 一切正常 directly
-              beneath "! HTTP(S) 未安裝 mitmproxy" is the card contradicting
-              itself one row apart. An empty exception list means nothing is
-              broken, which is not the same as nothing is missing. */}
-          {!manage && unknown === undefined && shown.length === 0 && problems.length === 0 && !coreGap && (
-            <p className="text-xs text-redlog-text-dim col-span-2">
-              {t('capture.allGood', { active: healthy.length })}
-            </p>
-          )}
-        </div>
+        {/* An exception stays in view with the list folded: a source that
+            failed, or one writing while switched off, is not "other". */}
+        {!manage && shown.length > 0 && inventory}
         {/* No chain/logged footer. It restated the status bar's tier count,
             and its drift warning was a third copy of one the event tile and
             the issues list already raise. */}
@@ -593,7 +597,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             them at 18:00. The counter is the one thing on this card that
             never clears. */}
         {capture.dbErrorTotal > 0 && (
-          <div data-testid="capture-db-gaps" className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs">
+          <div data-testid="capture-db-gaps" className="border-t border-redlog-border-subtle px-pad py-2 flex items-center gap-2 text-xs">
             <span className="text-redlog-danger">!</span>
             <span className="text-redlog-text-dim">
               {t('capture.dbGaps', {
@@ -603,6 +607,28 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             </span>
           </div>
         )}
+        <div data-testid="capture-footer" className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-pad py-2 text-xs text-redlog-text-faint">
+          <span>{footNote}</span>
+          {onSetup && <Button size="compact" data-testid="capture-open-setup" onClick={onSetup}>{t('capture.openSetup')}</Button>}
+        </div>
+        <div className="border-t border-redlog-border-subtle px-pad">
+          <button
+            data-testid="capture-more-sources"
+            aria-expanded={manage}
+            onClick={() => setManage((m) => !m)}
+            className="min-h-9 w-full text-left text-xs font-medium text-redlog-text-dim hover:text-redlog-text"
+            title={t('capture.auditHint')}
+          >
+            {t('capture.manageWithHidden', { count: sources.length })} <span aria-hidden>{manage ? '▴' : '▾'}</span>
+          </button>
+        </div>
+        {manage && <>
+          {inventory}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-pad py-2">
+            <span className="text-xs text-redlog-text-faint">{t('capture.manageNote')}</span>
+            <Button size="compact" level="quiet" data-testid="capture-manage-sources" onClick={() => onNavigate(settingsTarget('captureControl'))}>{t('capture.manageSources')}</Button>
+          </div>
+        </>}
       </div>
     </section>
   )

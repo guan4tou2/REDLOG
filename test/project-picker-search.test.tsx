@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// Spec 068 S1: searching the project list. D1 threshold on the unfiltered total,
-// D3 Enter opens only on exactly one match of a non-blank query, never mid-IME.
+// Spec 068 S1, as revised for Stitch 01 (D1′, D3′): the search box is always
+// shown; Enter opens the selected match (the first unless moved), never mid-IME.
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -40,10 +40,10 @@ describe('shared matcher (FR-002)', () => {
   })
 })
 
-describe('search box visibility (FR-001, D1)', () => {
-  it('is hidden with 5 projects and shown with 6, judged on the unfiltered total', async () => {
-    mount(many(5)); await screen.findByRole('button', { name: 'Alpha Recon' })
-    expect(screen.queryByRole('searchbox')).toBeNull()
+describe('search box visibility (FR-001, D1′)', () => {
+  it('is shown whatever the number of projects', async () => {
+    mount(many(1)); await screen.findByRole('button', { name: 'Alpha Recon' })
+    expect(box()).toBeTruthy()
     cleanup()
     mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
     expect(box()).toBeTruthy()
@@ -62,7 +62,7 @@ describe('matching and states (FR-002, FR-003)', () => {
   it('matches the name only, not the path', async () => {
     mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
     type('/tmp/p1')
-    expect(screen.getByText('No matching projects')).toBeTruthy()
+    expect(screen.getByText('No project matches “/tmp/p1”')).toBeTruthy()
   })
   it('keeps the count honest and offers a clear that restores the full list', async () => {
     mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
@@ -74,27 +74,28 @@ describe('matching and states (FR-002, FR-003)', () => {
     expect(box().value).toBe('')
     expect(screen.getByTestId('project-search-count').textContent).toBe('6')
   })
-  it('does not leave an invisible filter when deletions bring the total below the threshold', async () => {
+  it('keeps the box and the query when a deletion empties the matches', async () => {
     mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
     type('beta')
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete project' })[0])
-    await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull())
-    expect(screen.getAllByRole('button', { name: /^(Alpha|Gamma|Delta|Epsilon|Zeta)/ }).length).toBe(5)
+    await waitFor(() => expect(screen.getByTestId('project-search-count').textContent).toBe('0 / 5'))
+    expect(box().value).toBe('beta')
   })
 })
 
-describe('Enter in the search box (FR-004, D3)', () => {
-  it('opens only a single match of a non-blank query', async () => {
+describe('Enter in the search box (FR-004, D3′)', () => {
+  it('opens the selected match — the first one, highlighted', async () => {
     const { open } = mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
-    type('beta'); enter()
+    type('ta')
+    const first = screen.getByRole('button', { name: 'Beta Web' }).closest('[role="option"]')
+    expect(first?.getAttribute('aria-selected')).toBe('true')
+    enter()
     await waitFor(() => expect(open).toHaveBeenCalledWith('p1'))
   })
-  it('does nothing for several matches, no matches, or a blank query, and keeps query and focus', async () => {
+  it('does nothing when nothing matches, and keeps query and focus', async () => {
     const { open } = mount(many(6)); await screen.findByRole('button', { name: 'Alpha Recon' })
     box().focus()
-    type('a'); enter(); expect(box().value).toBe('a')
     type('zzz'); enter(); expect(box().value).toBe('zzz')
-    type('   '); enter()
     expect(open).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(box())
   })

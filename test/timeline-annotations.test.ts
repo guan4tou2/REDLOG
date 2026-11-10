@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../src/renderer/src/lib/timelineAnnotations'
+import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../src/renderer/src/lib/timelineAnnotations'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 function evt(id: string, agentType: string, data: Record<string, unknown> = {}): RedLogEvent {
@@ -45,9 +45,9 @@ describe('buildEffectsIndex', () => {
   })
 })
 
-describe('computeViolationStanding', () => {
+describe('computeObservationStanding', () => {
   it('returns empty sets when no system events', () => {
-    const { cleared, superseded } = computeViolationStanding([evt('a', 'shell')])
+    const { cleared, superseded } = computeObservationStanding([evt('a', 'shell')])
     expect(cleared.size).toBe(0)
     expect(superseded.size).toBe(0)
   })
@@ -57,17 +57,17 @@ describe('computeViolationStanding', () => {
       evt('v1', 'system', { subtype: 'scope_violation', _causes: ['src1'] }),
       evt('c1', 'system', { subtype: 'scope_cleared', violation_id: 'v1' }),
     ]
-    const { cleared } = computeViolationStanding(events)
+    const { cleared } = computeObservationStanding(events)
     expect(cleared.has('v1')).toBe(true)
   })
 
   // The Timeline passes its rows oldest-first. The record that stands is the one
-  // written last, as in readExistingViolations, whatever order the caller uses.
+  // written last, as in readExistingObservations, whatever order the caller uses.
   it('keeps the violation written last, in either input order', () => {
     const older = { ...evt('v1', 'system', { subtype: 'scope_violation', _causes: ['src1'] }), createdAt: 1000 }
     const newer = { ...evt('v2', 'system', { subtype: 'scope_violation', _causes: ['src1'] }), createdAt: 2000 }
     for (const events of [[older, newer], [newer, older]]) {
-      const { superseded } = computeViolationStanding(events)
+      const { superseded } = computeObservationStanding(events)
       expect(superseded.has('v1')).toBe(true)
       expect(superseded.has('v2')).toBe(false)
     }
@@ -77,7 +77,7 @@ describe('computeViolationStanding', () => {
     const violation = { ...evt('v1', 'system', { subtype: 'scope_violation', distance: 'unrelated', _causes: ['src1'] }), createdAt: 1000 }
     const inScope = { ...evt('r2', 'system', { subtype: 'scope_violation', distance: 'in_scope', _causes: ['src1'] }), createdAt: 2000 }
     for (const events of [[violation, inScope], [inScope, violation]]) {
-      expect(computeViolationStanding(events).superseded.has('v1')).toBe(false)
+      expect(computeObservationStanding(events).superseded.has('v1')).toBe(false)
     }
   })
 
@@ -85,7 +85,7 @@ describe('computeViolationStanding', () => {
     const events = [
       evt('a', 'shell', { subtype: 'scope_violation', _causes: ['x'] }),
     ]
-    const { superseded } = computeViolationStanding(events)
+    const { superseded } = computeObservationStanding(events)
     expect(superseded.size).toBe(0)
   })
 })

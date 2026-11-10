@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Search } from 'lucide-react'
 import { matchesQuery } from '../lib/textQuery'
 import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
@@ -7,29 +8,25 @@ import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { Button } from './Button'
-import { Modal } from './Modal'
 import { useReadState } from '../lib/readState'
-import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure } from '../../../core/profile-import'
-
-/** Spec 068 D1: the search box appears from this many projects. */
-const SEARCH_MIN_PROJECTS = 6
+import { CreateProjectModal } from './CreateProjectModal'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 /** What the picker shows for one project's scope (Spec 068 US2). `undefined`
  *  means the answer has not arrived: the badge is BLANK then, never "not set".
- *  "Not set" is a hint (the amber the issue list uses for pending things), not
- *  the red of an alarm — an empty scope is a normal state at project start.
+ *  "Not set" is a neutral fact, not an alarm — an empty scope is a normal state
+ *  at project start (Stitch 01 draws it in the same grey as the count).
  *  Declared at module scope: a component defined inside ProjectPicker would
  *  remount every row on every keystroke in the search box. */
 function ScopeBadge({ summary, t }: { summary: ProjectScopeSummary | undefined; t: Translate }): JSX.Element | null {
   if (!summary) return null
-  const base = 'shrink-0 rounded border px-2 py-0.5 text-xs font-mono'
+  const base = 'shrink-0 rounded border px-1.5 py-0.5 text-xs font-mono'
   if (summary.state === 'set') {
     return <span data-testid="project-scope-badge" data-state="set" className={`${base} border-redlog-border text-redlog-text-dim`}>{t(summary.count === 1 ? 'project.scope.one' : 'project.scope.many', { count: summary.count })}</span>
   }
   if (summary.state === 'unset') {
-    return <span data-testid="project-scope-badge" data-state="unset" title={t('project.scope.unsetWhy')} className={`${base} border-amber-900/60 text-amber-300`}>{t('project.scope.unset')}</span>
+    return <span data-testid="project-scope-badge" data-state="unset" title={t('project.scope.unsetWhy')} className={`${base} border-redlog-border bg-redlog-elevated text-redlog-text-dim`}>{t('project.scope.unset')}</span>
   }
   return <span data-testid="project-scope-badge" data-state="unknown" title={t('project.scope.unknownWhy')} className={`${base} border-redlog-border text-redlog-text-faint`}>{t('project.scope.unknown')}</span>
 }
@@ -48,6 +45,10 @@ interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
 }
 
+function Kbd({ children }: { children: React.ReactNode }): JSX.Element {
+  return <kbd className="rounded border border-redlog-border bg-redlog-elevated px-1.5 py-0.5 font-mono text-xs text-redlog-text-dim">{children}</kbd>
+}
+
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
   // The list is a read that can be pending, empty, or fail — three different
   // screens (#298). `projects` is what is known; `listRead.phase` says how far
@@ -63,14 +64,19 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const projects: ProjectMeta[] = listRead.value ?? []
   // Scope badges. A separate read that starts once the list has answered
   // (loaded or failed) so it can never delay the first paint of the list
-  // (FR-018). Each (re)read of the list is a new generation: useReadState drops
-  // an answer that arrives after the next read began, so a late reply cannot
-  // land on a list it was not asked about. Answers are looked up by project id.
+  // (FR-018). Answers are looked up by project id.
   const { state: scopeRead } = useReadState(
     () => window.redlog.project.scopeSummaries(),
     !bridgeMissing && listRead.phase !== 'loading',
     [listRead.phase]
   )
+  // Where projects live. Optional: an older main without the call, or a
+  // failed read, simply leaves the line out.
+  const { state: rootRead } = useReadState(
+    async () => (typeof window.redlog.project.root === 'function' ? await window.redlog.project.root() : null),
+    !bridgeMissing
+  )
+  const root = rootRead.phase === 'loaded' && typeof rootRead.value === 'string' ? rootRead.value : null
   const scopeFor = (id: string): ProjectScopeSummary | undefined =>
     scopeRead.phase === 'loaded' ? summaryFor(scopeRead.value, id)
     : scopeRead.phase === 'failed' ? { state: 'unknown' }
@@ -78,24 +84,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const setProjects = (fn: (prev: ProjectMeta[]) => ProjectMeta[]): void => updateList((prev) => fn(prev ?? []))
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [opening, setOpening] = useState<string | null>(null)
   const openPending = useRef(false)
-  const [newName, setNewName] = useState('')
-  const [createError, setCreateError] = useState('')
-  const [importing, setImporting] = useState(false)
-  const importPending = useRef(false)
-  const [creating, setCreating] = useState(false)
-  const createPending = useRef(false)
-  // Scope, exclusions, the safe/exposed IPs and the violation warning are owned
-  // by Settings. The create form holds them only when a profile was imported, because
-  // an import can carry them into a project that does not exist yet (#297).
-  // One resolved value: the import summary and the project.create
-  // argument are both derived from it, and importing replaces it whole.
-  const [imported, setImported] = useState<ImportedProfile | null>(null)
-  // A refused file leaves `imported` as it was; this says why.
-  const [importFailure, setImportFailure] = useState<ProfileFailure | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const listRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
 
   async function handleRenameCommit(id: string): Promise<void> {
@@ -111,34 +105,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     else toast(t('project.renameFailed'), { type: 'error', why: res.error })
   }
 
-  async function handleCreate(): Promise<void> {
-    const name = newName.trim()
-    if (!name || createPending.current || importPending.current) return
-    setCreateError('')
-    createPending.current = true
-    setCreating(true)
-    try {
-      // Only an imported profile puts anything here: the form asks for a
-      // name, and Settings ▸ Scope owns the rest. Whether one was imported is
-      // the question, not what it holds — `false` and an empty list are
-      // settings too.
-      const initialConfig = imported ? profileToInitialConfig(imported) : undefined
-      const project = await window.redlog.project.create(name, initialConfig)
-      onProjectOpen({ id: project.id, name: project.name })
-    } catch (e) {
-      setCreateError(String((e as Error)?.message ?? e))
-      createPending.current = false
-      setCreating(false)
-      toast(t('project.openFailedTitle'), {
-        type: 'error',
-        why: t('project.openFailedWhy'),
-        detail: String((e as Error)?.message ?? e)
-      })
-    }
-  }
-
   async function handleOpen(id: string): Promise<void> {
-    if (openPending.current || createPending.current) return
+    if (openPending.current) return
     openPending.current = true
     setOpening(id)
     try {
@@ -160,11 +128,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   async function handleDelete(id: string): Promise<void> {
     const project = projects.find((p) => p.id === id)
     if (!project) return
-    // §5.5 level 3. This is the single most consequential action in the app —
-    // it destroys the SHA-256 chain, the screenshots, the session recordings
-    // and the OpenTimestamps receipts, and the receipts in particular cannot
-    // be regenerated at any price, because they attest to a moment that has
-    // passed. It was running on the same checkbox as removing a shell hook.
+    // §5.5 level 3. This destroys the SHA-256 chain, the screenshots, the
+    // session recordings and the OpenTimestamps receipts, and the receipts in
+    // particular cannot be regenerated at any price.
     const ok = await confirmChainImpact({
       title: t('confirm.deleteProject'),
       message: t('confirm.deleteProjectDesc', { name: project.name }),
@@ -181,67 +147,34 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     setProjects((prev) => prev.filter((p) => p.id !== id))
   }
 
-  async function handleImportProfile(): Promise<void> {
-    if (importPending.current || createPending.current) return
-    importPending.current = true
-    setImporting(true)
-    try {
-      const result = await window.redlog.config.importProfile()
-      // Backing out of the picker is not an error and changes nothing.
-      if (result.status === 'cancelled') return
-      if (result.status === 'failed') {
-        // The earlier import, if any, stays exactly as it was.
-        setImportFailure(result.failure)
-        return
-      }
-      // Replace, never layer: what the file leaves out is the default.
-      setImportFailure(null)
-      setImported(result.profile)
-      toast(t('toast.profileImported'), 'success')
-    } catch (e) {
-      setImportFailure({ code: 'read', detail: String((e as Error)?.message ?? e) })
-    } finally {
-      importPending.current = false
-      setImporting(false)
-    }
-  }
-
-  function handleClearImported(): void {
-    setImported(null)
-    setImportFailure(null)
-  }
-
-  const failureText = importFailure ? describeFailure(importFailure) : null
-  function describeFailure(f: ProfileFailure): string {
-    switch (f.code) {
-      case 'read': return t('project.importFailedRead', { detail: f.detail })
-      case 'parse': return t('project.importFailedParse', { detail: f.detail })
-      case 'empty': return t('project.importFailedEmpty')
-      case 'shape': return t('project.importFailedShape', { field: f.field, expected: t(`project.expect.${f.expected}`) })
-    }
-  }
-  // Nothing a profile carries is visible on this form, so all of it is named
-  // here or it is applied in silence.
-  const appliedText = imported
-    ? profileSummary(imported).map((p) => t(p.key, { count: p.count ?? 0 })).join(' · ') || t('project.appliedNothing')
-    : null
-
-  const nameInput = useRef<HTMLInputElement | null>(null)
   const hasRecent = projects.length > 0
-  // Spec 068 D1: the box exists once there are enough projects to need it, judged
-  // on the UNFILTERED total. A query typed before deletions brought the total
-  // under the threshold must not keep filtering with no box to clear it.
-  const searchVisible = projects.length >= SEARCH_MIN_PROJECTS
-  const query = searchVisible ? search : ''
-  const filtered = projects.filter(p => matchesQuery(p.name, query))
-  const searching = query.trim() !== ''
-  // D3: Enter opens a project only when the query is non-blank and names exactly
-  // one. Several matches or none leave the query and the focus where they are.
-  // An Enter that confirms an input-method composition is not an Enter.
+  const filtered = projects.filter(p => matchesQuery(p.name, search))
+  const searching = search.trim() !== ''
+  // Stitch 01: one row is always selected — the first match unless the
+  // operator moved it — and Enter opens the selected row, from the list or
+  // from the search box. A click selects; a double click opens.
+  const selected = filtered.find((p) => p.id === selectedId) ?? filtered[0] ?? null
+  const selectedIndex = selected ? filtered.indexOf(selected) : -1
+  const move = (step: number): void => {
+    if (filtered.length === 0) return
+    const next = filtered[(selectedIndex + step + filtered.length) % filtered.length]
+    setSelectedId(next.id)
+    listRef.current?.querySelector<HTMLElement>(`[data-project-row="${CSS.escape(next.id)}"]`)?.focus()
+  }
+  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    // Rename and the row's own buttons keep their keys.
+    if (e.target instanceof HTMLInputElement || (e.target instanceof HTMLButtonElement && !e.target.hasAttribute('data-project-row'))) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
+    else if (e.key === 'Enter' && selected) { e.preventDefault(); void handleOpen(selected.id) }
+  }
+  // In the search box the arrows stay with the text. Enter opens the selected
+  // match, never one the operator cannot see; an Enter that confirms an
+  // input-method composition is not an Enter.
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
     e.preventDefault()
-    if (searching && filtered.length === 1) void handleOpen(filtered[0].id)
+    if (selected) void handleOpen(selected.id)
   }
   const nameCounts = new Map<string, number>()
   for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
@@ -249,12 +182,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     : listRead.phase === 'failed' ? 'failed'
     : listRead.phase === 'loading' ? (hasRecent ? null : 'loading')
     : hasRecent ? null : 'empty'
-  // bg-redlog-bg, not the literal #0a0a0a this used to hardcode: the token moved
-  // to #121214 when the palette got its cool cast, and the mark's cut corners are
-  // transparent now, so the picker showing a different window colour from the
-  // title bar is something you can actually see.
+  // A query that no longer matches the selected row moves the selection to the
+  // first match, so the highlight is always on something Enter would open.
+  useEffect(() => { if (selectedId && !filtered.some((p) => p.id === selectedId)) setSelectedId(null) }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div className="h-full flex flex-col bg-[#0a0e14] text-redlog-text" data-testid="project-picker">
+    <div className="h-full flex flex-col bg-redlog-bg text-redlog-text" data-testid="project-picker">
       <div inert={createOpen} className="flex-1 min-h-0 flex flex-col">
       {/* Draggable title bar zone */}
       <div
@@ -262,40 +195,55 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
       <div className="flex-1 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
-      <div className="shrink-0 mb-8 text-center"><Wordmark className="text-4xl" /></div>
-      <div className="w-full max-w-[740px] mx-auto space-y-4 bg-[#10141a] border border-[#262d38] rounded-xl p-6 shadow-2xl">
-        {bridgeMissing && <p role="alert" className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#262d38]">
-          <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
-          <Button level="secondary" className="!bg-[#ef4444] hover:!bg-[#dc2626] !border-transparent !text-redlog-on-accent" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>{t('project.new')}</Button>
+      <div className="shrink-0 mb-8 text-center select-none">
+        <Wordmark className="text-4xl" />
+        <p className="mt-1.5 font-mono text-xs tracking-[0.25em] text-redlog-text-dim">{t('project.tagline')}</p>
+      </div>
+      <div className="w-full max-w-[740px] mx-auto bg-redlog-surface border border-redlog-border-subtle rounded-xl p-6 shadow-2xl flex flex-col">
+        {bridgeMissing && <p role="alert" className="mb-3 text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-redlog-border-subtle">
+          <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono font-bold rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
+          <Button level="primary" data-testid="project-new" disabled={bridgeMissing || !!opening} onClick={() => setCreateOpen(true)}>
+            <Plus size={14} strokeWidth={2.5} aria-hidden />{t('project.newTitle')}
+          </Button>
         </div>
-        {searchVisible && <input type="search" aria-label={t('project.search')} placeholder={t('project.search')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown} className="w-full bg-[#0a0e14] border border-[#262d38] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />}
-        <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1" aria-busy={!!opening} onKeyDown={e => {
-          if (!(e.target instanceof HTMLElement) || !e.target.matches('[data-project-open]') || !['ArrowUp', 'ArrowDown'].includes(e.key)) return
-          const rows = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[data-project-open]'))
-          const index = rows.indexOf(e.target as HTMLButtonElement)
-          e.preventDefault()
-          rows[(index + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus()
-        }}>
-          {filtered.map(p => <div key={p.id} className="flex items-center gap-2 rounded-lg border border-transparent px-3 py-3 hover:bg-[#161b22] hover:border-[#262d38] focus-within:bg-[#161b22] focus-within:border-redlog-border group">
-            {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onKeyDown={e => {
+        <div className="relative mb-4">
+          <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-redlog-text-faint" />
+          <input type="search" data-testid="project-search" aria-label={t('project.search')} placeholder={t('project.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown}
+            className="w-full bg-redlog-bg border border-redlog-border-subtle rounded-lg pl-9 pr-3.5 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
+        </div>
+        <div ref={listRef} role="listbox" aria-label={t('project.recent')} data-testid="project-list" className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1 py-1" aria-busy={!!opening} onKeyDown={onListKeyDown}>
+          {filtered.map(p => {
+            const isSel = selected?.id === p.id
+            return <div key={p.id} role="option" aria-selected={isSel} data-testid="project-row" data-selected={isSel || undefined}
+              onClick={() => setSelectedId(p.id)} onDoubleClick={() => void handleOpen(p.id)}
+              className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSel ? 'bg-redlog-accent' : 'bg-redlog-accent/60 group-hover:bg-redlog-accent'}`} />
+            {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => {
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
               if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
             }} onBlur={() => void handleRenameCommit(p.id)} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1" /> :
-            <button data-project-open type="button" disabled={!!opening} aria-label={p.name} onClick={() => void handleOpen(p.id)} className="min-w-0 flex-1 text-left rounded py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 disabled:opacity-60">
-              <span title={p.name} className="block truncate text-sm text-redlog-text">{p.name}</span>
-              <span className="block text-xs text-redlog-text-faint font-mono">{opening === p.id ? t('project.opening') : formatFreshness(p.lastOpened, t)} · {t('project.created', { date: formatDate(p.createdAt) })}</span>
+            <button data-project-row={p.id} data-project-open type="button" disabled={!!opening} aria-label={p.name} tabIndex={isSel ? 0 : -1}
+              onFocus={() => setSelectedId(p.id)} title={t('project.openHint')}
+              className="min-w-0 flex-1 text-left rounded py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 disabled:opacity-60">
+              <span className="flex min-w-0 items-center gap-2">
+                <span title={p.name} className="truncate font-mono text-xs font-medium text-redlog-text">{p.name}</span>
+                <ScopeBadge summary={scopeFor(p.id)} t={t} />
+              </span>
+              <span className="mt-0.5 block font-mono text-xs text-redlog-text-faint">{opening === p.id ? t('project.opening') : formatFreshness(p.lastOpened, t)} · {t('project.created', { date: formatDate(p.createdAt) })}</span>
               {(nameCounts.get(p.name) ?? 0) > 1 && <span className="block break-all text-xs text-redlog-text-dim font-mono">{p.path}</span>}
             </button>}
-            <ScopeBadge summary={scopeFor(p.id)} t={t} />
-            <span className="shrink-0 text-xs font-mono text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
-            <button disabled={!!opening} onClick={() => { setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
-            <button disabled={!!opening} onClick={() => void handleDelete(p.id)} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
-          </div>)}
+            <span className="shrink-0 text-right font-mono text-xs text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
+            <span className={`flex shrink-0 items-center ${isSel ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }} onDoubleClick={e => e.stopPropagation()} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); void handleDelete(p.id) }} onDoubleClick={e => e.stopPropagation()} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
+            </span>
+          </div>
+          })}
         </div>
         {hasRecent && filtered.length === 0 && (
           <div className="py-8 text-center space-y-2">
-            <p role="status" className="text-xs text-redlog-text-faint">{t('project.noResults')}</p>
+            <p role="status" className="font-mono text-xs text-redlog-text-faint">{searching ? t('project.noResultsFor', { query: search.trim() }) : t('project.noResults')}</p>
             {searching && <Button level="quiet" type="button" data-testid="project-search-clear" onClick={() => setSearch('')}>{t('project.clearSearch')}</Button>}
           </div>
         )}
@@ -320,25 +268,18 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
-        <div className="pt-4 border-t border-[#262d38] text-xs text-redlog-text-dim font-mono text-right">{t('project.keyboardHint')}</div>
+        <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-redlog-text-faint">
+          <span className="min-w-0 truncate" title={root ?? undefined}>{root && <>{t('project.storageDir')}<span title={root} className="text-redlog-text-dim">{root}</span></>}</span>
+          <span className="flex items-center gap-3 whitespace-nowrap">
+            <span>{t('project.keyPress')} <Kbd>↑</Kbd><Kbd>↓</Kbd> {t('project.keyBrowse')}</span>
+            <span>{t('project.keyPress')} <Kbd>Enter</Kbd> {t('project.keyOpen')}</span>
+          </span>
+        </div>
       </div>
       </div>
+      <footer className="shrink-0 border-t border-redlog-border-subtle/60 py-4 text-center font-mono text-xs text-redlog-text-faint">{t('project.pageFooter')}</footer>
       </div>
-      <Modal open={createOpen} onClose={() => { if (!creating && !importing) setCreateOpen(false) }} label={t('project.new')} initialFocus={nameInput} panelClassName="w-full max-w-[560px] max-h-[calc(90vh/var(--app-zoom,0.9))] overflow-y-auto m-4 p-6 rounded-xl bg-[#10141a] border border-[#262d38] shadow-2xl">
-        <form onSubmit={e => { e.preventDefault(); void handleCreate() }} className="space-y-4">
-          <h2 className="text-sm font-medium pb-4 border-b border-[#262d38]">{t('project.new')}</h2>
-          <label className="block text-xs text-redlog-text-dim">{t('project.name')}
-            <input ref={nameInput} value={newName} disabled={creating || importing} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void handleCreate() } }} placeholder={t('project.placeholder')} className="block mt-1 w-full rounded-lg border border-redlog-border bg-redlog-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
-          </label>
-          <Button type="button" level="quiet" disabled={creating || importing} onClick={() => void handleImportProfile()} className="text-xs">{t('project.importProfile')}</Button>
-          {appliedText && <div className="flex gap-2 items-center"><p data-testid="profile-applied" className="text-xs text-redlog-text-dim">{appliedText}</p><Button type="button" level="quiet" disabled={creating || importing} onClick={handleClearImported}>{t('project.clearImported')}</Button></div>}
-          {failureText && <p role="alert" data-testid="profile-error" className="text-xs text-red-300">{failureText}</p>}
-          {createError && <p role="alert" className="text-xs text-red-300">{createError}</p>}
-          <div className="flex justify-end gap-2 pt-4 border-t border-[#262d38]"><Button type="button" level="quiet" disabled={creating || importing} onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button><Button level="primary" type="submit" disabled={creating || importing || !newName.trim()}>{t('project.create')}</Button></div>
-        </form>
-      </Modal>
+      <CreateProjectModal open={createOpen} root={root} onClose={() => setCreateOpen(false)} onCreated={onProjectOpen} />
     </div>
   )
 }
-
-

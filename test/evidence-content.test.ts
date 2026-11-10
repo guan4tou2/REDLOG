@@ -39,6 +39,16 @@ describe('saved content windows', () => {
     expect(readEventContent({ ref: input.ref! })).toMatchObject({ ok: true, value: { text: '{"command":"id"}', format: 'json' } })
     expect(getDB().prepare('SELECT hash FROM events WHERE id=?').get('empty')).toEqual({ hash: 'hash' })
   })
+  it('reads and searches an unknown provider without a plugin and keeps project/version checks', () => {
+    event('unknown', { schemaVersion: 7, custom: { records: ['historical needle'] } }, 'events_logged', 'third-party', 'custom-event')
+    const d = descriptor('unknown', 'event_data')
+    expect(d.format).toBe('json')
+    expect(readEventContent({ ref: d.ref! })).toMatchObject({ ok: true, value: { text: '{"schemaVersion":7,"custom":{"records":["historical needle"]}}' } })
+    expect(findEventContent({ ref: d.ref!, needle: 'historical needle' })).toMatchObject({ ok: true, value: { match: { bytes: 17 } } })
+    expect(readEventContent({ ref: { ...d.ref!, projectId: 'other-project' } })).toMatchObject({ ok: false, status: 'denied' })
+    getDB().prepare("UPDATE events_logged SET data='{}' WHERE id='unknown'").run()
+    expect(readEventContent({ ref: d.ref! })).toMatchObject({ ok: false, status: 'changed' })
+  })
   it('preserves primitive JSON tool inputs instead of converting booleans to database integers', () => {
     event('boolean', { tool_input: true })
     expect(readEventContent({ ref: descriptor('boolean', 'tool_input').ref! })).toMatchObject({ ok: true, value: { text: 'true', format: 'json' } })
@@ -239,7 +249,7 @@ describe('complete saved-content delivery',()=>{
       let replacementChecks=0
       const replaced=path.join(output,'replaced.txt')
       expect(await saveEventContent(ref,replaced,()=>{
-        if(++replacementChecks===3){fs.unlinkSync(replaced);fs.writeFileSync(replaced,'other program content')}
+        if(fs.existsSync(replaced) && ++replacementChecks===1){fs.unlinkSync(replaced);fs.writeFileSync(replaced,'other program content')}
         return true
       })).toMatchObject({ok:false,status:'changed'})
       expect(fs.readFileSync(replaced,'utf8')).toBe('other program content')
@@ -279,7 +289,8 @@ describe('output held in the terminal recording (#550)', () => {
     expect(d.bytes).toBe(2604806)
     expect(d.ref).toBeNull()
     // A cast is one merged stream: it must not be offered as stderr too.
-    expect(descriptor('cast-out', 'stderr').status).toBe('not-captured')
+    const listed = describeEventContent('project', 'cast-out')
+    expect(listed.ok && listed.value.some(field => field.field === 'stderr')).toBe(false)
   })
 
   it('still prefers inline bytes when they exist', () => {

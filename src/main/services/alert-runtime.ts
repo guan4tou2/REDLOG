@@ -19,10 +19,10 @@ import {
   ChainEmitter,
   IPPolicy,
   ScopePolicy,
-  ViolationLog,
+  ObservationLog,
   AdherenceCounter,
   type IPVerdict,
-  type ViolationRow,
+  type ObservationLogRow,
   type AdherenceRow,
   type TargetHitSignal
 } from '../../core/alert'
@@ -61,7 +61,7 @@ export class AlertRuntime {
   readonly chainEmitter: ChainEmitter
   readonly badgeSurface: BadgeSurface
   readonly adherenceCounter: AdherenceCounter
-  readonly violationLog: ViolationLog
+  readonly observationLog: ObservationLog
   readonly ipProducer: IPSignalProducer
 
   constructor(initial: { engagementId: string; operatorId: string }) {
@@ -71,13 +71,13 @@ export class AlertRuntime {
     this.chainEmitter = new ChainEmitter(initial)
     this.badgeSurface = new BadgeSurface()
     this.adherenceCounter = new AdherenceCounter()
-    this.violationLog = new ViolationLog()
+    this.observationLog = new ObservationLog()
     this.ipProducer = new IPSignalProducer(this.bus)
 
     this.bus.registerSurface(this.chainEmitter)
     this.bus.registerSurface(this.badgeSurface)
     this.bus.registerSurface(this.adherenceCounter)
-    this.bus.registerSurface(this.violationLog)
+    this.bus.registerSurface(this.observationLog)
 
     this.bus.registerPolicy(this.ipPolicy)
     this.bus.registerPolicy(this.scopePolicy)
@@ -150,8 +150,8 @@ export class AlertRuntime {
   }
 
   /** IPC-compat: what the ScopePanel / StatusBar violation counter show. */
-  scopeViolations(): ViolationRow[] { return this.violationLog.list() }
-  scopeViolationCount(): number { return this.violationLog.count() }
+  scopeObservations(): ObservationLogRow[] { return this.observationLog.list() }
+  scopeObservationCount(): number { return this.observationLog.count() }
   /** The scope in force, carried across a config save so the recompute can
    *  compare before and after. */
   scopeSnapshot(): ScopeSnapshot { return this.scopePolicy.snapshot() }
@@ -165,7 +165,7 @@ export class AlertRuntime {
    *  log and the adherence counts; the chain-persisted history stays. */
   resetOnProjectSwitch(): void {
     this.bus.resetPolicies()
-    this.violationLog.reset()
+    this.observationLog.reset()
     this.adherenceCounter.reset()
   }
 

@@ -1,3 +1,4 @@
+import { captureFacts } from '../../../core/capture-contract'
 // capture-health (main process) answers "is anything wrong with capture right
 // now" — an exception report for an operator mid-engagement. It does NOT answer
 // the question a first-run operator actually has: the timeline is empty, what
@@ -135,7 +136,7 @@ export interface CaptureReadiness {
 // A source that is explicitly switched OFF is NOT wired — for onboarding that
 // is precisely the thing to nudge back on, so it ranks as `todo`.
 function statusFor(source: ReadinessSource): StepStatus {
-  if (source.lastEventAt !== null && source.state !== 'off') return 'active'
+  if (captureFacts(source).lastStoredAt !== null && source.state !== 'off') return 'active'
   if (source.state === 'off') return 'todo'
   // A failing source is set up — reinstalling it is not the fix — so it ranks
   // `wired`, never `active`. Onboarding stops nudging; Capture Health shows

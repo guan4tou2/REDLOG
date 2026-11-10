@@ -139,8 +139,8 @@ function sizeOf(p: string): number | null {
 /** Every file the bundle would carry for these (already approved) events. */
 export function listExportAttachments(
   projectDir: string,
-  events: readonly RedLogEvent[],
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; bounded?: boolean; include?: ReadonlySet<string>; context?: readonly RedLogEvent[] } = {}
+  events: Iterable<RedLogEvent>,
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; bounded?: boolean; include?: ReadonlySet<string>; context?: Iterable<RedLogEvent> } = {}
 ): ExportAttachment[] {
   const exclude = options.exclude ?? new Set<string>()
   const out: ExportAttachment[] = []

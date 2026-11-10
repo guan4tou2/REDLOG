@@ -20,16 +20,16 @@
 - [x] T008 [US3] 在 test/plugin-explore-detail.test.tsx 先驗詳情：report === null 顯示「尚無診斷」不顯示成功;逐類 contribution 的 accepted/rejected/waiting 與被拒名稱＋原因;apiAhead 與 error 的具體訊息;capabilities／terminalProfiles／captureInstalls 審核內容(FR-022、FR-021)。
 - [x] T009 [US3] 列表每行一行異常摘要＋詳情完整呈現;profilesError 照實呈現不冒充插件自身錯誤(《診斷不遺失》)(FR-003、FR-021)。
 - [x] T010 [US3] 詳情對該插件保留既有操作(啟用/停用、授予/撤銷、reload),與列表同源、不造第二套(FR-023)。
-- [x] T011 [US1–3] 以 `useContainerWidth` 接列表/詳情布局:≥720 並排、<720 切換並提供返回;重排/卸載後由列表資料重建、不依賴本地快照(FR-030–031)。
+- [x] T011 [US1–3] 列表／詳情與返回；原 ≥720 並排提案已由 Stitch 定稿取代，所有寬度均單欄切換。縮窗保留詳情，返回由列表資料重建(FR-030–031)。
 
 ## S3 — i18n 與整合
 
 - [x] T012 新增 i18n keys(en/zh-TW)(搜尋、需處理、尚無診斷、全部已處理、詳情五軸、返回等),跑 `npm run gen:settings-search`;`test/settings-search.test.ts` 綠(FR 全部)。
 - [x] T013 既有插件頁測試與 e2e 回歸全綠:啟用/停用/授權/撤銷/reload/open folder、consent dialog、read-state(layout-read-states 契約)、`plugins-load-error` 重試。
-- [ ] T014 新 e2e journey(e2e/plugin-explore.spec.ts):搜尋→切需處理→開詳情→讀完整 report→返回;窄/寬布局各一遍(若 e2e 環境可切容器寬度)。
-- [ ] T015 五道 push gate + build;於 verification.md 記 A 切片(候選與成品、RED/GREEN、Gates);整體 Spec 065 維持 Draft,B/C 完成前不逐項轉 Verified。
+- [x] T014 `e2e/plugin-explore.spec.ts`：搜尋→需處理→詳情 report→返回；1400px 與 800px 均單欄。2026-11-09 main c614cbf3 補驗通過，連同來源設定共 8 passed。
+- [x] T015 main c614cbf3 五道 gates、build 與完整 unit 通過；verification.md 保留 A 歷史與本輪證據。此為目前切片完成，Spec 065 保持 Draft；完整 C／平台／更新與中斷矩陣未因此升 Verified。
 
-## 明確排除(B/C 承接,不在本批次)
+## 原 A 批次排除與後續狀態
 
-- 官方整合在插件頁的安裝/更新/解除安裝入口、`AgentsPanel` 操作改跳轉與回歸、插件↔擷取來源雙向定位、capture health 維度接線(B)。
+- B 的官方管理入口／來源雙向定位已有實作；安裝→來源→專案授權→合成 JSONL 擷取→停用／移除→歷史仍可讀，由 official-agent-capture 與來源設定案例驗證。更新、解除安裝中斷及所有錯誤恢復仍需完整矩陣，見 verification.md。
 - 本機匯入、衝突恢復與安全檢查、非受管檔案保護(C)。

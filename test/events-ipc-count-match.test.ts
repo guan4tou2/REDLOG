@@ -10,7 +10,7 @@ import { loadConfig, saveConfig } from '../src/core/config'
 import { registerEventsIpc } from '../src/main/ipc/events'
 import type { IpcContext } from '../src/main/ipc/types'
 import type { ProjectMeta } from '../src/core/project-manager'
-import { seedTimelineFixture, type TimelineFixture } from './helpers/timeline-query-fixture'
+import { insertFixtureRow, seedTimelineFixture, type TimelineFixture } from './helpers/timeline-query-fixture'
 
 type Handler = (_event: unknown, input?: unknown) => unknown
 
@@ -43,15 +43,15 @@ describe('events:count and events:matchIds', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('does not read saved content after the active project changes', () => {
+  it('does not read saved content after the active project changes', async () => {
     const eventId = fx.rows.find(r => r.agentType === 'shell')!.id
-    const reply = handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
+    const reply = await handlers.get('content:list')?.({}, {projectId:'eng-1',eventId}) as {ok:boolean;value:Array<{ref:unknown}>}
     expect(reply.ok).toBe(true)
     active = {...active!,id:'other-project'}
-    expect(handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
-    expect(handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:list')?.({}, {projectId:'eng-1',eventId})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:read')?.({}, {ref:reply.value[0]?.ref})).toMatchObject({ok:false,status:'denied'})
     active = null
-    expect(handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
+    expect(await handlers.get('content:find')?.({}, {ref:reply.value[0]?.ref,needle:'test'})).toMatchObject({ok:false,status:'denied'})
   })
 
   it('returns its empty shape without an active project', () => {
@@ -65,6 +65,31 @@ describe('events:count and events:matchIds', () => {
     // A renderer-supplied scope that would admit everything is replaced.
     const sent = { filter: { inScopeOnly: true, scope: { targets: ['*'], excludeTargets: [] } } }
     expect(handlers.get('events:count')?.({}, sent)).toBe(inScope)
+  })
+
+  it('never widens direct, paged or parsed reads to the renderer-supplied scope', () => {
+    const parsed = parseQuery('nmap'); if (!parsed.ok) throw new Error('fixture')
+    const forged = { inScopeOnly: true, scope: { targets: ['*'], excludeTargets: [] }, limit: 1000 }
+    for (const name of ['events:query', 'events:queryPage', 'events:runQuery']) {
+      const request = name === 'events:runQuery'
+        ? { parsed: parsed.parsed, filter: forged, limit: 1000 } : forged
+      const result = handlers.get(name)?.({}, request) as Array<{ targetId: string | null }> | { items: Array<{ targetId: string | null }> }
+      const rows = Array.isArray(result) ? result : result.items
+      expect(rows.some(row => row.targetId === '10.0.0.5'), name).toBe(true)
+      expect(rows.every(row => row.targetId === null || row.targetId === '10.0.0.5'), name).toBe(true)
+    }
+  })
+
+  it('filters HTTP flows using the active scope before applying the page limit', () => {
+    for (const [id, host, timestamp] of [['allowed-flow', '10.0.0.5', 2e12], ['outside-flow', '10.0.0.50', 2e12 + 1]] as const) {
+      insertFixtureRow({ table: 'events_logged', id, timestamp, operatorId: 'op-1',
+        agentType: 'scanner', subtype: 'http_request_start', targetId: host,
+        data: { flow_id: id, host, method: 'GET', url: `http://${host}/scope-test` } })
+    }
+    const result = handlers.get('events:queryHttpFlowPage')?.({}, {
+      inScopeOnly: true, scope: { targets: ['*'], excludeTargets: [] }, limit: 1
+    }) as { items: Array<{ id: string }> }
+    expect(result.items.map(row => row.id)).toEqual(['allowed-flow'])
   })
 
   it('matches ids with the project scope attached', () => {

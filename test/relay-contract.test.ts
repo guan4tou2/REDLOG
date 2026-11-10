@@ -57,6 +57,7 @@ async function relay(
 D=\$(mktemp -d -t redlog-relay-test.XXXXXX)
 python3 "${hookPath(t, 'redlog-relay.py')}" run \\
   --event-out "\$D/event.json" \\
+  --home "\$D" \\
   --max-bytes ${opts.maxBytes ?? 102400} \\
   --cwd "\$D" \\
   --captured-by redlog-run \\

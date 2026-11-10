@@ -130,7 +130,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
         aria-modal="true"
         aria-label={t('marker.title')}
         tabIndex={-1}
-        className="bg-redlog-surface border border-redlog-border rounded-lg w-[420px] p-4 space-y-3 outline-none"
+        className="bg-redlog-surface border border-redlog-border rounded-xl w-[420px] p-pad space-y-3 outline-none"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !saving) handleSave() }}
       >
