@@ -88,8 +88,13 @@ function transcriptNameParts(name: string): { agentKind?: string; sessionId?: st
 }
 
 function sha256File(p: string): { bytes: number; sha256: string } {
-  const buf = fs.readFileSync(p)
-  return { bytes: buf.length, sha256: crypto.createHash('sha256').update(buf).digest('hex') }
+  const fd = fs.openSync(p, 'r')
+  const hash = crypto.createHash('sha256'), buffer = Buffer.allocUnsafe(64 * 1024)
+  let bytes = 0, read = 0
+  try {
+    while ((read = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) { hash.update(buffer.subarray(0, read)); bytes += read }
+  } finally { fs.closeSync(fd) }
+  return { bytes, sha256: hash.digest('hex') }
 }
 
 function writeAndHash(dest: string, contents: string | Buffer): ManifestFile {

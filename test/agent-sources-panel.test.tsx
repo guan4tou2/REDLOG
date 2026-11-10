@@ -24,17 +24,18 @@ let catalog: ReturnType<typeof vi.fn>
 let pick: ReturnType<typeof vi.fn>
 let health: ReturnType<typeof vi.fn>
 let saved: unknown
+let openPlugins: ReturnType<typeof vi.fn>
 const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
 const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
 function Harness() {
   const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
-  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} />
+  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={openPlugins} />
 }
 const healthSnapshot = (sources: unknown[]): unknown => ({
   verdict: 'healthy', hasRecorded: false, sources, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null
 })
 beforeEach(() => {
-  saved = undefined; shown.length = 0; answer = true
+  saved = undefined; shown.length = 0; answer = true; openPlugins = vi.fn()
   catalog = vi.fn(async () => [uninstalled]); install = vi.fn(async () => ({ ok: true, changed: true })); remove = vi.fn(async () => ({ ok: true, changed: true })); pick = vi.fn(async () => '/work/client')
   health = vi.fn(async () => healthSnapshot([]))
   ; (window as unknown as { redlog: unknown }).redlog = { plugins: { officialAgents: catalog, installOfficialAgent: install, uninstallOfficialAgent: remove, list: async () => [{ id: 'official-ai-codex', status: 'active' }] }, agents: { sessions: async () => [], sources: async () => [{ id: 'codex', label: 'Codex', root: '/h/.codex/sessions', detected: true }] }, hookConfig: { pickPath: pick }, capture: { health } }
@@ -42,19 +43,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('AI optional installation settings', () => {
   it('shows an uninstalled integration without an activation checkbox', async () => {
-    render(<Harness />); await screen.findByTestId('agent-install-codex')
+    render(<Harness />); await screen.findByTestId('agent-manage-codex')
     expect(screen.queryByTestId('agent-enabled-codex')).toBeNull(); expect(install).not.toHaveBeenCalled(); expect(saved).toBeUndefined()
   })
   it('says what the raw copy holds once an integration is installed, and not before', async () => {
-    const { unmount } = render(<Harness />); await screen.findByTestId('agent-install-codex')
+    const { unmount } = render(<Harness />); await screen.findByTestId('agent-manage-codex')
     expect(screen.queryByText('settings.agents.rawCopy')).toBeNull()
     unmount(); cleanup()
     catalog.mockResolvedValue([installed]); render(<Harness />)
     expect((await screen.findByTestId('agent-raw-copy')).textContent).toBe('settings.agents.rawCopy')
   })
-  it('installs only the chosen tool and does not activate capture', async () => {
-    render(<Harness />); fireEvent.click(await screen.findByTestId('agent-install-codex'))
-    await waitFor(() => expect(install).toHaveBeenCalledWith('codex')); expect(saved).toBeUndefined()
+  // Spec 066 FR-010/011: install, update and removal moved to the Plugins page.
+  // This row points at that integration's detail and changes nothing itself.
+  it('has no install, update, restore or remove button — it points at the integration on the Plugins page', async () => {
+    render(<Harness />); fireEvent.click(await screen.findByTestId('agent-manage-codex'))
+    expect(openPlugins).toHaveBeenCalledWith('official-ai-codex')
+    expect(screen.getByTestId('agent-manage-codex').textContent).toBe('settings.agents.installOnPlugins')
+    for (const id of ['install', 'update', 'restore', 'remove']) expect(screen.queryByTestId(`agent-${id}-codex`)).toBeNull()
+    expect(install).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(saved).toBeUndefined(); expect(shown).toHaveLength(0)
   })
   it('requires a project directory and explicitly binds activation to this installation', async () => {
     catalog.mockResolvedValue([installed]); render(<Harness />)
@@ -65,13 +71,15 @@ describe('AI optional installation settings', () => {
     fireEvent.click(screen.getByTestId('agent-enabled-codex'))
     expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, workPaths: ['/work/client'], installationId: 'receipt-1', startedAt: expect.any(Number) } } } })
   })
-  it('recovers a disabled integration here without authorizing the project', async () => {
+  it('sends a disabled integration to the Plugins page without authorizing the project', async () => {
     catalog.mockResolvedValue([installed])
     window.redlog.plugins.list = vi.fn().mockResolvedValue([{ id: 'official-ai-codex', status: 'disabled' }])
     render(<Harness />)
-    fireEvent.click(await screen.findByTestId('agent-restore-codex'))
-    await waitFor(() => expect(install).toHaveBeenCalledWith('codex'))
-    expect(saved).toBeUndefined()
+    const manage = await screen.findByTestId('agent-manage-codex')
+    expect(manage.textContent).toBe('settings.agents.enableOnPlugins')
+    fireEvent.click(manage)
+    expect(openPlugins).toHaveBeenCalledWith('official-ai-codex')
+    expect(install).not.toHaveBeenCalled(); expect(saved).toBeUndefined()
     expect(screen.queryByTestId('agent-enabled-codex')).toBeNull()
   })
   it('stops recording and clears the activation boundary when the transcript source changes', async () => {
@@ -107,14 +115,8 @@ describe('AI optional installation settings', () => {
   it('shows a source query error and offers retry instead of an empty list', async () => {
     catalog.mockRejectedValueOnce(new Error('permission denied')); render(<Harness />)
     expect((await screen.findByRole('alert')).textContent).toContain('permission denied')
-    fireEvent.click(screen.getByText('common.retry')); await screen.findByTestId('agent-install-codex')
+    fireEvent.click(screen.getByText('common.retry')); await screen.findByTestId('agent-manage-codex')
   })
-  it('keeps installation failures visible', async () => {
-    install.mockResolvedValue({ ok: false, error: 'disk full' }); render(<Harness />)
-    fireEvent.click(await screen.findByTestId('agent-install-codex'))
-    expect((await screen.findByRole('alert')).textContent).toContain('disk full'); expect(saved).toBeUndefined()
-  })
-
   // #435: the scope moved under a source that was recording. The row has to
   // say THAT happened, not the generic "not recording" that reads the same
   // whether the source was never enabled or was just switched off — and the
@@ -166,24 +168,14 @@ describe('AI optional installation settings', () => {
     expect(screen.queryByTestId('source-last-agent-codex')).toBeNull()
   })
 
-  it('names what a local removal stops and what it keeps before removing', async () => {
+  it('offers no removal here: the source settings link to the Plugins page instead', async () => {
     catalog.mockResolvedValue([installed])
     render(<Harness />)
-    fireEvent.click(await screen.findByTestId('agent-remove-codex'))
-    await waitFor(() => expect(shown).toHaveLength(1))
-    expect(shown[0].title).toBe('settings.agents.removeTitle')
-    expect(shown[0].consequences).toContain('settings.agents.removeStops')
-    expect(shown[0].consequences).toContain('settings.agents.removeKeeps')
-    await waitFor(() => expect(remove).toHaveBeenCalledWith('codex'))
-  })
-
-  it('keeps the integration when the removal is not confirmed', async () => {
-    catalog.mockResolvedValue([installed])
-    answer = false
-    render(<Harness />)
-    fireEvent.click(await screen.findByTestId('agent-remove-codex'))
-    await waitFor(() => expect(shown).toHaveLength(1))
-    expect(remove).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('agent-manage-codex-details')).toBeTruthy()
+    expect(screen.queryByTestId('agent-remove-codex')).toBeNull()
+    fireEvent.click(screen.getByTestId('agent-manage-codex-details'))
+    expect(openPlugins).toHaveBeenCalledWith('official-ai-codex')
+    expect(shown).toHaveLength(0); expect(remove).not.toHaveBeenCalled()
   })
 
   // UIUX audit: with the integration not installed, the row still said "start
@@ -258,11 +250,14 @@ it('stops only the selected conversation and reauthorizes it from now', async ()
   expect(saved).toMatchObject({ agentTailer: { sources: { codex: { enabled: true, excludedSessions: [], sessionStarts: { 'session-a': expect.any(Number) } } } } })
 })
 
-it('offers an official package update here without granting project permission', async () => {
+it('points an available update at the Plugins page without granting project permission', async () => {
   catalog.mockResolvedValue([{ ...installed, state: 'update-available' }])
   render(<Harness />)
-  fireEvent.click(await screen.findByTestId('agent-update-codex'))
-  await waitFor(() => expect(install).toHaveBeenCalledWith('codex'))
+  const manage = await screen.findByTestId('agent-manage-codex')
+  expect(manage.textContent).toBe('settings.agents.updateOnPlugins')
+  fireEvent.click(manage)
+  expect(openPlugins).toHaveBeenCalledWith('official-ai-codex')
+  expect(install).not.toHaveBeenCalled()
   expect(saved).toBeUndefined()
   expect(screen.queryByTestId('agent-enabled-codex')).toBeNull()
 })

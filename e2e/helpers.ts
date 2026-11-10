@@ -61,7 +61,12 @@ export function makeTempHome(prefix = 'redlog-e2e-'): string {
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
  * artifact exists so the failure message is actionable.
  */
-export async function launchWithTempHome(executablePath?: string, { showHud = false, home }: { showHud?: boolean; home?: string } = {}): Promise<{
+export async function launchWithTempHome(executablePath?: string, { showHud = false, home, onLaunch }: {
+  showHud?: boolean
+  home?: string
+  /** Called right after the process exists, before the first window — the place to attach stdout/stderr listeners that must see startup output. */
+  onLaunch?: (app: ElectronApplication) => void
+} = {}): Promise<{
   app: ElectronApplication
   page: Page
   tmpHome: string
@@ -90,6 +95,7 @@ export async function launchWithTempHome(executablePath?: string, { showHud = fa
       REDLOG_E2E_HIDE_HUD: showHud ? '0' : '1'
     }
   })
+  onLaunch?.(app)
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
   return { app, page, tmpHome }
@@ -145,11 +151,21 @@ export async function openView(page: Page, view: string): Promise<void> {
     await page.keyboard.press(process.platform==='darwin'?'Meta+k':'Control+k')
     await page.locator(`[data-command-id="nav:${view}"]`).click()
   }
-  await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
+  await page.waitForSelector(`[data-testid="view-root"][data-view="${view === 'transcript' ? 'search' : view}"]`, { timeout: 10_000 })
 }
 
 /** Enter proof through the actual skip action if this host lacks tools.
  * This does not install a tool or count skipping as verified recording. */
+/** The Timeline opens in standard mode (Spec 069 FR-008). Specs that assert
+ *  on the swim-lane track ask for it by name rather than relying on a default. */
+export async function openSwimLanes(page: Page): Promise<void> {
+  await openView(page, 'timeline')
+  const lanes = page.getByTestId('timeline-mode-lanes')
+  await lanes.waitFor({ state: 'visible', timeout: 10_000 })
+  if ((await lanes.getAttribute('aria-pressed')) !== 'true') await lanes.click()
+  await page.getByTestId('timeline-lane-scroll').waitFor({ state: 'visible', timeout: 10_000 })
+}
+
 export async function openCaptureProof(page: Page): Promise<void> {
   const prepare = page.getByTestId('capture-prepare-skip')
   const proof = page.getByTestId('first-run-commands-status')
@@ -175,16 +191,38 @@ export async function openCaptureProof(page: Page): Promise<void> {
  * category by its stable id instead, the same way `openView` reaches a view.
  */
 export async function openSettingsPage(page: Page, id: string): Promise<void> {
-  const select = page.getByTestId('settings-page-select')
-  const item = page.locator(`[data-settings-page="${id}"]`)
-  await expect.poll(async () => await select.isVisible() || await item.isVisible()).toBe(true)
-  if (await select.isVisible()) {
-    await select.selectOption(id)
-    await expect(select).toHaveValue(id)
-    return
-  }
-  await item.click()
-  await expect(item).toHaveAttribute('aria-current', 'page')
+  // One column (#590): the list of pages, or a page with a way back to it.
+  const content = page.getByTestId('settings-content')
+  await expect(content).toBeVisible()
+  if ((await content.getAttribute('data-page')) !== 'home') await page.getByTestId('settings-back').click()
+  await page.locator(`[data-settings-page="${id}"]`).click()
+  await expect(content).toHaveAttribute('data-page', id)
+}
+
+/**
+ * Spec 066: official AI integrations are installed, updated and removed on the
+ * Plugins page only. These walk that path and come back to Capture sources,
+ * where the per-project settings still live.
+ */
+export async function installOfficialAgentOnPlugins(page: Page, kind: string): Promise<void> {
+  await openSettingsPage(page, 'plugins')
+  await page.getByTestId(`plugin-details-official-ai-${kind}`).click()
+  await page.getByTestId(`plugin-install-official-ai-${kind}`).click()
+  await expect(page.getByTestId(`plugin-uninstall-official-ai-${kind}`)).toBeVisible()
+  await openSettingsPage(page, 'captureControl')
+}
+
+export async function removeOfficialAgentOnPlugins(page: Page, kind: string): Promise<void> {
+  await openSettingsPage(page, 'plugins')
+  await page.getByTestId(`plugin-details-official-ai-${kind}`).click()
+  await page.getByTestId(`plugin-uninstall-official-ai-${kind}`).click()
+  const removal = page.getByRole('dialog', { name: 'Remove capture integration' })
+  await expect(removal).toBeVisible()
+  await expect(removal).toContainText('Every project on this computer stops recording this source.')
+  await expect(removal).toContainText('Records already captured are kept.')
+  await removal.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(page.getByTestId(`plugin-install-official-ai-${kind}`)).toBeVisible()
+  await openSettingsPage(page, 'captureControl')
 }
 
 /**
@@ -225,4 +263,32 @@ export async function expectAppBuild(app: ElectronApplication, page: Page, expec
   await openView(page,'settings')
   await openSettingsPage(page,'about')
   await expect(page.getByText(`RedLog v${version} · ${expected}`,{exact:true})).toBeVisible()
+}
+
+/** The main window's size right after launch, for `resetSharedApp` to return to. */
+export async function mainWindowSize(app: ElectronApplication): Promise<[number, number]> {
+  return app.evaluate(({ BrowserWindow }) => {
+    const main = BrowserWindow.getAllWindows()
+      .find((w) => !w.isDestroyed() && !w.webContents.getURL().includes('overlay'))
+    if (!main) throw new Error('main window not found (only the overlay was open)')
+    return main.getSize() as [number, number]
+  })
+}
+
+/**
+ * Put a shared Electron instance back to a known state between the describes of
+ * a file that launches once: zoom, window size and localStorage (zoom level,
+ * selection, dividers, locale…). Project state is not touched — each describe
+ * opens its own project with `openTestProject`.
+ */
+export async function resetSharedApp(
+  app: ElectronApplication,
+  page: Page,
+  size: [number, number],
+  locale = 'en'
+): Promise<void> {
+  const win = await app.browserWindow(page)
+  await win.evaluate((w) => w.webContents.setZoomFactor(1))
+  await resizeMainWindow(app, size[0], size[1])
+  await page.evaluate((l) => { localStorage.clear(); localStorage.setItem('redlog-locale', l) }, locale)
 }

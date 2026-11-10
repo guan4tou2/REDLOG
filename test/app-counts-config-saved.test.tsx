@@ -9,8 +9,8 @@ import { useAppCounts } from '../src/renderer/src/lib/useAppCounts'
 // flow by hand with the scope set and looking at the bar.
 
 function Probe(): JSX.Element {
-  const { scopeConfigured, scopeViolations } = useAppCounts()
-  return <div data-testid="probe">{scopeConfigured ? 'configured' : 'unset'}:{scopeViolations}</div>
+  const { scopeConfigured, scopeObservations } = useAppCounts()
+  return <div data-testid="probe">{scopeConfigured ? 'configured' : 'unset'}:{scopeObservations}</div>
 }
 
 function install(state: { configured: boolean; violations: number }): void {
@@ -19,7 +19,7 @@ function install(state: { configured: boolean; violations: number }): void {
     chain: { length: vi.fn(async () => 0) },
     loot: { getCount: vi.fn(async () => 0) },
     scope: {
-      getViolationCount: vi.fn(async () => state.violations),
+      getObservationCount: vi.fn(async () => state.violations),
       isConfigured: vi.fn(async () => state.configured)
     }
   }

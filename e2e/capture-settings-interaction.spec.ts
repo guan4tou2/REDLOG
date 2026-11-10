@@ -95,9 +95,7 @@ test.describe('settings interaction journey', () => {
       await win.evaluate(w => w.webContents.setZoomFactor(1))
       await openSettingsPage(page, 'general')
       await page.getByRole('button', { name: locale === 'en' ? 'Normal' : '正常', exact: true }).click()
-      // Normal scale restores the category list through ResizeObserver.
-      // Wait for that layout before choosing the next category.
-      await expect(page.locator('[data-settings-page="hooks"]')).toBeVisible()
+      await expect(page.getByTestId('settings-content')).toBeVisible()
       const proxy = await page.evaluate(async () => (await window.redlog.hooks.detect()).find(hook => hook.id === 'mitmproxy'))
       expect(proxy).toBeTruthy()
       await openSettingsPage(page, 'hooks')
@@ -120,6 +118,9 @@ test.describe('settings interaction journey', () => {
     await page.evaluate(() => window.redlog.httpCapture.stop())
     await openView(page, 'settings')
     await openSettingsPage(page, 'plugins')
+    // The sample tester sits in a collapsed "advanced" section of a plugin's detail.
+    await page.locator('[data-testid^="plugin-details-"]').first().click()
+    await page.getByTestId('plugin-advanced').locator('summary').click()
     for (const [width, height] of [[1600, 900], [800, 600]]) {
       await resizeMainWindow(app, width, height)
       const sample = page.getByTestId('plugin-sample-input')
@@ -292,18 +293,22 @@ test('optional AI recovers in its source entry and requires explicit project aut
     })
     await page.reload()
     await openView(page, 'settings')
-    const other = page.getByRole('button', { name: 'Other capture sources', exact: true })
+    const other = page.locator('[data-settings-page="captureControl"]')
     await expect(other).toBeVisible()
     await other.click()
     const before = await page.evaluate(() => window.redlog.config.get())
     const row = page.getByTestId('agent-source-codex')
-    await row.getByTestId('agent-restore-codex').click()
-    await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
-    await expect(page.locator('[data-settings-page="captureControl"]')).toHaveAttribute('aria-current', 'page')
+    // Spec 066: a disabled integration is re-enabled on the Plugins page; the
+    // Capture sources row only points there, and the jump writes nothing.
+    await expect(row.getByTestId('agent-manage-codex')).toHaveText('Enable on the Plugins page')
+    await row.getByTestId('agent-manage-codex').click()
+    await expect(page.getByTestId('plugin-detail-official-ai-codex')).toBeVisible()
     expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
-    await page.getByRole('button', { name: 'Plugins', exact: true }).click()
-    await expect(page.getByText('Codex CLI', { exact: true })).toHaveCount(0)
-    await other.click()
+    await page.getByTestId('plugin-restore-official-ai-codex').click()
+    await expect.poll(async () => (await page.evaluate(() => window.redlog.plugins.list())).find(p => p.id === 'official-ai-codex')?.status).toBe('active')
+    await page.getByTestId('plugin-open-capture-official-ai-codex').click()
+    await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'captureControl')
+    expect(await page.evaluate(() => window.redlog.config.get())).toEqual(before)
     const setPicker = async (path: string) => app.evaluate(({ ipcMain }, next) => {
       ipcMain.removeHandler('hookConfig:pickPath')
       ipcMain.handle('hookConfig:pickPath', () => next)

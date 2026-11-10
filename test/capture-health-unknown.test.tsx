@@ -37,7 +37,7 @@ function installBridge(): void {
     ip: { getStatus: async () => null, onStatus: () => noop },
     recording: { get: async () => true, onChange: () => noop },
     overlay: { isVisible: async () => false, onVisibilityChanged: () => noop },
-    scope: { getViolationCount: async () => 0, isConfigured: async () => true, getLastRecompute: async () => null },
+    scope: { getObservationCount: async () => 0, isConfigured: async () => true, getLastRecompute: async () => null },
     loot: { getCount: async () => 0 },
     config: { get: async () => ({}) }
   }
@@ -135,12 +135,22 @@ describe('Dashboard capture card', () => {
   it('after a failed read it replaces the old headline with the last confirmed time', async () => {
     health.mockResolvedValueOnce(snap('healthy')).mockRejectedValue(new Error('ipc'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
 
     await act(async () => { batch() })
     await waitFor(() => expect(card().textContent).toMatch(/Last confirmed healthy \d{1,2}:\d{2}.*; current state unknown/))
-    expect(screen.queryByText('Recording')).toBeNull()
+    expect(screen.queryByText('Capture is working')).toBeNull()
+  })
+
+  it('does not leave a cached command source running after the health read fails', async () => {
+    const last = { ...snap('healthy'), sources: [{ id: 'terminal', label: 'Terminal', installed: true, state: 'ready', lastEventAt: Date.now() }] }
+    health.mockResolvedValueOnce(last).mockRejectedValue(new Error('ipc'))
+    show(<DashboardView onNavigate={noop} projectName="p" />)
+    await waitFor(() => expect(screen.getByTestId('capture-core-commands').getAttribute('data-state')).toBe('ready'))
+    await act(async () => { batch() })
+    await waitFor(() => expect(screen.getByTestId('capture-core-commands').getAttribute('data-state')).toBe('unknown'))
+    expect(screen.getByTestId('capture-core-commands').textContent).not.toContain('Running')
   })
 
   it('says so when the first read failed and nothing was ever confirmed', async () => {
@@ -152,11 +162,25 @@ describe('Dashboard capture card', () => {
   it('goes back to the verdict once a read succeeds', async () => {
     health.mockResolvedValueOnce(snap('healthy')).mockRejectedValueOnce(new Error('ipc')).mockResolvedValue(snap('healthy'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     await act(async () => { batch() })
     await waitFor(() => card())
     await act(async () => { batch() })
-    await screen.findByText('Recording')
+    await screen.findByText('Capture is working')
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
+  })
+})
+
+describe('Dashboard capture card (Stitch 08)', () => {
+  it('offers a retry beside the unknown headline, and it reads again', async () => {
+    health.mockResolvedValueOnce(snap('healthy')).mockRejectedValue(new Error('ipc'))
+    show(<DashboardView onNavigate={noop} projectName="p" />)
+    await screen.findByText('Capture is working')
+    await act(async () => { batch() })
+    await screen.findByTestId('capture-unknown')
+    const calls = health.mock.calls.length
+    health.mockResolvedValue(snap('healthy'))
+    await act(async () => { screen.getByTestId('capture-unknown-retry').click() })
+    await waitFor(() => expect(health.mock.calls.length).toBeGreaterThan(calls))
   })
 })

@@ -464,6 +464,14 @@ export interface ScopeInForce {
   scopeFileEntries: number
 }
 
+/** The one rule for "how many boundaries is this": the config list, then the
+ *  scope file's entries that are not already in it. `snapshotScope` and
+ *  `readProjectScope` both go through here, so the project picker's count and
+ *  the scope the policy enforces cannot drift apart. */
+function appendUnique(into: string[], extra: readonly string[]): void {
+  for (const t of extra) if (!into.includes(t)) into.push(t)
+}
+
 export function snapshotScope(config: RedLogConfig): ScopeInForce {
   const targets = [...(config.scope?.targets ?? [])]
   let scopeFileSha256: string | null = null
@@ -476,7 +484,7 @@ export function snapshotScope(config: RedLogConfig): ScopeInForce {
       // Deduped, order preserved: an entry present in both the config list and
       // the file is one boundary, not two, and a stable order keeps the hash
       // stable across restarts.
-      for (const t of loaded) if (!targets.includes(t)) targets.push(t)
+      appendUnique(targets, loaded)
       scopeFileSha256 = crypto.createHash('sha256').update(loaded.join('\n')).digest('hex')
     }
   }
@@ -518,4 +526,43 @@ export function readScopeFile(scopeFilePath: string): ScopeFileRead {
 export function loadScopeFile(scopeFilePath: string): string[] {
   const r = readScopeFile(scopeFilePath)
   return r.ok ? r.entries : []
+}
+
+/** What the project picker may say about a project's scope without opening it.
+ *  `unknown` is a first-class answer: it means the scope could not be read
+ *  (corrupt config.yaml, unreadable or invalid scope file), which is NOT the
+ *  same as `unset`. Any one failure makes the whole answer `unknown` — a count
+ *  from the part that did read would look like a total. */
+export type ProjectScopeSummary =
+  | { state: 'set'; count: number }
+  | { state: 'unset' }
+  | { state: 'unknown' }
+
+/** Read-only and deliberately not built on `loadConfig` (which turns every
+ *  error into defaults, i.e. into "no scope") or `snapshotScope` (which turns
+ *  an unreadable scope file into an empty one). Writes nothing, opens no
+ *  database. */
+export function readProjectScope(projectDir: string): ProjectScopeSummary {
+  let raw: string
+  try {
+    raw = fs.readFileSync(path.join(projectDir, 'config.yaml'), 'utf-8')
+  } catch (e) {
+    return (e as NodeJS.ErrnoException)?.code === 'ENOENT' ? { state: 'unset' } : { state: 'unknown' }
+  }
+  let parsed: unknown
+  try { parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) } catch { return { state: 'unknown' } }
+  if (parsed === undefined || parsed === null) return { state: 'unset' }
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) return { state: 'unknown' }
+  const scope = (parsed as { scope?: unknown }).scope
+  if (scope === undefined || scope === null) return { state: 'unset' }
+  if (typeof scope !== 'object' || Array.isArray(scope)) return { state: 'unknown' }
+  const { targets, scopeFile } = scope as { targets?: unknown; scopeFile?: unknown }
+  if (targets !== undefined && targets !== null && !Array.isArray(targets)) return { state: 'unknown' }
+  const merged = ((targets as unknown[] | undefined) ?? []).filter((t): t is string => typeof t === 'string')
+  if (typeof scopeFile === 'string' && scopeFile) {
+    const file = readScopeFile(scopeFile)
+    if (!file.ok) return { state: 'unknown' }
+    appendUnique(merged, file.entries)
+  }
+  return merged.length > 0 ? { state: 'set', count: merged.length } : { state: 'unset' }
 }

@@ -260,17 +260,8 @@ html {
   --section-gap: 14px;
 }
 
-/* Density has to reach the utilities that actually draw the page.
- *
- * §3 defines four variables and says tight density changes row heights AND
- * padding. Only `--row-h` was ever read: `--pad`, `--gap` and `--section-gap`
- * were declared here and referenced by nothing, so switching to tight shrank
- * the sidebar rows and left every card, panel and gap exactly where it was.
- * `density.ts`'s own comment claimed otherwise.
- *
- * Rather than rewrite 271 `rounded`/`p-4`/`gap-3` call sites, bind the three
- * utilities that carry the page rhythm to the variables. `p-4`, `gap-3` and
- * `space-y-6` then follow density because they are the tokens' names. */
+/* Page and card spacing follow density through the named utilities below.
+ * Fixed p-4/gap-3/space-y-6 classes keep their normal Tailwind values. */
 /* `@theme` only generates utilities for namespaces Tailwind knows (--color-*,
  * --spacing-* with a numeric scale). Naming a variable `--spacing-pad` does
  * not create a `p-pad` class. Plain utilities do, and they read the variable
@@ -285,8 +276,8 @@ html {
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: #121214;
-  color: #ececf0;
+  background: var(--color-redlog-bg);
+  color: var(--color-redlog-text);
   font-family: 'Noto Sans TC', system-ui, sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;

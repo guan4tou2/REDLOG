@@ -23,6 +23,10 @@ export interface NdjsonExportOpts {
    *  the pseudonym. Off by default: a single-operator export keeps attribution. */
   scrubOperatorPii?: boolean
   doNotExportIds?: Set<string>
+  /** The events were already passed through `redactEventsForExport` with the
+   *  same scope, so redacting them again would only repeat the per-event
+   *  sanitized-fields lookup. The caller owns that guarantee. */
+  alreadyRedacted?: boolean
 }
 
 /** One redacted event → one JSON line. Prepends `@timestamp` (ISO 8601 from the
@@ -32,7 +36,7 @@ export function eventsToNdjson(events: RedLogEvent[], opts: NdjsonExportOpts = {
   const out: string[] = []
   for (const e of events) {
     const rOpts: RedactExportOpts = { scope: opts.scope, doNotExportIds: opts.doNotExportIds }
-    const red = redactEventForExport(e, rOpts)
+    const red = opts.alreadyRedacted ? e : redactEventForExport(e, rOpts)
     if (!red) continue
     const withTs = { '@timestamp': new Date(red.timestamp).toISOString(), ...red }
     let line = JSON.stringify(withTs)

@@ -2,7 +2,7 @@
 //
 // This used to be a user-reorderable list persisted to localStorage, with
 // load/save/subscribe machinery and a drag gesture in the sidebar. §5.3 fixes
-// it instead: ⌘1..6 and ⌘9 always mean the same view, and the number is printed on
+// it instead: ⌘1..7 and ⌘9 always mean the same view, and the number is printed on
 // the row.
 //
 // Those two facts depend on each other. While rows could be dragged, the
@@ -20,15 +20,17 @@ export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
   | 'targets' | 'scope' | 'loot' | 'bookmarks' | 'search' | 'http_history'
 
-// Five daily workspaces plus the optional built-in terminal. Detail routes
+// Six daily workspaces plus the optional built-in terminal. The Timeline is a
+// page of its own beside Activity: they share search and event location, but
+// operators looked for it and could not find it behind Activity. Detail routes
 // stay addressable for evidence links; they do not take primary shortcuts.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'search', 'http_history', 'targets', 'screenshots', 'terminal'
+  'dashboard', 'search', 'timeline', 'http_history', 'targets', 'screenshots', 'terminal'
 ]
-export const NUMBERED_SLOTS = 6
+export const NUMBERED_SLOTS = 7
 
 export function primaryViewFor(view: string): string {
-  if(view==='timeline'||view==='transcript')return 'search'
+  if(view==='transcript')return 'search'
   if(view==='scope')return 'targets'
   if(view==='loot'||view==='bookmarks')return 'screenshots'
   return view

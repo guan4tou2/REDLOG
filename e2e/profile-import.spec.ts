@@ -29,7 +29,7 @@ interface Bridge {
 // The UI is English or Chinese depending on the machine; the specs match both
 // rather than depend on which.
 const IMPORT = /Import Profile|匯入設定檔/
-const CREATE = /^(Create|建立)$/
+const CREATE = /^(Create project|建立專案)$/
 const CLEAR = /Clear imported settings|清除已匯入的設定/
 const EXCLUDED = /Excluded|排除/
 const NO_WARN = /No warning on out-of-scope|不警告範圍外目標/
@@ -73,6 +73,10 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   }
 
   async function importFile(body: string, ext: 'json' | 'yaml' = 'json'): Promise<void> {
+    if (!await page.getByRole('dialog').count()) await page.getByRole('button', { name: /Create new project|建立新專案/ }).click()
+    // Stitch 01: the import sits under "Advanced settings".
+    const advanced = page.getByTestId('create-project-advanced')
+    if (await advanced.getAttribute('aria-expanded') !== 'true') await advanced.click()
     const filePath = join(home, `profile-${++n}.${ext}`)
     writeFileSync(filePath, body)
     await pickerReturns({ filePath })
@@ -88,7 +92,7 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
 
   /** Press Create with this name; resolves on the project's dashboard. */
   async function createProject(name: string): Promise<Cfg> {
-    await page.getByTestId('project-picker').locator('input').first().fill(name)
+    await page.getByRole('dialog').locator('input').fill(name)
     await page.getByRole('button', { name: CREATE }).click()
     await page.waitForSelector('[data-testid="view-root"]', { timeout: 15_000 })
     return config()

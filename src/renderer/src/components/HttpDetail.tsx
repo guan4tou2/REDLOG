@@ -1,10 +1,12 @@
 import { bodyTruncation, capturedContentIsPartial } from '../../../core/content-contract'
 import type { StreamCompletion } from '../../../core/stream-completion'
 import { Button } from './Button'
-import { EventContentReader } from './EventContentReader'
+import { EventContentReader, type ReaderControl } from './EventContentReader'
+import { hasContentReader } from '../lib/timelineEvents'
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 
 // ---------------------------------------------------------------------------
 // Shared constants & helpers
@@ -57,12 +59,15 @@ export function CollapsibleStream({
   const isLarge = content.length > INLINE_PREVIEW_BYTES
   const preview = isLarge ? content.slice(0, INLINE_PREVIEW_BYTES) : content
   const copyFull = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(content)
+    // The bridge, not navigator.clipboard: the renderer is denied that, and a
+    // dropped rejection made this button look dead.
+    if (await writeClipboard(content)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
       toast(t('toast.copied'), 'success')
-    } catch { /* ignore */ }
+    } else {
+      toast(t('toast.copyFailed'), 'error')
+    }
   }
   return (
     <div className={`border ${acc.bar} rounded ${acc.bg}`}>
@@ -147,21 +152,22 @@ function streamStatus(t: (key: string, vars?: Record<string, string | number>) =
   return { text: t(completion.closed ? 'http.streamCaptureUnknown' : 'http.streamNoEnd'), settled: false }
 }
 
-export function HttpDetail({ data, eventId, projectId }: { data: Record<string, unknown>; eventId: string; projectId: string }): JSX.Element {
+export function HttpDetail({ data, eventId, projectId, reader }: {
+  data: Record<string, unknown>; eventId: string; projectId: string
+  /** Held by the Timeline so its bar can open the same Reader. */
+  reader?: ReaderControl
+}): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isRequest = subtype === 'http_request_start'
   const isResponse = subtype === 'http_response'
   const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
-  const ownHalf = isRequest ? 'request' : 'response'
-  const [half, setHalf] = useState<'request' | 'response'>(ownHalf)
   const [partner, setPartner] = useState<{ eventId: string; partnerId: string; data: Record<string, unknown> } | null>(null)
   const [pairedLoading, setPairedLoading] = useState(false)
   const [pairedError, setPairedError] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [completion, setCompletion] = useState<{ flowId: string; value: StreamCompletion | null } | null>(null)
 
-  useEffect(() => { setHalf(ownHalf) }, [ownHalf, eventId])
   useEffect(() => {
     if (!flowId) return
     let cancelled = false
@@ -189,29 +195,33 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
     return () => { cancelled = true }
   }, [flowId, eventId, isRequest, isResponse, attempt])
 
-  // Both tabs use the same body reader. A separate preview-only partner view
-  // hid captured inline/sidecar bodies, cookies and capture truncation.
+  // Request above, response below (Spec 069 FR-005): the two halves are read
+  // together, so neither hides behind a tab. Both use the same body reader.
   const pairedData = partner?.eventId === eventId ? partner.data : null
-  const selected = half !== ownHalf && pairedData ? pairedData : data
-  const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, selected)
+  const requestData = isRequest ? data : pairedData
+  const responseData = isResponse ? data : pairedData
+  const requestId = isRequest ? eventId : partner?.partnerId ?? eventId
+  const responseId = isResponse ? eventId : partner?.partnerId ?? eventId
+  // The lifted Reader belongs to the half that IS the selected event; the
+  // other half of a pair keeps its own, so one click never opens two.
+  const stream = streamStatus(t, completion?.flowId === flowId ? completion.value : null, responseData ?? data)
   return (
     <div className="mt-2 space-y-1.5">
       {stream && <p role="status" data-testid="http-stream-status" className={`text-xs ${stream.settled ? 'text-redlog-text-dim' : 'text-amber-400'}`}>{stream.text}</p>}
-      {pairedData && (
-        <div role="tablist" className="flex gap-1 border-b border-redlog-border/60 -mx-1 px-1">
-          {(['request', 'response'] as const).map(side => (
-            <button
-              key={side}
-              role="tab"
-              data-testid={`http-tab-${side}`}
-              aria-selected={half === side}
-              onClick={() => setHalf(side)}
-              className={`px-3 py-1.5 text-xs -mb-px border-b-2 transition-colors ${half === side ? 'border-redlog-cyan text-redlog-text' : 'border-transparent text-redlog-text-faint hover:text-redlog-text-dim'}`}
-            >{t(side === 'request' ? 'timeline.detail.tabRequest' : 'timeline.detail.tabResponse')}</button>
-          ))}
-        </div>
+      {pairedData && requestData && responseData ? (
+        <>
+          <section data-testid="http-section-request" aria-labelledby={`http-request-${eventId}`}>
+            <h4 id={`http-request-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabRequest')}</h4>
+            <HttpHalf key={`${eventId}:request`} data={requestData} projectId={projectId} eventId={requestId} reader={requestId === eventId ? reader : undefined} />
+          </section>
+          <section data-testid="http-section-response" aria-labelledby={`http-response-${eventId}`}>
+            <h4 id={`http-response-${eventId}`} className="text-xs font-semibold text-redlog-text-dim border-b border-redlog-border/60 pb-1">{t('timeline.detail.tabResponse')}</h4>
+            <HttpHalf key={`${eventId}:response`} data={responseData} projectId={projectId} eventId={responseId} reader={responseId === eventId ? reader : undefined} />
+          </section>
+        </>
+      ) : (
+        <HttpHalf key={eventId} data={data} projectId={projectId} eventId={eventId} reader={reader} />
       )}
-      <HttpHalf key={`${eventId}:${half}`} data={selected} projectId={projectId} eventId={half !== ownHalf && pairedData ? partner!.partnerId : eventId} />
       {pairedLoading && <p role="status" className="text-xs text-redlog-text-dim">{t('http.loadingPaired')}</p>}
       {pairedError && <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-amber-400">
         <span>{t('http.pairedFailed')}</span>
@@ -221,7 +231,10 @@ export function HttpDetail({ data, eventId, projectId }: { data: Record<string, 
   )
 }
 
-function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
+function HttpHalf({ data, projectId, eventId, reader }: {
+  data: Record<string, unknown>; projectId: string; eventId: string
+  reader?: ReaderControl
+}): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
@@ -264,7 +277,9 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
       : t('timeline.detail.bodySavedOf', { saved: formatBytes(cut.saved), total: formatBytes(cut.total) })
   }
 
-  const [readerOpen, setReaderOpen] = useState(false)
+  const [ownReaderOpen, setOwnReaderOpen] = useState(false)
+  const readerOpen = reader ? reader.mode !== 'closed' : ownReaderOpen
+  const setReaderOpen = (open: boolean): void => { if (reader) reader.setMode(open ? 'inline' : 'closed'); else setOwnReaderOpen(open) }
   // Inline previews are already on the Event. Sidecars always use the shared
   // versioned window reader, never the legacy whole-body IPC.
   const inlineText = (body: { data?: string; encoding?: string } | undefined): string | null =>
@@ -437,7 +452,7 @@ function HttpHalf({ data, projectId, eventId }: { data: Record<string, unknown>;
   )
 
   return <div className="space-y-1.5">
-    {((hasFullReqBody && !loadedReqBody) || (hasFullRespBody && !loadedRespBody) || (hasFullWsBody && !loadedWsBody) || (hasFullTcpBody && !loadedTcpBody)) && <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>}
-    {readerOpen ? <EventContentReader projectId={projectId} eventId={eventId} /> : ownBlock}
+    {(hasContentReader({ agentType: 'scanner', data }) || readerOpen) && <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>}
+    {readerOpen ? <EventContentReader projectId={projectId} eventId={eventId} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} /> : ownBlock}
   </div>
 }

@@ -92,7 +92,7 @@ T033 is a bounded audit pass. It does not redesign layout or add features.
 
 - [x] T034 [US2] Make the AGENTS.md copy rule executable instead of advisory: add test/ui-copy.test.ts covering the shapes that are never right (one explanation under two keys, a descriptive key nothing renders, a hint that only repeats its label, a tooltip that repeats the visible text, a helper line over three sentences without being an allow-listed warning), and remove the dead prose it found.
 
-T034 adds a gate, not a redesign. It does not judge whether a sentence is worth saying — that stays with docs/UIUX-CONTROLS-AND-COPY.md §2 and review.
+T034 adds a gate, not a redesign. It does not judge whether a sentence is worth saying — that stays with docs/UIUX-STANDARD.md §25.2 and review.
 
 ## Copy gate, mutation-tested — T034 follow-up
 

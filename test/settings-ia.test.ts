@@ -48,7 +48,7 @@ describe('settings information architecture', () => {
     expect(unrouted).toEqual([])
   })
 
-  it('offers every declared page in the left list', () => {
+  it('offers every declared page in the home registry', () => {
     // And the reverse: content reachable by no list entry is content nobody
     // finds.
     //
@@ -64,9 +64,9 @@ describe('settings information architecture', () => {
   it('puts no heading over a single page', () => {
     // A heading with one entry under it groups nothing and costs a row of
     // scanning. Evidence and Collaboration were both that.
-    const block = /const groups:[\s\S]*?\r?\n  \]\r?\n/.exec(SRC)
-    expect(block, 'settings groups not found').not.toBeNull()
-    const sizes = [...block![0].matchAll(/pages: \[([\s\S]*?)\]/g)]
+    const block = /const HOME_SECTIONS:[\s\S]*?\r?\n\]\r?\n/.exec(SRC)
+    expect(block, 'settings home registry not found').not.toBeNull()
+    const sizes = [...block![0].matchAll(/rows: \[([\s\S]*?)\]/g)]
       .map((m) => (m[1].match(/\{ id: '/g) ?? []).length)
     expect(sizes.length).toBeGreaterThan(0)
     expect(sizes.filter((n) => n < 2)).toEqual([])

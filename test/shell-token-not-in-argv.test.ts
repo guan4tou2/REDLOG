@@ -75,7 +75,7 @@ touch "$REC/argv" "$REC/config" "$REC/body" "$REC/done"
 ${body}
 # Backgrounded senders (redlog-send.sh) may still be running.
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
-  [ "$(wc -l < "$REC/done")" -ge "$(wc -l < "$REC/argv")" ] && break
+  [ -s "$REC/argv" ] && [ "$(wc -l < "$REC/done")" -ge "$(wc -l < "$REC/argv")" ] && break
   sleep 0.2
 done
 echo '@@ARGV'; cat "$REC/argv"

@@ -1,0 +1,77 @@
+import { test, expect } from '@playwright/test'
+import { launchWithTempHome, resizeMainWindow } from './helpers'
+
+test('startup: keyboard create, draft focus, search, narrow layout and restart persistence', async () => {
+  test.setTimeout(90_000)
+  let { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await page.reload()
+    const trigger = page.getByRole('button', { name: 'Create new project' })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    const dialog = page.getByRole('dialog', { name: 'Create new project' })
+    const name = page.getByRole('textbox', { name: 'Project name' })
+    await expect(name).toBeFocused()
+    await name.fill('Startup Lab')
+    // Stitch 01: the title bar's close control comes before the name field.
+    await page.keyboard.press('Shift+Tab')
+    await expect(dialog.getByTestId('create-project-close')).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await trigger.click()
+    await expect(name).toHaveValue('Startup Lab')
+    await name.press('Enter')
+    await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
+    // Six projects, so the filter has something to hide (the box is always shown, Spec 068 D1′).
+    const saved = await page.evaluate(async () => {
+      for (let i = 1; i <= 5; i++) await window.redlog.project.create(`Filler ${i}`)
+      const list = await window.redlog.project.list()
+      await window.redlog.project.close()
+      return list
+    })
+    expect(saved).toHaveLength(6)
+    expect(saved.filter(p => p.name === 'Startup Lab')).toHaveLength(1)
+    await page.reload()
+    const row = page.getByRole('button', { name: 'Startup Lab', exact: true })
+    await expect(row).toBeVisible()
+    const search = page.getByRole('searchbox', { name: 'Search projects' })
+    await search.fill('no such project')
+    await expect(page.getByText('No project matches “no such project”', { exact: true })).toBeVisible()
+    await search.fill('startup')
+    await expect(row).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Filler 1', exact: true })).toHaveCount(0)
+    // Enter opens the selected match (the only one here), in the box where the operator typed
+    await search.press('Enter')
+    await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
+    await page.evaluate(() => window.redlog.project.close())
+    await page.reload()
+    await expect(page.getByRole('searchbox', { name: 'Search projects' })).toHaveValue('')
+    await resizeMainWindow(app, 760, 600)
+    await page.evaluate(() => { document.body.style.setProperty('--app-zoom', '1.125') })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath('startup-narrow-large-text.png') })
+    await trigger.click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeInViewport()
+    await page.screenshot({ path: test.info().outputPath('startup-create-narrow-large-text.png') })
+    await page.keyboard.press('Escape')
+    await row.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
+    await app.close()
+    const restarted = await launchWithTempHome(undefined, { home: tmpHome })
+    app = restarted.app
+    page = restarted.page
+    await expect(page.getByRole('button', { name: 'Startup Lab', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Startup Lab', exact: true }).press('Enter')
+    await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
+    const after = await page.evaluate(() => window.redlog.project.list())
+    expect(after).toHaveLength(6)
+    expect(after.find(p => p.name === 'Startup Lab')?.id).toBe(saved.find(p => p.name === 'Startup Lab')?.id)
+    expect(after.find(p => p.name === 'Startup Lab')?.path).toBe(saved.find(p => p.name === 'Startup Lab')?.path)
+    await page.screenshot({ path: test.info().outputPath('startup-restarted.png') })
+  } finally {
+    await app.close()
+  }
+})

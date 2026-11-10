@@ -39,15 +39,15 @@ import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { readProfileFile } from '../core/profile-file'
 import type { ProfileImportResult } from '../core/profile-import'
-import { runScopeRecompute,queryScopeViolationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
-import { activeViolationCount, invalidateViolationCount } from '../core/scope-violation-count'
+import { runScopeRecompute,queryScopeObservationRows, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { activeObservationCount, invalidateObservationCount } from '../core/scope-observation-count'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/alert/policies'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { resetBodiesDirCache } from '../core/http-body-store'
 import {
-  listProjects, createProject, openProject, deleteProject, renameProject,
+  listProjects, listProjectEntries, projectsRoot, summarizeProjectScopes, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, setPrimaryOperator, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
@@ -738,7 +738,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     captureOnCommand: config.screenshot.captureOnCommand ?? false
   })
 
-  invalidateViolationCount()
+  invalidateObservationCount()
   resetVisibilitySignalsCache()
   recomputePending = null
   const scopeTargets = snapshotScope(config).targets
@@ -1451,6 +1451,8 @@ app.whenReady().then(() => {
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
+  ipcMain.handle('project:scopeSummaries', () => summarizeProjectScopes(listProjectEntries()))
+  ipcMain.handle('project:root', () => projectsRoot())
   ipcMain.handle('project:create', (_e, name: string, initialConfig?: Partial<RedLogConfig>) => {
     const project = createProject(name)
     // The engagement is the project. Every new project used to inherit the
@@ -1704,8 +1706,8 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (projectRuntime.project() ? queryScopeViolationRows() : { rows: [], truncated: false }))
-  ipcMain.handle('scope:getViolationCount', () => (projectRuntime.project() ? activeViolationCount() : 0))
+  ipcMain.handle('scope:getObservations', () => (projectRuntime.project() ? queryScopeObservationRows() : { rows: [], truncated: false }))
+  ipcMain.handle('scope:getObservationCount', () => (projectRuntime.project() ? activeObservationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (projectRuntime.project() ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
   // The scope file merged into the lists, as the app enforces it. Only the

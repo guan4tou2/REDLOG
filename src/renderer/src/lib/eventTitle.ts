@@ -3,11 +3,21 @@
 // search index can import it directly without pulling in 4000 lines of
 // component code.
 
+import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import en from '../i18n/en.json'
 import { AMENDABLE_FIELDS } from './markerFold'
 import { firstStringArg } from './timelineDomain'
 import { formatBytes } from '../components/HttpDetail'
 import { safeDisplay } from './evidenceText'
+
+/** The IP policy's verdict, in the words the IP card already uses. */
+const IP_VERDICT_KEY: Record<string, string> = {
+  exposed: 'ip.exposedIp',
+  safe: 'ip.safeIp',
+  unknown: 'ip.unknownIp',
+  off_profile: 'eventTitle.ipOffProfile',
+  presumed_safe: 'eventTitle.ipPresumedSafe'
+}
 
 /** Exported for the first-run strip, which is a preview of this timeline and
  *  must name rows the same way it does. */
@@ -213,11 +223,17 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       return `agent: ${sub}`
     }
     case 'system':
-      if (d.subtype === 'scope_violation') {
+      if (d.subtype === SCOPE_VIOLATION_SUBTYPE) {
         // A hit that landed inside the scope is stored under the same subtype
         // so adherence can be counted; it is a tally, not a violation, and
         // must not read as one.
-        const key = d.distance === 'in_scope' ? 'eventTitle.scopeInScope' : 'eventTitle.scopeViolation'
+        // With no scope configured the evaluator still files the hit under
+        // `in_scope` (nothing is outside an undrawn boundary), but marks the
+        // verdict `authority: 'unknown'`. Saying 範圍內 then contradicts the
+        // status bar's 範圍未設定 on the same screen; it was never judged.
+        const key = d.distance !== 'in_scope'
+          ? 'eventTitle.scopeObservation'
+          : d.authority === 'unknown' ? 'eventTitle.scopeUnjudged' : 'eventTitle.scopeInScope'
         return t(key, { target: String(d.target || d.command || '') })
       }
       if (d.subtype === 'ip_transition') return `⇋ ${d.description || t('eventTitle.ipTransition')}`
@@ -234,7 +250,17 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       if (d.subtype === 'connection_capture_started') return t('eventTitle.connectionCaptureOn')
       if (d.subtype === 'capture_gap' && d.reason === 'gap-unsaved') return t('eventTitle.gapUnsaved', { count: String(d.skipped_units ?? '?') })
       if (d.subtype === 'connection_monitor_saturated') return t('eventTitle.connectionSaturated', { count: String(d.count ?? '?') })
-      return `${event.agentType}: ${d.subtype || ''}`
+      // RedLog's own state changes. Raw `system: ip_verdict` rows sat at the top
+      // of the activity log in the Stitch audit (2026-11-08); each gets a title.
+      if (d.subtype === 'http_proxy_started') return t('eventTitle.proxyStarted', { proxy: String(d.proxy ?? '') }).trim()
+      if (d.subtype === 'http_proxy_stopped') return t('eventTitle.proxyStopped')
+      if (d.subtype === 'http_proxy_failed') return t('capture.summary.http.failed')
+      if (d.subtype === 'http_proxy_orphan_reclaimed') return t('eventTitle.proxyOrphan', { pid: String(d.pid ?? '?') })
+      if (d.subtype === 'opsec_airgap') return t(d.enabled ? 'eventTitle.airgapOn' : 'eventTitle.airgapOff')
+      if (d.subtype === 'ip_verdict') return t('eventTitle.ipVerdict', { verdict: t(IP_VERDICT_KEY[String(d.ip_verdict_kind)] ?? 'ip.unknownIp') })
+      if (d.subtype === 'session_start') return t('eventTitle.sessionStart')
+      if (d.subtype === 'chain_sample_broken') return t('eventTitle.chainSampleBroken')
+      return t('eventTitle.systemOther', { name: String(d.subtype || '') })
     default:
       return `${event.agentType}: ${d.subtype || ''}`
   }

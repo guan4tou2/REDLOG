@@ -312,7 +312,7 @@ export function CausalGraph({ anchorId, pluginTypes, titleOf, onSelect, t }: Cau
         onClose={() => setEnlarged(false)}
         label={t('timeline.causalGraph.dialogLabel')}
         testId="causal-graph-dialog"
-        panelClassName="w-[90vw] h-[85vh] flex flex-col gap-2 rounded-lg border border-redlog-border-subtle bg-redlog-bg p-4"
+        panelClassName="w-[90vw] h-[85vh] flex flex-col gap-2 rounded-xl border border-redlog-border-subtle bg-redlog-bg p-4"
       >
         <div className="flex items-center justify-between gap-3 shrink-0">
           <span className="text-xs font-mono uppercase tracking-wider text-redlog-muted">

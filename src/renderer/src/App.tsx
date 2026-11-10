@@ -31,12 +31,13 @@ import { toast } from './components/Toast'
 // black screen with no explanation.
 const TerminalView = lazy(() => import('./components/TerminalView'))
 const Settings = lazy(() => import('./components/Settings'))
-const TranscriptView = lazy(() => import('./components/TranscriptView'))
 const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then(m => ({ default: m.HttpHistoryPanel })))
 
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
 import { parseTarget, settingsTarget } from './lib/navigation'
+import { TargetsScopeHeader } from './components/TargetsScopeHeader'
+import { EvidenceHeader } from './components/EvidenceHeader'
 import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
@@ -131,11 +132,13 @@ export default function App(): JSX.Element {
 
   // Every link, the palette, the sidebar and the status bar go through here,
   // so a target that names a Settings page opens that page.
+  const [readingRequest, setReadingRequest] = useState<{ mode: 'io' | 'ai'; at: number } | null>(null)
   const navigate = useCallback((target: string): void => {
     const { view: next, settingsPage, scopeCandidate } = parseTarget(target)
     setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate } : null)
     setReturnTo(null)
-    setView(next as View)
+    setReadingRequest(next === 'transcript' ? { mode: 'io', at: Date.now() } : null)
+    setView((next === 'transcript' ? 'search' : next) as View)
   }, [])
 
   const openInTimeline = useCallback((id: string, ts: number): void => {
@@ -143,6 +146,29 @@ export default function App(): JSX.Element {
     setFocusEvent({ id, ts })
     setView('timeline')
   }, [view])
+
+  // Stitch 05: from an event on the Timeline to the activity that holds it.
+  // The Activity workspace already answers `event:<id>` (the condition
+  // resolves against the stored id), so this is that query, typed for the
+  // operator; the Reader there is the one Reader (06).
+  const [activityQuery, setActivityQuery] = useState<{ text: string; at: number } | null>(null)
+  // Stitch 06: the way back is part of the route. The Timeline is not kept
+  // mounted, so "back" re-focuses the event the operator left from.
+  const [timelineReturn, setTimelineReturn] = useState<{ id: string; ts: number } | null>(null)
+  const openInActivity = useCallback((id: string, ts: number): void => {
+    setActivityQuery({ text: `event:${id}`, at: Date.now() })
+    setTimelineReturn({ id, ts })
+    setReturnTo('timeline')
+    setView('search')
+  }, [])
+
+  // The toolbar's 活動紀錄 link: the whole Activity workspace, not one event.
+  // The way back re-focuses whatever was selected, when something was.
+  const openActivity = useCallback((selected: { id: string; ts: number } | null): void => {
+    setTimelineReturn(selected)
+    setReturnTo('timeline')
+    setView('search')
+  }, [])
 
   // The Activity workspace and the Timeline are two readings of the same
   // material, but only the Timeline had no way in except the palette. This is
@@ -155,15 +181,18 @@ export default function App(): JSX.Element {
 
   const goBack = useCallback((): void => {
     if (!returnTo) return
-    setFocusEvent(null)
+    setFocusEvent(returnTo === 'timeline' ? timelineReturn : null)
+    setTimelineReturn(null)
     setView(returnTo)
     setReturnTo(null)
-  }, [returnTo])
+  }, [returnTo, timelineReturn])
 
   // Cmd+[ / Alt+Left goes back, as in a browser: only while there is somewhere
   // to go back to, and never while the operator is typing.
   useEffect(() => {
-    if (!returnTo || view !== 'timeline') return
+    // From the Timeline to its Activity and back is the one route that lands on
+    // the Activity page; every other back lands on the Timeline.
+    if (!returnTo || (view !== 'timeline' && !(view === 'search' && returnTo === 'timeline'))) return
     const onKey = (e: KeyboardEvent): void => {
       const el = e.target as HTMLElement | null
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
@@ -256,8 +285,7 @@ export default function App(): JSX.Element {
     )
   }
 
-  const workspacePages = ['targets','scope'].includes(view) ? ['targets','scope'] : ['screenshots','loot','bookmarks'].includes(view) ? ['screenshots','loot','bookmarks'] : []
-  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline', 'loot'].includes(view)
+  const showFilterBar = ['search', 'http_history', 'timeline', 'loot'].includes(view)
 
   return (
     <FilterProvider>
@@ -395,11 +423,8 @@ export default function App(): JSX.Element {
         />
 
         <div className="flex-1 min-w-0 select-text flex flex-col" data-testid="view-root" data-view={view}>
-          {workspacePages.length>0 && <div role="tablist" aria-label={t(view==='targets'||view==='scope'?'sidebar.targetsScope':'sidebar.evidence')} className="shrink-0 flex flex-wrap gap-1 px-4 pt-2 border-b border-redlog-border">
-            {workspacePages.map((page,index)=><button key={page} data-view-btn={page} role="tab" aria-selected={view===page} tabIndex={view===page?0:-1}
-              onKeyDown={e=>{const next=e.key==='ArrowRight'?workspacePages[(index+1)%workspacePages.length]:e.key==='ArrowLeft'?workspacePages[(index+workspacePages.length-1)%workspacePages.length]:undefined;if(next){e.preventDefault();navigate(next);document.querySelector<HTMLButtonElement>(`button[role="tab"][data-view-btn="${next}"]`)?.focus()}}}
-              onClick={()=>navigate(page)} className={`px-3 py-2 text-xs border-b-2 ${view===page?'border-redlog-accent text-redlog-text':'border-transparent text-redlog-text-dim'}`}>{t(`sidebar.${page==='screenshots'?'screens':page}`)}</button>)}
-          </div>}
+          {(view==='targets'||view==='scope') && <TargetsScopeHeader page={view} onNavigate={navigate} onOpenSettings={() => navigate(settingsTarget('scope'))} />}
+          {(view==='screenshots'||view==='loot'||view==='bookmarks') && <EvidenceHeader page={view} onNavigate={navigate} />}
           {showFilterBar && <FilterBar />}
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
@@ -409,6 +434,14 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
+            {view === 'search' && returnTo === 'timeline' && (
+              <div data-testid="activity-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
+                <Button size="compact" level="quiet" type="button" onClick={goBack}>
+                  ← {t('nav.backTo', { view: t('sidebar.timeline') })}
+                </Button>
+                <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
+              </div>
+            )}
             {view === 'timeline' && returnTo && (
               <div data-testid="timeline-return" className="flex items-center gap-2 px-4 py-1.5 border-b border-redlog-border/60 bg-redlog-surface/60 text-xs">
                 <Button size="compact" level="quiet"
@@ -420,26 +453,9 @@ export default function App(): JSX.Element {
                 <span className="text-redlog-text-faint">{isMac ? '⌘[' : 'Alt+←'}</span>
               </div>
             )}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
-            {/* v0.11.2 (design note T5): the same events read vertically. The
-                Timeline answers "when did this happen and what did it cause";
-                this answers "what did I type and what came back", which is the
-                question an operator asks when writing an engagement up. */}
-            {view === 'transcript' && (
-              <Suspense fallback={<PaneLoading />}>
-                <TranscriptView
-                  key={project?.id ?? 'no-project'}
-                  // `onNavigate` is not in scope here — App switches views with
-                  // `setView`. This threw a ReferenceError on every use of the
-                  // transcript's arrow button, which is §7's transcript <-> timeline
-                  // link and one of the five cross-view routes phase 3 is meant
-                  // to be completing.
-                  onOpenInTimeline={openInTimeline}
-                />
-              </Suspense>
-            )}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
-            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
+            {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}

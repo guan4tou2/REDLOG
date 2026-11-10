@@ -54,7 +54,7 @@ export interface CorpusEvent {
 }
 
 /** A violation record already in the chain, live or retroactive. */
-export interface ExistingViolation {
+export interface ExistingObservation {
   id: string
   target: string
   /** `_causes[0]`, or null for a live row whose producer had no event id. */
@@ -86,7 +86,7 @@ export interface RetroRow {
 }
 
 export interface ClearRow {
-  violationId: string
+  observationId: string
   target: string
   sourceEventId: string | null
   sourceTs: number
@@ -116,7 +116,7 @@ export interface RecomputePlan {
 
 export interface PlanInput {
   corpus: readonly CorpusEvent[]
-  existing: readonly ExistingViolation[]
+  existing: readonly ExistingObservation[]
   after: ScopeSnapshot
   /** Verdict for one target under the scope now in force. Injected so this
    *  module needs no policy import and the caller cannot accidentally classify
@@ -157,8 +157,8 @@ export function planScopeRecompute(input: PlanInput): RecomputePlan {
   const floor = input.after.alertFloor
 
   const active = input.existing.filter((v) => !v.cleared && v.supersededBy === null)
-  const activeBySource = new Map<string, ExistingViolation>()
-  const causeless: ExistingViolation[] = []
+  const activeBySource = new Map<string, ExistingObservation>()
+  const causeless: ExistingObservation[] = []
   for (const v of active) {
     if (v.sourceEventId) activeBySource.set(v.sourceEventId, v)
     else causeless.push(v)
@@ -226,7 +226,7 @@ export function planScopeRecompute(input: PlanInput): RecomputePlan {
     touchedTargets.add(v.target)
     if (reportable(distance, floor)) continue
     clear.push({
-      violationId: v.id, target: v.target, sourceEventId: v.sourceEventId,
+      observationId: v.id, target: v.target, sourceEventId: v.sourceEventId,
       sourceTs: v.timestamp, distanceBefore: v.distance, distanceAfter: distance,
       judgedBefore: v.judged
     })

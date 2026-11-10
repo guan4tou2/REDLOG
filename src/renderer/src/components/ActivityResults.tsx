@@ -6,9 +6,13 @@ import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { eventTitle } from '../lib/eventTitle'
-import { formatTime } from '../lib/time'
+import { foldSystemRuns } from '../lib/activityFolds'
+import { formatDate, formatTime, useDisplayZone, zoneLabel } from '../lib/time'
 import { Button } from './Button'
-import { EventContentReader } from './EventContentReader'
+import { activityResultLabel } from '../lib/commandStatus'
+import { ActivityReader, sourceName } from './ActivityReader'
+
+const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
@@ -25,68 +29,8 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
   return <p role="status" className="mb-2 text-xs text-amber-300">{issues.join(' · ')}</p>
 }
 
-function ActivitySources({ item, request, snapshot, onOpen, onRefresh, active }: {
-  active: boolean; item: ActivitySummary; request: ActivityRequest; snapshot: ActivityPage['snapshot']; onRefresh: () => void
-  onOpen?: (id: string, ts: number) => void
-}): JSX.Element {
-  const { t } = useI18n()
-  const read = useReadState(() => window.redlog.events.activityMembers({ ...request, ref: item, snapshot, limit: 50, matchesFirst: true }), true, [snapshot])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [visited, setVisited] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const live = useRef(true)
-  useEffect(() => { live.current = true; return () => { live.current = false } }, [])
-  const more = async (): Promise<void> => {
-    const current = read.state.value
-    if (!current?.nextCursor || busy) return
-    setBusy(true); setError(null)
-    try {
-      const next = await window.redlog.events.activityMembers({ ...request, ref: item, snapshot, limit: 50, matchesFirst: true, cursor: current.nextCursor })
-      if (live.current) read.update(() => ({ ...next, items: [...current.items, ...next.items] }))
-    } catch (e) { if (live.current) setError(String(e)) }
-    finally { if (live.current) setBusy(false) }
-  }
-  const sources = read.state.value?.items ?? []
-  const current = sources.find(r => r.event.id === selected)
-    ?? sources.find(r => r.matched && ['command_end', 'tool_result', 'http_response'].includes(String(r.event.data.subtype)))
-    ?? sources.find(r => r.matched)
-    ?? sources[0]
-  // Pick once before committing the first source. A later page must not
-  // replace the content the operator is already reading.
-  useEffect(() => {
-    if (!current) return
-    if (selected === null) setSelected(current.event.id)
-    setVisited(prev => prev.has(current.event.id) ? prev : new Set([...prev, current.event.id]))
-  }, [current?.event.id])
-  return <div className="p-3 space-y-3 min-w-0 bg-redlog-elevated/40">
-    {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
-    {(error || read.state.phase === 'failed') && <div role="alert" className="text-xs text-amber-300">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={onRefresh}>{t('activity.refresh')}</Button></div>}
-    {current && <>
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
-        <select aria-label={t('activity.sourceEvent')} value={current.event.id} onChange={e => setSelected(e.target.value)} className="min-w-0 max-w-full flex-1 bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
-          {sources.map(r => {
-            const subtype = String(r.event.data.subtype ?? r.event.agentType)
-            const label = subtype === 'command_start' ? t('content.field.command')
-              : subtype === 'command_end' ? t('activity.commandResult')
-                : subtype === 'tool_call' ? t('content.field.tool_input')
-                  : subtype === 'tool_result' ? t('content.field.output') : subtype
-            return <option key={r.event.id} value={r.event.id}>{r.matched ? t('activity.matchLabel') : t('activity.contextLabel')} · {label} · {formatTime(r.event.timestamp, {seconds:true})} · {r.event.id.slice(0,8)}</option>
-          })}
-        </select>
-        {onOpen && <Button onClick={() => onOpen(current.event.id, current.event.timestamp)}>{t('activity.original')}</Button>}
-      </div>
-      {read.state.value?.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('activity.moreSources')}</Button>}
-      {sources.filter(source => visited.has(source.event.id) || source.event.id === current.event.id).map(source =>
-        <div key={source.event.id} hidden={source.event.id !== current.event.id}>
-          <EventContentReader active={active} projectId={request.projectId} eventId={source.event.id} />
-        </div>)}
-    </>}
-  </div>
-}
-
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection, active = true }: { active?: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true }: { active?: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -96,32 +40,50 @@ export function ActivityResults({ request, onOpen, onExportSelection, active = t
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} />
 }
-function ActivityList({ request, onOpen, onExportSelection, active }: { active: boolean; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active }: { active: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
+  const zone = useDisplayZone()
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
+  // System-event folds the operator opened, by the first row's id.
+  const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set())
+  // The operation being read in the Reader, by id so a refresh does not move it.
+  const [readerId, setReaderId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [newEvents, setNewEvents] = useState(false)
+  // How many events arrived since this page was read; the banner says the number.
+  const [newEvents, setNewEvents] = useState(0)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
-  const more = async (): Promise<void> => {
+  /** Loads the next page; answers the operations it added, for a caller that reads on into them. */
+  const more = async (): Promise<ActivitySummary[]> => {
     const current = read.state.value
-    if (!current?.nextCursor || busy) return
+    if (!current?.nextCursor || busy) return []
     setBusy(true); setError(null)
     try {
       const next = await window.redlog.events.activityPage({ ...request, cursor: current.nextCursor, limit: 50 })
       if (alive.current) read.update(() => ({ ...next, items: [...current.items, ...next.items] }))
-    } catch (e) { if (alive.current) setError(String(e)) }
+      return next.items
+    } catch (e) { if (alive.current) setError(String(e)); return [] }
     finally { if (alive.current) setBusy(false) }
   }
-  useEffect(() => window.redlog.events.onNewBatch(() => setNewEvents(true)), [])
-  const refresh = (): void => { setNewEvents(false); setError(null); read.retry() }
+  useEffect(() => window.redlog.events.onNewBatch((events) => setNewEvents((n) => n + (Array.isArray(events) ? events.length : 1))), [])
+  const refresh = (): void => { setNewEvents(0); setError(null); read.retry() }
   const page = read.state.value
   const selectedActivity = page?.items.find(item=>item.id===expanded)
+  const readerIndex = page && readerId !== null ? page.items.findIndex(item => item.id === readerId) : -1
+  // Stepping past the last loaded operation loads the next page, then reads on.
+  const step = (direction: -1 | 1): void => {
+    if (!page || readerIndex < 0) return
+    const next = readerIndex + direction
+    if (next >= 0 && next < page.items.length) { setReaderId(page.items[next].id); setExpanded(page.items[next].id); return }
+    if (direction === 1 && page.hasMore) {
+      void more().then((added) => { if (added.length > 0 && alive.current) { setReaderId(added[0].id); setExpanded(added[0].id) } })
+    }
+  }
   const anchorId = selectedActivity?.anchor.id
   const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
   useEffect(()=>{
@@ -129,7 +91,6 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
     return ()=>onExportSelection?.(null)
   },[active,anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
-    {newEvents && <Button size="compact" level="quiet" onClick={refresh}>{t('workspace.newActivity')}</Button>}
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
     {page && (() => {
@@ -140,25 +101,96 @@ function ActivityList({ request, onOpen, onExportSelection, active }: { active: 
       const filtering = request.parsed.text.trim().length > 0 || request.parsed.conditions.length > 0
       return <>
       <SearchCoverage coverage={page.bodyCoverage} />
-      <p className="text-xs text-redlog-text-dim mb-2">{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}</p>
+      <div data-testid="activity-stats" className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-redlog-text-dim">
+        <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
+          {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
+        </span>
+        {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
+      </div>
+      {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
+        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span>{/* The column is the 24px chevron's; the label may be wider, so it stays on
+            one line and reaches left into the gap instead of stacking 檢/視. */}
+        <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
+      </div>}
       {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
-      <div className="divide-y divide-redlog-border">
-        {page.items.map(item => <div key={item.id} className="min-w-0">
-          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className="w-full text-left py-3 px-2 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400"
-            onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-redlog-text-dim">
-              <time className="font-mono">{formatTime(item.firstAt, { seconds: true })}</time>
-              <span>{item.provider === 'claude-code' ? 'Claude Code' : item.provider === 'codex' ? 'Codex' : item.provider ?? item.anchor.agentType}</span>
-              <span>{t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}</span>
-              {filtering && <span>{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
+      <div className="flex flex-col gap-1">
+        {(() => {
+          const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
+            ? <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
+              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" /><span className="font-mono text-redlog-text-faint">{zoneLabel(zone, t)}</span>
             </div>
-            <div className="mt-1 font-mono text-sm break-words">{eventTitle(item.anchor)}</div>
+            : null
+          const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">
+          {withDay && day(at)}
+          <div className={`rounded-lg transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'bg-redlog-surface hover:bg-redlog-elevated'}`}>
+          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} w-full text-left py-2.5 px-3 rounded-lg focus-visible:outline focus-visible:outline-red-400`}
+            onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
+            <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
+            {(() => {
+              const r = activityResultLabel(item, t)
+              const kind = t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)
+              return <>
+                {/* Stitch 04: the source as a badge, tinted when the command failed;
+                    the kind of activity rides its tooltip. */}
+                <span className="min-w-0"><span data-testid="activity-source-badge" title={`${sourceName(item, t)} · ${kind}`}
+                  className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs ${r?.tone === 'fail' ? 'bg-redlog-danger/10 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim'}`}>{sourceName(item, t)}</span></span>
+                <span className="flex min-w-0 items-center gap-2 pr-2">
+                  <span className="min-w-0 truncate font-mono text-sm text-redlog-text" title={eventTitle(item.anchor, t)}>{eventTitle(item.anchor, t)}</span>
+                  {r && <span data-testid="activity-result" className={`shrink-0 text-xs font-medium ${r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>{r.text}</span>}
+                  {filtering && <span className="shrink-0 text-xs text-redlog-text-dim">{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
+                </span>
+              </>
+            })()}
+            <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${expanded === item.id ? 'rotate-90' : ''}`}>›</span>
           </button>
-          {expanded === item.id && <div className="flex justify-end gap-2 py-2"><select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select></div>}
-          {expanded === item.id && <ActivitySources active={active} key={item.id} item={item} request={request} snapshot={page.snapshot} onOpen={onOpen} onRefresh={refresh} />}
-        </div>)}
+          {expanded === item.id && <div data-testid="activity-summary" className="px-2 pb-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button level="primary" size="compact" data-testid="activity-read" onClick={() => setReaderId(item.id)}>{t('activity.reader.open')} ↗</Button>
+                {onOpen && <Button size="compact" data-testid="activity-locate" onClick={() => onOpen(item.anchor.id, item.anchor.timestamp)}>{t('activity.reader.locate')}</Button>}
+                <select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-xs"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select>
+              </div>
+              <p data-testid="activity-summary-meta" className="flex flex-wrap gap-x-2 text-xs text-redlog-text-faint">
+                <span>{filtering ? t('activity.sources', { matches: item.matchedCount, context: item.contextCount }) : t('activity.summary.sources', { count: item.sourceCount })}</span>
+                <span>· {t('activity.reader.field.session')} <span className="font-mono">{item.anchor.sessionId}</span></span>
+                {typeof item.anchor.data.pid === 'number' && <span>· {t('activity.reader.field.pid')} <span className="font-mono">{item.anchor.data.pid}</span></span>}
+              </p>
+            </div>
+          </div>}
+          </div>
+        </div>
+          // A query asked for these rows; never fold what was searched for.
+          return foldSystemRuns(page.items, !filtering).map((seg) => {
+            if (seg.kind === 'item') return row(seg.item, seg.at, true)
+            // A run holding the open row or the Reader's row stays open.
+            const open = openFolds.has(seg.key) || seg.items.some((it) => it.id === expanded || it.id === readerId)
+            const toggle = (): void => setOpenFolds((prev) => {
+              const next = new Set(prev)
+              if (next.has(seg.key)) next.delete(seg.key); else next.add(seg.key)
+              return next
+            })
+            return <div key={`fold:${seg.key}`} className="min-w-0">
+              {day(seg.at)}
+              <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
+                className={`${ROW_GRID} w-full text-left py-2 px-3 rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
+                <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
+                <span className="min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
+                <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
+                <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+              </button>
+              {open && <div className="mt-1 flex flex-col gap-1 pl-3 border-l border-redlog-border-subtle">
+                {seg.items.map((it, k) => row(it, seg.at + k, false))}
+              </div>}
+            </div>
+          })
+        })()}
       </div>
       {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}
+      {readerIndex >= 0 && <ActivityReader items={page.items} index={readerIndex} request={request} snapshot={page.snapshot} active={active} filtering={filtering}
+        hasMore={page.hasMore} loading={busy}
+        onStep={step} onClose={() => setReaderId(null)}
+        // The Reader stays open under the Timeline, so coming back lands where the reading was (#589).
+        onLocate={onOpen ? (event) => onOpen(event.id, event.timestamp) : undefined} />}
       </>
     })()}
   </div>

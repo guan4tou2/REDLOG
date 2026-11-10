@@ -177,6 +177,14 @@ jobs:
         # runner) and is not annotated.
         run: node scripts/verify-smoke-report.mjs test-results/packaged-smoke.json
 
+      - name: Native PowerShell 5.1 and 7 capture matrix
+        env:
+          REDLOG_PACKAGED_APP: ${{ steps.install.outputs.exe }}
+          REDLOG_PACKAGED_REAL_PROFILE: '1'
+          REDLOG_REQUIRE_PS_EDITIONS: 'ps51,ps7'
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/powershell-matrix.json
+        run: npx playwright test e2e/packaged-powershell-matrix.spec.ts --reporter=list,json
+
       - name: Enrol PowerShell the way the app does
         # Uninstall has to take this back out (resources/installer.nsh). Written
         # in the shape installHook writes, next to a line of the operator's own

@@ -93,15 +93,14 @@ test('five workspaces remain usable across native size, zoom and language change
       await expect(page.getByTestId('http-completeness')).toContainText(strings['httpHistory.complete'])
       await page.locator('tr', { hasText: '/layout-flow' }).first().click()
       await expect(page.getByTestId('http-detail-panel')).toBeVisible()
-      await page.getByTestId('http-tab-response').click()
-      await page.getByTestId('http-detail-panel').locator('pre').first().evaluate(el => { el.scrollTop = 60 })
+      await page.getByTestId('http-section-response').locator('pre').first().evaluate(el => { el.scrollTop = 60 })
       await matrixFor('http', async () => {
         await expect(httpSearch).toHaveValue('layout-flow')
         const root = page.getByTestId('http-workspace')
         const width = await root.evaluate(el => el.clientWidth)
         await expect(page.getByTestId('http-workspace-split')).toHaveAttribute('data-layout', width < 960 ? 'bottom' : 'right')
-        await expect(page.getByTestId('http-tab-response')).toHaveAttribute('aria-selected', 'true')
-        expect(await page.getByTestId('http-detail-panel').locator('pre').first().evaluate(el => el.scrollTop)).toBeCloseTo(60, 0)
+        await expect(page.getByTestId('http-section-response')).toBeVisible()
+        expect(await page.getByTestId('http-section-response').locator('pre').first().evaluate(el => el.scrollTop)).toBeCloseTo(60, 0)
         await page.getByTestId('http-detail-layout-toggle').scrollIntoViewIfNeeded()
         await expect(page.getByTestId('http-detail-layout-toggle')).toBeInViewport()
         await noOverflow(page, '[data-testid="http-workspace"]')
@@ -133,28 +132,28 @@ test('five workspaces remain usable across native size, zoom and language change
       await search.fill('Layout mark')
       const list = page.getByRole('listbox')
       const row = list.getByRole('option').nth(3)
+      // The list is replaced by the editor, so its scroll is set while it shows.
+      await list.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event('scroll')) })
       await row.click()
       await page.getByRole('button', { name: strings['bookmarks.edit'], exact: true }).click()
       const note = page.getByRole('textbox', { name: strings['bookmarks.fieldNote'], exact: true })
       await note.fill('unsaved layout draft')
-      await list.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event('scroll')) })
       await matrixFor('bookmarks', async () => {
-        const width = await page.getByTestId('bookmarks-workspace').evaluate(el => el.clientWidth)
-        if (width < 720) {
-          await expect(page.getByTestId('bookmarks-back')).toBeVisible()
-          await page.getByTestId('bookmarks-back').click()
-          await expect(search).toHaveValue('Layout mark')
-          // Resize changes row geometry and may clamp scrollTop. Establish a
-          // reachable position at this size, then verify detail/back restores it.
-          await list.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event('scroll')) })
-          await row.scrollIntoViewIfNeeded()
-          const position = await list.evaluate(el => el.scrollTop)
-          expect(position).toBeGreaterThan(0)
-          await row.click()
-          await page.getByTestId('bookmarks-back').click()
-          await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeCloseTo(position, 0)
-          await row.click()
-        }
+        // One column at every width: the editor replaces the list, and Back
+        // returns to the list with its search and scroll position intact.
+        await expect(page.getByTestId('bookmarks-back')).toBeVisible()
+        await page.getByTestId('bookmarks-back').click()
+        await expect(search).toHaveValue('Layout mark')
+        // Resize changes row geometry and may clamp scrollTop. Establish a
+        // reachable position at this size, then verify detail/back restores it.
+        await list.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event('scroll')) })
+        await row.scrollIntoViewIfNeeded()
+        const position = await list.evaluate(el => el.scrollTop)
+        expect(position).toBeGreaterThan(0)
+        await row.click()
+        await page.getByTestId('bookmarks-back').click()
+        await expect.poll(() => list.evaluate(el => el.scrollTop)).toBeCloseTo(position, 0)
+        await row.click()
         await expect(note).toHaveValue('unsaved layout draft')
         await page.getByRole('button', { name: strings['bookmarks.update'], exact: true }).scrollIntoViewIfNeeded()
         await expect(page.getByRole('button', { name: strings['bookmarks.update'], exact: true })).toBeInViewport()
@@ -164,6 +163,12 @@ test('five workspaces remain usable across native size, zoom and language change
       await page.getByRole('button', { name: strings['bookmarks.cancel'], exact: true }).click()
 
       await openView(page, 'screenshots')
+      // The list is the default, and the choice is remembered, so a later
+      // locale pass starts in the grid: select the list explicitly, then the grid.
+      await page.getByTestId('screenshots-view-list').click()
+      await expect(page.getByTestId('screenshot-list').locator('[role="button"]')).toHaveCount(8)
+      await noOverflow(page, '[data-testid="screenshot-list"]')
+      await page.getByTestId('screenshots-view-grid').click()
       await expect(page.getByTestId('screenshot-grid').locator('[role="button"]')).toHaveCount(8)
       await matrixFor('screenshots', async () => {
         const grid = page.getByTestId('screenshot-grid')

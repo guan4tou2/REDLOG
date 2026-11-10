@@ -22,13 +22,13 @@ function ref(){
   const fields=describeEventContent('eng',event.id);if(!fields.ok)throw new Error(fields.message)
   return fields.value.find(field=>field.field==='stdout')!.ref!
 }
-it('copies only an available current-project version and reports clipboard failure',()=>{
+it('copies only an available current-project version and reports clipboard failure',async()=>{
   const source=ref(),copy=handlers.get('content:copySaved')!
-  expect(copy({},source)).toMatchObject({ok:true,value:{bytes:12}})
+  expect(await copy({},source)).toMatchObject({ok:true,value:{bytes:12}})
   expect(mocks.writeText).toHaveBeenCalledWith('saved output')
   mocks.writeText.mockImplementationOnce(()=>{throw new Error('clipboard unavailable')})
-  expect(copy({},source)).toMatchObject({ok:false,status:'failed'})
-  expect(copy({},{...source,projectId:'other'})).toMatchObject({ok:false,status:'denied'})
+  expect(await copy({},source)).toMatchObject({ok:false,status:'failed'})
+  expect(await copy({},{...source,projectId:'other'})).toMatchObject({ok:false,status:'denied'})
   expect(mocks.writeText).toHaveBeenCalledTimes(2)
 })
 it('checks ownership before the dialog, treats cancel as cancel, and rechecks after project changes',async()=>{

@@ -24,7 +24,7 @@ Independent test: noncontiguous export verifies as projection; tampering fails.
 - [x] T012 [US3] Show exact conditions, event/exchange counts and projection limits in src/renderer/src/components/ExportMenu.tsx and src/renderer/src/i18n/{en,zh-TW}.json.
 
 ## Cross-cutting completion
-- [x] T013 Verify current/whole selection, error/zero/locale/compact flows in e2e/filtered-export.spec.ts.
+- [x] T013 Verify current/whole selection, error/zero/locale/compact flows in e2e/filtered-export.spec.ts (now in e2e/evidence-views.spec.ts).
 - [x] T014 Update docs/domain/SPEC-export-event-selection.md and record all gates/Converge in specs/056-filtered-evidence-export/verification.md.
 - [ ] T015 Correct installation acceptance docs and add explicit installed-package validation under e2e/ and scripts/; record actual platform results in docs/PACKAGED-SMOKE.md.
 

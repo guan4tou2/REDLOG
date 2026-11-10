@@ -14,7 +14,7 @@ export function IconButton({ label, children, className = '', ...rest }: {
       type="button"
       aria-label={label}
       title={label}
-      className={`inline-flex items-center justify-center min-w-6 min-h-6 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 ${className}`}
+      className={`inline-flex items-center justify-center min-w-6 min-h-6 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg focus-visible:ring-redlog-accent/40 ${className}`}
       {...rest}
     >
       {children}

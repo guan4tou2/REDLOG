@@ -56,7 +56,7 @@ timestamp moves to the leading column (UIUX-STANDARD §6). Deleted with the
 feature: `ActivityRow`, `parentCommandOf`, `flow.causeEventId`, the out-of-scope
 host marker, the `src/renderer/src/lib/httpActivity.ts` grouping module and its
 `test/http-activity.test.ts`; `e2e/http-activity-view.spec.ts` is rewritten as
-`e2e/http-history-view.spec.ts` asserting the flat log. The architecture gate
+`e2e/http-history-view.spec.ts` (now in e2e/evidence-views.spec.ts) asserting the flat log. The architecture gate
 confirms no export was orphaned by the deletion.
 
 ## Convergence

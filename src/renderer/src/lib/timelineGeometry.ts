@@ -59,7 +59,8 @@ export interface MaxZoomParams {
   timeSpan: number
   clusterPx: number
   maxTrackW: number
-  minBaseTrackW: number
+  /** The track width at zoom 1 (the window's track area). */
+  baseTrackW: number
 }
 
 /**
@@ -71,13 +72,14 @@ export interface MaxZoomParams {
  * exceeds `maxTrackW`. Sparse projects keep the floor of 6.
  */
 export function computeMaxZoom(p: MaxZoomParams): number {
-  const { laneTimestamps, timeSpan, clusterPx, maxTrackW, minBaseTrackW } = p
+  const { laneTimestamps, timeSpan, clusterPx, maxTrackW } = p
+  const base = Math.max(1, p.baseTrackW)
   if (timeSpan <= 0) return 6
   const ceilingGap = (timeSpan * clusterPx) / maxTrackW
   const tightest = tightestLaneGap(laneTimestamps, ceilingGap)
   if (!Number.isFinite(tightest)) return 6
   const neededTrackW = (timeSpan / tightest) * clusterPx
-  return Math.max(6, Math.min(maxTrackW / minBaseTrackW, neededTrackW / minBaseTrackW))
+  return Math.max(6, Math.min(maxTrackW / base, neededTrackW / base))
 }
 
 // ── Cluster building ───────────────────────────────────────────────

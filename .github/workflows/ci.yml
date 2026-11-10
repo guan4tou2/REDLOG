@@ -157,7 +157,7 @@ jobs:
           sudo apt-get install -y \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
             libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
-            libgtk-3-0 libasound2t64 xvfb zsh
+            libgtk-3-0 libasound2t64 xvfb zsh fonts-noto-cjk
 
       - name: Install mitmproxy
         # The real-source acceptance specs (capture-gap-acceptance,
@@ -198,3 +198,15 @@ jobs:
             playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+      # e2e/visual-reference.spec.ts writes the main pages at desktop, narrow
+      # and large-text sizes for a person to compare with the Stitch
+      # prototypes. Kept on every run: a green run is the one worth looking at.
+      - name: Upload visual reference
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-visual-${{ matrix.shard }}
+          path: test-results/visual/
+          if-no-files-found: ignore
+          retention-days: 14

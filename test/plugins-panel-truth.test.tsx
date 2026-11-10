@@ -27,11 +27,18 @@ const view = (id: string, status: Status = 'active') => ({
 })
 
 const api = {
+  officialAgents: vi.fn(), installOfficialAgent: vi.fn(), uninstallOfficialAgent: vi.fn(),
   list: vi.fn(), reload: vi.fn(), openFolder: vi.fn(), setEnabled: vi.fn(), grant: vi.fn(), revoke: vi.fn()
 }
 const draw = (): void => {
   ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
   render(<PluginsPanel t={t} />)
+}
+// Every control lives in the plugin's detail now (one column: list, then detail),
+// so a test that presses Disable or Review first chooses the row.
+const drawOpen = async (): Promise<void> => {
+  draw()
+  fireEvent.click((await screen.findAllByTestId(/^plugin-details-/))[0])
 }
 const deferred = <T,>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } => {
   let resolve!: (v: T) => void
@@ -44,6 +51,7 @@ describe('the plugins page shows what main has done', () => {
   beforeEach(() => {
     toasts.plain.length = 0; toasts.undo.length = 0
     Object.values(api).forEach((f) => f.mockReset())
+    api.officialAgents.mockResolvedValue([])
   })
   afterEach(() => cleanup())
 
@@ -51,7 +59,7 @@ describe('the plugins page shows what main has done', () => {
     const wait = deferred<ReturnType<typeof view>[]>()
     api.list.mockResolvedValue([view('a')])
     api.setEnabled.mockReturnValue(wait.promise)
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Disable' }))
     // Written now, not after a timer…
     expect(api.setEnabled).toHaveBeenCalledWith('a', false)
@@ -66,7 +74,7 @@ describe('the plugins page shows what main has done', () => {
   it('says what a disable does and does not do, and that it is global', async () => {
     api.list.mockResolvedValue([view('a')])
     api.setEnabled.mockResolvedValue([view('a', 'disabled')])
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(toasts.undo).toHaveLength(1))
     const why = JSON.stringify(toasts.undo[0].opts)
@@ -79,7 +87,7 @@ describe('the plugins page shows what main has done', () => {
   it('makes Undo an explicit re-enable', async () => {
     api.list.mockResolvedValue([view('a')])
     api.setEnabled.mockResolvedValueOnce([view('a', 'disabled')]).mockResolvedValueOnce([view('a', 'active')])
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(toasts.undo).toHaveLength(1))
     await act(async () => { toasts.undo[0].onUndo() })
@@ -90,7 +98,7 @@ describe('the plugins page shows what main has done', () => {
   it('does not leave a switch drawn as flipped when main refuses, and reads the real list back', async () => {
     api.list.mockResolvedValue([view('a')])
     api.setEnabled.mockRejectedValue(new Error('state.json is read-only'))
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(toasts.plain).toHaveLength(1))
     expect(toasts.plain[0].message).toBe('Could not disable Plugin a')
@@ -106,7 +114,7 @@ describe('the plugins page shows what main has done', () => {
     api.list.mockResolvedValue([view('a')])
     api.reload.mockRejectedValue(new Error('ipc closed'))
     draw()
-    await screen.findByRole('button', { name: 'Disable' })
+    await screen.findByTestId('plugin-details-a')
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }))
     await waitFor(() => expect(toasts.plain.some((x) => x.message === 'Could not reload plugins')).toBe(true))
     expect((screen.getByRole('button', { name: 'Reload' }) as HTMLButtonElement).disabled).toBe(false)
@@ -120,7 +128,7 @@ describe('the plugins page shows what main has done', () => {
     expect(alert.textContent).toContain('does not mean there are none')
     expect(screen.queryByText(/No plugins found/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByRole('button', { name: 'Disable' })).toBeTruthy()
+    expect(await screen.findByTestId('plugin-details-a')).toBeTruthy()
     expect(screen.queryByTestId('plugins-load-error')).toBeNull()
   })
 
@@ -136,9 +144,10 @@ describe('the plugins page shows what main has done', () => {
     api.reload.mockReturnValue(slowReload.promise)
     api.setEnabled.mockResolvedValue([view('a', 'disabled')])
     draw()
-    await screen.findByRole('button', { name: 'Disable' })
+    const row = await screen.findByTestId('plugin-details-a')
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }))          // starts first, answers last
-    fireEvent.click(screen.getByRole('button', { name: 'Disable' }))         // decided after
+    fireEvent.click(row)
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable' })) // decided after
     expect(await screen.findByRole('button', { name: 'Enable' })).toBeTruthy()
     // The reload finally answers with the list as it was before the disable.
     await act(async () => { slowReload.resolve([view('a', 'active')]) })
@@ -155,7 +164,7 @@ describe('the plugins page shows what main has done', () => {
 
     it('tells the truth about isolation before the operator trusts code', async () => {
       api.list.mockResolvedValue([privileged('p', { source: 'bundled' })])
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       const body = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
       expect(body).toContain('main process')
@@ -172,7 +181,7 @@ describe('the plugins page shows what main has done', () => {
         ({ ...view('tp'), status: 'needs-consent', needsApproval: true, contributes: ['terminalProfiles'], ...over })
       api.list.mockResolvedValue([profiles()])
       api.grant.mockResolvedValue({ ok: true, plugins: [profiles({ status: 'active' })] })
-      draw()
+      await drawOpen()
       expect(screen.queryByText(en['plugins.tier.privileged'])).toBeNull()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       const dialog = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
@@ -193,7 +202,7 @@ describe('the plugins page shows what main has done', () => {
 
     it('lists each profile, one line each: the tool, its commands, what happens to them, and why', async () => {
       api.list.mockResolvedValue([declaring()])
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       const items = Array.from((await screen.findByTestId('plugin-consent-dialog')).querySelectorAll('li')).map((li) => li.textContent ?? '')
       expect(items).toHaveLength(3)
@@ -208,6 +217,7 @@ describe('the plugins page shows what main has done', () => {
       api.list.mockResolvedValue([declaring()])
       ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
       render(<PluginsPanel t={tZh} />)
+      fireEvent.click((await screen.findAllByTestId(/^plugin-details-/))[0])
       fireEvent.click(await screen.findByRole('button', { name: zh['plugins.review'] }))
       const items = Array.from((await screen.findByTestId('plugin-consent-dialog')).querySelectorAll('li')).map((li) => li.textContent ?? '')
       expect(items).toEqual([
@@ -221,7 +231,7 @@ describe('the plugins page shows what main has done', () => {
     // warning was all the dialog said, and the profiles were approved unseen.
     it('shows the profiles of a plugin that also runs code, under the code warning', async () => {
       api.list.mockResolvedValue([privileged('p', { source: 'bundled', contributes: ['tailers', 'terminalProfiles'], terminalProfiles: [vimKeys] })])
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       const dialog = await screen.findByTestId('plugin-consent-dialog')
       expect(dialog.textContent).toContain('not isolated')
@@ -238,7 +248,7 @@ describe('the plugins page shows what main has done', () => {
         source: 'user', contributes: ['tailers', 'terminalProfiles'], terminalProfiles: [vimKeys],
         report: { tailers: { state: 'rejected', reason: 'Third-party tailers are not supported' } }
       })])
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       const dialog = (await screen.findByTestId('plugin-consent-dialog')).textContent ?? ''
       expect(dialog).toContain('Vim Keys (vim2)')
@@ -258,8 +268,10 @@ describe('the plugins page shows what main has done', () => {
       api.list.mockResolvedValue([installing()])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [installing()] })
       draw()
+      // Spec 065: the report lives in the detail panel, not the row.
+      fireEvent.click(await screen.findByTestId('plugin-details-hk'))
       expect((await screen.findByTestId('plugin-results-capture-hk')).textContent).toBe(en['plugins.results.captureWaiting'])
-      fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
+      fireEvent.click(screen.getByTestId('plugin-detail-review-hk'))
       const dialog = await screen.findByTestId('plugin-consent-dialog')
       expect(dialog.textContent).toContain(en['plugins.consentTitleInstall'])
       expect(dialog.textContent).not.toMatch(/main process|not isolated|tool profile|terminal treats/)
@@ -277,7 +289,7 @@ describe('the plugins page shows what main has done', () => {
     it('a refused approval of profiles does not say the plugin "stays unable to run"', async () => {
       api.list.mockResolvedValue([declaring()])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [declaring()] })
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
       await waitFor(() => expect(toasts.plain.length).toBe(1))
@@ -292,13 +304,15 @@ describe('the plugins page shows what main has done', () => {
       draw()
       await screen.findByText('Plugin t')
       expect(screen.queryByRole('button', { name: 'Review & trust' })).toBeNull()
-      expect(screen.getByTestId('plugin-results-t').textContent).toContain('not supported')
+      fireEvent.click(screen.getByTestId('plugin-details-t'))
+      expect((await screen.findByTestId('plugin-results-t')).textContent).toContain('not supported')
+      expect(screen.queryByRole('button', { name: 'Review & trust' })).toBeNull()
     })
 
     it('does not blame the manifest when a grant is refused, and shows the real reason', async () => {
       api.list.mockResolvedValue([privileged('p', { source: 'bundled' })])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [privileged('p', { source: 'bundled' })] })
-      draw()
+      await drawOpen()
       fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
       fireEvent.click(await screen.findByRole('button', { name: 'Trust & run' }))
       await waitFor(() => expect(toasts.plain.length).toBe(1))
@@ -316,6 +330,7 @@ describe('when the shell\'s tool profiles could not be updated', () => {
   beforeEach(() => {
     toasts.plain.length = 0; toasts.undo.length = 0
     Object.values(api).forEach((f) => f.mockReset())
+    api.officialAgents.mockResolvedValue([])
   })
   afterEach(() => cleanup())
 
@@ -337,7 +352,7 @@ describe('when the shell\'s tool profiles could not be updated', () => {
   it('a revoke that could not update them is not reported as plain success', async () => {
     api.list.mockResolvedValue([row()])
     api.revoke.mockResolvedValue([row({ status: 'needs-consent', profilesError: stale })])
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Revoke trust' }))
     await waitFor(() => expect(toasts.plain.length).toBe(1))
     expect(toasts.plain[0].message).toContain('may still apply')
@@ -348,7 +363,7 @@ describe('when the shell\'s tool profiles could not be updated', () => {
     const waiting = row({ status: 'needs-consent', terminalProfiles: [{ name: 'T', mode: 'pty', executables: ['t'], reason: 'r' }] })
     api.list.mockResolvedValue([waiting])
     api.grant.mockResolvedValue({ ok: true, profilesError: stale, plugins: [row({ profilesError: stale })] })
-    draw()
+    await drawOpen()
     fireEvent.click(await screen.findByRole('button', { name: 'Review & trust' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
     await waitFor(() => expect(toasts.plain.length).toBe(1))
@@ -356,12 +371,20 @@ describe('when the shell\'s tool profiles could not be updated', () => {
   })
 })
 
-// Official integrations have their installation and project controls on the source page.
-it('does not expose a second official AI switch alongside third-party plugins', async () => {
-  api.list.mockResolvedValue([view('official-ai-claude-code'), view('official-ai-codex', 'disabled'), view('third-party')])
+// Spec 066: the plugin page is the one place official integrations are installed,
+// updated and removed. Each has exactly one row, installed or not, and a
+// not-installed one is never drawn as a disabled plugin.
+it('lists each official integration once, including the one that is not installed', async () => {
+  api.list.mockResolvedValue([view('official-ai-claude-code'), view('third-party')])
+  api.officialAgents.mockResolvedValue([
+    { agentKind: 'claude-code', pluginId: 'official-ai-claude-code', name: 'Claude Code', source: {}, state: 'installed', installationId: 'i1' },
+    { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', source: {}, state: 'not-installed' }
+  ])
   draw()
   await screen.findByText('Plugin third-party')
-  expect(screen.queryByText('Plugin official-ai-codex')).toBeNull()
-  expect(screen.queryByText('Plugin official-ai-claude-code')).toBeNull()
+  expect(screen.getAllByText('Plugin official-ai-claude-code')).toHaveLength(1)
+  expect(screen.getAllByText('Codex')).toHaveLength(1)
+  expect(screen.getByTestId('plugin-state-official-ai-codex').textContent).toBe('Not installed')
+  expect(screen.queryByTestId('plugin-detail-toggle-official-ai-codex')).toBeNull()
   cleanup()
 })

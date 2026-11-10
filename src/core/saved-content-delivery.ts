@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 import { getProjectDir } from './db/index'
-import { readEventContent } from './evidence-content'
+import { prepareEventContent, readEventContent } from './evidence-content'
 import { ContentAccessError } from './body-source'
 import { isInsideDir } from './paths'
 import type { ContentRef, ContentResult } from './content-contract'
@@ -18,6 +18,9 @@ export async function saveEventContent(ref:ContentRef,destination:string,isAllow
     let offset=0,total:number|undefined
     do{
       if(!isAllowed())throw new ContentAccessError('denied','Content project changed')
+      const ready = await prepareEventContent(ref.projectId, ref.eventId)
+      if (!ready.ok) throw new ContentAccessError(ready.status, ready.message)
+      if (!isAllowed()) throw new ContentAccessError('denied', 'Content project changed')
       const reply=readEventContent({ref,offset})
       if(!reply.ok)throw new ContentAccessError(reply.status,reply.message)
       const part=reply.value
