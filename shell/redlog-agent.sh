@@ -106,7 +106,10 @@ redlog_mark() {
 # Send a raw event with custom agent_type and data
 redlog_event() {
   local agent_type="${1:-agent}"
-  local data="${2:-{}}"
+  # Not `${2:-{}}`: the expansion ends at the first `}`, so a given argument
+  # came out with a stray `}` after it.
+  local data="${2:-}"
+  [[ -n "$data" ]] || data='{}'
   _redlog_post "/api/events" \
     "{\"agent_type\":$(_json_escape "$agent_type"),\"data\":$data}"
 }

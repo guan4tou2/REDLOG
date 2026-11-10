@@ -174,6 +174,18 @@ redlog_status >/dev/null' bash ${repoFile('shell', 'redlog-agent.sh')}
     expect(rec.body).toContain(MARK)
   }, 90_000)
 
+  // `${2:-{}}` closes at the FIRST brace, so a given argument came out with a
+  // `}` appended and the request body was not JSON.
+  it('shell/redlog-agent.sh redlog_event sends the data it is given as-is, and {} when it is given none', async () => {
+    const rec = await run(`
+bash -c 'source "$1"
+redlog_event agent "{\\"subtype\\":\\"x\\",\\"n\\":1}"
+redlog_event agent' bash ${repoFile('shell', 'redlog-agent.sh')}
+`)
+    const bodies = rec.body.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as { agent_type: string; data: unknown })
+    expect(bodies.map((b) => b.data)).toEqual([{ subtype: 'x', n: 1 }, {}])
+  }, 90_000)
+
   it('hooks/vps-deploy.sh install: the token goes to the VPS on stdin, not in ssh/scp argv', async () => {
     const rec = await run(`
 export REDLOG_REMOTE_TOKEN="$TOKEN"
