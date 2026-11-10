@@ -74,97 +74,201 @@ export interface ViewportWindow {
   timeSpan: number
 }
 
-/** Walk the viewport window newest-first. Returns the newest `cap` visible
- *  events (newest first) and how many the window holds in all, so the card
- *  rail can say "latest 50 of N" without a second pass over a different
- *  definition of "in the window". `collect:false` only counts. */
+/** What the card rail needs from the viewport window, from one walk of it. */
+export interface WindowSlice {
+  /** The newest `cap` visible events in the window, OLDEST FIRST. */
+  recent: RedLogEvent[]
+  /** How many events the window holds under the lane filter alone. */
+  totalAll: number
+  /** How many it holds under the lane filter and the query's matches; the
+   *  same number as `totalAll` when no query is active. */
+  total: number
+}
+
+// A marker is drawn at its own `atTimestamp`, so it can sit anywhere while the
+// array is ordered by `timestamp`. Which events are drawn somewhere other than
+// their own time is a property of the array, not of the viewport, so it is
+// found once per array rather than once per scroll frame. The Timeline replaces
+// its arrays instead of editing them; the length is a guard for anything that
+// does not.
+const displacedCache = new WeakMap<
+  readonly RedLogEvent[],
+  { displayTs: ViewportWindow['displayTs']; length: number; indices: number[] }
+>()
+
+function displacedIndices(events: readonly RedLogEvent[], displayTs: ViewportWindow['displayTs']): number[] {
+  const hit = displacedCache.get(events)
+  if (hit && hit.displayTs === displayTs && hit.length === events.length) return hit.indices
+  const indices: number[] = []
+  for (let i = 0; i < events.length; i++) if (displayTs(events[i]) !== events[i].timestamp) indices.push(i)
+  displacedCache.set(events, { displayTs, length: events.length, indices })
+  return indices
+}
+
+/** First index whose `timestamp` is >= `t` (`strict`: > `t`). */
+function boundByTimestamp(events: readonly RedLogEvent[], t: number, strict: boolean): number {
+  let lo = 0
+  let hi = events.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    const ts = events[mid].timestamp
+    if (strict ? ts <= t : ts < t) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+function firstAtLeast(sorted: readonly number[], n: number): number {
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (sorted[mid] < n) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/** One rule for what counts, with what it has counted. */
+interface Tally {
+  passes: (e: RedLogEvent) => boolean
+  total: number
+  /** False once the early exit has fired for this rule. */
+  open: boolean
+}
+
+/**
+ * Walk the viewport window newest-first. `events` is in `timestamp` order, which
+ * is what lets the window's edges be found by bisection instead of by walking
+ * back from the newest row past everything the operator has scrolled away from.
+ *
+ * What counts is exactly what a newest-first walk with an early exit counted:
+ * a visible event whose display time is inside [from, to], except that the walk
+ * stops at the newest visible event shown at its own time before `from`.
+ * A marker is shown at its `atTimestamp`, so a backdated one before the window
+ * says nothing about the rows after it, and a marker stored after the window can
+ * be drawn inside it; the first is why only an event shown at its own time may
+ * end the walk, the second is why events after the window are not skipped
+ * wholesale (`displacedIndices`).
+ *
+ * Two rules are tallied in the one walk because the rail needs both: the lane
+ * filter alone, and the lane filter with the query's matches. Each keeps its own
+ * early exit, as it did when they were separate walks.
+ */
 function scanWindow(
   events: readonly RedLogEvent[],
-  isVisible: (e: RedLogEvent) => boolean,
+  laneVisible: (e: RedLogEvent) => boolean,
+  matched: ReadonlySet<string> | null,
   vp: ViewportWindow,
-  cap: number,
-  collect: boolean
-): { items: RedLogEvent[]; total: number } {
+  cap: number
+): WindowSlice {
+  const all: Tally = { passes: () => true, total: 0, open: true }
+  const query: Tally = matched ? { passes: (e) => matched.has(e.id), total: 0, open: true } : all
+  const rules = matched ? [all, query] : [all]
+  const items: RedLogEvent[] = []
+  const take = (e: RedLogEvent, respectOpen: boolean): void => {
+    let counted = false
+    for (const r of rules) {
+      if ((respectOpen && !r.open) || !r.passes(e)) continue
+      r.total++
+      if (r === query) counted = true
+    }
+    if (counted && items.length < cap) items.push(e)
+  }
+  const done = (): WindowSlice => ({ recent: items.reverse(), totalAll: all.total, total: query.total })
+
   const widthPx = (vp.width / 100) * vp.trackW
   const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)
-  const items: RedLogEvent[] = []
-  let total = 0
-  const take = (e: RedLogEvent): void => {
-    total++
-    if (collect && items.length < cap) items.push(e)
-  }
-
   if (wholeTrackVisible || vp.timeSpan <= 0) {
     for (let i = events.length - 1; i >= 0; i--) {
-      if (isVisible(events[i])) take(events[i])
+      if (laneVisible(events[i])) take(events[i], false)
     }
-    return { items, total }
+    return done()
   }
 
   const from = vp.fromX((vp.left / 100) * vp.trackW)
   const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
-  for (let i = events.length - 1; i >= 0; i--) {
+  // Events before `lo` are earlier than the window and after `hi` later than
+  // it, by `timestamp`. A window with no order (NaN edges) bisects nothing.
+  const ordered = from <= to
+  const lo = ordered ? boundByTimestamp(events, from, false) : 0
+  const hi = ordered ? boundByTimestamp(events, to, true) : events.length
+  // Written as two negations so a NaN edge admits everything, as it always did.
+  const inWindow = (d: number): boolean => !(d > to) && !(d < from)
+
+  // Newest first. After the window: only a marker drawn back inside it.
+  if (ordered) {
+    const displaced = displacedIndices(events, vp.displayTs)
+    const firstAfter = firstAtLeast(displaced, hi)
+    for (let j = displaced.length - 1; j >= firstAfter; j--) {
+      const e = events[displaced[j]]
+      if (laneVisible(e) && inWindow(vp.displayTs(e))) take(e, false)
+    }
+  }
+  // Inside it by `timestamp`; a marker among them may be drawn elsewhere.
+  for (let i = hi - 1; i >= lo; i--) {
     const e = events[i]
-    if (!isVisible(e)) continue
+    if (laneVisible(e) && inWindow(vp.displayTs(e))) take(e, false)
+  }
+  // Before it, until each rule's early exit.
+  for (let i = lo - 1; i >= 0 && (all.open || query.open); i--) {
+    const e = events[i]
+    if (!laneVisible(e)) continue
     const d = vp.displayTs(e)
     if (d > to) continue
-    // `events` is in `timestamp` order, but a marker shows at its own
-    // `atTimestamp`. A backdated marker before the window says nothing about
-    // the rows after it, so only a row shown at its own time may end the scan.
-    if (d < from) { if (d === e.timestamp) break; continue }
-    take(e)
+    if (d < from) {
+      if (d === e.timestamp) for (const r of rules) if (r.passes(e)) r.open = false
+      continue
+    }
+    take(e, true)
   }
-  if (total > 0) return { items, total }
-  // Nothing inside the window: the nearest events before its trailing edge.
+
+  // A rule that found nothing inside the window answers with the nearest events
+  // before its trailing edge instead.
+  const empty = rules.filter((r) => r.total === 0)
+  if (empty.length === 0) return done()
+  if (empty.includes(query)) items.length = 0
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]
-    if (isVisible(e) && vp.displayTs(e) <= to) take(e)
+    if (!laneVisible(e) || !(vp.displayTs(e) <= to)) continue
+    let counted = false
+    for (const r of empty) {
+      if (!r.passes(e)) continue
+      r.total++
+      if (r === query) counted = true
+    }
+    if (counted && items.length < cap) items.push(e)
   }
-  return { items, total }
-}
-
-function visibilityOf(
-  hiddenLanes: ReadonlySet<LaneId>,
-  pluginTypes: PluginEventType[] | undefined,
-  matched: ReadonlySet<string> | null
-): (e: RedLogEvent) => boolean {
-  // The `/` search used to DIM non-matches and leave them in place. On a half
-  // screen beside a terminal that is not a filter: a dirb run puts 920 rows
-  // in the list and all 920 still take their space, so searching `backup`
-  // left the operator scrolling the same distance looking for a shade of
-  // grey. Non-matches are removed; the panel says how many and opens them.
-  return (e) =>
-    !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
-    && (matched === null || matched.has(e.id))
+  return done()
 }
 
 /**
- * The newest `cap` events in the current viewport, OLDEST FIRST — the card
- * rail reads top to bottom like the time axis. When the whole track is
- * visible or the windowed search yields nothing, falls back to the nearest
- * events before the viewport's trailing edge.
+ * What the card rail shows for the current viewport: the newest `cap` events in
+ * it OLDEST FIRST (the rail reads top to bottom like the time axis), and how
+ * many the window holds in all, "latest 50 of N". When the whole track is
+ * visible, or the window holds nothing, a rule answers with the nearest events
+ * before the viewport's trailing edge.
+ *
+ * `matched` is the `/` search results; non-null means the list shows only
+ * these. That used to DIM non-matches and leave them in place. On a half screen
+ * beside a terminal that is not a filter: a dirb run puts 920 rows in the list
+ * and all 920 still took their space, so searching `backup` left the operator
+ * scrolling the same distance looking for a shade of grey. Non-matches are
+ * removed; the panel says how many (`totalAll - total`) and opens them.
  */
-export function computeRecentEvents(
+export function computeWindowSlice(
   events: readonly RedLogEvent[],
   hiddenLanes: ReadonlySet<LaneId>,
   pluginTypes: PluginEventType[] | undefined,
   vp: ViewportWindow,
   cap = 50,
-  /** `/` search results. Non-null means the list shows only these. */
   matched: ReadonlySet<string> | null = null
-): RedLogEvent[] {
-  return scanWindow(events, visibilityOf(hiddenLanes, pluginTypes, matched), vp, cap, true).items.reverse()
-}
-
-/** How many events the same window holds, uncapped — the N in "latest 50 of N". */
-export function countWindowEvents(
-  events: readonly RedLogEvent[],
-  hiddenLanes: ReadonlySet<LaneId>,
-  pluginTypes: PluginEventType[] | undefined,
-  vp: ViewportWindow,
-  matched: ReadonlySet<string> | null = null
-): number {
-  return scanWindow(events, visibilityOf(hiddenLanes, pluginTypes, matched), vp, 0, false).total
+): WindowSlice {
+  return scanWindow(
+    events,
+    (e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)),
+    matched, vp, cap
+  )
 }
 
 // ── Lane distribution ───────────────────────────────────────────────
