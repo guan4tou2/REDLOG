@@ -76,7 +76,7 @@ HTTP 和 Screenshots 沿用共同載入元件；載入狀態有可讀名稱。
 | loot | `events:queryPage`(loot) | spinner | `loot.empty` | `loot-load-error` |
 | timeline | `events:queryPage` | spinner（common.loading） | `timeline-empty-filtered`（預設帶 active conditions；`timeline.noEvents` 是無條件分支） | `timeline-load-failed` |
 | transcript | `events:queryPage` | `transcript.loading` 文本 | `transcript.empty` | `transcript-load-error` |
-| scope | `scope:getViolationCount`（五通道 `Promise.all` 之一） | spinner | `scope.notSet` 徽章 | `scope.loadFailed`（無 testid，以 role=alert＋retry 定位） |
+| scope | `scope:getObservationCount`（五通道 `Promise.all` 之一） | spinner | `scope.observationsTitle` 標題（讀完才渲染） | `scope.loadFailed`（無 testid，以 role=alert＋retry 定位） |
 
 「部分」狀態兩個真實案例：targets 主讀取成功而 `config:get` 失敗 → `targets-scope-failed`（in-scope 未知，出自己的重試）；dashboard 在有資料的專案上 scope 計數失敗 → issue store 的 `dashboard-issue-scope`（`issues.scopeUnknown`），並透過該列自己的「重新檢查」修復按鈕走完復原，unknown 標題消失、轉為未設定範圍的 pending 狀態。search 的部分讀取（index／types／casts 失敗與 partial warning）已由 `e2e/ui-closeout.spec.ts` 覆蓋，不在本檔重複。
 

@@ -115,8 +115,8 @@ test('empty, pending and failed reads remain distinguishable and recoverable at 
 //                config:get fails → targets-scope-failed + its own retry
 // - loot       — read events:queryPage → spinner / loot.empty /
 //                loot-load-error + retry
-// - scope      — read scope:getViolationCount (+ 4 siblings in one Promise.all)
-//                → spinner / scope.notSet badge / scope.loadFailed + retry
+// - scope      — read scope:getObservationCount (+ 4 siblings in one Promise.all)
+//                → spinner / scope.observationsTitle heading / scope.loadFailed + retry
 // - dashboard  — the only distinguishable read is the aggregator's:
 //                config:get pending → dashboard-loading; and the partial
 //                state a dashboard-with-data renders — a seeded command makes
@@ -296,7 +296,11 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       await releaseOne()
       await expect(transcriptEmpty).toBeVisible()
       await answer('events:queryPage', emptyPage, true)
-      await openView(page, 'dashboard')
+      // The Activity workspace keeps its read state across a trip to another
+      // view (#589), so leaving and re-entering no longer re-reads. A reload
+      // is the fresh mount that meets the failing channel.
+      await page.reload()
+      await page.waitForLoadState('domcontentloaded')
       await openView(page, 'transcript')
       const transcriptError = page.getByTestId('transcript-load-error')
       await expect(transcriptError).toBeVisible()
@@ -307,10 +311,10 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       await expect(transcriptEmpty).toBeVisible()
 
       // Scope: a five-channel Promise.all → pending when ANY member hangs,
-      // failed when any rejects (scope.loadFailed), empty = the notSet badge.
+      // failed when any rejects (scope.loadFailed), loaded = the observations heading.
       const scopeRoot = page.getByTestId('view-root')
-      const scopeEmpty = scopeRoot.getByText(strings['scope.notSet'], { exact: true })
-      await answer('scope:getViolationCount', 0, false, true)
+      const scopeEmpty = scopeRoot.getByRole('heading', { name: strings['scope.observationsTitle'] })
+      await answer('scope:getObservationCount', 0, false, true)
       await openView(page, 'scope')
       await expect(scopeRoot.locator('[role="status"]').first()).toBeVisible()
       await expect(scopeEmpty).toHaveCount(0)
@@ -318,7 +322,7 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       // Restore the pending channel to a plain value — the later fail leg
       // replaces only getLastRecompute, and a retry must not meet a still
       // pending Promise.all member.
-      await answer('scope:getViolationCount', 0)
+      await answer('scope:getObservationCount', 0)
       await expect(scopeEmpty).toBeVisible()
       await answer('scope:getLastRecompute', null, true)
       await openView(page, 'dashboard')
@@ -337,14 +341,14 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       // unknown title goes and the unset-scope pending state raises instead —
       // a change of tier, not a disappearance.
       await seed('shell', { subtype: 'command_end', command: 'id', exit_code: 0 })
-      await answer('scope:getViolationCount', 0, true)
+      await answer('scope:getObservationCount', 0, true)
       await answer('scope:isConfigured', false, true)
       await page.reload()
       await page.waitForLoadState('domcontentloaded')
       const issue = page.getByTestId('dashboard-issue-scope')
       await expect(issue).toBeVisible()
       await expect(issue.getByText(strings['issues.scopeUnknown'], { exact: false })).toBeVisible()
-      await answer('scope:getViolationCount', 0)
+      await answer('scope:getObservationCount', 0)
       await answer('scope:isConfigured', false)
       await page.getByTestId('dashboard-issue-fix-scope').click()
       await expect(page.getByText(strings['issues.scopeUnknown'], { exact: false })).toHaveCount(0)
